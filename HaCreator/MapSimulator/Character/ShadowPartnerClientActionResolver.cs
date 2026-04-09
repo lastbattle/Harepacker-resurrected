@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator.Character
             "stab",
             "pierce",
             "thrust",
+            "assaulter",
             "assassination",
             "savage",
             "showdown"
@@ -102,6 +103,10 @@ namespace HaCreator.MapSimulator.Character
                 // client-owned alias seam here before falling back to the plain raw action name.
                 ["avenger"] = new[] { "shoot1", "shoot2", "shootF" },
                 ["assaulter"] = new[] { "stabO1", "stabO2", "stabOF" },
+                // `get_action_name_from_code(182) = flyingAssaulter` is client-owned rather
+                // than WZ-authored in the mounted helper `action/0` rows, but it still resolves
+                // to the same helper branch family as `assaulter`.
+                ["flyingAssaulter"] = new[] { "assaulter", "stabO1", "stabO2", "stabOF" },
                 ["prone2"] = new[] { "prone", "proneStab", "stand1", "stand2" },
                 // Additional thief/night-walker helper raw action names recovered from WZ:
                 // `Skill/420.img/skill/4201005/action/0 = savage`,
@@ -632,6 +637,95 @@ namespace HaCreator.MapSimulator.Character
             foreach (string candidate in EnumerateAliasCandidates(actionName))
             {
                 yield return candidate;
+            }
+        }
+
+        public static IEnumerable<string> EnumerateClientIdentityCandidates(
+            string playerActionName,
+            PlayerState state,
+            string weaponType = null,
+            int? rawActionCode = null)
+        {
+            foreach (string candidate in EnumerateHelperIdentityCandidates(
+                         playerActionName,
+                         state,
+                         weaponType,
+                         rawActionCode))
+            {
+                yield return candidate;
+            }
+        }
+
+        public static IEnumerable<string> EnumerateHelperIdentityCandidates(
+            string playerActionName,
+            PlayerState state,
+            string weaponType = null,
+            int? rawActionCode = null)
+        {
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string rawActionName = null;
+
+            if (ShouldPreferActionSpecificAliasCandidates(playerActionName))
+            {
+                foreach (string candidate in EnumerateAliasCandidates(playerActionName))
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+            }
+
+            if (rawActionCode.HasValue
+                && CharacterPart.TryGetActionStringFromCode(rawActionCode.Value, out rawActionName)
+                && !string.IsNullOrWhiteSpace(rawActionName))
+            {
+                foreach (string candidate in EnumerateActionSpecificAliasCandidates(rawActionName))
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+
+                if (yielded.Add(rawActionName))
+                {
+                    yield return rawActionName;
+                }
+
+                foreach (string candidate in EnumerateHeuristicAttackAliases(rawActionName, state, weaponType))
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(playerActionName))
+            {
+                yield break;
+            }
+
+            if (yielded.Add(playerActionName))
+            {
+                yield return playerActionName;
+            }
+
+            foreach (string candidate in EnumerateAliasCandidates(playerActionName))
+            {
+                if (yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+
+            foreach (string candidate in EnumerateHeuristicAttackAliases(playerActionName, state, weaponType))
+            {
+                if (yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
             }
         }
 

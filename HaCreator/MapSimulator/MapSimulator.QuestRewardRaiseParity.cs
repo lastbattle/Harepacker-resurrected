@@ -3,6 +3,7 @@ using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace HaCreator.MapSimulator
@@ -58,6 +59,8 @@ namespace HaCreator.MapSimulator
             {
                 return;
             }
+
+            activeRaise.OpenDispatchSummary = BuildQuestRewardRaiseOpenSummary(activeRaise);
 
             if (windowMode != QuestRewardRaiseWindowMode.PiecePlacement && hasSelectionGroups)
             {
@@ -196,8 +199,16 @@ namespace HaCreator.MapSimulator
                     : request.SlotData.ItemName.Trim()
             });
 
+            QuestRewardRaisePlacedPiece placedPiece = activeRaise.PlacedPieces[^1];
+            DispatchQuestRewardRaisePieceRequest(
+                activeRaise,
+                placedPiece,
+                QuestRewardRaiseOutboundRequest.CreatePutItemAdd(activeRaise, placedPiece),
+                out string dispatchSummary);
+            activeRaise.OpenDispatchSummary = dispatchSummary;
+
             _chat?.AddSystemMessage(
-                $"Queued raise PutItem request #{requestId} for {ResolveQuestRewardRaiseItemName(request.SlotData.ItemId)} on {request.SourceInventoryType} slot {request.SourceSlotIndex + 1}.",
+                $"Queued raise PutItem request #{requestId} for {ResolveQuestRewardRaiseItemName(request.SlotData.ItemId)} on {request.SourceInventoryType} slot {request.SourceSlotIndex + 1}. {dispatchSummary}",
                 currTickCount);
             RefreshQuestRewardRaiseWindow();
         }
@@ -221,9 +232,15 @@ namespace HaCreator.MapSimulator
                 inventoryWindow.TryClearPendingRequestState(requestId);
             }
 
+            DispatchQuestRewardRaisePieceRequest(
+                activeRaise,
+                placedPiece,
+                QuestRewardRaiseOutboundRequest.CreatePutItemRelease(activeRaise, placedPiece),
+                out string dispatchSummary);
             activeRaise.PlacedPieces.RemoveAll(piece => piece.RequestId == requestId);
+            activeRaise.OpenDispatchSummary = dispatchSummary;
             _chat?.AddSystemMessage(
-                $"Released raise PutItem request #{requestId} for {ResolveQuestRewardRaiseItemName(placedPiece.ItemId)}.",
+                $"Released raise PutItem request #{requestId} for {ResolveQuestRewardRaiseItemName(placedPiece.ItemId)}. {dispatchSummary}",
                 currTickCount);
             RefreshQuestRewardRaiseWindow();
         }
@@ -322,10 +339,13 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            string confirmDispatchSummary = DispatchQuestRewardRaiseConfirmRequest(activeRaise);
+            activeRaise.OpenDispatchSummary = confirmDispatchSummary;
+
             if (activeRaise.WindowMode == QuestRewardRaiseWindowMode.PiecePlacement)
             {
                 _chat?.AddSystemMessage(
-                    $"Committed {activeRaise.PlacedPieces.Count} local raise piece request{(activeRaise.PlacedPieces.Count == 1 ? string.Empty : "s")} for owner #{Math.Max(0, activeRaise.OwnerItemId)}.",
+                    $"Committed {activeRaise.PlacedPieces.Count} local raise piece request{(activeRaise.PlacedPieces.Count == 1 ? string.Empty : "s")} for owner #{Math.Max(0, activeRaise.OwnerItemId)}. {confirmDispatchSummary}",
                     currTickCount);
             }
 
@@ -334,14 +354,26 @@ namespace HaCreator.MapSimulator
 
         private void RestoreQuestRewardRaisePlacedPieces(QuestRewardRaiseState activeRaise)
         {
-            if (activeRaise?.PlacedPieces == null || activeRaise.PlacedPieces.Count == 0 || uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
+            if (activeRaise?.PlacedPieces == null || activeRaise.PlacedPieces.Count == 0)
             {
                 return;
             }
 
-            foreach (QuestRewardRaisePlacedPiece piece in activeRaise.PlacedPieces)
+            if (uiWindowManager?.InventoryWindow is InventoryUI inventoryWindow)
             {
-                inventoryWindow.TryClearPendingRequestState(piece.RequestId);
+                foreach (QuestRewardRaisePlacedPiece piece in activeRaise.PlacedPieces)
+                {
+                    inventoryWindow.TryClearPendingRequestState(piece.RequestId);
+                }
+            }
+
+            IReadOnlyList<string> releaseSummaries = ReleaseQuestRewardRaisePlacedPieces(activeRaise);
+            if (releaseSummaries.Count > 0)
+            {
+                activeRaise.OpenDispatchSummary = releaseSummaries[^1];
+                _chat?.AddSystemMessage(
+                    $"Destroyed raise owner #{Math.Max(0, activeRaise.OwnerItemId)} and mirrored {releaseSummaries.Count} PutItem release request{(releaseSummaries.Count == 1 ? string.Empty : "s")}. {releaseSummaries[^1]}",
+                    currTickCount);
             }
         }
 
@@ -399,6 +431,97 @@ namespace HaCreator.MapSimulator
             return InventoryItemMetadataResolver.TryResolveItemName(itemId, out string resolvedName) && !string.IsNullOrWhiteSpace(resolvedName)
                 ? resolvedName
                 : $"Item #{Math.Max(0, itemId)}";
+        }
+
+        private static string BuildQuestRewardRaiseOpenSummary(QuestRewardRaiseState activeRaise)
+        {
+            if (activeRaise == null)
+            {
+                return "Raise owner idle.";
+            }
+
+            return $"Opened raise owner session #{Math.Max(0, activeRaise.ManagerSessionId)} request #{Math.Max(0, activeRaise.RequestId)} for quest #{Math.Max(0, activeRaise.Prompt?.QuestId ?? 0)} owner #{Math.Max(0, activeRaise.OwnerItemId)} in {activeRaise.WindowMode} mode.";
+        }
+
+        private void DispatchQuestRewardRaisePieceRequest(
+            QuestRewardRaiseState activeRaise,
+            QuestRewardRaisePlacedPiece placedPiece,
+            QuestRewardRaiseOutboundRequest request,
+            out string dispatchSummary)
+        {
+            dispatchSummary = DescribeQuestRewardRaiseOutboundDispatch(request);
+            if (placedPiece == null)
+            {
+                return;
+            }
+
+            placedPiece.PacketOpcode = request?.Opcode ?? -1;
+            placedPiece.PacketPayload = request?.Payload?.ToArray() ?? Array.Empty<byte>();
+            placedPiece.DispatchSummary = dispatchSummary;
+        }
+
+        private IReadOnlyList<string> ReleaseQuestRewardRaisePlacedPieces(QuestRewardRaiseState activeRaise)
+        {
+            if (activeRaise?.PlacedPieces == null || activeRaise.PlacedPieces.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            List<string> summaries = new(activeRaise.PlacedPieces.Count);
+            foreach (QuestRewardRaisePlacedPiece piece in activeRaise.PlacedPieces)
+            {
+                DispatchQuestRewardRaisePieceRequest(
+                    activeRaise,
+                    piece,
+                    QuestRewardRaiseOutboundRequest.CreatePutItemRelease(activeRaise, piece),
+                    out string dispatchSummary);
+                summaries.Add(dispatchSummary);
+            }
+
+            return summaries;
+        }
+
+        private string DispatchQuestRewardRaiseConfirmRequest(QuestRewardRaiseState activeRaise)
+        {
+            return activeRaise == null
+                ? "Raise owner confirm dispatch was skipped because no active raise exists."
+                : DescribeQuestRewardRaiseOutboundDispatch(QuestRewardRaiseOutboundRequest.CreatePutItemConfirm(activeRaise));
+        }
+
+        private string DescribeQuestRewardRaiseOutboundDispatch(QuestRewardRaiseOutboundRequest request)
+        {
+            if (request == null)
+            {
+                return "Raise owner did not produce an outbound packet request.";
+            }
+
+            string payloadHex = Convert.ToHexString(request.Payload?.ToArray() ?? Array.Empty<byte>());
+            string bridgeStatus;
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(request.Opcode, request.Payload, out bridgeStatus))
+            {
+                return $"{request.Summary} [{payloadHex}] dispatched through the live local-utility bridge. {bridgeStatus}";
+            }
+
+            string outboxStatus;
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(request.Opcode, request.Payload, out outboxStatus))
+            {
+                return $"{request.Summary} [{payloadHex}] dispatched through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+            }
+
+            string bridgeDeferredStatus = "Official-session bridge deferred delivery is disabled.";
+            if (_localUtilityOfficialSessionBridgeEnabled
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(request.Opcode, request.Payload, out bridgeDeferredStatus))
+            {
+                return $"{request.Summary} [{payloadHex}] queued for deferred live official-session injection after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus}";
+            }
+
+            string queuedStatus;
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(request.Opcode, request.Payload, out queuedStatus))
+            {
+                return $"{request.Summary} [{payloadHex}] queued for deferred generic local-utility outbox delivery after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus} Deferred outbox: {queuedStatus}";
+            }
+
+            return $"{request.Summary} [{payloadHex}] remained simulator-owned because neither the live local-utility bridge nor the deferred official-session bridge queue nor the generic outbox transport or deferred outbox queue accepted it. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus} Deferred outbox: {queuedStatus}";
         }
 
         private void ClearQuestRewardRaiseWindow()

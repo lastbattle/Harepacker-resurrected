@@ -207,6 +207,37 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public bool HasQueuedOutboundPacket(int opcode, IReadOnlyList<byte> rawPacket)
+        {
+            if (opcode < ushort.MinValue || opcode > ushort.MaxValue || rawPacket == null)
+            {
+                return false;
+            }
+
+            byte[] target = rawPacket as byte[] ?? rawPacket.ToArray();
+            PendingOutboundPacket[] pending = _pendingOutboundPackets.ToArray();
+            for (int i = 0; i < pending.Length; i++)
+            {
+                if (pending[i].Opcode == opcode && pending[i].RawPacket.AsSpan().SequenceEqual(target))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public bool WasLastSentOutboundPacket(int opcode, IReadOnlyList<byte> rawPacket)
+        {
+            if (opcode < ushort.MinValue || opcode > ushort.MaxValue || rawPacket == null || LastSentOpcode != opcode)
+            {
+                return false;
+            }
+
+            byte[] target = rawPacket as byte[] ?? rawPacket.ToArray();
+            return LastSentRawPacket.AsSpan().SequenceEqual(target);
+        }
+
         public void Dispose()
         {
             lock (_listenerLock)

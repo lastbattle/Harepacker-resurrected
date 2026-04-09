@@ -452,24 +452,40 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool ShouldTrackSupportSuspendWindow(
             SkillData skill,
             SummonAssistType assistType,
-            bool? preferHealFirstOverride = null)
+            bool? preferHealFirstOverride = null,
+            string explicitBranchName = null)
         {
             if (assistType != SummonAssistType.Support || skill == null)
             {
                 return false;
             }
 
+            if (!string.IsNullOrWhiteSpace(explicitBranchName)
+                && !IsSupportOwnedSuspendBranch(skill, assistType, explicitBranchName))
+            {
+                return false;
+            }
+
             bool preferHealFirst = preferHealFirstOverride
                 ?? HasMinionAbilityToken(skill.MinionAbility, "heal");
-            return ResolveSupportSuspendDurationMs(skill, preferHealFirst) > 0;
+            return ResolveSupportSuspendDurationMs(
+                       skill,
+                       preferHealFirst,
+                       explicitBranchName) > 0;
         }
 
-        internal static bool ShouldClearHealingRobotSupportSuspend(ActiveSummon summon, int currentTime, int healingRobotSkillId)
+        internal static bool ShouldClearSupportSuspend(ActiveSummon summon, int currentTime)
         {
             return summon != null
                    && ShouldTrackSupportSuspendWindow(summon.SkillData, summon.AssistType)
                    && summon.SupportSuspendUntilTime != int.MinValue
                    && currentTime >= summon.SupportSuspendUntilTime;
+        }
+
+        internal static bool ShouldClearHealingRobotSupportSuspend(ActiveSummon summon, int currentTime, int healingRobotSkillId)
+        {
+            return summon?.SkillId == healingRobotSkillId
+                   && ShouldClearSupportSuspend(summon, currentTime);
         }
 
         internal static int? ResolveBeholderBuffBranchIndex(
@@ -676,6 +692,43 @@ namespace HaCreator.MapSimulator.Character.Skills
                 "attack",
                 "attack0"
             };
+        }
+
+        private static bool IsSupportOwnedSuspendBranch(
+            SkillData skill,
+            SummonAssistType assistType,
+            string branchName)
+        {
+            if (assistType != SummonAssistType.Support
+                || skill?.SummonNamedAnimations == null
+                || string.IsNullOrWhiteSpace(branchName))
+            {
+                return false;
+            }
+
+            foreach (string candidate in EnumerateSupportOwnedSuspendBranchCandidates(skill, assistType))
+            {
+                if (!string.IsNullOrWhiteSpace(candidate)
+                    && string.Equals(candidate, branchName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<string> EnumerateSupportOwnedSuspendBranchCandidates(
+            SkillData skill,
+            SummonAssistType assistType)
+        {
+            yield return ResolveSupportOwnedBranch(skill, preferHealFirst: true);
+            yield return ResolveSupportOwnedBranch(skill, preferHealFirst: false);
+
+            if (assistType == SummonAssistType.Support)
+            {
+                yield return ResolveSelfDestructFinalBranch(skill, assistType);
+            }
         }
 
         private static string[] EnumeratePacketSelfDestructAttackBranchCandidates(SkillData skill)

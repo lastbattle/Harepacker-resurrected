@@ -115,6 +115,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             "walk1"
         };
 
+        private static readonly HashSet<string> ShadowPartnerReplayTailActionNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // `LoadShadowPartnerAction` gates mirrored interior-frame replay through the
+            // client action-table flag at `C68E70h[action * 0x18 + 4]`; the targeted
+            // v95 scan confirms raw actions 2/3/4 (`stand1`, `stand2`, `alert`) only.
+            "stand1",
+            "stand2",
+            "alert"
+        };
+
         private readonly WzFile _skillWz;
         private readonly GraphicsDevice _device;
         private readonly TexturePool _texturePool;
@@ -489,6 +499,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.HasMagicStealMetadata = GetInt(infoNode, "magicSteal") == 1;
                 skill.HasInvincibleMetadata = GetInt(infoNode, "invincible") == 1;
                 skill.HasDispelMetadata = GetInt(infoNode, "dispell") == 1;
+                skill.HasBlessingArmorMetadata = GetInt(infoNode, "blessingArmor") == 1;
                 skill.UsesEnergyChargeRuntime = GetInt(infoNode, "energyCharge") == 1;
                 skill.HasChargingSkillMetadata = GetInt(infoNode, "chargingSkill") == 1;
                 skill.FullChargeEffectName = GetString(infoNode, "fullChargeEffect");
@@ -950,7 +961,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             LoadShadowPartnerActionAnimations(skill, skillNode);
             LoadAfterImages(skill, skillNode);
 
-            var summonNode = ResolveLinkedProperty(skillNode["summon"]);
+            var summonNode = ResolveSummonSourceProperty(skill, skillNode);
             if (summonNode != null)
             {
                 LoadSummonAnimations(skill, summonNode);
@@ -1955,18 +1966,33 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                SkillAnimation animation = LoadSkillAnimation(child, child.Name);
+                SkillAnimation animation = LoadShadowPartnerActionAnimation(child, actionKey);
                 if (animation.Frames.Count == 0)
                 {
                     continue;
                 }
 
-                animation.Name = actionKey;
-                animation.Loop = ShouldLoopShadowPartnerAction(actionKey);
                 skill.ShadowPartnerActionAnimations[actionKey] = animation;
             }
 
             skill.ShadowPartnerHorizontalOffsetPx = ResolveShadowPartnerHorizontalOffsetPx(skill.ShadowPartnerActionAnimations);
+        }
+
+        private SkillAnimation LoadShadowPartnerActionAnimation(WzImageProperty actionNode, string actionKey)
+        {
+            SkillAnimation animation = LoadSkillAnimation(
+                actionNode,
+                actionKey,
+                frameNode => LoadShadowPartnerActionFrame(frameNode));
+
+            animation.Name = actionKey;
+            animation.Loop = ShouldLoopShadowPartnerAction(actionKey);
+            if (ShouldAppendReversedShadowPartnerFrames(actionKey))
+            {
+                AppendReversedInteriorShadowPartnerFrames(animation);
+            }
+
+            return animation;
         }
 
         internal static IReadOnlyDictionary<string, string> BuildShadowPartnerActionStoragePlan(IEnumerable<string> sourceActionKeys)
@@ -2029,6 +2055,28 @@ namespace HaCreator.MapSimulator.Character.Skills
             return existingIsNumeric && !incomingIsNumeric;
         }
 
+        internal static bool ShouldAppendReversedShadowPartnerFrames(string actionKey)
+        {
+            return !string.IsNullOrWhiteSpace(actionKey)
+                   && ShadowPartnerReplayTailActionNames.Contains(actionKey);
+        }
+
+        internal static void AppendReversedInteriorShadowPartnerFrames(SkillAnimation animation)
+        {
+            if (animation?.Frames == null || animation.Frames.Count < 3)
+            {
+                return;
+            }
+
+            SkillFrame[] originalFrames = animation.Frames.ToArray();
+            for (int i = originalFrames.Length - 2; i >= 1; i--)
+            {
+                animation.Frames.Add(originalFrames[i]);
+            }
+
+            animation.CalculateDuration();
+        }
+
         private static int ResolveShadowPartnerHorizontalOffsetPx(IReadOnlyDictionary<string, SkillAnimation> actionAnimations)
         {
             if (actionAnimations == null || actionAnimations.Count == 0)
@@ -2074,6 +2122,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             return skill.IsBuff
                    && !string.IsNullOrWhiteSpace(skill.Name)
                    && skill.Name.IndexOf("shadow partner", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private SkillFrame LoadShadowPartnerActionFrame(WzImageProperty frameNode)
+        {
+            return LoadSkillFrame(frameNode, 100, true);
         }
 
         private static bool ShouldLoopShadowPartnerAction(string actionName)
@@ -2492,6 +2545,194 @@ namespace HaCreator.MapSimulator.Character.Skills
               LoadRemainingSummonActionAnimations(skill, summonNode, branchNames);
               PopulateSummonHitTimingMetadata(skill, attackBranchName, hitNode);
           }
+
+        internal WzImageProperty ResolveSummonSourceProperty(SkillData skill, WzImageProperty skillNode)
+        {
+            if (TryResolveSummonSourceProperty(skill, skillNode, out WzImageProperty summonNode))
+            {
+                return summonNode;
+            }
+
+            return null;
+        }
+
+        internal bool TryResolveSummonSourceProperty(
+            SkillData skill,
+            WzImageProperty skillNode,
+            out WzImageProperty summonNode)
+        {
+            summonNode = null;
+            foreach (WzImageProperty candidateSkillNode in EnumerateSummonSourceSkillNodes(skill, skillNode))
+            {
+                if (TryResolveSummonSourcePropertyFromSkillNode(candidateSkillNode, out summonNode))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private IEnumerable<WzImageProperty> EnumerateSummonSourceSkillNodes(SkillData skill, WzImageProperty skillNode)
+        {
+            var yieldedSkillIds = new HashSet<int>();
+            if (skillNode != null)
+            {
+                yield return skillNode;
+                if (skill?.SkillId > 0)
+                {
+                    yieldedSkillIds.Add(skill.SkillId);
+                }
+            }
+
+            foreach (int linkedSkillId in EnumerateSummonSourceCandidateSkillIds(skill, LoadSummonSourceCandidateSkillMetadata))
+            {
+                if (linkedSkillId <= 0 || !yieldedSkillIds.Add(linkedSkillId))
+                {
+                    continue;
+                }
+
+                if (TryGetSkillNode(linkedSkillId, out WzImageProperty linkedSkillNode))
+                {
+                    yield return linkedSkillNode;
+                }
+            }
+        }
+
+        private SkillData LoadSummonSourceCandidateSkillMetadata(int skillId)
+        {
+            if (skillId <= 0)
+            {
+                return null;
+            }
+
+            if (_skillCache.TryGetValue(skillId, out SkillData cachedSkill))
+            {
+                return cachedSkill;
+            }
+
+            if (!TryGetSkillNode(skillId, out WzImageProperty skillNode))
+            {
+                return null;
+            }
+
+            var metadata = new SkillData
+            {
+                SkillId = skillId,
+                Job = skillId / 10000
+            };
+
+            ParseSkillInfo(metadata, skillNode);
+            return metadata;
+        }
+
+        internal static IEnumerable<int> EnumerateSummonSourceCandidateSkillIds(
+            SkillData skill,
+            Func<int, SkillData> linkedSkillResolver = null)
+        {
+            if (skill == null)
+            {
+                yield break;
+            }
+
+            var visitedSkillIds = new HashSet<int>();
+            if (skill.SkillId > 0)
+            {
+                visitedSkillIds.Add(skill.SkillId);
+            }
+
+            var pendingSkillIds = new Queue<int>();
+            foreach (int linkedSkillId in EnumerateDirectSummonSourceCandidateSkillIds(skill))
+            {
+                if (linkedSkillId > 0)
+                {
+                    pendingSkillIds.Enqueue(linkedSkillId);
+                }
+            }
+
+            while (pendingSkillIds.Count > 0)
+            {
+                int linkedSkillId = pendingSkillIds.Dequeue();
+                if (linkedSkillId <= 0 || !visitedSkillIds.Add(linkedSkillId))
+                {
+                    continue;
+                }
+
+                yield return linkedSkillId;
+
+                SkillData linkedSkill = linkedSkillResolver?.Invoke(linkedSkillId);
+                if (linkedSkill == null)
+                {
+                    continue;
+                }
+
+                foreach (int nestedSkillId in EnumerateDirectSummonSourceCandidateSkillIds(linkedSkill))
+                {
+                    if (nestedSkillId > 0 && !visitedSkillIds.Contains(nestedSkillId))
+                    {
+                        pendingSkillIds.Enqueue(nestedSkillId);
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<int> EnumerateDirectSummonSourceCandidateSkillIds(SkillData skill)
+        {
+            if (skill == null)
+            {
+                yield break;
+            }
+
+            foreach (int linkedSkillId in skill.GetAffectedSkillIds())
+            {
+                if (linkedSkillId > 0)
+                {
+                    yield return linkedSkillId;
+                }
+            }
+
+            if (skill.DummySkillParents != null)
+            {
+                foreach (int linkedSkillId in skill.DummySkillParents)
+                {
+                    if (linkedSkillId > 0)
+                    {
+                        yield return linkedSkillId;
+                    }
+                }
+            }
+
+            if (skill.RequiredSkillIds != null)
+            {
+                foreach (int linkedSkillId in skill.RequiredSkillIds)
+                {
+                    if (linkedSkillId > 0)
+                    {
+                        yield return linkedSkillId;
+                    }
+                }
+            }
+        }
+
+        private bool TryGetSkillNode(int skillId, out WzImageProperty skillNode)
+        {
+            skillNode = null;
+            if (skillId <= 0)
+            {
+                return false;
+            }
+
+            int jobId = skillId / 10000;
+            WzImage jobImage = GetSkillImage($"{jobId}.img");
+            if (jobImage == null)
+            {
+                return false;
+            }
+
+            jobImage.ParseImage();
+            skillNode = jobImage["skill"]?[skillId.ToString(CultureInfo.InvariantCulture)];
+            return skillNode != null;
+        }
 
         private void LoadSupplementalSummonAnimations(SkillData skill, WzImageProperty summonNode, IEnumerable<string> branchNames)
         {
@@ -3218,7 +3459,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             return ParseLinkedSkillIds(dummyOf);
         }
 
-        private static int[] ParseLinkedSkillIds(string value)
+        internal static int[] ParseLinkedSkillIds(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
             {
@@ -3226,7 +3467,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return value
-                .Split(new[] { '&' }, StringSplitOptions.RemoveEmptyEntries)
+                .Split(new[] { '&', '|', ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
                 .Select(token => token.Trim())
                 .Where(token => int.TryParse(token, out _))
                 .Select(int.Parse)
@@ -3392,6 +3633,133 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return null;
+        }
+
+        internal static bool TryResolveSummonSourcePropertyFromSkillNode(
+            WzImageProperty skillNode,
+            out WzImageProperty summonNode)
+        {
+            summonNode = ResolveLinkedProperty(skillNode?["summon"]);
+            if (LooksLikeSummonSourceProperty(summonNode))
+            {
+                return true;
+            }
+
+            if (LooksLikeStandaloneSummonSourceProperty(skillNode))
+            {
+                summonNode = skillNode;
+                return true;
+            }
+
+            summonNode = null;
+            return false;
+        }
+
+        internal static bool LooksLikeStandaloneSummonSourceProperty(WzImageProperty skillNode)
+        {
+            if (!HasPotentialSummonOwnerMetadata(skillNode)
+                || !LooksLikeSummonSourceProperty(skillNode))
+            {
+                return false;
+            }
+
+            return skillNode.WzProperties.Any(child =>
+                child != null
+                && IsStandaloneSummonSignatureBranchName(child.Name));
+        }
+
+        internal static bool HasPotentialSummonOwnerMetadata(WzImageProperty skillNode)
+        {
+            if (skillNode == null)
+            {
+                return false;
+            }
+
+            WzImageProperty infoNode = skillNode["info"];
+            return GetInt(infoNode, "type") == 33
+                   || HasProperty(infoNode, "minionAbility")
+                   || HasProperty(infoNode, "condition")
+                   || HasProperty(infoNode, "affectedSkill")
+                   || HasProperty(infoNode, "selfDestructMinion")
+                   || HasProperty(skillNode["common"], "time")
+                   || HasProperty(skillNode["common"], "subTime");
+        }
+
+        internal static bool LooksLikeSummonSourceProperty(WzImageProperty node)
+        {
+            if (node == null)
+            {
+                return false;
+            }
+
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.Name))
+                {
+                    continue;
+                }
+
+                if (NonActionSummonBranchNames.Contains(child.Name))
+                {
+                    continue;
+                }
+
+                if (IsRecognizedSummonActionBranchName(child.Name)
+                    || IsSummonActionBranchProperty(child))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsRecognizedSummonActionBranchName(string branchName)
+        {
+            if (string.IsNullOrWhiteSpace(branchName))
+            {
+                return false;
+            }
+
+            return string.Equals(branchName, "prepare", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "hit", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "summon", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "create", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "summoned", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "stand", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "fly", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "move", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "walk", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "heal", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "support", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "die", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "die1", StringComparison.OrdinalIgnoreCase)
+                   || IsRepeatStyleSummonBranchName(branchName)
+                   || branchName.StartsWith("attack", StringComparison.OrdinalIgnoreCase)
+                   || branchName.StartsWith("skill", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsStandaloneSummonSignatureBranchName(string branchName)
+        {
+            if (string.IsNullOrWhiteSpace(branchName))
+            {
+                return false;
+            }
+
+            return string.Equals(branchName, "prepare", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "hit", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "summon", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "create", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "summoned", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "stand", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "fly", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "move", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "walk", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "heal", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "support", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "die", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "die1", StringComparison.OrdinalIgnoreCase)
+                   || IsRepeatStyleSummonBranchName(branchName);
         }
 
         private SkillFrame LoadSkillFrame(WzImageProperty frameNode)
@@ -4340,6 +4708,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.IgnoreDefenseRate = PreferPrimaryStat(
                 GetInt(node, "ignoreMobpdpR", levelData.IgnoreDefenseRate, level),
                 GetInt(node, "ignoreMobDamR", 0, level));
+            ApplyDescriptionBackedGenericStatAliases(
+                skill,
+                levelData,
+                GetInt(node, "x", 0, level),
+                GetInt(node, "y", 0, level),
+                GetInt(node, "z", 0, level),
+                GetInt(node, "u", 0, level),
+                GetInt(node, "v", 0, level),
+                GetInt(node, "w", 0, level));
             levelData.AttackPercent = PreferPrimaryStat(levelData.AttackPercent, ResolveDescriptionBackedAttackPercentAlias(skill, node, level));
             levelData.MagicAttackPercent = PreferPrimaryStat(levelData.MagicAttackPercent, ResolveDescriptionBackedMagicAttackPercentAlias(skill, node, level));
         }
@@ -4354,6 +4731,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (node?["x"] == null || node["acc"] != null || node["accX"] != null)
                 return false;
 
+            if (SkillDataTextSurface.GetDescriptionSurface(skill).Contains("#x", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
             string description = SkillDataTextSurface.GetDescriptionSurface(skill).ToLowerInvariant();
             string name = (skill?.Name ?? string.Empty).ToLowerInvariant();
             return description.Contains("accuracy")
@@ -4366,11 +4748,156 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (node?["x"] == null || node["pad"] != null || node["padX"] != null)
                 return false;
 
+            if (SkillDataTextSurface.GetDescriptionSurface(skill).Contains("#x", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
             string description = SkillDataTextSurface.GetDescriptionSurface(skill).ToLowerInvariant();
             return description.Contains("weapon attack")
                    || description.Contains("att,")
                    || description.Contains("att ")
                    || description.Contains("attack power");
+        }
+
+        internal static void ApplyDescriptionBackedGenericStatAliases(
+            SkillData skill,
+            SkillLevelData levelData,
+            int xValue,
+            int yValue,
+            int zValue,
+            int uValue,
+            int vValue,
+            int wValue)
+        {
+            if (skill == null || levelData == null)
+            {
+                return;
+            }
+
+            string normalizedSurface = NormalizeDescriptionBackedAliasSurface(SkillDataTextSurface.GetDescriptionSurface(skill));
+            if (string.IsNullOrWhiteSpace(normalizedSurface))
+            {
+                return;
+            }
+
+            levelData.PAD = ApplyDescriptionBackedAliasValue(
+                levelData.PAD,
+                xValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#x", "weapon att", "weapon attack"));
+            levelData.MAD = ApplyDescriptionBackedAliasValue(
+                levelData.MAD,
+                yValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#y", "magic att", "magic attack"));
+            levelData.PDD = ApplyDescriptionBackedAliasValue(
+                levelData.PDD,
+                zValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#z", "weapon def", "weapon defense"));
+            levelData.MDD = ApplyDescriptionBackedAliasValue(
+                levelData.MDD,
+                uValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#u", "magic def", "magic defense"));
+            levelData.ACC = ApplyDescriptionBackedAliasValue(
+                levelData.ACC,
+                vValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#v", "accuracy"));
+            levelData.EVA = ApplyDescriptionBackedAliasValue(
+                levelData.EVA,
+                wValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#w", "avoidability"));
+            levelData.Speed = ApplyDescriptionBackedAliasValue(
+                levelData.Speed,
+                xValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#x", "movement speed", "speed"));
+            levelData.Jump = ApplyDescriptionBackedAliasValue(
+                levelData.Jump,
+                yValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#y", "jump"));
+            levelData.CriticalRate = ApplyDescriptionBackedAliasValue(
+                levelData.CriticalRate,
+                xValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#x", "critical rate"));
+            levelData.MaxHPPercent = ApplyDescriptionBackedAliasValue(
+                levelData.MaxHPPercent,
+                xValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#x", "max hp"));
+            levelData.MaxMPPercent = ApplyDescriptionBackedAliasValue(
+                levelData.MaxMPPercent,
+                xValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#x", "max mp"));
+            levelData.MaxHPPercent = ApplyDescriptionBackedAliasValue(
+                levelData.MaxHPPercent,
+                yValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#y", "max hp"));
+            levelData.MaxMPPercent = ApplyDescriptionBackedAliasValue(
+                levelData.MaxMPPercent,
+                yValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#y", "max mp"));
+        }
+
+        private static int ApplyDescriptionBackedAliasValue(int target, int aliasValue, bool shouldApply)
+        {
+            if (!shouldApply || aliasValue == 0)
+            {
+                return target;
+            }
+
+            return PreferPrimaryStat(target, aliasValue);
+        }
+
+        private static string NormalizeDescriptionBackedAliasSurface(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            return string.Join(
+                " ",
+                value.Replace("\\r", " ", StringComparison.Ordinal)
+                    .Replace("\\n", " ", StringComparison.Ordinal)
+                    .ToLowerInvariant()
+                    .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+        }
+
+        private static bool PlaceholderMatchesHintLabel(string normalizedSurface, string placeholderToken, params string[] labelTokens)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedSurface)
+                || string.IsNullOrWhiteSpace(placeholderToken)
+                || labelTokens == null
+                || labelTokens.Length == 0)
+            {
+                return false;
+            }
+
+            int searchIndex = 0;
+            while (searchIndex < normalizedSurface.Length)
+            {
+                int placeholderIndex = normalizedSurface.IndexOf(
+                    placeholderToken,
+                    searchIndex,
+                    StringComparison.Ordinal);
+                if (placeholderIndex < 0)
+                {
+                    break;
+                }
+
+                int contextStart = Math.Max(0, placeholderIndex - 48);
+                int contextLength = placeholderIndex - contextStart + placeholderToken.Length;
+                string context = normalizedSurface.Substring(contextStart, contextLength);
+                foreach (string labelToken in labelTokens)
+                {
+                    if (!string.IsNullOrWhiteSpace(labelToken)
+                        && context.Contains(labelToken, StringComparison.Ordinal))
+                    {
+                        return true;
+                    }
+                }
+
+                searchIndex = placeholderIndex + placeholderToken.Length;
+            }
+
+            return false;
         }
 
         internal static int ResolveDescriptionBackedAttackPercentAlias(SkillData skill, WzImageProperty node, int level)
@@ -4572,6 +5099,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return ResolveFlagOnlyMorphAliasTemplateId(skillId, commonNode, pvpCommonNode, infoNode);
+        }
+
+        internal static int ResolveMorphTemplateIdForTesting(
+            int skillId,
+            WzImageProperty commonNode,
+            WzImageProperty pvpCommonNode,
+            WzImageProperty infoNode)
+        {
+            return ResolveMorphTemplateId(skillId, commonNode, pvpCommonNode, infoNode);
         }
 
         private static int TryGetConcreteMorphTemplateId(WzImageProperty node, string name)
@@ -4812,11 +5348,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
-        private static int[] ResolveRequiredSkillIds(WzImageProperty skillNode, WzImageProperty infoNode)
+        internal static int[] ResolveRequiredSkillIds(WzImageProperty skillNode, WzImageProperty infoNode)
         {
             var requiredSkillIds = new HashSet<int>();
 
-            if (TryParseRequiredSkillId(GetString(infoNode, "requireSkill"), out int infoRequiredSkillId))
+            foreach (int infoRequiredSkillId in ParseLinkedSkillIds(GetString(infoNode, "requireSkill")))
             {
                 requiredSkillIds.Add(infoRequiredSkillId);
             }

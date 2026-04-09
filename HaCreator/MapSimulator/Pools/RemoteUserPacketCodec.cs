@@ -53,7 +53,8 @@ namespace HaCreator.MapSimulator.Pools
         string GuildName = null,
         int? JobId = null,
         int? CarryItemEffect = null,
-        int CompletedSetItemId = 0);
+        int CompletedSetItemId = 0,
+        int? ActiveEffectItemId = null);
 
     public readonly record struct RemoteUserTemporaryStatSnapshot(
         int EncodedLength,
@@ -126,6 +127,9 @@ namespace HaCreator.MapSimulator.Pools
         bool HasSoulArrow,
         bool HasSpiritJavelin,
         int? ChargeSkillId,
+        int? RepeatEffectSkillId,
+        int? MagicShieldSkillId,
+        int? FinalCutSkillId,
         int? MorphId,
         int? GhostId,
         bool HasBarrier,
@@ -149,6 +153,9 @@ namespace HaCreator.MapSimulator.Pools
             || HasSoulArrow
             || HasSpiritJavelin
             || ChargeSkillId.HasValue
+            || RepeatEffectSkillId.HasValue
+            || MagicShieldSkillId.HasValue
+            || FinalCutSkillId.HasValue
             || MorphId.HasValue
             || GhostId.HasValue
             || HasBarrier
@@ -517,7 +524,13 @@ namespace HaCreator.MapSimulator.Pools
                     actionName,
                     isVisibleInWorld,
                     null,
-                    default);
+                    default,
+                    null,
+                    null,
+                    null,
+                    null,
+                    0,
+                    null);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -536,9 +549,9 @@ namespace HaCreator.MapSimulator.Pools
             {
                 var reader = new PacketReader(payload);
                 int characterId = reader.ReadInt32();
-                reader.ReadByte();
+                int level = reader.ReadByte();
                 string name = reader.ReadString16();
-                reader.ReadString16();
+                string guildName = reader.ReadString16();
                 reader.ReadBytes(6);
 
                 int temporaryStatOffset = reader.Offset;
@@ -577,9 +590,9 @@ namespace HaCreator.MapSimulator.Pools
                 avatarReader = new PacketReader(payload.Slice(avatarLookOffset + consumedAvatarBytes));
                 avatarReader.ReadInt32();
                 avatarReader.ReadInt32();
-                avatarReader.ReadInt32();
-                avatarReader.ReadInt32();
-                avatarReader.ReadInt32();
+                int carryItemEffect = avatarReader.ReadInt32();
+                int activeEffectItemId = avatarReader.ReadInt32();
+                int completedSetItemId = avatarReader.ReadInt32();
                 int portableChairItemId = avatarReader.ReadInt32();
                 short x = avatarReader.ReadInt16();
                 short y = avatarReader.ReadInt16();
@@ -596,11 +609,12 @@ namespace HaCreator.MapSimulator.Pools
                     true,
                     portableChairItemId > 0 ? portableChairItemId : null,
                     temporaryStats,
-                    null,
-                    null,
-                    null,
-                    null,
-                    0);
+                    level > 0 ? level : null,
+                    guildName?.Trim() ?? string.Empty,
+                    reader.ReadInt16(),
+                    carryItemEffect,
+                    completedSetItemId,
+                    activeEffectItemId);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -1694,6 +1708,9 @@ namespace HaCreator.MapSimulator.Pools
             bool hasSoulArrow = false;
             bool hasSpiritJavelin = false;
             int? chargeSkillId = null;
+            int? repeatEffectSkillId = null;
+            int? magicShieldSkillId = null;
+            int? finalCutSkillId = null;
             int? morphId = null;
             int? ghostId = null;
             bool hasBarrier = false;
@@ -1847,7 +1864,11 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.RepeatEffect))
                 {
-                    reader.ReadInt32();
+                    int repeatEffectValue = reader.ReadInt32();
+                    if (repeatEffectValue > 0)
+                    {
+                        repeatEffectSkillId = repeatEffectValue;
+                    }
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.StopPortion))
@@ -1867,7 +1888,11 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.MagicShield))
                 {
-                    reader.ReadInt32();
+                    int magicShieldValue = reader.ReadInt32();
+                    if (magicShieldValue > 0)
+                    {
+                        magicShieldSkillId = magicShieldValue;
+                    }
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Frozen))
@@ -1882,7 +1907,11 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.FinalCut))
                 {
-                    reader.ReadInt32();
+                    int finalCutValue = reader.ReadInt32();
+                    if (finalCutValue > 0)
+                    {
+                        finalCutSkillId = finalCutValue;
+                    }
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Cyclone))
@@ -1950,6 +1979,9 @@ namespace HaCreator.MapSimulator.Pools
                 hasSoulArrow,
                 hasSpiritJavelin,
                 chargeSkillId,
+                repeatEffectSkillId,
+                magicShieldSkillId,
+                finalCutSkillId,
                 morphId,
                 ghostId,
                 hasBarrier,
@@ -2031,6 +2063,9 @@ namespace HaCreator.MapSimulator.Pools
                 hasSoulArrow,
                 knownState.HasSpiritJavelin && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.SpiritJavelin),
                 IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.WeaponCharge) ? knownState.ChargeSkillId : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.RepeatEffect) ? knownState.RepeatEffectSkillId : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.MagicShield) ? knownState.MagicShieldSkillId : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.FinalCut) ? knownState.FinalCutSkillId : null,
                 IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Morph) ? knownState.MorphId : null,
                 IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Ghost) ? knownState.GhostId : null,
                 knownState.HasBarrier && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Barrier),

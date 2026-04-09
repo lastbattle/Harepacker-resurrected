@@ -33,6 +33,49 @@ namespace HaCreator.MapSimulator.Interaction
         Complete
     }
 
+    internal static class QuestDetailDeliveryTypeCodec
+    {
+        // `CUIQuestInfo::LoadData` writes the client `QuestInfo::nDeliveryType` as 0=accept, 1=complete, 2=none.
+        public static QuestDetailDeliveryType FromClientRawValue(int rawType)
+        {
+            return rawType switch
+            {
+                0 => QuestDetailDeliveryType.Accept,
+                1 => QuestDetailDeliveryType.Complete,
+                2 => QuestDetailDeliveryType.None,
+                _ => QuestDetailDeliveryType.None
+            };
+        }
+
+        public static bool TryParseToken(string token, out QuestDetailDeliveryType deliveryType)
+        {
+            switch (token?.Trim().ToLowerInvariant())
+            {
+                case "accept":
+                    deliveryType = QuestDetailDeliveryType.Accept;
+                    return true;
+                case "complete":
+                    deliveryType = QuestDetailDeliveryType.Complete;
+                    return true;
+                case "none":
+                    deliveryType = QuestDetailDeliveryType.None;
+                    return true;
+                case "0":
+                    deliveryType = QuestDetailDeliveryType.Accept;
+                    return true;
+                case "1":
+                    deliveryType = QuestDetailDeliveryType.Complete;
+                    return true;
+                case "2":
+                    deliveryType = QuestDetailDeliveryType.None;
+                    return true;
+                default:
+                    deliveryType = QuestDetailDeliveryType.None;
+                    return false;
+            }
+        }
+    }
+
     internal enum QuestWorldMapTargetKind
     {
         None,

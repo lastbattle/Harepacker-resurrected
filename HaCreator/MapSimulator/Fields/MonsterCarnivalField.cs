@@ -1,12 +1,15 @@
 using MapleLib.Helpers;
 using HaCreator.MapSimulator.Interaction;
+using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure.Data.MobStructure;
+using MapleLib.Converters;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using HaSharedLibrary.Util;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -586,6 +589,73 @@ namespace HaCreator.MapSimulator.Fields
     /// </summary>
     public sealed class MonsterCarnivalField
     {
+        private readonly record struct MonsterCarnivalHudMetrics(
+            int BackgroundWidth,
+            int BackgroundHeight,
+            int TeamPanelWidth,
+            int TeamPanelHeight,
+            int ListTopHeight,
+            int ListMiddleRowHeight,
+            int ListSummaryHeight,
+            int ListBottomHeight,
+            int TabMobWidth,
+            int TabSkillWidth,
+            int TabGuardianWidth,
+            int SideButtonWidth,
+            int SideButtonHeight)
+        {
+            public int TotalHeaderWidth => BackgroundWidth + TeamPanelWidth;
+            public int EntryListWidth => BackgroundWidth;
+            public int EntryListHeight => ListTopHeight + (ListMiddleRowHeight * 6) + ListSummaryHeight + ListBottomHeight;
+            public int TotalHeight => BackgroundHeight + EntryListHeight;
+        }
+
+        private sealed class MonsterCarnivalHudAssets
+        {
+            public Texture2D Background { get; init; }
+            public Texture2D TeamPanelBackground { get; init; }
+            public Texture2D ListTop { get; init; }
+            public Texture2D ListMiddle { get; init; }
+            public Texture2D ListSummary { get; init; }
+            public Texture2D ListBottom { get; init; }
+            public Texture2D SideButtonNormal { get; init; }
+            public Texture2D SideButtonDisabled { get; init; }
+            public Texture2D TabMobEnabled { get; init; }
+            public Texture2D TabSkillEnabled { get; init; }
+            public Texture2D TabGuardianEnabled { get; init; }
+            public Texture2D TabMobDisabled { get; init; }
+            public Texture2D TabSkillDisabled { get; init; }
+            public Texture2D TabGuardianDisabled { get; init; }
+            public bool HasAnyTexture =>
+                Background != null
+                || TeamPanelBackground != null
+                || ListTop != null
+                || ListMiddle != null
+                || ListSummary != null
+                || ListBottom != null;
+        }
+
+        private static readonly MonsterCarnivalHudMetrics DefaultHudMetrics = new(
+            BackgroundWidth: 162,
+            BackgroundHeight: 107,
+            TeamPanelWidth: 127,
+            TeamPanelHeight: 107,
+            ListTopHeight: 24,
+            ListMiddleRowHeight: 19,
+            ListSummaryHeight: 13,
+            ListBottomHeight: 35,
+            TabMobWidth: 21,
+            TabSkillWidth: 33,
+            TabGuardianWidth: 45,
+            SideButtonWidth: 11,
+            SideButtonHeight: 67);
+
+        public void Initialize(GraphicsDevice device)
+        {
+            _graphicsDevice = device;
+            LoadHudAssets();
+        }
+
         private const int StatusDurationMs = 4500;
 
         private readonly Dictionary<int, int> _mobSpellCounts = new();
@@ -613,6 +683,8 @@ namespace HaCreator.MapSimulator.Fields
         private string _localCharacterName;
         private string _lastClientOwnerAction;
         private int[] _lastClientOwnerStringPoolIds = Array.Empty<int>();
+        private GraphicsDevice _graphicsDevice;
+        private MonsterCarnivalHudAssets _hudAssets = new();
 
         public bool IsVisible => _isVisible;
         public bool IsEntered => _enteredField;
@@ -1177,32 +1249,43 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
-            int panelWidth = 368;
-            int panelX = viewport.Width - panelWidth - 18;
-            int panelY = 18;
-            int panelHeight = 380;
+            MonsterCarnivalHudMetrics metrics = ResolveHudMetrics();
+            Rectangle headerBounds = ResolveHeaderBounds(viewport.Width, metrics);
+            Rectangle mainHeaderBounds = new(headerBounds.X, headerBounds.Y, metrics.BackgroundWidth, metrics.BackgroundHeight);
+            Rectangle teamHeaderBounds = new(headerBounds.Right, headerBounds.Y, metrics.TeamPanelWidth, metrics.TeamPanelHeight);
+            Rectangle listBounds = new(headerBounds.X, headerBounds.Bottom, metrics.EntryListWidth, metrics.EntryListHeight);
+            Rectangle footerBounds = ResolveFooterBounds(listBounds, metrics);
 
-            spriteBatch.Draw(pixelTexture, new Rectangle(panelX, panelY, panelWidth, panelHeight), new Color(16, 22, 28, 225));
-            spriteBatch.Draw(pixelTexture, new Rectangle(panelX, panelY, panelWidth, 34), new Color(54, 76, 98, 255));
-            DrawShadowedText(spriteBatch, font, "Monster Carnival", new Vector2(panelX + 12, panelY + 8), Color.White);
+            DrawHeaderPanel(spriteBatch, pixelTexture, mainHeaderBounds, teamHeaderBounds);
+            DrawEntryListPanel(spriteBatch, pixelTexture, listBounds, metrics);
+            DrawFooterPanel(spriteBatch, pixelTexture, footerBounds);
 
-            int timerY = panelY + 44;
+            DrawShadowedText(spriteBatch, font, GetPanelTitle(), new Vector2(mainHeaderBounds.X + 12, mainHeaderBounds.Y + 8), Color.White);
+
+            int timerY = mainHeaderBounds.Y + 44;
             string headerText = _definition == null
                 ? "No WZ carnival definition loaded."
                 : $"Time {_definition.DefaultTimeSeconds}s +{_definition.ExpandTimeSeconds}s | Death CP {_definition.DeathCp} | {_definition.VariantLabel}{FormatMapTypeSuffix(_definition)} | owner={_definition.ClientOwnerLabel}";
-            DrawShadowedText(spriteBatch, font, headerText, new Vector2(panelX + 12, timerY), Color.Gainsboro, 0.85f);
+            DrawShadowedText(spriteBatch, font, headerText, new Vector2(mainHeaderBounds.X + 12, timerY), Color.Gainsboro, 0.85f);
             DrawShadowedText(
                 spriteBatch,
                 font,
                 BuildClientOwnerHeaderSummary(),
-                new Vector2(panelX + 12, timerY + 18),
+                new Vector2(mainHeaderBounds.X + 12, timerY + 18),
                 Color.LightSteelBlue,
                 0.75f);
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                BuildVariantContractSummary(),
+                new Vector2(mainHeaderBounds.X + 12, timerY + 34),
+                Color.LightGoldenrodYellow,
+                0.72f);
 
-            DrawCpRow(spriteBatch, pixelTexture, font, panelX + 12, panelY + 94, panelWidth - 24);
-            DrawTabs(spriteBatch, pixelTexture, font, panelX + 12, panelY + 148, panelWidth - 24);
-            DrawEntryList(spriteBatch, pixelTexture, font, panelX + 12, panelY + 182, panelWidth - 24, 136);
-            DrawFooter(spriteBatch, pixelTexture, font, panelX + 12, panelY + 324, panelWidth - 24, 44);
+            DrawCpRow(spriteBatch, pixelTexture, font, teamHeaderBounds.X + 10, teamHeaderBounds.Y + 10, teamHeaderBounds.Width - 20);
+            DrawTabs(spriteBatch, pixelTexture, font, listBounds.X + 10, listBounds.Y + 6, listBounds.Width - 20);
+            DrawEntryList(spriteBatch, pixelTexture, font, listBounds.X + 8, listBounds.Y + metrics.ListTopHeight + 2, listBounds.Width - 16, metrics.ListMiddleRowHeight * 6);
+            DrawFooter(spriteBatch, pixelTexture, font, footerBounds.X + 8, footerBounds.Y + 4, footerBounds.Width - 16, footerBounds.Height - 8);
         }
 
         public string DescribeStatus()
@@ -1253,7 +1336,10 @@ namespace HaCreator.MapSimulator.Fields
         private void DrawCpRow(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int x, int y, int width)
         {
             int rowHeight = 44;
-            spriteBatch.Draw(pixelTexture, new Rectangle(x, y, width, rowHeight), new Color(26, 34, 44, 220));
+            if (_hudAssets.TeamPanelBackground == null)
+            {
+                spriteBatch.Draw(pixelTexture, new Rectangle(x, y, width, rowHeight), new Color(26, 34, 44, 220));
+            }
             string personalText = $"Personal CP  {_personalCp}/{_personalTotalCp}";
             DrawShadowedText(spriteBatch, font, personalText, new Vector2(x + 10, y + 6), Color.White);
 
@@ -1265,26 +1351,50 @@ namespace HaCreator.MapSimulator.Fields
 
         private void DrawTabs(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int x, int y, int width)
         {
-            int tabWidth = width / 3;
-            DrawTab(spriteBatch, pixelTexture, font, x, y, tabWidth, "Mob", MonsterCarnivalTab.Mob);
-            DrawTab(spriteBatch, pixelTexture, font, x + tabWidth, y, tabWidth, "Skill", MonsterCarnivalTab.Skill);
-            DrawTab(spriteBatch, pixelTexture, font, x + tabWidth * 2, y, width - tabWidth * 2, "Guardian", MonsterCarnivalTab.Guardian);
+            MonsterCarnivalHudMetrics metrics = ResolveHudMetrics();
+            int tabX = x;
+            DrawTab(spriteBatch, pixelTexture, font, tabX, y, metrics.TabMobWidth, "Mob", MonsterCarnivalTab.Mob);
+            tabX += metrics.TabMobWidth + 2;
+            DrawTab(spriteBatch, pixelTexture, font, tabX, y, metrics.TabSkillWidth, "Skill", MonsterCarnivalTab.Skill);
+            tabX += metrics.TabSkillWidth + 2;
+            DrawTab(spriteBatch, pixelTexture, font, tabX, y, metrics.TabGuardianWidth, "Guardian", MonsterCarnivalTab.Guardian);
+
+            Texture2D sideButton = _activeTab == MonsterCarnivalTab.Guardian
+                ? _hudAssets.SideButtonNormal
+                : _hudAssets.SideButtonDisabled ?? _hudAssets.SideButtonNormal;
+            if (sideButton != null)
+            {
+                spriteBatch.Draw(sideButton, new Rectangle(x + width - metrics.SideButtonWidth, y - 4, metrics.SideButtonWidth, metrics.SideButtonHeight), Color.White);
+            }
         }
 
         private void DrawTab(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int x, int y, int width, string label, MonsterCarnivalTab tab)
         {
-            Color background = _activeTab == tab
-                ? new Color(71, 103, 140, 255)
-                : new Color(31, 42, 56, 255);
-            spriteBatch.Draw(pixelTexture, new Rectangle(x, y, width - 1, 26), background);
+            Texture2D tabTexture = GetTabTexture(tab, _activeTab == tab);
+            if (tabTexture != null)
+            {
+                spriteBatch.Draw(tabTexture, new Rectangle(x, y, width, tabTexture.Height), Color.White);
+            }
+            else
+            {
+                Color background = _activeTab == tab
+                    ? new Color(71, 103, 140, 255)
+                    : new Color(31, 42, 56, 255);
+                spriteBatch.Draw(pixelTexture, new Rectangle(x, y, width - 1, 26), background);
+            }
+
             Vector2 size = font.MeasureString(label);
-            Vector2 position = new Vector2(x + (width - size.X) * 0.5f, y + 4);
+            int height = tabTexture?.Height ?? 26;
+            Vector2 position = new Vector2(x + (width - size.X) * 0.5f, y + Math.Max(1f, (height - size.Y) * 0.5f - 1f));
             DrawShadowedText(spriteBatch, font, label, position, Color.White);
         }
 
         private void DrawEntryList(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int x, int y, int width, int height)
         {
-            spriteBatch.Draw(pixelTexture, new Rectangle(x, y, width, height), new Color(20, 27, 34, 200));
+            if (_hudAssets.ListMiddle == null)
+            {
+                spriteBatch.Draw(pixelTexture, new Rectangle(x, y, width, height), new Color(20, 27, 34, 200));
+            }
             IReadOnlyList<MonsterCarnivalEntry> entries = _definition?.GetEntries(_activeTab) ?? Array.Empty<MonsterCarnivalEntry>();
             if (entries.Count == 0)
             {
@@ -1339,7 +1449,10 @@ namespace HaCreator.MapSimulator.Fields
 
         private void DrawFooter(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int x, int y, int width, int height)
         {
-            spriteBatch.Draw(pixelTexture, new Rectangle(x, y, width, height), new Color(26, 34, 44, 220));
+            if (_hudAssets.ListBottom == null)
+            {
+                spriteBatch.Draw(pixelTexture, new Rectangle(x, y, width, height), new Color(26, 34, 44, 220));
+            }
             string status = _statusMessage;
             if (string.IsNullOrWhiteSpace(status))
             {
@@ -1403,6 +1516,40 @@ namespace HaCreator.MapSimulator.Fields
                 : "Use /mcarnival enter ... to populate the Carnival HUD like CField_MonsterCarnival::OnEnter.";
         }
 
+        private string GetPanelTitle()
+        {
+            if (_definition == null)
+            {
+                return "Monster Carnival";
+            }
+
+            return _definition.ResolvedFieldType switch
+            {
+                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => "Monster Carnival Waiting Room",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => "Monster Carnival Season 2",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => "Monster Carnival Revive",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_NOT_USE => "Monster Carnival Legacy",
+                _ => "Monster Carnival"
+            };
+        }
+
+        private string BuildVariantContractSummary()
+        {
+            if (_definition == null)
+            {
+                return string.Empty;
+            }
+
+            return _definition.ResolvedFieldType switch
+            {
+                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => "CField_MonsterCarnivalWaitingRoom::Init only retains monsterCarnival/mapType, then delegates shared Carnival HUD flow.",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => "CField_MonsterCarnivalS2_Game::Init keeps the Season 2 wrapper explicit, then delegates shared Carnival HUD flow.",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => "CField_MonsterCarnivalRevive owns OnShowGameResult codes 8-11 and routes them through the recovered 0x1020-0x1023 StringPool seam.",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_NOT_USE => "Legacy Carnival wrapper stays on the shared Monster Carnival packet family in this simulator seam.",
+                _ => "CField_MonsterCarnival owns the shared packet family while the simulator keeps map-backed summon, CP, and request seams live."
+            };
+        }
+
         private string BuildClientOwnerHeaderSummary()
         {
             if (_definition == null)
@@ -1415,8 +1562,203 @@ namespace HaCreator.MapSimulator.Fields
             {
                 FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{mapLabel} | Init reads monsterCarnival/mapType={_definition.MapType}",
                 FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{mapLabel} | Season 2 Init reads monsterCarnival/mapType={_definition.MapType}",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{mapLabel} | revive owner packets 346-353 | failure ids 0x101B-0x101F | result ids 0x1020-0x1023",
-                _ => $"{mapLabel} | shared Carnival packet family 346-353"
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{mapLabel} | revive owner packets 346-353 | failure ids 0x101B-0x101F | result ids 0x1020-0x1023 | UI 0x102B-0x1033",
+                _ => $"{mapLabel} | shared Carnival packet family 346-353 | UI 0x102B-0x1033"
+            };
+        }
+
+        private void LoadHudAssets()
+        {
+            _hudAssets = new MonsterCarnivalHudAssets();
+            if (_graphicsDevice == null)
+            {
+                return;
+            }
+
+            WzImage uiWindowImage = FindImageSafe("UI", "UIWindow.img");
+            WzSubProperty carnivalProperty = uiWindowImage?["MonsterCarnival"] as WzSubProperty;
+            if (carnivalProperty == null)
+            {
+                return;
+            }
+
+            WzSubProperty listProperty = carnivalProperty["backgrnd3"] as WzSubProperty;
+            WzSubProperty sideButtonProperty = carnivalProperty["BtSide"] as WzSubProperty;
+            WzSubProperty tabProperty = carnivalProperty["Tab"] as WzSubProperty;
+            WzSubProperty tabEnabledProperty = tabProperty?["enabled"] as WzSubProperty;
+            WzSubProperty tabDisabledProperty = tabProperty?["disabled"] as WzSubProperty;
+
+            _hudAssets = new MonsterCarnivalHudAssets
+            {
+                Background = LoadCanvasTexture(carnivalProperty["backgrnd"] as WzCanvasProperty),
+                TeamPanelBackground = LoadCanvasTexture(carnivalProperty["backgrnd2"] as WzCanvasProperty),
+                ListTop = LoadCanvasTexture(listProperty?["top"]?["0"] as WzCanvasProperty),
+                ListMiddle = LoadCanvasTexture(listProperty?["middle0"]?["0"] as WzCanvasProperty),
+                ListSummary = LoadCanvasTexture(listProperty?["middle1"]?["0"] as WzCanvasProperty),
+                ListBottom = LoadCanvasTexture(listProperty?["bottom"]?["0"] as WzCanvasProperty),
+                SideButtonNormal = LoadCanvasTexture(sideButtonProperty?["normal"]?["0"] as WzCanvasProperty),
+                SideButtonDisabled = LoadCanvasTexture(sideButtonProperty?["disabled"]?["0"] as WzCanvasProperty),
+                TabMobEnabled = LoadCanvasTexture(tabEnabledProperty?["0"] as WzCanvasProperty),
+                TabSkillEnabled = LoadCanvasTexture(tabEnabledProperty?["1"] as WzCanvasProperty),
+                TabGuardianEnabled = LoadCanvasTexture(tabEnabledProperty?["2"] as WzCanvasProperty),
+                TabMobDisabled = LoadCanvasTexture(tabDisabledProperty?["0"] as WzCanvasProperty),
+                TabSkillDisabled = LoadCanvasTexture(tabDisabledProperty?["1"] as WzCanvasProperty),
+                TabGuardianDisabled = LoadCanvasTexture(tabDisabledProperty?["2"] as WzCanvasProperty)
+            };
+        }
+
+        private Texture2D LoadCanvasTexture(WzCanvasProperty canvasProperty)
+        {
+            System.Drawing.Bitmap bitmap = canvasProperty?.GetLinkedWzCanvasBitmap();
+            if (bitmap == null)
+            {
+                return null;
+            }
+
+            using (bitmap)
+            {
+                return bitmap.ToTexture2D(_graphicsDevice);
+            }
+        }
+
+        private static WzImage FindImageSafe(string category, string imageName)
+        {
+            try
+            {
+                return global::HaCreator.Program.FindImage(category, imageName);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private MonsterCarnivalHudMetrics ResolveHudMetrics()
+        {
+            return new MonsterCarnivalHudMetrics(
+                BackgroundWidth: _hudAssets.Background?.Width ?? DefaultHudMetrics.BackgroundWidth,
+                BackgroundHeight: _hudAssets.Background?.Height ?? DefaultHudMetrics.BackgroundHeight,
+                TeamPanelWidth: _hudAssets.TeamPanelBackground?.Width ?? DefaultHudMetrics.TeamPanelWidth,
+                TeamPanelHeight: _hudAssets.TeamPanelBackground?.Height ?? DefaultHudMetrics.TeamPanelHeight,
+                ListTopHeight: _hudAssets.ListTop?.Height ?? DefaultHudMetrics.ListTopHeight,
+                ListMiddleRowHeight: _hudAssets.ListMiddle?.Height ?? DefaultHudMetrics.ListMiddleRowHeight,
+                ListSummaryHeight: _hudAssets.ListSummary?.Height ?? DefaultHudMetrics.ListSummaryHeight,
+                ListBottomHeight: _hudAssets.ListBottom?.Height ?? DefaultHudMetrics.ListBottomHeight,
+                TabMobWidth: _hudAssets.TabMobEnabled?.Width ?? DefaultHudMetrics.TabMobWidth,
+                TabSkillWidth: _hudAssets.TabSkillEnabled?.Width ?? DefaultHudMetrics.TabSkillWidth,
+                TabGuardianWidth: _hudAssets.TabGuardianEnabled?.Width ?? DefaultHudMetrics.TabGuardianWidth,
+                SideButtonWidth: _hudAssets.SideButtonNormal?.Width ?? DefaultHudMetrics.SideButtonWidth,
+                SideButtonHeight: _hudAssets.SideButtonNormal?.Height ?? DefaultHudMetrics.SideButtonHeight);
+        }
+
+        private static Rectangle ResolveHeaderBounds(int viewportWidth, MonsterCarnivalHudMetrics metrics)
+        {
+            int x = viewportWidth - metrics.TotalHeaderWidth - 18;
+            return new Rectangle(x, 18, metrics.TotalHeaderWidth, metrics.BackgroundHeight);
+        }
+
+        private static Rectangle ResolveFooterBounds(Rectangle listBounds, MonsterCarnivalHudMetrics metrics)
+        {
+            return new Rectangle(
+                listBounds.X,
+                listBounds.Bottom - metrics.ListBottomHeight,
+                listBounds.Width,
+                metrics.ListBottomHeight);
+        }
+
+        private static Rectangle ResolveRecoveredHudHeaderBounds(int viewportWidth)
+        {
+            return ResolveHeaderBounds(viewportWidth, DefaultHudMetrics);
+        }
+
+        private static int[] ResolveRecoveredTabWidths()
+        {
+            return new[]
+            {
+                DefaultHudMetrics.TabMobWidth,
+                DefaultHudMetrics.TabSkillWidth,
+                DefaultHudMetrics.TabGuardianWidth
+            };
+        }
+
+        private void DrawHeaderPanel(SpriteBatch spriteBatch, Texture2D pixelTexture, Rectangle mainBounds, Rectangle teamBounds)
+        {
+            if (_hudAssets.Background != null)
+            {
+                spriteBatch.Draw(_hudAssets.Background, mainBounds, Color.White);
+            }
+            else
+            {
+                spriteBatch.Draw(pixelTexture, mainBounds, new Color(16, 22, 28, 225));
+                spriteBatch.Draw(pixelTexture, new Rectangle(mainBounds.X, mainBounds.Y, mainBounds.Width, 34), new Color(54, 76, 98, 255));
+            }
+
+            if (_hudAssets.TeamPanelBackground != null)
+            {
+                spriteBatch.Draw(_hudAssets.TeamPanelBackground, teamBounds, Color.White);
+            }
+            else
+            {
+                spriteBatch.Draw(pixelTexture, teamBounds, new Color(26, 34, 44, 220));
+            }
+        }
+
+        private void DrawEntryListPanel(SpriteBatch spriteBatch, Texture2D pixelTexture, Rectangle listBounds, MonsterCarnivalHudMetrics metrics)
+        {
+            if (!_hudAssets.HasAnyTexture)
+            {
+                spriteBatch.Draw(pixelTexture, listBounds, new Color(16, 22, 28, 225));
+                return;
+            }
+
+            int y = listBounds.Y;
+            DrawPanelSlice(spriteBatch, pixelTexture, _hudAssets.ListTop, new Rectangle(listBounds.X, y, listBounds.Width, metrics.ListTopHeight), new Color(31, 42, 56, 255));
+            y += metrics.ListTopHeight;
+
+            for (int row = 0; row < 6; row++)
+            {
+                DrawPanelSlice(spriteBatch, pixelTexture, _hudAssets.ListMiddle, new Rectangle(listBounds.X, y, listBounds.Width, metrics.ListMiddleRowHeight), new Color(24, 31, 40, 220));
+                y += metrics.ListMiddleRowHeight;
+            }
+
+            DrawPanelSlice(spriteBatch, pixelTexture, _hudAssets.ListSummary, new Rectangle(listBounds.X, y, listBounds.Width, metrics.ListSummaryHeight), new Color(24, 31, 40, 220));
+            y += metrics.ListSummaryHeight;
+            DrawPanelSlice(spriteBatch, pixelTexture, _hudAssets.ListBottom, new Rectangle(listBounds.X, y, listBounds.Width, metrics.ListBottomHeight), new Color(26, 34, 44, 220));
+        }
+
+        private static void DrawPanelSlice(SpriteBatch spriteBatch, Texture2D pixelTexture, Texture2D texture, Rectangle destination, Color fallbackColor)
+        {
+            if (texture != null)
+            {
+                spriteBatch.Draw(texture, destination, Color.White);
+                return;
+            }
+
+            spriteBatch.Draw(pixelTexture, destination, fallbackColor);
+        }
+
+        private void DrawFooterPanel(SpriteBatch spriteBatch, Texture2D pixelTexture, Rectangle footerBounds)
+        {
+            if (_hudAssets.ListBottom != null)
+            {
+                spriteBatch.Draw(_hudAssets.ListBottom, footerBounds, Color.White);
+                return;
+            }
+
+            spriteBatch.Draw(pixelTexture, footerBounds, new Color(26, 34, 44, 220));
+        }
+
+        private Texture2D GetTabTexture(MonsterCarnivalTab tab, bool enabled)
+        {
+            return (tab, enabled) switch
+            {
+                (MonsterCarnivalTab.Mob, true) => _hudAssets.TabMobEnabled,
+                (MonsterCarnivalTab.Skill, true) => _hudAssets.TabSkillEnabled,
+                (MonsterCarnivalTab.Guardian, true) => _hudAssets.TabGuardianEnabled,
+                (MonsterCarnivalTab.Mob, false) => _hudAssets.TabMobDisabled,
+                (MonsterCarnivalTab.Skill, false) => _hudAssets.TabSkillDisabled,
+                (MonsterCarnivalTab.Guardian, false) => _hudAssets.TabGuardianDisabled,
+                _ => null
             };
         }
 
@@ -1882,7 +2224,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{definition.ClientOwnerLabel}::Init read monsterCarnival/mapType={definition.MapType}.",
                 FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{definition.ClientOwnerLabel}::Init read monsterCarnival/mapType={definition.MapType}.",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{definition.ClientOwnerLabel} is waiting for OnShowGameResult codes 8-11.",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{definition.ClientOwnerLabel} is waiting for OnShowGameResult codes 8-11 -> StringPool 0x1020-0x1023.",
                 _ => $"{definition.ClientOwnerLabel} owns the shared Monster Carnival packet family."
             };
         }

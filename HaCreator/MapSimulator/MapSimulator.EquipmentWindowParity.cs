@@ -214,41 +214,17 @@ namespace HaCreator.MapSimulator
 
             byte[] payload = BuildMechanicEquipmentAuthorityRequestPayload(request);
             const int opcode = LocalUtilityPacketInboxManager.MechanicEquipStatePacketType;
-            string payloadHex = payload.Length > 0 ? Convert.ToHexString(payload) : "<empty>";
-            string bridgeStatus = "Local utility official-session bridge is unavailable.";
-            string outboxStatus = "Local utility packet outbox is unavailable.";
-
-            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(opcode, payload, out bridgeStatus))
-            {
-                status = $"Mirrored mechanic authority request {request.RequestId} through the live local-utility bridge as opcode {opcode} [{payloadHex}]. {bridgeStatus}";
-                return true;
-            }
-
-            if (_localUtilityPacketOutbox.TrySendOutboundPacket(opcode, payload, out outboxStatus))
-            {
-                status =
-                    $"Mirrored mechanic authority request {request.RequestId} through the generic local-utility outbox as opcode {opcode} [{payloadHex}] after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
-                return true;
-            }
-
-            if (_localUtilityOfficialSessionBridge.IsRunning
-                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(opcode, payload, out string queuedBridgeStatus))
-            {
-                status =
-                    $"Queued mechanic authority request {request.RequestId} for deferred official-session injection as opcode {opcode} [{payloadHex}] after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus}";
-                return true;
-            }
-
-            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(opcode, payload, out string queuedOutboxStatus))
-            {
-                status =
-                    $"Queued mechanic authority request {request.RequestId} for deferred generic local-utility delivery as opcode {opcode} [{payloadHex}] after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
-                return true;
-            }
-
-            status =
-                $"Neither the live local-utility bridge nor the generic outbox accepted mechanic authority request {request.RequestId} as opcode {opcode} [{payloadHex}]. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
-            return false;
+            MechanicAuthorityTransportOutcome outcome = MechanicAuthorityTransportPlanner.DispatchRequest(
+                request.RequestId,
+                opcode,
+                payload,
+                _localUtilityOfficialSessionBridgeEnabled,
+                _localUtilityOfficialSessionBridge.TrySendOutboundPacket,
+                _localUtilityPacketOutbox.TrySendOutboundPacket,
+                _localUtilityOfficialSessionBridge.TryQueueOutboundPacket,
+                _localUtilityPacketOutbox.TryQueueOutboundPacket);
+            status = outcome.Status;
+            return outcome.Accepted;
         }
 
         private byte[] BuildMechanicEquipmentAuthorityRequestPayload(EquipmentChangeRequest request)

@@ -7,9 +7,8 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private const int PreviewMargin = 18;
         private const int PreviewGap = 14;
-        private const float MaxPreviewHeightRatio = 0.56f;
-        private const float MinPreviewScale = 0.58f;
-        private const float MaxPreviewScale = 0.9f;
+        private const float MinPreviewScale = 0.35f;
+        private const float MaxPreviewScale = 1f;
 
         internal static Rectangle ResolvePreviewBounds(
             int renderWidth,
@@ -18,23 +17,95 @@ namespace HaCreator.MapSimulator.Interaction
             int panelHeight,
             int overlayTop)
         {
-            if (panelWidth <= 0 || panelHeight <= 0)
+            Rectangle[] bounds = ResolveCenteredStackBounds(
+                renderWidth,
+                renderHeight,
+                overlayTop,
+                new Point(panelWidth, panelHeight));
+            return bounds.Length == 0 ? Rectangle.Empty : bounds[0];
+        }
+
+        internal static Rectangle[] ResolveCenteredStackBounds(
+            int renderWidth,
+            int renderHeight,
+            int overlayTop,
+            params Point[] panelSizes)
+        {
+            if (panelSizes == null || panelSizes.Length == 0)
             {
-                return Rectangle.Empty;
+                return Array.Empty<Rectangle>();
             }
 
-            float availableHeight = Math.Max(panelHeight, (renderHeight * MaxPreviewHeightRatio) - PreviewMargin);
-            float scale = Math.Clamp(availableHeight / panelHeight, MinPreviewScale, MaxPreviewScale);
-            int scaledWidth = Math.Max(1, (int)Math.Round(panelWidth * scale));
-            int scaledHeight = Math.Max(1, (int)Math.Round(panelHeight * scale));
-            int x = Math.Max(PreviewMargin, renderWidth - scaledWidth - PreviewMargin);
-            int y = Math.Max(PreviewMargin, overlayTop);
-            if (y + scaledHeight > renderHeight - PreviewMargin)
+            int anchorTop = Math.Max(PreviewMargin, overlayTop);
+            int maxPanelWidth = 0;
+            int totalPanelHeight = 0;
+            int validPanelCount = 0;
+            for (int i = 0; i < panelSizes.Length; i++)
             {
-                y = Math.Max(PreviewMargin, renderHeight - scaledHeight - PreviewMargin);
+                Point panelSize = panelSizes[i];
+                if (panelSize.X <= 0 || panelSize.Y <= 0)
+                {
+                    continue;
+                }
+
+                maxPanelWidth = Math.Max(maxPanelWidth, panelSize.X);
+                totalPanelHeight += panelSize.Y;
+                validPanelCount++;
             }
 
-            return new Rectangle(x, y, scaledWidth, scaledHeight);
+            if (validPanelCount == 0 || maxPanelWidth <= 0 || totalPanelHeight <= 0)
+            {
+                return Array.Empty<Rectangle>();
+            }
+
+            totalPanelHeight += PreviewGap * Math.Max(0, validPanelCount - 1);
+            float widthScale = (renderWidth - (PreviewMargin * 2)) / (float)maxPanelWidth;
+            float heightScale = (renderHeight - anchorTop - PreviewMargin) / (float)totalPanelHeight;
+            float scale = MathF.Min(MaxPreviewScale, MathF.Min(widthScale, heightScale));
+            if (float.IsNaN(scale) || float.IsInfinity(scale) || scale <= 0f)
+            {
+                scale = MinPreviewScale;
+            }
+
+            scale = Math.Max(scale, MinPreviewScale);
+            int scaledTotalHeight = 0;
+            for (int i = 0; i < panelSizes.Length; i++)
+            {
+                Point panelSize = panelSizes[i];
+                if (panelSize.X <= 0 || panelSize.Y <= 0)
+                {
+                    continue;
+                }
+
+                scaledTotalHeight += Math.Max(1, (int)Math.Round(panelSize.Y * scale));
+            }
+
+            scaledTotalHeight += PreviewGap * Math.Max(0, validPanelCount - 1);
+            int startY = Math.Max(anchorTop, (renderHeight - scaledTotalHeight) / 2);
+            if (startY + scaledTotalHeight > renderHeight - PreviewMargin)
+            {
+                startY = Math.Max(anchorTop, renderHeight - scaledTotalHeight - PreviewMargin);
+            }
+
+            Rectangle[] bounds = new Rectangle[panelSizes.Length];
+            int drawY = startY;
+            for (int i = 0; i < panelSizes.Length; i++)
+            {
+                Point panelSize = panelSizes[i];
+                if (panelSize.X <= 0 || panelSize.Y <= 0)
+                {
+                    bounds[i] = Rectangle.Empty;
+                    continue;
+                }
+
+                int scaledWidth = Math.Max(1, (int)Math.Round(panelSize.X * scale));
+                int scaledHeight = Math.Max(1, (int)Math.Round(panelSize.Y * scale));
+                int drawX = (renderWidth - scaledWidth) / 2;
+                bounds[i] = new Rectangle(drawX, drawY, scaledWidth, scaledHeight);
+                drawY += scaledHeight + PreviewGap;
+            }
+
+            return bounds;
         }
 
         internal static Rectangle AnchorRect(Rectangle previewBounds, int sourceX, int sourceY, int sourceWidth, int sourceHeight, int sourcePanelWidth, int sourcePanelHeight)
@@ -58,7 +129,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return ResolvePreviewBounds(renderWidth, renderHeight, panelWidth, panelHeight, PreviewMargin);
             }
 
-            Rectangle previewBounds = ResolvePreviewBounds(renderWidth, renderHeight, panelWidth, panelHeight, upperBounds.Bottom + PreviewGap);
+            Rectangle previewBounds = ResolvePreviewBounds(
+                renderWidth,
+                renderHeight,
+                panelWidth,
+                panelHeight,
+                upperBounds.Bottom + PreviewGap);
             if (previewBounds.Y <= upperBounds.Bottom)
             {
                 int y = upperBounds.Bottom + PreviewGap;

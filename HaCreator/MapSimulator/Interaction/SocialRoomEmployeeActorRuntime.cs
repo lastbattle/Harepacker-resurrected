@@ -12,6 +12,7 @@ using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -75,7 +76,9 @@ namespace HaCreator.MapSimulator.Interaction
             TexturePool texturePool,
             GraphicsDevice device,
             float userScreenScaleFactor,
-            GameTime gameTime)
+            GameTime gameTime,
+            Func<int, QuestStateType> questStateProvider = null,
+            Func<int, string> questRecordValueProvider = null)
         {
             if (snapshot == null || mapBoard == null || player == null || texturePool == null || device == null)
             {
@@ -83,7 +86,15 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            NpcItem actor = EnsureActor(snapshot, mapBoard, texturePool, device, userScreenScaleFactor);
+            NpcItem actor = EnsureActor(
+                snapshot,
+                mapBoard,
+                texturePool,
+                device,
+                userScreenScaleFactor,
+                player.Build?.Gender,
+                questStateProvider,
+                questRecordValueProvider);
             if (actor == null)
             {
                 Clear();
@@ -153,7 +164,10 @@ namespace HaCreator.MapSimulator.Interaction
             Board mapBoard,
             TexturePool texturePool,
             GraphicsDevice device,
-            float userScreenScaleFactor)
+            float userScreenScaleFactor,
+            CharacterGender? localPlayerGender,
+            Func<int, QuestStateType> questStateProvider,
+            Func<int, string> questRecordValueProvider)
         {
             string actorKey = BuildActorCacheKey(snapshot);
             if (_actorCache.TryGetValue(actorKey, out NpcItem cachedActor))
@@ -165,10 +179,26 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 SocialRoomFieldActorTemplate.CashEmployee when snapshot.TemplateId > 0
                     => CreateCashEmployeeActor(actorKey, snapshot.TemplateId, mapBoard, texturePool, device, userScreenScaleFactor),
-                _ => CreateNpcActor(ResolveProfile(snapshot).NpcId, mapBoard, texturePool, device, userScreenScaleFactor)
+                _ => CreateNpcActor(
+                    ResolveProfile(snapshot).NpcId,
+                    mapBoard,
+                    texturePool,
+                    device,
+                    userScreenScaleFactor,
+                    localPlayerGender,
+                    questStateProvider,
+                    questRecordValueProvider)
             };
 
-            actor ??= CreateNpcActor(ResolveProfile(snapshot).NpcId, mapBoard, texturePool, device, userScreenScaleFactor);
+            actor ??= CreateNpcActor(
+                ResolveProfile(snapshot).NpcId,
+                mapBoard,
+                texturePool,
+                device,
+                userScreenScaleFactor,
+                localPlayerGender,
+                questStateProvider,
+                questRecordValueProvider);
 
             if (actor == null)
             {
@@ -185,7 +215,10 @@ namespace HaCreator.MapSimulator.Interaction
             Board mapBoard,
             TexturePool texturePool,
             GraphicsDevice device,
-            float userScreenScaleFactor)
+            float userScreenScaleFactor,
+            CharacterGender? localPlayerGender,
+            Func<int, QuestStateType> questStateProvider,
+            Func<int, string> questRecordValueProvider)
         {
             NpcInfo npcInfo = NpcInfo.Get(npcId);
             if (npcInfo == null)
@@ -213,7 +246,10 @@ namespace HaCreator.MapSimulator.Interaction
                 userScreenScaleFactor,
                 device,
                 _usedProps,
-                includeTooltips: false);
+                includeTooltips: false,
+                localPlayerGender: localPlayerGender,
+                questStateProvider: questStateProvider,
+                questRecordValueProvider: questRecordValueProvider);
         }
 
         private NpcItem CreateCashEmployeeActor(

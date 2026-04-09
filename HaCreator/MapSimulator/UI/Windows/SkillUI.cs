@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.UI.Controls;
 using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Character.Skills;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -559,7 +560,7 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
-            DrawHoveredSkillTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
+            DrawHoveredSkillTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight, TickCount);
         }
 
         /// <summary>
@@ -706,7 +707,7 @@ namespace HaCreator.MapSimulator.UI
         #endregion
 
         #region Tooltip
-        private void DrawHoveredSkillTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
+        private void DrawHoveredSkillTooltip(SpriteBatch sprite, int renderWidth, int renderHeight, int currentTime)
         {
             if (_font == null || _isDragging || _hoveredSkillIndex < 0)
                 return;
@@ -728,12 +729,17 @@ namespace HaCreator.MapSimulator.UI
             bool showNextLevel = nextLevel > 0 && nextLevel <= skill.MaxLevel && nextLevel != currentLevel;
             string nextLevelHeader = showNextLevel ? $"Next Level: {nextLevel}" : string.Empty;
             string nextLevelDescription = showNextLevel ? SanitizeTooltipText(skill.GetFormattedLevelDescription(nextLevel)) : string.Empty;
+            SkillLevelData tooltipLevelData = ResolveTooltipLevelData(skill, previewLevel);
 
             int tooltipWidth = ResolveHoveredTooltipWidth();
             float titleWidth = tooltipWidth - CLIENT_TOOLTIP_TITLE_X - CLIENT_TOOLTIP_RIGHT_PADDING;
             float sectionWidth = tooltipWidth - CLIENT_TOOLTIP_TEXT_X - CLIENT_TOOLTIP_RIGHT_PADDING;
             string[] wrappedTitle = WrapTooltipText(title, titleWidth);
             TooltipLine[] wrappedDescription = WrapTooltipText(description, sectionWidth, Color.White);
+            TooltipLine[] wrappedCostLine = WrapTooltipText(
+                SanitizeTooltipText(GetTooltipCostLineMarkup(skill.SkillId, tooltipLevelData, currentTime)),
+                sectionWidth,
+                TOOLTIP_INLINE_HIGHLIGHT_COLOR);
             string[] wrappedCurrentHeader = WrapTooltipText(currentLevelHeader, sectionWidth);
             TooltipLine[] wrappedCurrentDescription = WrapTooltipText(currentLevelDescription, sectionWidth, new Color(180, 255, 210));
             string[] wrappedNextHeader = WrapTooltipText(nextLevelHeader, sectionWidth);
@@ -741,6 +747,7 @@ namespace HaCreator.MapSimulator.UI
 
             float titleHeight = MeasureLinesHeight(wrappedTitle);
             float descriptionHeight = MeasureLinesHeight(wrappedDescription);
+            float costLineHeight = MeasureLinesHeight(wrappedCostLine);
             float currentHeaderHeight = MeasureLinesHeight(wrappedCurrentHeader);
             float currentDescriptionHeight = MeasureLinesHeight(wrappedCurrentDescription);
             float nextHeaderHeight = MeasureLinesHeight(wrappedNextHeader);
@@ -748,6 +755,7 @@ namespace HaCreator.MapSimulator.UI
             int requirementSectionHeight = GetRequirementSectionHeight(skill);
             float sectionHeight = CalculateTooltipSectionHeight(
                 descriptionHeight,
+                costLineHeight,
                 currentHeaderHeight,
                 currentDescriptionHeight,
                 nextHeaderHeight,
@@ -790,6 +798,13 @@ namespace HaCreator.MapSimulator.UI
                 sectionY += descriptionHeight;
             }
 
+            if (costLineHeight > 0f)
+            {
+                sectionY += TOOLTIP_SECTION_GAP;
+                DrawTooltipLines(sprite, wrappedCostLine, textX, sectionY);
+                sectionY += costLineHeight;
+            }
+
             if (currentHeaderHeight > 0f)
             {
                 sectionY += TOOLTIP_SECTION_GAP;
@@ -821,6 +836,29 @@ namespace HaCreator.MapSimulator.UI
             DrawSkillRequirementSection(sprite, skill, backgroundRect.X, sectionY + TOOLTIP_SECTION_GAP);
         }
 
+        private SkillLevelData ResolveTooltipLevelData(SkillDisplayData skill, int level)
+        {
+            SkillData skillData = _skillManager?.GetSkillData(skill?.SkillId ?? 0);
+            return skillData?.GetLevel(level);
+        }
+
+        private string GetTooltipCostLineMarkup(int skillId, SkillLevelData levelData, int currentTime)
+        {
+            if (levelData == null)
+            {
+                return string.Empty;
+            }
+
+            SkillManager.CooldownUiState cooldownState = default;
+            bool hasCooldownState = _skillManager != null
+                && _skillManager.TryGetCooldownUiState(skillId, currentTime, out cooldownState);
+            return SkillCooldownTooltipText.FormatTooltipCostLineMarkup(
+                levelData,
+                hasCooldownState || levelData.Cooldown > 0,
+                hasCooldownState ? cooldownState.RemainingMs : 0,
+                hasCooldownState ? cooldownState.TooltipStateText : null);
+        }
+
         private bool TryGetCooldownVisualState(int skillId, int currentTime, out int frameIndex, out string remainingText)
         {
             frameIndex = 0;
@@ -848,6 +886,7 @@ namespace HaCreator.MapSimulator.UI
 
         private static float CalculateTooltipSectionHeight(
             float descriptionHeight,
+            float costLineHeight,
             float currentHeaderHeight,
             float currentDescriptionHeight,
             float nextHeaderHeight,
@@ -857,6 +896,8 @@ namespace HaCreator.MapSimulator.UI
             float height = 0f;
             if (descriptionHeight > 0f)
                 height += descriptionHeight;
+            if (costLineHeight > 0f)
+                height += (height > 0f ? TOOLTIP_SECTION_GAP : 0f) + costLineHeight;
             if (currentHeaderHeight > 0f)
                 height += (height > 0f ? TOOLTIP_SECTION_GAP : 0f) + currentHeaderHeight;
             if (currentDescriptionHeight > 0f)

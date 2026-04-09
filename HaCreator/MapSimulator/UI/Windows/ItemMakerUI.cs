@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
@@ -158,6 +159,7 @@ namespace HaCreator.MapSimulator.UI
         private Point _gaugePosition = new(18, 296);
         private SpriteFont _font;
         private IInventoryRuntime _inventory;
+        private ProductionEnhancementAnimationDisplayer _productionEnhancementAnimationDisplayer;
         private Func<int, Texture2D> _itemIconProvider;
         private readonly Dictionary<int, Texture2D> _itemIconCache = new();
         private MouseState _previousMouseState;
@@ -201,6 +203,11 @@ namespace HaCreator.MapSimulator.UI
         public event Action<IReadOnlyCollection<ItemMakerRecipeProgressionEntry>> RecipesDiscovered;
         public event Action<IReadOnlyCollection<ItemMakerRecipeProgressionEntry>> HiddenRecipesUnlocked;
 
+        internal void SetProductionEnhancementAnimationDisplayer(ProductionEnhancementAnimationDisplayer animationDisplayer)
+        {
+            _productionEnhancementAnimationDisplayer = animationDisplayer;
+        }
+
         private IReadOnlyList<ItemMakerRecipe> CurrentRecipes =>
             _selectedPageIndex >= 0 && _selectedPageIndex < _pages.Count
                 ? _pages[_selectedPageIndex].Recipes
@@ -226,6 +233,9 @@ namespace HaCreator.MapSimulator.UI
                 CraftCompleted?.Invoke(craftResult);
             }
 
+            _productionEnhancementAnimationDisplayer?.PlayItemMakeResult(
+                packetResult.RepresentsSuccessfulCraft || packetResult.RepresentsDisassemblyResult,
+                Environment.TickCount);
             ApplyPacketOwnedResult(message, packetResult.ResetItemSlot);
             return true;
         }
@@ -1219,6 +1229,7 @@ namespace HaCreator.MapSimulator.UI
             _craftingRecipeIndex = -1;
             RebuildVisiblePages();
             RefreshStatusMessage($"Created {GetItemName(reward.ItemId)} x{reward.Quantity}.");
+            _productionEnhancementAnimationDisplayer?.PlayItemMakeResult(success: true, currentTimeMs: Environment.TickCount);
             CraftCompleted?.Invoke(new ItemMakerCraftResult
             {
                 Family = recipe.Family,
@@ -1233,7 +1244,7 @@ namespace HaCreator.MapSimulator.UI
         private bool TryCreatePacketOwnedCraftResult(PacketOwnedItemMakerResult packetResult, out ItemMakerCraftResult result)
         {
             result = null;
-            if (packetResult == null || packetResult.ResultCode > 1)
+            if (!ShouldTreatPacketOwnedResultAsCraftProgress(packetResult, _pendingPacketOwnedDisassemblySlotIndex >= 0))
             {
                 return false;
             }
@@ -1395,6 +1406,16 @@ namespace HaCreator.MapSimulator.UI
             return Math.Max(1, recipe.OutputQuantity);
         }
 
+        internal static bool ShouldTreatPacketOwnedResultAsCraftProgress(
+            PacketOwnedItemMakerResult packetResult,
+            bool hasPendingDisassemblyRequest)
+        {
+            return packetResult != null
+                   && packetResult.ResultCode <= 1
+                   && !hasPendingDisassemblyRequest
+                   && !packetResult.RepresentsDisassemblyResult;
+        }
+
         private bool CanCraftRecipe(ItemMakerRecipe recipe, out string failureReason)
         {
             if (recipe?.Mode == ItemMakerRecipeMode.Disassemble)
@@ -1505,7 +1526,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (!_packetOwnedServerOwnsCraftExecution && !CanAcceptCraftReward(recipe))
+            if (!CanAcceptCraftReward(recipe))
             {
                 failureReason = "Inventory is full for the crafting result.";
                 return false;

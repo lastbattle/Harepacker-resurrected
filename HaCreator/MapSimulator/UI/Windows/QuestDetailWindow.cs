@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -42,12 +43,16 @@ namespace HaCreator.MapSimulator.UI
         private const float ClientHeaderScale = 0.58f;
         private const float ClientDetailScale = 0.58f;
         private const float ClientNavigationScale = 0.52f;
+        private static readonly Regex RichTextTokenRegex = new(
+            @"(\{\{ITEMICON:\d+\}\}|\{\{QUESTSURFACE:[^}]+\}\}|\r?\n|\s+)",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         private readonly string _windowName;
         private readonly List<ButtonLabel> _buttonLabels = new();
         private readonly Dictionary<QuestWindowActionKind, ActionButtonBinding> _actionButtons = new();
         private readonly Dictionary<QuestDetailNpcButtonStyle, ActionButtonBinding> _npcButtons = new();
         private readonly Dictionary<string, TimeLimitIndicatorStyle> _timeLimitIndicatorStyles = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Texture2D> _questSurfaceTextures = new(StringComparer.OrdinalIgnoreCase);
 
         private SpriteFont _font;
         private IDXObject _foreground;
@@ -146,6 +151,12 @@ namespace HaCreator.MapSimulator.UI
             _rewardHeaderTexture = rewardHeaderTexture;
             _selectionBarTexture = selectionBarTexture;
             _incompleteSelectionBarTexture = incompleteSelectionBarTexture;
+            _questSurfaceTextures.Clear();
+            RegisterQuestSurfaceTexture("summary", summaryHeaderTexture);
+            RegisterQuestSurfaceTexture("basic", requirementHeaderTexture);
+            RegisterQuestSurfaceTexture("reward", rewardHeaderTexture);
+            RegisterQuestSurfaceTexture("select", selectionBarTexture);
+            RegisterQuestSurfaceTexture("prob", incompleteSelectionBarTexture ?? selectionBarTexture);
         }
 
         public void SetProgressTextures(Texture2D frameTexture, Texture2D gaugeTexture, Texture2D spotTexture, Point frameOffset)
@@ -574,7 +585,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (!string.IsNullOrWhiteSpace(_state.HintText))
             {
-                DrawWrappedTextClipped(
+                DrawRichTextClipped(
                     sprite,
                     _state.HintText,
                     new Vector2(Position.X + ClientContentX, y),
@@ -595,7 +606,7 @@ namespace HaCreator.MapSimulator.UI
             Rectangle clipRect = GetSummaryClipRectangle();
             float y = Position.Y + ClientSummaryY - _summaryScrollOffset;
             DrawSectionHeaderClipped(sprite, clipRect, _summaryHeaderTexture, "Summary", Position.X + ClientContentX, ref y, ClientDetailScale);
-            y = DrawWrappedTextClipped(sprite, _state.SummaryText, new Vector2(Position.X + ClientContentX, y), ClientContentWidth, new Color(228, 228, 228), clipRect, ClientDetailScale);
+            y = DrawRichTextClipped(sprite, _state.SummaryText, new Vector2(Position.X + ClientContentX, y), ClientContentWidth, new Color(228, 228, 228), clipRect, ClientDetailScale);
             y += 8;
             DrawProgressClipped(sprite, clipRect, Position.X + ClientContentX, ref y);
         }
@@ -645,7 +656,7 @@ namespace HaCreator.MapSimulator.UI
             }
             else
             {
-                y = DrawWrappedTextClipped(sprite, _state.RequirementText, new Vector2(x, y), maxWidth, new Color(215, 228, 215), clipRect, ClientDetailScale);
+                y = DrawRichTextClipped(sprite, _state.RequirementText, new Vector2(x, y), maxWidth, new Color(215, 228, 215), clipRect, ClientDetailScale);
             }
 
             return y + 8f;
@@ -665,7 +676,7 @@ namespace HaCreator.MapSimulator.UI
             }
             else
             {
-                y = DrawWrappedTextClipped(sprite, _state.RewardText, new Vector2(x, y), maxWidth, new Color(232, 220, 176), clipRect, ClientDetailScale);
+                y = DrawRichTextClipped(sprite, _state.RewardText, new Vector2(x, y), maxWidth, new Color(232, 220, 176), clipRect, ClientDetailScale);
             }
 
             return y + 8f;
@@ -808,6 +819,40 @@ namespace HaCreator.MapSimulator.UI
             return y;
         }
 
+        private float DrawRichTextClipped(SpriteBatch sprite, string text, Vector2 position, float maxWidth, Color color, Rectangle clipRect, float scale)
+        {
+            return LayoutRichText(
+                text,
+                position,
+                maxWidth,
+                scale,
+                (token, drawPosition) =>
+                {
+                    if (token.Texture != null)
+                    {
+                        DrawTextureClipped(
+                            sprite,
+                            token.Texture,
+                            new Rectangle(
+                                (int)Math.Round(drawPosition.X),
+                                (int)Math.Round(drawPosition.Y),
+                                token.Width,
+                                token.Height),
+                            clipRect,
+                            Color.White);
+                    }
+                    else if (!string.IsNullOrEmpty(token.Text))
+                    {
+                        DrawTextLineClipped(sprite, token.Text, drawPosition, color, clipRect, scale);
+                    }
+                });
+        }
+
+        private float AdvanceRichText(string text, float maxWidth, float scale)
+        {
+            return LayoutRichText(text, Vector2.Zero, maxWidth, scale, null);
+        }
+
         private IEnumerable<string> WrapText(string text, float maxWidth, float scale)
         {
             if (_font == null || string.IsNullOrWhiteSpace(text))
@@ -844,6 +889,182 @@ namespace HaCreator.MapSimulator.UI
                     yield return currentLine;
                 }
             }
+        }
+
+        private float LayoutRichText(string text, Vector2 position, float maxWidth, float scale, Action<RichTextToken, Vector2> drawToken)
+        {
+            float baselineHeight = Math.Max(1f, GetLineHeight(scale));
+            float currentX = position.X;
+            float currentY = position.Y;
+            float lineStartX = position.X;
+            float lineHeight = baselineHeight;
+            bool lineHasContent = false;
+
+            foreach (RichTextToken token in EnumerateRichTextTokens(text, scale))
+            {
+                if (token.Kind == RichTextTokenKind.NewLine)
+                {
+                    currentY += lineHeight;
+                    currentX = lineStartX;
+                    lineHeight = baselineHeight;
+                    lineHasContent = false;
+                    continue;
+                }
+
+                if (token.Kind == RichTextTokenKind.Space)
+                {
+                    if (!lineHasContent)
+                    {
+                        continue;
+                    }
+
+                    if ((currentX - lineStartX) + token.Width > maxWidth)
+                    {
+                        currentY += lineHeight;
+                        currentX = lineStartX;
+                        lineHeight = baselineHeight;
+                        lineHasContent = false;
+                        continue;
+                    }
+                }
+                else if (lineHasContent && (currentX - lineStartX) + token.Width > maxWidth)
+                {
+                    currentY += lineHeight;
+                    currentX = lineStartX;
+                    lineHeight = baselineHeight;
+                    lineHasContent = false;
+                }
+
+                if (token.Width <= 0 && token.Height <= 0)
+                {
+                    continue;
+                }
+
+                drawToken?.Invoke(token, new Vector2(currentX, currentY));
+                currentX += token.Width;
+                lineHeight = Math.Max(lineHeight, token.Height > 0 ? token.Height : baselineHeight);
+                if (token.Kind != RichTextTokenKind.Space)
+                {
+                    lineHasContent = true;
+                }
+            }
+
+            return lineHasContent ? currentY + lineHeight : currentY;
+        }
+
+        private IEnumerable<RichTextToken> EnumerateRichTextTokens(string text, float scale)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                yield break;
+            }
+
+            int index = 0;
+            foreach (Match match in RichTextTokenRegex.Matches(text))
+            {
+                if (match.Index > index)
+                {
+                    foreach (RichTextToken token in EnumerateTextWordTokens(text.Substring(index, match.Index - index), scale))
+                    {
+                        yield return token;
+                    }
+                }
+
+                string value = match.Value;
+                if (value.IndexOf('\n') >= 0)
+                {
+                    yield return RichTextToken.NewLineToken;
+                }
+                else if (TryCreateMarkerToken(value, out RichTextToken markerToken))
+                {
+                    yield return markerToken;
+                }
+                else
+                {
+                    float width = MeasureText(value, scale).X;
+                    if (width > 0f)
+                    {
+                        yield return new RichTextToken(
+                            RichTextTokenKind.Space,
+                            value,
+                            null,
+                            (int)Math.Ceiling(width),
+                            (int)Math.Ceiling(GetLineHeight(scale)));
+                    }
+                }
+
+                index = match.Index + match.Length;
+            }
+
+            if (index < text.Length)
+            {
+                foreach (RichTextToken token in EnumerateTextWordTokens(text.Substring(index), scale))
+                {
+                    yield return token;
+                }
+            }
+        }
+
+        private IEnumerable<RichTextToken> EnumerateTextWordTokens(string text, float scale)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                yield break;
+            }
+
+            float width = MeasureText(text, scale).X;
+            if (width > 0f)
+            {
+                yield return new RichTextToken(
+                    RichTextTokenKind.Text,
+                    text,
+                    null,
+                    (int)Math.Ceiling(width),
+                    (int)Math.Ceiling(GetLineHeight(scale)));
+            }
+        }
+
+        private bool TryCreateMarkerToken(string value, out RichTextToken token)
+        {
+            token = default;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            const string itemPrefix = "{{ITEMICON:";
+            const string questSurfacePrefix = "{{QUESTSURFACE:";
+            if (value.StartsWith(itemPrefix, StringComparison.OrdinalIgnoreCase) &&
+                value.EndsWith("}}", StringComparison.Ordinal) &&
+                int.TryParse(
+                    value.Substring(itemPrefix.Length, value.Length - itemPrefix.Length - 2),
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out int itemId))
+            {
+                Texture2D iconTexture = ResolveItemIcon(itemId);
+                if (iconTexture != null)
+                {
+                    token = new RichTextToken(RichTextTokenKind.Icon, null, iconTexture, iconTexture.Width, iconTexture.Height);
+                }
+
+                return true;
+            }
+
+            if (value.StartsWith(questSurfacePrefix, StringComparison.OrdinalIgnoreCase) &&
+                value.EndsWith("}}", StringComparison.Ordinal))
+            {
+                string surfaceKey = value.Substring(questSurfacePrefix.Length, value.Length - questSurfacePrefix.Length - 2).Trim();
+                Texture2D surfaceTexture = ResolveQuestSurfaceTexture(surfaceKey);
+                if (surfaceTexture != null)
+                {
+                    token = new RichTextToken(RichTextTokenKind.Surface, null, surfaceTexture, surfaceTexture.Width, surfaceTexture.Height);
+                }
+
+                return true;
+            }
+
+            return false;
         }
 
         private HoveredQuestItemInfo ResolveHoveredQuestItem(int mouseX, int mouseY)
@@ -1134,7 +1355,7 @@ namespace HaCreator.MapSimulator.UI
                 y = AdvanceSectionHeader(_requirementHeaderTexture, y);
                 y = _state.RequirementLines != null && _state.RequirementLines.Count > 0
                     ? AdvanceConditionLines(_state.RequirementLines, Position.X + ClientContentX, y, ClientContentWidth, false)
-                    : AdvanceWrappedText(_state.RequirementText, ClientContentWidth, y);
+                    : y + AdvanceRichText(_state.RequirementText, ClientContentWidth, ClientDetailScale);
                 y += 8f;
             }
 
@@ -1143,13 +1364,13 @@ namespace HaCreator.MapSimulator.UI
                 y = AdvanceSectionHeader(_rewardHeaderTexture, y);
                 y = _state.RewardLines != null && _state.RewardLines.Count > 0
                     ? AdvanceConditionLines(_state.RewardLines, Position.X + ClientContentX, y, ClientContentWidth, true)
-                    : AdvanceWrappedText(_state.RewardText, ClientContentWidth, y);
+                    : y + AdvanceRichText(_state.RewardText, ClientContentWidth, ClientDetailScale);
                 y += 8f;
             }
 
             if (!string.IsNullOrWhiteSpace(_state.HintText))
             {
-                y = AdvanceWrappedText(_state.HintText, ClientContentWidth, y);
+                y += AdvanceRichText(_state.HintText, ClientContentWidth, ClientDetailScale);
             }
 
             return y;
@@ -1163,7 +1384,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             float y = AdvanceSectionHeader(_summaryHeaderTexture, 0f);
-            y = AdvanceWrappedText(_state.SummaryText, ClientContentWidth, y);
+            y += AdvanceRichText(_state.SummaryText, ClientContentWidth, ClientDetailScale);
             y += 8f;
             if (_state.TotalProgress > 0)
             {
@@ -1240,22 +1461,59 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(sprite, text, position, color, scale, _font);
         }
 
         private Vector2 MeasureText(string text, float scale)
         {
-            if (_font == null || string.IsNullOrEmpty(text))
+            if (string.IsNullOrEmpty(text))
             {
                 return Vector2.Zero;
             }
 
-            return _font.MeasureString(text) * scale;
+            return ClientTextDrawing.Measure(GetTextGraphicsDevice(), text, scale, _font);
         }
 
         private float GetLineHeight(float scale)
         {
-            return _font.LineSpacing * scale;
+            Vector2 measured = ClientTextDrawing.Measure(GetTextGraphicsDevice(), "Ag", scale, _font);
+            if (measured.Y > 0f)
+            {
+                return measured.Y;
+            }
+
+            return (_font?.LineSpacing ?? 0) * scale;
+        }
+
+        private GraphicsDevice GetTextGraphicsDevice()
+        {
+            return _pixel?.GraphicsDevice
+                ?? CurrentFrame?.Texture?.GraphicsDevice
+                ?? _foreground?.Texture?.GraphicsDevice
+                ?? _bottomPanel?.Texture?.GraphicsDevice
+                ?? _summaryPanel?.Texture?.GraphicsDevice
+                ?? _detailTip?.Texture?.GraphicsDevice;
+        }
+
+        private void RegisterQuestSurfaceTexture(string surfaceKey, Texture2D texture)
+        {
+            if (string.IsNullOrWhiteSpace(surfaceKey) || texture == null)
+            {
+                return;
+            }
+
+            _questSurfaceTextures[surfaceKey.Trim()] = texture;
+        }
+
+        private Texture2D ResolveQuestSurfaceTexture(string surfaceKey)
+        {
+            if (string.IsNullOrWhiteSpace(surfaceKey))
+            {
+                return null;
+            }
+
+            _questSurfaceTextures.TryGetValue(surfaceKey.Trim(), out Texture2D texture);
+            return texture;
         }
 
         private HoveredQuestItemInfo CreateHoveredQuestItem(int itemId, string lineText)
@@ -1492,10 +1750,10 @@ namespace HaCreator.MapSimulator.UI
 
             int width = Math.Max(1, button.CanvasSnapshotWidth);
             int height = Math.Max(1, button.CanvasSnapshotHeight);
-            Vector2 textSize = _font.MeasureString(text);
+            Vector2 textSize = ClientTextDrawing.Measure(sprite, text, 1f, _font);
             float x = Position.X + button.X + ((width - textSize.X) / 2f);
             float y = Position.Y + button.Y + ((height - textSize.Y) / 2f) - 1f;
-            sprite.DrawString(_font, text, new Vector2(x, y), Color.White);
+            ClientTextDrawing.Draw(sprite, text, new Vector2(x, y), Color.White, 1f, _font);
         }
 
         private void BindNpcButton(QuestWindowDetailState state)
@@ -1802,6 +2060,35 @@ namespace HaCreator.MapSimulator.UI
             public Texture2D Texture { get; }
             public Point Origin { get; }
             public int DelayMs { get; }
+        }
+
+        private enum RichTextTokenKind
+        {
+            Text,
+            Space,
+            Icon,
+            Surface,
+            NewLine
+        }
+
+        private readonly struct RichTextToken
+        {
+            public static readonly RichTextToken NewLineToken = new(RichTextTokenKind.NewLine, null, null, 0, 0);
+
+            public RichTextToken(RichTextTokenKind kind, string text, Texture2D texture, int width, int height)
+            {
+                Kind = kind;
+                Text = text;
+                Texture = texture;
+                Width = Math.Max(0, width);
+                Height = Math.Max(0, height);
+            }
+
+            public RichTextTokenKind Kind { get; }
+            public string Text { get; }
+            public Texture2D Texture { get; }
+            public int Width { get; }
+            public int Height { get; }
         }
     }
 }

@@ -189,6 +189,24 @@ namespace HaCreator.MapSimulator.Pools
             public Vector2 Target { get; init; }
             public int ExecuteTime { get; init; }
             public int DurationMs { get; init; }
+            public SkillAnimation Animation { get; init; }
+            public bool FacingRight { get; init; }
+        }
+
+        private sealed class PacketOwnedReactiveChainEffectDisplay
+        {
+            public Vector2 Source { get; init; }
+            public Vector2 Target { get; init; }
+            public int StartTime { get; init; }
+            public int EndTime { get; init; }
+            public SkillAnimation Animation { get; init; }
+            public bool FacingRight { get; init; }
+
+            public bool IsExpired(int currentTime)
+            {
+                return Animation?.Frames.Count <= 0
+                       || currentTime >= EndTime;
+            }
         }
 
         private readonly Dictionary<int, PacketOwnedSummonState> _summonsByObjectId = new();
@@ -196,6 +214,7 @@ namespace HaCreator.MapSimulator.Pools
         private readonly List<ActiveProjectile> _projectiles = new();
         private readonly List<ScheduledPacketOwnedHitEffect> _scheduledHitEffects = new();
         private readonly List<ScheduledPacketOwnedReactiveChainEffect> _scheduledReactiveChainEffects = new();
+        private readonly List<PacketOwnedReactiveChainEffectDisplay> _reactiveChainEffects = new();
         private readonly List<ActiveHitEffect> _hitEffects = new();
         private readonly List<PacketOwnedMobAttackHitEffectDisplay> _mobAttackHitEffects = new();
         private readonly List<PacketOwnedSummonTileEffectDisplay> _summonTileEffects = new();
@@ -255,6 +274,7 @@ namespace HaCreator.MapSimulator.Pools
             _projectiles.Clear();
             _scheduledHitEffects.Clear();
             _scheduledReactiveChainEffects.Clear();
+            _reactiveChainEffects.Clear();
             _hitEffects.Clear();
             _mobAttackHitEffects.Clear();
             _summonTileEffects.Clear();
@@ -842,11 +862,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            List<MobItem> targets = state.LastAttackTargets
-                .Where(static target => target.MobObjectId > 0)
-                .Select(target => _mobPool.GetMob(target.MobObjectId))
-                .Where(static mob => mob != null)
-                .ToList();
+            List<MobItem> targets = ResolvePacketAttackTargets(state.LastAttackTargets, _mobPool.GetMob);
             if (targets.Count == 0)
             {
                 return;
@@ -892,15 +908,8 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            int targetMobObjectId = state.LastAttackTargets?
-                .FirstOrDefault(static target => target.MobObjectId > 0)
-                .MobObjectId ?? 0;
-            if (targetMobObjectId <= 0)
-            {
-                return;
-            }
-
-            MobItem targetMob = _mobPool.GetMob(targetMobObjectId);
+            MobItem targetMob = ResolvePacketAttackTargets(state.LastAttackTargets, _mobPool.GetMob)
+                .FirstOrDefault();
             if (targetMob == null)
             {
                 return;
@@ -913,13 +922,16 @@ namespace HaCreator.MapSimulator.Pools
                 targetMob,
                 new Vector2(state.Summon.PositionX, state.Summon.PositionY),
                 currentTime);
-            Rectangle area = PacketOwnedSummonUpdateRules.BuildClientOwnedAttackTileOverlayArea(targetAnchor, state.Summon);
+            Rectangle area = PacketOwnedSummonUpdateRules.BuildClientOwnedAttackTileOverlayArea(
+                targetAnchor,
+                state.Summon,
+                state.Summon.CurrentAnimationBranchName);
             if (area.Width <= 0 || area.Height <= 0)
             {
                 return;
             }
 
-            int attackDelayMs = Math.Max(0, ResolvePacketAttackImpactDelayMs(state.Summon, targetMob, currentTime));
+            int attackDelayMs = PacketOwnedSummonUpdateRules.ResolveClientOwnedPostAttackEffectDelayMs(state.Summon);
             const int tileDelayMs = 200;
             const int tileDurationMs = 500;
             _summonTileEffects.Add(new PacketOwnedSummonTileEffectDisplay
@@ -931,6 +943,33 @@ namespace HaCreator.MapSimulator.Pools
                 StartAlpha = 128,
                 EndAlpha = byte.MaxValue
             });
+        }
+
+        internal static List<MobItem> ResolvePacketAttackTargets(
+            IEnumerable<SummonedAttackTargetPacket> targets,
+            Func<int, MobItem> mobResolver)
+        {
+            var resolvedTargets = new List<MobItem>();
+            if (targets == null || mobResolver == null)
+            {
+                return resolvedTargets;
+            }
+
+            foreach (SummonedAttackTargetPacket target in targets)
+            {
+                if (target.MobObjectId <= 0)
+                {
+                    continue;
+                }
+
+                MobItem mob = mobResolver(target.MobObjectId);
+                if (mob != null)
+                {
+                    resolvedTargets.Add(mob);
+                }
+            }
+
+            return resolvedTargets;
         }
 
         public void Update(int currentTime)
@@ -972,11 +1011,34 @@ namespace HaCreator.MapSimulator.Pools
                 _scheduledReactiveChainEffects.RemoveAll(effect => effect != null && effect.ExecuteTime <= currentTime);
                 foreach (ScheduledPacketOwnedReactiveChainEffect scheduledEffect in dueReactiveChainEffects)
                 {
-                    _animationEffects?.AddBlueLightning(
-                        scheduledEffect.Source,
-                        scheduledEffect.Target,
-                        scheduledEffect.DurationMs,
-                        currentTime);
+                    if (scheduledEffect.Animation?.Frames.Count > 0)
+                    {
+                        _reactiveChainEffects.Add(new PacketOwnedReactiveChainEffectDisplay
+                        {
+                            Source = scheduledEffect.Source,
+                            Target = scheduledEffect.Target,
+                            StartTime = scheduledEffect.ExecuteTime,
+                            EndTime = scheduledEffect.ExecuteTime + Math.Max(1, scheduledEffect.DurationMs),
+                            Animation = scheduledEffect.Animation,
+                            FacingRight = scheduledEffect.FacingRight
+                        });
+                    }
+                    else
+                    {
+                        _animationEffects?.AddBlueLightning(
+                            scheduledEffect.Source,
+                            scheduledEffect.Target,
+                            scheduledEffect.DurationMs,
+                            currentTime);
+                    }
+                }
+            }
+
+            for (int i = _reactiveChainEffects.Count - 1; i >= 0; i--)
+            {
+                if (_reactiveChainEffects[i].IsExpired(currentTime))
+                {
+                    _reactiveChainEffects.RemoveAt(i);
                 }
             }
 
@@ -1086,6 +1148,11 @@ namespace HaCreator.MapSimulator.Pools
             foreach (PacketOwnedSummonTileEffectDisplay tileEffect in _summonTileEffects)
             {
                 DrawSummonTileEffect(spriteBatch, tileEffect, mapShiftX, mapShiftY, centerX, centerY, currentTime);
+            }
+
+            foreach (PacketOwnedReactiveChainEffectDisplay chainEffect in _reactiveChainEffects)
+            {
+                DrawReactiveChainEffect(spriteBatch, chainEffect, mapShiftX, mapShiftY, centerX, centerY, currentTime);
             }
 
             foreach (PacketOwnedMobAttackHitEffectDisplay hitEffect in _mobAttackHitEffects)
@@ -2973,11 +3040,39 @@ namespace HaCreator.MapSimulator.Pools
 
             Vector2 summonPosition = new(summon.PositionX, summon.PositionY);
             Rectangle summonBounds = GetPacketOwnedSummonAttackBounds(summon);
-            Dictionary<int, int> preferredTargetRanks = BuildPacketOwnedExpiryPreferredTargetRanks(preferredTargetMobIds);
+            Dictionary<int, PacketOwnedExpiryTargetCandidate> candidatesById = candidates
+                .Where(static candidate => candidate.MobObjectId > 0 && !candidate.Hitbox.IsEmpty)
+                .GroupBy(static candidate => candidate.MobObjectId)
+                .ToDictionary(static group => group.Key, static group => group.First());
+            if (candidatesById.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
 
-            return candidates
-                .Where(candidate => candidate.MobObjectId > 0
-                                    && !candidate.Hitbox.IsEmpty
+            List<int> orderedTargetIds = new(maxTargets);
+            if (preferredTargetMobIds != null)
+            {
+                foreach (int preferredTargetMobId in preferredTargetMobIds)
+                {
+                    if (preferredTargetMobId <= 0
+                        || orderedTargetIds.Count >= maxTargets
+                        || orderedTargetIds.Contains(preferredTargetMobId)
+                        || !candidatesById.ContainsKey(preferredTargetMobId))
+                    {
+                        continue;
+                    }
+
+                    orderedTargetIds.Add(preferredTargetMobId);
+                }
+            }
+
+            if (orderedTargetIds.Count >= maxTargets)
+            {
+                return orderedTargetIds.ToArray();
+            }
+
+            IEnumerable<int> fallbackTargetIds = candidatesById.Values
+                .Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId)
                                     && IsMobHitboxInPacketOwnedSummonAttackRange(summon, summonBounds, candidate.Hitbox))
                 .Select(candidate =>
                 {
@@ -2985,13 +3080,9 @@ namespace HaCreator.MapSimulator.Pools
                     float centerY = candidate.Hitbox.Top + (candidate.Hitbox.Height * 0.5f);
                     float deltaX = centerX - summonPosition.X;
                     float deltaY = centerY - summonPosition.Y;
-                    int preferredRank = preferredTargetRanks.TryGetValue(candidate.MobObjectId, out int rank)
-                        ? rank
-                        : int.MaxValue;
                     return new
                     {
                         candidate.MobObjectId,
-                        PreferredRank = preferredRank,
                         DistanceSq = (deltaX * deltaX) + (deltaY * deltaY),
                         ForwardPenalty = summon.FacingRight
                             ? (deltaX < 0f ? 1 : 0)
@@ -2999,14 +3090,23 @@ namespace HaCreator.MapSimulator.Pools
                         VerticalDistance = MathF.Abs(deltaY)
                     };
                 })
-                .OrderBy(entry => entry.PreferredRank)
-                .ThenBy(entry => entry.DistanceSq)
+                .OrderBy(entry => entry.DistanceSq)
                 .ThenBy(entry => entry.ForwardPenalty)
                 .ThenBy(entry => entry.VerticalDistance)
                 .ThenBy(entry => entry.MobObjectId)
-                .Take(maxTargets)
-                .Select(entry => entry.MobObjectId)
-                .ToArray();
+                .Select(entry => entry.MobObjectId);
+
+            foreach (int fallbackTargetId in fallbackTargetIds)
+            {
+                if (orderedTargetIds.Count >= maxTargets)
+                {
+                    break;
+                }
+
+                orderedTargetIds.Add(fallbackTargetId);
+            }
+
+            return orderedTargetIds.ToArray();
         }
 
         private static IReadOnlyList<int> ResolvePacketOwnedExpiryPreferredTargetMobIds(PacketOwnedSummonState state)
@@ -3017,26 +3117,6 @@ namespace HaCreator.MapSimulator.Pools
                 .Distinct()
                 .ToArray()
                 ?? Array.Empty<int>();
-        }
-
-        private static Dictionary<int, int> BuildPacketOwnedExpiryPreferredTargetRanks(IReadOnlyList<int> preferredTargetMobIds)
-        {
-            Dictionary<int, int> preferredRanks = new();
-            if (preferredTargetMobIds == null)
-            {
-                return preferredRanks;
-            }
-
-            for (int i = 0; i < preferredTargetMobIds.Count; i++)
-            {
-                int targetMobId = preferredTargetMobIds[i];
-                if (targetMobId > 0 && !preferredRanks.ContainsKey(targetMobId))
-                {
-                    preferredRanks[targetMobId] = i;
-                }
-            }
-
-            return preferredRanks;
         }
 
         internal static Rectangle GetPacketOwnedSummonAttackBounds(ActiveSummon summon)
@@ -3360,8 +3440,7 @@ namespace HaCreator.MapSimulator.Pools
             IReadOnlyList<MobItem> targets,
             int currentTime)
         {
-            if (_animationEffects == null
-                || summon == null
+            if (summon == null
                 || targets == null
                 || targets.Count == 0
                 || !PacketOwnedSummonUpdateRules.ShouldRegisterClientOwnedReactiveAttackChainEffect(summon))
@@ -3370,6 +3449,13 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             const int chainDurationMs = 270;
+            SkillAnimation chainAnimation = ResolveClientOwnedReactiveAttackChainAnimation(summon);
+            bool canRenderChain = chainAnimation?.Frames.Count > 0 || _animationEffects != null;
+            if (!canRenderChain)
+            {
+                return;
+            }
+
             for (int i = 0; i < targets.Count; i++)
             {
                 MobItem target = targets[i];
@@ -3384,16 +3470,37 @@ namespace HaCreator.MapSimulator.Pools
                         summon,
                         targetHitbox,
                         summon.FacingRight);
-                int executeTime = currentTime + Math.Max(0, ResolvePacketAttackImpactDelayMs(summon, target, currentTime, i));
+                int executeTime = currentTime + PacketOwnedSummonUpdateRules.ResolveClientOwnedPostAttackEffectDelayMs(summon);
                 _scheduledReactiveChainEffects.Add(new ScheduledPacketOwnedReactiveChainEffect
                 {
                     SequenceId = _nextScheduledHitEffectSequenceId++,
                     Source = source,
                     Target = chainTarget,
                     ExecuteTime = executeTime,
-                    DurationMs = chainDurationMs
+                    DurationMs = chainDurationMs,
+                    Animation = chainAnimation,
+                    FacingRight = chainTarget.X >= source.X
                 });
             }
+        }
+
+        internal static SkillAnimation ResolveClientOwnedReactiveAttackChainAnimation(ActiveSummon summon)
+        {
+            SkillData skill = summon?.SkillData;
+            if (skill?.SummonProjectileAnimations != null)
+            {
+                foreach (SkillAnimation animation in skill.SummonProjectileAnimations)
+                {
+                    if (animation?.Frames.Count > 0)
+                    {
+                        return animation;
+                    }
+                }
+            }
+
+            return skill?.Projectile?.Animation?.Frames.Count > 0
+                ? skill.Projectile.Animation
+                : null;
         }
 
         private static Rectangle GetMobHitbox(MobItem mob, int currentTime)
@@ -3866,6 +3973,53 @@ namespace HaCreator.MapSimulator.Pools
                 hitEffect.Tint,
                 shouldFlip,
                 null);
+        }
+
+        private void DrawReactiveChainEffect(
+            SpriteBatch spriteBatch,
+            PacketOwnedReactiveChainEffectDisplay chainEffect,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int currentTime)
+        {
+            if (chainEffect?.Animation?.Frames.Count <= 0
+                || currentTime < chainEffect.StartTime
+                || currentTime >= chainEffect.EndTime)
+            {
+                return;
+            }
+
+            int elapsed = Math.Max(0, currentTime - chainEffect.StartTime);
+            SkillFrame frame = chainEffect.Animation.GetFrameAtTime(elapsed);
+            if (frame?.Texture == null)
+            {
+                return;
+            }
+
+            Vector2 delta = chainEffect.Target - chainEffect.Source;
+            float distance = delta.Length();
+            int frameWidth = Math.Max(1, frame.Texture.Width);
+            int segmentCount = Math.Max(1, (int)MathF.Ceiling(distance / Math.Max(18f, frameWidth * 0.75f)));
+            bool shouldFlip = chainEffect.FacingRight ^ frame.Flip;
+
+            for (int i = 0; i <= segmentCount; i++)
+            {
+                float progress = segmentCount == 0 ? 0f : i / (float)segmentCount;
+                Vector2 point = Vector2.Lerp(chainEffect.Source, chainEffect.Target, progress);
+                int screenX = (int)MathF.Round(point.X) - mapShiftX + centerX;
+                int screenY = (int)MathF.Round(point.Y) - mapShiftY + centerY;
+                frame.Texture.DrawBackground(
+                    spriteBatch,
+                    null,
+                    null,
+                    GetFrameDrawX(screenX, frame, shouldFlip),
+                    screenY - frame.Origin.Y,
+                    Color.White,
+                    shouldFlip,
+                    null);
+            }
         }
 
         private Vector2 ResolveHitEffectDrawPosition(PacketOwnedMobAttackHitEffectDisplay hitEffect)

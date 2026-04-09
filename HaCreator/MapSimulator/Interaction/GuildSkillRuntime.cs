@@ -287,7 +287,7 @@ namespace HaCreator.MapSimulator.Interaction
             return ApplyRenewSelectedSkill(selectedSkill, renewalCost, durationMinutes);
         }
 
-        internal string ResolvePendingPacketRequest(bool approved, string summary = null)
+        internal string ResolvePendingPacketRequest(bool approved, string summary = null, GuildSkillPacketResolution? packetResolution = null)
         {
             if (_pendingRequest == null)
             {
@@ -319,12 +319,14 @@ namespace HaCreator.MapSimulator.Interaction
                     : summary.Trim();
             }
 
-            string result = pendingRequest.Kind switch
-            {
-                GuildSkillPendingRequestKind.Renew => ApplyRenewSelectedSkill(selectedSkill, pendingRequest.Cost, pendingRequest.DurationMinutes),
-                GuildSkillPendingRequestKind.LevelUp => ApplyLevelUpSelectedSkill(selectedSkill, pendingRequest.Cost),
-                _ => $"Unsupported pending guild skill request for {selectedSkill.SkillName}."
-            };
+            string result = packetResolution.HasValue
+                ? ApplyPacketResolution(pendingRequest, selectedSkill, packetResolution.Value)
+                : pendingRequest.Kind switch
+                {
+                    GuildSkillPendingRequestKind.Renew => ApplyRenewSelectedSkill(selectedSkill, pendingRequest.Cost, pendingRequest.DurationMinutes),
+                    GuildSkillPendingRequestKind.LevelUp => ApplyLevelUpSelectedSkill(selectedSkill, pendingRequest.Cost),
+                    _ => $"Unsupported pending guild skill request for {selectedSkill.SkillName}."
+                };
 
             return string.IsNullOrWhiteSpace(summary)
                 ? result
@@ -440,6 +442,108 @@ namespace HaCreator.MapSimulator.Interaction
             SaveCurrentGuildState(_activeGuildStateKey);
             EnsureRecommendation();
             return $"{selectedSkill.SkillName} advanced to Lv. {selectedSkill.CurrentLevel}. Guild fund: {FormatMeso(_guildFundMeso)}.";
+        }
+
+        private string ApplyPacketResolution(
+            GuildSkillPendingRequest pendingRequest,
+            SkillDisplayData selectedSkill,
+            GuildSkillPacketResolution packetResolution)
+        {
+            return pendingRequest.Kind switch
+            {
+                GuildSkillPendingRequestKind.LevelUp => ApplyPacketOwnedLevelUpResolution(pendingRequest, selectedSkill, packetResolution),
+                GuildSkillPendingRequestKind.Renew => ApplyPacketOwnedRenewalResolution(pendingRequest, selectedSkill, packetResolution),
+                _ => $"Unsupported pending guild skill request for {selectedSkill.SkillName}."
+            };
+        }
+
+        private string ApplyPacketOwnedLevelUpResolution(
+            GuildSkillPendingRequest pendingRequest,
+            SkillDisplayData selectedSkill,
+            GuildSkillPacketResolution packetResolution)
+        {
+            int previousLevel = selectedSkill.CurrentLevel;
+            int resolvedLevel = Math.Clamp(packetResolution.ResolvedSkillLevel ?? pendingRequest.TargetLevel, 0, Math.Max(0, selectedSkill.MaxLevel));
+            bool gainedLevel = resolvedLevel > previousLevel;
+
+            selectedSkill.CurrentLevel = resolvedLevel;
+            if (gainedLevel && previousLevel == 0)
+            {
+                _activeGuildSkillExpirations.Remove(selectedSkill.SkillId);
+            }
+
+            if (packetResolution.GuildFundMeso.HasValue)
+            {
+                _guildFundMeso = Math.Max(0, packetResolution.GuildFundMeso.Value);
+            }
+            else if (gainedLevel)
+            {
+                _guildFundMeso = Math.Max(0, _guildFundMeso - pendingRequest.Cost);
+            }
+
+            if (gainedLevel)
+            {
+                int spentPoints = Math.Max(1, resolvedLevel - previousLevel);
+                _availablePoints = Math.Max(0, _availablePoints - spentPoints);
+            }
+
+            SaveCurrentGuildState(_activeGuildStateKey);
+            EnsureRecommendation();
+
+            return gainedLevel
+                ? $"{selectedSkill.SkillName} now matches the packet-owned Lv. {selectedSkill.CurrentLevel} result. Guild fund: {FormatMeso(_guildFundMeso)}."
+                : $"{selectedSkill.SkillName} approval arrived without a visible level change. Guild fund: {FormatMeso(_guildFundMeso)}.";
+        }
+
+        private string ApplyPacketOwnedRenewalResolution(
+            GuildSkillPendingRequest pendingRequest,
+            SkillDisplayData selectedSkill,
+            GuildSkillPacketResolution packetResolution)
+        {
+            int previousRemainingMinutes = GetRemainingDurationMinutes(selectedSkill);
+            int resolvedRemainingMinutes = Math.Max(0, packetResolution.RemainingDurationMinutes ?? 0);
+            bool hasExplicitRemaining = packetResolution.RemainingDurationMinutes.HasValue;
+
+            if (hasExplicitRemaining)
+            {
+                if (resolvedRemainingMinutes > 0)
+                {
+                    _activeGuildSkillExpirations[selectedSkill.SkillId] = DateTimeOffset.UtcNow.AddMinutes(resolvedRemainingMinutes);
+                }
+                else
+                {
+                    _activeGuildSkillExpirations.Remove(selectedSkill.SkillId);
+                }
+            }
+            else
+            {
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                DateTimeOffset baseTime = now;
+                if (_activeGuildSkillExpirations.TryGetValue(selectedSkill.SkillId, out DateTimeOffset expiration) &&
+                    expiration > now)
+                {
+                    baseTime = expiration;
+                }
+
+                DateTimeOffset renewedExpiration = baseTime.AddMinutes(pendingRequest.DurationMinutes);
+                _activeGuildSkillExpirations[selectedSkill.SkillId] = renewedExpiration;
+                resolvedRemainingMinutes = Math.Max(1, (int)Math.Ceiling((renewedExpiration - now).TotalMinutes));
+            }
+
+            if (packetResolution.GuildFundMeso.HasValue)
+            {
+                _guildFundMeso = Math.Max(0, packetResolution.GuildFundMeso.Value);
+            }
+            else if (!hasExplicitRemaining || resolvedRemainingMinutes > previousRemainingMinutes)
+            {
+                _guildFundMeso = Math.Max(0, _guildFundMeso - pendingRequest.Cost);
+            }
+
+            SaveCurrentGuildState(_activeGuildStateKey);
+
+            return resolvedRemainingMinutes > 0
+                ? $"{selectedSkill.SkillName} now mirrors the packet-owned renewal window with {FormatDuration(resolvedRemainingMinutes)} remaining. Guild fund: {FormatMeso(_guildFundMeso)}."
+                : $"{selectedSkill.SkillName} approval arrived without an active renewal timer. Guild fund: {FormatMeso(_guildFundMeso)}.";
         }
 
         private SkillDisplayData GetSelectedSkill()
@@ -1016,4 +1120,9 @@ namespace HaCreator.MapSimulator.Interaction
         public bool CanLevelUp { get; init; }
         public bool CanRenew { get; init; }
     }
+
+    internal readonly record struct GuildSkillPacketResolution(
+        int? ResolvedSkillLevel,
+        int? RemainingDurationMinutes,
+        int? GuildFundMeso);
 }

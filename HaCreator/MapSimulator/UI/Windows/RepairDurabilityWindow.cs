@@ -122,6 +122,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ScrollBarThumbWidth = 8;
         private const int ScrollBarThumbMinHeight = 18;
         private const int HoverIconHitWidth = 46;
+        private const int HoverTooltipCursorGap = 20;
         private const float TextScale = 0.68f;
         private const float SecondaryTextScale = 0.58f;
         private const int TooltipPadding = 10;
@@ -698,13 +699,12 @@ namespace HaCreator.MapSimulator.UI
             int tooltipHeight = (int)Math.Ceiling((TooltipPadding * 2) + titleHeight + TooltipSectionGap + topBlockHeight);
 
             Point tooltipAnchor = new(_lastMousePosition.X, _lastMousePosition.Y + 20);
-            Rectangle backgroundRect = ResolveTooltipRect(
+            Rectangle backgroundRect = ResolveHoverTooltipRect(
                 tooltipAnchor,
                 tooltipWidth,
                 tooltipHeight,
                 viewportWidth,
                 viewportHeight,
-                stackalloc int[] { 1, 0, 2 },
                 out int tooltipFrameIndex);
             DrawTooltipBackground(sprite, backgroundRect, tooltipFrameIndex);
 
@@ -814,13 +814,12 @@ namespace HaCreator.MapSimulator.UI
             int viewportWidth = sprite.GraphicsDevice.Viewport.Width;
             int viewportHeight = sprite.GraphicsDevice.Viewport.Height;
             Point tooltipAnchor = new(_lastMousePosition.X, _lastMousePosition.Y + 20);
-            Rectangle backgroundRect = ResolveTooltipRect(
+            Rectangle backgroundRect = ResolveHoverTooltipRect(
                 tooltipAnchor,
                 tooltipWidth,
                 tooltipHeight,
                 viewportWidth,
                 viewportHeight,
-                stackalloc int[] { 1, 0, 2 },
                 out int tooltipFrameIndex);
             DrawTooltipBackground(sprite, backgroundRect, tooltipFrameIndex);
 
@@ -1764,6 +1763,62 @@ namespace HaCreator.MapSimulator.UI
                 Math.Clamp(rect.Y, minY, maxY),
                 rect.Width,
                 rect.Height);
+        }
+
+        internal static Rectangle ResolveHoverTooltipRect(
+            Point anchorPoint,
+            int tooltipWidth,
+            int tooltipHeight,
+            int renderWidth,
+            int renderHeight,
+            out int tooltipFrameIndex)
+        {
+            Rectangle[] candidates =
+            {
+                new Rectangle(anchorPoint.X, anchorPoint.Y, tooltipWidth, tooltipHeight),
+                new Rectangle(anchorPoint.X - tooltipWidth, anchorPoint.Y, tooltipWidth, tooltipHeight),
+                new Rectangle(anchorPoint.X, anchorPoint.Y - tooltipHeight - HoverTooltipCursorGap, tooltipWidth, tooltipHeight),
+                new Rectangle(anchorPoint.X - tooltipWidth, anchorPoint.Y - tooltipHeight - HoverTooltipCursorGap, tooltipWidth, tooltipHeight)
+            };
+
+            Rectangle bestRect = candidates[0];
+            int bestFrame = ResolveHoverTooltipFrameIndex(anchorPoint, bestRect);
+            int bestOverflow = int.MaxValue;
+
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                Rectangle candidate = candidates[i];
+                int overflow = ComputeTooltipOverflow(candidate, renderWidth, renderHeight);
+                int frameIndex = ResolveHoverTooltipFrameIndex(anchorPoint, candidate);
+                if (overflow == 0)
+                {
+                    tooltipFrameIndex = frameIndex;
+                    return candidate;
+                }
+
+                if (overflow < bestOverflow)
+                {
+                    bestOverflow = overflow;
+                    bestRect = candidate;
+                    bestFrame = frameIndex;
+                }
+            }
+
+            tooltipFrameIndex = bestFrame;
+            return ClampTooltipRect(bestRect, renderWidth, renderHeight);
+        }
+
+        private static int ResolveHoverTooltipFrameIndex(Point anchorPoint, Rectangle rect)
+        {
+            bool drawsLeftOfAnchor = rect.X < anchorPoint.X;
+            bool drawsBelowAnchor = rect.Y >= anchorPoint.Y;
+
+            if (drawsLeftOfAnchor)
+            {
+                return drawsBelowAnchor ? 2 : 0;
+            }
+
+            return 1;
         }
 
         private Rectangle ResolveTooltipRect(

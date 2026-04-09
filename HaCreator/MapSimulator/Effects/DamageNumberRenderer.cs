@@ -14,6 +14,12 @@ namespace HaCreator.MapSimulator.Effects
     /// </summary>
     public static class DamageNumberConstants
     {
+        /// <summary>Temporary canvas height used by CAnimationDisplayer::Effect_HP.</summary>
+        public const int COMPOSITE_CANVAS_HEIGHT_PX = 57;
+
+        /// <summary>Top offset applied when registering the damage-number layer.</summary>
+        public const int COMPOSITE_PLACEMENT_OFFSET_Y = 47;
+
         /// <summary>Phase 1: Display duration (stationary, full alpha) in ms</summary>
         public const int DISPLAY_DURATION_MS = 400;
 
@@ -74,6 +80,12 @@ namespace HaCreator.MapSimulator.Effects
 
         /// <summary>Elapsed time in ms</summary>
         public float ElapsedMs { get; set; }
+
+        /// <summary>
+        /// Client-shaped visual payload prepared once when the number is spawned.
+        /// Mirrors Effect_HP building a temporary canvas before scheduling animation.
+        /// </summary>
+        internal DamageNumberRenderer.PreparedDamageNumberVisual PreparedVisual { get; set; }
 
         /// <summary>
         /// Current alpha value (0.0 to 1.0)
@@ -153,6 +165,16 @@ namespace HaCreator.MapSimulator.Effects
         #endregion
 
         internal readonly record struct DigitLayoutEntry(int Digit, bool UseLargeDigitSet, int RelativeX);
+        internal readonly record struct PreparedDigitDrawInfo(int Digit, bool UseLargeDigitSet, int DrawOffsetX, int DrawOffsetY);
+        internal readonly record struct PreparedSpriteDrawInfo(string SpriteName, int DrawOffsetX, int DrawOffsetY);
+        internal readonly record struct CompositeCanvasPlacement(int Left, int Top, int Width, int Height);
+        internal sealed record PreparedDamageNumberVisual(
+            string DamageString,
+            int CanvasWidth,
+            int CanvasHeight,
+            PreparedDigitDrawInfo[] Digits,
+            PreparedSpriteDrawInfo? MissSprite,
+            PreparedSpriteDrawInfo? CriticalBannerSprite);
 
         #region State
         private readonly List<WzDamageNumber> _activeNumbers = new List<WzDamageNumber>();
@@ -230,6 +252,12 @@ namespace HaCreator.MapSimulator.Effects
             dmgNumber.Size = useCriticalPresentation ? DamageNumberSize.Large : DamageNumberSize.Small;
             dmgNumber.ComboIndex = comboIndex;
             dmgNumber.ElapsedMs = 0f; // Reset for pooled objects
+            dmgNumber.PreparedVisual = null;
+
+            if (HasWzSprites)
+            {
+                dmgNumber.PreparedVisual = PrepareVisual(dmgNumber);
+            }
 
             _activeNumbers.Add(dmgNumber);
         }
@@ -339,57 +367,73 @@ namespace HaCreator.MapSimulator.Effects
             if (largeDigitSet == null || smallDigitSet == null)
                 return;
 
-            string damageString = dmgNumber.IsMiss ? "Miss" : FormatDamageValue(dmgNumber.Damage);
+            PreparedDamageNumberVisual visual = dmgNumber.PreparedVisual ?? PrepareVisual(dmgNumber);
+            dmgNumber.PreparedVisual = visual;
             float alpha = dmgNumber.Alpha;
             Color color = Color.White * alpha;
 
-            // Handle miss text
-            if (dmgNumber.IsMiss)
+            CompositeCanvasPlacement placement = ResolveCompositeCanvasPlacement(
+                screenX,
+                screenY,
+                visual.CanvasWidth);
+
+            if (visual.MissSprite is PreparedSpriteDrawInfo missSprite
+                && smallDigitSet.SpecialTextures.TryGetValue(missSprite.SpriteName, out var missTexture))
             {
-                if (smallDigitSet.SpecialTextures.TryGetValue("Miss", out var missTexture))
-                {
-                    Point origin = smallDigitSet.SpecialOrigins.TryGetValue("Miss", out var o) ? o : Point.Zero;
-                    int drawX = screenX - origin.X;
-                    int drawY = screenY - origin.Y;
-                    spriteBatch.Draw(missTexture, new Vector2(drawX, drawY), color);
-                }
+                spriteBatch.Draw(
+                    missTexture,
+                    new Vector2(placement.Left + missSprite.DrawOffsetX, placement.Top + missSprite.DrawOffsetY),
+                    color);
                 return;
             }
 
-            // Draw critical effect behind digits
-            if (dmgNumber.ShouldShowCriticalEffect && largeDigitSet.CriticalEffectTexture != null)
+            if (dmgNumber.ShouldShowCriticalEffect
+                && visual.CriticalBannerSprite is PreparedSpriteDrawInfo criticalSprite
+                && largeDigitSet.CriticalEffectTexture != null)
             {
-                int effectX = screenX - largeDigitSet.CriticalEffectOrigin.X;
-                int effectY = screenY + DamageNumberConstants.CRITICAL_EFFECT_OFFSET_Y - largeDigitSet.CriticalEffectOrigin.Y;
-                spriteBatch.Draw(largeDigitSet.CriticalEffectTexture, new Vector2(effectX, effectY), color);
+                spriteBatch.Draw(
+                    largeDigitSet.CriticalEffectTexture,
+                    new Vector2(placement.Left + criticalSprite.DrawOffsetX, placement.Top + criticalSprite.DrawOffsetY),
+                    color);
             }
 
-            (DigitLayoutEntry[] layoutEntries, int totalWidth) = BuildDigitLayout(
-                damageString,
-                largeDigitSet,
-                smallDigitSet,
-                dmgNumber.IsCritical);
-
-            // Center the number: startX = screenX - totalWidth / 2
-            // Binary: idx = lCenterLeft - lWidth / 2; (line 627)
-            int startX = screenX - totalWidth / 2;
-
-            foreach (DigitLayoutEntry entry in layoutEntries)
+            foreach (PreparedDigitDrawInfo entry in visual.Digits)
             {
                 DamageNumberDigitSet digitSet = entry.UseLargeDigitSet ? largeDigitSet : smallDigitSet;
                 Texture2D digitTexture = digitSet.Digits[entry.Digit];
                 if (digitTexture == null)
                     continue;
 
-                Point origin = digitSet.Origins[entry.Digit];
-
-                // The X position from lEffX is relative to the canvas origin
-                // Binary draws at: lEffX[idx] - origin.x (line 598)
-                int drawX = startX + entry.RelativeX - origin.X;
-                int drawY = screenY - origin.Y;
-
-                spriteBatch.Draw(digitTexture, new Vector2(drawX, drawY), color);
+                spriteBatch.Draw(
+                    digitTexture,
+                    new Vector2(placement.Left + entry.DrawOffsetX, placement.Top + entry.DrawOffsetY),
+                    color);
             }
+        }
+
+        private static PreparedDamageNumberVisual PrepareVisual(WzDamageNumber dmgNumber)
+        {
+            DamageNumberDigitSet largeDigitSet = ResolveLargeDigitSet(dmgNumber.ColorType, dmgNumber.IsCritical);
+            DamageNumberDigitSet smallDigitSet = ResolveSmallDigitSet(dmgNumber.ColorType, dmgNumber.IsCritical);
+
+            if (largeDigitSet == null || smallDigitSet == null)
+            {
+                return new PreparedDamageNumberVisual(
+                    dmgNumber.GetDamageString(),
+                    0,
+                    DamageNumberConstants.COMPOSITE_CANVAS_HEIGHT_PX,
+                    Array.Empty<PreparedDigitDrawInfo>(),
+                    null,
+                    null);
+            }
+
+            return PrepareVisual(
+                dmgNumber.Damage,
+                dmgNumber.ColorType,
+                dmgNumber.IsCritical,
+                dmgNumber.IsMiss,
+                largeDigitSet,
+                smallDigitSet);
         }
 
         internal static bool UsesCriticalPresentation(DamageColorType colorType, bool isCritical)
@@ -448,6 +492,93 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             return (entries.ToArray(), accumulatedX);
+        }
+
+        internal static PreparedDamageNumberVisual PrepareVisual(
+            int damage,
+            DamageColorType colorType,
+            bool isCritical,
+            bool isMiss,
+            DamageNumberDigitSet largeDigitSet,
+            DamageNumberDigitSet smallDigitSet)
+        {
+            string damageString = isMiss ? "Miss" : FormatDamageValue(damage);
+
+            if (isMiss)
+            {
+                PreparedSpriteDrawInfo? missSprite = null;
+
+                if (smallDigitSet.SpecialOrigins.TryGetValue("Miss", out Point missOrigin))
+                {
+                    missSprite = new PreparedSpriteDrawInfo("Miss", -missOrigin.X, -missOrigin.Y);
+                }
+
+                return new PreparedDamageNumberVisual(
+                    damageString,
+                    0,
+                    DamageNumberConstants.COMPOSITE_CANVAS_HEIGHT_PX,
+                    Array.Empty<PreparedDigitDrawInfo>(),
+                    missSprite,
+                    null);
+            }
+
+            (DigitLayoutEntry[] layoutEntries, int totalWidth) = BuildDigitLayout(
+                damageString,
+                largeDigitSet,
+                smallDigitSet,
+                isCritical);
+
+            int baselineY = DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y;
+            PreparedDigitDrawInfo[] digits = new PreparedDigitDrawInfo[layoutEntries.Length];
+
+            for (int i = 0; i < layoutEntries.Length; i++)
+            {
+                DigitLayoutEntry entry = layoutEntries[i];
+                DamageNumberDigitSet digitSet = entry.UseLargeDigitSet ? largeDigitSet : smallDigitSet;
+                Point origin = digitSet.Origins[entry.Digit];
+                digits[i] = new PreparedDigitDrawInfo(
+                    entry.Digit,
+                    entry.UseLargeDigitSet,
+                    entry.RelativeX - origin.X,
+                    baselineY - origin.Y);
+            }
+
+            PreparedSpriteDrawInfo? criticalBanner = null;
+            if (UsesCriticalPresentation(colorType, isCritical)
+                && (largeDigitSet.CriticalEffectTexture != null || largeDigitSet.CriticalEffectOrigin != Point.Zero))
+            {
+                criticalBanner = new PreparedSpriteDrawInfo(
+                    "effect",
+                    -(largeDigitSet.CriticalEffectOrigin.X - totalWidth / 2),
+                    DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y
+                    + DamageNumberConstants.CRITICAL_EFFECT_OFFSET_Y
+                    - largeDigitSet.CriticalEffectOrigin.Y);
+            }
+
+            return new PreparedDamageNumberVisual(
+                damageString,
+                Math.Max(0, totalWidth),
+                ResolveCompositeCanvasHeight(),
+                digits,
+                null,
+                criticalBanner);
+        }
+
+        internal static int ResolveCompositeCanvasHeight()
+        {
+            return DamageNumberConstants.COMPOSITE_CANVAS_HEIGHT_PX;
+        }
+
+        internal static CompositeCanvasPlacement ResolveCompositeCanvasPlacement(
+            int centerX,
+            int centerTop,
+            int totalWidth)
+        {
+            int width = Math.Max(0, totalWidth);
+            int height = ResolveCompositeCanvasHeight();
+            int left = centerX - width / 2;
+            int top = centerTop - DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y;
+            return new CompositeCanvasPlacement(left, top, width, height);
         }
 
         private static DamageNumberDigitSet ResolveAnyLoadedDigitSet(string primarySetName, string fallbackSetName)

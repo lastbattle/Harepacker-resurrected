@@ -115,6 +115,35 @@ namespace HaCreator.MapSimulator.UI
                 resolvedHeight);
         }
 
+        public static Rectangle ResolveWhisperPickerModalComboBounds(
+            Rectangle modalBounds,
+            int contentY,
+            int comboHeight,
+            int dividerWidth)
+        {
+            Rectangle comboBounds = ResolveWhisperPickerModalComboBounds(modalBounds, comboHeight);
+            if (dividerWidth > 0)
+            {
+                int centeredLeft = modalBounds.X + Math.Max(0, (modalBounds.Width - dividerWidth) / 2);
+                comboBounds = new Rectangle(
+                    Math.Max(comboBounds.X, centeredLeft),
+                    comboBounds.Y,
+                    comboBounds.Width,
+                    comboBounds.Height);
+            }
+
+            if (contentY > 0)
+            {
+                comboBounds = new Rectangle(
+                    comboBounds.X,
+                    Math.Max(contentY, comboBounds.Y),
+                    comboBounds.Width,
+                    comboBounds.Height);
+            }
+
+            return comboBounds;
+        }
+
         public static Rectangle ResolveWhisperPickerModalListBounds(
             Rectangle modalBounds,
             Rectangle comboBounds,
@@ -150,18 +179,11 @@ namespace HaCreator.MapSimulator.UI
             float maxMeasuredTextWidth,
             int dividerWidth)
         {
-            int comboHeight = Math.Max(18, Math.Max(1, rowHeight));
-            Rectangle comboBounds = ResolveWhisperPickerModalComboBounds(modalBounds, comboHeight);
-
-            if (dividerWidth > 0)
-            {
-                int centeredLeft = modalBounds.X + Math.Max(0, (modalBounds.Width - dividerWidth) / 2);
-                comboBounds = new Rectangle(
-                    Math.Max(comboBounds.X, centeredLeft),
-                    Math.Max(contentY, comboBounds.Y),
-                    comboBounds.Width,
-                    comboBounds.Height);
-            }
+            Rectangle comboBounds = ResolveWhisperPickerModalComboBounds(
+                modalBounds,
+                contentY,
+                Math.Max(18, Math.Max(1, rowHeight)),
+                dividerWidth);
 
             return ResolveWhisperPickerModalListBounds(
                 modalBounds,
@@ -170,6 +192,20 @@ namespace HaCreator.MapSimulator.UI
                 visibleRowCount,
                 minimumRowWidth,
                 maxMeasuredTextWidth);
+        }
+
+        public static Rectangle ResolveWhisperPickerModalVisibleRowBounds(
+            Rectangle listBounds,
+            int rowHeight,
+            int visibleRowIndex)
+        {
+            int safeRowHeight = Math.Max(1, rowHeight);
+            int safeRowIndex = Math.Max(0, visibleRowIndex);
+            return new Rectangle(
+                listBounds.X,
+                listBounds.Y + (safeRowIndex * safeRowHeight),
+                listBounds.Width,
+                safeRowHeight);
         }
 
         private static int ResolveLongestFittingPrefixLength(

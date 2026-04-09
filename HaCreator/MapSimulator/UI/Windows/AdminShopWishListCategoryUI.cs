@@ -272,6 +272,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (WasPressed(keyboardState, Keys.Space))
+            {
+                HideForOwner("ToggleAddOn closed the wish-list category add-on.");
+                return;
+            }
+
             if (WasPressed(keyboardState, Keys.Up))
             {
                 MoveCategorySelection(-1);

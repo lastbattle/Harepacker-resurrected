@@ -2,6 +2,12 @@ namespace HaCreator.MapSimulator.Interaction
 {
     using System.Collections.Generic;
 
+    internal enum PacketQuestResultNoticeDispatchStage
+    {
+        Immediate = 0,
+        AfterDialog = 1
+    }
+
     internal static class PacketQuestResultClientSemantics
     {
         internal const int FirstHandledSubtype = 6;
@@ -10,6 +16,13 @@ namespace HaCreator.MapSimulator.Interaction
         internal static bool IsHandledSubtype(int resultType)
         {
             return resultType >= FirstHandledSubtype && resultType <= LastHandledSubtype;
+        }
+
+        internal static PacketQuestResultNoticeDispatchStage ResolveSubtype10NoticeDispatchStage(bool openedModal)
+        {
+            return openedModal
+                ? PacketQuestResultNoticeDispatchStage.AfterDialog
+                : PacketQuestResultNoticeDispatchStage.Immediate;
         }
 
         internal static IReadOnlyList<int> GetNewlyAvailableQuestIds(

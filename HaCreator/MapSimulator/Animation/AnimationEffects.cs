@@ -27,6 +27,11 @@ namespace HaCreator.MapSimulator.Animation
             public float Radius { get; init; }
             public bool RandomizeStartupAngle { get; init; }
             public int UpdateIntervalMs { get; init; }
+            public IReadOnlyList<List<IDXObject>> SpawnFrameVariants { get; init; }
+            public bool SpawnRelativeToTarget { get; init; } = true;
+            public int SpawnDurationMs { get; init; }
+            public float SpawnTravelDistanceMin { get; init; }
+            public float SpawnTravelDistanceMax { get; init; }
         }
 
         private readonly List<OneTimeAnimation> _oneTimeAnimations = new();
@@ -34,6 +39,7 @@ namespace HaCreator.MapSimulator.Animation
         private readonly List<ChainLightning> _chainLightnings = new();
         private readonly List<FallingAnimation> _fallingAnimations = new();
         private readonly List<FollowAnimation> _followAnimations = new();
+        private readonly List<FollowParticleAnimation> _followParticleAnimations = new();
         private readonly List<AreaAnimationRegistration> _areaAnimations = new();
         private readonly List<UserStateAnimation> _userStateAnimations = new();
 
@@ -248,7 +254,9 @@ namespace HaCreator.MapSimulator.Animation
             int currentTimeMs,
             FollowAnimationOptions options)
         {
-            if (frames == null || frames.Count == 0) return -1;
+            bool hasFollowFrames = HasFrames(frames);
+            bool hasSpawnVariants = HasFrameVariants(options?.SpawnFrameVariants);
+            if (!hasFollowFrames && !hasSpawnVariants) return -1;
 
             FollowAnimation anim = new FollowAnimation();
             anim.Initialize(frames, getTargetPosition, offsetX, offsetY, durationMs, currentTimeMs, options, _random);
@@ -266,6 +274,7 @@ namespace HaCreator.MapSimulator.Animation
                 if (_followAnimations[i].Id == id)
                 {
                     _followAnimations.RemoveAt(i);
+                    RemoveFollowParticles(id);
                     return true;
                 }
             }
@@ -466,9 +475,18 @@ namespace HaCreator.MapSimulator.Animation
             // Update follow animations
             for (int i = _followAnimations.Count - 1; i >= 0; i--)
             {
-                if (!_followAnimations[i].Update(currentTimeMs))
+                if (!_followAnimations[i].Update(this, currentTimeMs, _random))
                 {
+                    RemoveFollowParticles(_followAnimations[i].Id);
                     _followAnimations.RemoveAt(i);
+                }
+            }
+
+            for (int i = _followParticleAnimations.Count - 1; i >= 0; i--)
+            {
+                if (!_followParticleAnimations[i].Update(currentTimeMs))
+                {
+                    _followParticleAnimations.RemoveAt(i);
                 }
             }
 
@@ -536,6 +554,11 @@ namespace HaCreator.MapSimulator.Animation
                 anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY);
             }
 
+            foreach (var anim in _followParticleAnimations)
+            {
+                anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY, currentTimeMs);
+            }
+
             foreach (var anim in _userStateAnimations)
             {
                 anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY);
@@ -574,6 +597,24 @@ namespace HaCreator.MapSimulator.Animation
             return frames != null && frames.Count > 0;
         }
 
+        internal static bool HasFrameVariants(IReadOnlyList<List<IDXObject>> frameVariants)
+        {
+            if (frameVariants == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < frameVariants.Count; i++)
+            {
+                if (HasFrames(frameVariants[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         public void ClearUserStates()
         {
             _userStateAnimations.Clear();
@@ -582,6 +623,51 @@ namespace HaCreator.MapSimulator.Animation
         public void ClearAreaAnimations()
         {
             _areaAnimations.Clear();
+        }
+
+        private void RemoveFollowParticles(int followRegistrationId)
+        {
+            for (int i = _followParticleAnimations.Count - 1; i >= 0; i--)
+            {
+                if (_followParticleAnimations[i].FollowRegistrationId == followRegistrationId)
+                {
+                    _followParticleAnimations.RemoveAt(i);
+                }
+            }
+        }
+
+        internal void AddFollowParticle(
+            int followRegistrationId,
+            List<IDXObject> frames,
+            Func<Vector2> getTargetPosition,
+            Vector2 capturedTargetPosition,
+            bool relativeToTarget,
+            float offsetX,
+            float offsetY,
+            Vector2 startOffset,
+            Vector2 endOffset,
+            int durationMs,
+            int currentTimeMs)
+        {
+            if (!HasFrames(frames) || getTargetPosition == null)
+            {
+                return;
+            }
+
+            var particle = new FollowParticleAnimation();
+            particle.Initialize(
+                followRegistrationId,
+                frames,
+                getTargetPosition,
+                capturedTargetPosition,
+                relativeToTarget,
+                offsetX,
+                offsetY,
+                startOffset,
+                endOffset,
+                durationMs,
+                currentTimeMs);
+            _followParticleAnimations.Add(particle);
         }
 
         internal static Vector2 ResolveFollowGenerationPointOffset(
@@ -618,6 +704,69 @@ namespace HaCreator.MapSimulator.Animation
         {
             int normalized = angleDegrees % 360;
             return normalized < 0 ? normalized + 360 : normalized;
+        }
+
+        internal static int ResolveFollowSpawnDurationMs(IReadOnlyList<IDXObject> frames, int explicitDurationMs)
+        {
+            if (explicitDurationMs > 0)
+            {
+                return explicitDurationMs;
+            }
+
+            if (frames == null || frames.Count == 0)
+            {
+                return 0;
+            }
+
+            int totalDurationMs = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                totalDurationMs += Math.Max(1, frames[i]?.Delay ?? 0);
+            }
+
+            return Math.Max(1, totalDurationMs);
+        }
+
+        internal static int ResolveFollowParticleAngleDegrees(Vector2 emissionOffset, int fallbackAngleDegrees)
+        {
+            if (emissionOffset.LengthSquared() <= float.Epsilon)
+            {
+                return NormalizeFollowAngleDegrees(fallbackAngleDegrees);
+            }
+
+            int angleDegrees = (int)Math.Round(MathHelper.ToDegrees((float)Math.Atan2(emissionOffset.Y, emissionOffset.X)));
+            return NormalizeFollowAngleDegrees(angleDegrees);
+        }
+
+        internal static float ResolveFollowParticleTravelDistance(float minDistance, float maxDistance, Random random)
+        {
+            float resolvedMin = Math.Max(0f, Math.Min(minDistance, maxDistance));
+            float resolvedMax = Math.Max(resolvedMin, Math.Max(minDistance, maxDistance));
+            if (resolvedMax <= resolvedMin + float.Epsilon)
+            {
+                return resolvedMin;
+            }
+
+            float t = (float)(random?.NextDouble() ?? 0d);
+            return MathHelper.Lerp(resolvedMin, resolvedMax, t);
+        }
+
+        internal static Vector2 ResolveFollowParticleEndOffset(Vector2 emissionOffset, int angleDegrees, float travelDistance)
+        {
+            if (travelDistance <= 0f)
+            {
+                return emissionOffset;
+            }
+
+            return emissionOffset + ResolvePolarFollowOffset(travelDistance, angleDegrees);
+        }
+
+        internal static Vector2 ResolveFollowSpawnAnchorPosition(
+            Vector2 targetPosition,
+            Vector2 capturedTargetPosition,
+            bool relativeToTarget)
+        {
+            return relativeToTarget ? targetPosition : capturedTargetPosition;
         }
 
         public int UserStateCount => _userStateAnimations.Count;
@@ -986,6 +1135,12 @@ namespace HaCreator.MapSimulator.Animation
         private int _updateIntervalMs;
         private float _radius;
         private Vector2 _followOffset;
+        private IReadOnlyList<List<IDXObject>> _spawnFrameVariants;
+        private bool _spawnRelativeToTarget;
+        private int _spawnDurationMs;
+        private int _nextSpawnTime;
+        private float _spawnTravelDistanceMin;
+        private float _spawnTravelDistanceMax;
 
         public int Id { get; private set; }
 
@@ -1007,6 +1162,11 @@ namespace HaCreator.MapSimulator.Animation
             _thetaDegrees = options?.ThetaDegrees ?? 0;
             _updateIntervalMs = Math.Max(1, options?.UpdateIntervalMs ?? 100);
             _radius = Math.Max(0f, options?.Radius ?? 0f);
+            _spawnFrameVariants = options?.SpawnFrameVariants;
+            _spawnRelativeToTarget = options?.SpawnRelativeToTarget ?? true;
+            _spawnDurationMs = Math.Max(0, options?.SpawnDurationMs ?? 0);
+            _spawnTravelDistanceMin = Math.Max(0f, options?.SpawnTravelDistanceMin ?? 0f);
+            _spawnTravelDistanceMax = Math.Max(_spawnTravelDistanceMin, options?.SpawnTravelDistanceMax ?? _spawnTravelDistanceMin);
             _currentAngleDegrees = options?.RandomizeStartupAngle == true
                 ? random?.Next(0, 360) ?? 0
                 : 0;
@@ -1017,23 +1177,27 @@ namespace HaCreator.MapSimulator.Animation
                 _currentAngleDegrees,
                 out _currentGenerationPointIndex,
                 out _currentAngleDegrees);
+            _nextSpawnTime = currentTimeMs;
         }
 
-        public bool Update(int currentTimeMs)
+        public bool Update(AnimationEffects effects, int currentTimeMs, Random random)
         {
             // Check duration
             if (_duration > 0 && currentTimeMs - _startTime > _duration)
                 return false;
 
             // Update animation frame
-            IDXObject frame = _frames[_currentFrame];
-            if (currentTimeMs - _lastFrameTime > frame.Delay)
+            if (AnimationEffects.HasFrames(_frames))
             {
-                _currentFrame = (_currentFrame + 1) % _frames.Count;
-                _lastFrameTime = currentTimeMs;
+                IDXObject frame = _frames[_currentFrame];
+                if (currentTimeMs - _lastFrameTime > frame.Delay)
+                {
+                    _currentFrame = (_currentFrame + 1) % _frames.Count;
+                    _lastFrameTime = currentTimeMs;
+                }
             }
 
-            if (currentTimeMs - _lastFollowUpdateTime >= _updateIntervalMs)
+            while (_nextSpawnTime <= currentTimeMs)
             {
                 _followOffset = AnimationEffects.ResolveFollowGenerationPointOffset(
                     _generationPoints,
@@ -1047,7 +1211,43 @@ namespace HaCreator.MapSimulator.Animation
                     _currentAngleDegrees = AnimationEffects.NormalizeFollowAngleDegrees(_currentAngleDegrees + _thetaDegrees);
                 }
 
-                _lastFollowUpdateTime = currentTimeMs;
+                if (effects != null && AnimationEffects.HasFrameVariants(_spawnFrameVariants))
+                {
+                    int variantIndex = random?.Next(0, _spawnFrameVariants.Count) ?? 0;
+                    List<IDXObject> variantFrames = _spawnFrameVariants[variantIndex];
+                    if (AnimationEffects.HasFrames(variantFrames))
+                    {
+                        Vector2 targetPosition = _getTargetPosition();
+                        int resolvedDurationMs = AnimationEffects.ResolveFollowSpawnDurationMs(variantFrames, _spawnDurationMs);
+                        if (resolvedDurationMs > 0)
+                        {
+                            int particleAngleDegrees = AnimationEffects.ResolveFollowParticleAngleDegrees(_followOffset, _currentAngleDegrees);
+                            float particleTravelDistance = AnimationEffects.ResolveFollowParticleTravelDistance(
+                                _spawnTravelDistanceMin,
+                                _spawnTravelDistanceMax,
+                                random);
+                            Vector2 particleEndOffset = AnimationEffects.ResolveFollowParticleEndOffset(
+                                _followOffset,
+                                particleAngleDegrees,
+                                particleTravelDistance);
+                            effects.AddFollowParticle(
+                                Id,
+                                variantFrames,
+                                _getTargetPosition,
+                                targetPosition,
+                                _spawnRelativeToTarget,
+                                _offsetX,
+                                _offsetY,
+                                startOffset: _followOffset,
+                                endOffset: particleEndOffset,
+                                resolvedDurationMs,
+                                _nextSpawnTime);
+                        }
+                    }
+                }
+
+                _lastFollowUpdateTime = _nextSpawnTime;
+                _nextSpawnTime += _updateIntervalMs;
             }
 
             return true;
@@ -1055,6 +1255,11 @@ namespace HaCreator.MapSimulator.Animation
 
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
         {
+            if (!AnimationEffects.HasFrames(_frames))
+            {
+                return;
+            }
+
             Vector2 targetPos = _getTargetPosition();
             IDXObject frame = _frames[_currentFrame];
 
@@ -1064,6 +1269,97 @@ namespace HaCreator.MapSimulator.Animation
             int drawShiftX = -(int)drawX - mapShiftX;
             int drawShiftY = -(int)drawY - mapShiftY;
 
+            frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, false, null);
+        }
+    }
+
+    internal sealed class FollowParticleAnimation
+    {
+        private List<IDXObject> _frames;
+        private Func<Vector2> _getTargetPosition;
+        private Vector2 _capturedTargetPosition;
+        private bool _relativeToTarget;
+        private float _offsetX;
+        private float _offsetY;
+        private Vector2 _startOffset;
+        private Vector2 _endOffset;
+        private int _startTime;
+        private int _duration;
+        private int _currentFrame;
+        private int _lastFrameTime;
+
+        public int FollowRegistrationId { get; private set; }
+
+        public void Initialize(
+            int followRegistrationId,
+            List<IDXObject> frames,
+            Func<Vector2> getTargetPosition,
+            Vector2 capturedTargetPosition,
+            bool relativeToTarget,
+            float offsetX,
+            float offsetY,
+            Vector2 startOffset,
+            Vector2 endOffset,
+            int durationMs,
+            int currentTimeMs)
+        {
+            FollowRegistrationId = followRegistrationId;
+            _frames = frames;
+            _getTargetPosition = getTargetPosition;
+            _capturedTargetPosition = capturedTargetPosition;
+            _relativeToTarget = relativeToTarget;
+            _offsetX = offsetX;
+            _offsetY = offsetY;
+            _startOffset = startOffset;
+            _endOffset = endOffset;
+            _startTime = currentTimeMs;
+            _duration = Math.Max(1, durationMs);
+            _currentFrame = 0;
+            _lastFrameTime = currentTimeMs;
+        }
+
+        public bool Update(int currentTimeMs)
+        {
+            if (_duration > 0 && currentTimeMs - _startTime >= _duration)
+            {
+                return false;
+            }
+
+            if (!AnimationEffects.HasFrames(_frames))
+            {
+                return false;
+            }
+
+            IDXObject frame = _frames[_currentFrame];
+            if (currentTimeMs - _lastFrameTime > frame.Delay)
+            {
+                _currentFrame = (_currentFrame + 1) % _frames.Count;
+                _lastFrameTime = currentTimeMs;
+            }
+
+            return true;
+        }
+
+        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY, int currentTimeMs)
+        {
+            if (!AnimationEffects.HasFrames(_frames))
+            {
+                return;
+            }
+
+            float progress = _duration <= 0
+                ? 1f
+                : MathHelper.Clamp((float)(currentTimeMs - _startTime) / _duration, 0f, 1f);
+            Vector2 anchorPosition = AnimationEffects.ResolveFollowSpawnAnchorPosition(
+                _getTargetPosition(),
+                _capturedTargetPosition,
+                _relativeToTarget);
+            Vector2 animatedOffset = Vector2.Lerp(_startOffset, _endOffset, progress);
+            IDXObject frame = _frames[_currentFrame];
+            float drawX = anchorPosition.X + _offsetX + animatedOffset.X;
+            float drawY = anchorPosition.Y + _offsetY + animatedOffset.Y;
+            int drawShiftX = -(int)drawX - mapShiftX;
+            int drawShiftY = -(int)drawY - mapShiftY;
             frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, false, null);
         }
     }

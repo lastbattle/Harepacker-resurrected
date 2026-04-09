@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Companions;
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.UI.Controls;
@@ -321,6 +322,71 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return new SelectorOverlayFrame(texture, ResolveCanvasOffset(canvas, Point.Zero));
+        }
+
+        private static List<IDXObject> LoadWindowOverlayFrames(WzSubProperty animationProperty, GraphicsDevice device)
+        {
+            var frames = new List<IDXObject>();
+            if (animationProperty == null || device == null)
+            {
+                return frames;
+            }
+
+            for (int i = 0; ; i++)
+            {
+                if (animationProperty[i.ToString(CultureInfo.InvariantCulture)] is not WzCanvasProperty canvas)
+                {
+                    break;
+                }
+
+                Texture2D texture = canvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                Point offset = ResolveCanvasOffset(canvas, Point.Zero);
+                int delay = Math.Max(1, (canvas["delay"] as WzIntProperty)?.Value ?? 100);
+                frames.Add(new DXObject(offset.X, offset.Y, texture, delay));
+            }
+
+            return frames;
+        }
+
+        private static void ConfigureProductionEnhancementAnimationDisplayer(
+            UIWindowManager manager,
+            GraphicsDevice device,
+            WzSubProperty hammerProperty)
+        {
+            ProductionEnhancementAnimationDisplayer animationDisplayer = manager?.ProductionEnhancementAnimationDisplayer;
+            if (animationDisplayer == null || device == null)
+            {
+                return;
+            }
+
+            WzImage basicEffectImage = HaCreator.Program.FindImage("Effect", "BasicEff.img");
+            WzSubProperty itemMakeProperty = basicEffectImage?["ItemMake"] as WzSubProperty;
+            WzSubProperty enchantProperty = basicEffectImage?["Enchant"] as WzSubProperty;
+            WzSubProperty skillBookProperty = basicEffectImage?["SkillBook"] as WzSubProperty;
+
+            animationDisplayer.ConfigureItemMake(
+                LoadWindowOverlayFrames(itemMakeProperty?["Success"] as WzSubProperty, device),
+                LoadWindowOverlayFrames(itemMakeProperty?["Failure"] as WzSubProperty, device));
+            animationDisplayer.ConfigureItemUpgrade(
+                LoadWindowOverlayFrames(enchantProperty?["Success"] as WzSubProperty, device),
+                LoadWindowOverlayFrames(enchantProperty?["Failure"] as WzSubProperty, device));
+            animationDisplayer.ConfigureSkillBook(
+                LoadWindowOverlayFrames(skillBookProperty?["Success"]?["0"] as WzSubProperty, device),
+                LoadWindowOverlayFrames(skillBookProperty?["Success"]?["1"] as WzSubProperty, device),
+                LoadWindowOverlayFrames(skillBookProperty?["Failure"]?["0"] as WzSubProperty, device),
+                LoadWindowOverlayFrames(skillBookProperty?["Failure"]?["1"] as WzSubProperty, device));
+
+            if (hammerProperty != null)
+            {
+                animationDisplayer.ConfigureViciousHammer(
+                    LoadWindowOverlayFrames(hammerProperty["EffectP"] as WzSubProperty, device),
+                    LoadWindowOverlayFrames(hammerProperty["EffectE"] as WzSubProperty, device));
+            }
         }
 
         private static SelectorAnimatedOverlay LoadSelectorAnimatedOverlay(WzImageProperty property, GraphicsDevice device, int fallbackFrameDelayMs = 100)
@@ -1579,6 +1645,40 @@ namespace HaCreator.MapSimulator.Loaders
 
             manager.RegisterCustomWindow(window);
 
+        }
+
+        public static void RegisterInGameConfirmDialogWindow(
+            UIWindowManager manager,
+            WzImage uiWindow2Image,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            int screenWidth,
+            int screenHeight)
+        {
+            if (manager == null || manager.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) != null)
+            {
+                return;
+            }
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            WzImage uiWindowImage = Program.FindImage("UI", "UIWindow.img");
+            WzSubProperty fadeYesNoProperty = uiWindow2Image?["FadeYesNo"] as WzSubProperty
+                                              ?? uiWindowImage?["FadeYesNo"] as WzSubProperty;
+            Texture2D frameTexture = LoadCanvasTexture(fadeYesNoProperty, "backgrnd7", device)
+                                     ?? LoadCanvasTexture(fadeYesNoProperty, "backgrnd", device)
+                                     ?? CreatePlaceholderWindowTexture(device, 206, 70, "Confirm");
+            UIObject confirmButton = LoadButton(fadeYesNoProperty, "BtOK", btClickSound, btOverSound, device);
+            UIObject cancelButton = LoadButton(fadeYesNoProperty, "BtCancel", btClickSound, btOverSound, device);
+
+            InGameConfirmDialogWindow window = new InGameConfirmDialogWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                MapSimulatorWindowNames.InGameConfirmDialog,
+                confirmButton,
+                cancelButton,
+                screenWidth,
+                screenHeight);
+            manager.RegisterCustomWindow(window);
         }
 
 
@@ -2999,6 +3099,12 @@ namespace HaCreator.MapSimulator.Loaders
 
 
             UIWindowBase itemMaker = CreateItemMakerWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, position, manager.InventoryWindow as IInventoryRuntime);
+            if (itemMaker is ItemMakerUI itemMakerWindow)
+            {
+                itemMakerWindow.SetProductionEnhancementAnimationDisplayer(manager.ProductionEnhancementAnimationDisplayer);
+            }
+
+            ConfigureProductionEnhancementAnimationDisplayer(manager, device, hammerProperty: null);
 
             manager.RegisterCustomWindow(itemMaker);
 
@@ -3053,6 +3159,16 @@ namespace HaCreator.MapSimulator.Loaders
                 device,
                 position,
                 manager.InventoryWindow as IInventoryRuntime);
+            if (itemUpgrade is ItemUpgradeUI itemUpgradeWindow)
+            {
+                itemUpgradeWindow.SetProductionEnhancementAnimationDisplayer(manager.ProductionEnhancementAnimationDisplayer);
+            }
+
+            ConfigureProductionEnhancementAnimationDisplayer(
+                manager,
+                device,
+                uiWindow1Image?["ViciousHammer"] as WzSubProperty
+                    ?? uiWindow2Image?["GoldHammer"] as WzSubProperty);
             manager.RegisterCustomWindow(itemUpgrade);
         }
 
@@ -3072,6 +3188,15 @@ namespace HaCreator.MapSimulator.Loaders
 
 
             UIWindowBase vegaSpellWindow = CreateVegaSpellWindow(uiWindow1Image, basicImage, soundUIImage, device, position);
+            if (vegaSpellWindow is VegaSpellUI vegaSpellUi)
+            {
+                vegaSpellUi.SetProductionEnhancementAnimationDisplayer(manager.ProductionEnhancementAnimationDisplayer);
+            }
+
+            ConfigureVegaAnimationDisplayer(
+                manager,
+                uiWindow1Image?["VegaSpell"] as WzSubProperty,
+                device);
 
             manager.RegisterCustomWindow(vegaSpellWindow);
 
@@ -5046,16 +5171,28 @@ namespace HaCreator.MapSimulator.Loaders
                     LoadCanvasTexture(tabDisabledProperty, "1", device),
                     LoadCanvasTexture(tabDisabledProperty, "2", device)
                 },
+                LoadWindowCanvasLayerWithOffset(deliveryProperty, "backgrnd2", device, out Point windowOverlayOffset),
+                windowOverlayOffset,
                 LoadWindowCanvasLayerWithOffset(deliveryProperty?["Keep"] as WzSubProperty, "base", device, out Point receiveBaseOffset),
                 receiveBaseOffset,
+                LoadWindowCanvasLayerWithOffset(deliveryProperty?["Keep"] as WzSubProperty, "base2", device, out Point receiveDetailOffset),
+                receiveDetailOffset,
                 LoadWindowCanvasLayerWithOffset(deliveryProperty?["Keep"] as WzSubProperty, "text", device, out Point receiveTextOffset),
                 receiveTextOffset,
                 LoadWindowCanvasLayerWithOffset(deliveryProperty?["Send"] as WzSubProperty, "base", device, out Point sendBaseOffset),
                 sendBaseOffset,
+                LoadWindowCanvasLayerWithOffset(deliveryProperty?["Send_Info"] as WzSubProperty, "backgrnd2", device, out Point sendInfoOverlayOffset),
+                sendInfoOverlayOffset,
+                LoadWindowCanvasLayerWithOffset(deliveryProperty?["Send_Info"] as WzSubProperty, "backgrnd3", device, out Point sendInfoHeaderOffset),
+                sendInfoHeaderOffset,
                 LoadWindowCanvasLayerWithOffset(deliveryProperty?["Quick"] as WzSubProperty, "base", device, out Point quickBaseOffset),
                 quickBaseOffset,
                 LoadWindowCanvasLayerWithOffset(deliveryProperty?["Quick"] as WzSubProperty, "text", device, out Point quickTextOffset),
                 quickTextOffset,
+                LoadWindowCanvasLayerWithOffset(deliveryProperty?["Quick_Info"] as WzSubProperty, "backgrnd2", device, out Point quickInfoOverlayOffset),
+                quickInfoOverlayOffset,
+                LoadWindowCanvasLayerWithOffset(deliveryProperty?["Quick_Info"] as WzSubProperty, "backgrnd3", device, out Point quickInfoHeaderOffset),
+                quickInfoHeaderOffset,
                 LoadVerticalScrollbarSkin(basicImage?["VScr9"] as WzSubProperty, device))
             {
                 Position = position
@@ -5763,6 +5900,8 @@ namespace HaCreator.MapSimulator.Loaders
                 return null;
             }
 
+            Texture2D guildSkillBaseTexture = LoadCanvasTexture(guildSkillProperty, "base", device);
+            IDXObject guildSkillBaseLayer = LoadWindowCanvasLayerWithOffset(guildSkillProperty, "base", device, out Point headerOffset);
 
             WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
@@ -5770,9 +5909,9 @@ namespace HaCreator.MapSimulator.Loaders
                 new DXObject(0, 0, frameTexture, 0),
                 LoadWindowCanvasLayerWithOffset(guildSkillProperty, "backgrnd2", device, out Point overlayOffset),
                 overlayOffset,
-                LoadWindowCanvasLayerWithOffset(guildSkillProperty, "base", device, out Point headerOffset),
+                guildSkillBaseLayer,
                 headerOffset,
-                frameTexture,
+                guildSkillBaseTexture ?? frameTexture,
                 LoadCanvasTexture(guildSkillProperty, "skill0", device),
                 LoadCanvasTexture(guildSkillProperty, "skill1", device),
                 LoadCanvasTexture(guildSkillProperty?["recommend"] as WzSubProperty, "0", device),
@@ -7346,6 +7485,25 @@ namespace HaCreator.MapSimulator.Loaders
 
         }
 
+        private static void ConfigureVegaAnimationDisplayer(
+            UIWindowManager manager,
+            WzSubProperty vegaSpellProperty,
+            GraphicsDevice device)
+        {
+            ProductionEnhancementAnimationDisplayer animationDisplayer = manager?.ProductionEnhancementAnimationDisplayer;
+            if (animationDisplayer == null || vegaSpellProperty == null || device == null)
+            {
+                return;
+            }
+
+            animationDisplayer.ConfigureVega(
+                LoadWindowOverlayFrames(vegaSpellProperty["EffectTwinkling"] as WzSubProperty, device),
+                LoadWindowOverlayFrames(vegaSpellProperty["EffectSpelling"] as WzSubProperty, device),
+                LoadWindowOverlayFrames(vegaSpellProperty["EffectArrow"] as WzSubProperty, device),
+                LoadWindowOverlayFrames(vegaSpellProperty["EffectSuccess"] as WzSubProperty, device),
+                LoadWindowOverlayFrames(vegaSpellProperty["EffectFail"] as WzSubProperty, device));
+        }
+
 
 
         private static PlaceholderUtilityWindow CreatePlaceholderUtilityWindow(
@@ -7738,8 +7896,9 @@ namespace HaCreator.MapSimulator.Loaders
                     try
                     {
                         closeButton = new UIObject(basicCloseButton, btClickSound, btOverSound, false, Point.Zero, device);
-                        closeButton.X = Math.Max(8, frameTexture.Width - closeButton.CanvasSnapshotWidth - 8);
-                        closeButton.Y = 8;
+                        Point closeButtonPosition = ProgressionUtilityParityRules.ResolveEventAlarmFallbackCloseButtonPosition(frameTexture.Width);
+                        closeButton.X = closeButtonPosition.X;
+                        closeButton.Y = closeButtonPosition.Y;
                     }
                     catch
                     {
@@ -8213,16 +8372,31 @@ namespace HaCreator.MapSimulator.Loaders
             GraphicsDevice device,
             Point position)
         {
-            WzSubProperty sourceProperty = uiWindowImage?["RandomMesoBag"] as WzSubProperty;
+            WzSubProperty sourceProperty = uiWindowImage?["RandomMesoBag"] as WzSubProperty
+                ?? uiWindow2Image?["RandomMesoBag"] as WzSubProperty;
             Dictionary<int, IDXObject> backgrounds = new();
+            Dictionary<int, bool> authoredLayoutByRank = new();
             for (int rank = 1; rank <= 4; rank++)
             {
                 string dialogResourcePath = PacketOwnedRewardResultRuntime.GetRandomMesoBagDialogResourcePath(rank);
-                Texture2D backgroundTexture = LoadCanvasTexture(sourceProperty, $"Back{rank}", device)
-                    ?? LoadTextureFromUiPath(dialogResourcePath, device, uiWindowImage, uiWindow2Image);
+                bool authoredLayout = false;
+
+                Texture2D backgroundTexture = LoadCanvasTexture(sourceProperty, $"Back{rank}", device);
+                if (backgroundTexture != null)
+                {
+                    authoredLayout = true;
+                }
+                else
+                {
+                    backgroundTexture = LoadTextureFromUiPath(dialogResourcePath, device, uiWindowImage, uiWindow2Image);
+                    authoredLayout = backgroundTexture != null
+                        && dialogResourcePath.IndexOf("RandomMesoBag", StringComparison.OrdinalIgnoreCase) >= 0;
+                }
+
                 if (backgroundTexture != null)
                 {
                     backgrounds[rank] = new DXObject(0, 0, backgroundTexture, 0);
+                    authoredLayoutByRank[rank] = authoredLayout;
                 }
             }
 
@@ -8251,7 +8425,7 @@ namespace HaCreator.MapSimulator.Loaders
                     position);
             }
 
-            RandomMesoBagWindow window = new(backgrounds, new Dictionary<int, bool>())
+            RandomMesoBagWindow window = new(backgrounds, authoredLayoutByRank)
             {
                 Position = position
             };
@@ -8930,7 +9104,37 @@ namespace HaCreator.MapSimulator.Loaders
 
             if (inventory.GetItemCount(InventoryType.EQUIP, 1003243) <= 0)
             {
-                inventory.AddItem(InventoryType.EQUIP, 1003243, null, 1); // Maple 8th Anniversary Crimson equip for Maple Miracle Cube req-gated flow
+                inventory.AddItem(InventoryType.EQUIP, 1003243, null, 1); // Maple 8th Anniversary Crimson Cap
+            }
+
+
+            if (inventory.GetItemCount(InventoryType.EQUIP, 1052358) <= 0)
+            {
+                inventory.AddItem(InventoryType.EQUIP, 1052358, null, 1); // Maple 8th Anniversary Crimson Overall
+            }
+
+
+            if (inventory.GetItemCount(InventoryType.EQUIP, 1072522) <= 0)
+            {
+                inventory.AddItem(InventoryType.EQUIP, 1072522, null, 1); // Maple 8th Anniversary Crimson Shoes
+            }
+
+
+            if (inventory.GetItemCount(InventoryType.EQUIP, 1082315) <= 0)
+            {
+                inventory.AddItem(InventoryType.EQUIP, 1082315, null, 1); // Maple 8th Anniversary Crimson Gloves
+            }
+
+
+            if (inventory.GetItemCount(InventoryType.EQUIP, 1102295) <= 0)
+            {
+                inventory.AddItem(InventoryType.EQUIP, 1102295, null, 1); // Maple 8th Anniversary Crimson Cape
+            }
+
+
+            if (inventory.GetItemCount(InventoryType.EQUIP, 1302170) <= 0)
+            {
+                inventory.AddItem(InventoryType.EQUIP, 1302170, null, 1); // Maple 8th Anniversary Crimson Arcglaive
             }
         }
 

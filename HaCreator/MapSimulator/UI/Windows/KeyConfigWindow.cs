@@ -51,16 +51,57 @@ namespace HaCreator.MapSimulator.UI
 
         public readonly struct ClientOwnerState
         {
-            public ClientOwnerState(bool hasClientOwner, int clientFunctionId, Keys clientKey)
+            public ClientOwnerState(
+                bool hasClientOwner,
+                int clientFunctionId,
+                Keys clientKey,
+                byte packetEntryType = 0,
+                int packetEntryId = 0,
+                int packetScanCode = -1)
             {
                 HasClientOwner = hasClientOwner;
                 ClientFunctionId = clientFunctionId;
                 ClientKey = clientKey;
+                PacketEntryType = packetEntryType;
+                PacketEntryId = packetEntryId;
+                PacketScanCode = packetScanCode;
             }
 
             public bool HasClientOwner { get; }
             public int ClientFunctionId { get; }
             public Keys ClientKey { get; }
+            public byte PacketEntryType { get; }
+            public int PacketEntryId { get; }
+            public int PacketScanCode { get; }
+            public bool HasPacketShortcutEntry => PacketEntryType != 0 && PacketEntryId > 0;
+        }
+
+        public readonly struct ShortcutVisualState
+        {
+            public ShortcutVisualState(
+                Texture2D iconTexture,
+                string title,
+                string detail,
+                string badgeText = "",
+                string quantityText = "",
+                bool unavailable = false)
+            {
+                IconTexture = iconTexture;
+                Title = title ?? string.Empty;
+                Detail = detail ?? string.Empty;
+                BadgeText = badgeText ?? string.Empty;
+                QuantityText = quantityText ?? string.Empty;
+                Unavailable = unavailable;
+            }
+
+            public Texture2D IconTexture { get; }
+            public string Title { get; }
+            public string Detail { get; }
+            public string BadgeText { get; }
+            public string QuantityText { get; }
+            public bool Unavailable { get; }
+            public bool HasVisual => IconTexture != null;
+            public bool HasDetails => !string.IsNullOrWhiteSpace(Title) || !string.IsNullOrWhiteSpace(Detail);
         }
 
         private readonly List<PageLayer> _mainLayers = new();
@@ -129,6 +170,7 @@ namespace HaCreator.MapSimulator.UI
         private Func<PlayerInput> _bindingSource;
         private Action<PlayerInput> _commitHandler;
         private Func<InputAction, ClientOwnerState> _clientOwnerStateProvider;
+        private Func<InputAction, ShortcutVisualState> _shortcutVisualStateProvider;
         private IDXObject _quickSlotFrame;
         private UIObject _mainOkButton;
         private UIObject _mainCancelButton;
@@ -172,6 +214,8 @@ namespace HaCreator.MapSimulator.UI
                     _paletteTexturesBySlot[entry.Key] = entry.Value;
                     _paletteSlotOrder.Add(entry.Key);
                 }
+
+                _paletteSlotOrder.Sort(ComparePaletteSlotOrder);
             }
             BuildRows();
         }
@@ -225,6 +269,11 @@ namespace HaCreator.MapSimulator.UI
         public void SetClientOwnerStateProvider(Func<InputAction, ClientOwnerState> clientOwnerStateProvider)
         {
             _clientOwnerStateProvider = clientOwnerStateProvider;
+        }
+
+        public void SetShortcutVisualStateProvider(Func<InputAction, ShortcutVisualState> shortcutVisualStateProvider)
+        {
+            _shortcutVisualStateProvider = shortcutVisualStateProvider;
         }
 
         public void SetLaunchSource(string source)
@@ -508,12 +557,23 @@ namespace HaCreator.MapSimulator.UI
 
             KeyBinding binding = GetBinding(row.Action);
             Texture2D paletteTexture = row.PaletteSlotId >= 0 ? GetSelectedPaletteTexture(row.PaletteSlotId) : null;
+            ShortcutVisualState shortcutVisualState = _page == KeyConfigPage.Main
+                ? (_shortcutVisualStateProvider?.Invoke(row.Action) ?? default)
+                : default;
             int labelX = bounds.X + 8;
-            if (_page == KeyConfigPage.Main && paletteTexture != null)
+            if (_page == KeyConfigPage.Main && (paletteTexture != null || shortcutVisualState.HasVisual))
             {
                 Rectangle iconBounds = new(bounds.X + 6, bounds.Y + 3, 18, 18);
                 sprite.Draw(_highlightTexture, iconBounds, new Color(54, 66, 88, 215));
-                sprite.Draw(paletteTexture, new Vector2(iconBounds.X + 1, iconBounds.Y + 1), null, Color.White, 0f, Vector2.Zero, 0.5f, SpriteEffects.None, 0f);
+                if (paletteTexture != null)
+                {
+                    sprite.Draw(paletteTexture, new Vector2(iconBounds.X + 1, iconBounds.Y + 1), null, Color.White, 0f, Vector2.Zero, 0.5f, SpriteEffects.None, 0f);
+                }
+                else
+                {
+                    DrawShortcutVisualIcon(sprite, iconBounds, shortcutVisualState, compact: true);
+                }
+
                 labelX = iconBounds.Right + 6;
             }
 
@@ -617,6 +677,9 @@ namespace HaCreator.MapSimulator.UI
                 footerBounds.Height - (padding * 2));
             int selectedPaletteSlotId = GetSelectedPaletteSlotId();
             Texture2D selectedPaletteTexture = GetSelectedPaletteTexture(selectedPaletteSlotId);
+            ShortcutVisualState selectedShortcutVisual = _selectedAction.HasValue
+                ? (_shortcutVisualStateProvider?.Invoke(_selectedAction.Value) ?? default)
+                : default;
 
             sprite.Draw(_highlightTexture, footerBounds, new Color(20, 25, 37, 225));
             sprite.Draw(_highlightTexture, infoBounds, new Color(36, 46, 62, 220));
@@ -646,14 +709,24 @@ namespace HaCreator.MapSimulator.UI
                         previewBounds.Center.Y - (selectedPaletteTexture.Height * 0.55f * 0.5f));
                     sprite.Draw(selectedPaletteTexture, previewPosition, null, Color.White, 0f, Vector2.Zero, 0.55f, SpriteEffects.None, 0f);
                 }
+                else if (selectedShortcutVisual.HasVisual)
+                {
+                    DrawShortcutVisualIcon(sprite, previewBounds, selectedShortcutVisual, compact: false);
+                }
 
                 string paletteSlotText = selectedPaletteSlotId >= 0
                     ? $"Palette slot {selectedPaletteSlotId}: {GetPaletteSlotLabel(selectedPaletteSlotId)}"
-                    : "No recovered palette slot for this staged row.";
+                    : selectedShortcutVisual.HasDetails
+                        ? selectedShortcutVisual.Title
+                        : "No recovered palette slot for this staged row.";
                 sprite.DrawString(_font, paletteSlotText, new Vector2(previewBounds.Right + 8, previewBounds.Y + 4), new Color(220, 220, 220), 0f, Vector2.Zero, 0.34f, SpriteEffects.None, 0f);
 
                 string clientOwnerText = BuildClientOwnerStatusText();
                 sprite.DrawString(_font, clientOwnerText, new Vector2(previewBounds.Right + 8, previewBounds.Y + 18), new Color(210, 210, 210), 0f, Vector2.Zero, 0.31f, SpriteEffects.None, 0f);
+                if (!string.IsNullOrWhiteSpace(selectedShortcutVisual.Detail))
+                {
+                    sprite.DrawString(_font, selectedShortcutVisual.Detail, new Vector2(previewBounds.Right + 8, previewBounds.Y + 30), new Color(192, 200, 214), 0f, Vector2.Zero, 0.28f, SpriteEffects.None, 0f);
+                }
 
                 Rectangle bindingBounds = new(infoBounds.X + 6, infoBounds.Bottom - 28, infoBounds.Width - 12, 22);
                 sprite.Draw(_highlightTexture, bindingBounds, new Color(56, 68, 92, 215));
@@ -734,6 +807,86 @@ namespace HaCreator.MapSimulator.UI
                 : $"Icon {paletteSlotId}";
         }
 
+        private void DrawShortcutVisualIcon(SpriteBatch sprite, Rectangle bounds, ShortcutVisualState shortcutVisualState, bool compact)
+        {
+            if (!shortcutVisualState.HasVisual)
+            {
+                return;
+            }
+
+            Texture2D iconTexture = shortcutVisualState.IconTexture;
+            float maxWidth = bounds.Width - 2f;
+            float maxHeight = bounds.Height - 2f;
+            float scale = Math.Min(maxWidth / iconTexture.Width, maxHeight / iconTexture.Height);
+            scale = compact ? Math.Min(scale, 0.5f) : Math.Min(scale, 1f);
+            Vector2 drawPosition = new(
+                bounds.Center.X - ((iconTexture.Width * scale) * 0.5f),
+                bounds.Center.Y - ((iconTexture.Height * scale) * 0.5f));
+            Color tint = shortcutVisualState.Unavailable ? new Color(170, 170, 170, 210) : Color.White;
+            sprite.Draw(iconTexture, drawPosition, null, tint, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+
+            if (!string.IsNullOrWhiteSpace(shortcutVisualState.QuantityText))
+            {
+                sprite.DrawString(
+                    _font,
+                    shortcutVisualState.QuantityText,
+                    new Vector2(bounds.Right - 3, bounds.Bottom - 8),
+                    new Color(255, 248, 194),
+                    0f,
+                    new Vector2(_font.MeasureString(shortcutVisualState.QuantityText).X, _font.LineSpacing),
+                    compact ? 0.3f : 0.38f,
+                    SpriteEffects.None,
+                    0f);
+            }
+
+            if (!string.IsNullOrWhiteSpace(shortcutVisualState.BadgeText))
+            {
+                sprite.DrawString(
+                    _font,
+                    shortcutVisualState.BadgeText,
+                    new Vector2(bounds.X + 2, bounds.Y + 1),
+                    new Color(255, 228, 151),
+                    0f,
+                    Vector2.Zero,
+                    compact ? 0.28f : 0.34f,
+                    SpriteEffects.None,
+                    0f);
+            }
+        }
+
+        private static int ComparePaletteSlotOrder(int left, int right)
+        {
+            int leftOrder = GetPaletteSlotOrderKey(left);
+            int rightOrder = GetPaletteSlotOrderKey(right);
+            return leftOrder != rightOrder
+                ? leftOrder.CompareTo(rightOrder)
+                : left.CompareTo(right);
+        }
+
+        private static int GetPaletteSlotOrderKey(int paletteSlotId)
+        {
+            return paletteSlotId switch
+            {
+                >= 0 and <= 32 => paletteSlotId,
+                >= 50 and <= 54 => 100 + (paletteSlotId - 50),
+                >= 100 and <= 106 => 200 + (paletteSlotId - 100),
+                _ => 300 + paletteSlotId,
+            };
+        }
+
+        private static string DescribePacketEntry(byte packetEntryType, int packetEntryId)
+        {
+            return packetEntryType switch
+            {
+                1 => $"skill {packetEntryId}",
+                2 => $"item {packetEntryId}",
+                3 => $"item {packetEntryId}",
+                7 => $"cash item {packetEntryId}",
+                8 => $"macro {packetEntryId}",
+                _ => $"entry {packetEntryId}",
+            };
+        }
+
         private string BuildClientOwnerSummary()
         {
             if (!_selectedAction.HasValue)
@@ -745,6 +898,11 @@ namespace HaCreator.MapSimulator.UI
             if (ownerState.HasClientOwner)
             {
                 return $"Packet-owned function {ownerState.ClientFunctionId} currently resolves to {FormatKey(ownerState.ClientKey)}.";
+            }
+
+            if (ownerState.HasPacketShortcutEntry)
+            {
+                return $"Packet-owned {DescribePacketEntry(ownerState.PacketEntryType, ownerState.PacketEntryId)} currently resolves to {FormatKey(ownerState.ClientKey)}.";
             }
 
             return "This staged row is explicit in the simulator, but the packet-owned function map does not currently own it.";
@@ -762,6 +920,14 @@ namespace HaCreator.MapSimulator.UI
             if (ownerState.HasClientOwner)
             {
                 return $"Client owner: id {ownerState.ClientFunctionId} on {FormatKey(ownerState.ClientKey)}.";
+            }
+
+            if (ownerState.HasPacketShortcutEntry)
+            {
+                string scanText = ownerState.PacketScanCode >= 0
+                    ? $"scan {ownerState.PacketScanCode}"
+                    : "scan unresolved";
+                return $"Client shortcut: {DescribePacketEntry(ownerState.PacketEntryType, ownerState.PacketEntryId)} on {FormatKey(ownerState.ClientKey)} ({scanText}); palette slot remains explicit.";
             }
 
             if (selectedRow is { ClientFunctionId: >= 0 })

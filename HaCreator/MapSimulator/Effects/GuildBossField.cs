@@ -732,9 +732,12 @@ namespace HaCreator.MapSimulator.Effects
             string previewState = HasPendingLocalPulleySequence ? $", preview={_localPulleySequenceStage}" : string.Empty;
             string pendingPacket = _pendingPulleyPacketRequest.HasValue ? $", request={_pendingPulleyPacketRequest.Value.Sequence}" : string.Empty;
             string inFlightPacket = HasPulleyTransportRequestInFlight ? $", inflight={_pulleyRequestInFlightSequence}" : string.Empty;
+            string contractSource = string.IsNullOrWhiteSpace(_contractSourceDescription)
+                ? string.Empty
+                : $", source={_contractSourceDescription}";
 
 
-            return $"Guild boss map {_mapId}: healer {healerRange}, pulley {pulleyState}{previewState}{pendingPacket}{inFlightPacket}, rise={_healerRise}, fall={_healerFall}, heal={_healerHealMin}..{_healerHealMax}, healer art={_healerPath ?? "none"}, pulley art={_pulleyPath ?? "none"}.";
+            return $"Guild boss map {_mapId}: healer {healerRange}, pulley {pulleyState}{previewState}{pendingPacket}{inFlightPacket}, rise={_healerRise}, fall={_healerFall}, heal={_healerHealMin}..{_healerHealMax}, healer art={_healerPath ?? "none"}, pulley art={_pulleyPath ?? "none"}{contractSource}.";
 
         }
 

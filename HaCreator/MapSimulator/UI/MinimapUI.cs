@@ -102,6 +102,7 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_MARGIN = 10;
         private const int TOOLTIP_LINE_GAP = 2;
         private const int ClientButtonIdMinimapState = 1000;
+        private const int ClientButtonIdMinimapRestore = 1001;
         private const int ClientButtonIdMap = 1002;
         private const int ClientButtonIdOption = 1003;
         private const int ClientOptionCollapsed = 0;
@@ -595,7 +596,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         private void ObjUIBtMax_ButtonClickReleased(UIObject sender)
         {
-            HandleClientButtonClick(ClientButtonIdMinimapState);
+            HandleClientButtonClick(ClientButtonIdMinimapRestore);
         }
 
         /// <summary>
@@ -640,20 +641,18 @@ namespace HaCreator.MapSimulator.UI
             switch (buttonId)
             {
                 case ClientButtonIdMinimapState:
-                    HandleMinimapStateButtonClick();
+                case ClientButtonIdMinimapRestore:
+                case ClientButtonIdOption:
+                    ApplyClientStateTransition(ResolveClientStateTransitionForTesting(
+                        buttonId,
+                        _currentOption,
+                        _previousExpandedOption,
+                        _btnSmall != null && _expandedFrame != null));
                     break;
                 case ClientButtonIdMap:
                     WorldMapRequested?.Invoke();
                     break;
-                case ClientButtonIdOption:
-                    ToggleExpandedOption();
-                    break;
             }
-        }
-
-        private void HandleMinimapStateButtonClick()
-        {
-            AdvanceToggleCycle();
         }
 
         private void CollapseMinimapToRememberedOption()
@@ -940,11 +939,15 @@ namespace HaCreator.MapSimulator.UI
             {
                 ClientButtonIdMinimapState => normalizedCurrentOption <= ClientOptionCollapsed
                     ? new ClientStateTransition(normalizedPreviousExpandedOption, normalizedPreviousExpandedOption, false)
-                    : normalizedCurrentOption == ClientOptionCompact && supportsExpandedOption
-                        ? new ClientStateTransition(ClientOptionExpanded, ClientOptionExpanded, false)
-                        : new ClientStateTransition(ClientOptionCollapsed, normalizedCurrentOption, true),
+                    : new ClientStateTransition(ClientOptionCollapsed, normalizedCurrentOption, true),
+                ClientButtonIdMinimapRestore => new ClientStateTransition(
+                    normalizedCurrentOption <= ClientOptionCollapsed
+                        ? normalizedPreviousExpandedOption
+                        : normalizedCurrentOption,
+                    normalizedPreviousExpandedOption,
+                    false),
                 ClientButtonIdOption when supportsExpandedOption => normalizedCurrentOption <= ClientOptionCollapsed
-                    ? new ClientStateTransition(normalizedPreviousExpandedOption, normalizedPreviousExpandedOption, false)
+                    ? new ClientStateTransition(ClientOptionCompact, normalizedPreviousExpandedOption, false)
                     : normalizedCurrentOption >= ClientOptionExpanded
                         ? new ClientStateTransition(ClientOptionCompact, ClientOptionCompact, false)
                         : new ClientStateTransition(ClientOptionExpanded, ClientOptionExpanded, false),

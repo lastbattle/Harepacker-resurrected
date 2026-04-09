@@ -780,6 +780,16 @@ namespace HaCreator.MapSimulator
                         enterPacket.ActionName,
                         "packet",
                         enterPacket.IsVisibleInWorld);
+                    if (created)
+                    {
+                        _remoteUserPool.TryApplyProfileMetadata(
+                            enterPacket.CharacterId,
+                            enterPacket.Level,
+                            enterPacket.GuildName,
+                            enterPacket.JobId,
+                            out _);
+                    }
+
                     if (created && enterPacket.PortableChairItemId.HasValue)
                     {
                         _remoteUserPool.TrySetPortableChair(enterPacket.CharacterId, enterPacket.PortableChairItemId, out _);

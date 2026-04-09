@@ -83,17 +83,26 @@ namespace HaCreator.MapSimulator.Interaction
                     entry = AppendTrailingByteNotice(entry, (int)(stream.Length - stream.Position));
                 }
 
+                if (decoded.SuppressDialogMutation)
+                {
+                    request = null;
+                    _activePromptContext = entry == null
+                        ? null
+                        : new PacketScriptPromptContext(
+                            speaker.DisplayName,
+                            entry.EntryId,
+                            entry.Title,
+                            messageType,
+                            param,
+                            speakerTemplateId,
+                            speaker.NpcId);
+                    _statusMessage = decoded.StatusMessage ?? $"Ignored packet-authored script payload for {speaker.DisplayName}.";
+                    message = _statusMessage;
+                    return true;
+                }
+
                 if (entry == null)
                 {
-                    if (decoded.SuppressDialogMutation)
-                    {
-                        request = null;
-                        _activePromptContext = null;
-                        _statusMessage = decoded.StatusMessage ?? $"Ignored packet-authored script payload for {speaker.DisplayName}.";
-                        message = _statusMessage;
-                        return true;
-                    }
-
                     request = new PacketScriptMessageOpenRequest(null, speaker.NpcId, CloseExistingDialog: decoded.CloseExistingDialog || entry == null, AutoResponse: autoResponse);
                     _activePromptContext = null;
                     _statusMessage = autoResponse?.Summary ?? decoded.StatusMessage ?? $"Closed packet-authored script dialog for {speaker.DisplayName}.";
@@ -423,7 +432,7 @@ namespace HaCreator.MapSimulator.Interaction
                 int remainingSeconds = reader.ReadInt32();
 
                 result = CreateDecodedResult(CreateEntry(
-                    "Quiz",
+                    "Initial Quiz",
                     BuildSpeakerSubtitle(speaker, "AskQuiz", param, mode),
                     problemText,
                     AppendMetadata(
@@ -431,13 +440,10 @@ namespace HaCreator.MapSimulator.Interaction
                         NpcDialogueTextFormatter.Format(problemText),
                         string.IsNullOrWhiteSpace(hintText) ? null : $"Hint text: {FormatQuotedValue(hintText)}",
                         $"Client payload: answer={correctAnswer}, questionNo={questionNumber}, remaining={remainingSeconds} sec.",
-                        "WZ data exposes a dedicated `UIWindow(.img|2.img)/InitialQuiz` surface with numbered glyph strips, animated digits, and explicit OK / Next / Give up owners for this prompt family."),
-                    new[]
-                    {
-                        CreateNumericResponseChoice("OK", "OK", 1),
-                        CreateNumericResponseChoice("Next", "Next", 2),
-                        CreateNumericResponseChoice("Give Up", "Give Up", 0)
-                    }),
+                        "Client `CWvsContext::OnInitialQuiz` opens the dedicated `CUIInitialQuiz` owner instead of mutating the NPC overlay."),
+                    null),
+                    suppressDialogMutation: true,
+                    statusMessage: $"Opened packet-authored initial quiz owner for {speaker.DisplayName}: client mode 0 creates `CUIInitialQuiz`.",
                     clientOwnerRuntimeSync: PacketScriptClientOwnerRuntimeSync.CreateInitialQuiz(
                         title,
                         problemText,
@@ -1438,6 +1444,13 @@ namespace HaCreator.MapSimulator.Interaction
 
                 case 6:
                 {
+                    if (submission.Kind == NpcInteractionInputKind.Text
+                        || submission.Kind == NpcInteractionInputKind.MultiLineText)
+                    {
+                        writer.WriteMapleString(submittedValue ?? string.Empty);
+                        break;
+                    }
+
                     bool accepted = submission.NumericValue.HasValue;
                     writer.WriteByte(accepted ? (byte)1 : (byte)0);
                     if (accepted)

@@ -93,12 +93,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            IntPtr simulatorWindowHandle = Window?.Handle ?? IntPtr.Zero;
             WzSubProperty macroProperty = (Program.FindImage("UI", "UIWindow2.img")?["Macro"] as WzSubProperty);
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AntiMacro) == null)
             {
                 AntiMacroChallengeWindow window = new(MapSimulatorWindowNames.AntiMacro, adminVariant: false, GraphicsDevice);
-                window.TryAttachNativeEditHost(Window?.Handle ?? IntPtr.Zero);
                 window.Position = ResolvePacketOwnedAntiMacroWindowPosition(window);
                 window.SubmitRequested += HandlePacketOwnedAntiMacroAnswerSubmitted;
                 uiWindowManager.RegisterCustomWindow(window);
@@ -107,7 +107,6 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AdminAntiMacro) == null)
             {
                 AntiMacroChallengeWindow window = new(MapSimulatorWindowNames.AdminAntiMacro, adminVariant: true, GraphicsDevice);
-                window.TryAttachNativeEditHost(Window?.Handle ?? IntPtr.Zero);
                 window.Position = ResolvePacketOwnedAntiMacroWindowPosition(window);
                 window.SubmitRequested += HandlePacketOwnedAntiMacroAnswerSubmitted;
                 uiWindowManager.RegisterCustomWindow(window);
@@ -129,6 +128,7 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AntiMacro) is AntiMacroChallengeWindow antiMacroWindow)
             {
+                antiMacroWindow.TryAttachNativeEditHost(simulatorWindowHandle);
                 ApplyPacketOwnedAntiMacroOwnerVisuals(antiMacroWindow, macroProperty);
                 if (_fontChat != null)
                 {
@@ -138,6 +138,7 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AdminAntiMacro) is AntiMacroChallengeWindow adminWindow)
             {
+                adminWindow.TryAttachNativeEditHost(simulatorWindowHandle);
                 ApplyPacketOwnedAntiMacroOwnerVisuals(adminWindow, macroProperty);
                 if (_fontChat != null)
                 {
@@ -156,6 +157,21 @@ namespace HaCreator.MapSimulator
                     LoadUiCanvasTexture(ResolvePacketOwnedAntiMacroCanvas(PacketOwnedAntiMacroAdminCanvas0Path)),
                     CreatePacketOwnedAntiMacroButton(ResolvePacketOwnedAntiMacroSubProperty(PacketOwnedAntiMacroPopupOkButtonPath)),
                     CreatePacketOwnedAntiMacroButton(ResolvePacketOwnedAntiMacroSubProperty(PacketOwnedAntiMacroPopupCancelButtonPath)));
+            }
+        }
+
+        private void RefreshPacketOwnedAntiMacroWindowPositions()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AntiMacro) is AntiMacroChallengeWindow antiMacroWindow)
+            {
+                antiMacroWindow.Position = ResolvePacketOwnedAntiMacroWindowPosition(antiMacroWindow);
+                antiMacroWindow.TryAttachNativeEditHost(Window?.Handle ?? IntPtr.Zero);
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AdminAntiMacro) is AntiMacroChallengeWindow adminWindow)
+            {
+                adminWindow.Position = ResolvePacketOwnedAntiMacroWindowPosition(adminWindow);
+                adminWindow.TryAttachNativeEditHost(Window?.Handle ?? IntPtr.Zero);
             }
         }
 

@@ -62,11 +62,11 @@ namespace HaCreator.MapSimulator.UI
                 : string.Empty;
 
             string secondaryScreenMessage = bonusMesoAmount > 0
-                ? FormatClientString(MesoBonusScreenStringPoolId, $"You have gained {bonusMesoAmount} bonus meso(s).", bonusMesoAmount)
+                ? FormatClientString(MesoBonusScreenStringPoolId, $"Internet Cafe Meso Bonus (+{bonusMesoAmount})", bonusMesoAmount)
                 : string.Empty;
 
             return new PickupNoticeSuccessMessages(
-                FormatClientString(MesoScreenStringPoolId, $"You have gained {Math.Max(0, amount)} meso(s).", Math.Max(0, amount)),
+                FormatClientString(MesoScreenStringPoolId, $"You have gained mesos (+{Math.Max(0, amount)})", Math.Max(0, amount)),
                 chatMessage,
                 secondaryScreenMessage,
                 Color.Yellow);
@@ -253,7 +253,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (dropType == DropType.Meso)
             {
-                return $"{mesoAmount} meso(s)";
+                return $"{mesoAmount} mesos";
             }
 
             if (string.IsNullOrWhiteSpace(itemName))

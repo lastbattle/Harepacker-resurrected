@@ -680,7 +680,7 @@ namespace HaCreator.MapSimulator.UI {
             DrawPreparedSkillBar(sprite, basePosGauge, currentTime);
 
             // Skip text rendering if no font
-            if (_font == null)
+            if (!HasStatusBarTextRenderer())
                 return;
 
             // Draw character info section (left side) - use basePosLeft
@@ -945,7 +945,7 @@ namespace HaCreator.MapSimulator.UI {
                     sprite.Draw(iconTexture, iconRect, Color.White);
                 }
 
-                if (_font == null || buffEntry.RemainingMs <= 0)
+                if (!HasStatusBarTextRenderer() || buffEntry.RemainingMs <= 0)
                 {
                     continue;
                 }
@@ -1976,6 +1976,11 @@ namespace HaCreator.MapSimulator.UI {
             }
 
             ClientTextDrawing.Draw(sprite, text, position, color, scale, _font, maxWidth);
+        }
+
+        private bool HasStatusBarTextRenderer()
+        {
+            return _clientTextRasterizer != null || _font != null;
         }
 
         /// <summary>

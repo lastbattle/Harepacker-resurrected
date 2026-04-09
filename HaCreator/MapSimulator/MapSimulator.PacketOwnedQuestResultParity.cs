@@ -13,6 +13,7 @@ namespace HaCreator.MapSimulator
         private int _pendingPacketOwnedQuestResultFollowUpSpeakerNpcId;
         private string _pendingPacketOwnedQuestResultFollowUpQuestName = string.Empty;
         private bool _pendingPacketOwnedQuestResultFollowUpReady;
+        private string _pendingPacketOwnedQuestResultDeferredNoticeText = string.Empty;
         private int _pendingQuestDeliveryResultQuestId;
         private bool _pendingQuestDeliveryResultCompletionPhase;
         private int _pendingQuestDeliveryResultCashItemId;
@@ -165,9 +166,21 @@ namespace HaCreator.MapSimulator
 
             bool showedNotice = false;
             bool openedModal = false;
+            bool deferredNoticeUntilDialogClose = false;
             if (!string.IsNullOrWhiteSpace(presentation.NoticeText))
             {
-                _chat?.AddSystemMessage(presentation.NoticeText, currTickCount);
+                deferredNoticeUntilDialogClose =
+                    PacketQuestResultClientSemantics.ResolveSubtype10NoticeDispatchStage(openedModal) ==
+                    PacketQuestResultNoticeDispatchStage.AfterDialog;
+                if (deferredNoticeUntilDialogClose)
+                {
+                    QueuePendingPacketOwnedQuestResultNotice(presentation.NoticeText);
+                }
+                else
+                {
+                    _chat?.AddSystemMessage(presentation.NoticeText, currTickCount);
+                }
+
                 showedNotice = true;
             }
 
@@ -187,7 +200,9 @@ namespace HaCreator.MapSimulator
 
             if (showedNotice && openedModal)
             {
-                resultSummary = $"{resultSummary} Displayed the notice and opened {presentation.ModalPages.Count} modal quest page(s).";
+                resultSummary = deferredNoticeUntilDialogClose
+                    ? $"{resultSummary} Opened {presentation.ModalPages.Count} modal quest page(s) and queued the client-shaped notice for display after the dialog closes."
+                    : $"{resultSummary} Displayed the notice and opened {presentation.ModalPages.Count} modal quest page(s).";
             }
             else if (showedNotice)
             {
@@ -364,11 +379,33 @@ namespace HaCreator.MapSimulator
             _pendingPacketOwnedQuestResultFollowUpReady = false;
         }
 
+        private void QueuePendingPacketOwnedQuestResultNotice(string noticeText)
+        {
+            _pendingPacketOwnedQuestResultDeferredNoticeText = noticeText ?? string.Empty;
+        }
+
+        private void DispatchPendingPacketOwnedQuestResultNotice()
+        {
+            if (string.IsNullOrWhiteSpace(_pendingPacketOwnedQuestResultDeferredNoticeText))
+            {
+                return;
+            }
+
+            _chat?.AddSystemMessage(_pendingPacketOwnedQuestResultDeferredNoticeText, currTickCount);
+            _pendingPacketOwnedQuestResultDeferredNoticeText = string.Empty;
+        }
+
         private void HandlePacketOwnedQuestResultOverlayClose(NpcInteractionOverlayCloseKind closeKind)
         {
+            if (closeKind == NpcInteractionOverlayCloseKind.None)
+            {
+                return;
+            }
+
+            DispatchPendingPacketOwnedQuestResultNotice();
+
             if (!_pendingPacketOwnedQuestResultFollowUpQuestId.HasValue ||
-                _pendingPacketOwnedQuestResultFollowUpQuestId.Value <= 0 ||
-                closeKind == NpcInteractionOverlayCloseKind.None)
+                _pendingPacketOwnedQuestResultFollowUpQuestId.Value <= 0)
             {
                 return;
             }

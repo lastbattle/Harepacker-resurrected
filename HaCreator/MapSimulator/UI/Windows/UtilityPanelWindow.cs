@@ -37,7 +37,10 @@ namespace HaCreator.MapSimulator.UI
         private readonly string _windowName;
         private readonly string _title;
         private readonly List<PageLayer> _layers = new();
+        private readonly Dictionary<string, UIObject> _namedButtons = new(StringComparer.Ordinal);
         private readonly Dictionary<UIObject, Action> _buttonActions = new();
+        private readonly Dictionary<UIObject, Func<bool>> _buttonEnabledProviders = new();
+        private readonly List<(Texture2D Texture, Point Offset, Func<bool> VisibleProvider)> _overlayTextures = new();
         private readonly List<string> _staticLines = new();
         private readonly List<IndicatorFrame> _activeIndicatorFrames = new();
         private Func<IReadOnlyList<string>> _contentProvider;
@@ -131,6 +134,62 @@ namespace HaCreator.MapSimulator.UI
             button.ButtonClickReleased += HandleButtonReleased;
         }
 
+        public void RegisterButton(string key, UIObject button, Action action = null)
+        {
+            if (string.IsNullOrWhiteSpace(key) || button == null)
+            {
+                return;
+            }
+
+            RegisterButton(button, action);
+            _namedButtons[key] = button;
+        }
+
+        public void SetButtonAction(string key, Action action)
+        {
+            if (string.IsNullOrWhiteSpace(key) || !_namedButtons.TryGetValue(key, out UIObject button))
+            {
+                return;
+            }
+
+            _buttonActions[button] = action;
+        }
+
+        public void SetButtonEnabledProvider(string key, Func<bool> enabledProvider)
+        {
+            if (string.IsNullOrWhiteSpace(key) || !_namedButtons.TryGetValue(key, out UIObject button))
+            {
+                return;
+            }
+
+            if (enabledProvider == null)
+            {
+                _buttonEnabledProviders.Remove(button);
+                return;
+            }
+
+            _buttonEnabledProviders[button] = enabledProvider;
+        }
+
+        public void AddOverlayTexture(Texture2D texture, Point offset, Func<bool> visibleProvider = null)
+        {
+            if (texture == null)
+            {
+                return;
+            }
+
+            _overlayTextures.Add((texture, offset, visibleProvider));
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            base.Update(gameTime);
+            foreach ((UIObject button, Func<bool> enabledProvider) in _buttonEnabledProviders)
+            {
+                button?.SetEnabled(enabledProvider?.Invoke() != false);
+            }
+        }
+
         protected override void DrawContents(
             SpriteBatch sprite,
             SkeletonMeshRenderer skeletonMeshRenderer,
@@ -154,6 +213,17 @@ namespace HaCreator.MapSimulator.UI
                     Color.White,
                     false,
                     drawReflectionInfo);
+            }
+
+            for (int i = 0; i < _overlayTextures.Count; i++)
+            {
+                (Texture2D texture, Point offset, Func<bool> visibleProvider) = _overlayTextures[i];
+                if (texture == null || (visibleProvider != null && !visibleProvider()))
+                {
+                    continue;
+                }
+
+                sprite.Draw(texture, new Vector2(Position.X + offset.X, Position.Y + offset.Y), Color.White);
             }
 
             DrawIndicator(sprite, TickCount);

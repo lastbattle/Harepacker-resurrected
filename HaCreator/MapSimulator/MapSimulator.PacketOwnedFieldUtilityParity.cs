@@ -27,6 +27,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, PacketFieldUtilityStalkMarkerState> _packetFieldUtilityStalkTargets = new();
         private readonly List<PacketFieldUtilityFootholdEntry> _packetFieldUtilityFootholdEntries = new();
         private readonly Dictionary<int, string> _packetFieldUtilityFootholdNamesBySerial = new();
+        private const int PacketOwnedFootholdInfoResponseOpcode = 270;
         private int[] _packetFieldUtilityQuickslotKeyCodes;
         private bool _packetFieldUtilityWeatherOverrideActive;
         private int _packetFieldUtilityWeatherItemId;
@@ -230,6 +231,8 @@ namespace HaCreator.MapSimulator
         {
             _packetFieldUtilityQuickslotKeyCodes = useDefault ? null : keyCodes?.ToArray();
             ApplyPacketOwnedQuickslotBindings(_packetFieldUtilityQuickslotKeyCodes, useDefault);
+            SyncPacketOwnedUtilityWindowBindings(_playerManager?.Input);
+            PersistPacketOwnedFuncKeyConfig(_playerManager?.Input, persistSimulatorBindings: true);
             uiWindowManager?.QuickSlotWindow?.SetPrimaryBarKeyLabels(BuildPacketOwnedQuickslotLabels(_packetFieldUtilityQuickslotKeyCodes));
         }
 
@@ -484,12 +487,123 @@ namespace HaCreator.MapSimulator
                 ? "Prepared an empty client-shaped foothold-info response payload."
                 : $"Prepared client-shaped foothold-info response payload ({officialResponsePayload.Length} byte{(officialResponsePayload.Length == 1 ? string.Empty : "s")}, hex={Convert.ToHexString(officialResponsePayload)}).";
 
-            if (_localUtilityOfficialSessionBridge?.TrySendOutboundPacket(270, officialResponsePayload, out string dispatchStatus) == true)
+            (bool Success, string Status) TrySendBridge(int opcode, IReadOnlyList<byte> payload)
             {
-                return $"{payloadSummary} {dispatchStatus}";
+                if (_localUtilityOfficialSessionBridge == null)
+                {
+                    return (false, "Local utility official-session bridge is unavailable.");
+                }
+
+                bool success = _localUtilityOfficialSessionBridge.TrySendOutboundPacket(opcode, payload, out string status);
+                return (success, status);
             }
 
-            return payloadSummary;
+            (bool Success, string Status) TrySendOutbox(int opcode, IReadOnlyList<byte> payload)
+            {
+                if (_localUtilityPacketOutbox == null)
+                {
+                    return (false, "Generic local-utility outbox is unavailable.");
+                }
+
+                bool success = _localUtilityPacketOutbox.TrySendOutboundPacket(opcode, payload, out string status);
+                return (success, status);
+            }
+
+            (bool Success, string Status) TryQueueBridge(int opcode, IReadOnlyList<byte> payload)
+            {
+                if (_localUtilityOfficialSessionBridge == null)
+                {
+                    return (false, "Local utility official-session bridge is unavailable.");
+                }
+
+                bool success = _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(opcode, payload, out string status);
+                return (success, status);
+            }
+
+            (bool Success, string Status) TryQueueOutbox(int opcode, IReadOnlyList<byte> payload)
+            {
+                if (_localUtilityPacketOutbox == null)
+                {
+                    return (false, "Generic local-utility outbox is unavailable.");
+                }
+
+                bool success = _localUtilityPacketOutbox.TryQueueOutboundPacket(opcode, payload, out string status);
+                return (success, status);
+            }
+
+            return DescribePacketOwnedFootholdOfficialResponseDispatch(
+                payloadSummary,
+                PacketOwnedFootholdInfoResponseOpcode,
+                officialResponsePayload,
+                TrySendBridge,
+                TrySendOutbox,
+                TryQueueBridge,
+                TryQueueOutbox,
+                allowDeferredBridge: _localUtilityOfficialSessionBridge?.IsRunning == true);
+        }
+
+        internal static string DescribePacketOwnedFootholdOfficialResponseDispatch(
+            string payloadSummary,
+            int opcode,
+            IReadOnlyList<byte> payload,
+            Func<int, IReadOnlyList<byte>, (bool Success, string Status)> trySendBridge,
+            Func<int, IReadOnlyList<byte>, (bool Success, string Status)> trySendOutbox,
+            Func<int, IReadOnlyList<byte>, (bool Success, string Status)> tryQueueBridge,
+            Func<int, IReadOnlyList<byte>, (bool Success, string Status)> tryQueueOutbox,
+            bool allowDeferredBridge)
+        {
+            string bridgeStatus = "Live official-session bridge transport was not attempted.";
+            string outboxStatus = "Generic local-utility outbox transport was not attempted.";
+
+            if (trySendBridge != null)
+            {
+                (bool success, string status) = trySendBridge(opcode, payload);
+                bridgeStatus = string.IsNullOrWhiteSpace(status)
+                    ? "Live official-session bridge transport produced no status."
+                    : status;
+                if (success)
+                {
+                    return $"{payloadSummary} {bridgeStatus}";
+                }
+            }
+
+            if (trySendOutbox != null)
+            {
+                (bool success, string status) = trySendOutbox(opcode, payload);
+                outboxStatus = string.IsNullOrWhiteSpace(status)
+                    ? "Generic local-utility outbox transport produced no status."
+                    : status;
+                if (success)
+                {
+                    return $"{payloadSummary} Dispatched opcode {opcode} through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+                }
+            }
+
+            if (allowDeferredBridge && tryQueueBridge != null)
+            {
+                (bool success, string status) = tryQueueBridge(opcode, payload);
+                string queuedBridgeStatus = string.IsNullOrWhiteSpace(status)
+                    ? "Deferred official-session bridge queueing produced no status."
+                    : status;
+                if (success)
+                {
+                    return $"{payloadSummary} Queued opcode {opcode} for deferred official-session injection after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus}";
+                }
+            }
+
+            if (tryQueueOutbox != null)
+            {
+                (bool success, string status) = tryQueueOutbox(opcode, payload);
+                string queuedOutboxStatus = string.IsNullOrWhiteSpace(status)
+                    ? "Deferred generic local-utility outbox queueing produced no status."
+                    : status;
+                if (success)
+                {
+                    return $"{payloadSummary} Queued opcode {opcode} for deferred generic local-utility outbox delivery after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
+                }
+            }
+
+            return $"{payloadSummary} The simulator kept opcode {opcode} local because neither the live bridge nor the packet outbox accepted it. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
         }
 
         private IReadOnlyList<PacketFieldUtilityFootholdEntry> BuildPacketOwnedFootholdSnapshot()

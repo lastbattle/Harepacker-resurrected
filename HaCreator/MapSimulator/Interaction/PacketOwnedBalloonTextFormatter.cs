@@ -45,7 +45,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public static string Format(string text, PacketOwnedBalloonTextFormattingContext context = null)
         {
-            if (string.IsNullOrWhiteSpace(text))
+            if (string.IsNullOrEmpty(text))
             {
                 return string.Empty;
             }

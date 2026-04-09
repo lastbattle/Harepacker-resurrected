@@ -73,6 +73,7 @@ namespace HaCreator.MapSimulator.Entities
         private readonly Dictionary<(int State, int ProperEventIndex), int> _stateIndexedHitDurations;
         private readonly Dictionary<int, bool> _stateRepeatModes;
         private readonly Dictionary<int, AuthoredStateTransition[]> _stateTransitions;
+        private readonly HashSet<int> _authoredStates;
         private readonly int[] _availableStates;
         private readonly int _rootHitDuration;
         private readonly int _templateLayerMode;
@@ -100,6 +101,7 @@ namespace HaCreator.MapSimulator.Entities
             _stateIndexedHitDurations = new Dictionary<(int State, int ProperEventIndex), int>();
             _stateRepeatModes = new Dictionary<int, bool>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
+            _authoredStates = new HashSet<int>();
             _availableStates = Array.Empty<int>();
             _rootHitDuration = 0;
             _templateLayerMode = 0;
@@ -117,6 +119,7 @@ namespace HaCreator.MapSimulator.Entities
             _stateIndexedHitDurations = LoadStateIndexedHitDurations(reactorInstance);
             _stateRepeatModes = LoadStateRepeatModes(reactorInstance);
             _stateTransitions = LoadStateTransitions(reactorInstance);
+            _authoredStates = LoadAuthoredStates(reactorInstance);
             _rootHitDuration = LoadRootHitDuration(reactorInstance);
             _templateLayerMode = LoadTemplateLayerMode(reactorInstance);
             _templateMoveEnabled = LoadTemplateMoveEnabled(reactorInstance);
@@ -147,6 +150,7 @@ namespace HaCreator.MapSimulator.Entities
             _stateIndexedHitDurations = new Dictionary<(int State, int ProperEventIndex), int>();
             _stateRepeatModes = new Dictionary<int, bool>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
+            _authoredStates = new HashSet<int>();
             _availableStates = Array.Empty<int>();
             _rootHitDuration = 0;
             _templateLayerMode = 0;
@@ -392,59 +396,7 @@ namespace HaCreator.MapSimulator.Entities
 
         public bool TryGetHitAnimationDuration(int state, int properEventIndex, out int duration)
         {
-            int resolvedState = ResolveState(state);
-            if (properEventIndex < 0)
-            {
-                duration = GetStateDuration(resolvedState);
-                if (duration > 0)
-                {
-                    return true;
-                }
-
-                if (_rootHitDuration > 0)
-                {
-                    duration = _rootHitDuration;
-                    return true;
-                }
-
-                if (_stateHitDurations.TryGetValue(resolvedState, out duration))
-                {
-                    return true;
-                }
-
-                duration = 0;
-                return false;
-            }
-
-            if (HasAuthoredEventIndex(resolvedState, properEventIndex))
-            {
-                if (_stateIndexedHitDurations.TryGetValue((resolvedState, properEventIndex), out duration))
-                {
-                    return true;
-                }
-
-                if (_stateHitDurations.TryGetValue(resolvedState, out duration))
-                {
-                    return true;
-                }
-
-                if (_rootHitDuration > 0)
-                {
-                    duration = _rootHitDuration;
-                    return true;
-                }
-
-                duration = 0;
-                return false;
-            }
-
-            if (_rootHitDuration > 0)
-            {
-                duration = _rootHitDuration;
-                return true;
-            }
-
-            if (_stateHitDurations.TryGetValue(resolvedState, out duration))
+            if (TryResolveHitAnimationDuration(state, properEventIndex, out duration))
             {
                 return true;
             }
@@ -462,7 +414,7 @@ namespace HaCreator.MapSimulator.Entities
         internal bool TryResolveAutoHitEventIndex(int currentState, ReactorType reactorType, out int eventIndex)
         {
             AuthoredStateTransition[] transitions = GetAuthoredTransitions(
-                ResolveState(currentState),
+                currentState,
                 new ReactorTransitionRequest(ReactorActivationType.Hit, reactorType));
             if (transitions.Length == 0)
             {
@@ -476,10 +428,67 @@ namespace HaCreator.MapSimulator.Entities
 
         internal bool HasAuthoredEventIndex(int currentState, int properEventIndex)
         {
-            int resolvedState = ResolveState(currentState);
             return properEventIndex >= 0
-                && _stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
+                && _stateTransitions.TryGetValue(currentState, out AuthoredStateTransition[] transitions)
                 && properEventIndex < transitions.Length;
+        }
+
+        private bool TryResolveHitAnimationDuration(int state, int properEventIndex, out int duration)
+        {
+            if (properEventIndex < 0)
+            {
+                if (HasAuthoredState(state))
+                {
+                    duration = GetExactStateDuration(state);
+                    return duration > 0;
+                }
+
+                return TryGetRootHitAnimationDuration(out duration);
+            }
+
+            if (!HasAuthoredState(state) || !HasAuthoredEventIndex(state, properEventIndex))
+            {
+                return TryGetRootHitAnimationDuration(out duration);
+            }
+
+            if (_stateIndexedHitDurations.TryGetValue((state, properEventIndex), out duration) && duration > 0)
+            {
+                return true;
+            }
+
+            if (_stateHitDurations.TryGetValue(state, out duration) && duration > 0)
+            {
+                return true;
+            }
+
+            return TryGetRootHitAnimationDuration(out duration);
+        }
+
+        private bool HasAuthoredState(int state)
+        {
+            return _authoredStates.Contains(state);
+        }
+
+        private int GetExactStateDuration(int state)
+        {
+            if (!_stateFrames.TryGetValue(state, out IDXObject[] frames) || frames.Length == 0)
+            {
+                return 0;
+            }
+
+            int totalDuration = 0;
+            for (int i = 0; i < frames.Length; i++)
+            {
+                totalDuration += Math.Max(1, frames[i].Delay);
+            }
+
+            return totalDuration;
+        }
+
+        private bool TryGetRootHitAnimationDuration(out int duration)
+        {
+            duration = _rootHitDuration;
+            return duration > 0;
         }
 
         public Rectangle GetCurrentBounds(int tickCount)
@@ -811,6 +820,27 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return transitions;
+        }
+
+        private static HashSet<int> LoadAuthoredStates(ReactorInstance reactorInstance)
+        {
+            var states = new HashSet<int>();
+
+            WzImage linkedImage = reactorInstance?.ReactorInfo?.LinkedWzImage;
+            if (linkedImage == null)
+            {
+                return states;
+            }
+
+            foreach (WzImageProperty property in linkedImage.WzProperties)
+            {
+                if (int.TryParse(property?.Name, out int stateId))
+                {
+                    states.Add(stateId);
+                }
+            }
+
+            return states;
         }
 
         private static Dictionary<int, int> LoadStateHitDurations(ReactorInstance reactorInstance)

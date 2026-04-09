@@ -13,8 +13,15 @@ namespace HaCreator.MapSimulator.UI
     {
         private const int DefaultWidth = 332;
         private const int DefaultHeight = 176;
+        private const int ShellTopHeight = 28;
+        private const int ShellCenterHeight = 13;
+        private const int ShellBottomHeight = 44;
+        private const int CloseButtonRightMargin = 8;
+        private const int CloseButtonTopMargin = 8;
 
-        private readonly Texture2D _pixel;
+        private readonly Texture2D _shellTop;
+        private readonly Texture2D _shellCenter;
+        private readonly Texture2D _shellBottom;
         private readonly Texture2D _noticeFrame;
         private readonly Texture2D _separatorLine;
         private readonly Texture2D _progressBar;
@@ -23,6 +30,7 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _premiumButton;
         private UIObject _declineButton;
         private UIObject _defaultButton;
+        private UIObject _closeButton;
         private KeyboardState _previousKeyboardState;
         private Func<ReviveOwnerSnapshot> _snapshotProvider;
         private Func<string> _premiumHandler;
@@ -32,7 +40,9 @@ namespace HaCreator.MapSimulator.UI
 
         internal ReviveConfirmationWindow(
             IDXObject frame,
-            Texture2D pixel,
+            Texture2D shellTop,
+            Texture2D shellCenter,
+            Texture2D shellBottom,
             Texture2D noticeFrame,
             Texture2D separatorLine,
             Texture2D progressBar,
@@ -40,7 +50,9 @@ namespace HaCreator.MapSimulator.UI
             Texture2D activeDot)
             : base(frame)
         {
-            _pixel = pixel ?? throw new ArgumentNullException(nameof(pixel));
+            _shellTop = shellTop;
+            _shellCenter = shellCenter;
+            _shellBottom = shellBottom;
             _noticeFrame = noticeFrame;
             _separatorLine = separatorLine;
             _progressBar = progressBar;
@@ -65,11 +77,12 @@ namespace HaCreator.MapSimulator.UI
             _feedbackHandler = feedbackHandler;
         }
 
-        internal void InitializeButtons(UIObject premiumButton, UIObject declineButton, UIObject defaultButton)
+        internal void InitializeButtons(UIObject premiumButton, UIObject declineButton, UIObject defaultButton, UIObject closeButton)
         {
             _premiumButton = premiumButton;
             _declineButton = declineButton;
             _defaultButton = defaultButton;
+            _closeButton = closeButton;
 
             if (_premiumButton != null)
             {
@@ -87,6 +100,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 AddButton(_defaultButton);
                 _defaultButton.ButtonClickReleased += _ => ShowFeedback(_normalHandler?.Invoke());
+            }
+
+            if (_closeButton != null)
+            {
+                InitializeCloseButton(_closeButton);
             }
 
             RefreshLayout();
@@ -146,7 +164,9 @@ namespace HaCreator.MapSimulator.UI
             DrawWindowText(sprite, _snapshot.CountdownText, new Vector2(Position.X + 176, Position.Y + 21), new Color(139, 62, 47), 0.33f);
             DrawProgressBar(sprite);
 
-            float detailY = Position.Y + 66f;
+            float detailY = Position.Y + 62f;
+            DrawSectionTitle(sprite, _snapshot.PrimaryTitle, new Vector2(Position.X + 30, detailY), true);
+            detailY += 16f;
             DrawDetailBullet(sprite, new Vector2(Position.X + 19, detailY + 2f), isActive: true);
             foreach (string line in WrapText(_snapshot.PrimaryDetail, 276f, 0.36f))
             {
@@ -156,7 +176,9 @@ namespace HaCreator.MapSimulator.UI
 
             if (!string.IsNullOrWhiteSpace(_snapshot.SecondaryDetail))
             {
-                detailY += 5f;
+                detailY += 6f;
+                DrawSectionTitle(sprite, _snapshot.SecondaryTitle, new Vector2(Position.X + 30, detailY), false);
+                detailY += 15f;
                 DrawDetailBullet(sprite, new Vector2(Position.X + 19, detailY + 1f), isActive: false);
                 foreach (string line in WrapText(_snapshot.SecondaryDetail, 276f, 0.33f))
                 {
@@ -165,7 +187,12 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            DrawWindowText(sprite, _snapshot.StatusText, new Vector2(Position.X + 18, Position.Y + 136), new Color(110, 86, 59), 0.32f);
+            float statusY = Position.Y + 136f;
+            foreach (string line in WrapText(_snapshot.StatusText, 296f, 0.32f))
+            {
+                DrawWindowText(sprite, line, new Vector2(Position.X + 18, statusY), new Color(110, 86, 59), 0.32f);
+                statusY += 13f;
+            }
         }
 
         private void RefreshLayout()
@@ -197,45 +224,42 @@ namespace HaCreator.MapSimulator.UI
                 _defaultButton.ButtonVisible = _snapshot.IsOpen && !_snapshot.HasPremiumChoice;
                 _defaultButton.SetEnabled(_snapshot.IsOpen && !_snapshot.HasPremiumChoice);
             }
+
+            if (_closeButton != null)
+            {
+                BaseDXDrawableItem closeButtonDrawable = _closeButton.GetBaseDXDrawableItemByState();
+                int closeButtonWidth = closeButtonDrawable?.Frame0?.Width ?? 16;
+                _closeButton.X = Math.Max(CloseButtonTopMargin, DefaultWidth - closeButtonWidth - CloseButtonRightMargin);
+                _closeButton.Y = CloseButtonTopMargin;
+                _closeButton.SetVisible(_snapshot.IsOpen);
+                _closeButton.ButtonVisible = _snapshot.IsOpen;
+                _closeButton.SetEnabled(_snapshot.IsOpen);
+            }
         }
 
         private void DrawPanel(SpriteBatch sprite)
         {
             Rectangle bounds = GetWindowBounds();
-            sprite.Draw(_pixel, bounds, new Color(247, 239, 223, 240));
+            DrawShellLayer(sprite, _shellTop, bounds.X, bounds.Y, bounds.Width, ShellTopHeight);
+            DrawShellCenter(sprite, bounds);
+            DrawShellLayer(sprite, _shellBottom, bounds.X, bounds.Bottom - ShellBottomHeight, bounds.Width, ShellBottomHeight);
 
             Rectangle noticeBounds = new Rectangle(bounds.X + 10, bounds.Y + 10, bounds.Width - 20, 132);
             if (_noticeFrame != null)
             {
                 sprite.Draw(_noticeFrame, noticeBounds, Color.White);
             }
-            else
-            {
-                sprite.Draw(_pixel, noticeBounds, new Color(247, 239, 223, 248));
-                sprite.Draw(_pixel, new Rectangle(noticeBounds.X, noticeBounds.Y, noticeBounds.Width, 26), new Color(229, 212, 184));
-            }
-
-            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Bottom - 28, bounds.Width, 28), new Color(238, 228, 209));
-            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(118, 84, 55));
-            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(118, 84, 55));
-            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), new Color(118, 84, 55));
-            sprite.Draw(_pixel, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), new Color(118, 84, 55));
 
             Rectangle separatorBounds = new(bounds.X + 10, bounds.Y + 54, bounds.Width - 20, 2);
             if (_separatorLine != null)
             {
                 sprite.Draw(_separatorLine, separatorBounds, Color.White);
             }
-            else
-            {
-                sprite.Draw(_pixel, separatorBounds, new Color(190, 168, 142));
-            }
         }
 
         private void DrawProgressBar(SpriteBatch sprite)
         {
             Rectangle trackBounds = new(Position.X + 199, Position.Y + 38, 109, 19);
-            sprite.Draw(_pixel, trackBounds, new Color(203, 191, 173, 210));
 
             int fillWidth = Math.Max(0, (int)Math.Round(trackBounds.Width * _snapshot.RemainingRatio));
             if (fillWidth <= 0)
@@ -251,10 +275,7 @@ namespace HaCreator.MapSimulator.UI
                     fillBounds,
                     new Rectangle(0, 0, Math.Min(_progressBar.Width, fillWidth), _progressBar.Height),
                     Color.White);
-                return;
             }
-
-            sprite.Draw(_pixel, fillBounds, new Color(171, 120, 76));
         }
 
         private void DrawDetailBullet(SpriteBatch sprite, Vector2 position, bool isActive)
@@ -262,11 +283,47 @@ namespace HaCreator.MapSimulator.UI
             Texture2D texture = isActive ? _activeDot ?? _inactiveDot : _inactiveDot ?? _activeDot;
             if (texture == null)
             {
-                sprite.Draw(_pixel, new Rectangle((int)position.X, (int)position.Y, 6, 6), isActive ? new Color(171, 120, 76) : new Color(154, 138, 118));
                 return;
             }
 
             sprite.Draw(texture, position, Color.White);
+        }
+
+        private void DrawSectionTitle(SpriteBatch sprite, string title, Vector2 position, bool isPrimary)
+        {
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                return;
+            }
+
+            DrawWindowText(
+                sprite,
+                title,
+                position,
+                isPrimary ? new Color(85, 54, 28) : new Color(120, 94, 69),
+                isPrimary ? 0.39f : 0.36f);
+        }
+
+        private void DrawShellCenter(SpriteBatch sprite, Rectangle bounds)
+        {
+            int centerY = bounds.Y + ShellTopHeight;
+            int centerHeight = Math.Max(0, bounds.Height - ShellTopHeight - ShellBottomHeight);
+            if (centerHeight <= 0)
+            {
+                return;
+            }
+
+            DrawShellLayer(sprite, _shellCenter, bounds.X, centerY, bounds.Width, centerHeight);
+        }
+
+        private static void DrawShellLayer(SpriteBatch sprite, Texture2D texture, int x, int y, int width, int height)
+        {
+            if (sprite == null || texture == null || width <= 0 || height <= 0)
+            {
+                return;
+            }
+
+            sprite.Draw(texture, new Rectangle(x, y, width, height), Color.White);
         }
 
         private void ShowFeedback(string message)

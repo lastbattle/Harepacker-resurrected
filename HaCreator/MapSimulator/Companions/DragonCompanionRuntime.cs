@@ -580,13 +580,7 @@ namespace HaCreator.MapSimulator.Companions
 
         private static bool ShouldSuppressForMapInfo(MapInfo mapInfo)
         {
-            if (mapInfo == null)
-            {
-                return false;
-            }
-
-            return mapInfo.vanishDragon == true
-                || mapInfo.fieldType == FieldType.FIELDTYPE_NODRAGON;
+            return MapSimulator.SuppressesDragonPresentation(mapInfo);
         }
 
         private bool ShouldSuppress(PlayerCharacter owner)
@@ -1505,7 +1499,14 @@ namespace HaCreator.MapSimulator.Companions
                 return true;
             }
 
-            return TryFormatQuestInfoEffectUolCompatibility(rawFormat, questState, out effectUol);
+            if (TryFormatQuestInfoEffectUolCompatibility(rawFormat, questState, out string compatibilityEffectUol)
+                && DoesWzEffectAssetExist(compatibilityEffectUol))
+            {
+                effectUol = compatibilityEffectUol;
+                return true;
+            }
+
+            return false;
         }
 
         internal static bool TryFormatQuestInfoEffectUolExactClient(string rawFormat, int questState, out string effectUol)

@@ -4,6 +4,7 @@ using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Companions;
 using HaCreator.MapSimulator.UI;
+using HaCreator.MapSimulator.Loaders;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Util;
 using MapleLib.WzLib.WzProperties;
@@ -44,6 +45,15 @@ namespace HaCreator.MapSimulator
             DeferredQueued = 2
         }
 
+        private enum FieldHazardPetConsumeTransportPath
+        {
+            SimulatorOwned = 0,
+            OfficialSessionBridge = 1,
+            PacketOutbox = 2,
+            DeferredOfficialSessionBridge = 3,
+            DeferredPacketOutbox = 4
+        }
+
         private readonly record struct FieldHazardHpPotionCandidate(int ItemId, InventoryType InventoryType, string ItemName);
         private readonly record struct FieldHazardPetAutoConsumeTarget(
             int PetSlotIndex,
@@ -71,6 +81,7 @@ namespace HaCreator.MapSimulator
             bool Acknowledged,
             FieldHazardPetConsumeResolutionMode ResolutionMode,
             FieldHazardPetConsumeDispatchState DispatchState,
+            FieldHazardPetConsumeTransportPath TransportPath,
             string RawPacketHex,
             string PayloadHex,
             string TransportDisposition);
@@ -623,7 +634,7 @@ namespace HaCreator.MapSimulator
 
         private PacketOwnedBalloonGlyph[] ParsePacketOwnedBalloonGlyphs(string text)
         {
-            if (string.IsNullOrWhiteSpace(text))
+            if (string.IsNullOrEmpty(text))
             {
                 return Array.Empty<PacketOwnedBalloonGlyph>();
             }
@@ -638,7 +649,8 @@ namespace HaCreator.MapSimulator
                     PlayerName = _playerManager?.Player?.Build?.Name,
                     CurrentMapId = _mapBoard?.MapInfo?.id,
                     ResolveItemCountText = ResolvePacketOwnedBalloonItemCountText,
-                    ResolveQuestStateText = ResolvePacketOwnedBalloonQuestStateText
+                    ResolveQuestStateText = ResolvePacketOwnedBalloonQuestStateText,
+                    ResolveJobNameText = ResolvePacketOwnedBalloonJobNameText
                 });
             for (int i = 0; i < sanitized.Length; i++)
             {
@@ -813,6 +825,20 @@ namespace HaCreator.MapSimulator
                 QuestStateType.Not_Started => "Not started",
                 _ => state.ToString()
             };
+        }
+
+        private string ResolvePacketOwnedBalloonJobNameText()
+        {
+            string buildJobName = _playerManager?.Player?.Build?.JobName;
+            if (!string.IsNullOrWhiteSpace(buildJobName))
+            {
+                return buildJobName;
+            }
+
+            int jobId = _playerManager?.Player?.Build?.Job ?? 0;
+            return jobId > 0
+                ? SkillDataLoader.GetJobName(jobId)
+                : "your job";
         }
 
         private int SkipPacketOwnedBalloonLineLeadingSpaces(PacketOwnedBalloonGlyph[] glyphs, int startIndex)
@@ -1683,9 +1709,11 @@ namespace HaCreator.MapSimulator
             }
 
             int predictedRemainingHp = Math.Max(0, player.HP - damage);
-            int hpThresholdPercent = Math.Clamp(_statusBarHpWarningThresholdPercent, 1, 99);
-            int hpThreshold = Math.Max(1, (int)Math.Ceiling(player.MaxHP * (hpThresholdPercent / 100f)));
-            if (predictedRemainingHp >= hpThreshold)
+            if (!ShouldAttemptFieldHazardPetAutoConsume(
+                    predictedRemainingHp,
+                    player.MaxHP,
+                    _statusBarHpWarningThresholdPercent,
+                    forceRequest))
             {
                 return null;
             }
@@ -1766,6 +1794,7 @@ namespace HaCreator.MapSimulator
                     out string transportDisposition,
                     out FieldHazardPetConsumeResolutionMode resolutionMode,
                     out FieldHazardPetConsumeDispatchState dispatchState,
+                    out FieldHazardPetConsumeTransportPath transportPath,
                     out bool outboundExclusivePending))
             {
                 FieldHazardFollowUpKind followUpKind = outboundExclusivePending
@@ -1799,7 +1828,7 @@ namespace HaCreator.MapSimulator
                 BuffSkillRequest: buffSkillRequest,
                 PetSerial: petSerial,
                 RequestIndex: requestIndex,
-                Opcode: 0,
+                Opcode: PacketOwnedLocalUtilityOutboundRequest.PetItemUseRequestOpcode,
                 InventoryRuntimeSlotIndex: inventoryRuntimeSlotIndex,
                 InventoryClientSlotIndex: inventoryClientSlotIndex,
                 InitialSlotQuantity: initialSlotQuantity,
@@ -1812,6 +1841,7 @@ namespace HaCreator.MapSimulator
                 Acknowledged: false,
                 ResolutionMode: resolutionMode,
                 DispatchState: dispatchState,
+                TransportPath: transportPath,
                 RawPacketHex: payloadHex,
                 PayloadHex: payloadHex,
                 TransportDisposition: transportDisposition);
@@ -1871,6 +1901,16 @@ namespace HaCreator.MapSimulator
                 requestSlotMatches
                 && request.InitialSlotQuantity > 0
                 && requestSlot.Quantity < request.InitialSlotQuantity;
+
+            if (TryPromoteDeferredFieldHazardDispatch(request, currentTickCount, out FieldHazardPetAutoConsumeRequest promotedRequest))
+            {
+                request = promotedRequest;
+                _pendingFieldHazardPetAutoConsumeRequest = request;
+                requestSlotQuantityDropped =
+                    requestSlotMatches
+                    && request.InitialSlotQuantity > 0
+                    && requestSlot.Quantity < request.InitialSlotQuantity;
+            }
 
             if (request.ResolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved
                 && (!requestSlotMatches || requestSlotQuantityDropped))
@@ -1973,6 +2013,22 @@ namespace HaCreator.MapSimulator
             _chat?.AddSystemMessage(GetFieldHazardNoHpPotionChatNoticeText(), currentTickCount);
             string failureDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} for {request.Candidate.ItemName} failed after the synthetic ack arrived but before the client could consume locked slot {request.InventoryClientSlotIndex}.";
             _localOverlayRuntime.SetFieldHazardFollowUp(failureDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
+        }
+
+        internal static bool ShouldAttemptFieldHazardPetAutoConsume(
+            int predictedRemainingHp,
+            int maxHp,
+            int thresholdPercent,
+            bool forceRequest)
+        {
+            if (forceRequest)
+            {
+                return true;
+            }
+
+            int hpThresholdPercent = Math.Clamp(thresholdPercent, 1, 99);
+            int hpThreshold = Math.Max(1, (int)Math.Ceiling(Math.Max(0, maxHp) * (hpThresholdPercent / 100f)));
+            return predictedRemainingHp < hpThreshold;
         }
 
         private bool TryResolveFieldHazardPetAutoConsumeTarget(
@@ -2173,6 +2229,7 @@ namespace HaCreator.MapSimulator
             out string transportDisposition,
             out FieldHazardPetConsumeResolutionMode resolutionMode,
             out FieldHazardPetConsumeDispatchState dispatchState,
+            out FieldHazardPetConsumeTransportPath transportPath,
             out bool exclusivePending)
         {
             petSerial = ResolveFieldHazardPetAutoConsumeSerial(requestPet);
@@ -2181,6 +2238,7 @@ namespace HaCreator.MapSimulator
             transportDisposition = string.Empty;
             resolutionMode = FieldHazardPetConsumeResolutionMode.SimulatorOwned;
             dispatchState = FieldHazardPetConsumeDispatchState.SimulatorOwned;
+            transportPath = FieldHazardPetConsumeTransportPath.SimulatorOwned;
             exclusivePending = false;
 
             if (!_packetOwnedLocalUtilityContext.TryEmitPetItemUseRequest(
@@ -2205,7 +2263,8 @@ namespace HaCreator.MapSimulator
                 payloadHex,
                 currentTickCount,
                 out resolutionMode,
-                out dispatchState);
+                out dispatchState,
+                out transportPath);
             return true;
         }
 
@@ -2214,15 +2273,18 @@ namespace HaCreator.MapSimulator
             string payloadHex,
             int currentTickCount,
             out FieldHazardPetConsumeResolutionMode resolutionMode,
-            out FieldHazardPetConsumeDispatchState dispatchState)
+            out FieldHazardPetConsumeDispatchState dispatchState,
+            out FieldHazardPetConsumeTransportPath transportPath)
         {
             resolutionMode = FieldHazardPetConsumeResolutionMode.SimulatorOwned;
             dispatchState = FieldHazardPetConsumeDispatchState.SimulatorOwned;
+            transportPath = FieldHazardPetConsumeTransportPath.SimulatorOwned;
             string dispatchStatus;
             if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(request.Opcode, request.Payload, out dispatchStatus))
             {
                 resolutionMode = FieldHazardPetConsumeResolutionMode.ExternalObserved;
                 dispatchState = FieldHazardPetConsumeDispatchState.Dispatched;
+                transportPath = FieldHazardPetConsumeTransportPath.OfficialSessionBridge;
                 return $"Outpacket {request.Opcode} [{payloadHex}] dispatched through the live local-utility bridge. {dispatchStatus}";
             }
 
@@ -2231,6 +2293,7 @@ namespace HaCreator.MapSimulator
             {
                 resolutionMode = FieldHazardPetConsumeResolutionMode.ExternalObserved;
                 dispatchState = FieldHazardPetConsumeDispatchState.Dispatched;
+                transportPath = FieldHazardPetConsumeTransportPath.PacketOutbox;
                 return $"Outpacket {request.Opcode} [{payloadHex}] dispatched through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
             }
 
@@ -2240,6 +2303,7 @@ namespace HaCreator.MapSimulator
             {
                 resolutionMode = FieldHazardPetConsumeResolutionMode.ExternalObserved;
                 dispatchState = FieldHazardPetConsumeDispatchState.DeferredQueued;
+                transportPath = FieldHazardPetConsumeTransportPath.DeferredOfficialSessionBridge;
                 return $"Outpacket {request.Opcode} [{payloadHex}] queued for deferred live official-session injection after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus}";
             }
 
@@ -2248,11 +2312,88 @@ namespace HaCreator.MapSimulator
             {
                 resolutionMode = FieldHazardPetConsumeResolutionMode.ExternalObserved;
                 dispatchState = FieldHazardPetConsumeDispatchState.DeferredQueued;
+                transportPath = FieldHazardPetConsumeTransportPath.DeferredPacketOutbox;
                 return $"Outpacket {request.Opcode} [{payloadHex}] queued for deferred generic local-utility outbox delivery after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus} Deferred outbox: {queuedStatus}";
             }
 
             string contextStatus = _packetOwnedLocalUtilityContext.DescribePetConsumeContext(currentTickCount);
             return $"Outpacket {request.Opcode} [{payloadHex}] remained simulator-owned because neither the live local-utility bridge nor the deferred official-session bridge queue nor the generic outbox transport or deferred outbox queue accepted it. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus} Deferred outbox: {queuedStatus} {contextStatus}";
+        }
+
+        private bool TryPromoteDeferredFieldHazardDispatch(
+            FieldHazardPetAutoConsumeRequest request,
+            int currentTickCount,
+            out FieldHazardPetAutoConsumeRequest promotedRequest)
+        {
+            promotedRequest = request;
+            if (request.DispatchState != FieldHazardPetConsumeDispatchState.DeferredQueued
+                || request.ResolutionMode != FieldHazardPetConsumeResolutionMode.ExternalObserved
+                || request.Opcode <= 0
+                || string.IsNullOrWhiteSpace(request.PayloadHex))
+            {
+                return false;
+            }
+
+            byte[] rawPacket;
+            try
+            {
+                rawPacket = Convert.FromHexString(request.PayloadHex);
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+
+            string transportDisposition = null;
+            switch (request.TransportPath)
+            {
+                case FieldHazardPetConsumeTransportPath.DeferredOfficialSessionBridge:
+                    if (_localUtilityOfficialSessionBridge.HasQueuedOutboundPacket(request.Opcode, rawPacket)
+                        || !_localUtilityOfficialSessionBridge.WasLastSentOutboundPacket(request.Opcode, rawPacket))
+                    {
+                        return false;
+                    }
+
+                    transportDisposition =
+                        $"Outpacket {request.Opcode} [{request.PayloadHex}] left the deferred live official-session queue and was injected into the active Maple session.";
+                    break;
+
+                case FieldHazardPetConsumeTransportPath.DeferredPacketOutbox:
+                    if (_localUtilityPacketOutbox.HasQueuedOutboundPacket(request.Opcode, rawPacket)
+                        || !_localUtilityPacketOutbox.WasLastSentOutboundPacket(request.Opcode, rawPacket))
+                    {
+                        return false;
+                    }
+
+                    transportDisposition =
+                        $"Outpacket {request.Opcode} [{request.PayloadHex}] left the deferred generic local-utility outbox queue for local delivery.";
+                    break;
+
+                default:
+                    return false;
+            }
+
+            int ackDelayMs = ResolveFieldHazardSyntheticAckDelayMs(
+                FieldHazardPetConsumeDispatchState.Dispatched,
+                request.ResolutionMode);
+            promotedRequest = request with
+            {
+                DispatchState = FieldHazardPetConsumeDispatchState.Dispatched,
+                AckAt = currentTickCount + ackDelayMs,
+                ResultAt = currentTickCount + ackDelayMs + FieldHazardPetAutoConsumeSyntheticResultDelayMs,
+                RemoteResultDeadlineAt = currentTickCount + ResolveFieldHazardRemoteObservationWindowMs(
+                    FieldHazardPetConsumeDispatchState.Dispatched,
+                    request.ResolutionMode),
+                TransportDisposition = transportDisposition
+            };
+
+            string petLabel = DescribeFieldHazardAutoConsumePet(request.PetSlotIndex, request.PetName);
+            string requestMode = DescribeFieldHazardSharedPetConsumeMode(request.SharedSource);
+            string requestVariant = DescribeFieldHazardRequestVariant(request.ForceRequest, request.BuffSkillRequest);
+            string followUpDetail =
+                $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} left the deferred queue on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} and is now awaiting remote packet/result ownership. {transportDisposition}";
+            _localOverlayRuntime.SetFieldHazardFollowUp(followUpDetail, FieldHazardFollowUpKind.Pending, currentTickCount);
+            return true;
         }
 
         private void CompleteFieldHazardRemoteObservedRequest(
@@ -2461,12 +2602,13 @@ namespace HaCreator.MapSimulator
             int remoteRemainingMs = Math.Max(0, request.RemoteResultDeadlineAt - currentTickCount);
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "Field hazard pet transport: {0}, requester={1}, requestId={2}, pending={3} [{4}] slot={5} runtimeSlot={6} state={7} ownership={8} dispatchState={9} ackIn={10}ms resultIn={11}ms observeIn={12}ms qty0={13} force={14} buffSkill={15} requestIndex={16} petSerial={17} payload={18} dispatch=\"{19}\". {20}",
+                "Field hazard pet transport: {0}, requester={1}, requestId={2}, pending={3} [{4}] opcode={5} slot={6} runtimeSlot={7} state={8} ownership={9} dispatchState={10} path={11} ackIn={12}ms resultIn={13}ms observeIn={14}ms qty0={15} force={16} buffSkill={17} requestIndex={18} petSerial={19} payload={20} dispatch=\"{21}\". {22}",
                 sharedItemStatus,
                 DescribeFieldHazardAutoConsumePet(request.PetSlotIndex, request.PetName),
                 request.RequestId,
                 request.Candidate.ItemId,
                 request.Candidate.InventoryType,
+                request.Opcode,
                 request.InventoryClientSlotIndex,
                 request.InventoryRuntimeSlotIndex,
                 request.DispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued
@@ -2476,6 +2618,7 @@ namespace HaCreator.MapSimulator
                         : "queued",
                 DescribeFieldHazardPetConsumeResolutionMode(request.ResolutionMode),
                 DescribeFieldHazardPetConsumeDispatchState(request.DispatchState),
+                DescribeFieldHazardPetConsumeTransportPath(request.TransportPath),
                 remainingMs,
                 resultRemainingMs,
                 remoteRemainingMs,
@@ -2632,6 +2775,18 @@ namespace HaCreator.MapSimulator
             };
         }
 
+        private static string DescribeFieldHazardPetConsumeTransportPath(FieldHazardPetConsumeTransportPath path)
+        {
+            return path switch
+            {
+                FieldHazardPetConsumeTransportPath.OfficialSessionBridge => "bridge",
+                FieldHazardPetConsumeTransportPath.PacketOutbox => "outbox",
+                FieldHazardPetConsumeTransportPath.DeferredOfficialSessionBridge => "deferred-bridge",
+                FieldHazardPetConsumeTransportPath.DeferredPacketOutbox => "deferred-outbox",
+                _ => "simulator"
+            };
+        }
+
         private static int ResolveFieldHazardSyntheticAckDelayMs(
             FieldHazardPetConsumeDispatchState dispatchState,
             FieldHazardPetConsumeResolutionMode resolutionMode)
@@ -2696,7 +2851,8 @@ namespace HaCreator.MapSimulator
             string fadeStatus = _packetOwnedFieldFadeOverlay.IsActive
                 ? string.Format(
                     CultureInfo.InvariantCulture,
-                    "Fade active: phase={0} fadeIn={1}ms hold={2}ms fadeOut={3}ms fadeOutStartIn={4}ms remaining={5}ms alpha={6} layer={7}.",
+                    "Fade active: count={0} phase={1} fadeIn={2}ms hold={3}ms fadeOut={4}ms fadeOutStartIn={5}ms remaining={6}ms alpha={7} layer={8}.",
+                    _packetOwnedFieldFadeOverlay.ActiveFadeCount,
                     DescribePacketOwnedFieldFadePhase(currentTickCount),
                     _packetOwnedFieldFadeOverlay.FadeInMs,
                     _packetOwnedFieldFadeOverlay.HoldMs,

@@ -37,8 +37,8 @@ namespace HaCreator.MapSimulator.Interaction
         public int ItemId { get; init; }
         public int Quantity { get; init; } = 1;
         public string Label { get; init; } = string.Empty;
-        public int PacketOpcode { get; init; }
-        public byte[] PacketPayload { get; init; } = Array.Empty<byte>();
+        public int PacketOpcode { get; set; }
+        public byte[] PacketPayload { get; set; } = Array.Empty<byte>();
         public string DispatchSummary { get; set; } = string.Empty;
     }
 }

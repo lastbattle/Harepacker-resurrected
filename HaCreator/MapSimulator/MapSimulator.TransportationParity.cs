@@ -87,6 +87,17 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private string ArmTransportFieldInitRequestForActiveWrapperMap()
+        {
+            if (!IsTransitVoyageWrapperMap(_mapBoard?.MapInfo) || !_transportField.HasRouteConfiguration)
+            {
+                return null;
+            }
+
+            MirrorTransportFieldInitRequestForCurrentMap();
+            return _lastTransportFieldInitRequestSummary;
+        }
+
         private static bool TryResolveTransportFieldInitRequestArguments(
             int? fieldIdOverride,
             int? shipKindOverride,

@@ -571,8 +571,20 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_challengeTexture != null)
             {
-                Rectangle drawBounds = FitTexture(bounds, _challengeTexture.Width, _challengeTexture.Height, upscale: false);
-                sprite.Draw(_challengeTexture, drawBounds, Color.White);
+                Rectangle sourceBounds = new(
+                    0,
+                    0,
+                    Math.Min(bounds.Width, _challengeTexture.Width),
+                    Math.Min(bounds.Height, _challengeTexture.Height));
+                if (sourceBounds.Width > 0 && sourceBounds.Height > 0)
+                {
+                    sprite.Draw(
+                        _challengeTexture,
+                        new Vector2(bounds.X, bounds.Y),
+                        sourceBounds,
+                        Color.White);
+                }
+
                 return;
             }
 
@@ -632,11 +644,12 @@ namespace HaCreator.MapSimulator.UI
         private void DrawAttemptMessage(SpriteBatch sprite, Rectangle bounds)
         {
             string attemptMessage = AntiMacroOwnerStringPoolText.FormatAttemptMessageFromClientCounter(_answerCount, _attemptMessageFormat);
-            DrawShadowedText(
+            ClientTextDrawing.Draw(
                 sprite,
                 attemptMessage,
                 new Vector2(bounds.X + _layout.AttemptMessageOrigin.X, bounds.Y + _layout.AttemptMessageOrigin.Y),
-                new Color(197, 42, 26));
+                new Color(197, 42, 26),
+                fallbackFont: _font);
         }
 
         private bool Pressed(KeyboardState keyboardState, Keys key)
@@ -646,42 +659,22 @@ namespace HaCreator.MapSimulator.UI
 
         private bool CanSubmitAnswer()
         {
-            return !string.IsNullOrWhiteSpace(CurrentInput) && GetRemainingSeconds(Environment.TickCount) > 0;
-        }
-
-        private static Rectangle FitTexture(Rectangle bounds, int width, int height, bool upscale)
-        {
-            if (width <= 0 || height <= 0)
-            {
-                return bounds;
-            }
-
-            float widthRatio = bounds.Width / (float)width;
-            float heightRatio = bounds.Height / (float)height;
-            float scale = Math.Min(widthRatio, heightRatio);
-            if (!upscale)
-            {
-                scale = Math.Min(1f, scale);
-            }
-
-            int scaledWidth = Math.Max(1, (int)Math.Round(width * scale));
-            int scaledHeight = Math.Max(1, (int)Math.Round(height * scale));
-            return new Rectangle(
-                bounds.X + ((bounds.Width - scaledWidth) / 2),
-                bounds.Y + ((bounds.Height - scaledHeight) / 2),
-                scaledWidth,
-                scaledHeight);
+            return !string.IsNullOrWhiteSpace(CurrentInput) && GetRemainingMilliseconds(Environment.TickCount) > 0;
         }
 
         private int GetRemainingSeconds(int tickCount)
+        {
+            return GetRemainingMilliseconds(tickCount) / 1000;
+        }
+
+        private int GetRemainingMilliseconds(int tickCount)
         {
             if (_expiresAt == int.MinValue)
             {
                 return 0;
             }
 
-            int remainingMs = Math.Max(0, _expiresAt - tickCount);
-            return (remainingMs + 999) / 1000;
+            return Math.Max(0, _expiresAt - tickCount);
         }
 
         private bool UsingNativeEditHost => _nativeEditHost.IsAttached;

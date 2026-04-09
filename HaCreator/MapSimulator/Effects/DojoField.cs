@@ -187,7 +187,7 @@ namespace HaCreator.MapSimulator.Effects
                 return true;
             }
 
-            if (TryResolveAmbiguousTransferPacketType(payload, candidates, -1, null, -1, out packetType, out reason))
+            if (TryResolveAmbiguousTransferPacketType(payload, candidates, -1, null, -1, out packetType, out reason, out _))
             {
                 return true;
             }
@@ -210,7 +210,7 @@ namespace HaCreator.MapSimulator.Effects
         }
         public static bool TryInferPacketType(byte[] payload, out int packetType, out string reason)
         {
-            return TryInferPacketType(payload, -1, null, -1, out packetType, out reason);
+            return TryInferPacketType(payload, -1, null, -1, out packetType, out reason, out _);
         }
         public static bool TryInferPacketType(
             byte[] payload,
@@ -220,15 +220,43 @@ namespace HaCreator.MapSimulator.Effects
             out int packetType,
             out string reason)
         {
+            return TryInferPacketType(
+                payload,
+                clearMapIdHint,
+                clearPortalNameHint,
+                exitMapIdHint,
+                out packetType,
+                out reason,
+                out _);
+        }
+        public static bool TryInferPacketType(
+            byte[] payload,
+            int clearMapIdHint,
+            string clearPortalNameHint,
+            int exitMapIdHint,
+            out int packetType,
+            out string reason,
+            out bool isStableInference)
+        {
+            isStableInference = false;
             List<(int PacketType, string Summary)> candidates = CollectPacketPayloadCandidates(payload);
             if (candidates.Count == 1)
             {
                 packetType = candidates[0].PacketType;
                 reason = candidates[0].Summary;
+                isStableInference = true;
                 return true;
             }
 
-            if (TryResolveAmbiguousTransferPacketType(payload, candidates, clearMapIdHint, clearPortalNameHint, exitMapIdHint, out packetType, out reason))
+            if (TryResolveAmbiguousTransferPacketType(
+                    payload,
+                    candidates,
+                    clearMapIdHint,
+                    clearPortalNameHint,
+                    exitMapIdHint,
+                    out packetType,
+                    out reason,
+                    out isStableInference))
             {
                 return true;
             }
@@ -255,7 +283,15 @@ namespace HaCreator.MapSimulator.Effects
                 return "unknown";
             }
 
-            if (TryResolveAmbiguousTransferPacketType(payload, candidates, clearMapIdHint, clearPortalNameHint, exitMapIdHint, out int packetType, out string reason))
+            if (TryResolveAmbiguousTransferPacketType(
+                    payload,
+                    candidates,
+                    clearMapIdHint,
+                    clearPortalNameHint,
+                    exitMapIdHint,
+                    out int packetType,
+                    out string reason,
+                    out _))
             {
                 return $"{DescribePacketType(packetType)}({reason})";
             }
@@ -1005,6 +1041,52 @@ namespace HaCreator.MapSimulator.Effects
                 out _,
                 out _);
         }
+        internal static bool TryParseTransferTargetOption(
+            string option,
+            out int mapId,
+            out string portalName,
+            out string errorMessage)
+        {
+            mapId = -1;
+            portalName = string.Empty;
+            errorMessage = null;
+
+            if (string.IsNullOrWhiteSpace(option))
+            {
+                return true;
+            }
+
+            string trimmedOption = option.Trim();
+            int separatorIndex = trimmedOption.IndexOf(':');
+            if (separatorIndex < 0)
+            {
+                separatorIndex = trimmedOption.IndexOf(' ');
+            }
+
+            string mapToken = separatorIndex >= 0
+                ? trimmedOption[..separatorIndex].Trim()
+                : trimmedOption;
+            string portalToken = separatorIndex >= 0 && separatorIndex + 1 < trimmedOption.Length
+                ? trimmedOption[(separatorIndex + 1)..].Trim()
+                : string.Empty;
+
+            if (!int.TryParse(mapToken, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedMapId)
+                || !IsLikelyPacketTransferMapId(parsedMapId))
+            {
+                errorMessage = "Dojo transfer target must start with a positive map id.";
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(portalToken) && !IsPrintablePortalName(portalToken))
+            {
+                errorMessage = "Dojo transfer target portal name contains unsupported characters.";
+                return false;
+            }
+
+            mapId = parsedMapId;
+            portalName = portalToken;
+            return true;
+        }
         private static bool IsLikelyPacketTransferMapId(int mapId)
         {
             if (mapId <= 0 || mapId == MapConstants.MaxMap)
@@ -1027,10 +1109,12 @@ namespace HaCreator.MapSimulator.Effects
             string clearPortalNameHint,
             int exitMapIdHint,
             out int packetType,
-            out string reason)
+            out string reason,
+            out bool isStableResolution)
         {
             packetType = -1;
             reason = string.Empty;
+            isStableResolution = false;
             if (candidates == null || candidates.Count != 2)
             {
                 return false;
@@ -1064,6 +1148,7 @@ namespace HaCreator.MapSimulator.Effects
                     reason = matchesClearPortal
                         ? $"clear(transfer target matched next-floor portal {portalName})"
                         : $"clear(transfer target matched next-floor map {transferMapId})";
+                    isStableResolution = true;
                     return true;
                 }
 
@@ -1071,6 +1156,7 @@ namespace HaCreator.MapSimulator.Effects
                 {
                     packetType = PacketTypeTimeOver;
                     reason = $"timeover(transfer target matched exit map {transferMapId})";
+                    isStableResolution = true;
                     return true;
                 }
             }

@@ -172,6 +172,34 @@ namespace HaCreator.MapSimulator.Loaders
                 catch { }
             }
 
+            WzCanvasProperty backgrnd3Dual = (WzCanvasProperty)characterProperty["backgrnd3_dual"];
+            if (backgrnd3Dual != null)
+            {
+                try
+                {
+                    System.Drawing.Bitmap dualSlotBitmap = backgrnd3Dual.GetLinkedWzCanvasBitmap();
+                    Texture2D dualSlotTexture = dualSlotBitmap.ToTexture2DAndDispose(device);
+                    IDXObject dualSlotLabels = new DXObject(0, 0, dualSlotTexture, 0);
+                    System.Drawing.PointF? dualSlotOrigin = backgrnd3Dual.GetCanvasOriginPosition();
+                    int dualSlotOffsetX = dualSlotOrigin.HasValue ? -(int)dualSlotOrigin.Value.X : 10;
+                    int dualSlotOffsetY = dualSlotOrigin.HasValue ? -(int)dualSlotOrigin.Value.Y : 27;
+                    equip.SetDualSlotLabels(dualSlotLabels, dualSlotOffsetX, dualSlotOffsetY);
+                }
+                catch { }
+            }
+
+            WzCanvasProperty disabledOverlay = (WzCanvasProperty)characterProperty["disabled"];
+            if (disabledOverlay != null)
+            {
+                try
+                {
+                    System.Drawing.Bitmap disabledBitmap = disabledOverlay.GetLinkedWzCanvasBitmap();
+                    Texture2D disabledTexture = disabledBitmap.ToTexture2DAndDispose(device);
+                    equip.SetDisabledSlotOverlay(disabledTexture);
+                }
+                catch { }
+            }
+
 
             // only authors dynamic character-pane chrome for pendant slot expansion
             // and the charm pocket unlock. Load them from WZ instead of duplicating layout constants.

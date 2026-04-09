@@ -135,6 +135,7 @@ namespace HaCreator.MapSimulator
             }
 
             ApplyPacketOwnedCharacterInventorySnapshot(snapshot);
+            ApplyPacketOwnedCharacterSkillSnapshot(snapshot);
             CharacterBuild activeBuild = _playerManager?.Player?.Build;
             if (activeBuild != null)
             {
@@ -260,6 +261,17 @@ namespace HaCreator.MapSimulator
 
                 inventoryWindow.SetSlotLimit(inventoryType, slotLimit);
             }
+        }
+
+        private void ApplyPacketOwnedCharacterSkillSnapshot(PacketCharacterDataSnapshot snapshot)
+        {
+            IReadOnlyDictionary<int, int> cooldowns = snapshot?.SkillCooldownRemainingSecondsBySkillId;
+            if (cooldowns == null || _playerManager?.Skills == null)
+            {
+                return;
+            }
+
+            _playerManager.Skills.ApplyAuthoritativeCooldownSnapshot(cooldowns, currTickCount);
         }
 
         private static CharacterGender ResolvePacketOwnedCharacterGender(byte genderValue, CharacterGender fallback)

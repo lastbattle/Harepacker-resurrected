@@ -910,4 +910,15 @@ namespace HaCreator.MapSimulator.UI
         public IReadOnlyList<EventAlarmLineSnapshot> AlarmLines { get; init; } = Array.Empty<EventAlarmLineSnapshot>();
         public IReadOnlyList<EventEntrySnapshot> Entries { get; init; } = Array.Empty<EventEntrySnapshot>();
     }
+
+    internal sealed class DragonBoxWindowSnapshot
+    {
+        public int OrbMask { get; init; }
+        public int CollectedOrbCount { get; init; }
+        public int RemainingTimeSeconds { get; init; }
+        public bool CanSummon { get; init; }
+        public bool CanClickSummon { get; init; }
+        public string ProgressText { get; init; } = string.Empty;
+        public string StatusText { get; init; } = string.Empty;
+    }
 }

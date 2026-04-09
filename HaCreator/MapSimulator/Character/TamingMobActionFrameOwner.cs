@@ -6,6 +6,44 @@ namespace HaCreator.MapSimulator.Character
     internal sealed class TamingMobActionFrameOwner
     {
         private const int MechanicTamingMobItemId = 1932016;
+        private static readonly IReadOnlySet<int> EventVehicleType1ItemIds =
+            new HashSet<int>
+            {
+                1932001,
+                1932002
+            };
+        private static readonly IReadOnlySet<int> EventVehicleType2ItemIds =
+            new HashSet<int>
+            {
+                1932004,
+                1932006,
+                1932007,
+                1932008,
+                1932009,
+                1932010,
+                1932011,
+                1932012,
+                1932013,
+                1932014,
+                1932017,
+                1932018,
+                1932019,
+                1932020,
+                1932021,
+                1932022,
+                1932023,
+                1932025,
+                1932026,
+                1932027,
+                1932028,
+                1932029,
+                1932034,
+                1932035,
+                1932037,
+                1932038,
+                1932039,
+                1932040
+            };
         private static readonly IReadOnlySet<int> WildHunterJaguarTamingMobItemIds =
             new HashSet<int>
             {
@@ -63,6 +101,17 @@ namespace HaCreator.MapSimulator.Character
                 "flamethrower_after2",
                 "herbalism_mechanic",
                 "mining_mechanic"
+            };
+        private static readonly IReadOnlySet<string> EventVehicleType2ExclusiveActionNames =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "shoot6",
+                "arrowRain"
+            };
+        private static readonly IReadOnlySet<string> EventVehicleType1ExclusiveActionNames =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "comboJudgement"
             };
         private static readonly IReadOnlySet<string> WildHunterJaguarExclusiveActionNames =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -343,6 +392,18 @@ namespace HaCreator.MapSimulator.Character
             if (MechanicExclusiveActionNames.Contains(actionName))
             {
                 return VehicleItemId == MechanicTamingMobItemId;
+            }
+
+            if (EventVehicleType2ExclusiveActionNames.Contains(actionName))
+            {
+                return VehicleItemId == MechanicTamingMobItemId
+                       || WildHunterJaguarTamingMobItemIds.Contains(VehicleItemId)
+                       || EventVehicleType2ItemIds.Contains(VehicleItemId);
+            }
+
+            if (EventVehicleType1ExclusiveActionNames.Contains(actionName))
+            {
+                return EventVehicleType1ItemIds.Contains(VehicleItemId);
             }
 
             if (WildHunterJaguarExclusiveActionNames.Contains(actionName))

@@ -11,6 +11,7 @@ namespace HaCreator.MapSimulator
     {
         private const string WeddingRemoteUserSourceTag = "wedding";
         private readonly Dictionary<int, int> _weddingRemoteItemEffectRevisionByCharacterId = new();
+        private readonly Dictionary<int, int> _weddingRemoteAvatarModifiedRevisionByCharacterId = new();
 
         private void SyncWeddingRemoteActorsToSharedPool(WeddingField field)
         {
@@ -58,12 +59,15 @@ namespace HaCreator.MapSimulator
                         out _);
                 }
 
-                if (snapshot.AvatarModifiedState is RemoteUserAvatarModifiedPacket avatarModifiedState)
+                if (snapshot.AvatarModifiedState is RemoteUserAvatarModifiedPacket avatarModifiedState
+                    && (!_weddingRemoteAvatarModifiedRevisionByCharacterId.TryGetValue(characterId, out int syncedAvatarRevision)
+                        || syncedAvatarRevision != snapshot.AvatarModifiedRevision))
                 {
                     _remoteUserPool.TryApplyAvatarModified(
                         avatarModifiedState,
                         System.Environment.TickCount,
                         out _);
+                    _weddingRemoteAvatarModifiedRevisionByCharacterId[characterId] = snapshot.AvatarModifiedRevision;
                 }
 
                 if (snapshot.MovementSnapshot != null)
@@ -94,12 +98,18 @@ namespace HaCreator.MapSimulator
             {
                 _weddingRemoteItemEffectRevisionByCharacterId.Remove(characterId);
             }
+
+            foreach (int characterId in _weddingRemoteAvatarModifiedRevisionByCharacterId.Keys.Except(desiredCharacterIds).ToArray())
+            {
+                _weddingRemoteAvatarModifiedRevisionByCharacterId.Remove(characterId);
+            }
         }
 
         private void ClearWeddingRemoteActorsFromSharedPool()
         {
             _remoteUserPool.RemoveBySourceTag(WeddingRemoteUserSourceTag);
             _weddingRemoteItemEffectRevisionByCharacterId.Clear();
+            _weddingRemoteAvatarModifiedRevisionByCharacterId.Clear();
         }
 
         private static int ResolveWeddingRemoteUserId(WeddingRemoteParticipantSnapshot snapshot)

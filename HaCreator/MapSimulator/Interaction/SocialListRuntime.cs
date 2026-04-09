@@ -1550,9 +1550,11 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     IsLocalPlayer = selectedEntry.IsLocalPlayer
                 });
-            return delta > 0
+            string message = delta > 0
                 ? $"{selectedEntry.Name} advanced from guild rank title {currentIndex + 1} to {nextIndex + 1} ({nextTitle})."
                 : $"{selectedEntry.Name} moved down from guild rank title {currentIndex + 1} to {nextIndex + 1} ({nextTitle}).";
+            NotifySocialChatObserved(message);
+            return message;
         }
 
         private string AddAllianceMember()
@@ -1625,9 +1627,11 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     IsLocalPlayer = selectedEntry.IsLocalPlayer
                 });
-            return delta > 0
+            string message = delta > 0
                 ? $"{selectedEntry.Name} advanced from alliance rank title {currentIndex + 1} to {nextIndex + 1} ({nextTitle})."
                 : $"{selectedEntry.Name} moved down from alliance rank title {currentIndex + 1} to {nextIndex + 1} ({nextTitle}).";
+            NotifySocialChatObserved(message);
+            return message;
         }
 
         private void NotifySocialChatObserved(string message)

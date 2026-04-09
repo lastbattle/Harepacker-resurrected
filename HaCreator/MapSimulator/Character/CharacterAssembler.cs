@@ -723,18 +723,24 @@ namespace HaCreator.MapSimulator.Character
 
                 // Add face - relative to head
                 FaceLookFrame faceLookFrame = GetFaceLookFrame(faceLook, frameIndex);
-                if (faceLookFrame?.FaceFrame != null)
+                bool renderedCompositeFace = faceLookFrame?.CompositeFrame?.Texture != null;
+                CharacterFrame renderedFaceFrame = renderedCompositeFace
+                    ? faceLookFrame.CompositeFrame
+                    : faceLookFrame?.FaceFrame;
+                if (renderedFaceFrame != null)
                 {
                     Point headBrow = headFrame.GetMapPoint(MAP_BROW);
-                    Point faceBrow = faceLookFrame.FaceFrame.GetMapPoint(MAP_BROW);
+                    Point faceBrow = renderedFaceFrame.GetMapPoint(MAP_BROW);
                     Point faceOffset = new Point(
                         headOffset.Value.X + headBrow.X - faceBrow.X,
                         headOffset.Value.Y + headBrow.Y - faceBrow.Y);
 
-                    AddPart(parts, faceLookFrame.FaceFrame, faceOffset, CharacterPartType.Face, _build.Face);
+                    AddPart(parts, renderedFaceFrame, faceOffset, CharacterPartType.Face, _build.Face);
                 }
 
-                if (faceLookFrame?.AccessoryFrame != null && visibleFaceAccessory != null)
+                if (!renderedCompositeFace
+                    && faceLookFrame?.AccessoryFrame != null
+                    && visibleFaceAccessory != null)
                 {
                     Point headBrow = headFrame.GetMapPoint(MAP_BROW);
                     Point accessoryBrow = faceLookFrame.AccessoryFrame.GetMapPoint(MAP_BROW);
@@ -1199,11 +1205,26 @@ namespace HaCreator.MapSimulator.Character
             return anim.Frames[idx];
         }
 
-        private CharacterAnimation GetPartAnimation(CharacterPart part, string actionName)
+        internal static CharacterAnimation GetPartAnimation(CharacterPart part, string actionName)
         {
             if (part == null)
             {
                 return null;
+            }
+
+            if (part.Type == CharacterPartType.Morph)
+            {
+                if (part.MorphActionFrameOwner != null)
+                {
+                    return part.MorphActionFrameOwner.GetAnimation(part, actionName);
+                }
+
+                if (part.Animations.TryGetValue(actionName, out CharacterAnimation morphAnimation))
+                {
+                    return morphAnimation;
+                }
+
+                return part.GetAnimation(actionName);
             }
 
             if (part.Type == CharacterPartType.TamingMob)

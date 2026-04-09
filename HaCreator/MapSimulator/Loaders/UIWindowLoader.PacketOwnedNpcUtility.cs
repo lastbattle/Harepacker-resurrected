@@ -110,10 +110,27 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty storeBankProperty = uiWindow2Image?["StoreBank"] as WzSubProperty;
             Texture2D frameTexture = LoadCanvasTexture(storeBankProperty, "backgrnd", device)
                 ?? CreatePlaceholderWindowTexture(device, 210, 330, "Store Bank");
-            UtilityPanelWindow window = new(
+            WzImage statusBarImage = global::HaCreator.Program.FindImage("ui", "StatusBar.img");
+            WzImage cashShopImage = global::HaCreator.Program.FindImage("ui", "CashShop.img");
+            Texture2D[] moneyDigits = LoadDigitStrip(statusBarImage?["number"] as WzSubProperty, device);
+            Texture2D moneyCommaTexture = LoadCanvasTexture(statusBarImage?["number"] as WzSubProperty, "comma", device)
+                ?? LoadCanvasTexture(statusBarImage?["number"] as WzSubProperty, "slash", device);
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject exitButton = LoadButton(storeBankProperty, "BtExit", btClickSound, btOverSound, device);
+            PositionButtonFromOrigin(exitButton, storeBankProperty?["BtExit"]?["normal"]?["0"] as WzCanvasProperty);
+            UIObject getButton = LoadButton(storeBankProperty, "BtGet", btClickSound, btOverSound, device);
+            PositionButtonFromOrigin(getButton, storeBankProperty?["BtGet"]?["normal"]?["0"] as WzCanvasProperty);
+            StoreBankOwnerWindow window = new(
                 new DXObject(0, 0, frameTexture, 0),
-                MapSimulatorWindowNames.StoreBank,
-                "Store Bank")
+                getButton,
+                exitButton,
+                LoadCanvasTexture(storeBankProperty, "en", device),
+                LoadVerticalScrollbarSkin(basicImage?["VScr9"] as WzSubProperty, device),
+                LoadCanvasTexture(cashShopImage?["CashItem"] as WzSubProperty, "0", device),
+                moneyDigits,
+                moneyCommaTexture,
+                device)
             {
                 Position = position
             };
@@ -123,14 +140,42 @@ namespace HaCreator.MapSimulator.Loaders
                 window.AddLayer(LoadWindowCanvasLayerWithOffset(storeBankProperty, "backgrnd2", device, out Point overlayOffset), overlayOffset);
                 window.AddLayer(LoadWindowCanvasLayerWithOffset(storeBankProperty, "backgrnd3", device, out Point contentOffset), contentOffset);
                 window.AddLayer(LoadWindowCanvasLayerWithOffset(storeBankProperty, "line", device, out Point lineOffset), lineOffset);
-                window.AddLayer(LoadWindowCanvasLayerWithOffset(storeBankProperty, "en", device, out Point listOffset), listOffset);
             }
 
-            window.SetStaticLines(
-                "Packet-owned owner for CStoreBankDlg::OnPacket.",
-                "The client opens this unique modeless dialog from packet 370 subtype 35 and keeps shipment/get-all state on the same owner.");
-            AttachUtilityCloseButton(window, basicImage, soundUIImage, device, frameTexture.Width);
             return window;
+        }
+
+        private static Texture2D[] LoadDigitStrip(WzSubProperty digitProperty, GraphicsDevice device)
+        {
+            Texture2D[] digits = new Texture2D[10];
+            if (digitProperty == null)
+            {
+                return digits;
+            }
+
+            for (int i = 0; i < digits.Length; i++)
+            {
+                digits[i] = LoadCanvasTexture(digitProperty, i.ToString(), device);
+            }
+
+            return digits;
+        }
+
+        private static void PositionButtonFromOrigin(UIObject button, WzCanvasProperty canvas)
+        {
+            if (button == null || canvas == null)
+            {
+                return;
+            }
+
+            Point origin = Point.Zero;
+            if (canvas["origin"] is WzVectorProperty originProperty)
+            {
+                origin = new Point(originProperty.X?.Value ?? 0, originProperty.Y?.Value ?? 0);
+            }
+
+            button.X = -origin.X;
+            button.Y = -origin.Y;
         }
 
         private static UIWindowBase CreatePacketOwnedBattleRecordWindow(

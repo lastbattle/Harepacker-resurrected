@@ -32,10 +32,15 @@ namespace HaCreator.MapSimulator.UI
             public int SetupCount { get; init; }
             public int EtcCount { get; init; }
             public int CashCount { get; init; }
+            public int FirstPosition { get; init; } = 1;
             public int ScrollOffset { get; init; }
+            public int RowFocusIndex { get; init; }
             public int WheelRange { get; init; }
             public bool HasNumberFont { get; init; }
+            public string ActiveTabName { get; init; } = string.Empty;
             public string SelectedEntryTitle { get; init; } = string.Empty;
+            public string PacketFocusSignature { get; init; } = string.Empty;
+            public string PacketFocusMessage { get; init; } = string.Empty;
         }
 
         public sealed class ListOwnerEntryState
@@ -130,6 +135,7 @@ namespace HaCreator.MapSimulator.UI
         private Func<IReadOnlyList<string>> _contentProvider;
         private Func<LockerOwnerState> _lockerStateProvider;
         private Func<InventoryOwnerState> _inventoryStateProvider;
+        private Func<string, int, int, IReadOnlyList<string>> _inventoryVisibleRowProvider;
         private Func<ListOwnerState> _listStateProvider;
         private Func<StatusOwnerState> _statusStateProvider;
         private Func<OneADayOwnerState> _oneADayStateProvider;
@@ -143,9 +149,12 @@ namespace HaCreator.MapSimulator.UI
         private int _lockerScrollOffset;
         private string _lockerActionState = "Locker selector idle.";
         private string _inventoryTabName = "Equip";
+        private int _inventoryFirstPosition = 1;
         private int _inventoryScrollOffset;
         private int _inventoryRowFocusIndex;
         private string _inventoryActionState = "Inventory selector idle.";
+        private bool _inventoryRuntimeSeeded;
+        private string _inventoryPacketFocusSignature = string.Empty;
         private int _listButtonFocusIndex = -1;
         private string _listActionState = "List selector idle.";
         private string _statusActionState = "Status strip idle.";
@@ -212,6 +221,11 @@ namespace HaCreator.MapSimulator.UI
         public void SetInventoryStateProvider(Func<InventoryOwnerState> provider)
         {
             _inventoryStateProvider = provider;
+        }
+
+        public void SetInventoryVisibleRowProvider(Func<string, int, int, IReadOnlyList<string>> provider)
+        {
+            _inventoryVisibleRowProvider = provider;
         }
 
         public void SetListStateProvider(Func<ListOwnerState> provider)
@@ -294,6 +308,11 @@ namespace HaCreator.MapSimulator.UI
             if (_windowName == MapSimulatorWindowNames.CashShopOneADay)
             {
                 SyncOneADayOwnerState(force: true);
+            }
+            else if (_windowName == MapSimulatorWindowNames.CashShopInventory
+                || _windowName == MapSimulatorWindowNames.ItcInventory)
+            {
+                SyncInventoryOwnerState(force: true);
             }
         }
 
@@ -436,6 +455,8 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            SyncInventoryOwnerState(state);
+
             float lineY = titleOrigin.Y + _font.LineSpacing + 4f;
             Color detailColor = new(225, 225, 225);
             Color accentColor = new(255, 223, 149);
@@ -444,8 +465,7 @@ namespace HaCreator.MapSimulator.UI
                 $"Equip {state.EquipCount}",
                 $"Use {state.UseCount}",
                 $"Setup {state.SetupCount}",
-                $"Etc {state.EtcCount}",
-                $"Cash {state.CashCount}"
+                $"Etc {state.EtcCount}"
             };
             foreach (string tabLabel in tabLabels)
             {
@@ -457,15 +477,24 @@ namespace HaCreator.MapSimulator.UI
             lineY += 4f;
             sprite.DrawString(
                 _font,
-                $"Scroll {Math.Max(state.ScrollOffset, _inventoryScrollOffset).ToString(CultureInfo.InvariantCulture)}  Wheel {state.WheelRange.ToString(CultureInfo.InvariantCulture)}  Number {(state.HasNumberFont ? "on" : "off")}",
+                $"Scroll {Math.Max(state.ScrollOffset, _inventoryScrollOffset).ToString(CultureInfo.InvariantCulture)}  First {_inventoryFirstPosition.ToString(CultureInfo.InvariantCulture)}  Wheel {state.WheelRange.ToString(CultureInfo.InvariantCulture)}  Number {(state.HasNumberFont ? "on" : "off")}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
             lineY += _font.LineSpacing;
-            sprite.DrawString(_font, $"Focus row {_inventoryRowFocusIndex.ToString(CultureInfo.InvariantCulture)}", new Vector2(Position.X + contentBounds.X + 12, lineY), accentColor);
+            sprite.DrawString(_font, $"Focus row {_inventoryRowFocusIndex.ToString(CultureInfo.InvariantCulture)}  Trunk route armed  Cash rows {state.CashCount.ToString(CultureInfo.InvariantCulture)}", new Vector2(Position.X + contentBounds.X + 12, lineY), accentColor);
             lineY += _font.LineSpacing;
             string selectedEntry = string.IsNullOrWhiteSpace(state.SelectedEntryTitle) ? "none" : state.SelectedEntryTitle;
             sprite.DrawString(_font, $"Selected row: {selectedEntry}", new Vector2(Position.X + contentBounds.X + 12, lineY), detailColor);
             lineY += _font.LineSpacing;
+
+            IReadOnlyList<string> visibleRows = _inventoryVisibleRowProvider?.Invoke(_inventoryTabName, _inventoryScrollOffset, 4) ?? Array.Empty<string>();
+            for (int i = 0; i < visibleRows.Count; i++)
+            {
+                Color rowColor = i == _inventoryRowFocusIndex ? accentColor : detailColor;
+                sprite.DrawString(_font, TrimToLength(visibleRows[i], 34), new Vector2(Position.X + contentBounds.X + 12, lineY), rowColor);
+                lineY += _font.LineSpacing;
+            }
+
             DrawWrapped(sprite, _inventoryActionState, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, accentColor);
         }
 
@@ -955,6 +984,8 @@ namespace HaCreator.MapSimulator.UI
             if (actionKey != "BtExTrunk")
             {
                 _inventoryScrollOffset = 0;
+                _inventoryRowFocusIndex = 0;
+                _inventoryPacketFocusSignature = string.Empty;
             }
         }
 
@@ -1134,7 +1165,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 int maxScroll = Math.Max(0, ResolveInventoryActiveCount(state) - 4);
                 _inventoryScrollOffset = maxScroll;
-                _inventoryRowFocusIndex = Math.Min(3, ResolveInventoryActiveCount(state));
+                _inventoryRowFocusIndex = Math.Clamp(Math.Min(3, Math.Max(0, ResolveInventoryActiveCount(state) - 1 - maxScroll)), 0, 3);
                 _inventoryActionState = $"CCSWnd_Inventory pushed the {_inventoryTabName} scrollbar to the last visible row.";
                 _statusMessage = _inventoryActionState;
             }
@@ -1329,6 +1360,7 @@ namespace HaCreator.MapSimulator.UI
             int maxScroll = Math.Max(0, ResolveInventoryActiveCount(state) - 4);
             _inventoryScrollOffset = Math.Clamp(_inventoryScrollOffset + delta, 0, maxScroll);
             _inventoryRowFocusIndex = Math.Clamp(_inventoryRowFocusIndex + Math.Sign(delta), 0, 3);
+            _inventoryPacketFocusSignature = string.Empty;
             _inventoryActionState = $"CCSWnd_Inventory scrolled the {_inventoryTabName} owner to offset {_inventoryScrollOffset.ToString(CultureInfo.InvariantCulture)}.";
             _statusMessage = _inventoryActionState;
         }
@@ -1341,14 +1373,13 @@ namespace HaCreator.MapSimulator.UI
                 "Use" => state.UseCount,
                 "Setup" => state.SetupCount,
                 "Etc" => state.EtcCount,
-                "Cash" => state.CashCount,
                 _ => state.EquipCount
             };
         }
 
         private void CycleInventoryTab(int delta)
         {
-            string[] tabs = { "Equip", "Use", "Setup", "Etc", "Cash" };
+            string[] tabs = { "Equip", "Use", "Setup", "Etc" };
             int currentIndex = Array.IndexOf(tabs, _inventoryTabName);
             if (currentIndex < 0)
             {
@@ -1359,8 +1390,46 @@ namespace HaCreator.MapSimulator.UI
             _inventoryTabName = tabs[nextIndex];
             _inventoryScrollOffset = 0;
             _inventoryRowFocusIndex = 0;
+            _inventoryPacketFocusSignature = string.Empty;
             _inventoryActionState = $"CCSWnd_Inventory switched keyboard focus to the {_inventoryTabName} owner tab.";
             _statusMessage = _inventoryActionState;
+        }
+
+        private void SyncInventoryOwnerState(InventoryOwnerState state = null, bool force = false)
+        {
+            state ??= _inventoryStateProvider?.Invoke();
+            if (state == null)
+            {
+                return;
+            }
+
+            _inventoryFirstPosition = Math.Max(1, state.FirstPosition);
+            string nextSignature = state.PacketFocusSignature ?? string.Empty;
+            bool shouldReseed = force || !_inventoryRuntimeSeeded;
+            if (!shouldReseed && !string.IsNullOrWhiteSpace(nextSignature))
+            {
+                shouldReseed = !string.Equals(_inventoryPacketFocusSignature, nextSignature, StringComparison.Ordinal);
+            }
+
+            if (!shouldReseed)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(state.ActiveTabName))
+            {
+                _inventoryTabName = state.ActiveTabName;
+            }
+
+            _inventoryScrollOffset = Math.Max(0, state.ScrollOffset);
+            _inventoryRowFocusIndex = Math.Clamp(state.RowFocusIndex, 0, 3);
+            _inventoryRuntimeSeeded = true;
+            _inventoryPacketFocusSignature = nextSignature;
+            if (!string.IsNullOrWhiteSpace(state.PacketFocusMessage))
+            {
+                _inventoryActionState = state.PacketFocusMessage.Trim();
+                _statusMessage = _inventoryActionState;
+            }
         }
 
         private void StepOneADayPlate(OneADayOwnerState state, int delta)

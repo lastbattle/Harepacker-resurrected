@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
@@ -21,6 +22,7 @@ namespace HaCreator.MapSimulator.UI
         #region Fields
         private readonly List<UIWindowBase> windows = new List<UIWindowBase>();
         private readonly Dictionary<string, UIWindowBase> windowsByName = new Dictionary<string, UIWindowBase>();
+        private readonly ProductionEnhancementAnimationDisplayer _productionEnhancementAnimationDisplayer = new();
 
         // Individual window references for quick access (UIWindowBase for polymorphic pre-BB/post-BB support)
         public UIWindowBase InventoryWindow { get; private set; }
@@ -78,6 +80,8 @@ namespace HaCreator.MapSimulator.UI
         /// Gets the currently focused window
         /// </summary>
         public UIWindowBase FocusedWindow => _focusedWindow;
+
+        internal ProductionEnhancementAnimationDisplayer ProductionEnhancementAnimationDisplayer => _productionEnhancementAnimationDisplayer;
 
         /// <summary>
         /// Whether any window is currently visible
@@ -225,6 +229,8 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            _productionEnhancementAnimationDisplayer.ClearWindow(window.WindowName);
+
             if (windowsByName.TryGetValue(window.WindowName, out UIWindowBase registeredWindow) && ReferenceEquals(registeredWindow, window))
             {
                 windowsByName.Remove(window.WindowName);
@@ -259,6 +265,7 @@ namespace HaCreator.MapSimulator.UI
             if (window == null)
                 return;
 
+            window.AttachAnimationDisplayerWindowOverlayOwner(_productionEnhancementAnimationDisplayer.Owner);
             window.BeforeShow = HandleBeforeShowWindow;
             windows.Add(window);
             windowsByName[window.WindowName] = window;

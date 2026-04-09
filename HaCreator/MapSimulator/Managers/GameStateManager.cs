@@ -132,7 +132,8 @@ namespace HaCreator.MapSimulator.Managers
             bool scriptedOwnerActive,
             bool weddingDialogVisible,
             bool memoryGameVisible,
-            bool tournamentMatchTableVisible)
+            bool tournamentMatchTableVisible,
+            bool rockPaperScissorsVisible)
         {
             return npcInteractionVisible
                    || DirectionModeActive
@@ -140,7 +141,8 @@ namespace HaCreator.MapSimulator.Managers
                    || scriptedOwnerActive
                    || weddingDialogVisible
                    || memoryGameVisible
-                   || tournamentMatchTableVisible;
+                   || tournamentMatchTableVisible
+                   || rockPaperScissorsVisible;
         }
 
         /// <summary>

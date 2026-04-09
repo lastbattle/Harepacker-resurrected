@@ -47,7 +47,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             WildHunterSwallowSkillId,
             33121009,
             35001001,
-            35101009
+            35101009,
+            SG88SkillId
         };
         private static readonly HashSet<int> ReleaseArmedTextSkillIds = new()
         {
@@ -251,7 +252,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             activeDurationMs = normalizedDurationMs;
         }
 
-        public static bool UsesChargeDamageScaling(int skillId) => skillId is 3221001 or 22121000 or 22151001 or MonkeyWaveSkillId;
+        public static bool UsesChargeDamageScaling(int skillId) => skillId is
+            2121001
+            or 2221001
+            or 2321001
+            or 3221001
+            or 22121000
+            or 22151001
+            or 4341002
+            or 4341003
+            or MonkeyWaveSkillId;
 
         public static bool ArmsAtFullStrengthOnCriticalHit(int skillId) => skillId == MonkeyWaveSkillId;
 

@@ -21,6 +21,8 @@ using HaCreator.MapSimulator.UI.Controls;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using SD = System.Drawing;
+using SWF = System.Windows.Forms;
 
 namespace HaCreator.MapSimulator.Loaders
 {
@@ -33,6 +35,12 @@ namespace HaCreator.MapSimulator.Loaders
         // Constants
         private const string GLOBAL_FONT = "Arial";
         private const float MINIMAP_STREETNAME_TOOLTIP_FONTSIZE = 10f;
+        private const SWF.TextFormatFlags CollapsedMinimapTitleTextFormatFlags =
+            SWF.TextFormatFlags.NoPadding |
+            SWF.TextFormatFlags.NoPrefix |
+            SWF.TextFormatFlags.PreserveGraphicsClipping |
+            SWF.TextFormatFlags.PreserveGraphicsTranslateTransform |
+            SWF.TextFormatFlags.SingleLine;
         private static readonly Point DefaultMinimapWindowPosition = new Point(10, 10);
         private static readonly ConcurrentDictionary<string, Tuple<StatusBarUI, StatusBarChatUI>> _statusBarCache = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, MinimapUI> _minimapCache = new(StringComparer.Ordinal);
@@ -1963,8 +1971,55 @@ namespace HaCreator.MapSimulator.Loaders
             return Math.Min(Math.Max(0, centeredOffset), Math.Max(0, clampedContentHeight - clampedElementHeight));
         }
 
+        internal static SD.Size ResolveCollapsedMinimapTitleTextSizeForTesting(
+            string title,
+            int maxTextWidth,
+            int maxTextHeight,
+            float fontPixelSize = MINIMAP_STREETNAME_TOOLTIP_FONTSIZE)
+        {
+            string renderTitle = string.IsNullOrWhiteSpace(title) ? string.Empty : title;
+            int resolvedMaxTextWidth = Math.Max(1, maxTextWidth);
+            int resolvedMaxTextHeight = Math.Max(1, maxTextHeight);
+            if (renderTitle.Length == 0)
+            {
+                return new SD.Size(0, 0);
+            }
+
+            using SD.Bitmap measureBitmap = new SD.Bitmap(1, 1);
+            using SD.Graphics measureGraphics = SD.Graphics.FromImage(measureBitmap);
+            using SD.Font titleFont = ClientTextRasterizer.CreateClientFont(fontPixelSize > 0f ? fontPixelSize : MINIMAP_STREETNAME_TOOLTIP_FONTSIZE);
+            return SWF.TextRenderer.MeasureText(
+                measureGraphics,
+                renderTitle,
+                titleFont,
+                new SD.Size(resolvedMaxTextWidth, resolvedMaxTextHeight),
+                CollapsedMinimapTitleTextFormatFlags);
+        }
+
+        internal static SD.Rectangle ResolveCollapsedMinimapTitleTextBoundsForTesting(
+            int contentHeight,
+            int currentX,
+            int measuredTextWidth,
+            int maxTextWidth,
+            int laneTop,
+            int laneHeight,
+            int measuredTextHeight)
+        {
+            int textWidth = Math.Min(Math.Max(0, measuredTextWidth), Math.Max(1, maxTextWidth));
+            int textHeight = Math.Max(0, measuredTextHeight);
+            return new SD.Rectangle(
+                currentX,
+                ResolveCollapsedMinimapVerticalContentOffsetForTesting(
+                    contentHeight,
+                    laneTop,
+                    laneHeight,
+                    textHeight),
+                textWidth,
+                textHeight);
+        }
+
         internal static int ResolveCollapsedMinimapTitleLeftInsetForTesting(
-            System.Drawing.Bitmap leftCap,
+            SD.Bitmap leftCap,
             int laneTop,
             int laneHeight,
             int fallbackInset)
@@ -1981,7 +2036,7 @@ namespace HaCreator.MapSimulator.Loaders
             const int minimumRunLength = 4;
             for (int x = 0; x < width; x++)
             {
-                System.Drawing.Color pixel = leftCap.GetPixel(x, scanRow);
+                SD.Color pixel = leftCap.GetPixel(x, scanRow);
                 if (!IsCollapsedMinimapInteriorPixel(pixel))
                 {
                     continue;
@@ -2003,11 +2058,11 @@ namespace HaCreator.MapSimulator.Loaders
             return Math.Max(0, fallbackInset);
         }
 
-        private static System.Drawing.Bitmap RenderCollapsedMinimapTitleContent(
-            System.Drawing.Bitmap mapMark,
+        private static SD.Bitmap RenderCollapsedMinimapTitleContent(
+            SD.Bitmap mapMark,
             string title,
             float userScreenScaleFactor,
-            System.Drawing.Color textColor,
+            SD.Color textColor,
             int maxBarWidth,
             int reserveWidth,
             int barHeight,
@@ -2021,6 +2076,7 @@ namespace HaCreator.MapSimulator.Loaders
             string renderTitle = string.IsNullOrWhiteSpace(title) ? string.Empty : title;
             int iconWidth = mapMark?.Width ?? 0;
             int iconHeight = mapMark?.Height ?? 0;
+            int maxTextHeight = Math.Max(1, titleLaneHeight);
             int maxTextWidth = ResolveCollapsedMinimapTitleMaxTextWidthForTesting(
                 maxBarWidth,
                 reserveWidth,
@@ -2029,15 +2085,14 @@ namespace HaCreator.MapSimulator.Loaders
                 mapMark != null ? iconGap : 0,
                 textLeftPadding,
                 textRightPadding);
-
-            using System.Drawing.Font titleFont = new System.Drawing.Font(GLOBAL_FONT, MINIMAP_STREETNAME_TOOLTIP_FONTSIZE / userScreenScaleFactor);
-            using System.Drawing.Bitmap measureBitmap = new System.Drawing.Bitmap(1, 1);
-            using System.Drawing.Graphics measureGraphics = System.Drawing.Graphics.FromImage(measureBitmap);
-            using System.Drawing.StringFormat stringFormat = System.Drawing.StringFormat.GenericTypographic;
-            measureGraphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-            System.Drawing.SizeF textSize = measureGraphics.MeasureString(renderTitle, titleFont, int.MaxValue, stringFormat);
-            int measuredTextWidth = (int)Math.Ceiling(textSize.Width);
-            int measuredTextHeight = (int)Math.Ceiling(textSize.Height);
+            float scaledPixelSize = MINIMAP_STREETNAME_TOOLTIP_FONTSIZE / Math.Max(0.1f, userScreenScaleFactor);
+            SD.Size measuredTextSize = ResolveCollapsedMinimapTitleTextSizeForTesting(
+                renderTitle,
+                maxTextWidth,
+                maxTextHeight,
+                scaledPixelSize);
+            int measuredTextWidth = measuredTextSize.Width;
+            int measuredTextHeight = measuredTextSize.Height;
             int contentWidth = ResolveCollapsedMinimapContentWidthForTesting(
                 measuredTextWidth,
                 maxTextWidth,
@@ -2051,10 +2106,9 @@ namespace HaCreator.MapSimulator.Loaders
                 ResolveCollapsedMinimapBarHeightForTesting(barHeight, 0, 0, fallbackHeight: 20),
                 Math.Max(iconHeight, measuredTextHeight));
 
-            System.Drawing.Bitmap contentBitmap = new System.Drawing.Bitmap(contentWidth, contentHeight);
-            using System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(contentBitmap);
-            graphics.Clear(System.Drawing.Color.Transparent);
-            graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+            SD.Bitmap contentBitmap = new SD.Bitmap(contentWidth, contentHeight);
+            using SD.Graphics graphics = SD.Graphics.FromImage(contentBitmap);
+            graphics.Clear(SD.Color.Transparent);
 
             int currentX = leftInset;
             if (mapMark != null)
@@ -2069,29 +2123,33 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             currentX += textLeftPadding;
-            int textY = ResolveCollapsedMinimapVerticalContentOffsetForTesting(
+            SD.Rectangle textRect = ResolveCollapsedMinimapTitleTextBoundsForTesting(
                 contentHeight,
+                currentX,
+                measuredTextWidth,
+                maxTextWidth,
                 titleLaneTop,
                 titleLaneHeight,
                 measuredTextHeight);
-            System.Drawing.Rectangle textRect = new System.Drawing.Rectangle(
-                currentX,
-                textY,
-                maxTextWidth,
-                Math.Max(1, measuredTextHeight));
 
-            using System.Drawing.Brush textBrush = new System.Drawing.SolidBrush(textColor);
-            System.Drawing.Region previousClip = graphics.Clip;
-            graphics.SetClip(textRect);
-            graphics.DrawString(renderTitle, titleFont, textBrush, textRect.Location, stringFormat);
-            graphics.Clip = previousClip;
+            if (renderTitle.Length > 0 && textRect.Width > 0 && textRect.Height > 0)
+            {
+                using SD.Font titleFont = ClientTextRasterizer.CreateClientFont(scaledPixelSize > 0f ? scaledPixelSize : MINIMAP_STREETNAME_TOOLTIP_FONTSIZE);
+                SWF.TextRenderer.DrawText(
+                    graphics,
+                    renderTitle,
+                    titleFont,
+                    textRect,
+                    textColor,
+                    CollapsedMinimapTitleTextFormatFlags);
+            }
 
             return contentBitmap;
         }
 
         private static bool TryResolveCollapsedMinimapOpaqueLane(
-            System.Drawing.Bitmap leftCap,
-            System.Drawing.Bitmap rightCap,
+            SD.Bitmap leftCap,
+            SD.Bitmap rightCap,
             out int laneTop,
             out int laneHeight)
         {
@@ -2134,7 +2192,7 @@ namespace HaCreator.MapSimulator.Loaders
             return true;
         }
 
-        private static bool IsCollapsedMinimapRowFullyOpaque(System.Drawing.Bitmap bitmap, int width, int y)
+        private static bool IsCollapsedMinimapRowFullyOpaque(SD.Bitmap bitmap, int width, int y)
         {
             for (int x = 0; x < width; x++)
             {
@@ -2147,7 +2205,7 @@ namespace HaCreator.MapSimulator.Loaders
             return true;
         }
 
-        private static bool IsCollapsedMinimapInteriorPixel(System.Drawing.Color color)
+        private static bool IsCollapsedMinimapInteriorPixel(SD.Color color)
         {
             if (color.A < 150)
             {

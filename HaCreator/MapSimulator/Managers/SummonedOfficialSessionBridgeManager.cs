@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator.Managers
     {
         public const int DefaultListenPort = 18486;
         private const string DefaultProcessName = "MapleStory";
+        private const string OfficialSessionTraceSourcePrefix = "official-session:";
         private const int MaxRecentOutboundPackets = 32;
         private const int MaxRecentSg88ManualAttackRequests = 16;
         private const int Sg88ManualAttackCaptureGraceMs = 120;
@@ -1090,7 +1091,7 @@ namespace HaCreator.MapSimulator.Managers
             string evidence = string.IsNullOrWhiteSpace(capture.RequestPacketEvidence)
                 ? "window-only"
                 : capture.RequestPacketEvidence;
-            return $"0x{requestPacket.Opcode:X}@{requestPacket.ObservedAt}[{requestPacket.PayloadLength}] score={capture.RequestPacketScore} evidence={evidence}";
+            return $"0x{requestPacket.Opcode:X}@{requestPacket.ObservedAt}[{requestPacket.PayloadLength}] score={capture.RequestPacketScore} evidence={evidence} source={requestPacket.Source}";
         }
 
         private static void TryAssignSg88ManualAttackRequestPacket(
@@ -1099,6 +1100,11 @@ namespace HaCreator.MapSimulator.Managers
             Sg88ManualAttackTraceBinding binding)
         {
             if (capture == null || !binding.HasSemanticEvidence)
+            {
+                return;
+            }
+
+            if (!IsEligibleSg88TemplateEvidenceSource(trace.Source))
             {
                 return;
             }
@@ -1346,12 +1352,20 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            foreach (Sg88ManualAttackCapture capture in _recentSg88ManualAttackCaptures.Reverse())
+            PruneExpiredSg88ManualAttackCaptures(Environment.TickCount);
+
+            Sg88ManualAttackCapture selectedCapture = null;
+            bool selectedCaptureIsPending = false;
+            int selectedObservedAt = int.MinValue;
+            Sg88ManualAttackRequestPacketTemplate selectedTemplate = default;
+
+            bool TryConsiderCapture(Sg88ManualAttackCapture capture, bool isPendingCapture)
             {
                 if (capture?.RequestPacket is not OutboundPacketTrace requestPacket
-                    || capture.TargetMobIds.Length != targetCount)
+                    || capture.TargetMobIds.Length != targetCount
+                    || !IsEligibleSg88TemplateEvidenceSource(requestPacket.Source))
                 {
-                    continue;
+                    return false;
                 }
 
                 if (!TryCreateSg88ManualAttackRequestTemplate(
@@ -1359,19 +1373,54 @@ namespace HaCreator.MapSimulator.Managers
                         capture.SummonObjectId,
                         capture.PrimaryTargetMobId,
                         capture.TargetMobIds,
-                        out template,
+                        out Sg88ManualAttackRequestPacketTemplate candidateTemplate,
                         out _))
                 {
-                    continue;
+                    return false;
                 }
 
+                if (selectedCapture != null
+                    && requestPacket.ObservedAt < selectedObservedAt)
+                {
+                    return false;
+                }
+
+                selectedTemplate = candidateTemplate;
+                selectedCapture = capture;
+                selectedCaptureIsPending = isPendingCapture;
+                selectedObservedAt = requestPacket.ObservedAt;
+                return true;
+            }
+
+            foreach (Sg88ManualAttackCapture capture in _pendingSg88ManualAttackCaptures.AsEnumerable().Reverse())
+            {
+                TryConsiderCapture(capture, isPendingCapture: true);
+            }
+
+            foreach (Sg88ManualAttackCapture capture in _recentSg88ManualAttackCaptures.Reverse())
+            {
+                TryConsiderCapture(capture, isPendingCapture: false);
+            }
+
+            if (selectedCapture?.RequestPacket is OutboundPacketTrace selectedRequestPacket)
+            {
+                template = selectedTemplate;
+                string captureState = selectedCaptureIsPending
+                    ? "live official capture"
+                    : $"archived official capture ({selectedCapture.ResolutionSource ?? "resolved"})";
                 status =
-                    $"Using learned SG-88 request template from opcode 0x{template.Opcode:X} captured at tick {capture.RequestedAt} ({capture.ResolutionSource ?? "resolved"}).";
+                    $"Using learned SG-88 request template from opcode 0x{template.Opcode:X} captured at tick {selectedCapture.RequestedAt} via {captureState}.";
                 return true;
             }
 
             status = $"No learned SG-88 request packet template matched targetCount={targetCount}.";
             return false;
+        }
+
+        private static bool IsEligibleSg88TemplateEvidenceSource(string source)
+        {
+            return !string.IsNullOrWhiteSpace(source)
+                && source.StartsWith(OfficialSessionTraceSourcePrefix, StringComparison.OrdinalIgnoreCase);
         }
 
         private static int[] FindAllInt32Offsets(byte[] payload, int value)

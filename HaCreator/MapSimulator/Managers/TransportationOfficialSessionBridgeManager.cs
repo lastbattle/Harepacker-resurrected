@@ -117,10 +117,10 @@ namespace HaCreator.MapSimulator.Managers
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
             string lastOutbound = LastSentOpcode >= 0
-                ? $" lastOut={LastSentOpcode}[{Convert.ToHexString(LastSentRawPacket)}]."
+                ? $" lastOut={DescribeOutboundPacket(LastSentOpcode, LastSentRawPacket)}[{Convert.ToHexString(LastSentRawPacket)}]."
                 : string.Empty;
             string lastQueued = LastQueuedOpcode >= 0
-                ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
+                ? $" lastQueued={DescribeOutboundPacket(LastQueuedOpcode, LastQueuedRawPacket)}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
             return $"Transport official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; forwardedOutbound={ForwardedOutboundCount}; forwardedOutboundTransport={ForwardedOutboundTransportCount}; inbound opcodes=164,165; outbound opcode={TransportationFieldInitRequestCodec.OutboundFieldInitOpcode}.{lastOutbound}{lastQueued} {LastStatus}";
         }
@@ -144,7 +144,7 @@ namespace HaCreator.MapSimulator.Managers
                     + string.Join(
                         Environment.NewLine,
                         entries.Select(entry =>
-                            $"opcode={entry.Opcode} payloadLen={entry.PayloadLength} source={entry.Source} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+                            $"{DescribeOutboundPacket(entry.Opcode, Convert.FromHexString(entry.RawPacketHex))} payloadLen={entry.PayloadLength} source={entry.Source} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
             }
         }
 
@@ -676,7 +676,7 @@ namespace HaCreator.MapSimulator.Managers
                     Convert.ToHexString(clonedPacket),
                     "transport-replay"));
 
-                status = $"Replayed outbound {TransportationPacketInboxManager.DescribePacket(opcode, payload)} to live session {pair.RemoteEndpoint}.";
+                status = $"Replayed outbound {DescribeOutboundPacket(opcode, clonedPacket)} to live session {pair.RemoteEndpoint}.";
                 LastStatus = status;
                 return true;
             }
@@ -835,6 +835,21 @@ namespace HaCreator.MapSimulator.Managers
             return payload.Length <= maxPreviewBytes
                 ? previewHex
                 : $"{previewHex}...";
+        }
+
+        private static string DescribeOutboundPacket(int opcode, byte[] rawPacket)
+        {
+            if (opcode == TransportationFieldInitRequestCodec.OutboundFieldInitOpcode)
+            {
+                return TransportationFieldInitRequestCodec.DescribeRawFieldInitPacket(rawPacket);
+            }
+
+            if (TryDecodeOpcode(rawPacket, out int decodedOpcode, out byte[] payload))
+            {
+                return TransportationPacketInboxManager.DescribePacket(decodedOpcode, payload);
+            }
+
+            return $"opcode={opcode}";
         }
 
         public static bool TryResolveDiscoveryCandidate(

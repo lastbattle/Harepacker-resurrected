@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Fields;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Wz;
 using MapleLib.WzLib.WzStructure;
@@ -268,6 +269,10 @@ namespace HaCreator.MapSimulator
         private CharacterBuild _showaBathAppearanceOverrideBuild;
         private Dictionary<EquipSlot, CharacterPart> _showaBathEquipmentSnapshot;
         private Dictionary<EquipSlot, CharacterPart> _showaBathHiddenEquipmentSnapshot;
+        private bool _coconutAppearanceOverrideApplied;
+        private CharacterBuild _coconutAppearanceOverrideBuild;
+        private Dictionary<EquipSlot, CharacterPart> _coconutEquipmentSnapshot;
+        private Dictionary<EquipSlot, CharacterPart> _coconutHiddenEquipmentSnapshot;
         private int? _killCountWrapperValue;
         private int _escortFailOverlayUntilTick = int.MinValue;
         private bool _clientOwnedLimitedViewMetadataLoaded;
@@ -278,6 +283,7 @@ namespace HaCreator.MapSimulator
         private float _clientOwnedLimitedViewOriginY = ClientOwnedLimitedViewFallbackOriginY;
         private TutorialWrapperKind _activeTutorialWrapperKind;
         private WeddingPhotoSceneContract? _activeWeddingPhotoSceneContract;
+        private bool _wrapperOwnedAranTutorActorApplied;
 
         private void ApplyClientOwnedFieldWrappers()
         {
@@ -289,6 +295,7 @@ namespace HaCreator.MapSimulator
             ApplyTutorialFieldAppearance(mapInfo);
             SyncWeddingPhotoFieldWrapper(mapInfo);
             SyncClientOwnedResultFieldWrappers(mapInfo);
+            ApplyClientOwnedWeddingPhotoSceneCameraLock();
         }
 
         private void SyncClientOwnedResultFieldWrappers(MapInfo mapInfo)
@@ -312,16 +319,17 @@ namespace HaCreator.MapSimulator
             if (!IsShowaBathWrapperMap(mapInfo))
             {
                 RestoreShowaBathFieldAppearance(build);
-                return;
             }
-
-            CharacterLoader loader = _playerManager?.Loader;
-            if (loader == null || build == null)
+            else
             {
-                return;
+                CharacterLoader loader = _playerManager?.Loader;
+                if (loader != null && build != null)
+                {
+                    ApplyShowaBathFieldAppearance(build, loader);
+                }
             }
 
-            ApplyShowaBathFieldAppearance(build, loader);
+            SyncCoconutFieldAppearance(build);
         }
 
         private string HandleClientOwnedFieldSpecificDataPacket(byte[] payload, int currentTick)
@@ -540,6 +548,91 @@ namespace HaCreator.MapSimulator
                 || string.Equals(key, "1767", StringComparison.OrdinalIgnoreCase);
         }
 
+        private void SyncCoconutFieldAppearance(CharacterBuild build)
+        {
+            CoconutField coconut = _specialFieldRuntime?.Minigames?.Coconut;
+            if (build == null || coconut?.IsActive != true)
+            {
+                RestoreCoconutFieldAppearance(build);
+                return;
+            }
+
+            CharacterLoader loader = _playerManager?.Loader;
+            if (loader == null
+                || !coconut.TryGetLocalAvatarAppearanceContract(build.Gender, out CoconutField.AvatarAppearanceContract appearanceContract))
+            {
+                RestoreCoconutFieldAppearance(build);
+                return;
+            }
+
+            List<CharacterPart> forcedParts = new();
+            if (appearanceContract.CapItemId > 0 && loader.LoadEquipment(appearanceContract.CapItemId) is CharacterPart capPart)
+            {
+                forcedParts.Add(capPart);
+            }
+
+            if (appearanceContract.ClothesItemId > 0 && loader.LoadEquipment(appearanceContract.ClothesItemId) is CharacterPart clothesPart)
+            {
+                forcedParts.Add(clothesPart);
+            }
+
+            if (forcedParts.Count == 0)
+            {
+                RestoreCoconutFieldAppearance(build);
+                return;
+            }
+
+            if (!_coconutAppearanceOverrideApplied || !ReferenceEquals(_coconutAppearanceOverrideBuild, build))
+            {
+                _coconutEquipmentSnapshot = new Dictionary<EquipSlot, CharacterPart>(build.Equipment);
+                _coconutHiddenEquipmentSnapshot = new Dictionary<EquipSlot, CharacterPart>(build.HiddenEquipment);
+                _coconutAppearanceOverrideBuild = build;
+                _coconutAppearanceOverrideApplied = true;
+            }
+
+            build.Equipment.Clear();
+            build.HiddenEquipment.Clear();
+            foreach (CharacterPart forcedPart in forcedParts)
+            {
+                build.Equip(forcedPart);
+            }
+        }
+
+        private void RestoreCoconutFieldAppearance(CharacterBuild build)
+        {
+            if (!_coconutAppearanceOverrideApplied)
+            {
+                return;
+            }
+
+            if (build != null && ReferenceEquals(_coconutAppearanceOverrideBuild, build))
+            {
+                build.Equipment.Clear();
+                build.HiddenEquipment.Clear();
+
+                if (_coconutEquipmentSnapshot != null)
+                {
+                    foreach (KeyValuePair<EquipSlot, CharacterPart> entry in _coconutEquipmentSnapshot)
+                    {
+                        build.Equipment[entry.Key] = entry.Value;
+                    }
+                }
+
+                if (_coconutHiddenEquipmentSnapshot != null)
+                {
+                    foreach (KeyValuePair<EquipSlot, CharacterPart> entry in _coconutHiddenEquipmentSnapshot)
+                    {
+                        build.HiddenEquipment[entry.Key] = entry.Value;
+                    }
+                }
+            }
+
+            _coconutAppearanceOverrideApplied = false;
+            _coconutAppearanceOverrideBuild = null;
+            _coconutEquipmentSnapshot = null;
+            _coconutHiddenEquipmentSnapshot = null;
+        }
+
         private void ApplyTransitAndVoyageFieldWrapper(MapInfo mapInfo)
         {
             if (!IsTransitVoyageWrapperMap(mapInfo) || !_transportField.HasRouteConfiguration)
@@ -713,6 +806,73 @@ namespace HaCreator.MapSimulator
                 : null;
         }
 
+        private void SyncClientOwnedTutorialTutorOwner(int currentTick)
+        {
+            if (_activeTutorialWrapperKind != TutorialWrapperKind.AranTutorial)
+            {
+                ReleaseClientOwnedTutorialTutorOwner(currentTick);
+                return;
+            }
+
+            int runtimeCharacterId = ResolvePacketOwnedTutorRuntimeCharacterId();
+            if (runtimeCharacterId <= 0)
+            {
+                return;
+            }
+
+            if (_packetOwnedTutorRuntime.IsActive)
+            {
+                if (_wrapperOwnedAranTutorActorApplied
+                    && _packetOwnedTutorRuntime.ActiveSkillId != TutorRuntime.AranTutorSkillId)
+                {
+                    _wrapperOwnedAranTutorActorApplied = false;
+                }
+
+                return;
+            }
+
+            _packetOwnedTutorRuntime.ApplyHireRequest(
+                TutorRuntime.AranTutorSkillId,
+                TutorRuntime.AranTutorHeight,
+                currentTick,
+                runtimeCharacterId);
+            _wrapperOwnedAranTutorActorApplied = true;
+        }
+
+        private void ReleaseClientOwnedTutorialTutorOwner(int currentTick)
+        {
+            if (!_wrapperOwnedAranTutorActorApplied)
+            {
+                return;
+            }
+
+            if (_packetOwnedTutorRuntime.IsActive
+                && _packetOwnedTutorRuntime.ActiveSkillId == TutorRuntime.AranTutorSkillId)
+            {
+                _packetOwnedTutorRuntime.ApplyRemovalRequest(
+                    TutorRuntime.AranTutorSkillId,
+                    currentTick,
+                    "leaving aran tutorial wrapper owner");
+                RemovePacketOwnedTutorSummon();
+            }
+
+            _wrapperOwnedAranTutorActorApplied = false;
+        }
+
+        private void ApplyClientOwnedWeddingPhotoSceneCameraLock()
+        {
+            if (_activeWeddingPhotoSceneContract is not WeddingPhotoSceneContract contract
+                || contract.Kind != WeddingPhotoWrapperKind.SceneOwner
+                || !TryResolveWeddingPhotoSceneViewportCenter(contract, out Vector2 viewportCenter))
+            {
+                return;
+            }
+
+            _cameraController?.SetPosition(viewportCenter.X, viewportCenter.Y);
+            CenterCameraOnWorldPosition(viewportCenter.X, viewportCenter.Y);
+            ClampCameraToBoundaries();
+        }
+
         private void ConfigureNoDragonPresentation(MapInfo mapInfo)
         {
             bool allowDragonPresentation = !SuppressesDragonPresentation(mapInfo);
@@ -791,7 +951,7 @@ namespace HaCreator.MapSimulator
                         ? activeAppearanceContract
                         : default;
                     activeWrappers.Add(
-                        $"aran-tutorial wrapper active ({tutorialContract.SourceDescription}, distinct from the generic kill-count wrapper, map {mapInfo.id}, onUserEnter {mapInfo.onUserEnter ?? "<none>"}, mapMark {mapInfo.mapMark ?? "<none>"}): {DescribeTutorialAppearanceContract(appearanceContract)}.");
+                        $"aran-tutorial wrapper active ({tutorialContract.SourceDescription}, distinct from the generic kill-count wrapper, map {mapInfo.id}, onUserEnter {mapInfo.onUserEnter ?? "<none>"}, mapMark {mapInfo.mapMark ?? "<none>"}): {DescribeTutorialAppearanceContract(appearanceContract)}, tutor owner {(_wrapperOwnedAranTutorActorApplied ? "active through the Aran tutor summon seam" : "waiting for the packet-owned tutor lane")}.");
                 }
                 else
                 {
@@ -848,8 +1008,12 @@ namespace HaCreator.MapSimulator
                 string ownerLabel = weddingPhotoContract.Kind == WeddingPhotoWrapperKind.SceneOwner
                     ? "wedding-photo field owner active"
                     : "wedding-photo ceremony/photo contract active";
+                string cameraFocus = weddingPhotoContract.Kind == WeddingPhotoWrapperKind.SceneOwner
+                    && TryResolveWeddingPhotoSceneViewportCenter(weddingPhotoContract, out Vector2 viewportCenter)
+                    ? $" camera lock enforced at viewport center ({viewportCenter.X:0.#}, {viewportCenter.Y:0.#})."
+                    : string.Empty;
                 activeWrappers.Add(
-                    $"{ownerLabel} ({weddingPhotoContract.SceneDescription}, client owner {weddingPhotoContract.SourceDescription}) on map {mapInfo.id}, returnMap {weddingPhotoContract.ReturnMapId}.{safeArea}{viewport}");
+                    $"{ownerLabel} ({weddingPhotoContract.SceneDescription}, client owner {weddingPhotoContract.SourceDescription}) on map {mapInfo.id}, returnMap {weddingPhotoContract.ReturnMapId}.{safeArea}{viewport}{cameraFocus}");
             }
 
             if (_specialFieldRuntime.PartyRaid.HasNativePartyRaidWrapperOwner)
@@ -904,7 +1068,7 @@ namespace HaCreator.MapSimulator
             return mapInfo?.fieldType == FieldType.FIELDTYPE_DYNAMICFOOTHOLD;
         }
 
-        private static bool SuppressesDragonPresentation(MapInfo mapInfo)
+        internal static bool SuppressesDragonPresentation(MapInfo mapInfo)
         {
             return mapInfo?.vanishDragon == true || IsNoDragonWrapperMap(mapInfo);
         }
@@ -1123,6 +1287,20 @@ namespace HaCreator.MapSimulator
             right = mapInfo?.VRRight ?? 0;
             bottom = mapInfo?.VRBottom ?? 0;
             return right > left && bottom > top;
+        }
+
+        internal static bool TryResolveWeddingPhotoSceneViewportCenter(WeddingPhotoSceneContract contract, out Vector2 center)
+        {
+            if (!contract.HasViewport)
+            {
+                center = Vector2.Zero;
+                return false;
+            }
+
+            center = new Vector2(
+                (contract.ViewportLeft + contract.ViewportRight) * 0.5f,
+                (contract.ViewportTop + contract.ViewportBottom) * 0.5f);
+            return true;
         }
 
         private static bool HasWeddingPhotoSafeAreaContract(MapInfo mapInfo)

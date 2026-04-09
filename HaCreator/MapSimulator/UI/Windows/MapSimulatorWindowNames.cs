@@ -55,6 +55,7 @@ namespace HaCreator.MapSimulator.UI
         public const string LoginCreateCharacterNameSelect = "LoginCreateCharacterNameSelect";
         public const string ConnectionNotice = "ConnectionNotice";
         public const string LoginUtilityDialog = "LoginUtilityDialog";
+        public const string InGameConfirmDialog = "InGameConfirmDialog";
         public const string AntiMacro = "AntiMacro";
         public const string AdminAntiMacro = "AdminAntiMacro";
         public const string AntiMacroNotice = "AntiMacroNotice";
@@ -66,11 +67,13 @@ namespace HaCreator.MapSimulator.UI
         public const string VegaSpell = "VegaSpell";
         public const string Trunk = "Trunk";
         public const string CharacterInfo = "CharacterInfo";
+        public const string RemoteUserContextMenu = "RemoteUserContextMenu";
         public const string KeyConfig = "KeyConfig";
         public const string OptionMenu = "OptionMenu";
         public const string Ranking = "Ranking";
         public const string Event = "Event";
         public const string Radio = "Radio";
+        public const string DragonBox = "DragonBox";
         public const string FamilyChart = "FamilyChart";
         public const string FamilyTree = "FamilyTree";
         public const string SocialList = "SocialList";

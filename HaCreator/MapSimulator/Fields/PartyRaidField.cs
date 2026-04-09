@@ -12,6 +12,8 @@ using Spine;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
+using System.Text;
 using HaCreator.MapSimulator.Interaction;
 
 namespace HaCreator.MapSimulator.Fields
@@ -26,6 +28,9 @@ namespace HaCreator.MapSimulator.Fields
         public const int ClientFieldType = 25;
         public const int ClientBossFieldType = 26;
         public const int ClientResultFieldType = 27;
+        public const int ClientSessionValuePacketType = 93;
+        public const int ClientPartyValuePacketType = 94;
+        public const int ClientFieldSetVariablePacketType = 95;
         public const int ClientInitAddress = 0x55C3D0;
         public const int ClientBossInitAddress = 0x55C5D0;
         public const int ClientResultInitAddress = 0x55C7B0;
@@ -719,6 +724,17 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool OnSessionValue(string key, string value)
         {
+            if (MatchesAlias(key, PartyRaidTeamLiteral))
+            {
+                if (TryParseTeamColor(value, out PartyRaidTeamColor teamColor))
+                {
+                    SetTeamColor(teamColor);
+                    return true;
+                }
+
+                return false;
+            }
+
             if (MatchesAlias(key, "outcome", "result"))
             {
                 if (TryParseOutcome(value, out PartyRaidResultOutcome outcome))
@@ -764,6 +780,76 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return true;
+        }
+
+        public bool TryApplyRawPacket(int packetType, byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            payload ??= Array.Empty<byte>();
+
+            switch (packetType)
+            {
+                case ClientSessionValuePacketType:
+                case ClientPartyValuePacketType:
+                case ClientFieldSetVariablePacketType:
+                    if (!TryDecodeMapleStringPairPayload(payload, out string key, out string value, out errorMessage))
+                    {
+                        return false;
+                    }
+
+                    bool applied = packetType switch
+                    {
+                        ClientSessionValuePacketType => OnSessionValue(key, value),
+                        ClientPartyValuePacketType => OnPartyValue(key, value),
+                        ClientFieldSetVariablePacketType => OnFieldSetVariable(key, value),
+                        _ => false
+                    };
+                    if (!applied)
+                    {
+                        string owner = packetType switch
+                        {
+                            ClientSessionValuePacketType => "session",
+                            ClientPartyValuePacketType => "party",
+                            ClientFieldSetVariablePacketType => "field",
+                            _ => "partyraid"
+                        };
+                        errorMessage = $"Party Raid {owner} packet key was not accepted: {key}={value}";
+                    }
+
+                    return applied;
+
+                case 149:
+                    if (!PacketFieldSpecificDataCodec.TryDecodeStringPairs(payload, out IReadOnlyList<KeyValuePair<string, string>> pairs, out int headerSize))
+                    {
+                        errorMessage = "Party Raid field-specific packet payload did not decode into Maple string pairs.";
+                        return false;
+                    }
+
+                    List<string> appliedPairs = new();
+                    foreach (KeyValuePair<string, string> pair in pairs)
+                    {
+                        string pairKey = pair.Key;
+                        PacketFieldSpecificDataOwnerHint ownerHint = PacketFieldSpecificDataCodec.ResolveOwnerHint(ref pairKey);
+                        if (TryApplyFieldSpecificPair(pairKey, pair.Value, ownerHint, currentTimeMs, out string appliedOwner))
+                        {
+                            string ownerPrefix = string.IsNullOrWhiteSpace(appliedOwner) ? string.Empty : $"{appliedOwner}:";
+                            appliedPairs.Add($"{ownerPrefix}{pairKey}={pair.Value}");
+                        }
+                    }
+
+                    if (appliedPairs.Count == 0)
+                    {
+                        errorMessage = $"Party Raid field-specific packet decoded {pairs.Count} pair(s) with header size {headerSize}, but none were accepted.";
+                        return false;
+                    }
+
+                    errorMessage = $"Party Raid field-specific packet applied {appliedPairs.Count}/{pairs.Count} pair(s) with header size {headerSize}: {string.Join(", ", appliedPairs)}";
+                    return true;
+
+                default:
+                    errorMessage = $"Unsupported Party Raid packet type {packetType}. Expected {ClientSessionValuePacketType}, {ClientPartyValuePacketType}, {ClientFieldSetVariablePacketType}, or 149.";
+                    return false;
+            }
         }
 
         internal bool TryApplyFieldSpecificPair(string key, string value, PacketFieldSpecificDataOwnerHint ownerHint, int currentTimeMs, out string appliedOwner)
@@ -827,7 +913,8 @@ namespace HaCreator.MapSimulator.Fields
             };
             string wzEvidence = GetClientWrapperWzEvidence(_mode);
             string wzText = string.IsNullOrWhiteSpace(wzEvidence) ? string.Empty : $", wz={wzEvidence}";
-            return $"factory=0x{ClientFieldFactoryAddress:X}, owner={GetClientWrapperOwnerName(_mode)}, fieldType={fieldType.Value}, init=0x{initAddress.Value:X}, evidence={updateEvidence}{wzText}";
+            string packetText = $"ctxPackets=session:{ClientSessionValuePacketType},party:{ClientPartyValuePacketType},field:{ClientFieldSetVariablePacketType}";
+            return $"factory=0x{ClientFieldFactoryAddress:X}, owner={GetClientWrapperOwnerName(_mode)}, fieldType={fieldType.Value}, init=0x{initAddress.Value:X}, evidence={updateEvidence}, {packetText}{wzText}";
         }
 
         public string DescribeStructuredFieldSpecificTarget(string appliedOwner)
@@ -1670,6 +1757,53 @@ namespace HaCreator.MapSimulator.Fields
                 ? PartyRaidTeamColor.Blue
                 : PartyRaidTeamColor.Red;
         }
+
+        private static bool TryDecodeMapleStringPairPayload(byte[] payload, out string key, out string value, out string error)
+        {
+            key = null;
+            value = null;
+            error = null;
+            payload ??= Array.Empty<byte>();
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+                key = ReadMapleString(reader);
+                value = ReadMapleString(reader);
+                if (stream.Position != stream.Length)
+                {
+                    error = "Party Raid packet payload contained trailing bytes after the key/value pair.";
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    error = "Party Raid packet payload contained an empty key.";
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException || ex is EndOfStreamException || ex is ArgumentException)
+            {
+                error = "Party Raid packet payload did not match the client's two-Maple-string key/value layout.";
+                return false;
+            }
+        }
+
+        private static string ReadMapleString(BinaryReader reader)
+        {
+            ushort length = reader.ReadUInt16();
+            byte[] bytes = reader.ReadBytes(length);
+            if (bytes.Length != length)
+            {
+                throw new EndOfStreamException("Party Raid Maple string ended before its declared length.");
+            }
+
+            return Encoding.Default.GetString(bytes);
+        }
+
         private static bool UsesWinBadge(PartyRaidResultOutcome outcome) => outcome == PartyRaidResultOutcome.Win || outcome == PartyRaidResultOutcome.Clear;
         private static string GetOutcomeLabel(PartyRaidResultOutcome outcome) => outcome switch { PartyRaidResultOutcome.Win => "WIN", PartyRaidResultOutcome.Lose => "LOSE", PartyRaidResultOutcome.Clear => "CLEAR", _ => "RESULT" };
         private static string GetTeamLabel(PartyRaidTeamColor teamColor) => teamColor == PartyRaidTeamColor.Blue ? "blue" : "red";

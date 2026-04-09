@@ -20,6 +20,8 @@ namespace HaCreator.MapSimulator.Loaders
     {
         internal const int AutomaticClientActionSetIndex = -2;
         internal const int DefaultNpcFrameDelay = 180;
+        private const string QuestConditionStatePropertyName = "state";
+        private const string QuestConditionValuePropertyName = "value";
 
         private static readonly ConcurrentDictionary<NpcActionCacheKey, List<IDXObject>> ActionFrameCache = new();
 
@@ -105,6 +107,11 @@ namespace HaCreator.MapSimulator.Loaders
                 return actionSets[0].Index;
             }
 
+            if (!CanEvaluateQuestConditions(questStateProvider, questRecordValueProvider))
+            {
+                return ResolveFirstConditionlessClientActionSetIndex(actionSets, localPlayerGender);
+            }
+
             foreach (NpcClientActionSetDefinition actionSet in actionSets)
             {
                 if (actionSet.IsRootSet)
@@ -118,15 +125,7 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
-            for (int i = 0; i < actionSets.Count; i++)
-            {
-                if (actionSets[i].IsRootSet)
-                {
-                    return actionSets[i].Index;
-                }
-            }
-
-            return actionSets[0].Index;
+            return ResolveRootClientActionSetIndex(actionSets);
         }
 
         private static bool MatchesAutomaticClientActionSet(
@@ -367,50 +366,84 @@ namespace HaCreator.MapSimulator.Loaders
                 return false;
             }
 
-            int requiredState = -1;
-            string requiredRecordValue = null;
+            int requiredState = TryGetQuestConditionState(property, out int parsedState)
+                ? parsedState
+                : -1;
+            string requiredRecordValue = TryGetQuestConditionRecordValue(property, out string parsedRecordValue)
+                ? parsedRecordValue
+                : null;
 
-            switch (property)
+            if (property.WzProperties != null)
             {
-                case WzStringProperty stringProperty:
-                    requiredRecordValue = stringProperty.Value;
-                    break;
-                case WzIntProperty:
-                case WzShortProperty:
-                case WzLongProperty:
-                    requiredState = property.GetInt();
-                    break;
-                default:
-                    if (property.WzProperties != null)
+                foreach (WzImageProperty childProperty in property.WzProperties)
+                {
+                    if (childProperty == null)
                     {
-                        foreach (WzImageProperty childProperty in property.WzProperties)
-                        {
-                            if (childProperty == null)
-                            {
-                                continue;
-                            }
-
-                            if (requiredState < 0 &&
-                                (string.Equals(childProperty.Name, "state", StringComparison.OrdinalIgnoreCase)
-                                 || childProperty is WzIntProperty
-                                 || childProperty is WzShortProperty
-                                 || childProperty is WzLongProperty))
-                            {
-                                requiredState = childProperty.GetInt();
-                                continue;
-                            }
-
-                            if (string.IsNullOrEmpty(requiredRecordValue) && childProperty is WzStringProperty nestedStringProperty)
-                            {
-                                requiredRecordValue = nestedStringProperty.Value;
-                            }
-                        }
+                        continue;
                     }
 
-                    break;
+                    if (requiredState < 0 && TryGetQuestConditionState(childProperty, out parsedState))
+                    {
+                        requiredState = parsedState;
+                    }
+
+                    if (string.IsNullOrEmpty(requiredRecordValue) &&
+                        TryGetQuestConditionRecordValue(childProperty, out parsedRecordValue))
+                    {
+                        requiredRecordValue = parsedRecordValue;
+                    }
+                }
             }
 
             questCondition = new NpcQuestConditionDefinition(questId, requiredState, requiredRecordValue ?? string.Empty);
+            return true;
+        }
+
+        private static bool TryGetQuestConditionState(WzImageProperty property, out int requiredState)
+        {
+            requiredState = -1;
+            if (property == null)
+            {
+                return false;
+            }
+
+            if (property is WzIntProperty or WzShortProperty or WzLongProperty)
+            {
+                requiredState = property.GetInt();
+                return true;
+            }
+
+            if (!string.Equals(property.Name, QuestConditionStatePropertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (property is WzStringProperty stringProperty &&
+                int.TryParse(stringProperty.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedState))
+            {
+                requiredState = parsedState;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryGetQuestConditionRecordValue(WzImageProperty property, out string requiredRecordValue)
+        {
+            requiredRecordValue = null;
+            if (property is not WzStringProperty stringProperty)
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrEmpty(property.Name) &&
+                !string.Equals(property.Name, QuestConditionValuePropertyName, StringComparison.OrdinalIgnoreCase) &&
+                !int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            {
+                return false;
+            }
+
+            requiredRecordValue = stringProperty.Value ?? string.Empty;
             return true;
         }
 
@@ -444,6 +477,11 @@ namespace HaCreator.MapSimulator.Loaders
 
             if (questCondition.RequiredState >= 0)
             {
+                if (questStateProvider == null)
+                {
+                    return false;
+                }
+
                 QuestStateType questState = questStateProvider?.Invoke(questCondition.QuestId) ?? QuestStateType.Not_Started;
                 matched = questCondition.RequiredState switch
                 {
@@ -459,11 +497,56 @@ namespace HaCreator.MapSimulator.Loaders
 
             if (!string.IsNullOrEmpty(questCondition.RequiredRecordValue))
             {
+                if (questRecordValueProvider == null)
+                {
+                    return false;
+                }
+
                 string questRecordValue = questRecordValueProvider?.Invoke(questCondition.QuestId) ?? string.Empty;
                 matched = string.Equals(questCondition.RequiredRecordValue, questRecordValue, StringComparison.Ordinal);
             }
 
             return matched;
+        }
+
+        private static bool CanEvaluateQuestConditions(
+            Func<int, QuestStateType> questStateProvider,
+            Func<int, string> questRecordValueProvider)
+        {
+            return questStateProvider != null || questRecordValueProvider != null;
+        }
+
+        private static int ResolveFirstConditionlessClientActionSetIndex(
+            IReadOnlyList<NpcClientActionSetDefinition> actionSets,
+            CharacterGender? localPlayerGender)
+        {
+            foreach (NpcClientActionSetDefinition actionSet in actionSets)
+            {
+                if (actionSet.IsRootSet || actionSet.HasQuestConditions)
+                {
+                    continue;
+                }
+
+                if (MatchesLocalPlayerGender(actionSet, localPlayerGender))
+                {
+                    return actionSet.Index;
+                }
+            }
+
+            return ResolveRootClientActionSetIndex(actionSets);
+        }
+
+        private static int ResolveRootClientActionSetIndex(IReadOnlyList<NpcClientActionSetDefinition> actionSets)
+        {
+            for (int i = 0; i < actionSets.Count; i++)
+            {
+                if (actionSets[i].IsRootSet)
+                {
+                    return actionSets[i].Index;
+                }
+            }
+
+            return actionSets[0].Index;
         }
 
         private static int MapQuestState(QuestStateType questState)

@@ -138,7 +138,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             string sanitizedText = SanitizeText(text);
             int expiresAt = currentTickCount + Math.Max(0, lifetimeMs);
-            return string.IsNullOrWhiteSpace(sanitizedText) || expiresAt <= currentTickCount
+            return string.IsNullOrEmpty(sanitizedText) || expiresAt <= currentTickCount
                 ? null
                 : new LocalOverlayBalloonMessage(
                     sanitizedText,
@@ -188,7 +188,7 @@ namespace HaCreator.MapSimulator.Interaction
         public Texture2D CachedBodyTexture => _cachedBodyTexture != null && !_cachedBodyTexture.IsDisposed ? _cachedBodyTexture : null;
 
         public bool IsActive(int currentTickCount) =>
-            !string.IsNullOrWhiteSpace(Text) &&
+            !string.IsNullOrEmpty(Text) &&
             unchecked(currentTickCount - ExpiresAt) < 0;
 
         public bool TryGetCachedVisualTexture(int bodyWidth, int bodyHeight, int variantId, out Texture2D texture)

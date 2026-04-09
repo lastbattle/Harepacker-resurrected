@@ -591,6 +591,50 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        private KeyConfigWindow.ClientOwnerState ResolvePacketOwnedKeyConfigClientOwnerState(InputAction action)
+        {
+            for (int i = 0; i < PacketOwnedKnownFunctionBindings.Length; i++)
+            {
+                (int clientFunctionId, InputAction mappedAction) = PacketOwnedKnownFunctionBindings[i];
+                if (mappedAction != action)
+                {
+                    continue;
+                }
+
+                return TryResolvePacketOwnedBindingKey(clientFunctionId, out Keys functionKey)
+                    ? new KeyConfigWindow.ClientOwnerState(hasClientOwner: true, clientFunctionId, functionKey)
+                    : new KeyConfigWindow.ClientOwnerState(hasClientOwner: false, clientFunctionId, Keys.None);
+            }
+
+            if (!TryResolvePacketOwnedBindableHotkeySlotIndex(action, out int slotIndex)
+                || slotIndex < 0
+                || slotIndex >= _packetOwnedBindableHotkeyAssignedScanCodes.Length)
+            {
+                return default;
+            }
+
+            int scanCode = _packetOwnedBindableHotkeyAssignedScanCodes[slotIndex];
+            if (scanCode < 0)
+            {
+                return default;
+            }
+
+            PacketOwnedFuncKeyMappedEntry entry = ResolvePacketOwnedFuncKeyMappedEntry(scanCode);
+            if (!IsPacketOwnedCastEntryType(entry.Type) || entry.Id <= 0)
+            {
+                return default;
+            }
+
+            Keys key = ResolvePacketOwnedScanCodeKey(scanCode);
+            return new KeyConfigWindow.ClientOwnerState(
+                hasClientOwner: false,
+                clientFunctionId: -1,
+                clientKey: key,
+                packetEntryType: entry.Type,
+                packetEntryId: entry.Id,
+                packetScanCode: scanCode);
+        }
+
         private int ApplyPacketOwnedCastMappingsToLiveInput(PlayerInput input)
         {
             if (input == null || _playerManager?.Skills == null)

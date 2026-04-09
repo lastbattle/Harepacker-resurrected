@@ -16,17 +16,10 @@ namespace HaCreator.MapSimulator.Interaction
             string configuredValue = Environment.GetEnvironmentVariable(EnvironmentOverrideName);
             if (int.TryParse(configuredValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int environmentMode))
             {
-                return NormalizeFolderMode(environmentMode);
+                return environmentMode;
             }
 
-            return NormalizeFolderMode(UserSettings.AntiMacroScreenshotSaveLocation);
-        }
-
-        internal static int NormalizeFolderMode(int mode)
-        {
-            return mode is >= FolderModeClientDirectory and <= FolderModeRootDrive
-                ? mode
-                : FolderModeClientDirectory;
+            return UserSettings.AntiMacroScreenshotSaveLocation;
         }
 
         internal static string ResolveBaseFolder()
@@ -39,7 +32,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static string ResolveBaseFolder(int mode, string processPath, string desktopPath)
         {
-            switch (NormalizeFolderMode(mode))
+            switch (mode)
             {
                 case FolderModeClientDirectory:
                 {

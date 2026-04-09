@@ -1609,6 +1609,26 @@ namespace HaCreator.MapSimulator.Effects
             build.Speed = packet.Speed.Value;
         }
 
+        private static int? ResolveParticipantCarryItemEffectCount(WeddingRemoteParticipant participant)
+        {
+            if (participant?.AvatarModifiedState is not RemoteUserAvatarModifiedPacket avatarModifiedState
+                || !avatarModifiedState.CarryItemEffect.HasValue
+                || avatarModifiedState.CarryItemEffect.Value <= 0)
+            {
+                return null;
+            }
+
+            return avatarModifiedState.CarryItemEffect.Value;
+        }
+
+        private static int ResolveParticipantCompletedSetItemId(WeddingRemoteParticipant participant)
+        {
+            return participant?.AvatarModifiedState is RemoteUserAvatarModifiedPacket avatarModifiedState
+                && avatarModifiedState.CompletedSetItemId > 0
+                    ? avatarModifiedState.CompletedSetItemId
+                    : 0;
+        }
+
         private static void StoreAvatarModifiedState(WeddingRemoteParticipant participant, RemoteUserAvatarModifiedPacket packet)
         {
             if (participant == null)
@@ -2564,6 +2584,11 @@ namespace HaCreator.MapSimulator.Effects
 
         private void SetCeremonyTextOverlay(bool active)
         {
+            if (_ceremonyTextOverlayActive == active)
+            {
+                return;
+            }
+
             _ceremonyTextOverlayActive = active;
             if (!_ceremonyTextOverlayActive && _ceremonyTextOverlayAlpha < 0.001f)
             {
@@ -2574,6 +2599,11 @@ namespace HaCreator.MapSimulator.Effects
 
         private void SetCeremonyCardOverlay(bool active)
         {
+            if (_ceremonyCardOverlayActive == active)
+            {
+                return;
+            }
+
             _ceremonyCardOverlayActive = active;
             if (!_ceremonyCardOverlayActive && _ceremonyCardOverlayAlpha < 0.001f)
             {
@@ -2584,6 +2614,11 @@ namespace HaCreator.MapSimulator.Effects
 
         private void SetCeremonyCelebration(bool active)
         {
+            if (_ceremonyCelebrationActive == active)
+            {
+                return;
+            }
+
             _ceremonyCelebrationActive = active;
             _ceremonyPetals.Clear();
             _ceremonyHearts.Clear();
@@ -2913,8 +2948,40 @@ namespace HaCreator.MapSimulator.Effects
                     screenY,
                     tickCount,
                     drawFrontLayers: false);
+                DrawParticipantCarryItemEffect(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    participant,
+                    screenX,
+                    screenY,
+                    tickCount,
+                    drawFrontLayers: false);
+                DrawParticipantCompletedSetItemEffect(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    participant,
+                    screenX,
+                    screenY,
+                    tickCount,
+                    drawFrontLayers: false);
                 frame.Draw(spriteBatch, skeletonMeshRenderer, screenX, screenY, participant.FacingRight, Color.White);
                 DrawParticipantPacketOwnedItemEffect(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    participant,
+                    screenX,
+                    screenY,
+                    tickCount,
+                    drawFrontLayers: true);
+                DrawParticipantCarryItemEffect(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    participant,
+                    screenX,
+                    screenY,
+                    tickCount,
+                    drawFrontLayers: true);
+                DrawParticipantCompletedSetItemEffect(
                     spriteBatch,
                     skeletonMeshRenderer,
                     participant,
@@ -3017,6 +3084,105 @@ namespace HaCreator.MapSimulator.Effects
                 }
 
                 CharacterFrame frame = PlayerCharacter.GetPortableChairLayerFrameAtTime(layer, elapsedTime);
+                PlayerCharacter.DrawPortableChairLayerFrame(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    frame,
+                    screenX,
+                    screenY,
+                    participant.FacingRight);
+            }
+        }
+
+        private void DrawParticipantCarryItemEffect(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            WeddingRemoteParticipant participant,
+            int screenX,
+            int screenY,
+            int currentTime,
+            bool drawFrontLayers)
+        {
+            if (_characterLoader == null
+                || ResolveParticipantCarryItemEffectCount(participant) is not int carryCount
+                || carryCount <= 0)
+            {
+                return;
+            }
+
+            CarryItemEffectDefinition effect = _characterLoader.LoadCarryItemEffectDefinition();
+            if (effect?.IsReady != true)
+            {
+                return;
+            }
+
+            (int totalTokenCount, int tensTokenCount) = RemoteUserActorPool.ResolveCarryItemEffectTokenCounts(carryCount);
+            for (int index = 0; index < totalTokenCount; index++)
+            {
+                PortableChairLayer layer = RemoteUserActorPool.ResolveCarryItemEffectLayer(effect, index, tensTokenCount);
+                if (layer?.Animation == null)
+                {
+                    continue;
+                }
+
+                Point offset = RemoteUserActorPool.ResolveCarryItemEffectOrbitOffset(
+                    currentTime,
+                    index,
+                    totalTokenCount,
+                    participant.FacingRight,
+                    out bool isFrontLayer);
+                if (isFrontLayer != drawFrontLayers)
+                {
+                    continue;
+                }
+
+                CharacterFrame frame = PlayerCharacter.GetPortableChairLayerFrameAtTime(
+                    layer,
+                    RemoteUserActorPool.ResolveCarryItemEffectAnimationTime(currentTime, index));
+                PlayerCharacter.DrawPortableChairLayerFrame(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    frame,
+                    screenX + offset.X,
+                    screenY + offset.Y,
+                    participant.FacingRight);
+            }
+        }
+
+        private void DrawParticipantCompletedSetItemEffect(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            WeddingRemoteParticipant participant,
+            int screenX,
+            int screenY,
+            int currentTime,
+            bool drawFrontLayers)
+        {
+            if (_characterLoader == null)
+            {
+                return;
+            }
+
+            int setItemId = ResolveParticipantCompletedSetItemId(participant);
+            if (setItemId <= 0)
+            {
+                return;
+            }
+
+            ItemEffectAnimationSet effect = _characterLoader.LoadCompletedSetItemEffectAnimationSet(setItemId);
+            if (effect?.OwnerLayers == null || effect.OwnerLayers.Count == 0)
+            {
+                return;
+            }
+
+            foreach (PortableChairLayer layer in effect.OwnerLayers)
+            {
+                if ((layer.RelativeZ > 0) != drawFrontLayers)
+                {
+                    continue;
+                }
+
+                CharacterFrame frame = PlayerCharacter.GetPortableChairLayerFrameAtTime(layer, currentTime);
                 PlayerCharacter.DrawPortableChairLayerFrame(
                     spriteBatch,
                     skeletonMeshRenderer,

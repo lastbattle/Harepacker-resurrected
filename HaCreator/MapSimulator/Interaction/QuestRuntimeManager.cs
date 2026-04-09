@@ -298,6 +298,14 @@ namespace HaCreator.MapSimulator.Interaction
             public QuestActionBundle EndActions { get; init; } = new();
         }
 
+        private sealed class ConversationSelectionRuntime
+        {
+            public IReadOnlyList<NpcInteractionPage> Pages { get; init; } = Array.Empty<NpcInteractionPage>();
+            public IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> StopPages { get; init; } =
+                new Dictionary<string, IReadOnlyList<NpcInteractionPage>>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlyList<NpcInteractionPage> LostPages { get; init; } = Array.Empty<NpcInteractionPage>();
+        }
+
         private sealed class QuestProgress
         {
             public QuestStateType State { get; set; }
@@ -1606,7 +1614,7 @@ namespace HaCreator.MapSimulator.Interaction
                 StateChanged = true,
                 QuestId = questId,
                 Messages = messages,
-                PublishedScriptNames = definition.EndScriptNames
+                PublishedScriptNames = Array.Empty<string>()
             };
         }
 
@@ -2638,10 +2646,11 @@ namespace HaCreator.MapSimulator.Interaction
                 summary = $"{summary}\n\n{definition.Summary}";
             }
 
-            IReadOnlyList<NpcInteractionPage> conversationPages = ResolveConversationPages(definition, state, build, npcId);
+            ConversationSelectionRuntime conversationRuntime = ResolveConversationSelection(definition, state, build, npcId);
+            IReadOnlyList<NpcInteractionPage> conversationPages = conversationRuntime.Pages;
             IReadOnlyList<NpcInteractionPage> issueConversationPages =
                 issues != null && issues.Count > 0
-                    ? SelectIssueConversationPages(definition, state, build, isCompletionNpc)
+                    ? SelectIssueConversationPages(definition, state, build, isCompletionNpc, conversationRuntime)
                     : Array.Empty<NpcInteractionPage>();
             if (issueConversationPages.Count > 0)
             {
@@ -2711,7 +2720,7 @@ namespace HaCreator.MapSimulator.Interaction
             return pages;
         }
 
-        private IReadOnlyList<NpcInteractionPage> ResolveConversationPages(
+        private ConversationSelectionRuntime ResolveConversationSelection(
             QuestDefinition definition,
             QuestStateType state,
             CharacterBuild build,
@@ -2719,7 +2728,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (definition == null)
             {
-                return Array.Empty<NpcInteractionPage>();
+                return new ConversationSelectionRuntime();
             }
 
             WzImageProperty sayProperty = state == QuestStateType.Not_Started
@@ -2728,9 +2737,20 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<NpcInteractionPage> fallbackPages = state == QuestStateType.Not_Started
                 ? definition.StartSayPages
                 : definition.EndSayPages;
+            IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> fallbackStopPages = state == QuestStateType.Not_Started
+                ? definition.StartStopPages
+                : definition.EndStopPages;
+            IReadOnlyList<NpcInteractionPage> fallbackLostPages = state == QuestStateType.Not_Started
+                ? definition.StartLostPages
+                : definition.EndLostPages;
             if (sayProperty == null)
             {
-                return fallbackPages;
+                return new ConversationSelectionRuntime
+                {
+                    Pages = fallbackPages,
+                    StopPages = fallbackStopPages,
+                    LostPages = fallbackLostPages
+                };
             }
 
             WzImageProperty selectedProperty = SelectConversationVariantProperty(
@@ -2740,11 +2760,21 @@ namespace HaCreator.MapSimulator.Interaction
                 GetQuestState);
             if (ReferenceEquals(selectedProperty, sayProperty))
             {
-                return fallbackPages;
+                return new ConversationSelectionRuntime
+                {
+                    Pages = fallbackPages,
+                    StopPages = fallbackStopPages,
+                    LostPages = fallbackLostPages
+                };
             }
 
             IReadOnlyList<NpcInteractionPage> selectedPages = ParseConversationVariantPages(sayProperty, selectedProperty);
-            return selectedPages.Count > 0 ? selectedPages : fallbackPages;
+            return new ConversationSelectionRuntime
+            {
+                Pages = selectedPages.Count > 0 ? selectedPages : fallbackPages,
+                StopPages = ParseConversationVariantStopPages(sayProperty, selectedProperty, fallbackStopPages),
+                LostPages = ParseConversationVariantLostPages(selectedProperty, fallbackLostPages)
+            };
         }
 
         internal static WzImageProperty SelectConversationVariantProperty(
@@ -2897,14 +2927,15 @@ namespace HaCreator.MapSimulator.Interaction
             QuestDefinition definition,
             QuestStateType state,
             CharacterBuild build,
-            bool isCompletionNpc)
+            bool isCompletionNpc,
+            ConversationSelectionRuntime conversationRuntime)
         {
-            IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages = state == QuestStateType.Not_Started
+            IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages = conversationRuntime?.StopPages ?? (state == QuestStateType.Not_Started
                 ? definition.StartStopPages
-                : definition.EndStopPages;
-            IReadOnlyList<NpcInteractionPage> lostPages = state == QuestStateType.Not_Started
+                : definition.EndStopPages);
+            IReadOnlyList<NpcInteractionPage> lostPages = conversationRuntime?.LostPages ?? (state == QuestStateType.Not_Started
                 ? definition.StartLostPages
-                : definition.EndLostPages;
+                : definition.EndLostPages);
 
             IReadOnlyList<QuestItemRequirement> itemRequirements = state == QuestStateType.Not_Started
                 ? definition.StartItemRequirements
@@ -6301,8 +6332,83 @@ namespace HaCreator.MapSimulator.Interaction
 
             List<WzImageProperty> siblingPages = CollectConversationVariantSiblingPages(containerProperty, selectedProperty);
             return siblingPages.Count > 0
-                ? ParseConversationPageSequence(siblingPages, rootChoiceProperty: null, rootStopProperty: containerProperty?["stop"])
+                ? ParseConversationPageSequence(
+                    siblingPages,
+                    rootChoiceProperty: selectedProperty,
+                    rootStopProperty: ResolveConversationVariantRootStopProperty(containerProperty, selectedProperty))
                 : ParseConversationPages(selectedProperty);
+        }
+
+        private static WzImageProperty ResolveConversationVariantRootStopProperty(
+            WzImageProperty containerProperty,
+            WzImageProperty selectedProperty)
+        {
+            return selectedProperty?["stop"] ?? containerProperty?["stop"];
+        }
+
+        private static IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> ParseConversationVariantStopPages(
+            WzImageProperty containerProperty,
+            WzImageProperty selectedProperty,
+            IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> fallbackStopPages)
+        {
+            IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> selectedStopPages = ParseConversationStopPages(selectedProperty);
+            if (selectedStopPages.Count > 0)
+            {
+                return selectedStopPages;
+            }
+
+            IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> directSelectedStopPages =
+                ParseConversationStopPagesFromStopProperty(selectedProperty?["stop"]);
+            if (directSelectedStopPages.Count > 0)
+            {
+                return directSelectedStopPages;
+            }
+
+            IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> directContainerStopPages =
+                ParseConversationStopPagesFromStopProperty(containerProperty?["stop"]);
+            if (directContainerStopPages.Count > 0)
+            {
+                return directContainerStopPages;
+            }
+
+            return fallbackStopPages ?? new Dictionary<string, IReadOnlyList<NpcInteractionPage>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static IReadOnlyList<NpcInteractionPage> ParseConversationVariantLostPages(
+            WzImageProperty selectedProperty,
+            IReadOnlyList<NpcInteractionPage> fallbackLostPages)
+        {
+            IReadOnlyList<NpcInteractionPage> selectedLostPages = ParseConversationLostPages(selectedProperty);
+            return selectedLostPages.Count > 0
+                ? selectedLostPages
+                : fallbackLostPages ?? Array.Empty<NpcInteractionPage>();
+        }
+
+        private static IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> ParseConversationStopPagesFromStopProperty(
+            WzImageProperty stopProperty)
+        {
+            var pagesByBranch = new Dictionary<string, IReadOnlyList<NpcInteractionPage>>(StringComparer.OrdinalIgnoreCase);
+            if (stopProperty?.WzProperties == null)
+            {
+                return pagesByBranch;
+            }
+
+            for (int i = 0; i < stopProperty.WzProperties.Count; i++)
+            {
+                WzImageProperty branchProperty = stopProperty.WzProperties[i];
+                if (branchProperty == null || int.TryParse(branchProperty.Name, out _))
+                {
+                    continue;
+                }
+
+                IReadOnlyList<NpcInteractionPage> branchPages = ParseBranchPages(branchProperty);
+                if (branchPages.Count > 0)
+                {
+                    pagesByBranch[branchProperty.Name] = branchPages;
+                }
+            }
+
+            return pagesByBranch;
         }
 
         private static IReadOnlyList<NpcInteractionPage> ParseConversationPageSequence(
@@ -6328,9 +6434,10 @@ namespace HaCreator.MapSimulator.Interaction
                 string rawText = ExtractConversationText(pageProperty);
                 string text = NpcDialogueTextFormatter.Format(rawText);
                 var choices = new List<NpcInteractionChoice>();
+                WzImageProperty pageStopProperty = ResolveConversationPageStopProperty(pageProperty, rootStopProperty, pageIndex);
 
                 AppendConversationChoices(pageProperty, choices);
-                AppendInlineSelectionChoices(rawText, pageIndex, rootStopProperty, GetRemainingPages(pages, i + 1), choices);
+                AppendInlineSelectionChoices(rawText, pageIndex, pageStopProperty, GetRemainingPages(pages, i + 1), choices);
 
                 if (i == numberedPages.Count - 1 && rootChoiceProperty != null)
                 {
@@ -6349,6 +6456,15 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return pages.Where(page => page != null).ToArray();
+        }
+
+        private static WzImageProperty ResolveConversationPageStopProperty(
+            WzImageProperty pageProperty,
+            WzImageProperty rootStopProperty,
+            int pageIndex)
+        {
+            WzImageProperty indexedStopProperty = rootStopProperty?[pageIndex.ToString()];
+            return indexedStopProperty ?? pageProperty?["stop"];
         }
 
         private static List<WzImageProperty> CollectConversationNumberedPages(WzImageProperty property)
@@ -8368,14 +8484,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return string.Empty;
             }
 
-            var lines = new List<string>();
             string summaryText = BuildClientPacketQuestResultItemCategorySummary(actions, build);
+            var lines = new List<string>();
             if (!string.IsNullOrWhiteSpace(summaryText))
             {
                 lines.Add(summaryText);
             }
 
-            lines.AddRange(BuildClientPacketQuestResultSupplementalLines(actions, build));
+            lines.AddRange(BuildClientPacketQuestResultNonItemSupplementalLines(actions, build));
 
             string noticeText = string.Join("\n", lines.Where(static line => !string.IsNullOrWhiteSpace(line)));
             if (actions.MesoReward < 0)
@@ -8454,6 +8570,15 @@ namespace HaCreator.MapSimulator.Interaction
                         ? definition.StartNpcId ?? definition.EndNpcId ?? 0
                         : definition.EndNpcId ?? definition.StartNpcId ?? 0)
             };
+        }
+
+        private IReadOnlyList<NpcInteractionPage> ResolveConversationPages(
+            QuestDefinition definition,
+            QuestStateType state,
+            CharacterBuild build,
+            int npcId)
+        {
+            return ResolveConversationSelection(definition, state, build, npcId).Pages;
         }
 
         private IReadOnlyList<string> BuildPacketQuestResultActionLines(
@@ -8643,23 +8768,20 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
+            if (itemIds.Count == 0)
+            {
+                return string.Empty;
+            }
+
             return QuestClientPacketResultNoticeText.FormatRewardInventoryNotice(itemIds);
         }
 
-        private IReadOnlyList<string> BuildClientPacketQuestResultSupplementalLines(QuestActionBundle actions, CharacterBuild build)
+        private IReadOnlyList<string> BuildClientPacketQuestResultNonItemSupplementalLines(QuestActionBundle actions, CharacterBuild build)
         {
             var lines = new List<string>();
             if (actions == null)
             {
                 return lines;
-            }
-
-            foreach ((int _, List<QuestRewardItem> groupRewards) in GetFilteredChoiceRewardGroups(actions.RewardItems, build))
-            {
-                if (groupRewards.Count > 1)
-                {
-                    lines.Add(BuildChoiceRewardDisplayText(groupRewards, build, includeSelectionTag: false));
-                }
             }
 
             if (actions.ExpReward > 0)
@@ -8866,7 +8988,7 @@ namespace HaCreator.MapSimulator.Interaction
                 : (QuestWindowActionKind.None, false, string.Empty);
         }
 
-        private static (QuestWindowActionKind action, bool enabled, string label, int? targetNpcId, string targetNpcName, QuestDetailNpcButtonStyle buttonStyle)
+        private (QuestWindowActionKind action, bool enabled, string label, int? targetNpcId, string targetNpcName, QuestDetailNpcButtonStyle buttonStyle)
             GetTertiaryAction(QuestDefinition definition, QuestStateType state)
         {
             int? targetNpcId = state switch
@@ -8881,13 +9003,32 @@ namespace HaCreator.MapSimulator.Interaction
                 return (QuestWindowActionKind.None, false, string.Empty, null, string.Empty, QuestDetailNpcButtonStyle.None);
             }
 
-            QuestDetailNpcButtonStyle buttonStyle = state == QuestStateType.Not_Started
-                ? QuestDetailNpcButtonStyle.GotoNpc
-                : QuestDetailNpcButtonStyle.MarkNpc;
+            QuestDetailNpcButtonStyle buttonStyle;
+            string label;
+
+            if (state == QuestStateType.Not_Started)
+            {
+                buttonStyle = QuestDetailNpcButtonStyle.GotoNpc;
+                label = "Go to NPC";
+            }
+            else if (definition.EndMobRequirements.Any(requirement => requirement != null &&
+                                                                     GetCurrentMobCount(GetOrCreateProgress(definition.QuestId), requirement.MobId) < requirement.RequiredCount))
+            {
+                buttonStyle = QuestDetailNpcButtonStyle.GenericNpc;
+                label = "Locate Mob";
+            }
+            else if (GetPreferredOutstandingItemRequirement(definition.EndItemRequirements, preferVisibleRequirements: false) != null)
+            {
+                buttonStyle = QuestDetailNpcButtonStyle.GenericNpc;
+                label = "Locate Item";
+            }
+            else
+            {
+                buttonStyle = QuestDetailNpcButtonStyle.MarkNpc;
+                label = "Mark NPC";
+            }
+
             string targetNpcName = ResolveNpcName(targetNpcId.Value);
-            string label = buttonStyle == QuestDetailNpcButtonStyle.GotoNpc
-                ? "Go to NPC"
-                : "Mark NPC";
             return (QuestWindowActionKind.LocateNpc, true, label, targetNpcId, targetNpcName, buttonStyle);
         }
 

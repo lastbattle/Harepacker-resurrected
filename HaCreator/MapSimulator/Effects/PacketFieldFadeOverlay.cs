@@ -1,107 +1,143 @@
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Effects
 {
     internal sealed class PacketFieldFadeOverlay
     {
-        private int _fadeInMs;
-        private int _holdMs;
-        private int _fadeOutMs;
-        private int _startingAlpha;
-        private int _layerZ;
-        private int _startedAt;
-        private bool _active;
+        private readonly List<FadeEntry> _entries = new();
 
-        public bool IsActive => _active;
-        public int RequestedLayerZ => _layerZ;
-        public int StartingAlpha => _startingAlpha;
-        public int FadeInMs => _fadeInMs;
-        public int HoldMs => _holdMs;
-        public int FadeOutMs => _fadeOutMs;
-        public int StartedAt => _startedAt;
-        public int FadeOutStartsAt => _active ? _startedAt + _fadeInMs + _holdMs : int.MinValue;
-        public int ExpiresAt => _active ? _startedAt + _fadeInMs + _holdMs + _fadeOutMs : int.MinValue;
+        public bool IsActive => _entries.Count > 0;
+        public int ActiveFadeCount => _entries.Count;
+        public int RequestedLayerZ => TryGetLatestEntry(out FadeEntry entry) ? entry.LayerZ : 0;
+        public int StartingAlpha => TryGetLatestEntry(out FadeEntry entry) ? entry.StartingAlpha : 0;
+        public int FadeInMs => TryGetLatestEntry(out FadeEntry entry) ? entry.FadeInMs : 0;
+        public int HoldMs => TryGetLatestEntry(out FadeEntry entry) ? entry.HoldMs : 0;
+        public int FadeOutMs => TryGetLatestEntry(out FadeEntry entry) ? entry.FadeOutMs : 0;
+        public int StartedAt => TryGetLatestEntry(out FadeEntry entry) ? entry.StartedAt : 0;
+        public int FadeOutStartsAt => TryGetLatestEntry(out FadeEntry entry) ? entry.FadeOutStartsAt : int.MinValue;
+        public int ExpiresAt => TryGetLatestEntry(out FadeEntry entry) ? entry.ExpiresAt : int.MinValue;
 
         public void Start(int fadeInMs, int holdMs, int fadeOutMs, int startingAlpha, int layerZ, int currentTickCount)
         {
-            _fadeInMs = Math.Max(0, fadeInMs);
-            _holdMs = Math.Max(0, holdMs);
-            _fadeOutMs = Math.Max(0, fadeOutMs);
-            _startingAlpha = Math.Clamp(startingAlpha, 0, byte.MaxValue);
-            _layerZ = layerZ;
-            _startedAt = currentTickCount;
-            _active = _fadeInMs + _holdMs + _fadeOutMs > 0;
-        }
-
-        public void Clear()
-        {
-            _active = false;
-            _fadeInMs = 0;
-            _holdMs = 0;
-            _fadeOutMs = 0;
-            _startingAlpha = 0;
-            _layerZ = 0;
-            _startedAt = 0;
-        }
-
-        public void Update(int currentTickCount)
-        {
-            if (!_active)
+            int resolvedFadeInMs = Math.Max(0, fadeInMs);
+            int resolvedHoldMs = Math.Max(0, holdMs);
+            int resolvedFadeOutMs = Math.Max(0, fadeOutMs);
+            if (resolvedFadeInMs + resolvedHoldMs + resolvedFadeOutMs <= 0)
             {
                 return;
             }
 
-            if (unchecked(currentTickCount - ExpiresAt) >= 0)
+            _entries.Add(new FadeEntry(
+                resolvedFadeInMs,
+                resolvedHoldMs,
+                resolvedFadeOutMs,
+                Math.Clamp(startingAlpha, 0, byte.MaxValue),
+                layerZ,
+                currentTickCount));
+        }
+
+        public void Clear()
+        {
+            _entries.Clear();
+        }
+
+        public void Update(int currentTickCount)
+        {
+            if (_entries.Count == 0)
             {
-                Clear();
+                return;
+            }
+
+            for (int index = _entries.Count - 1; index >= 0; index--)
+            {
+                if (unchecked(currentTickCount - _entries[index].ExpiresAt) >= 0)
+                {
+                    _entries.RemoveAt(index);
+                }
             }
         }
 
         public bool TryGetOverlay(int currentTickCount, out Color color)
         {
             color = Color.Transparent;
-            if (!_active)
+            Update(currentTickCount);
+            if (_entries.Count == 0)
             {
                 return false;
             }
 
-            float alpha = GetAlpha(currentTickCount);
-            if (alpha <= 0f)
+            float combinedAlpha = 0f;
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                float alpha = GetAlpha(_entries[i], currentTickCount);
+                if (alpha <= 0f)
+                {
+                    continue;
+                }
+
+                combinedAlpha = 1f - ((1f - combinedAlpha) * (1f - alpha));
+            }
+
+            if (combinedAlpha <= 0f)
             {
                 return false;
             }
 
-            color = Color.Black * alpha;
+            color = Color.Black * combinedAlpha;
             return true;
         }
 
-        private float GetAlpha(int currentTickCount)
+        private bool TryGetLatestEntry(out FadeEntry entry)
         {
-            int elapsed = Math.Max(0, unchecked(currentTickCount - _startedAt));
-            float startingAlpha = _startingAlpha / (float)byte.MaxValue;
-            if (_fadeInMs > 0 && elapsed < _fadeInMs)
+            if (_entries.Count > 0)
             {
-                float fadeProgress = MathHelper.Clamp((float)elapsed / _fadeInMs, 0f, 1f);
+                entry = _entries[^1];
+                return true;
+            }
+
+            entry = default;
+            return false;
+        }
+
+        private static float GetAlpha(in FadeEntry entry, int currentTickCount)
+        {
+            int elapsed = Math.Max(0, unchecked(currentTickCount - entry.StartedAt));
+            float startingAlpha = entry.StartingAlpha / (float)byte.MaxValue;
+            if (entry.FadeInMs > 0 && elapsed < entry.FadeInMs)
+            {
+                float fadeProgress = MathHelper.Clamp((float)elapsed / entry.FadeInMs, 0f, 1f);
                 return MathHelper.Lerp(startingAlpha, 1f, fadeProgress);
             }
 
-            int fadeOutStartsAt = FadeOutStartsAt;
-            if (unchecked(currentTickCount - fadeOutStartsAt) < 0)
+            if (unchecked(currentTickCount - entry.FadeOutStartsAt) < 0)
             {
                 return 1f;
             }
 
-            if (_fadeOutMs > 0)
+            if (entry.FadeOutMs > 0)
             {
-                elapsed = Math.Max(0, unchecked(currentTickCount - fadeOutStartsAt));
-                if (elapsed < _fadeOutMs)
+                elapsed = Math.Max(0, unchecked(currentTickCount - entry.FadeOutStartsAt));
+                if (elapsed < entry.FadeOutMs)
                 {
-                    return 1f - MathHelper.Clamp((float)elapsed / _fadeOutMs, 0f, 1f);
+                    return 1f - MathHelper.Clamp((float)elapsed / entry.FadeOutMs, 0f, 1f);
                 }
             }
 
             return 0f;
+        }
+
+        private readonly record struct FadeEntry(
+            int FadeInMs,
+            int HoldMs,
+            int FadeOutMs,
+            int StartingAlpha,
+            int LayerZ,
+            int StartedAt)
+        {
+            public int FadeOutStartsAt => StartedAt + FadeInMs + HoldMs;
+            public int ExpiresAt => FadeOutStartsAt + FadeOutMs;
         }
     }
 }

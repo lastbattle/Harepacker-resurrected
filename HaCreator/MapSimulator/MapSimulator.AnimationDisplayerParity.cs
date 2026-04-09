@@ -17,6 +17,11 @@ namespace HaCreator.MapSimulator
             RelationshipOverlayClientStringPoolText.ResolveNewYearCardEffectPath();
         private const string AnimationDisplayerFireCrackerEffectUol = "Effect/OnUserEff.img/itemEffect/firework/5680024";
         private const string AnimationDisplayerGenericUserStateEffectUol = "Effect/OnUserEff.img/character";
+        private static readonly string[] AnimationDisplayerFollowEffectUolCandidates =
+        {
+            "Effect/OnUserEff.img/eventEffect/flame/0",
+            "Effect/OnUserEff.img/eventEffect/0"
+        };
         private const string AnimationDisplayerQuestDeliveryEffectBaseUol = "Effect/OnUserEff.img/itemEffect/quest";
         private const int AnimationDisplayerQuestDeliveryFallbackEffectItemId = 2430071;
         private const int AnimationDisplayerNewYearSoundStringPoolId = 0x125C;
@@ -127,7 +132,7 @@ namespace HaCreator.MapSimulator
             {
                 if (args.Length < 3)
                 {
-                    return ChatCommandHandler.CommandResult.Error("Usage: /socialanim follow <local|characterId> <on|off>");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /socialanim follow <local|characterId> <on|off> [relative|absolute]");
                 }
 
                 if (!TryResolveAnimationDisplayerOwner(args[1], out int ownerCharacterId, out Func<Vector2> getPosition, out string ownerName))
@@ -137,10 +142,15 @@ namespace HaCreator.MapSimulator
 
                 if (string.Equals(args[2], "on", StringComparison.OrdinalIgnoreCase))
                 {
-                    bool registered = TryRegisterAnimationDisplayerFollow(ownerCharacterId, getPosition);
+                    if (!TryResolveAnimationDisplayerFollowRelativeEmission(args, startIndex: 3, out bool relativeEmission))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /socialanim follow <local|characterId> <on|off> [relative|absolute]");
+                    }
+
+                    bool registered = TryRegisterAnimationDisplayerFollow(ownerCharacterId, getPosition, relativeEmission);
                     return registered
-                        ? ChatCommandHandler.CommandResult.Ok($"Registered animation-displayer follow layer for {ownerName}.")
-                        : ChatCommandHandler.CommandResult.Error($"Follow animation frames could not be loaded from {AnimationDisplayerGenericUserStateEffectUol}.");
+                        ? ChatCommandHandler.CommandResult.Ok($"Registered animation-displayer follow layer for {ownerName} ({(relativeEmission ? "relative" : "absolute")} emission).")
+                        : ChatCommandHandler.CommandResult.Error($"Follow animation frames could not be loaded from {AnimationDisplayerGenericUserStateEffectUol} or the authored eventEffect follow families.");
                 }
 
                 if (string.Equals(args[2], "off", StringComparison.OrdinalIgnoreCase))
@@ -149,7 +159,7 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Ok($"Cleared animation-displayer follow layer for {ownerName}.");
                 }
 
-                return ChatCommandHandler.CommandResult.Error("Usage: /socialanim follow <local|characterId> <on|off>");
+                return ChatCommandHandler.CommandResult.Error("Usage: /socialanim follow <local|characterId> <on|off> [relative|absolute]");
             }
 
             if (string.Equals(args[0], "questdelivery", StringComparison.OrdinalIgnoreCase))
@@ -307,14 +317,17 @@ namespace HaCreator.MapSimulator
                        currTickCount) >= 0;
         }
 
-        private bool TryRegisterAnimationDisplayerFollow(int ownerCharacterId, Func<Vector2> getPosition)
+        private bool TryRegisterAnimationDisplayerFollow(int ownerCharacterId, Func<Vector2> getPosition, bool relativeEmission = true)
         {
             if (ownerCharacterId <= 0 || getPosition == null)
             {
                 return false;
             }
 
-            if (!TryGetAnimationDisplayerFrames("follow:generic", AnimationDisplayerGenericUserStateEffectUol, out List<IDXObject> frames))
+            TryGetAnimationDisplayerFrames("follow:generic", AnimationDisplayerGenericUserStateEffectUol, out List<IDXObject> frames);
+            IReadOnlyList<List<IDXObject>> followFrameVariants = LoadAnimationDisplayerFollowFrameVariants();
+            if (!Animation.AnimationEffects.HasFrames(frames)
+                && !Animation.AnimationEffects.HasFrameVariants(followFrameVariants))
             {
                 return false;
             }
@@ -335,7 +348,9 @@ namespace HaCreator.MapSimulator
                     ThetaDegrees = AnimationDisplayerFollowThetaDegrees,
                     Radius = AnimationDisplayerFollowRadius,
                     RandomizeStartupAngle = true,
-                    UpdateIntervalMs = AnimationDisplayerFollowUpdateIntervalMs
+                    UpdateIntervalMs = AnimationDisplayerFollowUpdateIntervalMs,
+                    SpawnFrameVariants = followFrameVariants,
+                    SpawnRelativeToTarget = relativeEmission
                 });
             if (followId < 0)
             {
@@ -686,6 +701,33 @@ namespace HaCreator.MapSimulator
             }
 
             return points;
+        }
+
+        internal static string[] EnumerateAnimationDisplayerFollowEffectUols()
+        {
+            return AnimationDisplayerFollowEffectUolCandidates;
+        }
+
+        private IReadOnlyList<List<IDXObject>> LoadAnimationDisplayerFollowFrameVariants()
+        {
+            var variants = new List<List<IDXObject>>();
+            string[] candidateUols = EnumerateAnimationDisplayerFollowEffectUols();
+            for (int i = 0; i < candidateUols.Length; i++)
+            {
+                string candidateUol = candidateUols[i];
+                if (string.IsNullOrWhiteSpace(candidateUol))
+                {
+                    continue;
+                }
+
+                string cacheKey = $"follow:variant:{i}";
+                if (TryGetAnimationDisplayerFrames(cacheKey, candidateUol, out List<IDXObject> frames))
+                {
+                    variants.Add(frames);
+                }
+            }
+
+            return variants;
         }
 
         internal static string[] EnumerateAnimationDisplayerQuestDeliveryEffectUols(int itemId)
@@ -1157,6 +1199,37 @@ namespace HaCreator.MapSimulator
             }
 
             candidates.Add(normalized);
+        }
+
+        private static bool TryResolveAnimationDisplayerFollowRelativeEmission(string[] args, int startIndex, out bool relativeEmission)
+        {
+            relativeEmission = true;
+            if (args == null || startIndex >= args.Length)
+            {
+                return true;
+            }
+
+            string token = args[startIndex]?.Trim();
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return true;
+            }
+
+            if (string.Equals(token, "relative", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(token, "rel", StringComparison.OrdinalIgnoreCase))
+            {
+                relativeEmission = true;
+                return true;
+            }
+
+            if (string.Equals(token, "absolute", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(token, "abs", StringComparison.OrdinalIgnoreCase))
+            {
+                relativeEmission = false;
+                return true;
+            }
+
+            return false;
         }
 
         private void ClearAnimationDisplayerFollowAnimations()

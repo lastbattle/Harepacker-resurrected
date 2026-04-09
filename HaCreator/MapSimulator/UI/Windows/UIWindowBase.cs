@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator;
@@ -26,6 +27,7 @@ namespace HaCreator.MapSimulator.UI
 
         private bool _isVisible = false;
         private Point? _mouseOffsetOnDragStart = null;
+        private AnimationDisplayerWindowOverlayOwner _animationDisplayerWindowOverlayOwner;
 
         // Toggle cooldown
         private int _lastToggleTime = 0;
@@ -174,6 +176,15 @@ namespace HaCreator.MapSimulator.UI
                     TickCount);
             }
 
+            _animationDisplayerWindowOverlayOwner?.DrawWindow(
+                WindowName,
+                AnimationDisplayerWindowOverlayPass.Underlay,
+                sprite,
+                skeletonMeshRenderer,
+                gameTime,
+                Position,
+                TickCount);
+
             // Draw window contents (implemented by derived classes)
             DrawContents(sprite, skeletonMeshRenderer, gameTime,
                 mapShiftX, mapShiftY, centerX, centerY,
@@ -201,6 +212,15 @@ namespace HaCreator.MapSimulator.UI
                     renderParameters,
                     TickCount);
             }
+
+            _animationDisplayerWindowOverlayOwner?.DrawWindow(
+                WindowName,
+                AnimationDisplayerWindowOverlayPass.Overlay,
+                sprite,
+                skeletonMeshRenderer,
+                gameTime,
+                Position,
+                TickCount);
 
             DrawOverlay(sprite, skeletonMeshRenderer, gameTime,
                 mapShiftX, mapShiftY, centerX, centerY,
@@ -269,6 +289,11 @@ namespace HaCreator.MapSimulator.UI
             SetVisibility(false, invokeBeforeShow: false);
         }
 
+        internal void AttachAnimationDisplayerWindowOverlayOwner(AnimationDisplayerWindowOverlayOwner owner)
+        {
+            _animationDisplayerWindowOverlayOwner = owner;
+        }
+
         /// <summary>
         /// Reset drag state (called when another UI element takes priority)
         /// </summary>
@@ -297,6 +322,10 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _isVisible = visible;
+            if (!visible)
+            {
+                _animationDisplayerWindowOverlayOwner?.ClearWindow(WindowName);
+            }
         }
         #endregion
 

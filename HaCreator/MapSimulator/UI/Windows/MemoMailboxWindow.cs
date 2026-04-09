@@ -12,7 +12,7 @@ using System.Text;
 
 namespace HaCreator.MapSimulator.UI
 {
-    internal sealed class MemoMailboxWindow : UIWindowBase
+    internal sealed class MemoMailboxWindow : UIWindowBase, ISoftKeyboardHost
     {
         private const int ContentMarginLeft = 16;
         private const int ContentMarginTop = 33;
@@ -20,26 +20,42 @@ namespace HaCreator.MapSimulator.UI
         private const int ContentMarginBottom = 29;
         private const int RowHeight = 29;
         private const int MaxVisibleEntries = 6;
-        private const int RecipientMaxLength = 13;
+        private const int RecipientMaxLength = 12;
+        private const int BodyMaxLength = 100;
         private const int MesoMaxDigits = 10;
         private const int KeyRepeatDelayMs = 400;
         private const int KeyRepeatRateMs = 35;
+        private const int SingleLineTextInsetX = 3;
+        private const int BodyTextInsetX = 2;
+        private const int BodyLineHeight = 12;
 
         private readonly string _windowName;
         private readonly Texture2D _unreadIconTexture;
         private readonly Texture2D _readIconTexture;
         private readonly Texture2D[] _enabledTabs;
         private readonly Texture2D[] _disabledTabs;
+        private readonly IDXObject _windowOverlay;
+        private readonly Point _windowOverlayOffset;
         private readonly IDXObject _tabReceiveBase;
         private readonly Point _tabReceiveBaseOffset;
+        private readonly IDXObject _tabReceiveDetailBase;
+        private readonly Point _tabReceiveDetailBaseOffset;
         private readonly IDXObject _tabReceiveInfoText;
         private readonly Point _tabReceiveInfoTextOffset;
         private readonly IDXObject _tabSendBase;
         private readonly Point _tabSendBaseOffset;
+        private readonly IDXObject _tabSendInfoOverlay;
+        private readonly Point _tabSendInfoOverlayOffset;
+        private readonly IDXObject _tabSendInfoHeader;
+        private readonly Point _tabSendInfoHeaderOffset;
         private readonly IDXObject _tabQuickBase;
         private readonly Point _tabQuickBaseOffset;
         private readonly IDXObject _tabQuickHint;
         private readonly Point _tabQuickHintOffset;
+        private readonly IDXObject _tabQuickInfoOverlay;
+        private readonly Point _tabQuickInfoOverlayOffset;
+        private readonly IDXObject _tabQuickInfoHeader;
+        private readonly Point _tabQuickInfoHeaderOffset;
         private readonly VerticalScrollbarSkin _receiveScrollbarSkin;
         private readonly Texture2D _pixel;
         private readonly List<RowLayout> _rowLayouts = new();
@@ -72,10 +88,14 @@ namespace HaCreator.MapSimulator.UI
         private int _lastKeyRepeatTime;
         private Keys _lastHeldKey = Keys.None;
         private string _compositionText = string.Empty;
+        private IReadOnlyList<int> _compositionClauseOffsets = Array.Empty<int>();
+        private int _compositionCursorPosition = -1;
+        private bool _softKeyboardActive;
         private bool _isDraggingReceiveScrollThumb;
         private int _receiveScrollThumbDragOffsetY;
         private MemoMailboxSnapshot _currentSnapshot = new();
         private MemoMailboxDraftSnapshot _currentDraftSnapshot = new();
+        private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
         private UIObject _receiveGetButton;
         private UIObject _receiveDeleteButton;
         private UIObject _sendSendButton;
@@ -88,6 +108,8 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _quickTaxCloseButton;
         private ComposeInputField _activeInputField;
 
+        internal Func<int, int, bool> OnImeCandidateSelected { get; set; }
+        internal Func<IntPtr> ResolveImeWindowHandle { get; set; }
         internal Func<InventoryType, int, InventorySlotData, bool> InventoryDropRequested { private get; set; }
         internal Func<InventoryType, int, InventorySlotData, bool> InventoryPickRequested { private get; set; }
 
@@ -123,16 +145,28 @@ namespace HaCreator.MapSimulator.UI
             Texture2D readIconTexture,
             Texture2D[] enabledTabs,
             Texture2D[] disabledTabs,
+            IDXObject windowOverlay,
+            Point windowOverlayOffset,
             IDXObject tabReceiveBase,
             Point tabReceiveBaseOffset,
+            IDXObject tabReceiveDetailBase,
+            Point tabReceiveDetailBaseOffset,
             IDXObject tabReceiveInfoText,
             Point tabReceiveInfoTextOffset,
             IDXObject tabSendBase,
             Point tabSendBaseOffset,
+            IDXObject tabSendInfoOverlay,
+            Point tabSendInfoOverlayOffset,
+            IDXObject tabSendInfoHeader,
+            Point tabSendInfoHeaderOffset,
             IDXObject tabQuickBase,
             Point tabQuickBaseOffset,
             IDXObject tabQuickHint,
             Point tabQuickHintOffset,
+            IDXObject tabQuickInfoOverlay,
+            Point tabQuickInfoOverlayOffset,
+            IDXObject tabQuickInfoHeader,
+            Point tabQuickInfoHeaderOffset,
             VerticalScrollbarSkin receiveScrollbarSkin)
             : base(frame)
         {
@@ -141,16 +175,28 @@ namespace HaCreator.MapSimulator.UI
             _readIconTexture = readIconTexture;
             _enabledTabs = enabledTabs ?? Array.Empty<Texture2D>();
             _disabledTabs = disabledTabs ?? Array.Empty<Texture2D>();
+            _windowOverlay = windowOverlay;
+            _windowOverlayOffset = windowOverlayOffset;
             _tabReceiveBase = tabReceiveBase;
             _tabReceiveBaseOffset = tabReceiveBaseOffset;
+            _tabReceiveDetailBase = tabReceiveDetailBase;
+            _tabReceiveDetailBaseOffset = tabReceiveDetailBaseOffset;
             _tabReceiveInfoText = tabReceiveInfoText;
             _tabReceiveInfoTextOffset = tabReceiveInfoTextOffset;
             _tabSendBase = tabSendBase;
             _tabSendBaseOffset = tabSendBaseOffset;
+            _tabSendInfoOverlay = tabSendInfoOverlay;
+            _tabSendInfoOverlayOffset = tabSendInfoOverlayOffset;
+            _tabSendInfoHeader = tabSendInfoHeader;
+            _tabSendInfoHeaderOffset = tabSendInfoHeaderOffset;
             _tabQuickBase = tabQuickBase;
             _tabQuickBaseOffset = tabQuickBaseOffset;
             _tabQuickHint = tabQuickHint;
             _tabQuickHintOffset = tabQuickHintOffset;
+            _tabQuickInfoOverlay = tabQuickInfoOverlay;
+            _tabQuickInfoOverlayOffset = tabQuickInfoOverlayOffset;
+            _tabQuickInfoHeader = tabQuickInfoHeader;
+            _tabQuickInfoHeaderOffset = tabQuickInfoHeaderOffset;
             _receiveScrollbarSkin = receiveScrollbarSkin;
             _pixel = new Texture2D(device ?? throw new ArgumentNullException(nameof(device)), 1, 1);
             _pixel.SetData(new[] { Color.White });
@@ -158,6 +204,13 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => _windowName;
         public override bool CapturesKeyboardInput => IsVisible && _activeInputField != ComposeInputField.None;
+        bool ISoftKeyboardHost.WantsSoftKeyboard => CapturesKeyboardInput && _softKeyboardActive;
+        SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => IsMesoField(_activeInputField)
+            ? SoftKeyboardKeyboardType.NumericOnly
+            : SoftKeyboardKeyboardType.AlphaNumeric;
+        int ISoftKeyboardHost.SoftKeyboardTextLength => _inputBuffer.Length;
+        int ISoftKeyboardHost.SoftKeyboardMaxLength => GetSoftKeyboardMaxLength();
+        bool ISoftKeyboardHost.CanSubmitSoftKeyboard => CanSubmitCurrentDraft();
 
         public override void Hide()
         {
@@ -361,17 +414,25 @@ namespace HaCreator.MapSimulator.UI
 
                 SyncInputBuffer();
             }
+
+            UpdateImePresentationPlacement();
         }
 
         public override void HandleCompositionText(string text)
         {
+            HandleCompositionState(new ImeCompositionState(text ?? string.Empty, Array.Empty<int>(), -1));
+        }
+
+        public override void HandleCompositionState(ImeCompositionState state)
+        {
             if (_activeInputField == ComposeInputField.None)
             {
-                _compositionText = string.Empty;
+                ClearCompositionText();
                 return;
             }
 
-            string sanitized = SanitizeCommittedText(text ?? string.Empty);
+            ImeCompositionState effectiveState = state ?? ImeCompositionState.Empty;
+            string sanitized = SanitizeCommittedText(effectiveState.Text);
             if (IsMesoField(_activeInputField))
             {
                 sanitized = StripNonDigits(sanitized);
@@ -379,24 +440,51 @@ namespace HaCreator.MapSimulator.UI
                 _compositionText = sanitized.Length > availableDigits
                     ? sanitized[..availableDigits]
                     : sanitized;
-                return;
             }
-
-            if (IsRecipientField(_activeInputField))
+            else if (IsRecipientField(_activeInputField))
             {
                 int availableCharacters = Math.Max(0, RecipientMaxLength - _inputBuffer.Length);
                 _compositionText = sanitized.Length > availableCharacters
                     ? sanitized[..availableCharacters]
                     : sanitized;
-                return;
+            }
+            else
+            {
+                int availableBodyCharacters = Math.Max(0, BodyMaxLength - _inputBuffer.Length);
+                _compositionText = sanitized.Length > availableBodyCharacters
+                    ? sanitized[..availableBodyCharacters]
+                    : sanitized;
             }
 
-            _compositionText = sanitized;
+            _compositionClauseOffsets = ClampClauseOffsets(effectiveState.ClauseOffsets, _compositionText.Length);
+            _compositionCursorPosition = Math.Clamp(effectiveState.CursorPosition, -1, _compositionText.Length);
+            if (_compositionText.Length == 0)
+            {
+                ClearImeCandidateList();
+            }
+
+            UpdateImePresentationPlacement();
         }
 
         public override void ClearCompositionText()
         {
             _compositionText = string.Empty;
+            _compositionClauseOffsets = Array.Empty<int>();
+            _compositionCursorPosition = -1;
+            ClearImeCandidateList();
+        }
+
+        public override void HandleImeCandidateList(ImeCandidateListState state)
+        {
+            _candidateListState = CapturesKeyboardInput && state != null && state.HasCandidates
+                ? state
+                : ImeCandidateListState.Empty;
+            UpdateImePresentationPlacement();
+        }
+
+        public override void ClearImeCandidateList()
+        {
+            _candidateListState = ImeCandidateListState.Empty;
         }
 
         protected override void DrawContents(
@@ -421,6 +509,7 @@ namespace HaCreator.MapSimulator.UI
             EnsureSelection(snapshot);
             ClampScroll(snapshot);
 
+            DrawLayer(sprite, _windowOverlay, _windowOverlayOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawLayer(sprite, GetTabBackground(snapshot.ActiveTab), GetTabBackgroundOffset(snapshot.ActiveTab), drawReflectionInfo, skeletonMeshRenderer, gameTime);
             if (snapshot.ActiveTab == ParcelDialogTab.Receive)
             {
@@ -454,6 +543,8 @@ namespace HaCreator.MapSimulator.UI
                     DrawComposeTab(sprite, draftSnapshot, contentBounds, false, TickCount);
                     break;
             }
+
+            DrawImeCandidateWindow(sprite);
         }
 
         private IDXObject GetTabBackground(ParcelDialogTab tab) => tab switch
@@ -647,8 +738,23 @@ namespace HaCreator.MapSimulator.UI
         private void DrawOpenedMemo(SpriteBatch sprite, MemoMailboxEntrySnapshot memo, Rectangle contentBounds)
         {
             Rectangle panel = new Rectangle(contentBounds.X, contentBounds.Bottom - 84, contentBounds.Width - 12, 80);
-            sprite.Draw(_pixel, panel, new Color(255, 255, 255, 205));
-            sprite.Draw(_pixel, new Rectangle(panel.X, panel.Y, panel.Width, 1), new Color(196, 205, 214));
+            if (_tabReceiveDetailBase != null)
+            {
+                _tabReceiveDetailBase.DrawBackground(
+                    sprite,
+                    null,
+                    null,
+                    Position.X + _tabReceiveDetailBaseOffset.X,
+                    Position.Y + _tabReceiveDetailBaseOffset.Y,
+                    Color.White,
+                    false,
+                    null);
+            }
+            else
+            {
+                sprite.Draw(_pixel, panel, new Color(255, 255, 255, 205));
+                sprite.Draw(_pixel, new Rectangle(panel.X, panel.Y, panel.Width, 1), new Color(196, 205, 214));
+            }
 
             Color headingColor = new Color(56, 66, 80);
             Color bodyColor = new Color(75, 82, 93);
@@ -658,6 +764,13 @@ namespace HaCreator.MapSimulator.UI
             if (!string.IsNullOrWhiteSpace(memo.StatusText))
             {
                 sprite.DrawString(_font, Truncate(memo.StatusText, 18), new Vector2(panel.X + 4, panel.Y + 32), new Color(103, 111, 123), 0f, Vector2.Zero, 0.33f, SpriteEffects.None, 0f);
+            }
+            if (!string.IsNullOrWhiteSpace(memo.ClaimDeadlineText))
+            {
+                string deadlineLabel = memo.IsExpired
+                    ? $"Expired {memo.ClaimDeadlineText}"
+                    : $"Claim by {memo.ClaimDeadlineText}";
+                sprite.DrawString(_font, Truncate(deadlineLabel, 24), new Vector2(panel.Right - 88, panel.Y + 32), memo.IsExpired ? new Color(152, 88, 68) : new Color(101, 117, 89), 0f, Vector2.Zero, 0.31f, SpriteEffects.None, 0f);
             }
 
             float drawY = panel.Y + 44;
@@ -673,10 +786,17 @@ namespace HaCreator.MapSimulator.UI
 
             string footer = memo.CanClaimAttachment
                 ? $"GET opens the package view for {memo.AttachmentSummary}."
+                : memo.IsExpired
+                    ? "Claim deadline passed; this package can no longer be received."
                 : memo.HasAttachment
                     ? $"Claimed package: {memo.AttachmentSummary}."
                     : "No package is attached to this parcel row.";
-            sprite.DrawString(_font, footer, new Vector2(panel.X + 4, panel.Bottom - 14), memo.CanClaimAttachment ? new Color(74, 134, 80) : new Color(123, 129, 141), 0f, Vector2.Zero, 0.34f, SpriteEffects.None, 0f);
+            Color footerColor = memo.CanClaimAttachment
+                ? new Color(74, 134, 80)
+                : memo.IsExpired
+                    ? new Color(152, 88, 68)
+                    : new Color(123, 129, 141);
+            sprite.DrawString(_font, footer, new Vector2(panel.X + 4, panel.Bottom - 14), footerColor, 0f, Vector2.Zero, 0.34f, SpriteEffects.None, 0f);
         }
 
         private void DrawComposeTab(SpriteBatch sprite, MemoMailboxDraftSnapshot snapshot, Rectangle bounds, bool quickMode, int tickCount)
@@ -723,9 +843,10 @@ namespace HaCreator.MapSimulator.UI
 
             if (snapshot.ShowTaxInfo)
             {
-                Rectangle taxPanel = new Rectangle(bounds.X + 18, bounds.Bottom - 59, bounds.Width - 36, 40);
-                sprite.Draw(_pixel, taxPanel, new Color(247, 244, 229, 232));
-                sprite.Draw(_pixel, new Rectangle(taxPanel.X, taxPanel.Y, taxPanel.Width, 1), new Color(205, 191, 148));
+                DrawComposeInfoOverlay(sprite, quickMode);
+                Rectangle taxPanel = quickMode
+                    ? new Rectangle(Position.X + 42, Position.Y + 116, 218, 56)
+                    : new Rectangle(Position.X + 42, Position.Y + 133, 218, 73);
 
                 float taxY = taxPanel.Y + 5;
                 foreach (string line in WrapText(snapshot.TaxSummary, taxPanel.Width - 8, 0.35f))
@@ -758,8 +879,47 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(_font, Truncate(snapshot.LastActionSummary ?? string.Empty, 72), new Vector2(bounds.X + 1, bounds.Bottom - 16), new Color(96, 105, 119), 0f, Vector2.Zero, 0.35f, SpriteEffects.None, 0f);
         }
 
+        private void DrawComposeInfoOverlay(SpriteBatch sprite, bool quickMode)
+        {
+            IDXObject overlay = quickMode ? _tabQuickInfoOverlay : _tabSendInfoOverlay;
+            Point overlayOffset = quickMode ? _tabQuickInfoOverlayOffset : _tabSendInfoOverlayOffset;
+            IDXObject header = quickMode ? _tabQuickInfoHeader : _tabSendInfoHeader;
+            Point headerOffset = quickMode ? _tabQuickInfoHeaderOffset : _tabSendInfoHeaderOffset;
+
+            overlay?.DrawBackground(
+                sprite,
+                null,
+                null,
+                Position.X + overlayOffset.X,
+                Position.Y + overlayOffset.Y,
+                Color.White,
+                false,
+                null);
+            header?.DrawBackground(
+                sprite,
+                null,
+                null,
+                Position.X + headerOffset.X,
+                Position.Y + headerOffset.Y,
+                Color.White,
+                false,
+                null);
+        }
+
         private void HandleLeftClick(MemoMailboxSnapshot snapshot, MemoMailboxDraftSnapshot draftSnapshot, Point mousePosition)
         {
+            if (IsPointInImeCandidateWindow(mousePosition.X, mousePosition.Y))
+            {
+                int candidateIndex = ResolveImeCandidateIndexFromPoint(mousePosition.X, mousePosition.Y);
+                if (candidateIndex >= 0)
+                {
+                    OnImeCandidateSelected?.Invoke(_candidateListState.ListIndex, candidateIndex);
+                    _cursorBlinkTimer = Environment.TickCount;
+                }
+
+                return;
+            }
+
             for (int i = 0; i < _tabBounds.Count; i++)
             {
                 if (_tabBounds[i].Contains(mousePosition))
@@ -796,21 +956,27 @@ namespace HaCreator.MapSimulator.UI
             if (GetComposeRecipientBounds(contentBounds, quickMode).Contains(mousePosition))
             {
                 ActivateInput(quickMode ? ComposeInputField.QuickRecipient : ComposeInputField.SendRecipient, draftSnapshot);
+                _softKeyboardActive = true;
                 SetSingleLineCursorFromPoint(GetComposeRecipientBounds(contentBounds, quickMode));
+                UpdateImePresentationPlacement();
                 return;
             }
 
             if (GetComposeBodyBounds(contentBounds, quickMode).Contains(mousePosition))
             {
                 ActivateInput(quickMode ? ComposeInputField.QuickBody : ComposeInputField.SendBody, draftSnapshot);
+                _softKeyboardActive = true;
                 _cursorPosition = _inputBuffer.Length;
+                UpdateImePresentationPlacement();
                 return;
             }
 
             if (GetComposeMesoBounds(contentBounds, quickMode).Contains(mousePosition))
             {
                 ActivateInput(quickMode ? ComposeInputField.QuickMeso : ComposeInputField.SendMeso, draftSnapshot);
+                _softKeyboardActive = true;
                 SetSingleLineCursorFromPoint(GetComposeMesoBounds(contentBounds, quickMode));
+                UpdateImePresentationPlacement();
                 return;
             }
 
@@ -880,6 +1046,8 @@ namespace HaCreator.MapSimulator.UI
             ActivateInput(
                 tab == ParcelDialogTab.QuickSend ? ComposeInputField.QuickMeso : ComposeInputField.SendMeso,
                 _currentDraftSnapshot ?? RefreshDraftSnapshot());
+            _softKeyboardActive = true;
+            UpdateImePresentationPlacement();
         }
 
         private void EnsureSelection(MemoMailboxSnapshot snapshot)
@@ -1256,6 +1424,7 @@ namespace HaCreator.MapSimulator.UI
                 _lastHeldKey = key;
                 _keyHoldStartTime = tickCount;
                 _lastKeyRepeatTime = tickCount;
+                UpdateImePresentationPlacement();
                 return true;
             }
 
@@ -1265,6 +1434,7 @@ namespace HaCreator.MapSimulator.UI
                 _cursorBlinkTimer = tickCount;
                 ClearCompositionText();
                 _lastKeyRepeatTime = tickCount;
+                UpdateImePresentationPlacement();
                 return true;
             }
 
@@ -1307,6 +1477,7 @@ namespace HaCreator.MapSimulator.UI
             _cursorBlinkTimer = Environment.TickCount;
             ClearCompositionText();
             ResetKeyRepeat();
+            UpdateImePresentationPlacement();
         }
 
         private void DeactivateInput()
@@ -1314,6 +1485,7 @@ namespace HaCreator.MapSimulator.UI
             _activeInputField = ComposeInputField.None;
             _inputBuffer.Clear();
             _cursorPosition = 0;
+            _softKeyboardActive = false;
             ClearCompositionText();
             ResetKeyRepeat();
         }
@@ -1357,6 +1529,10 @@ namespace HaCreator.MapSimulator.UI
             else if (IsRecipientField(_activeInputField) && _inputBuffer.Length + insertText.Length > RecipientMaxLength)
             {
                 insertText = insertText[..Math.Max(0, RecipientMaxLength - _inputBuffer.Length)];
+            }
+            else if (IsBodyField(_activeInputField) && _inputBuffer.Length + insertText.Length > BodyMaxLength)
+            {
+                insertText = insertText[..Math.Max(0, BodyMaxLength - _inputBuffer.Length)];
             }
 
             if (string.IsNullOrEmpty(insertText))
@@ -1557,6 +1733,102 @@ namespace HaCreator.MapSimulator.UI
             return GetDraftFieldValue(snapshot, field);
         }
 
+        protected override IEnumerable<Rectangle> GetAdditionalInteractiveBounds()
+        {
+            foreach (Rectangle bounds in base.GetAdditionalInteractiveBounds())
+            {
+                yield return bounds;
+            }
+
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(_pixel?.GraphicsDevice.Viewport ?? default);
+            if (!candidateBounds.IsEmpty)
+            {
+                yield return candidateBounds;
+            }
+        }
+
+        Rectangle ISoftKeyboardHost.GetSoftKeyboardAnchorBounds() => GetActiveInputBounds();
+
+        bool ISoftKeyboardHost.TryInsertSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (_activeInputField == ComposeInputField.None
+                || char.IsControl(character)
+                || !SoftKeyboardUI.CanAcceptCharacter(
+                    ((ISoftKeyboardHost)this).SoftKeyboardKeyboardType,
+                    _inputBuffer.Length,
+                    ((ISoftKeyboardHost)this).SoftKeyboardMaxLength,
+                    character))
+            {
+                errorMessage = "The parcel input lane cannot accept that character.";
+                return false;
+            }
+
+            if (!TryInsertCharacter(character))
+            {
+                errorMessage = "The parcel input lane cannot accept that character.";
+                return false;
+            }
+
+            SyncInputBuffer();
+            UpdateImePresentationPlacement();
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (_inputBuffer.Length <= 0)
+            {
+                return ((ISoftKeyboardHost)this).TryInsertSoftKeyboardCharacter(character, out errorMessage);
+            }
+
+            if (!((ISoftKeyboardHost)this).TryBackspaceSoftKeyboard(out errorMessage))
+            {
+                return false;
+            }
+
+            return ((ISoftKeyboardHost)this).TryInsertSoftKeyboardCharacter(character, out errorMessage);
+        }
+
+        bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (_activeInputField == ComposeInputField.None || _inputBuffer.Length <= 0 || _cursorPosition <= 0)
+            {
+                errorMessage = "There is no parcel text to erase.";
+                return false;
+            }
+
+            ApplyDelete(removeBackward: true);
+            SyncInputBuffer();
+            UpdateImePresentationPlacement();
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TrySubmitSoftKeyboard(out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!CanSubmitCurrentDraft())
+            {
+                errorMessage = "The staged parcel cannot be sent yet.";
+                return false;
+            }
+
+            HandleDispatch();
+            return true;
+        }
+
+        void ISoftKeyboardHost.SetSoftKeyboardCompositionText(string text)
+        {
+            HandleCompositionText(text);
+        }
+
+        void ISoftKeyboardHost.OnSoftKeyboardClosed()
+        {
+            _softKeyboardActive = false;
+        }
+
         private static string GetDraftFieldValue(MemoMailboxDraftSnapshot snapshot, ComposeInputField field)
         {
             return field switch
@@ -1604,6 +1876,352 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return text.Replace("\r", string.Empty);
+        }
+
+        private int GetSoftKeyboardMaxLength()
+        {
+            if (IsRecipientField(_activeInputField))
+            {
+                return RecipientMaxLength;
+            }
+
+            if (IsMesoField(_activeInputField))
+            {
+                return MesoMaxDigits;
+            }
+
+            return BodyMaxLength;
+        }
+
+        private bool CanSubmitCurrentDraft()
+        {
+            MemoMailboxDraftSnapshot draftSnapshot = _currentDraftSnapshot ?? RefreshDraftSnapshot();
+            return draftSnapshot.ActiveTab == ParcelDialogTab.QuickSend
+                ? draftSnapshot.CanQuickSend
+                : draftSnapshot.CanSend;
+        }
+
+        private Rectangle GetActiveInputBounds()
+        {
+            Rectangle contentBounds = GetContentBounds();
+            bool quickMode = (_currentSnapshot ?? RefreshSnapshot()).ActiveTab == ParcelDialogTab.QuickSend;
+            return _activeInputField switch
+            {
+                ComposeInputField.SendRecipient or ComposeInputField.QuickRecipient => GetComposeRecipientBounds(contentBounds, quickMode),
+                ComposeInputField.SendBody or ComposeInputField.QuickBody => GetComposeBodyBounds(contentBounds, quickMode),
+                ComposeInputField.SendMeso or ComposeInputField.QuickMeso => GetComposeMesoBounds(contentBounds, quickMode),
+                _ => Rectangle.Empty
+            };
+        }
+
+        private void DrawImeCandidateWindow(SpriteBatch sprite)
+        {
+            if (_font == null || !_candidateListState.HasCandidates)
+            {
+                return;
+            }
+
+            Rectangle bounds = GetImeCandidateWindowBounds(sprite.GraphicsDevice.Viewport);
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return;
+            }
+
+            sprite.Draw(_pixel, bounds, new Color(33, 33, 41, 235));
+            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(214, 214, 214, 220));
+            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(214, 214, 214, 220));
+            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), new Color(214, 214, 214, 220));
+            sprite.Draw(_pixel, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), new Color(214, 214, 214, 220));
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
+            int rowHeight = Math.Max(_font.LineSpacing + 1, 16);
+            int numberWidth = (int)Math.Ceiling(_font.MeasureString($"{Math.Max(1, count)}.").X);
+            for (int i = 0; i < count; i++)
+            {
+                int candidateIndex = start + i;
+                Rectangle rowBounds = new(bounds.X + 2, bounds.Y + 2 + (i * rowHeight), bounds.Width - 4, rowHeight);
+                bool selected = candidateIndex == _candidateListState.Selection;
+                if (selected)
+                {
+                    sprite.Draw(_pixel, rowBounds, new Color(89, 108, 147, 220));
+                }
+
+                sprite.DrawString(_font, $"{i + 1}.", new Vector2(rowBounds.X + 4, rowBounds.Y), selected ? Color.White : new Color(222, 222, 222));
+                sprite.DrawString(
+                    _font,
+                    _candidateListState.Candidates[candidateIndex] ?? string.Empty,
+                    new Vector2(rowBounds.X + 8 + numberWidth, rowBounds.Y),
+                    selected ? Color.White : new Color(240, 235, 200));
+            }
+        }
+
+        private Rectangle GetImeCandidateWindowBounds(Viewport viewport)
+        {
+            int visibleCount = GetVisibleCandidateCount();
+            if (visibleCount <= 0 || _font == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            Rectangle ownerBounds = GetActiveInputBounds();
+            if (ownerBounds.IsEmpty)
+            {
+                return Rectangle.Empty;
+            }
+
+            int widestEntryWidth = 0;
+            for (int i = 0; i < visibleCount; i++)
+            {
+                int candidateIndex = Math.Clamp(_candidateListState.PageStart + i, 0, _candidateListState.Candidates.Count - 1);
+                string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
+                int entryWidth = (int)Math.Ceiling(_font.MeasureString($"{i + 1}.").X + _font.MeasureString(candidateText).X) + 16;
+                widestEntryWidth = Math.Max(widestEntryWidth, entryWidth);
+            }
+
+            int width = Math.Max(96, widestEntryWidth + 14);
+            int height = (visibleCount * Math.Max(_font.LineSpacing + 1, 16)) + 4;
+            int x = Math.Clamp(ownerBounds.X, 0, Math.Max(0, viewport.Width - width));
+            int y = ownerBounds.Bottom + 2;
+            if (y + height > viewport.Height)
+            {
+                y = Math.Max(0, ownerBounds.Y - height - 2);
+            }
+
+            return new Rectangle(x, y, width, height);
+        }
+
+        private void UpdateImePresentationPlacement()
+        {
+            if (!CapturesKeyboardInput
+                || _font == null
+                || ResolveImeWindowHandle == null
+                || (_compositionText.Length == 0 && !_candidateListState.HasCandidates))
+            {
+                return;
+            }
+
+            IntPtr windowHandle = ResolveImeWindowHandle();
+            if (windowHandle == IntPtr.Zero)
+            {
+                return;
+            }
+
+            Rectangle fieldBounds = ResolveImePlacementBounds();
+            if (fieldBounds.IsEmpty)
+            {
+                return;
+            }
+
+            int caretWidth = MeasureImePlacementWidth(ResolveImeCaretPrefix());
+            bool useClauseAnchor = ShouldUseCompositionClauseAnchor();
+            int clauseAnchorWidth = useClauseAnchor
+                ? MeasureImePlacementWidth(ResolveImeClauseAnchorPrefix())
+                : caretWidth;
+            int clauseWidth = useClauseAnchor
+                ? Math.Max(1, MeasureImePlacementWidth(ResolveActiveCompositionClauseText()))
+                : 1;
+
+            SkillMacroImeWindowPlacement placement = SkillMacroImeWindowPlacementLayout.Resolve(
+                fieldBounds,
+                ResolveImePlacementTextInset(),
+                _font.LineSpacing,
+                caretWidth,
+                useClauseAnchor,
+                clauseAnchorWidth,
+                clauseWidth);
+            WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement);
+        }
+
+        private Rectangle ResolveImePlacementBounds()
+        {
+            Rectangle activeBounds = GetActiveInputBounds();
+            if (activeBounds.IsEmpty || !IsBodyField(_activeInputField))
+            {
+                return activeBounds;
+            }
+
+            IReadOnlyList<TextLineLayout> lines = BuildTextLines(_inputBuffer.ToString(), activeBounds.Width - 6, 0.37f);
+            if (lines.Count == 0)
+            {
+                return new Rectangle(activeBounds.X, activeBounds.Y, activeBounds.Width, Math.Max(BodyLineHeight, _font?.LineSpacing ?? BodyLineHeight));
+            }
+
+            int lineIndex = Math.Clamp(ResolveCursorLineIndex(lines, _cursorPosition), 0, Math.Max(0, lines.Count - 1));
+            int y = activeBounds.Y + 2 + (lineIndex * BodyLineHeight);
+            int height = Math.Max(BodyLineHeight, _font?.LineSpacing ?? BodyLineHeight);
+            return new Rectangle(activeBounds.X, y, activeBounds.Width, height);
+        }
+
+        private int ResolveImePlacementTextInset()
+        {
+            return IsBodyField(_activeInputField) ? BodyTextInsetX : SingleLineTextInsetX;
+        }
+
+        private int MeasureImePlacementWidth(string text)
+        {
+            if (_font == null || string.IsNullOrEmpty(text))
+            {
+                return 0;
+            }
+
+            return (int)Math.Round(_font.MeasureString(text).X);
+        }
+
+        private string ResolveImeCaretPrefix()
+        {
+            if (_activeInputField == ComposeInputField.None)
+            {
+                return string.Empty;
+            }
+
+            if (!IsBodyField(_activeInputField))
+            {
+                return _inputBuffer.ToString()[..Math.Clamp(_cursorPosition, 0, _inputBuffer.Length)];
+            }
+
+            Rectangle activeBounds = GetActiveInputBounds();
+            IReadOnlyList<TextLineLayout> lines = BuildTextLines(_inputBuffer.ToString(), activeBounds.Width - 6, 0.37f);
+            if (lines.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            int lineIndex = Math.Clamp(ResolveCursorLineIndex(lines, _cursorPosition), 0, Math.Max(0, lines.Count - 1));
+            TextLineLayout line = lines[lineIndex];
+            int relativeIndex = Math.Clamp(_cursorPosition - line.StartIndex, 0, line.Text.Length);
+            return line.Text[..relativeIndex];
+        }
+
+        private bool ShouldUseCompositionClauseAnchor()
+        {
+            return _compositionText.Length > 0 && _compositionClauseOffsets.Count >= 2;
+        }
+
+        private string ResolveImeClauseAnchorPrefix()
+        {
+            if (!ShouldUseCompositionClauseAnchor())
+            {
+                return ResolveImeCaretPrefix();
+            }
+
+            int cursor = Math.Clamp(_compositionCursorPosition, 0, _compositionText.Length);
+            for (int i = 0; i < _compositionClauseOffsets.Count - 1; i++)
+            {
+                int start = Math.Clamp(_compositionClauseOffsets[i], 0, _compositionText.Length);
+                int end = Math.Clamp(_compositionClauseOffsets[i + 1], start, _compositionText.Length);
+                if (cursor >= start && cursor <= end)
+                {
+                    return ResolveImeCaretPrefix() + _compositionText[..start];
+                }
+            }
+
+            return ResolveImeCaretPrefix();
+        }
+
+        private string ResolveActiveCompositionClauseText()
+        {
+            if (string.IsNullOrEmpty(_compositionText))
+            {
+                return string.Empty;
+            }
+
+            if (_compositionClauseOffsets.Count >= 2)
+            {
+                int cursor = Math.Clamp(_compositionCursorPosition, 0, _compositionText.Length);
+                for (int i = 0; i < _compositionClauseOffsets.Count - 1; i++)
+                {
+                    int start = Math.Clamp(_compositionClauseOffsets[i], 0, _compositionText.Length);
+                    int end = Math.Clamp(_compositionClauseOffsets[i + 1], start, _compositionText.Length);
+                    if (cursor >= start && cursor <= end)
+                    {
+                        return _compositionText[start..end];
+                    }
+                }
+            }
+
+            return _compositionText;
+        }
+
+        private static IReadOnlyList<int> ClampClauseOffsets(IReadOnlyList<int> clauseOffsets, int maxLength)
+        {
+            if (clauseOffsets == null || clauseOffsets.Count == 0 || maxLength <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            List<int> clamped = new(clauseOffsets.Count + 1);
+            foreach (int offset in clauseOffsets)
+            {
+                int safeOffset = Math.Clamp(offset, 0, maxLength);
+                if (clamped.Count == 0 || clamped[^1] != safeOffset)
+                {
+                    clamped.Add(safeOffset);
+                }
+            }
+
+            if (clamped.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            if (clamped[0] != 0)
+            {
+                clamped.Insert(0, 0);
+            }
+
+            if (clamped[^1] != maxLength)
+            {
+                clamped.Add(maxLength);
+            }
+
+            return clamped;
+        }
+
+        private int GetVisibleCandidateCount()
+        {
+            if (!_candidateListState.HasCandidates)
+            {
+                return 0;
+            }
+
+            int pageStart = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int remaining = Math.Max(0, _candidateListState.Candidates.Count - pageStart);
+            int pageSize = _candidateListState.PageSize > 0 ? _candidateListState.PageSize : remaining;
+            return Math.Max(0, Math.Min(pageSize, remaining));
+        }
+
+        private bool IsPointInImeCandidateWindow(int mouseX, int mouseY)
+        {
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(_pixel?.GraphicsDevice.Viewport ?? default);
+            return !candidateBounds.IsEmpty && candidateBounds.Contains(mouseX, mouseY);
+        }
+
+        private int ResolveImeCandidateIndexFromPoint(int mouseX, int mouseY)
+        {
+            if (!_candidateListState.HasCandidates || _font == null)
+            {
+                return -1;
+            }
+
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(_pixel?.GraphicsDevice.Viewport ?? default);
+            if (candidateBounds.IsEmpty || !candidateBounds.Contains(mouseX, mouseY))
+            {
+                return -1;
+            }
+
+            int rowHeight = Math.Max(_font.LineSpacing + 1, 16);
+            int localIndex = (mouseY - candidateBounds.Y - 2) / rowHeight;
+            int visibleCount = GetVisibleCandidateCount();
+            if (localIndex < 0 || localIndex >= visibleCount)
+            {
+                return -1;
+            }
+
+            int candidateIndex = _candidateListState.PageStart + localIndex;
+            return candidateIndex >= 0 && candidateIndex < _candidateListState.Candidates.Count
+                ? candidateIndex
+                : -1;
         }
 
         private static string StripNonDigits(string text)

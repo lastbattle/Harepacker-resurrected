@@ -48,6 +48,39 @@ namespace HaCreator.MapSimulator.UI
             return new SkillMacroImeCandidateWindowMetrics(width, height, cellWidth, 0);
         }
 
+        internal static Rectangle ResolveClientOwnerBounds(
+            int viewportWidth,
+            int viewportHeight,
+            int width,
+            int height,
+            Point preferredOrigin,
+            int overflowY)
+        {
+            int safeViewportWidth = Math.Max(1, viewportWidth);
+            int safeViewportHeight = Math.Max(1, viewportHeight);
+            int safeWidth = Math.Max(1, width);
+            int safeHeight = Math.Max(1, height);
+
+            int x = preferredOrigin.X;
+            if (x < 0)
+            {
+                x = 0;
+            }
+
+            if (x + safeWidth > safeViewportWidth)
+            {
+                x = safeViewportWidth - safeWidth;
+            }
+
+            int y = preferredOrigin.Y;
+            if (y + safeHeight > safeViewportHeight)
+            {
+                y = overflowY;
+            }
+
+            return new Rectangle(x, y, safeWidth, safeHeight);
+        }
+
         internal static int HitTestCandidate(
             Rectangle bounds,
             Point point,

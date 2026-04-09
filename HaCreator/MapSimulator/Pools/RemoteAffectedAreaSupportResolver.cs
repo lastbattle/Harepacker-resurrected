@@ -194,7 +194,9 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return levelData.PAD > 0
+                   || levelData.AttackPercent > 0
                    || levelData.MAD > 0
+                   || levelData.MagicAttackPercent > 0
                    || levelData.PDD > 0
                    || levelData.MDD > 0
                    || levelData.DefensePercent > 0
@@ -204,8 +206,12 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.AccuracyPercent > 0
                    || levelData.AvoidabilityPercent > 0
                    || levelData.Speed > 0
+                   || levelData.SpeedPercent > 0
                    || levelData.Jump > 0
                    || levelData.CriticalRate > 0
+                   || levelData.CriticalDamageMin > 0
+                   || levelData.CriticalDamageMax > 0
+                   || levelData.Mastery > 0
                    || levelData.EnhancedPAD > 0
                    || levelData.EnhancedMAD > 0
                    || levelData.EnhancedPDD > 0
@@ -571,14 +577,18 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            if (UsesHostileDotOrBodyAttackMetadata(skill))
+            {
+                return true;
+            }
+
             if (!string.IsNullOrWhiteSpace(skill.DebuffMessageToken))
             {
                 return true;
             }
 
-            if (ContainsToken(skill.ZoneType, HostileAreaTokens)
-                || ContainsToken(skill.Name, HostileAreaTokens)
-                || ContainsToken(skill.Description, HostileAreaTokens))
+            string hostileSearchText = BuildHostileGameplaySearchText(skill);
+            if (ContainsToken(hostileSearchText, HostileAreaTokens))
             {
                 return true;
             }
@@ -611,6 +621,30 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.DEX < 0
                    || levelData.INT < 0
                    || levelData.LUK < 0;
+        }
+
+        private static bool UsesHostileDotOrBodyAttackMetadata(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            if (skill.UsesAffectedSkillBodyAttack)
+            {
+                return true;
+            }
+
+            bool usesAffectedAreaDot =
+                string.Equals(skill.AffectedSkillEffect, "dot", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(skill.DotType);
+            if (usesAffectedAreaDot)
+            {
+                return true;
+            }
+
+            return string.Equals(skill.MinionAttack, "dot", StringComparison.OrdinalIgnoreCase)
+                   && !string.IsNullOrWhiteSpace(skill.DotType);
         }
 
         private static bool IsFriendlySupportSummonArea(SkillData skill)
@@ -728,7 +762,9 @@ namespace HaCreator.MapSimulator.Pools
             return levelData.HP > 0
                    || levelData.MP > 0
                    || levelData.PAD > 0
+                   || levelData.AttackPercent > 0
                    || levelData.MAD > 0
+                   || levelData.MagicAttackPercent > 0
                    || levelData.PDD > 0
                    || levelData.MDD > 0
                    || levelData.DefensePercent > 0
@@ -742,17 +778,23 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.AccuracyPercent > 0
                    || levelData.AvoidabilityPercent > 0
                    || levelData.Speed > 0
+                   || levelData.SpeedPercent > 0
                    || levelData.Jump > 0
                    || levelData.MaxHPPercent > 0
                    || levelData.MaxMPPercent > 0
                    || levelData.DamageReductionRate > 0
                    || levelData.CriticalRate > 0
+                   || levelData.CriticalDamageMin > 0
+                   || levelData.CriticalDamageMax > 0
+                   || levelData.Mastery > 0
                    || levelData.AllStat > 0
                    || levelData.ExperienceRate > 0
                    || levelData.DropRate > 0
                    || levelData.MesoRate > 0
                    || levelData.AbnormalStatusResistance > 0
-                   || levelData.ElementalResistance > 0;
+                   || levelData.ElementalResistance > 0
+                   || levelData.BossDamageRate > 0
+                   || levelData.IgnoreDefenseRate > 0;
         }
 
         private static bool HasStatusCleansingMetadata(SkillData skill)
@@ -808,7 +850,9 @@ namespace HaCreator.MapSimulator.Pools
 
             target.Level = Math.Max(target.Level, source.Level);
             target.PAD = Math.Max(target.PAD, source.PAD);
+            target.AttackPercent = Math.Max(target.AttackPercent, source.AttackPercent);
             target.MAD = Math.Max(target.MAD, source.MAD);
+            target.MagicAttackPercent = Math.Max(target.MagicAttackPercent, source.MagicAttackPercent);
             target.PDD = Math.Max(target.PDD, source.PDD);
             target.MDD = Math.Max(target.MDD, source.MDD);
             target.DefensePercent = Math.Max(target.DefensePercent, source.DefensePercent);
@@ -818,12 +862,16 @@ namespace HaCreator.MapSimulator.Pools
             target.AccuracyPercent = Math.Max(target.AccuracyPercent, source.AccuracyPercent);
             target.AvoidabilityPercent = Math.Max(target.AvoidabilityPercent, source.AvoidabilityPercent);
             target.Speed = Math.Max(target.Speed, source.Speed);
+            target.SpeedPercent = Math.Max(target.SpeedPercent, source.SpeedPercent);
             target.Jump = Math.Max(target.Jump, source.Jump);
             target.STR = Math.Max(target.STR, source.STR);
             target.DEX = Math.Max(target.DEX, source.DEX);
             target.INT = Math.Max(target.INT, source.INT);
             target.LUK = Math.Max(target.LUK, source.LUK);
+            target.Mastery = Math.Max(target.Mastery, source.Mastery);
             target.CriticalRate = Math.Max(target.CriticalRate, source.CriticalRate);
+            target.CriticalDamageMin = Math.Max(target.CriticalDamageMin, source.CriticalDamageMin);
+            target.CriticalDamageMax = Math.Max(target.CriticalDamageMax, source.CriticalDamageMax);
             target.EnhancedPAD = Math.Max(target.EnhancedPAD, source.EnhancedPAD);
             target.EnhancedMAD = Math.Max(target.EnhancedMAD, source.EnhancedMAD);
             target.EnhancedPDD = Math.Max(target.EnhancedPDD, source.EnhancedPDD);
@@ -917,6 +965,49 @@ namespace HaCreator.MapSimulator.Pools
 
                     AddSupportText(values, supportSkill);
                 }
+            }
+
+            return string.Join(" ", values);
+        }
+
+        private static string BuildHostileGameplaySearchText(SkillData skill)
+        {
+            var values = new List<string>(8);
+            AddSupportText(values, skill);
+
+            if (!string.IsNullOrWhiteSpace(skill?.ZoneType))
+            {
+                values.Add(skill.ZoneType);
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.DebuffMessageToken))
+            {
+                values.Add(skill.DebuffMessageToken);
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.MinionAttack))
+            {
+                values.Add(skill.MinionAttack);
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.MinionAbility))
+            {
+                values.Add(skill.MinionAbility);
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.AffectedSkillEffect))
+            {
+                values.Add(skill.AffectedSkillEffect);
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.DotType))
+            {
+                values.Add(skill.DotType);
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.ActionName))
+            {
+                values.Add(skill.ActionName);
             }
 
             return string.Join(" ", values);

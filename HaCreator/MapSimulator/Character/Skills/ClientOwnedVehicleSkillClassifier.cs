@@ -197,6 +197,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             return Array.IndexOf(MechanicVehicleTransformSkillIds, skillId) >= 0;
         }
 
+        internal static bool IsExplicitMechanicVehiclePresentationSkillId(int? skillId)
+        {
+            return skillId.HasValue && IsMechanicVehicleTransformSkillId(skillId.Value);
+        }
+
         internal static bool IsClientOwnedVehicleValidSupportSkill(SkillData skill)
         {
             if (skill == null)

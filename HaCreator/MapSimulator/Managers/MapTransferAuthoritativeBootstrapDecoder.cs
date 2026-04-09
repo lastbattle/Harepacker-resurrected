@@ -7,8 +7,18 @@ namespace HaCreator.MapSimulator.Managers
 {
     internal static class MapTransferAuthoritativeBootstrapDecoder
     {
+        private const ulong CharacterDataSkillRecordFlag = 0x100UL;
+        private const ulong CharacterDataQuestRecordFlag = 0x200UL;
+        private const ulong CharacterDataMiniGameRecordFlag = 0x400UL;
+        private const ulong CharacterDataRelationshipRecordFlag = 0x800UL;
         internal const ulong CharacterDataMapTransferFlag = 0x1000UL;
+        private const ulong CharacterDataShortFileTimeRecordFlag = 0x4000UL;
+        private const ulong CharacterDataInt16ValueRecordFlag = 0x8000UL;
         private const int LogoutGiftConfigByteLength = 3 * sizeof(int);
+        private const int SkillRecordBaseByteLength = sizeof(int) + sizeof(int) + sizeof(long);
+        private const int SkillRecordOptionalMasterLevelByteLength = sizeof(int);
+        private const int Int16ValueRecordByteLength = sizeof(int) + sizeof(ushort);
+        private const int ShortFileTimeRecordByteLength = sizeof(ushort) + sizeof(long);
         private const int MiniGameRecordByteLength = 0x14;
         private const int CoupleRecordByteLength = 0x21;
         private const int FriendRecordByteLength = 0x25;
@@ -307,7 +317,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             HashSet<int> candidateOffsets = new();
-            AddKnownLeadingLayoutOffsets(payload, candidateOffsets);
+            AddKnownLeadingLayoutOffsets(payload, characterDataFlags, candidateOffsets);
             foreach (int candidateOffset in candidateOffsets)
             {
                 if (candidateOffset <= 0)
@@ -335,27 +345,163 @@ namespace HaCreator.MapSimulator.Managers
             return false;
         }
 
-        private static void AddKnownLeadingLayoutOffsets(ReadOnlySpan<byte> payload, ISet<int> offsets)
+        private static void AddKnownLeadingLayoutOffsets(ReadOnlySpan<byte> payload, ulong characterDataFlags, ISet<int> offsets)
         {
             if (offsets == null || payload.Length < sizeof(ushort) + BootstrapBookByteLength)
             {
                 return;
             }
 
-            if (TrySkipMiniGameRecordGroup(payload, 0, out int miniGameOffset))
+            HashSet<int> candidateStarts = new()
             {
-                offsets.Add(miniGameOffset);
+                0
+            };
 
-                if (TrySkipRelationshipRecordGroups(payload, miniGameOffset, out int miniGameRelationshipOffset))
+            if ((characterDataFlags & CharacterDataSkillRecordFlag) != 0)
+            {
+                candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetPossibleSkillRecordGroupOffsets);
+            }
+
+            if ((characterDataFlags & CharacterDataInt16ValueRecordFlag) != 0)
+            {
+                candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipInt16ValueRecordGroup));
+            }
+
+            if ((characterDataFlags & CharacterDataQuestRecordFlag) != 0)
+            {
+                candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipQuestRecordGroup));
+            }
+
+            if ((characterDataFlags & CharacterDataShortFileTimeRecordFlag) != 0)
+            {
+                candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipShortFileTimeRecordGroup));
+            }
+
+            foreach (int candidateOffset in candidateStarts)
+            {
+                if ((characterDataFlags & CharacterDataMiniGameRecordFlag) != 0 &&
+                    TrySkipMiniGameRecordGroup(payload, candidateOffset, out int miniGameOffset))
                 {
-                    offsets.Add(miniGameRelationshipOffset);
+                    offsets.Add(miniGameOffset);
+
+                    if ((characterDataFlags & CharacterDataRelationshipRecordFlag) != 0 &&
+                        TrySkipRelationshipRecordGroups(payload, miniGameOffset, out int miniGameRelationshipOffset))
+                    {
+                        offsets.Add(miniGameRelationshipOffset);
+                    }
+                }
+
+                if ((characterDataFlags & CharacterDataRelationshipRecordFlag) != 0 &&
+                    TrySkipRelationshipRecordGroups(payload, candidateOffset, out int relationshipOffset))
+                {
+                    offsets.Add(relationshipOffset);
+                }
+            }
+        }
+
+        private static HashSet<int> ExtendKnownLeadingOffsets(
+            IEnumerable<int> sourceOffsets,
+            ReadOnlySpan<byte> payload,
+            CollectNextOffsets collectNextOffsets)
+        {
+            HashSet<int> extended = new();
+            foreach (int sourceOffset in sourceOffsets)
+            {
+                extended.Add(sourceOffset);
+                foreach (int nextOffset in collectNextOffsets(payload, sourceOffset))
+                {
+                    extended.Add(nextOffset);
                 }
             }
 
-            if (TrySkipRelationshipRecordGroups(payload, 0, out int relationshipOffset))
+            return extended;
+        }
+
+        private delegate IEnumerable<int> CollectNextOffsets(ReadOnlySpan<byte> payload, int offset);
+        private delegate bool TrySkipRecordGroup(ReadOnlySpan<byte> payload, int offset, out int nextOffset);
+
+        private static CollectNextOffsets GetExactNextOffsets(TrySkipRecordGroup skipGroup)
+        {
+            return (payload, offset) =>
             {
-                offsets.Add(relationshipOffset);
+                if (skipGroup(payload, offset, out int nextOffset))
+                {
+                    return new[] { nextOffset };
+                }
+
+                return Array.Empty<int>();
+            };
+        }
+
+        private static IEnumerable<int> GetPossibleSkillRecordGroupOffsets(ReadOnlySpan<byte> payload, int offset)
+        {
+            List<int> offsets = new();
+            if ((uint)offset > payload.Length || payload.Length - offset < sizeof(ushort))
+            {
+                return offsets;
             }
+
+            ushort count = BitConverter.ToUInt16(payload.Slice(offset, sizeof(ushort)));
+            int minimumSectionByteLength = sizeof(ushort) + (count * SkillRecordBaseByteLength);
+            if (payload.Length - offset < minimumSectionByteLength)
+            {
+                return offsets;
+            }
+
+            int minimumNextOffset = offset + minimumSectionByteLength;
+            int maximumNextOffset = minimumNextOffset + (count * SkillRecordOptionalMasterLevelByteLength);
+            for (int nextOffset = minimumNextOffset; nextOffset <= maximumNextOffset && nextOffset <= payload.Length; nextOffset += SkillRecordOptionalMasterLevelByteLength)
+            {
+                offsets.Add(nextOffset);
+            }
+
+            return offsets;
+        }
+
+        private static bool TrySkipInt16ValueRecordGroup(ReadOnlySpan<byte> payload, int offset, out int nextOffset)
+        {
+            return TrySkipFixedRecordGroup(payload, offset, Int16ValueRecordByteLength, out nextOffset);
+        }
+
+        private static bool TrySkipQuestRecordGroup(ReadOnlySpan<byte> payload, int offset, out int nextOffset)
+        {
+            nextOffset = offset;
+            if ((uint)offset > payload.Length || payload.Length - offset < sizeof(ushort))
+            {
+                return false;
+            }
+
+            ushort count = BitConverter.ToUInt16(payload.Slice(offset, sizeof(ushort)));
+            nextOffset += sizeof(ushort);
+            for (int i = 0; i < count; i++)
+            {
+                if (payload.Length - nextOffset < sizeof(ushort))
+                {
+                    return false;
+                }
+
+                nextOffset += sizeof(ushort);
+                if (payload.Length - nextOffset < sizeof(ushort))
+                {
+                    return false;
+                }
+
+                ushort stringLength = BitConverter.ToUInt16(payload.Slice(nextOffset, sizeof(ushort)));
+                nextOffset += sizeof(ushort);
+                if (payload.Length - nextOffset < stringLength)
+                {
+                    return false;
+                }
+
+                nextOffset += stringLength;
+            }
+
+            return true;
+        }
+
+        private static bool TrySkipShortFileTimeRecordGroup(ReadOnlySpan<byte> payload, int offset, out int nextOffset)
+        {
+            return TrySkipFixedRecordGroup(payload, offset, ShortFileTimeRecordByteLength, out nextOffset);
         }
 
         private static bool TrySkipMiniGameRecordGroup(ReadOnlySpan<byte> payload, int offset, out int nextOffset)

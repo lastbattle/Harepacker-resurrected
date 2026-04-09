@@ -22,7 +22,7 @@ namespace HaCreator.MapSimulator.Fields
             public bool GuildBossBasicActionOwned { get; init; }
         }
 
-        private static readonly HashSet<int> ClientUnableToUseSkillAllowlist = new HashSet<int>
+        private static readonly HashSet<int> ClientUnableToUseSkillForbiddenSet = new HashSet<int>
         {
             4211002,
             4221001,
@@ -31,8 +31,11 @@ namespace HaCreator.MapSimulator.Fields
             1321003,
             4321001,
             4121008,
+            3121003,
+            3221003,
             5101002,
             5101004,
+            5201006,
             15101003,
             5121005,
             21100002,
@@ -44,6 +47,8 @@ namespace HaCreator.MapSimulator.Fields
             4331005,
             4341002,
             33111002,
+            32101001,
+            32111011,
             35001003,
             1121001,
             1321001,
@@ -161,8 +166,15 @@ namespace HaCreator.MapSimulator.Fields
             if (FieldLimitType.Unable_To_Use_Taming_Mob.Check(fieldLimit) && UsesTamingMobRestrictedSkill(skill))
                 return "Mount and mechanic vehicle skills cannot be used in this field.";
 
-            if (FieldLimitType.Unable_To_Use_Skill.Check(fieldLimit) && !IsClientAllowedInUnableToUseSkillField(skill))
+            if (FieldLimitType.Unable_To_Use_Skill.Check(fieldLimit))
+            {
+                if (IsClientForbiddenInUnableToUseSkillField(skill))
+                {
+                    return "This skill is forbidden in this field.";
+                }
+
                 return "This field forbids most skill usage.";
+            }
 
             if (FieldLimitType.Move_Skill_Only.Check(fieldLimit) && !skill.IsMovement)
                 return "Only movement skills can be used in this field.";
@@ -460,11 +472,12 @@ namespace HaCreator.MapSimulator.Fields
             return ClientOwnedVehicleSkillClassifier.UsesVehicleOwnershipOrMountSkill(skill);
         }
 
-        private static bool IsClientAllowedInUnableToUseSkillField(SkillData skill)
+        private static bool IsClientForbiddenInUnableToUseSkillField(SkillData skill)
         {
-            // Client evidence: CUserLocal::TryDoingMeleeAttack keeps this explicit allowlist
-            // alive even when CField::IsUnableToUseSkill returns true.
-            return skill != null && ClientUnableToUseSkillAllowlist.Contains(skill.SkillId);
+            // Client evidence: the explicit nSkillID comparisons in
+            // CUserLocal::{TryDoingMeleeAttack,TryDoingShootAttack,TryDoingMagicAttack}
+            // reject this exact skill set when CField::IsUnableToUseSkill is active.
+            return skill != null && ClientUnableToUseSkillForbiddenSet.Contains(skill.SkillId);
         }
 
         private static bool UsesVehicleOwnershipOrMountSkill(SkillData skill)

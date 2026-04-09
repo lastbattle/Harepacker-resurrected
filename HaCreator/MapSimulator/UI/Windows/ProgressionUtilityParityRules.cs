@@ -1,9 +1,19 @@
 using System;
 using System.Globalization;
 using HaCreator.MapSimulator.Interaction;
+using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator.UI
 {
+    internal enum EventAlarmInteractionKind
+    {
+        RowSelection = 0,
+        FilterControl = 1,
+        CalendarToggle = 2,
+        CalendarDateSelection = 3,
+        CalendarMonthNavigation = 4,
+    }
+
     internal static class ProgressionUtilityParityRules
     {
         private const string RankingLandingUrlFallbackFormat = "http://{0}.nexon.com/maplestory/page/Gnxgame.aspx?URL=webclient/totpersonrank&worldid={1}&characterid={2}";
@@ -83,6 +93,20 @@ namespace HaCreator.MapSimulator.UI
             int daysInMonth = DateTime.DaysInMonth(normalizedMonth.Year, normalizedMonth.Month);
             int totalCells = leadingDays + daysInMonth;
             return (int)Math.Ceiling(totalCells / 7d);
+        }
+
+        internal static bool ShouldKeepEventAlarmOwnerVisible(EventAlarmInteractionKind interactionKind)
+        {
+            return interactionKind is EventAlarmInteractionKind.FilterControl
+                or EventAlarmInteractionKind.CalendarToggle
+                or EventAlarmInteractionKind.CalendarDateSelection
+                or EventAlarmInteractionKind.CalendarMonthNavigation;
+        }
+
+        internal static Point ResolveEventAlarmFallbackCloseButtonPosition(int frameWidth)
+        {
+            int normalizedWidth = Math.Max(0, frameWidth);
+            return new Point(Math.Max(8, normalizedWidth - 22), 10);
         }
     }
 }

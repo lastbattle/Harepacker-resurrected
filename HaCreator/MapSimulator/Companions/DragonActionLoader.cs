@@ -15,7 +15,9 @@ namespace HaCreator.MapSimulator.Companions
     internal sealed class DragonActionLoader
     {
         private const int FirstClientDragonActionCode = 147;
-        private const int LastClientDragonActionCode = 174;
+        // IDA: CDragon::PrepareActionLayer allocates 0x1D action slots, which
+        // resolves to stand + move + raw-action codes 147..173.
+        private const int LastClientDragonActionCode = 173;
 
         private static readonly Dictionary<string, string> ClientActionAliases = new(StringComparer.OrdinalIgnoreCase)
         {

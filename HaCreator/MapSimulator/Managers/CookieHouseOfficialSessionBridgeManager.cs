@@ -21,10 +21,15 @@ namespace HaCreator.MapSimulator.Managers
         public const int DefaultListenPort = 18496;
         private const string DefaultProcessName = "MapleStory";
         private const int RecentPacketCapacity = 8;
+        private const int InferencePacketCapacity = 24;
+        private const int MinimumInferenceObservations = 2;
+        private const int MinimumInferenceDistinctPointValues = 2;
 
         private readonly ConcurrentQueue<CookieHousePointInboxMessage> _pendingMessages = new();
         private readonly Queue<string> _recentPackets = new();
+        private readonly Queue<byte[]> _recentInferencePackets = new();
         private readonly HashSet<int> _mappedInboundPointOpcodes = new();
+        private readonly HashSet<int> _inferredInboundPointOpcodes = new();
         private readonly object _sync = new();
 
         private TcpListener _listener;
@@ -90,7 +95,7 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no live Maple session";
-            return $"Cookie House official-session bridge {lifecycle}; {session}; received={ReceivedCount}; mapped point opcodes={DescribeMappedInboundPointOpcodes()}; recent={DescribeRecentPackets()}. {LastStatus}";
+            return $"Cookie House official-session bridge {lifecycle}; {session}; received={ReceivedCount}; mapped point opcodes={DescribeMappedInboundPointOpcodes()}; inference={DescribeInferenceStatus()}; recent={DescribeRecentPackets()}. {LastStatus}";
         }
 
         public string DescribeMappedInboundPointOpcodes()
@@ -114,11 +119,20 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public string DescribeInferenceStatus()
+        {
+            lock (_sync)
+            {
+                return DescribeInferenceStatusNoLock();
+            }
+        }
+
         public void SetMappedInboundPointOpcodes(IEnumerable<int> opcodes)
         {
             lock (_sync)
             {
                 _mappedInboundPointOpcodes.Clear();
+                _inferredInboundPointOpcodes.Clear();
                 foreach (int opcode in opcodes ?? Enumerable.Empty<int>())
                 {
                     if (opcode > 0 && opcode <= ushort.MaxValue)
@@ -131,12 +145,94 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public bool TryAddMappedInboundPointOpcode(int opcode, out string status)
+        {
+            lock (_sync)
+            {
+                if (opcode <= 0 || opcode > ushort.MaxValue)
+                {
+                    status = $"Cookie House official-session bridge requires a positive 16-bit inbound opcode, got {opcode}.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                if (!_mappedInboundPointOpcodes.Add(opcode))
+                {
+                    status = $"Cookie House official-session bridge already maps inbound point opcode {opcode}/0x{opcode:X}.";
+                    LastStatus = status;
+                    return true;
+                }
+
+                _inferredInboundPointOpcodes.Remove(opcode);
+                status = $"Cookie House official-session bridge mapped point opcodes: {DescribeMappedInboundPointOpcodesNoLock()}.";
+                LastStatus = status;
+                return true;
+            }
+        }
+
+        public bool TryRemoveMappedInboundPointOpcode(int opcode, out string status)
+        {
+            lock (_sync)
+            {
+                if (opcode <= 0 || opcode > ushort.MaxValue)
+                {
+                    status = $"Cookie House official-session bridge requires a positive 16-bit inbound opcode, got {opcode}.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                if (!_mappedInboundPointOpcodes.Remove(opcode))
+                {
+                    status = $"Cookie House official-session bridge has no mapped inbound point opcode {opcode}/0x{opcode:X}.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                _inferredInboundPointOpcodes.Remove(opcode);
+                status = $"Cookie House official-session bridge mapped point opcodes: {DescribeMappedInboundPointOpcodesNoLock()}.";
+                LastStatus = status;
+                return true;
+            }
+        }
+
         public void ClearMappedInboundPointOpcodes()
         {
             lock (_sync)
             {
                 _mappedInboundPointOpcodes.Clear();
+                _inferredInboundPointOpcodes.Clear();
                 LastStatus = "Cookie House official-session bridge cleared mapped point opcodes.";
+            }
+        }
+
+        public void ClearInference()
+        {
+            lock (_sync)
+            {
+                foreach (int opcode in _inferredInboundPointOpcodes)
+                {
+                    _mappedInboundPointOpcodes.Remove(opcode);
+                }
+
+                _inferredInboundPointOpcodes.Clear();
+                _recentInferencePackets.Clear();
+                LastStatus = "Cookie House official-session bridge cleared inferred point-opcode candidates.";
+            }
+        }
+
+        public bool TryPromoteInferredInboundPointOpcode(out string status)
+        {
+            lock (_sync)
+            {
+                if (TryPromoteInferredInboundPointOpcodeNoLock(out int opcode, out status))
+                {
+                    status = $"Cookie House official-session bridge inferred inbound point opcode {opcode}/0x{opcode:X}. mapped point opcodes: {DescribeMappedInboundPointOpcodesNoLock()}.";
+                    LastStatus = status;
+                    return true;
+                }
+
+                LastStatus = status;
+                return false;
             }
         }
 
@@ -412,6 +508,20 @@ namespace HaCreator.MapSimulator.Managers
                 lock (_sync)
                 {
                     mapped = _mappedInboundPointOpcodes.Contains(opcode);
+                    if (!mapped)
+                    {
+                        RecordInferencePacketNoLock(raw);
+                        if (TryPromoteInferredInboundPointOpcodeNoLock(out int inferredOpcode, out string inferenceStatus))
+                        {
+                            mapped = _mappedInboundPointOpcodes.Contains(opcode);
+                            LastStatus = $"Cookie House official-session bridge inferred inbound point opcode {inferredOpcode}/0x{inferredOpcode:X}. {inferenceStatus}";
+                        }
+                        else if (_mappedInboundPointOpcodes.Count == 0 && !string.IsNullOrWhiteSpace(inferenceStatus))
+                        {
+                            LastStatus = inferenceStatus;
+                        }
+                    }
+
                     RecordRecentPacketNoLock(opcode, payload.Length, mapped, raw);
                 }
 
@@ -516,6 +626,13 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 ReceivedCount = 0;
+                _recentInferencePackets.Clear();
+                foreach (int opcode in _inferredInboundPointOpcodes)
+                {
+                    _mappedInboundPointOpcodes.Remove(opcode);
+                }
+
+                _inferredInboundPointOpcodes.Clear();
             }
         }
 
@@ -586,7 +703,10 @@ namespace HaCreator.MapSimulator.Managers
                 rawHex = rawHex[..48] + "...";
             }
 
-            _recentPackets.Enqueue($"{opcode}/0x{opcode:X} len={payloadLength} {(mapped ? "mapped" : "seen")} raw={rawHex}");
+            string mappingLabel = mapped
+                ? _inferredInboundPointOpcodes.Contains(opcode) ? "mapped-inferred" : "mapped"
+                : "seen";
+            _recentPackets.Enqueue($"{opcode}/0x{opcode:X} len={payloadLength} {mappingLabel} raw={rawHex}");
             while (_recentPackets.Count > RecentPacketCapacity)
             {
                 _recentPackets.Dequeue();
@@ -600,8 +720,150 @@ namespace HaCreator.MapSimulator.Managers
                 return "none";
             }
 
-            return string.Join(", ", _mappedInboundPointOpcodes.OrderBy(opcode => opcode).Select(opcode => $"{opcode}/0x{opcode:X}"));
+            return string.Join(", ", _mappedInboundPointOpcodes
+                .OrderBy(opcode => opcode)
+                .Select(opcode => _inferredInboundPointOpcodes.Contains(opcode)
+                    ? $"{opcode}/0x{opcode:X} (inferred)"
+                    : $"{opcode}/0x{opcode:X}"));
         }
+
+        private string DescribeInferenceStatusNoLock()
+        {
+            List<InboundPointOpcodeCandidateSummary> candidates = SummarizeInferenceCandidates(_recentInferencePackets, _mappedInboundPointOpcodes);
+            if (_inferredInboundPointOpcodes.Count > 0)
+            {
+                string inferred = string.Join(", ", _inferredInboundPointOpcodes
+                    .OrderBy(opcode => opcode)
+                    .Select(opcode => $"{opcode}/0x{opcode:X}"));
+                return candidates.Count == 0
+                    ? $"auto-mapped {inferred}"
+                    : $"auto-mapped {inferred}; candidates={FormatCandidateList(candidates)}";
+            }
+
+            return candidates.Count == 0
+                ? "no eligible 4-byte point candidates observed"
+                : $"candidates={FormatCandidateList(candidates)}";
+        }
+
+        private void RecordInferencePacketNoLock(byte[] rawPacket)
+        {
+            if (rawPacket == null || rawPacket.Length < CookieHousePointInboxManager.ClientOpcodeFramedPointByteLength)
+            {
+                return;
+            }
+
+            _recentInferencePackets.Enqueue((byte[])rawPacket.Clone());
+            while (_recentInferencePackets.Count > InferencePacketCapacity)
+            {
+                _recentInferencePackets.Dequeue();
+            }
+        }
+
+        private bool TryPromoteInferredInboundPointOpcodeNoLock(out int opcode, out string status)
+        {
+            opcode = 0;
+            List<InboundPointOpcodeCandidateSummary> candidates = SummarizeInferenceCandidates(_recentInferencePackets, _mappedInboundPointOpcodes);
+            List<InboundPointOpcodeCandidateSummary> eligibleCandidates = candidates
+                .Where(candidate =>
+                    candidate.ObservationCount >= MinimumInferenceObservations
+                    && candidate.DistinctPointValueCount >= MinimumInferenceDistinctPointValues)
+                .OrderByDescending(candidate => candidate.ObservationCount)
+                .ThenByDescending(candidate => candidate.DistinctPointValueCount)
+                .ThenBy(candidate => candidate.Opcode)
+                .ToList();
+
+            if (eligibleCandidates.Count == 0)
+            {
+                status = candidates.Count == 0
+                    ? "Cookie House official-session bridge has not observed any eligible 4-byte point candidates yet."
+                    : $"Cookie House official-session bridge is still observing point-opcode candidates: {FormatCandidateList(candidates)}.";
+                return false;
+            }
+
+            if (eligibleCandidates.Count > 1)
+            {
+                status = $"Cookie House official-session bridge observed multiple eligible point-opcode candidates and will not auto-map ambiguously: {FormatCandidateList(eligibleCandidates)}.";
+                return false;
+            }
+
+            opcode = eligibleCandidates[0].Opcode;
+            if (_mappedInboundPointOpcodes.Add(opcode))
+            {
+                _inferredInboundPointOpcodes.Add(opcode);
+            }
+
+            status = $"Cookie House official-session bridge promoted the unique eligible point-opcode candidate after {eligibleCandidates[0].ObservationCount} observations and {eligibleCandidates[0].DistinctPointValueCount} distinct point values.";
+            return true;
+        }
+
+        private static List<InboundPointOpcodeCandidateSummary> SummarizeInferenceCandidates(IEnumerable<byte[]> rawPackets, ISet<int> mappedOpcodes)
+        {
+            Dictionary<int, InboundPointOpcodeCandidateAccumulator> candidates = new();
+            foreach (byte[] rawPacket in rawPackets ?? Enumerable.Empty<byte[]>())
+            {
+                if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload)
+                    || payload.Length != CookieHousePointInboxManager.ClientContextPointByteLength
+                    || (mappedOpcodes?.Contains(opcode) ?? false))
+                {
+                    continue;
+                }
+
+                int point = Math.Max(0, BitConverter.ToInt32(payload, 0));
+                if (!candidates.TryGetValue(opcode, out InboundPointOpcodeCandidateAccumulator candidate))
+                {
+                    candidate = new InboundPointOpcodeCandidateAccumulator(opcode);
+                    candidates.Add(opcode, candidate);
+                }
+
+                candidate.AddPoint(point);
+            }
+
+            return candidates.Values
+                .OrderByDescending(candidate => candidate.ObservationCount)
+                .ThenByDescending(candidate => candidate.DistinctPointValueCount)
+                .ThenBy(candidate => candidate.Opcode)
+                .Select(candidate => candidate.ToSummary())
+                .ToList();
+        }
+
+        private static string FormatCandidateList(IEnumerable<InboundPointOpcodeCandidateSummary> candidates)
+        {
+            return string.Join(", ", candidates.Select(candidate =>
+                $"{candidate.Opcode}/0x{candidate.Opcode:X} obs={candidate.ObservationCount} distinct={candidate.DistinctPointValueCount} lastPoint={candidate.LastPoint}"));
+        }
+
+        private sealed class InboundPointOpcodeCandidateAccumulator
+        {
+            private readonly HashSet<int> _distinctPoints = new();
+
+            public InboundPointOpcodeCandidateAccumulator(int opcode)
+            {
+                Opcode = opcode;
+            }
+
+            public int Opcode { get; }
+            public int ObservationCount { get; private set; }
+            public int DistinctPointValueCount => _distinctPoints.Count;
+            public int LastPoint { get; private set; }
+
+            public void AddPoint(int point)
+            {
+                ObservationCount++;
+                LastPoint = point;
+                _distinctPoints.Add(point);
+            }
+
+            public InboundPointOpcodeCandidateSummary ToSummary()
+            {
+                return new InboundPointOpcodeCandidateSummary(Opcode, ObservationCount, DistinctPointValueCount, LastPoint);
+            }
+        }
+
+        private readonly record struct InboundPointOpcodeCandidateSummary(
+            int Opcode,
+            int ObservationCount,
+            int DistinctPointValueCount,
+            int LastPoint);
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)
         {

@@ -314,7 +314,8 @@ namespace HaCreator.MapSimulator.UI
             string requestedFontFamily = MapleStoryStringPool.GetOrFallback(AntiMacroEditControl.ClientFontStringPoolId, "Arial");
             string resolvedFontFamily = ClientTextRasterizer.ResolvePreferredFontFamily(
                 requestedFontFamily,
-                preferredPrivateFontFamilyCandidates: ClientFontFamilyCandidates);
+                preferredPrivateFontFamilyCandidates: ClientFontFamilyCandidates,
+                preferEmbeddedPrivateFontSources: true);
 
             if (_fontHandle != IntPtr.Zero)
             {

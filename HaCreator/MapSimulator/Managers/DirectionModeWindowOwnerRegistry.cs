@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.UI;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -55,6 +56,7 @@ namespace HaCreator.MapSimulator.Managers
             MapSimulatorWindowNames.Ranking,
             MapSimulatorWindowNames.Event,
             MapSimulatorWindowNames.Radio,
+            MapSimulatorWindowNames.DragonBox,
             MapSimulatorWindowNames.SocialList,
             MapSimulatorWindowNames.SocialSearch,
             MapSimulatorWindowNames.GuildSearch,
@@ -87,6 +89,7 @@ namespace HaCreator.MapSimulator.Managers
         };
 
         private readonly HashSet<string> _ownedWindowNames = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, Func<bool>> _ownedOwnerPredicates = new(StringComparer.Ordinal);
 
         public static bool IsImplicitOwnerEligibleWindow(string windowName)
         {
@@ -104,6 +107,16 @@ namespace HaCreator.MapSimulator.Managers
             _ownedWindowNames.Add(windowName);
         }
 
+        public void TrackOwner(string ownerName, Func<bool> isOwnerActive)
+        {
+            if (string.IsNullOrWhiteSpace(ownerName) || isOwnerActive == null)
+            {
+                return;
+            }
+
+            _ownedOwnerPredicates[ownerName] = isOwnerActive;
+        }
+
         public bool IsTracking(string windowName)
         {
             return !string.IsNullOrWhiteSpace(windowName) && _ownedWindowNames.Contains(windowName);
@@ -116,15 +129,33 @@ namespace HaCreator.MapSimulator.Managers
                 throw new ArgumentNullException(nameof(isWindowVisible));
             }
 
+            bool anyVisible = false;
+
+            if (_ownedOwnerPredicates.Count > 0)
+            {
+                KeyValuePair<string, Func<bool>>[] ownedOwners = _ownedOwnerPredicates.ToArray();
+
+                for (int i = 0; i < ownedOwners.Length; i++)
+                {
+                    KeyValuePair<string, Func<bool>> owner = ownedOwners[i];
+                    if (owner.Value())
+                    {
+                        anyVisible = true;
+                        continue;
+                    }
+
+                    _ownedOwnerPredicates.Remove(owner.Key);
+                }
+            }
+
             if (_ownedWindowNames.Count == 0)
             {
-                return false;
+                return anyVisible;
             }
 
             string[] ownedWindows = new string[_ownedWindowNames.Count];
             _ownedWindowNames.CopyTo(ownedWindows);
 
-            bool anyVisible = false;
             for (int i = 0; i < ownedWindows.Length; i++)
             {
                 string windowName = ownedWindows[i];
@@ -143,6 +174,7 @@ namespace HaCreator.MapSimulator.Managers
         public void Reset()
         {
             _ownedWindowNames.Clear();
+            _ownedOwnerPredicates.Clear();
         }
     }
 }

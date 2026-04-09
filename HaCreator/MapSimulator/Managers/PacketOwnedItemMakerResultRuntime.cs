@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Interaction;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -26,11 +27,15 @@ namespace HaCreator.MapSimulator.Managers
         public IReadOnlyList<PacketOwnedItemMakerResultItemEntry> RewardItems { get; init; } = Array.Empty<PacketOwnedItemMakerResultItemEntry>();
         public IReadOnlyList<int> BonusItemIds { get; init; } = Array.Empty<int>();
 
+        public bool RepresentsDisassemblyResult =>
+            ResultCode <= 1
+            && ResultType is 3 or 4;
+
         public bool RepresentsSuccessfulCraft =>
             ResultCode == 0
+            && ResultType is 1 or 2
             && TargetItemId > 0
-            && TargetItemCount > 0
-            && DisassembledItemId <= 0;
+            && TargetItemCount > 0;
     }
 
     internal static class PacketOwnedItemMakerResultRuntime
@@ -40,8 +45,14 @@ namespace HaCreator.MapSimulator.Managers
         private const int ItemMakerSecondaryGainStringPoolId = 306;
         private const int LostMesosStringPoolId = 305;
         private const int DisassemblySuccessStringPoolId = 307;
-        private const int IncorrectRequestStringPoolId = 3948;
-        private const int CannotDisassembleStringPoolId = 4579;
+        private const int ItemMakerResultNoticeStringPoolId = 770;
+        private const int ItemMakerIncorrectRequestStringPoolId = 766;
+        private const int ItemMakerNoEmptySlotDisassemblyStringPoolId = 769;
+        private const int ItemMakerNoEmptySlotSuffixStringPoolId = 754;
+        private const int EquipInventoryStringPoolId = 10;
+        private const int SetupInventoryStringPoolId = 11;
+        private const int EtcInventoryStringPoolId = 6712;
+        private const int UseInventoryStringPoolId = 6791;
 
         public static bool TryDecode(byte[] payload, out PacketOwnedItemMakerResult result, out string error)
         {
@@ -203,11 +214,9 @@ namespace HaCreator.MapSimulator.Managers
                 return $"Created {ResolveItemName(result.TargetItemId)} x{Math.Max(1, result.TargetItemCount)}.";
             }
 
-            if (result.ResultType == 3
-                && result.TargetItemId > 0
-                && result.GeneratedItemId > 0)
+            if (result.ResultType == 3)
             {
-                return $"Disassembled {ResolveItemName(result.TargetItemId)} and produced {ResolveItemName(result.GeneratedItemId)} x{Math.Max(1, result.GeneratedItemCount)}.";
+                return FormatDisassemblyYieldSummary(result);
             }
 
             if (result.DisassembledItemId > 0)
@@ -217,10 +226,28 @@ namespace HaCreator.MapSimulator.Managers
 
             return result.ResultCode switch
             {
-                2 => MapleStoryStringPool.GetOrFallback(IncorrectRequestStringPoolId, "You have made an incorrect request."),
-                3 => MapleStoryStringPool.GetOrFallback(CannotDisassembleStringPoolId, "This item cannot be disassembled."),
+                1 => MapleStoryStringPool.GetOrFallback(ItemMakerResultNoticeStringPoolId, "This item cannot be disassembled."),
+                2 => MapleStoryStringPool.GetOrFallback(ItemMakerIncorrectRequestStringPoolId, "You have made an incorrect request."),
+                3 => BuildNoEmptySlotNotice(InventoryType.SETUP),
+                4 => BuildNoEmptySlotNotice(InventoryType.ETC),
                 _ => $"Packet-owned maker result code {result.ResultCode} subtype {result.ResultType}."
             };
+        }
+
+        internal static string BuildNoEmptySlotNotice(InventoryType inventoryType, bool disassemblyMode = false)
+        {
+            if (disassemblyMode)
+            {
+                return MapleStoryStringPool.GetOrFallback(
+                    ItemMakerNoEmptySlotDisassemblyStringPoolId,
+                    "Please make some room in your Etc inventory.");
+            }
+
+            string inventoryLabel = ResolveInventoryLabel(inventoryType);
+            string suffix = MapleStoryStringPool.GetOrFallback(
+                ItemMakerNoEmptySlotSuffixStringPoolId,
+                "inventory has no empty slot.");
+            return string.Format(CultureInfo.InvariantCulture, "{0} {1}", inventoryLabel, suffix).Trim();
         }
 
         public static IReadOnlyList<string> BuildFeedbackLines(PacketOwnedItemMakerResult result)
@@ -396,6 +423,47 @@ namespace HaCreator.MapSimulator.Managers
                 maxPlaceholderCount: 1,
                 out _);
             return string.Format(CultureInfo.InvariantCulture, format, ResolveItemName(itemId));
+        }
+
+        private static string FormatDisassemblyYieldSummary(PacketOwnedItemMakerResult result)
+        {
+            List<string> rewardParts = new();
+            if (result.TargetItemId > 0)
+            {
+                rewardParts.Add(string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0} x{1}",
+                    ResolveItemName(result.TargetItemId),
+                    Math.Max(1, result.TargetItemCount)));
+            }
+
+            if (result.GeneratedItemId > 0)
+            {
+                rewardParts.Add(string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0} x{1}",
+                    ResolveItemName(result.GeneratedItemId),
+                    Math.Max(1, result.GeneratedItemCount)));
+            }
+
+            if (rewardParts.Count == 0)
+            {
+                return "Disassembly completed.";
+            }
+
+            return $"Disassembly yielded {string.Join(" and ", rewardParts)}.";
+        }
+
+        private static string ResolveInventoryLabel(InventoryType inventoryType)
+        {
+            return inventoryType switch
+            {
+                InventoryType.EQUIP => MapleStoryStringPool.GetOrFallback(EquipInventoryStringPoolId, "Equip"),
+                InventoryType.USE => MapleStoryStringPool.GetOrFallback(UseInventoryStringPoolId, "Use"),
+                InventoryType.SETUP => MapleStoryStringPool.GetOrFallback(SetupInventoryStringPoolId, "Setup"),
+                InventoryType.ETC => MapleStoryStringPool.GetOrFallback(EtcInventoryStringPoolId, "Etc"),
+                _ => "Inventory"
+            };
         }
 
         private static string ResolveItemName(int itemId)

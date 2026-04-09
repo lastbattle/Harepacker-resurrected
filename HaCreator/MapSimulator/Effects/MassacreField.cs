@@ -144,10 +144,10 @@ namespace HaCreator.MapSimulator.Effects
         private const int ResultScoreX = 258;
         private const int ResultScoreY = 168;
         private const string TimerboardSourcePath = "Map/Obj/etc.img/killing/backgrnd";
-        private const string TimerDigitSourcePath = "UI/UIWindow(.2).img/MonsterKilling/Count/number";
-        private const string CountDigitSourcePath = "UI/UIWindow(.2).img/MonsterKilling/Count/number2";
-        private const string CountBoardPath = "UI/UIWindow(.2).img/MonsterKilling/Count/backgrd0";
-        private const string CountBoardSkillPath = "UI/UIWindow(.2).img/MonsterKilling/Count/backgrd1";
+        private const string TimerDigitSourcePath = "UI/UIWindow.img/MonsterKilling/Count/number";
+        private const string CountDigitSourcePath = "UI/UIWindow.img/MonsterKilling/Count/number2";
+        private const string CountBoardPath = "UI/UIWindow.img/MonsterKilling/Count/backgrd0";
+        private const string CountBoardSkillPath = "UI/UIWindow.img/MonsterKilling/Count/backgrd1";
         private const string KeyAnimationClosePath = "UI/UIWindow.img/MonsterKilling/Count/keyBackgrd/close";
         private const string KeyAnimationLoopPath = "UI/UIWindow.img/MonsterKilling/Count/keyBackgrd/ing";
         private const string KeyAnimationOpenPath = "UI/UIWindow.img/MonsterKilling/Count/keyBackgrd/open";
@@ -158,11 +158,11 @@ namespace HaCreator.MapSimulator.Effects
         private const string GaugeFillPath = "UI/UIWindow.img/MonsterKilling/Gauge/pixel";
         private const string GaugeTextPath = "UI/UIWindow.img/MonsterKilling/Gauge/text";
         private const string GaugeDangerTextPath = "UI/UIWindow.img/MonsterKilling/Gauge/textD";
-        private const string ResultBoardPath = "UI/UIWindow(.2).img/MonsterKilling/Result/backgrd";
-        private const string ResultOverlayPath = "UI/UIWindow(.2).img/MonsterKilling/Result/backgrd2";
-        private const string ResultRateDigitPath = "UI/UIWindow(.2).img/MonsterKilling/Result/number";
-        private const string ResultScoreDigitPath = "UI/UIWindow(.2).img/MonsterKilling/Result/number2";
-        private const string ResultRankPath = "UI/UIWindow(.2).img/MonsterKilling/Result/Rank";
+        private const string ResultBoardPath = "UI/UIWindow.img/MonsterKilling/Result/backgrd";
+        private const string ResultOverlayPath = "UI/UIWindow.img/MonsterKilling/Result/backgrd2";
+        private const string ResultRateDigitPath = "UI/UIWindow.img/MonsterKilling/Result/number";
+        private const string ResultScoreDigitPath = "UI/UIWindow.img/MonsterKilling/Result/number2";
+        private const string ResultRankPath = "UI/UIWindow.img/MonsterKilling/Result/Rank";
         private const string ClearScreenEffectStringPoolPath = "killing/clear";
         private static readonly StringPoolEntryEvidence TimerboardSourceEvidence = new(
             TimerboardSourceStringPoolId,
@@ -331,6 +331,9 @@ namespace HaCreator.MapSimulator.Effects
         public int ResultKillRate => _resultKillRate;
         public int ResultCoolRate => _resultCoolRate;
         public int ResultMissRate => _resultMissRate;
+        internal int KeyAnimationStage => _keyAnimationStage;
+        internal char ResultRank => _resultRank;
+        internal int ResultScore => _resultScore;
         public bool TryApplyPacket(int packetType, byte[] payload, int currentTimeMs, out string errorMessage)
         {
             errorMessage = null;
@@ -1847,7 +1850,11 @@ namespace HaCreator.MapSimulator.Effects
         }
         private static string FormatStringPoolEntry(StringPoolEntryEvidence evidence)
         {
-            return $"0x{evidence.StringPoolId:X}->{evidence.SourcePath} ({evidence.ClientOwner})";
+            return $"0x{evidence.StringPoolId:X}->{ResolveStringPoolEntryText(evidence)} ({evidence.ClientOwner})";
+        }
+        private static string ResolveStringPoolEntryText(StringPoolEntryEvidence evidence)
+        {
+            return MapleStoryStringPool.GetOrFallback(evidence.StringPoolId, evidence.SourcePath);
         }
         private static string FormatResultRankEvidence()
         {

@@ -333,7 +333,7 @@ namespace HaCreator.MapSimulator.UI
 
             Vector2 titlePosition = new Vector2(Position.X + 19, Position.Y + 5);
             string title = QuestAlarmOwnerStringPoolText.FormatTitle(snapshot.Entries.Count);
-            sprite.DrawString(_font, title, titlePosition, Color.White, 0f, Vector2.Zero, HeaderScale, SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(sprite, title, titlePosition, Color.White, HeaderScale, _font);
             DrawHeaderActions(sprite, snapshot, title);
 
             if (snapshot.HasAlertAnimation)
@@ -376,15 +376,15 @@ namespace HaCreator.MapSimulator.UI
                 string progressText = entry.TotalProgress > 0
                     ? $"{Math.Min(entry.CurrentProgress, entry.TotalProgress)}/{entry.TotalProgress}"
                     : entry.StatusText;
-                Vector2 progressSize = _font.MeasureString(progressText) * DetailScale;
+                Vector2 progressSize = MeasureClientText(progressText, DetailScale);
                 float progressX = deleteRect.X - progressSize.X - 6;
                 float titleMaxWidth = Math.Max(28f, progressX - (Position.X + ClientTitleX) - 4f);
                 string titleText = QuestAlarmTextLayout.TruncateToWidth(
                     entry.Title,
                     titleMaxWidth,
-                    sample => _font.MeasureString(sample).X * TitleScale);
-                sprite.DrawString(_font, titleText, new Vector2(Position.X + ClientTitleX, titleRect.Y + 1), titleColor, 0f, Vector2.Zero, TitleScale, SpriteEffects.None, 0f);
-                sprite.DrawString(_font, progressText, new Vector2(progressX, titleRect.Y + 3), new Color(214, 220, 229), 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
+                    sample => MeasureClientText(sample, TitleScale).X);
+                ClientTextDrawing.Draw(sprite, titleText, new Vector2(Position.X + ClientTitleX, titleRect.Y + 1), titleColor, TitleScale, _font);
+                ClientTextDrawing.Draw(sprite, progressText, new Vector2(progressX, titleRect.Y + 3), new Color(214, 220, 229), DetailScale, _font);
 
                 DrawInlineDelete(sprite, deleteRect, entry.QuestId);
 
@@ -400,16 +400,13 @@ namespace HaCreator.MapSimulator.UI
             if (snapshot.Entries.Count > visibleEntries.Count)
             {
                 int pageEnd = Math.Min(snapshot.Entries.Count, _scrollOffset + visibleEntries.Count);
-                sprite.DrawString(
-                    _font,
+                ClientTextDrawing.Draw(
+                    sprite,
                     $"{_scrollOffset + 1}-{pageEnd}/{snapshot.Entries.Count}",
                     new Vector2(Position.X + 8, y + 2),
                     new Color(214, 218, 226),
-                    0f,
-                    Vector2.Zero,
                     DetailScale,
-                    SpriteEffects.None,
-                    0f);
+                    _font);
             }
         }
 
@@ -481,20 +478,21 @@ namespace HaCreator.MapSimulator.UI
             }
 
             EnsurePersistedStateLoaded();
-            if (!_trackedQuestIds.Remove(questId))
+            bool removedTrackedQuest = _trackedQuestIds.Remove(questId);
+            bool clearedHiddenAutoQuest = _hiddenAutoQuestIds.Remove(questId);
+            if (!removedTrackedQuest && !clearedHiddenAutoQuest)
             {
                 return false;
             }
 
-            if (_selectedQuestId == questId)
-            {
-                _selectedQuestId = -1;
-            }
-
-            ClampScrollOffset(RefreshFilteredSnapshot());
+            ResetSelectionAfterMutation();
+            QuestAlarmSnapshot refreshedSnapshot = RefreshFilteredSnapshot();
+            HandleEmptySnapshotVisibility(refreshedSnapshot);
+            ClampScrollOffset(refreshedSnapshot);
             UpdateButtonStates();
             SavePersistedState();
-            return true;
+            QuestDeleted?.Invoke();
+            return removedTrackedQuest;
         }
 
         private void HandleRowSelection(int mouseX, int mouseY)
@@ -784,7 +782,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string deleteAllLabel = "Delete all";
-            Vector2 labelSize = _font.MeasureString(deleteAllLabel) * HeaderActionScale;
+            Vector2 labelSize = MeasureClientText(deleteAllLabel, HeaderActionScale);
             int x = ResolveHeaderActionRightAnchor((int)Math.Ceiling(labelSize.X), title);
             int y = Position.Y + 7;
             _deleteAllBounds = new Rectangle(x - 2, y - 1, (int)Math.Ceiling(labelSize.X) + 4, (int)Math.Ceiling(labelSize.Y) + 2);
@@ -794,14 +792,14 @@ namespace HaCreator.MapSimulator.UI
                 : _pressedDeleteAll
                     ? new Color(255, 205, 137)
                     : new Color(223, 228, 238);
-            sprite.DrawString(_font, deleteAllLabel, new Vector2(x, y), deleteAllColor, 0f, Vector2.Zero, HeaderActionScale, SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(sprite, deleteAllLabel, new Vector2(x, y), deleteAllColor, HeaderActionScale, _font);
 
             if (_scrollOffset > 0 || snapshot.Entries.Count > MaxVisibleEntries)
             {
                 string pageLabel = $"{_scrollOffset + 1}-{Math.Min(snapshot.Entries.Count, _scrollOffset + MaxVisibleEntries)}";
-                Vector2 pageSize = _font.MeasureString(pageLabel) * PageScale;
+                Vector2 pageSize = MeasureClientText(pageLabel, PageScale);
                 float pageX = x - HeaderActionSpacing - pageSize.X;
-                sprite.DrawString(_font, pageLabel, new Vector2(pageX, Position.Y + 7), new Color(166, 176, 192), 0f, Vector2.Zero, PageScale, SpriteEffects.None, 0f);
+                ClientTextDrawing.Draw(sprite, pageLabel, new Vector2(pageX, Position.Y + 7), new Color(166, 176, 192), PageScale, _font);
             }
         }
 
@@ -811,7 +809,7 @@ namespace HaCreator.MapSimulator.UI
             int titleLeft = Position.X + 19;
             int titleWidth = _font == null
                 ? 0
-                : (int)Math.Ceiling(_font.MeasureString(string.IsNullOrWhiteSpace(title) ? "Quest Alarm" : title).X * HeaderScale);
+                : (int)Math.Ceiling(MeasureClientText(string.IsNullOrWhiteSpace(title) ? "Quest Alarm" : title, HeaderScale).X);
             int minimumX = titleLeft + titleWidth + HeaderActionSpacing;
 
             int rightBound = Position.X + _maxTopTexture.Width - HeaderActionMargin;
@@ -867,7 +865,7 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (QuestAlarmTextLine line in BuildDemandTextLines(entry, ClientDetailWidth - 6, DetailScale))
             {
-                sprite.DrawString(_font, line.Text, new Vector2(detailRect.X + 2, currentY), line.Color, 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
+                ClientTextDrawing.Draw(sprite, line.Text, new Vector2(detailRect.X + 2, currentY), line.Color, DetailScale, _font);
                 currentY += ClientTitleHeight;
             }
         }
@@ -897,7 +895,7 @@ namespace HaCreator.MapSimulator.UI
             Color progressColor = ResolveRequirementProgressColor(line);
             Color labelColor = line.IsComplete ? progressColor : progressColor * 0.92f;
             Color textColor = line.IsComplete ? ProgressBodyColor : IncompleteBodyColor;
-            sprite.DrawString(_font, line.Label ?? string.Empty, new Vector2(left, textY), labelColor, 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(sprite, line.Label ?? string.Empty, new Vector2(left, textY), labelColor, DetailScale, _font);
 
             int iconOffset = 0;
             if (line.ItemId.HasValue)
@@ -915,20 +913,20 @@ namespace HaCreator.MapSimulator.UI
             string bodyText = line.Text ?? string.Empty;
             Vector2 valueSize = string.IsNullOrWhiteSpace(line.ValueText)
                 ? Vector2.Zero
-                : _font.MeasureString(line.ValueText) * DetailScale;
+                : MeasureClientText(line.ValueText, DetailScale);
             float bodyX = detailLeft + ClientDetailTextInset + iconOffset;
             float bodyRight = detailLeft + stripWidth - ClientDetailTextInset - valueSize.X - (valueSize.X > 0 ? ClientDetailValueGap : 0);
             float maxBodyWidth = Math.Max(28f, bodyRight - bodyX);
             bodyText = QuestAlarmTextLayout.TruncateToWidth(
                 bodyText,
                 maxBodyWidth,
-                sample => _font.MeasureString(sample).X * DetailScale);
-            sprite.DrawString(_font, bodyText, new Vector2(bodyX, textY), textColor, 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
+                sample => MeasureClientText(sample, DetailScale).X);
+            ClientTextDrawing.Draw(sprite, bodyText, new Vector2(bodyX, textY), textColor, DetailScale, _font);
 
             if (!string.IsNullOrWhiteSpace(line.ValueText))
             {
                 float valueX = Math.Max(bodyX, detailLeft + stripWidth - ClientDetailTextInset - valueSize.X);
-                sprite.DrawString(_font, line.ValueText, new Vector2(valueX, textY), progressColor, 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
+                ClientTextDrawing.Draw(sprite, line.ValueText, new Vector2(valueX, textY), progressColor, DetailScale, _font);
             }
 
             return y + ClientTitleHeight;
@@ -997,6 +995,11 @@ namespace HaCreator.MapSimulator.UI
                 frame.Texture,
                 new Vector2(Position.X + _questButton.X + frame.Offset.X, Position.Y + _questButton.Y + frame.Offset.Y),
                 Color.White);
+        }
+
+        private Vector2 MeasureClientText(string text, float scale)
+        {
+            return ClientTextDrawing.Measure(_device, text, scale, _font);
         }
 
         private QuestAlarmAnimationFrame ResolveQuestButtonAnimationFrame(int tickCount)
@@ -1070,8 +1073,7 @@ namespace HaCreator.MapSimulator.UI
                 hiddenFromAutoRegister = _hiddenAutoQuestIds.Add(questId);
             }
 
-            _selectedQuestId = -1;
-            _scrollOffset = 0;
+            ResetSelectionAfterMutation();
 
             QuestAlarmSnapshot refreshedSnapshot = RefreshFilteredSnapshot();
             HandleEmptySnapshotVisibility(refreshedSnapshot);
@@ -1096,8 +1098,7 @@ namespace HaCreator.MapSimulator.UI
 
             _trackedQuestIds.Clear();
             _hiddenAutoQuestIds.Clear();
-            _selectedQuestId = -1;
-            _scrollOffset = 0;
+            ResetSelectionAfterMutation();
             UpdateButtonStates();
             SavePersistedState();
             Hide();
@@ -1395,7 +1396,7 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<string> wrappedLines = QuestAlarmTextLayout.WrapText(
                 text,
                 maxWidth,
-                sample => _font.MeasureString(sample).X * scale);
+                sample => MeasureClientText(sample, scale).X);
             for (int i = 0; i < wrappedLines.Count; i++)
             {
                 yield return wrappedLines[i];
@@ -1540,6 +1541,17 @@ namespace HaCreator.MapSimulator.UI
         private bool HasLocalRegistrationState()
         {
             return _trackedQuestIds.Count > 0 || _hiddenAutoQuestIds.Count > 0;
+        }
+
+        private void ResetSelectionAfterMutation()
+        {
+            _selectedQuestId = -1;
+            _lastRowClickQuestId = -1;
+            _lastRowClickTick = 0;
+            _hoveredDeleteQuestId = -1;
+            _pressedDeleteQuestId = -1;
+            _pressedDeleteAll = false;
+            _scrollOffset = 0;
         }
 
         private readonly struct RowLayout

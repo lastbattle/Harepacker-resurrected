@@ -20,6 +20,18 @@ namespace HaCreator.MapSimulator.Interaction
         int LastRemovalTick,
         int LastMutationTick);
 
+    internal readonly record struct TutorMessageSnapshot(
+        int SkillId,
+        int BoundCharacterId,
+        TutorMessageKind MessageKind,
+        int LastIndexedMessage,
+        string MessageText,
+        int MessageWidth,
+        int MessageDurationMs,
+        int MessageStartedAt,
+        int MessageExpiresAt,
+        int MessageSequenceId);
+
     internal sealed class TutorRuntime
     {
         internal const int CygnusTutorSkillId = 10001013;
@@ -62,6 +74,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly object SharedTutorStateSync = new();
         private static readonly List<int> SharedClientTutorSkillIds = new();
         private static readonly List<TutorVariantSnapshot> SharedRegisteredTutorVariants = new();
+        private static readonly List<TutorMessageSnapshot> SharedTutorMessages = new();
 
         internal static int SharedClientTutorSkillSlotCount
         {
@@ -171,23 +184,8 @@ namespace HaCreator.MapSimulator.Interaction
             ActiveActorHeight = 0;
             LastHireTick = int.MinValue;
             ClearMessage();
-            IReadOnlyList<TutorVariantSnapshot> sharedVariants;
-            lock (SharedTutorStateSync)
-            {
-                for (int i = 0; i < SharedRegisteredTutorVariants.Count; i++)
-                {
-                    TutorVariantSnapshot variant = SharedRegisteredTutorVariants[i];
-                    SharedRegisteredTutorVariants[i] = variant with
-                    {
-                        BoundCharacterId = BoundCharacterId,
-                        IsActive = false,
-                        LastMutationTick = currentTick
-                    };
-                }
-
-                LastRegistryMutationTick = currentTick;
-                sharedVariants = SnapshotSharedRegisteredTutorVariantsUnsafe();
-            }
+            LastRegistryMutationTick = currentTick;
+            IReadOnlyList<TutorVariantSnapshot> sharedVariants = SnapshotSharedRegisteredTutorVariants();
 
             if (sharedVariants.Count == 0)
             {
@@ -212,21 +210,7 @@ namespace HaCreator.MapSimulator.Interaction
             ActiveActorHeight = 0;
             LastHireTick = int.MinValue;
             ClearMessage();
-            lock (SharedTutorStateSync)
-            {
-                for (int i = 0; i < SharedRegisteredTutorVariants.Count; i++)
-                {
-                    TutorVariantSnapshot variant = SharedRegisteredTutorVariants[i];
-                    SharedRegisteredTutorVariants[i] = variant with
-                    {
-                        BoundCharacterId = BoundCharacterId,
-                        IsActive = false,
-                        LastMutationTick = currentTick
-                    };
-                }
-
-                LastRegistryMutationTick = currentTick;
-            }
+            LastRegistryMutationTick = currentTick;
 
             StatusMessage = hadActor
                 ? BoundCharacterId > 0
@@ -235,6 +219,32 @@ namespace HaCreator.MapSimulator.Interaction
                 : BoundCharacterId > 0
                     ? $"Tutor actor already idle for runtime character {BoundCharacterId}; client tutor slots preserved: {DescribeClientTutorSkillSlots()}; registered variants preserved: {DescribeActiveTutorVariants()}."
                     : $"Tutor actor already idle; client tutor slots preserved: {DescribeClientTutorSkillSlots()}; registered variants preserved: {DescribeActiveTutorVariants()}.";
+        }
+
+        internal bool TryRestoreVisibleActorFromSharedVariant(int runtimeCharacterId, int currentTick)
+        {
+            if (runtimeCharacterId <= 0
+                || IsActive
+                || !TryGetSharedActiveVariantForCharacter(runtimeCharacterId, out TutorVariantSnapshot variant))
+            {
+                return false;
+            }
+
+            BoundCharacterId = runtimeCharacterId;
+            IsActive = true;
+            ActiveSkillId = variant.SkillId;
+            ActiveSummonObjectId = variant.SummonObjectId > 0
+                ? variant.SummonObjectId
+                : ResolveSummonObjectId(variant.SkillId);
+            ActiveActorHeight = variant.ActorHeight > 0
+                ? variant.ActorHeight
+                : ResolveFallbackActorHeight(variant.SkillId);
+            LastHireTick = variant.LastHireTick;
+            LastRegistryMutationTick = variant.LastMutationTick;
+            ClearMessage(clearSharedState: false);
+            TryRestoreSharedMessageSnapshot(variant, currentTick);
+            StatusMessage = $"Tutor actor restored from shared registry for runtime character {runtimeCharacterId} with skill {variant.SkillId}.";
+            return true;
         }
 
         internal void ApplyHireRequest(int requestedSkillId, int actorHeight, int currentTick, int runtimeCharacterId)
@@ -262,7 +272,7 @@ namespace HaCreator.MapSimulator.Interaction
                     ? CygnusTutorHeight
                     : AranTutorHeight;
             LastHireTick = currentTick;
-            ClearMessage();
+            ClearMessage(clearSharedState: true);
             StatusMessage = $"Tutor actor active with skill {normalizedSkillId} at height {ResolveActorHeight()}.";
         }
 
@@ -292,7 +302,7 @@ namespace HaCreator.MapSimulator.Interaction
             ActiveSummonObjectId = 0;
             ActiveActorHeight = 0;
             LastHireTick = int.MinValue;
-            ClearMessage();
+            ClearMessage(clearSharedState: true, skillId: normalizedSkillId);
             StatusMessage = hadActor
                 ? string.IsNullOrWhiteSpace(reason)
                     ? "Tutor actor removed."
@@ -320,6 +330,7 @@ namespace HaCreator.MapSimulator.Interaction
             ActiveMessageStartedAt = currentTick;
             ActiveMessageExpiresAt = unchecked(currentTick + ActiveMessageDurationMs);
             MessageSequenceId++;
+            UpsertSharedTutorMessageSnapshot();
             StatusMessage = $"Tutor indexed cue #{LastIndexedMessage} active for {ActiveMessageDurationMs} ms.";
         }
 
@@ -328,7 +339,7 @@ namespace HaCreator.MapSimulator.Interaction
             string normalizedText = string.IsNullOrWhiteSpace(text) ? string.Empty : text.Trim();
             if (string.IsNullOrEmpty(normalizedText))
             {
-                ClearMessage();
+                ClearMessage(clearSharedState: true);
                 StatusMessage = "Tutor text payload was empty.";
                 return;
             }
@@ -340,6 +351,7 @@ namespace HaCreator.MapSimulator.Interaction
             ActiveMessageStartedAt = currentTick;
             ActiveMessageExpiresAt = unchecked(currentTick + ActiveMessageDurationMs);
             MessageSequenceId++;
+            UpsertSharedTutorMessageSnapshot();
             StatusMessage = $"Tutor text message active for {ActiveMessageDurationMs} ms at width {ActiveMessageWidth}.";
         }
 
@@ -350,12 +362,17 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            ClearMessage();
+            ClearMessage(clearSharedState: true);
             StatusMessage = "Tutor message expired.";
         }
 
-        internal void ClearMessage()
+        internal void ClearMessage(bool clearSharedState = false, int skillId = 0)
         {
+            if (clearSharedState)
+            {
+                RemoveSharedTutorMessageSnapshot(skillId > 0 ? skillId : ActiveSkillId);
+            }
+
             MessageKind = TutorMessageKind.None;
             LastIndexedMessage = -1;
             ActiveMessageText = string.Empty;
@@ -429,6 +446,51 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return variants;
+        }
+
+        internal bool TryResolveDisplayMessageSnapshot(TutorVariantSnapshot displayVariant, int currentTick, out TutorMessageSnapshot snapshot)
+        {
+            if (displayVariant.SkillId > 0
+                && IsActive
+                && ActiveSkillId == displayVariant.SkillId
+                && (displayVariant.BoundCharacterId <= 0
+                    || BoundCharacterId <= 0
+                    || BoundCharacterId == displayVariant.BoundCharacterId)
+                && TryCreateActiveVisibleMessageSnapshot(currentTick, out snapshot))
+            {
+                return true;
+            }
+
+            return TryGetSharedVisibleMessage(displayVariant, currentTick, out snapshot);
+        }
+
+        internal bool TryGetSharedActiveVariant(out TutorVariantSnapshot variant)
+        {
+            return TryGetSharedActiveVariantForCharacter(runtimeCharacterId: 0, out variant);
+        }
+
+        internal bool TryGetSharedActiveVariantForCharacter(int runtimeCharacterId, out TutorVariantSnapshot variant)
+        {
+            IReadOnlyList<TutorVariantSnapshot> variants = SnapshotSharedRegisteredTutorVariants();
+            for (int i = 0; i < variants.Count; i++)
+            {
+                TutorVariantSnapshot candidate = variants[i];
+                if (!candidate.IsActive || candidate.SkillId <= 0)
+                {
+                    continue;
+                }
+
+                if (runtimeCharacterId > 0 && candidate.BoundCharacterId > 0 && candidate.BoundCharacterId != runtimeCharacterId)
+                {
+                    continue;
+                }
+
+                variant = candidate;
+                return true;
+            }
+
+            variant = default;
+            return false;
         }
 
         private static int FindRegisteredTutorVariantIndex(IReadOnlyList<TutorVariantSnapshot> variants, int skillId)
@@ -625,6 +687,14 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        internal static void ResetSharedTutorMessages()
+        {
+            lock (SharedTutorStateSync)
+            {
+                SharedTutorMessages.Clear();
+            }
+        }
+
         private static IReadOnlyList<TutorVariantSnapshot> SnapshotSharedRegisteredTutorVariantsUnsafe()
         {
             return SharedRegisteredTutorVariants.ToArray();
@@ -645,6 +715,157 @@ namespace HaCreator.MapSimulator.Interaction
         private static int ResolveFallbackActorHeight(int skillId)
         {
             return skillId == CygnusTutorSkillId ? CygnusTutorHeight : AranTutorHeight;
+        }
+
+        private void TryRestoreSharedMessageSnapshot(TutorVariantSnapshot variant, int currentTick)
+        {
+            if (!TryGetSharedVisibleMessage(variant, currentTick, out TutorMessageSnapshot snapshot))
+            {
+                return;
+            }
+
+            MessageKind = snapshot.MessageKind;
+            LastIndexedMessage = snapshot.LastIndexedMessage;
+            ActiveMessageText = snapshot.MessageText ?? string.Empty;
+            ActiveMessageWidth = snapshot.MessageWidth <= 0 ? DefaultTextWidth : snapshot.MessageWidth;
+            ActiveMessageDurationMs = snapshot.MessageDurationMs;
+            ActiveMessageStartedAt = snapshot.MessageStartedAt;
+            ActiveMessageExpiresAt = snapshot.MessageExpiresAt;
+            MessageSequenceId = Math.Max(MessageSequenceId, snapshot.MessageSequenceId);
+        }
+
+        private bool TryGetSharedVisibleMessage(TutorVariantSnapshot displayVariant, int currentTick, out TutorMessageSnapshot snapshot)
+        {
+            snapshot = default;
+            if (displayVariant.SkillId <= 0)
+            {
+                return false;
+            }
+
+            lock (SharedTutorStateSync)
+            {
+                PruneExpiredSharedTutorMessagesUnsafe(currentTick);
+                int snapshotIndex = FindSharedTutorMessageIndexUnsafe(displayVariant.SkillId);
+                if (snapshotIndex < 0)
+                {
+                    return false;
+                }
+
+                TutorMessageSnapshot candidate = SharedTutorMessages[snapshotIndex];
+                if (displayVariant.BoundCharacterId > 0
+                    && candidate.BoundCharacterId > 0
+                    && candidate.BoundCharacterId != displayVariant.BoundCharacterId)
+                {
+                    return false;
+                }
+
+                snapshot = candidate;
+                return true;
+            }
+        }
+
+        private bool TryCreateActiveVisibleMessageSnapshot(int currentTick, out TutorMessageSnapshot snapshot)
+        {
+            if (!HasVisibleMessage(currentTick) || ActiveSkillId <= 0)
+            {
+                snapshot = default;
+                return false;
+            }
+
+            snapshot = new TutorMessageSnapshot(
+                ActiveSkillId,
+                BoundCharacterId,
+                MessageKind,
+                LastIndexedMessage,
+                ActiveMessageText ?? string.Empty,
+                ActiveMessageWidth,
+                ActiveMessageDurationMs,
+                ActiveMessageStartedAt,
+                ActiveMessageExpiresAt,
+                MessageSequenceId);
+            return true;
+        }
+
+        private void UpsertSharedTutorMessageSnapshot()
+        {
+            if (ActiveSkillId <= 0 || MessageKind == TutorMessageKind.None)
+            {
+                return;
+            }
+
+            TutorMessageSnapshot snapshot = new(
+                ActiveSkillId,
+                BoundCharacterId,
+                MessageKind,
+                LastIndexedMessage,
+                ActiveMessageText ?? string.Empty,
+                ActiveMessageWidth,
+                ActiveMessageDurationMs,
+                ActiveMessageStartedAt,
+                ActiveMessageExpiresAt,
+                MessageSequenceId);
+
+            lock (SharedTutorStateSync)
+            {
+                int index = FindSharedTutorMessageIndexUnsafe(ActiveSkillId);
+                if (index >= 0)
+                {
+                    SharedTutorMessages[index] = snapshot;
+                }
+                else
+                {
+                    SharedTutorMessages.Add(snapshot);
+                }
+            }
+        }
+
+        private void RemoveSharedTutorMessageSnapshot(int skillId)
+        {
+            if (skillId <= 0)
+            {
+                return;
+            }
+
+            lock (SharedTutorStateSync)
+            {
+                int index = FindSharedTutorMessageIndexUnsafe(skillId);
+                if (index >= 0)
+                {
+                    SharedTutorMessages.RemoveAt(index);
+                }
+            }
+        }
+
+        private static int FindSharedTutorMessageIndexUnsafe(int skillId)
+        {
+            if (skillId <= 0)
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < SharedTutorMessages.Count; i++)
+            {
+                if (SharedTutorMessages[i].SkillId == skillId)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static void PruneExpiredSharedTutorMessagesUnsafe(int currentTick)
+        {
+            for (int i = SharedTutorMessages.Count - 1; i >= 0; i--)
+            {
+                TutorMessageSnapshot snapshot = SharedTutorMessages[i];
+                if (snapshot.MessageKind == TutorMessageKind.None
+                    || snapshot.MessageExpiresAt == int.MinValue
+                    || currentTick >= snapshot.MessageExpiresAt)
+                {
+                    SharedTutorMessages.RemoveAt(i);
+                }
+            }
         }
 
         private static string DescribeRegisteredTutorVariant(TutorVariantSnapshot variant)

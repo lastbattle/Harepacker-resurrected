@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Effects;
+using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
@@ -36,6 +37,20 @@ namespace HaCreator.MapSimulator
 
         private readonly CashServicePacketInboxManager _cashServicePacketInbox = new();
         private const string CashServiceStageBgmPath = "BgmUI/ShopBgm";
+
+        private string PreviewCashAvatarWeatherAction()
+        {
+            int currTickCount = Environment.TickCount;
+            string restrictionMessage = FieldInteractionRestrictionEvaluator.GetCashWeatherRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+            if (!string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                PushFieldRuleMessage(restrictionMessage, currTickCount, showOverlay: false);
+                return restrictionMessage;
+            }
+
+            _fieldEffects?.AddWeatherMessage("Cash Shop weather preview staged.", WeatherEffectType.None, currTickCount);
+            return "CCSWnd_Char::BlowWeather staged the selected cash-weather preview action.";
+        }
 
         private void WireCashServiceOwnerWindows()
         {
@@ -80,11 +95,7 @@ namespace HaCreator.MapSimulator
                     ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.CashTradingRoom);
                     return "CCSWnd_Char handed the selected listing to CCashTradingRoomDlg.";
                 };
-                cashAvatarPreviewWindow.WeatherRequested = () =>
-                {
-                    _fieldEffects?.AddWeatherMessage("Cash Shop weather preview staged.", WeatherEffectType.None, currTickCount);
-                    return "CCSWnd_Char::BlowWeather staged the selected cash-weather preview action.";
-                };
+                cashAvatarPreviewWindow.WeatherRequested = PreviewCashAvatarWeatherAction;
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashTradingRoom) is CashTradingRoomWindow cashTradingRoomWindow)
@@ -118,6 +129,8 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            IInventoryRuntime inventoryRuntime = uiWindowManager?.InventoryWindow as IInventoryRuntime;
+
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopLocker) is CashShopStageChildWindow lockerWindow)
             {
                 lockerWindow.SetFont(_fontChat);
@@ -143,6 +156,8 @@ namespace HaCreator.MapSimulator
             {
                 inventoryWindow.SetFont(_fontChat);
                 inventoryWindow.SetContentProvider(() => BuildCashShopInventoryOwnerLines(cashShopWindow));
+                inventoryWindow.SetInventoryVisibleRowProvider((tabName, scrollOffset, maxRows) =>
+                    BuildCashServiceInventoryOwnerRows(inventoryRuntime, tabName, scrollOffset, maxRows));
                 inventoryWindow.SetInventoryStateProvider(() =>
                 {
                     AdminShopDialogUI.InventoryOwnerSnapshot snapshot = cashShopWindow.GetInventoryOwnerSnapshot();
@@ -295,6 +310,67 @@ namespace HaCreator.MapSimulator
             }
 
             return lines;
+        }
+
+        private static IReadOnlyList<string> BuildCashServiceInventoryOwnerRows(
+            IInventoryRuntime inventoryRuntime,
+            string tabName,
+            int scrollOffset,
+            int maxRows)
+        {
+            if (inventoryRuntime == null || maxRows <= 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            InventoryType inventoryType = tabName switch
+            {
+                "Use" => InventoryType.USE,
+                "Setup" => InventoryType.SETUP,
+                "Etc" => InventoryType.ETC,
+                _ => InventoryType.EQUIP
+            };
+
+            IReadOnlyList<UI.InventorySlotData> slots = inventoryRuntime.GetSlots(inventoryType) ?? Array.Empty<UI.InventorySlotData>();
+            if (slots.Count == 0)
+            {
+                return new[] { $"{tabName} tab has no live inventory rows." };
+            }
+
+            List<string> rows = new();
+            int clampedOffset = Math.Clamp(scrollOffset, 0, Math.Max(0, slots.Count - 1));
+            for (int i = 0; i < maxRows; i++)
+            {
+                int slotIndex = clampedOffset + i;
+                if (slotIndex >= slots.Count)
+                {
+                    break;
+                }
+
+                UI.InventorySlotData slot = slots[slotIndex];
+                if (slot == null)
+                {
+                    rows.Add($"#{slotIndex + 1} Empty row");
+                    continue;
+                }
+
+                string itemLabel = string.IsNullOrWhiteSpace(slot.ItemName)
+                    ? $"Item {slot.ItemId.ToString(CultureInfo.InvariantCulture)}"
+                    : slot.ItemName.Trim();
+                string quantityLabel = slot.Quantity > 1
+                    ? $" x{slot.Quantity.ToString(CultureInfo.InvariantCulture)}"
+                    : string.Empty;
+                string stateLabel = slot.IsDisabled
+                    ? " disabled"
+                    : slot.IsCashOwnershipLocked
+                        ? " locked"
+                        : slot.IsEquipped
+                            ? " equipped"
+                            : string.Empty;
+                rows.Add($"#{slotIndex + 1} {itemLabel}{quantityLabel}{stateLabel}");
+            }
+
+            return rows;
         }
 
         private IReadOnlyList<string> BuildCashShopListOwnerLines(AdminShopDialogUI cashShopWindow)
@@ -485,6 +561,8 @@ namespace HaCreator.MapSimulator
                 inventoryWindow.SetContentProvider(mtsWindow != null
                     ? mtsWindow.DescribeInventoryOwnerState
                     : mtsStageWindow.DescribeInventoryOwnerState);
+                inventoryWindow.SetInventoryVisibleRowProvider((tabName, scrollOffset, maxRows) =>
+                    BuildCashServiceInventoryOwnerRows(inventoryRuntime, tabName, scrollOffset, maxRows));
                 inventoryWindow.SetInventoryStateProvider(() =>
                 {
                     if (mtsWindow == null)
@@ -575,6 +653,11 @@ namespace HaCreator.MapSimulator
         private IReadOnlyList<string> BuildItcListOwnerLines(AdminShopDialogUI mtsWindow, CashServiceStageWindow mtsStageWindow)
         {
             List<string> lines = new(mtsWindow?.DescribeListOwnerState() ?? Array.Empty<string>());
+            if (mtsStageWindow?.ItcWishPacketEntries.Count > 0)
+            {
+                lines.Add($"Wish-sale rows {mtsStageWindow.ItcWishPacketEntries.Count.ToString(CultureInfo.InvariantCulture)} remain owned by the ITC stage.");
+            }
+
             foreach (string recentPacket in mtsStageWindow?.GetRecentPacketSummaries() ?? Array.Empty<string>())
             {
                 lines.Add(recentPacket);
@@ -587,23 +670,32 @@ namespace HaCreator.MapSimulator
         {
             AdminShopDialogUI.ListOwnerSnapshot snapshot = mtsWindow?.GetListOwnerSnapshot();
             IReadOnlyList<string> recentPackets = mtsStageWindow?.GetRecentPacketSummaries() ?? Array.Empty<string>();
-            if (snapshot == null || (snapshot.TotalCount <= 0 && mtsStageWindow?.ItcPacketCatalogEntries.Count > 0))
+            bool shouldUsePacketFallback = snapshot == null
+                || (snapshot.TotalCount <= 0
+                    && ((mtsStageWindow?.ItcPacketCatalogEntries.Count ?? 0) > 0
+                        || (mtsStageWindow?.ItcWishPacketEntries.Count ?? 0) > 0));
+            if (shouldUsePacketFallback)
             {
-                List<CashShopStageChildWindow.ListOwnerEntryState> packetEntries = BuildPacketEntryStates(mtsStageWindow?.ItcPacketCatalogEntries);
+                IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> sourceEntries =
+                    (mtsStageWindow?.ItcPacketCatalogEntries.Count ?? 0) > 0
+                        ? mtsStageWindow.ItcPacketCatalogEntries
+                        : mtsStageWindow?.ItcWishPacketEntries;
+                List<CashShopStageChildWindow.ListOwnerEntryState> packetEntries = BuildPacketEntryStates(sourceEntries);
                 int sortType = mtsStageWindow?.ItcNormalItemSortType ?? 0;
                 int category = mtsStageWindow?.ItcNormalItemCategory ?? 0;
                 int subCategory = mtsStageWindow?.ItcNormalItemSubCategory ?? 0;
                 int totalCount = mtsStageWindow?.ItcCurrentCategoryItemCount ?? 0;
+                bool usingWishEntries = (mtsStageWindow?.ItcPacketCatalogEntries.Count ?? 0) <= 0 && (mtsStageWindow?.ItcWishPacketEntries.Count ?? 0) > 0;
                 return new CashShopStageChildWindow.ListOwnerState
                 {
-                    PaneLabel = "CITC packet list",
+                    PaneLabel = usingWishEntries ? "CITC wish-sale list" : "CITC packet list",
                     BrowseModeLabel = $"Sort {sortType.ToString(CultureInfo.InvariantCulture)}",
                     CategoryLabel = $"Category {category.ToString(CultureInfo.InvariantCulture)}/{subCategory.ToString(CultureInfo.InvariantCulture)}",
                     FooterMessage = mtsStageWindow?.ItcNormalItemLastSummary ?? "CITC packet list unavailable.",
                     SelectedEntryDetail = packetEntries.FirstOrDefault()?.Detail ?? string.Empty,
                     SelectedIndex = packetEntries.Count > 0 ? 0 : -1,
                     ScrollOffset = 0,
-                    TotalCount = Math.Max(totalCount, packetEntries.Count),
+                    TotalCount = Math.Max(usingWishEntries ? (mtsStageWindow?.ItcWishPacketEntries.Count ?? 0) : totalCount, packetEntries.Count),
                     PlateFocusIndex = packetEntries.Count > 0 ? 0 : -1,
                     HasKeyFocusCanvas = true,
                     VisibleEntries = packetEntries,

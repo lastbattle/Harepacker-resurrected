@@ -68,6 +68,7 @@ namespace HaCreator.MapSimulator.Fields
             _coconut.Initialize(graphicsDevice);
             _memoryGame.Initialize(graphicsDevice);
             _rockPaperScissors.Initialize(graphicsDevice);
+            _monsterCarnival.Initialize(graphicsDevice);
 
             _ariantArena.Initialize(graphicsDevice, soundManager, ariantArenaRemoteBuildFactory);
         }

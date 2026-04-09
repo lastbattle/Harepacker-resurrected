@@ -12,6 +12,7 @@ namespace HaCreator.MapSimulator.Interaction
             QuestRewardRaiseWindowMode WindowMode);
 
         private int _nextManagerSessionId = 1;
+        private int _nextOwnerRequestId = 1;
         private readonly System.Collections.Generic.Dictionary<int, QuestRewardRaiseOwnerSnapshot> _ownerSnapshotsByQuestId = new();
         private readonly System.Collections.Generic.Dictionary<int, Point> _windowPositionsByOwnerItemId = new();
 
@@ -56,6 +57,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Prompt = prompt,
                 GroupIndex = 0,
                 ManagerSessionId = GetNextManagerSessionId(),
+                RequestId = GetNextOwnerRequestId(),
                 OwnerItemId = ownerItemId,
                 QrData = qrData,
                 MaxDropCount = maxDropCount,
@@ -149,6 +151,18 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return sessionId;
+        }
+
+        private int GetNextOwnerRequestId()
+        {
+            int requestId = _nextOwnerRequestId++;
+            if (requestId <= 0)
+            {
+                _nextOwnerRequestId = 2;
+                requestId = 1;
+            }
+
+            return requestId;
         }
     }
 }

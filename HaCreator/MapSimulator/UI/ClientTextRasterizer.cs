@@ -914,6 +914,13 @@ namespace HaCreator.MapSimulator.UI
             return EnumerateCandidateFontContainerPaths(rootDirectory).ToArray();
         }
 
+        internal static IReadOnlyList<string> EnumerateEmbeddedFontContainerPathsForTests(
+            IEnumerable<string> runtimeRoots,
+            IEnumerable<string> installDirectories)
+        {
+            return EnumerateEmbeddedFontContainerPaths(runtimeRoots, installDirectories).ToArray();
+        }
+
         internal static bool LooksLikeEmbeddedFontPayloadForTests(byte[] fontBytes)
         {
             return LooksLikeEmbeddedFontPayload(fontBytes);
@@ -1016,15 +1023,58 @@ namespace HaCreator.MapSimulator.UI
 
         private static IEnumerable<string> EnumerateMapleEmbeddedFontContainerPaths()
         {
+            return EnumerateEmbeddedFontContainerPaths();
+        }
+
+        private static IEnumerable<string> EnumerateEmbeddedFontContainerPaths(
+            IEnumerable<string> runtimeRoots = null,
+            IEnumerable<string> installDirectories = null)
+        {
             HashSet<string> seenPaths = new(StringComparer.OrdinalIgnoreCase);
 
-            foreach (string installDirectory in EnumerateMapleInstallDirectories())
+            foreach (string searchRoot in EnumerateEmbeddedFontContainerSearchRoots(runtimeRoots, installDirectories))
             {
-                foreach (string candidatePath in EnumerateCandidateFontContainerPaths(installDirectory))
+                foreach (string candidatePath in EnumerateCandidateFontContainerPaths(searchRoot))
                 {
                     if (seenPaths.Add(candidatePath))
                     {
                         yield return candidatePath;
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateEmbeddedFontContainerSearchRoots(
+            IEnumerable<string> runtimeRoots = null,
+            IEnumerable<string> installDirectories = null)
+        {
+            HashSet<string> seenPaths = new(StringComparer.OrdinalIgnoreCase);
+
+            IEnumerable<string> effectiveRuntimeRoots = runtimeRoots ?? new[]
+            {
+                AppContext.BaseDirectory,
+                Environment.CurrentDirectory,
+                AppDomain.CurrentDomain.BaseDirectory
+            };
+            foreach (string runtimeRoot in effectiveRuntimeRoots)
+            {
+                foreach (string ancestorRoot in EnumerateSearchRootAncestors(runtimeRoot))
+                {
+                    if (Directory.Exists(ancestorRoot) && seenPaths.Add(ancestorRoot))
+                    {
+                        yield return ancestorRoot;
+                    }
+                }
+            }
+
+            IEnumerable<string> effectiveInstallDirectories = installDirectories ?? EnumerateMapleInstallDirectories();
+            foreach (string installDirectory in effectiveInstallDirectories)
+            {
+                foreach (string ancestorRoot in EnumerateSearchRootAncestors(installDirectory))
+                {
+                    if (Directory.Exists(ancestorRoot) && seenPaths.Add(ancestorRoot))
+                    {
+                        yield return ancestorRoot;
                     }
                 }
             }

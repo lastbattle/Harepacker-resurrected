@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 
 namespace HaCreator.MapSimulator.Managers
@@ -54,7 +55,7 @@ namespace HaCreator.MapSimulator.Managers
     /// Optional loopback inbox for Party Raid runtime updates.
     /// Each line is encoded as "<scope> <key> <value>", where scope is
     /// "field", "party", "session", "clock", or packet-oriented aliases such as
-    /// "packet 169 <payloadHex>" or "packetclientraw <opcodeFramedHex>".
+    /// "packet 93 <payloadHex>" or "packetclientraw <opcodeFramedHex>".
     /// </summary>
     public sealed class PartyRaidPacketInboxManager : IDisposable
     {
@@ -236,7 +237,7 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                if (!PacketFieldIngressRouter.TryDecodeClientOpcodePacket(rawPacket, out packetType, out payload, out error))
+                if (!TryDecodeClientOpcodePacket(rawPacket, out packetType, out payload, out error))
                 {
                     return false;
                 }
@@ -250,16 +251,10 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (parts.Length < 2 || !int.TryParse(parts[1], out packetType) || !PacketFieldIngressRouter.IsSupportedFieldScopedPacketType(packetType))
+            if (parts.Length < 2 || !int.TryParse(parts[1], out packetType) || !IsSupportedPartyRaidPacketType(packetType))
             {
-                error = "Party Raid packet lines must be 'packet <149|162|166|167|169|174|178> [payloadhex]'.";
+                error = "Party Raid packet lines must be 'packet <93|94|95|149> <payloadhex>'.";
                 return false;
-            }
-
-            if (packetType == 166)
-            {
-                payload = Array.Empty<byte>();
-                return true;
             }
 
             if (parts.Length < 3 || !TryParseHexPayload(parts[2], out payload))
@@ -402,6 +397,39 @@ namespace HaCreator.MapSimulator.Managers
         private static bool AssignScope(PartyRaidPacketScope value, out PartyRaidPacketScope scope)
         {
             scope = value;
+            return true;
+        }
+
+        private static bool IsSupportedPartyRaidPacketType(int packetType)
+        {
+            return packetType == PartyRaidField.ClientSessionValuePacketType
+                || packetType == PartyRaidField.ClientPartyValuePacketType
+                || packetType == PartyRaidField.ClientFieldSetVariablePacketType
+                || packetType == 149;
+        }
+
+        private static bool TryDecodeClientOpcodePacket(byte[] rawPacket, out int packetType, out byte[] payload, out string error)
+        {
+            packetType = 0;
+            payload = Array.Empty<byte>();
+            error = null;
+
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                error = "Party Raid client packet must include a 2-byte opcode.";
+                return false;
+            }
+
+            packetType = BitConverter.ToUInt16(rawPacket, 0);
+            if (!IsSupportedPartyRaidPacketType(packetType))
+            {
+                error = $"Unsupported Party Raid client opcode {packetType}.";
+                return false;
+            }
+
+            payload = rawPacket.Length == sizeof(ushort)
+                ? Array.Empty<byte>()
+                : rawPacket[sizeof(ushort)..];
             return true;
         }
 

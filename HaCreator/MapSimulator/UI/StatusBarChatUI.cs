@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator;
+using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -446,7 +447,7 @@ namespace HaCreator.MapSimulator.UI
             _whisperPromptBounds = null;
             _whisperPickerBounds = null;
 
-            if (_font == null)
+            if (!HasTextRenderer())
             {
                 return;
             }
@@ -733,7 +734,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawWhisperTargetPicker(SpriteBatch sprite, MapSimulatorChatRenderState chatState)
         {
-            if (chatState == null || !chatState.IsWhisperTargetPickerActive || _font == null)
+            if (chatState == null || !chatState.IsWhisperTargetPickerActive || !HasTextRenderer())
             {
                 return;
             }
@@ -870,6 +871,11 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_whisperPickerDialogBarTexture, new Vector2(barX, modalY + 6), Color.White);
             }
 
+            Rectangle comboBounds = StatusBarChatLayoutRules.ResolveWhisperPickerModalComboBounds(
+                _whisperPickerBounds.Value,
+                contentY,
+                rowHeight,
+                _whisperPickerDialogLineTexture?.Width ?? 0);
             Rectangle listBounds = StatusBarChatLayoutRules.ResolveWhisperPickerModalListBounds(
                 _whisperPickerBounds.Value,
                 contentY,
@@ -879,7 +885,12 @@ namespace HaCreator.MapSimulator.UI
                 ResolveWhisperPickerMaxCandidateWidth(chatState, firstVisibleIndex, visibleCount),
                 _whisperPickerDialogLineTexture?.Width ?? 0);
             Vector2 titlePos = new Vector2(listBounds.X, modalY + 8f);
-            DrawTextWithShadow(sprite, "Whisper Target", titlePos, new Color(244, 240, 227), Color.Black);
+            DrawTextWithShadow(
+                sprite,
+                MapleStoryStringPool.GetOrFallback(0x031E, "Whisper Target"),
+                titlePos,
+                new Color(244, 240, 227),
+                Color.Black);
             if (_whisperPickerDialogLineTexture != null)
             {
                 int dividerX = modalX + Math.Max(0, (modalWidth - _whisperPickerDialogLineTexture.Width) / 2);
@@ -888,9 +899,9 @@ namespace HaCreator.MapSimulator.UI
 
             DrawWhisperPickerRow(
                 sprite,
-                listBounds.X,
-                listBounds.Y,
-                listBounds.Width,
+                comboBounds.X,
+                comboBounds.Y,
+                comboBounds.Width,
                 rowHeight,
                 chatState.InputText ?? string.Empty,
                 isSelected: chatState.WhisperTargetPickerSelectionIndex < 0,
@@ -904,12 +915,16 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
+                Rectangle rowBounds = StatusBarChatLayoutRules.ResolveWhisperPickerModalVisibleRowBounds(
+                    listBounds,
+                    rowHeight,
+                    i);
                 DrawWhisperPickerRow(
                     sprite,
-                    listBounds.X,
-                    listBounds.Y + ((i + 1) * rowHeight),
-                    listBounds.Width,
-                    rowHeight,
+                    rowBounds.X,
+                    rowBounds.Y,
+                    rowBounds.Width,
+                    rowBounds.Height,
                     candidates[candidateIndex],
                     isSelected: candidateIndex == chatState.WhisperTargetPickerSelectionIndex,
                     registerHitRegion: true);
@@ -1105,7 +1120,7 @@ namespace HaCreator.MapSimulator.UI
 
         private float ResolveMeasuredTextHeight()
         {
-            if (_font == null)
+            if (!HasTextRenderer())
             {
                 return DefaultChatCursorHeight;
             }
@@ -1135,7 +1150,7 @@ namespace HaCreator.MapSimulator.UI
         private string ResolveVisibleInputText(string inputText, int cursorPosition, out int visibleCursorOffset)
         {
             visibleCursorOffset = 0;
-            if (_font == null || string.IsNullOrEmpty(inputText))
+            if (!HasTextRenderer() || string.IsNullOrEmpty(inputText))
             {
                 return inputText ?? string.Empty;
             }
@@ -1246,6 +1261,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (_font == null)
+            {
+                return;
+            }
+
             sprite.DrawString(_font, text, snappedPosition + new Vector2(1, 1), shadowColor);
             sprite.DrawString(_font, text, snappedPosition, color);
         }
@@ -1257,7 +1277,7 @@ namespace HaCreator.MapSimulator.UI
                 || !line.CanBeginWhisper
                 || string.IsNullOrWhiteSpace(line.WhisperTargetCandidate)
                 || string.IsNullOrWhiteSpace(line.WhisperTargetDisplayText)
-                || _font == null)
+                || !HasTextRenderer())
             {
                 return;
             }
@@ -1302,6 +1322,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return _font?.LineSpacing ?? DefaultChatCursorHeight + 1;
+        }
+
+        private bool HasTextRenderer()
+        {
+            return _clientTextRasterizer != null || _font != null;
         }
 
         private static Vector2 SnapToPixel(Vector2 position)
@@ -1747,7 +1772,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawHoveredShortcutTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
         {
-            if (_font == null || _shortcutTooltips.Count == 0)
+            if (!HasTextRenderer() || _shortcutTooltips.Count == 0)
             {
                 return;
             }

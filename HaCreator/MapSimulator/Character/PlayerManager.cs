@@ -67,6 +67,7 @@ namespace HaCreator.MapSimulator.Character
 
         // Combat effects reference
         private CombatEffects _combatEffects;
+        private AnimationEffects _animationEffects;
         private MobSkillEffectLoader _mobSkillEffectLoader;
         private AffectedAreaPool _affectedAreaPool;
         private Func<int, bool> _remoteAffectedAreaDamageBlockEvaluator;
@@ -306,6 +307,12 @@ namespace HaCreator.MapSimulator.Character
             _combatEffects = combatEffects;
         }
 
+        public void SetAnimationEffects(AnimationEffects animationEffects)
+        {
+            _animationEffects = animationEffects;
+            Skills?.SetAnimationEffects(animationEffects);
+        }
+
         public void SetAffectedAreaPool(AffectedAreaPool affectedAreaPool)
         {
             _affectedAreaPool = affectedAreaPool;
@@ -389,6 +396,7 @@ namespace HaCreator.MapSimulator.Character
                 Skills.SetMobPool(_mobPool);
                 Skills.SetDropPool(_dropPool);
                 Skills.SetCombatEffects(_combatEffects);
+                Skills.SetAnimationEffects(_animationEffects);
                 Skills.SetSoundManager(_soundManager);
                 Skills.SetFootholdLookup(_findFoothold);
                 Skills.SetTamingMobLoader(Loader.LoadTamingMob);
@@ -1938,6 +1946,7 @@ namespace HaCreator.MapSimulator.Character
             Skills?.SetMobPool(mobPool);
             Skills?.SetDropPool(dropPool);
             Skills?.SetCombatEffects(combatEffects);
+            Skills?.SetAnimationEffects(_animationEffects);
             Skills?.SetSoundManager(_soundManager);
         }
 

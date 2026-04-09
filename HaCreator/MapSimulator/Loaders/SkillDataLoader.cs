@@ -695,10 +695,20 @@ namespace HaCreator.MapSimulator.Loaders
                     continue;
 
                 string statKey = ResolveFallbackStatKey(propertyName);
-                if (string.IsNullOrWhiteSpace(statKey) || appendedKeys.Contains(statKey))
+                bool useGenericFallback = false;
+                if (string.IsNullOrWhiteSpace(statKey))
+                {
+                    if (ReferenceEquals(sourceNode, infoNode) || !ShouldUseGenericFallbackStat(propertyName))
+                        continue;
+
+                    statKey = propertyName;
+                    useGenericFallback = true;
+                }
+
+                if (appendedKeys.Contains(statKey))
                     continue;
 
-                if (!TryAppendFallbackStat(builder, skillEntry, levelNode, commonNode, infoNode, level, statKey))
+                if (!TryAppendFallbackStat(builder, skillEntry, levelNode, commonNode, infoNode, level, statKey, useGenericFallback))
                     continue;
 
                 appendedKeys.Add(statKey);
@@ -762,7 +772,8 @@ namespace HaCreator.MapSimulator.Loaders
             WzImageProperty commonNode,
             WzImageProperty infoNode,
             int level,
-            string statKey)
+            string statKey,
+            bool allowGenericFallback = true)
         {
             if (string.Equals(statKey, "itemCon", StringComparison.OrdinalIgnoreCase))
             {
@@ -800,7 +811,8 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             if (!FallbackSkillStatDefinitions.TryGetValue(statKey, out FallbackSkillStatDefinition definition))
-                return false;
+                return allowGenericFallback &&
+                       TryAppendGenericFallbackStat(builder, skillEntry, levelNode, commonNode, infoNode, level, statKey);
 
             int originalBuilderLength = builder.Length;
             if (definition.IsPercent)
@@ -822,6 +834,25 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return builder.Length != originalBuilderLength;
+        }
+
+        private static bool TryAppendGenericFallbackStat(
+            StringBuilder builder,
+            WzSubProperty skillEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level,
+            string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName) ||
+                !TryResolveGenericFallbackStatValue(skillEntry, levelNode, commonNode, infoNode, level, propertyName, out string value))
+            {
+                return false;
+            }
+
+            AppendStatLine(builder, FormatGenericFallbackStatLabel(propertyName), value);
+            return true;
         }
 
         private static void AppendItemConsumptionStat(
@@ -1015,6 +1046,61 @@ namespace HaCreator.MapSimulator.Loaders
 
             value = 0;
             return false;
+        }
+
+        private static bool TryResolveGenericFallbackStatValue(
+            WzSubProperty skillEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level,
+            string propertyName,
+            out string value)
+        {
+            value = null;
+            if (string.IsNullOrWhiteSpace(propertyName))
+                return false;
+
+            if (skillEntry != null &&
+                TryResolveSkillToken(skillEntry, propertyName, level, Math.Max(level, 1), out string resolvedTokenValue) &&
+                !string.IsNullOrWhiteSpace(resolvedTokenValue) &&
+                !string.Equals(resolvedTokenValue, "0", StringComparison.Ordinal))
+            {
+                value = resolvedTokenValue;
+                return true;
+            }
+
+            string rawValue = GetStringValue(levelNode, propertyName)
+                              ?? GetStringValue(commonNode, propertyName)
+                              ?? GetStringValue(infoNode, propertyName);
+            if (string.IsNullOrWhiteSpace(rawValue))
+                return false;
+
+            string normalized = NormalizeSkillText(rawValue);
+            if (string.IsNullOrWhiteSpace(normalized) || string.Equals(normalized, "0", StringComparison.Ordinal))
+                return false;
+
+            value = normalized;
+            return true;
+        }
+
+        private static bool ShouldUseGenericFallbackStat(string propertyName)
+        {
+            return !string.IsNullOrWhiteSpace(propertyName) &&
+                   !FallbackSkillHiddenProperties.Contains(propertyName);
+        }
+
+        private static string FormatGenericFallbackStatLabel(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+                return string.Empty;
+
+            if (propertyName.Length == 1)
+                return propertyName.ToUpperInvariant();
+
+            string withWordBoundaries = Regex.Replace(propertyName, "([a-z0-9])([A-Z])", "$1 $2");
+            string withSeparatedSuffixes = Regex.Replace(withWordBoundaries, "([A-Za-z])([0-9])", "$1 $2");
+            return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(withSeparatedSuffixes.Replace('_', ' '));
         }
 
         private static bool ContainsUnresolvedSkillToken(string text)
@@ -1344,6 +1430,16 @@ namespace HaCreator.MapSimulator.Loaders
                 ["x"] = new("x", "X"),
                 ["y"] = new("y", "Y"),
                 ["z"] = new("z", "Z")
+            };
+
+        private static readonly ISet<string> FallbackSkillHiddenProperties =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "maxLevel",
+                "masterLevel",
+                "priceUnit",
+                "invisible",
+                "type"
             };
 
         private static bool TryGetNumericPropertyValue(WzImageProperty node, string name, int formulaX, out int value)

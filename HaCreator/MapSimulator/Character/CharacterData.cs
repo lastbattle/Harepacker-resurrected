@@ -1185,6 +1185,7 @@ namespace HaCreator.MapSimulator.Character
     {
         public CharacterFrame FaceFrame { get; init; }
         public CharacterFrame AccessoryFrame { get; init; }
+        public CharacterFrame CompositeFrame { get; init; }
         public int Delay { get; init; }
     }
 
@@ -1205,7 +1206,7 @@ namespace HaCreator.MapSimulator.Character
 
         public Dictionary<string, CharacterAnimation> Expressions { get; set; } = new();
 
-        public FacePart()
+        public FacePart(GraphicsDevice graphicsDevice = null, Func<CharacterFrame, CharacterFrame, CharacterFrame> faceFrameComposer = null)
         {
             _lookLoader = new FaceLookLoader(this);
         }
@@ -1498,6 +1499,19 @@ namespace HaCreator.MapSimulator.Character
         public int Job { get; set; } = 0;   // Job ID (0 = Beginner)
         public int SubJob { get; set; } = 0;
         public string JobName { get; set; } = "Beginner";
+        public bool HasAuthoritativeProfileLevel { get; set; } = true;
+        public bool HasAuthoritativeProfileJob { get; set; } = true;
+        public bool HasAuthoritativeProfileGuild { get; set; } = true;
+        public bool HasAuthoritativeProfileAlliance { get; set; } = true;
+        public bool HasAuthoritativeProfileFame { get; set; } = true;
+        public bool HasAuthoritativeProfileWorldRank { get; set; } = true;
+        public bool HasAuthoritativeProfileJobRank { get; set; } = true;
+        public bool HasAuthoritativeProfileRide { get; set; } = true;
+        public bool HasAuthoritativeProfileTraits { get; set; } = true;
+        public bool HasAuthoritativeProfilePendantSlot { get; set; } = true;
+        public bool HasAuthoritativeProfilePocketSlot { get; set; } = true;
+        public bool HasAuthoritativeProfileMedal { get; set; } = true;
+        public bool HasAuthoritativeProfileCollection { get; set; } = true;
         public string GuildName { get; set; } = string.Empty;
         public string AllianceName { get; set; } = string.Empty;
         public int Fame { get; set; } = 0;
@@ -2570,6 +2584,19 @@ namespace HaCreator.MapSimulator.Character
                 Job = Job,
                 SubJob = SubJob,
                 JobName = JobName,
+                HasAuthoritativeProfileLevel = HasAuthoritativeProfileLevel,
+                HasAuthoritativeProfileJob = HasAuthoritativeProfileJob,
+                HasAuthoritativeProfileGuild = HasAuthoritativeProfileGuild,
+                HasAuthoritativeProfileAlliance = HasAuthoritativeProfileAlliance,
+                HasAuthoritativeProfileFame = HasAuthoritativeProfileFame,
+                HasAuthoritativeProfileWorldRank = HasAuthoritativeProfileWorldRank,
+                HasAuthoritativeProfileJobRank = HasAuthoritativeProfileJobRank,
+                HasAuthoritativeProfileRide = HasAuthoritativeProfileRide,
+                HasAuthoritativeProfileTraits = HasAuthoritativeProfileTraits,
+                HasAuthoritativeProfilePendantSlot = HasAuthoritativeProfilePendantSlot,
+                HasAuthoritativeProfilePocketSlot = HasAuthoritativeProfilePocketSlot,
+                HasAuthoritativeProfileMedal = HasAuthoritativeProfileMedal,
+                HasAuthoritativeProfileCollection = HasAuthoritativeProfileCollection,
                 GuildName = GuildName,
                 AllianceName = AllianceName,
                 Fame = Fame,

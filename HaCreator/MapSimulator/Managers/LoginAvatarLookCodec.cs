@@ -238,6 +238,8 @@ namespace HaCreator.MapSimulator.Managers
                 51 => EquipSlot.Shoulder,
                 52 => EquipSlot.Pocket,
                 53 => EquipSlot.Badge,
+                166 => EquipSlot.Android,
+                167 => EquipSlot.AndroidHeart,
                 _ => EquipSlot.None
             };
 
@@ -376,6 +378,8 @@ namespace HaCreator.MapSimulator.Managers
                 115 => 51,
                 116 => 52,
                 118 => 53,
+                166 => 166,
+                167 => 167,
                 190 => 18,
                 191 => 19,
                 _ when IsWeaponCategory(category) => 11,
@@ -412,6 +416,8 @@ namespace HaCreator.MapSimulator.Managers
                 115 => bodyPart == 51,
                 116 => bodyPart == 52,
                 118 => bodyPart == 53,
+                166 => bodyPart == 166,
+                167 => bodyPart == 167,
                 190 => bodyPart == 18,
                 191 => bodyPart == 19,
                 _ => IsWeaponCategory(category) && bodyPart == 11

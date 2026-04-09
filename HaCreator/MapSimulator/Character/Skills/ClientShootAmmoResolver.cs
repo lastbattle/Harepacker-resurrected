@@ -90,6 +90,7 @@ public static class ClientShootAmmoResolver
 
             selection = new ShootAmmoSelection
             {
+                UseItemId = fallbackActiveBulletItemId,
                 CashSlotIndex = cashSlotIndex,
                 CashItemId = cashItemId
             };
@@ -404,6 +405,7 @@ public static class ClientShootAmmoResolver
         int fallbackActiveCashItemId = ResolveActiveBulletItemId(cashSlots);
         if (fallbackActiveCashItemId > 0)
         {
+            itemId = fallbackActiveCashItemId;
             if (TryResolveCashAmmoSlotByItemId(
                     cashSlots,
                     weaponCode,

@@ -114,6 +114,7 @@ namespace HaCreator.MapSimulator.UI
             public string Name { get; init; } = string.Empty;
             public string LocationSummary { get; init; } = string.Empty;
             public int Channel { get; init; } = 1;
+            public bool IsLiveRemoteTarget { get; init; }
         }
 
         public readonly struct UserInfoActionContext
@@ -849,14 +850,14 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string name = displayBuild?.Name;
-            string job = displayBuild?.JobName;
-            string level = displayBuild != null ? displayBuild.Level.ToString() : "-";
-            string fame = displayBuild != null ? displayBuild.Fame.ToString() : "-";
+            string job = GetDisplayJobText(displayBuild);
+            string level = GetDisplayLevelText(displayBuild);
+            string fame = GetDisplayFameText(displayBuild);
             RankDeltaSnapshot rankSnapshot = GetRankDeltaSnapshot();
-            string rank = FormatRank(displayBuild?.WorldRank ?? 0, rankSnapshot.PreviousWorldRank);
-            string jobRank = FormatRank(displayBuild?.JobRank ?? 0, rankSnapshot.PreviousJobRank);
-            string guild = displayBuild?.GuildDisplayText ?? "-";
-            string alliance = displayBuild?.AllianceDisplayText ?? "-";
+            string rank = GetDisplayWorldRankText(displayBuild, rankSnapshot);
+            string jobRank = GetDisplayJobRankText(displayBuild, rankSnapshot);
+            string guild = GetDisplayGuildText(displayBuild);
+            string alliance = GetDisplayAllianceText(displayBuild);
             string guildAlliance = guild == "-" && alliance == "-"
                 ? "-"
                 : alliance == "-"
@@ -911,15 +912,33 @@ namespace HaCreator.MapSimulator.UI
             string mountName = GetEquippedItemName(EquipSlot.TamingMob, displayBuild);
             string saddleName = GetEquippedItemName(EquipSlot.Saddle, displayBuild);
             bool ridingReady = displayBuild?.HasMonsterRiding == true && !string.Equals(mountName, "-", StringComparison.Ordinal);
+            bool hasAuthoritativeRide = HasAuthoritativeRideState(displayBuild);
 
             DrawSectionHeader(sprite, "Ride");
-            DrawLabeledRow(sprite, 42, "Status", ridingReady ? "Ride available" : "No active mount slot", ridingReady ? SuccessColor : WarningColor);
-            DrawLabeledRow(sprite, 66, "Mount", mountName, ValueColor);
-            DrawLabeledRow(sprite, 90, "Saddle", saddleName, ValueColor);
-            DrawLabeledRow(sprite, 114, "Job", displayBuild?.JobName ?? "-", ValueColor);
-            DrawLabeledRow(sprite, 138, "Notes", ridingReady
-                ? "Taming-mob equipment is present in the simulator build."
-                : "Equip a taming mob and saddle to mirror the client ride page.", MutedColor, 144);
+            DrawLabeledRow(
+                sprite,
+                42,
+                "Status",
+                hasAuthoritativeRide
+                    ? (ridingReady ? "Ride available" : "No active mount slot")
+                    : "Remote ride state unavailable",
+                hasAuthoritativeRide
+                    ? (ridingReady ? SuccessColor : WarningColor)
+                    : MutedColor);
+            DrawLabeledRow(sprite, 66, "Mount", hasAuthoritativeRide ? mountName : "-", ValueColor);
+            DrawLabeledRow(sprite, 90, "Saddle", hasAuthoritativeRide ? saddleName : "-", ValueColor);
+            DrawLabeledRow(sprite, 114, "Job", GetDisplayJobText(displayBuild), ValueColor);
+            DrawLabeledRow(
+                sprite,
+                138,
+                "Notes",
+                hasAuthoritativeRide
+                    ? (ridingReady
+                        ? "Taming-mob equipment is present in the simulator build."
+                        : "Equip a taming mob and saddle to mirror the client ride page.")
+                    : "AvatarLook and field state do not expose the inspected profile ride page authoritatively.",
+                MutedColor,
+                144);
         }
 
         private void DrawPetPage(SpriteBatch sprite)
@@ -993,6 +1012,24 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawCollectPage(SpriteBatch sprite)
         {
+            if (IsRemoteInspectionActive() && !HasAuthoritativeCollectionSummary(GetDisplayedBuild()))
+            {
+                DrawSectionHeader(sprite, "Collect");
+                DrawPlainText(
+                    sprite,
+                    "Remote collection and maker progression are unavailable for this inspected target.",
+                    new Vector2(Position.X + 20, Position.Y + 52),
+                    MutedColor,
+                    0.6f);
+                DrawPlainText(
+                    sprite,
+                    "Only the dedicated book-owner reopen path stays wired for remote inspection here.",
+                    new Vector2(Position.X + 20, Position.Y + 78),
+                    MutedColor,
+                    0.56f);
+                return;
+            }
+
             ItemMakerProgressionSnapshot progression = GetCollectionSnapshot();
             List<(string Label, string Value)> entries = BuildCollectEntries();
             MonsterBookSnapshot snapshot = GetMonsterBookSnapshot();
@@ -1017,6 +1054,23 @@ namespace HaCreator.MapSimulator.UI
         {
             CharacterBuild displayBuild = GetDisplayedBuild();
             DrawSectionHeader(sprite, "Personality");
+
+            if (IsRemoteInspectionActive() && !HasAuthoritativeTraitState(displayBuild))
+            {
+                DrawPlainText(
+                    sprite,
+                    "Remote personality values are unavailable for this inspected target.",
+                    new Vector2(Position.X + 20, Position.Y + 52),
+                    MutedColor,
+                    0.62f);
+                DrawPlainText(
+                    sprite,
+                    "The WZ-backed tooltip surface still mirrors the client hover art when local trait data exists.",
+                    new Vector2(Position.X + 20, Position.Y + 78),
+                    MutedColor,
+                    0.56f);
+                return;
+            }
 
             (string Label, int Value)[] traits =
             {
@@ -1507,8 +1561,9 @@ namespace HaCreator.MapSimulator.UI
 
             if (_followButton != null)
             {
-                _followButton.ButtonVisible = characterPage && remoteInspection;
-                _followButton.SetEnabled(characterPage && remoteInspection && !_exceptionPopupOpen);
+                bool liveRemoteInspection = characterPage && IsLiveRemoteInspectionActive();
+                _followButton.ButtonVisible = liveRemoteInspection;
+                _followButton.SetEnabled(liveRemoteInspection && !_exceptionPopupOpen);
             }
 
             if (_tradeButton != null)
@@ -2174,8 +2229,88 @@ namespace HaCreator.MapSimulator.UI
             return $"{bookText}. {recipeText}.";
         }
 
+        private string GetDisplayLevelText(CharacterBuild build)
+        {
+            if (build == null)
+            {
+                return "-";
+            }
+
+            return IsRemoteInspectionActive() && !build.HasAuthoritativeProfileLevel
+                ? "-"
+                : build.Level.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private string GetDisplayJobText(CharacterBuild build)
+        {
+            if (build == null)
+            {
+                return "-";
+            }
+
+            if (IsRemoteInspectionActive() && !build.HasAuthoritativeProfileJob)
+            {
+                return "-";
+            }
+
+            return string.IsNullOrWhiteSpace(build.JobName)
+                ? "-"
+                : build.JobName;
+        }
+
+        private string GetDisplayFameText(CharacterBuild build)
+        {
+            if (build == null)
+            {
+                return "-";
+            }
+
+            return IsRemoteInspectionActive() && !build.HasAuthoritativeProfileFame
+                ? "-"
+                : build.Fame.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private string GetDisplayWorldRankText(CharacterBuild build, RankDeltaSnapshot rankSnapshot)
+        {
+            return build == null || (IsRemoteInspectionActive() && !build.HasAuthoritativeProfileWorldRank)
+                ? "-"
+                : FormatRank(build.WorldRank, rankSnapshot.PreviousWorldRank);
+        }
+
+        private string GetDisplayJobRankText(CharacterBuild build, RankDeltaSnapshot rankSnapshot)
+        {
+            return build == null || (IsRemoteInspectionActive() && !build.HasAuthoritativeProfileJobRank)
+                ? "-"
+                : FormatRank(build.JobRank, rankSnapshot.PreviousJobRank);
+        }
+
+        private string GetDisplayGuildText(CharacterBuild build)
+        {
+            return build == null || (IsRemoteInspectionActive() && !build.HasAuthoritativeProfileGuild)
+                ? "-"
+                : build.GuildDisplayText;
+        }
+
+        private string GetDisplayAllianceText(CharacterBuild build)
+        {
+            return build == null || (IsRemoteInspectionActive() && !build.HasAuthoritativeProfileAlliance)
+                ? "-"
+                : build.AllianceDisplayText;
+        }
+
         private string BuildMedalSummary()
         {
+            CharacterBuild displayBuild = GetDisplayedBuild();
+            if (displayBuild == null)
+            {
+                return "Medal: unavailable";
+            }
+
+            if (IsRemoteInspectionActive() && !displayBuild.HasAuthoritativeProfileMedal)
+            {
+                return "Medal unavailable for inspected build";
+            }
+
             string medalName = GetEquippedItemName(EquipSlot.Medal);
             return string.Equals(medalName, "-", StringComparison.Ordinal)
                 ? IsRemoteInspectionActive()
@@ -2187,6 +2322,16 @@ namespace HaCreator.MapSimulator.UI
         private string BuildPocketSummary()
         {
             CharacterBuild displayBuild = GetDisplayedBuild();
+            if (displayBuild == null)
+            {
+                return "Pocket: unavailable";
+            }
+
+            if (IsRemoteInspectionActive() && !displayBuild.HasAuthoritativeProfilePocketSlot)
+            {
+                return "Pocket availability unavailable for inspected build";
+            }
+
             string pocketName = GetEquippedItemName(EquipSlot.Pocket);
             if (!string.Equals(pocketName, "-", StringComparison.Ordinal))
             {
@@ -2201,6 +2346,21 @@ namespace HaCreator.MapSimulator.UI
                 : IsRemoteInspectionActive()
                     ? $"Pocket locked on inspected build ({charm}/30 Charm)"
                     : $"Pocket locked ({charm}/30 Charm)";
+        }
+
+        private bool HasAuthoritativeRideState(CharacterBuild build)
+        {
+            return build != null && (!IsRemoteInspectionActive() || build.HasAuthoritativeProfileRide);
+        }
+
+        private bool HasAuthoritativeTraitState(CharacterBuild build)
+        {
+            return build != null && (!IsRemoteInspectionActive() || build.HasAuthoritativeProfileTraits);
+        }
+
+        private bool HasAuthoritativeCollectionSummary(CharacterBuild build)
+        {
+            return build != null && (!IsRemoteInspectionActive() || build.HasAuthoritativeProfileCollection);
         }
 
         private void DrawEquipmentSummary(SpriteBatch sprite, EquipSlot slot, string summaryText, Point iconPosition, Point textPosition)
@@ -2898,6 +3058,11 @@ namespace HaCreator.MapSimulator.UI
             return GetResolvedInspectionTarget()?.Build != null;
         }
 
+        private bool IsLiveRemoteInspectionActive()
+        {
+            return GetResolvedInspectionTarget()?.IsLiveRemoteTarget == true;
+        }
+
         private CharacterBuild GetDisplayedBuild()
         {
             return GetResolvedInspectionTarget()?.Build ?? _characterBuild;
@@ -2958,7 +3123,8 @@ namespace HaCreator.MapSimulator.UI
                 CharacterId = resolved.CharacterId > 0 ? resolved.CharacterId : _inspectionTarget.CharacterId,
                 Name = !string.IsNullOrWhiteSpace(resolved.Name) ? resolved.Name : _inspectionTarget.Name,
                 LocationSummary = !string.IsNullOrWhiteSpace(resolved.LocationSummary) ? resolved.LocationSummary : _inspectionTarget.LocationSummary,
-                Channel = resolved.Channel > 0 ? resolved.Channel : _inspectionTarget.Channel
+                Channel = resolved.Channel > 0 ? resolved.Channel : _inspectionTarget.Channel,
+                IsLiveRemoteTarget = resolved.IsLiveRemoteTarget || _inspectionTarget.IsLiveRemoteTarget
             };
         }
 

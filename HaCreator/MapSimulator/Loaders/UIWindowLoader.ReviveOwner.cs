@@ -37,8 +37,10 @@ namespace HaCreator.MapSimulator.Loaders
             Point position)
         {
             Texture2D frameTexture = CreateFilledTexture(device, 332, 176, Color.Transparent, Color.Transparent);
-            Texture2D pixel = CreateFilledTexture(device, 1, 1, Color.White, Color.White);
             WzSubProperty utilDialogProperty = uiWindow2Image?["UtilDlgEx"] as WzSubProperty;
+            Texture2D shellTopTexture = LoadCanvasTexture(utilDialogProperty, "t", device);
+            Texture2D shellCenterTexture = LoadCanvasTexture(utilDialogProperty, "c", device);
+            Texture2D shellBottomTexture = LoadCanvasTexture(utilDialogProperty, "s", device);
             Texture2D noticeTexture = LoadCanvasTexture(utilDialogProperty, "notice", device);
             Texture2D separatorLine = LoadCanvasTexture(utilDialogProperty, "line", device);
             Texture2D progressBar = LoadCanvasTexture(utilDialogProperty, "bar", device);
@@ -52,10 +54,13 @@ namespace HaCreator.MapSimulator.Loaders
                 ?? LoadButton(utilDialogProperty, "BtOK", btClickSound, btOverSound, device);
             UIObject defaultButton = LoadButton(utilDialogProperty, "BtOK", btClickSound, btOverSound, device)
                 ?? declineButton;
+            UIObject closeButton = LoadButton(utilDialogProperty, "BtClose", btClickSound, btOverSound, device);
 
             ReviveConfirmationWindow window = new(
                 new DXObject(0, 0, frameTexture, 0),
-                pixel,
+                shellTopTexture,
+                shellCenterTexture,
+                shellBottomTexture,
                 noticeTexture,
                 separatorLine,
                 progressBar,
@@ -65,7 +70,7 @@ namespace HaCreator.MapSimulator.Loaders
                 Position = position
             };
 
-            window.InitializeButtons(premiumButton, declineButton, defaultButton);
+            window.InitializeButtons(premiumButton, declineButton, defaultButton, closeButton);
             return window;
         }
     }

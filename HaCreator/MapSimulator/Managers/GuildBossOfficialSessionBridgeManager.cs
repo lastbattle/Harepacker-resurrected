@@ -31,6 +31,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int OutboundPulleyRequestOpcode = 259;
 
         private readonly ConcurrentQueue<GuildBossPacketInboxMessage> _pendingMessages = new();
+        private readonly ConcurrentQueue<PendingPulleyRequest> _pendingOutboundRequests = new();
         private readonly object _sync = new();
 
         private TcpListener _listener;
@@ -43,6 +44,7 @@ namespace HaCreator.MapSimulator.Managers
             string ProcessName,
             IPEndPoint LocalEndpoint,
             IPEndPoint RemoteEndpoint);
+        private sealed record PendingPulleyRequest(GuildBossField.PulleyPacketRequest Request, byte[] RawPacket);
 
         private sealed class BridgePair
         {
@@ -91,8 +93,10 @@ namespace HaCreator.MapSimulator.Managers
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public bool HasAttachedClient => _activePair != null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        public int PendingPacketCount => _pendingOutboundRequests.Count;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
+        public int QueuedCount { get; private set; }
         public string LastStatus { get; private set; } = "Guild boss official-session bridge inactive.";
 
         public string DescribeStatus()
@@ -103,7 +107,7 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Guild boss official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}. {LastStatus}";
+            return $"Guild boss official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}. {LastStatus}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -317,9 +321,7 @@ namespace HaCreator.MapSimulator.Managers
 
             try
             {
-                PacketWriter writer = new PacketWriter();
-                writer.WriteShort((short)OutboundPulleyRequestOpcode);
-                pair.ServerSession.SendPacket(writer.ToArray());
+                pair.ServerSession.SendPacket(BuildPulleyRequestPacket());
                 SentCount++;
                 status = $"Injected Guild Boss opcode {OutboundPulleyRequestOpcode} into live session {pair.RemoteEndpoint}.";
                 LastStatus = status;
@@ -332,6 +334,22 @@ namespace HaCreator.MapSimulator.Managers
                 ClearActivePair(pair, status);
                 return false;
             }
+        }
+
+        public bool TryQueuePulleyRequest(GuildBossField.PulleyPacketRequest request, out string status)
+        {
+            if (!IsRunning && !HasAttachedClient)
+            {
+                status = "Guild boss official-session bridge is not armed for deferred live-session injection.";
+                LastStatus = status;
+                return false;
+            }
+
+            _pendingOutboundRequests.Enqueue(new PendingPulleyRequest(request, BuildPulleyRequestPacket()));
+            QueuedCount++;
+            status = $"Queued Guild Boss opcode {OutboundPulleyRequestOpcode} request #{request.Sequence} for deferred live-session injection.";
+            LastStatus = status;
+            return true;
         }
 
         public void RecordDispatchResult(string source, int packetType, bool success, string message)
@@ -440,7 +458,10 @@ namespace HaCreator.MapSimulator.Managers
                     pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
                     pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
                     pair.InitCompleted = true;
-                    LastStatus = $"Guild boss official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
+                    int flushed = FlushQueuedPulleyRequests(pair);
+                    LastStatus = flushed > 0
+                        ? $"Guild boss official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint} and flushed {flushed} queued pulley request(s)."
+                        : $"Guild boss official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
                     pair.ClientSession.WaitForData();
                     return;
                 }
@@ -535,9 +556,39 @@ namespace HaCreator.MapSimulator.Managers
                 {
                 }
 
+                while (_pendingOutboundRequests.TryDequeue(out _))
+                {
+                }
+
                 ReceivedCount = 0;
                 SentCount = 0;
+                QueuedCount = 0;
             }
+        }
+
+        private int FlushQueuedPulleyRequests(BridgePair pair)
+        {
+            if (pair == null || !pair.InitCompleted)
+            {
+                return 0;
+            }
+
+            int flushed = 0;
+            while (_pendingOutboundRequests.TryDequeue(out PendingPulleyRequest pending))
+            {
+                pair.ServerSession.SendPacket((byte[])pending.RawPacket.Clone());
+                SentCount++;
+                flushed++;
+            }
+
+            return flushed;
+        }
+
+        private static byte[] BuildPulleyRequestPacket()
+        {
+            PacketWriter writer = new PacketWriter();
+            writer.WriteShort((short)OutboundPulleyRequestOpcode);
+            return writer.ToArray();
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

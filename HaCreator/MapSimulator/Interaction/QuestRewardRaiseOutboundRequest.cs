@@ -7,6 +7,22 @@ using System.Text;
 
 namespace HaCreator.MapSimulator.Interaction
 {
+    internal sealed record QuestRewardRaisePacketPayload(
+        int ManagerSessionId,
+        int OwnerRequestId,
+        int PieceRequestId,
+        int QuestId,
+        int OwnerItemId,
+        int QrData,
+        QuestRewardRaiseWindowMode WindowMode,
+        QuestRewardRaiseWindowMode DisplayMode,
+        InventoryType InventoryType,
+        int SlotIndex,
+        int ItemId,
+        int Quantity,
+        int PlacedPieceCount,
+        IReadOnlyDictionary<int, int> SelectedItemsByGroup);
+
     internal enum QuestRewardRaiseOutboundRequestKind
     {
         PutItemAdd,
@@ -76,6 +92,88 @@ namespace HaCreator.MapSimulator.Interaction
                 PutItemConfirmOpcode,
                 Array.AsReadOnly(payload),
                 $"PutItem confirm owner #{Math.Max(0, state?.OwnerItemId ?? 0)} session #{Math.Max(0, state?.ManagerSessionId ?? 0)} pieces {state?.PlacedPieces?.Count ?? 0}");
+        }
+
+        internal static bool TryDecodePayload(byte[] payload, out QuestRewardRaisePacketPayload decoded, out string error)
+        {
+            decoded = null;
+            error = null;
+
+            if (payload == null)
+            {
+                error = "Raise payload is missing.";
+                return false;
+            }
+
+            const int minimumLength =
+                sizeof(int) * 6 +
+                sizeof(byte) * 3 +
+                sizeof(short) * 4;
+            if (payload.Length < minimumLength)
+            {
+                error = $"Raise payload must be at least {minimumLength} bytes.";
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+
+                int managerSessionId = reader.ReadInt32();
+                int ownerRequestId = reader.ReadInt32();
+                int pieceRequestId = reader.ReadInt32();
+                int questId = reader.ReadInt32();
+                int ownerItemId = reader.ReadInt32();
+                int qrData = reader.ReadInt32();
+                QuestRewardRaiseWindowMode windowMode = (QuestRewardRaiseWindowMode)reader.ReadByte();
+                QuestRewardRaiseWindowMode displayMode = (QuestRewardRaiseWindowMode)reader.ReadByte();
+                InventoryType inventoryType = (InventoryType)reader.ReadByte();
+                int slotIndex = reader.ReadInt16();
+                int itemId = reader.ReadInt32();
+                int quantity = reader.ReadInt16();
+                int placedPieceCount = reader.ReadInt16();
+                int selectedEntryCount = reader.ReadInt16();
+                if (selectedEntryCount < 0)
+                {
+                    error = "Raise payload selected-entry count cannot be negative.";
+                    return false;
+                }
+
+                Dictionary<int, int> selectedItemsByGroup = new(selectedEntryCount);
+                for (int i = 0; i < selectedEntryCount; i++)
+                {
+                    if ((stream.Length - stream.Position) < sizeof(int) * 2)
+                    {
+                        error = "Raise payload ended before all selected-group pairs were available.";
+                        return false;
+                    }
+
+                    selectedItemsByGroup[reader.ReadInt32()] = reader.ReadInt32();
+                }
+
+                decoded = new QuestRewardRaisePacketPayload(
+                    managerSessionId,
+                    ownerRequestId,
+                    pieceRequestId,
+                    questId,
+                    ownerItemId,
+                    qrData,
+                    windowMode,
+                    displayMode,
+                    inventoryType,
+                    slotIndex,
+                    itemId,
+                    quantity,
+                    placedPieceCount,
+                    selectedItemsByGroup);
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                error = "Raise payload ended unexpectedly.";
+                return false;
+            }
         }
 
         private static byte[] BuildPayload(

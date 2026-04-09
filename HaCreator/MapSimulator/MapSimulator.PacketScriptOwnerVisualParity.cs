@@ -3,6 +3,7 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,19 +19,38 @@ namespace HaCreator.MapSimulator
         private Texture2D _packetScriptInitialQuizBackTexture;
         private Texture2D _packetScriptInitialQuizBackTexture2;
         private Texture2D _packetScriptInitialQuizBackTexture3;
-        private Texture2D _packetScriptInitialQuizOkButtonTexture;
-        private Texture2D _packetScriptInitialQuizAniTexture;
+        private PacketScriptButtonVisuals _packetScriptInitialQuizOkButtonVisuals;
+        private PacketScriptAnimationStrip _packetScriptInitialQuizAnimationStrip;
         private Texture2D _packetScriptSpeedQuizBackTexture;
         private Texture2D _packetScriptSpeedQuizBackTexture2;
         private Texture2D _packetScriptSpeedQuizBackTexture3;
-        private Texture2D _packetScriptSpeedQuizOkButtonTexture;
-        private Texture2D _packetScriptSpeedQuizNextButtonTexture;
-        private Texture2D _packetScriptSpeedQuizGiveUpButtonTexture;
+        private PacketScriptButtonVisuals _packetScriptSpeedQuizOkButtonVisuals;
+        private PacketScriptButtonVisuals _packetScriptSpeedQuizNextButtonVisuals;
+        private PacketScriptButtonVisuals _packetScriptSpeedQuizGiveUpButtonVisuals;
         private PacketScriptDigitStrip _packetScriptInitialQuizDigits;
         private PacketScriptDigitStrip _packetScriptInitialQuizHeaderDigits;
         private PacketScriptDigitStrip _packetScriptSpeedQuizDigits;
 
         private sealed record PacketScriptDigitStrip(Texture2D[] Digits, Texture2D CommaTexture);
+        private sealed record PacketScriptAnimationStrip(Texture2D[] Frames, int[] FrameDurationsMs);
+        private sealed record PacketScriptButtonVisuals(
+            Texture2D Normal,
+            Texture2D Hover,
+            Texture2D Pressed,
+            Texture2D Disabled,
+            Texture2D KeyFocused)
+        {
+            internal Texture2D ResolveTexture(PacketScriptOwnerButtonVisualState state)
+            {
+                return state switch
+                {
+                    PacketScriptOwnerButtonVisualState.Disabled => Disabled ?? Normal ?? Hover ?? Pressed ?? KeyFocused,
+                    PacketScriptOwnerButtonVisualState.Pressed => Pressed ?? Hover ?? KeyFocused ?? Normal ?? Disabled,
+                    PacketScriptOwnerButtonVisualState.Hover => Hover ?? KeyFocused ?? Normal ?? Pressed ?? Disabled,
+                    _ => Normal ?? Hover ?? KeyFocused ?? Pressed ?? Disabled
+                };
+            }
+        }
 
         private void DrawPacketOwnedScriptOwnerVisuals(int currentTickCount)
         {
@@ -41,32 +61,64 @@ namespace HaCreator.MapSimulator
 
             EnsurePacketScriptOwnerVisualsLoaded();
 
-            Rectangle initialBounds = Rectangle.Empty;
-            if (_initialQuizTimerRuntime.TryBuildOwnerSnapshot(currentTickCount, out InitialQuizOwnerSnapshot initialSnapshot))
+            bool hasInitialOwner = _initialQuizTimerRuntime.TryBuildOwnerSnapshot(currentTickCount, out InitialQuizOwnerSnapshot initialSnapshot)
+                && _initialQuizOwnerResultSent;
+            bool hasSpeedOwner = _speedQuizOwnerRuntime.TryBuildOwnerSnapshot(currentTickCount, out SpeedQuizOwnerSnapshot speedSnapshot);
+            if (!hasInitialOwner && !hasSpeedOwner)
             {
-                initialBounds = DrawPacketOwnedInitialQuizOwner(initialSnapshot);
+                return;
             }
 
-            if (_speedQuizOwnerRuntime.TryBuildOwnerSnapshot(currentTickCount, out SpeedQuizOwnerSnapshot speedSnapshot))
+            MouseState mouseState = _oldMouseState;
+            Rectangle[] ownerBounds = ResolvePacketScriptOwnerBounds(hasInitialOwner, hasSpeedOwner);
+            int boundsIndex = 0;
+
+            if (hasInitialOwner)
             {
-                DrawPacketOwnedSpeedQuizOwner(speedSnapshot, initialBounds);
+                DrawPacketOwnedInitialQuizOwner(initialSnapshot, ownerBounds[boundsIndex++], mouseState, currentTickCount);
+            }
+
+            if (hasSpeedOwner)
+            {
+                DrawPacketOwnedSpeedQuizOwner(speedSnapshot, ownerBounds[boundsIndex], mouseState);
             }
         }
 
-        private Rectangle DrawPacketOwnedInitialQuizOwner(InitialQuizOwnerSnapshot snapshot)
+        private Rectangle[] ResolvePacketScriptOwnerBounds(bool hasInitialOwner, bool hasSpeedOwner)
         {
-            Texture2D primaryBackground = _packetScriptInitialQuizBackTexture3 ?? _packetScriptInitialQuizBackTexture2 ?? _packetScriptInitialQuizBackTexture;
-            if (primaryBackground == null)
+            List<Point> panelSizes = new();
+            if (hasInitialOwner)
             {
-                return Rectangle.Empty;
+                Texture2D initialBackground = _packetScriptInitialQuizBackTexture3 ?? _packetScriptInitialQuizBackTexture2 ?? _packetScriptInitialQuizBackTexture;
+                if (initialBackground != null)
+                {
+                    panelSizes.Add(new Point(initialBackground.Width, initialBackground.Height));
+                }
             }
 
-            Rectangle previewBounds = PacketScriptQuizOwnerLayout.ResolvePreviewBounds(
+            if (hasSpeedOwner)
+            {
+                Texture2D speedBackground = _packetScriptSpeedQuizBackTexture3 ?? _packetScriptSpeedQuizBackTexture2 ?? _packetScriptSpeedQuizBackTexture;
+                if (speedBackground != null)
+                {
+                    panelSizes.Add(new Point(speedBackground.Width, speedBackground.Height));
+                }
+            }
+
+            return PacketScriptQuizOwnerLayout.ResolveCenteredStackBounds(
                 _renderParams.RenderWidth,
                 _renderParams.RenderHeight,
-                primaryBackground.Width,
-                primaryBackground.Height,
-                ResolvePacketScriptOwnerPreviewTop());
+                ResolvePacketScriptOwnerPreviewTop(),
+                panelSizes.ToArray());
+        }
+
+        private Rectangle DrawPacketOwnedInitialQuizOwner(
+            InitialQuizOwnerSnapshot snapshot,
+            Rectangle previewBounds,
+            MouseState mouseState,
+            int currentTickCount)
+        {
+            Texture2D primaryBackground = _packetScriptInitialQuizBackTexture3 ?? _packetScriptInitialQuizBackTexture2 ?? _packetScriptInitialQuizBackTexture;
             if (previewBounds == Rectangle.Empty)
             {
                 return Rectangle.Empty;
@@ -89,35 +141,27 @@ namespace HaCreator.MapSimulator
             DrawPacketScriptNumber(questionDigitsBounds, Math.Max(0, snapshot.QuestionNumber), _packetScriptInitialQuizHeaderDigits ?? _packetScriptInitialQuizDigits, Color.White);
             DrawPacketScriptTime(timerDigitsBounds, Math.Max(0, snapshot.RemainingSeconds), _packetScriptInitialQuizDigits, Color.White);
 
-            if (_packetScriptInitialQuizAniTexture != null)
+            Texture2D animationFrame = ResolvePacketScriptAnimationFrame(_packetScriptInitialQuizAnimationStrip, currentTickCount);
+            if (animationFrame != null)
             {
                 Rectangle aniBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, primaryBackground.Width - 62, primaryBackground.Height - 54, 30, 26, primaryBackground.Width, primaryBackground.Height);
-                _spriteBatch.Draw(_packetScriptInitialQuizAniTexture, aniBounds, Color.White);
+                _spriteBatch.Draw(animationFrame, aniBounds, Color.White);
             }
 
-            if (_packetScriptInitialQuizOkButtonTexture != null)
-            {
-                Rectangle buttonBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, (primaryBackground.Width - 40) / 2, primaryBackground.Height - 26, 40, 16, primaryBackground.Width, primaryBackground.Height);
-                _spriteBatch.Draw(_packetScriptInitialQuizOkButtonTexture, buttonBounds, Color.White * 0.92f);
-            }
+            Rectangle buttonBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, (primaryBackground.Width - 40) / 2, primaryBackground.Height - 26, 40, 16, primaryBackground.Width, primaryBackground.Height);
+            DrawPacketScriptOwnerButton(
+                _packetScriptInitialQuizOkButtonVisuals,
+                buttonBounds,
+                mouseState,
+                enabled: true,
+                fallbackLabel: "OK");
 
             return previewBounds;
         }
 
-        private void DrawPacketOwnedSpeedQuizOwner(SpeedQuizOwnerSnapshot snapshot, Rectangle initialBounds)
+        private void DrawPacketOwnedSpeedQuizOwner(SpeedQuizOwnerSnapshot snapshot, Rectangle previewBounds, MouseState mouseState)
         {
             Texture2D primaryBackground = _packetScriptSpeedQuizBackTexture3 ?? _packetScriptSpeedQuizBackTexture2 ?? _packetScriptSpeedQuizBackTexture;
-            if (primaryBackground == null)
-            {
-                return;
-            }
-
-            Rectangle previewBounds = PacketScriptQuizOwnerLayout.ResolveStackedPreviewBounds(
-                initialBounds,
-                primaryBackground.Width,
-                primaryBackground.Height,
-                _renderParams.RenderWidth,
-                _renderParams.RenderHeight);
             if (previewBounds == Rectangle.Empty)
             {
                 return;
@@ -143,7 +187,7 @@ namespace HaCreator.MapSimulator
                 0.42f,
                 maxLines: 4);
 
-            DrawPacketScriptOwnerButtons(previewBounds, primaryBackground);
+            DrawPacketScriptOwnerButtons(previewBounds, primaryBackground, mouseState);
         }
 
         private void DrawPacketScriptOwnerMetric(Rectangle previewBounds, Texture2D primaryBackground, int sourceY, string label, string value, bool rightAlignedDigits)
@@ -161,17 +205,19 @@ namespace HaCreator.MapSimulator
             DrawPacketScriptNumber(valueBounds, value, _packetScriptSpeedQuizDigits, Color.White, centerHorizontally: false);
         }
 
-        private void DrawPacketScriptOwnerButtons(Rectangle previewBounds, Texture2D primaryBackground)
+        private void DrawPacketScriptOwnerButtons(Rectangle previewBounds, Texture2D primaryBackground, MouseState mouseState)
         {
             Rectangle okBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, 22, primaryBackground.Height - 30, 40, 16, primaryBackground.Width, primaryBackground.Height);
             Rectangle nextBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, 70, primaryBackground.Height - 30, 40, 16, primaryBackground.Width, primaryBackground.Height);
             Rectangle giveUpBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, 118, primaryBackground.Height - 30, 60, 16, primaryBackground.Width, primaryBackground.Height);
 
-            DrawPacketScriptOwnerButton(_packetScriptSpeedQuizOkButtonTexture, okBounds, Color.White * 0.92f);
-            DrawPacketScriptOwnerButton(_packetScriptSpeedQuizNextButtonTexture, nextBounds, Color.White * 0.92f);
-            DrawPacketScriptOwnerButton(_packetScriptSpeedQuizGiveUpButtonTexture, giveUpBounds, Color.White * 0.92f);
+            DrawPacketScriptOwnerButton(_packetScriptSpeedQuizOkButtonVisuals, okBounds, mouseState, enabled: true, fallbackLabel: "OK");
+            DrawPacketScriptOwnerButton(_packetScriptSpeedQuizNextButtonVisuals, nextBounds, mouseState, enabled: true, fallbackLabel: "Next");
+            DrawPacketScriptOwnerButton(_packetScriptSpeedQuizGiveUpButtonVisuals, giveUpBounds, mouseState, enabled: true, fallbackLabel: "Give Up");
 
-            if (_packetScriptSpeedQuizOkButtonTexture == null && _packetScriptSpeedQuizNextButtonTexture == null && _packetScriptSpeedQuizGiveUpButtonTexture == null)
+            if (_packetScriptSpeedQuizOkButtonVisuals == null &&
+                _packetScriptSpeedQuizNextButtonVisuals == null &&
+                _packetScriptSpeedQuizGiveUpButtonVisuals == null)
             {
                 Rectangle fallback = new(okBounds.X, okBounds.Y, giveUpBounds.Right - okBounds.X, Math.Max(okBounds.Height, giveUpBounds.Height));
                 DrawPacketScriptOwnerFrame(fallback, new Color(80, 50, 24, 180), new Color(170, 118, 66, 220));
@@ -179,12 +225,37 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private void DrawPacketScriptOwnerButton(Texture2D texture, Rectangle bounds, Color color)
+        private void DrawPacketScriptOwnerButton(
+            PacketScriptButtonVisuals visuals,
+            Rectangle bounds,
+            MouseState mouseState,
+            bool enabled,
+            string fallbackLabel)
         {
-            if (texture != null && bounds != Rectangle.Empty)
+            if (bounds == Rectangle.Empty)
             {
-                _spriteBatch.Draw(texture, bounds, color);
+                return;
             }
+
+            bool hovered = bounds.Contains(mouseState.Position);
+            bool pressed = hovered && mouseState.LeftButton == ButtonState.Pressed;
+            PacketScriptOwnerButtonVisualState state = PacketScriptOwnerVisualStateResolver.ResolveButtonState(enabled, hovered, pressed);
+            Texture2D texture = visuals?.ResolveTexture(state);
+            if (texture != null)
+            {
+                _spriteBatch.Draw(texture, bounds, Color.White);
+                return;
+            }
+
+            Color fill = state switch
+            {
+                PacketScriptOwnerButtonVisualState.Pressed => new Color(132, 82, 47, 220),
+                PacketScriptOwnerButtonVisualState.Hover => new Color(176, 121, 68, 208),
+                PacketScriptOwnerButtonVisualState.Disabled => new Color(84, 65, 49, 180),
+                _ => new Color(148, 98, 56, 196)
+            };
+            DrawPacketScriptOwnerFrame(bounds, fill, new Color(224, 189, 124, 220));
+            DrawPacketScriptOwnerWrappedText(fallbackLabel, bounds, new Color(255, 241, 205), 0.36f, maxLines: 1);
         }
 
         private void DrawPacketScriptOwnerBackground(Rectangle previewBounds, params Texture2D[] layers)
@@ -382,10 +453,11 @@ namespace HaCreator.MapSimulator
             _packetScriptInitialQuizBackTexture = LoadUiCanvasTexture((preferred?["backgrnd"] ?? fallback?["backgrnd"]) as WzCanvasProperty);
             _packetScriptInitialQuizBackTexture2 = LoadUiCanvasTexture((preferred?["backgrnd2"] ?? fallback?["backgrnd2"]) as WzCanvasProperty);
             _packetScriptInitialQuizBackTexture3 = LoadUiCanvasTexture((preferred?["backgrnd3"] ?? fallback?["backgrnd3"]) as WzCanvasProperty);
-            _packetScriptInitialQuizOkButtonTexture = LoadUiCanvasTexture(ResolvePacketScriptButtonCanvas(preferred?["BtOK"] as WzSubProperty) ?? ResolvePacketScriptButtonCanvas(fallback?["BtOK"] as WzSubProperty));
-            _packetScriptInitialQuizAniTexture = LoadUiCanvasTexture(ResolvePacketScriptAnimatedCanvas(preferred?["ani"] as WzSubProperty) ?? ResolvePacketScriptAnimatedCanvas(fallback?["ani"] as WzSubProperty));
+            _packetScriptInitialQuizOkButtonVisuals = LoadPacketScriptButtonVisuals(preferred?["BtOK"] as WzSubProperty, fallback?["BtOK"] as WzSubProperty);
+            _packetScriptInitialQuizAnimationStrip = LoadPacketScriptAnimationStrip(preferred?["ani"] as WzSubProperty, fallback?["ani"] as WzSubProperty);
             _packetScriptInitialQuizDigits = LoadPacketScriptDigitStrip(preferred?["num1"] as WzSubProperty, fallback?["num1"] as WzSubProperty);
-            _packetScriptInitialQuizHeaderDigits = LoadPacketScriptDigitStrip(preferred?["number"] as WzSubProperty, fallback?["num2"] as WzSubProperty);
+            _packetScriptInitialQuizHeaderDigits = LoadPacketScriptDigitStrip(preferred?["number"] as WzSubProperty, fallback?["number"] as WzSubProperty)
+                ?? LoadPacketScriptDigitStrip(preferred?["num2"] as WzSubProperty, fallback?["num2"] as WzSubProperty);
         }
 
         private void LoadPacketScriptSpeedQuizVisuals(WzImage preferredImage, WzImage fallbackImage)
@@ -395,9 +467,9 @@ namespace HaCreator.MapSimulator
             _packetScriptSpeedQuizBackTexture = LoadUiCanvasTexture((preferred?["backgrnd"] ?? fallback?["backgrnd"]) as WzCanvasProperty);
             _packetScriptSpeedQuizBackTexture2 = LoadUiCanvasTexture((preferred?["backgrnd2"] ?? fallback?["backgrnd2"]) as WzCanvasProperty);
             _packetScriptSpeedQuizBackTexture3 = LoadUiCanvasTexture((preferred?["backgrnd3"] ?? fallback?["backgrnd3"]) as WzCanvasProperty);
-            _packetScriptSpeedQuizOkButtonTexture = LoadUiCanvasTexture(ResolvePacketScriptButtonCanvas(preferred?["BtOK"] as WzSubProperty) ?? ResolvePacketScriptButtonCanvas(fallback?["BtOK"] as WzSubProperty));
-            _packetScriptSpeedQuizNextButtonTexture = LoadUiCanvasTexture(ResolvePacketScriptButtonCanvas(preferred?["BtNext"] as WzSubProperty) ?? ResolvePacketScriptButtonCanvas(fallback?["BtNext"] as WzSubProperty));
-            _packetScriptSpeedQuizGiveUpButtonTexture = LoadUiCanvasTexture(ResolvePacketScriptButtonCanvas(preferred?["BtGiveup"] as WzSubProperty) ?? ResolvePacketScriptButtonCanvas(fallback?["BtGiveup"] as WzSubProperty));
+            _packetScriptSpeedQuizOkButtonVisuals = LoadPacketScriptButtonVisuals(preferred?["BtOK"] as WzSubProperty, fallback?["BtOK"] as WzSubProperty);
+            _packetScriptSpeedQuizNextButtonVisuals = LoadPacketScriptButtonVisuals(preferred?["BtNext"] as WzSubProperty, fallback?["BtNext"] as WzSubProperty);
+            _packetScriptSpeedQuizGiveUpButtonVisuals = LoadPacketScriptButtonVisuals(preferred?["BtGiveup"] as WzSubProperty, fallback?["BtGiveup"] as WzSubProperty);
             _packetScriptSpeedQuizDigits = LoadPacketScriptDigitStrip(preferred?["num1"] as WzSubProperty, fallback?["num1"] as WzSubProperty);
         }
 
@@ -415,17 +487,81 @@ namespace HaCreator.MapSimulator
                 : null;
         }
 
-        private static WzCanvasProperty ResolvePacketScriptButtonCanvas(WzSubProperty buttonProperty)
+        private PacketScriptButtonVisuals LoadPacketScriptButtonVisuals(WzSubProperty preferred, WzSubProperty fallback)
         {
-            return buttonProperty?["normal"]?["0"] as WzCanvasProperty
-                ?? buttonProperty?["normal"]?.WzProperties.OfType<WzCanvasProperty>().FirstOrDefault()
-                ?? buttonProperty?.WzProperties.OfType<WzCanvasProperty>().FirstOrDefault();
+            Texture2D normal = LoadUiCanvasTexture(ResolvePacketScriptButtonCanvas(preferred, fallback, "normal"));
+            Texture2D hover = LoadUiCanvasTexture(ResolvePacketScriptButtonCanvas(preferred, fallback, "mouseOver"));
+            Texture2D pressed = LoadUiCanvasTexture(ResolvePacketScriptButtonCanvas(preferred, fallback, "pressed"));
+            Texture2D disabled = LoadUiCanvasTexture(ResolvePacketScriptButtonCanvas(preferred, fallback, "disabled"));
+            Texture2D keyFocused = LoadUiCanvasTexture(ResolvePacketScriptButtonCanvas(preferred, fallback, "keyFocused"));
+            return normal != null || hover != null || pressed != null || disabled != null || keyFocused != null
+                ? new PacketScriptButtonVisuals(normal, hover, pressed, disabled, keyFocused)
+                : null;
         }
 
-        private static WzCanvasProperty ResolvePacketScriptAnimatedCanvas(WzSubProperty animationProperty)
+        private static WzCanvasProperty ResolvePacketScriptButtonCanvas(WzSubProperty preferred, WzSubProperty fallback, string stateName)
         {
-            return animationProperty?["0"] as WzCanvasProperty
-                ?? animationProperty?.WzProperties.OfType<WzCanvasProperty>().FirstOrDefault();
+            return ResolvePacketScriptIndexedCanvas(preferred?[stateName] as WzSubProperty)
+                ?? ResolvePacketScriptIndexedCanvas(fallback?[stateName] as WzSubProperty)
+                ?? preferred?[stateName] as WzCanvasProperty
+                ?? fallback?[stateName] as WzCanvasProperty;
+        }
+
+        private PacketScriptAnimationStrip LoadPacketScriptAnimationStrip(WzSubProperty preferred, WzSubProperty fallback)
+        {
+            WzSubProperty source = preferred ?? fallback;
+            if (source == null)
+            {
+                return null;
+            }
+
+            List<(int Index, WzCanvasProperty Canvas, int Delay)> frames = new();
+            foreach (WzCanvasProperty canvas in source.WzProperties.OfType<WzCanvasProperty>())
+            {
+                if (!int.TryParse(canvas.Name, out int index))
+                {
+                    continue;
+                }
+
+                int delay = (canvas["delay"] as MapleLib.WzLib.WzProperties.WzIntProperty)?.Value ?? 100;
+                frames.Add((index, canvas, Math.Max(1, delay)));
+            }
+
+            if (frames.Count == 0)
+            {
+                return null;
+            }
+
+            Texture2D[] textures = frames
+                .OrderBy(static frame => frame.Index)
+                .Select(frame => LoadUiCanvasTexture(frame.Canvas))
+                .ToArray();
+            int[] delays = frames
+                .OrderBy(static frame => frame.Index)
+                .Select(static frame => frame.Delay)
+                .ToArray();
+            return textures.Any(static texture => texture != null)
+                ? new PacketScriptAnimationStrip(textures, delays)
+                : null;
+        }
+
+        private static WzCanvasProperty ResolvePacketScriptIndexedCanvas(WzSubProperty property)
+        {
+            return property?["0"] as WzCanvasProperty
+                ?? property?.WzProperties.OfType<WzCanvasProperty>().OrderBy(static canvas => canvas.Name, StringComparer.Ordinal).FirstOrDefault();
+        }
+
+        private static Texture2D ResolvePacketScriptAnimationFrame(PacketScriptAnimationStrip strip, int currentTickCount)
+        {
+            if (strip?.Frames == null || strip.Frames.Length == 0)
+            {
+                return null;
+            }
+
+            int frameIndex = PacketScriptOwnerVisualStateResolver.ResolveAnimatedFrameIndex(currentTickCount, strip.FrameDurationsMs);
+            return frameIndex >= 0 && frameIndex < strip.Frames.Length
+                ? strip.Frames[frameIndex]
+                : strip.Frames[0];
         }
     }
 }

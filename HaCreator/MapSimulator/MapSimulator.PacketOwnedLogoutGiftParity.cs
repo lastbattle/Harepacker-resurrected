@@ -15,6 +15,12 @@ namespace HaCreator.MapSimulator
     {
         private const int PacketOwnedLogoutGiftEntryCount = 3;
         private const int PacketOwnedLogoutGiftSelectionOpcode = 313;
+        private static readonly string[] PacketOwnedLogoutGiftUiImageNames =
+        {
+            "UIWindow.img",
+            "UIWindow2.img"
+        };
+
         private const string PacketOwnedLogoutGiftUiPath = "LogoutGift/backgrnd";
         private const int PacketOwnedLogoutGiftCompletionStringPoolId = 0x16AB;
         private const string PacketOwnedLogoutGiftCompletionFallbackText = "Congratulations! Please come back in 3 days. Thank you!";
@@ -142,21 +148,19 @@ namespace HaCreator.MapSimulator
             string commoditySuffix = commoditySerialNumber > 0
                 ? $" Commodity SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)} remains cached for preview."
                 : " The cached slot is empty, but the client still emits the slot index.";
-            string followUpMessage = BuildPacketOwnedLogoutGiftCompletionMessage();
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.LogoutGift);
-            string continuationSuffix = CompletePacketOwnedLogoutGiftContinuation();
+            string followUpMessage = ShowPacketOwnedLogoutGiftCompletionDialog();
             _lastPacketOwnedLogoutGiftSummary =
-                $"Simulated CUILogoutGift::OnButtonClicked outpacket {PacketOwnedLogoutGiftSelectionOpcode} with slot index {index.ToString(CultureInfo.InvariantCulture)} (button {1000 + index}).{commoditySuffix} {DispatchPacketOwnedLogoutGiftSelectionRequest(index)} Client follow-up util dialog (StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)}): {followUpMessage}{continuationSuffix}";
+                $"Simulated CUILogoutGift::OnButtonClicked outpacket {PacketOwnedLogoutGiftSelectionOpcode} with slot index {index.ToString(CultureInfo.InvariantCulture)} (button {1000 + index}).{commoditySuffix} {DispatchPacketOwnedLogoutGiftSelectionRequest(index)} {followUpMessage}";
             return _lastPacketOwnedLogoutGiftSummary;
         }
 
         private string ClosePacketOwnedLogoutGiftWindow()
         {
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.LogoutGift);
-            string completionMessage = BuildPacketOwnedLogoutGiftCompletionMessage();
-            string continuationSuffix = CompletePacketOwnedLogoutGiftContinuation();
+            string completionMessage = ShowPacketOwnedLogoutGiftCompletionDialog();
             _lastPacketOwnedLogoutGiftSummary =
-                $"Closed the packet-owned logout-gift owner. Client TryShowLogoutGiftDialog follow-up util dialog (StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)}): {completionMessage}{continuationSuffix}";
+                $"Closed the packet-owned logout-gift owner. {completionMessage}";
             return _lastPacketOwnedLogoutGiftSummary;
         }
 
@@ -166,6 +170,20 @@ namespace HaCreator.MapSimulator
                 PacketOwnedLogoutGiftContinuation.ExitSimulator,
                 "Game menu quit",
                 out message);
+        }
+
+        private bool TryHandleConfirmedUtilityQuit(out string message)
+        {
+            if (TryLaunchPacketOwnedLogoutGiftForUtilityQuit(out message))
+            {
+                return true;
+            }
+
+            message = string.IsNullOrWhiteSpace(message)
+                ? "CWvsContext::UI_Menu quit flow continued directly because CUILogoutGift::TryShowLogoutGiftDialog did not surface a modal owner."
+                : $"{message} CWvsContext::UI_Menu therefore continues the quit flow without surfacing CUILogoutGift.";
+            _lastPacketOwnedLogoutGiftSummary = message;
+            return false;
         }
 
         private bool TryApplyPacketOwnedLogoutGiftPayload(byte[] payload, out string message)
@@ -387,9 +405,17 @@ namespace HaCreator.MapSimulator
                 return _packetOwnedLogoutGiftFrameTexture;
             }
 
-            WzImage uiWindowImage = global::HaCreator.Program.FindImage("UI", "UIWindow.img");
-            WzCanvasProperty backgroundCanvas = uiWindowImage?[PacketOwnedLogoutGiftUiPath] as WzCanvasProperty;
-            _packetOwnedLogoutGiftFrameTexture = LoadUiCanvasTexture(backgroundCanvas);
+            foreach (string imageName in PacketOwnedLogoutGiftUiImageNames)
+            {
+                WzImage uiWindowImage = global::HaCreator.Program.FindImage("UI", imageName);
+                WzCanvasProperty backgroundCanvas = uiWindowImage?[PacketOwnedLogoutGiftUiPath] as WzCanvasProperty;
+                _packetOwnedLogoutGiftFrameTexture = LoadUiCanvasTexture(backgroundCanvas);
+                if (_packetOwnedLogoutGiftFrameTexture != null)
+                {
+                    break;
+                }
+            }
+
             return _packetOwnedLogoutGiftFrameTexture;
         }
 
@@ -441,6 +467,38 @@ namespace HaCreator.MapSimulator
                 PacketOwnedLogoutGiftCompletionFallbackText,
                 appendFallbackSuffix: true,
                 minimumHexWidth: 4);
+        }
+
+        private string ShowPacketOwnedLogoutGiftCompletionDialog()
+        {
+            string completionMessage = BuildPacketOwnedLogoutGiftCompletionMessage();
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LoginUtilityDialog) is LoginUtilityDialogWindow)
+            {
+                ShowLoginUtilityDialog(
+                    "Logout Gift",
+                    completionMessage,
+                    LoginUtilityDialogButtonLayout.Ok,
+                    LoginUtilityDialogAction.LogoutGiftCompletion);
+                return
+                    $"Surfaced the client follow-up util dialog through the shared LoginUtilityDialog owner (StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)}): {completionMessage}";
+            }
+
+            string continuationSuffix = CompletePacketOwnedLogoutGiftContinuation();
+            return
+                $"Client follow-up util dialog owner was unavailable, so the simulator kept StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)} local: {completionMessage}{continuationSuffix}";
+        }
+
+        private void HandlePacketOwnedLogoutGiftCompletionDialogDismissed()
+        {
+            string continuationSuffix = CompletePacketOwnedLogoutGiftContinuation();
+            _lastPacketOwnedLogoutGiftSummary = string.IsNullOrWhiteSpace(continuationSuffix)
+                ? $"Dismissed the logout-gift completion util dialog (StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)})."
+                : $"Dismissed the logout-gift completion util dialog (StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)}).{continuationSuffix}";
+
+            if (string.IsNullOrWhiteSpace(continuationSuffix))
+            {
+                ShowUtilityFeedbackMessage(_lastPacketOwnedLogoutGiftSummary);
+            }
         }
 
         private string DispatchPacketOwnedLogoutGiftSelectionRequest(int index)

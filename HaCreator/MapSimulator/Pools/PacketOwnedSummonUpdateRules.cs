@@ -8,17 +8,6 @@ namespace HaCreator.MapSimulator.Pools
 {
     internal static class PacketOwnedSummonUpdateRules
     {
-        private const int ClientConfirmedPhoenixLegacySkillId = 3121006;
-        private const int ClientConfirmedPhoenixCurrentSkillId = 3120010;
-        private const int ClientConfirmedSilverHawkLegacySkillId = 3111005;
-        private const int ClientConfirmedFrostpreyLegacySkillId = 3221005;
-        private const int ClientConfirmedFrostpreyCurrentSkillId = 3211005;
-        private const int ClientConfirmedShadowMesoReactiveSkillId = 4111007;
-        private const float ClientConfirmedReactiveChainSourceOffsetX = 25f;
-        private const float ClientConfirmedReactiveChainSourceOffsetY = -25f;
-        private const float ClientConfirmedReactiveChainMaxDistance = 600f;
-        private const int ClientConfirmedReactiveChainTargetInset = 10;
-
         public static SummonMovementStyle ResolveEffectiveMovementStyle(ActiveSummon summon)
         {
             if (summon == null)
@@ -185,22 +174,25 @@ namespace HaCreator.MapSimulator.Pools
 
         public static bool ShouldRegisterClientOwnedAttackTileOverlay(ActiveSummon summon)
         {
-            if (summon?.SkillData?.ZoneAnimation?.Frames.Count <= 0)
-            {
-                return false;
-            }
-
-            return summon.SkillId == ClientConfirmedPhoenixLegacySkillId
-                   || summon.SkillId == ClientConfirmedPhoenixCurrentSkillId
-                   || summon.SkillId == ClientConfirmedSilverHawkLegacySkillId
-                   || summon.SkillId == ClientConfirmedFrostpreyLegacySkillId
-                   || summon.SkillId == ClientConfirmedFrostpreyCurrentSkillId;
+            return summon != null
+                   && SummonClientPostEffectRules.ShouldRegisterAttackTileOverlay(
+                       summon.SkillId,
+                       summon.SkillData?.ZoneAnimation);
         }
 
         public static bool ShouldRegisterClientOwnedReactiveAttackChainEffect(ActiveSummon summon)
         {
-            return summon?.SkillId == ClientConfirmedShadowMesoReactiveSkillId
-                   && HasClientOwnedReactiveAttackChainVisual(summon.SkillData);
+            return summon != null
+                   && SummonClientPostEffectRules.ShouldRegisterReactiveAttackChainEffect(
+                       summon.SkillId,
+                       summon.SkillData);
+        }
+
+        internal static int ResolveClientOwnedPostAttackEffectDelayMs(ActiveSummon summon)
+        {
+            return SummonClientPostEffectRules.ResolvePostAttackEffectDelayMs(
+                summon?.SkillData,
+                summon?.CurrentAnimationBranchName);
         }
 
         internal static (Vector2 Source, Vector2 Target) ResolveClientOwnedReactiveAttackChainEndpoints(
@@ -208,51 +200,23 @@ namespace HaCreator.MapSimulator.Pools
             Rectangle targetHitbox,
             bool facingRight)
         {
-            if (summon == null)
-            {
-                return (Vector2.Zero, Vector2.Zero);
-            }
-
-            Vector2 sourceAnchor = new(summon.PositionX, summon.PositionY + ClientConfirmedReactiveChainSourceOffsetY);
-            Vector2 chainSource = new(
-                sourceAnchor.X + (facingRight ? ClientConfirmedReactiveChainSourceOffsetX : -ClientConfirmedReactiveChainSourceOffsetX),
-                sourceAnchor.Y);
-            Vector2 chainTarget = sourceAnchor;
-
-            if (targetHitbox.Width > 0 && targetHitbox.Height > 0)
-            {
-                float centerX = (targetHitbox.Left + targetHitbox.Right) * 0.5f;
-                float insetLeft = targetHitbox.Left + ClientConfirmedReactiveChainTargetInset;
-                float insetRight = targetHitbox.Right - ClientConfirmedReactiveChainTargetInset;
-                float targetX = centerX < summon.PositionX
-                    ? Math.Max(centerX, insetRight)
-                    : Math.Min(centerX, insetLeft);
-                float targetY = MathHelper.Clamp(sourceAnchor.Y, targetHitbox.Top, targetHitbox.Bottom);
-                chainTarget = new Vector2(targetX, targetY);
-
-                Vector2 delta = chainTarget - sourceAnchor;
-                float distance = delta.Length();
-                if (distance > ClientConfirmedReactiveChainMaxDistance && distance > 0f)
-                {
-                    chainTarget = sourceAnchor + delta / distance * ClientConfirmedReactiveChainMaxDistance;
-                }
-            }
-
-            return (chainSource, chainTarget);
+            return summon == null
+                ? (Vector2.Zero, Vector2.Zero)
+                : SummonClientPostEffectRules.ResolveReactiveAttackChainEndpoints(
+                    new Vector2(summon.PositionX, summon.PositionY),
+                    targetHitbox,
+                    facingRight);
         }
 
-        internal static Rectangle BuildClientOwnedAttackTileOverlayArea(Vector2 anchor, ActiveSummon summon)
+        internal static Rectangle BuildClientOwnedAttackTileOverlayArea(
+            Vector2 anchor,
+            ActiveSummon summon,
+            string branchName = null)
         {
-            int left = summon?.SkillData?.SummonAttackRangeLeft ?? 0;
-            int right = summon?.SkillData?.SummonAttackRangeRight ?? 0;
-            int top = summon?.SkillData?.SummonAttackRangeTop ?? 0;
-            int bottom = (summon?.SkillData?.SummonAttackRangeBottom ?? 0) + 100;
-
-            int x = (int)MathF.Round(anchor.X) + left;
-            int y = (int)MathF.Round(anchor.Y) + top;
-            int width = Math.Max(1, right - left);
-            int height = Math.Max(1, bottom - top);
-            return new Rectangle(x, y, width, height);
+            return SummonClientPostEffectRules.BuildAttackTileOverlayArea(
+                anchor,
+                summon?.SkillData,
+                branchName);
         }
 
         internal static Vector2 ResolvePacketOwnedMobAttackHitAnchor(
@@ -348,21 +312,6 @@ namespace HaCreator.MapSimulator.Pools
         private static bool ShouldUseMoveActionFacingForAttack(ActiveSummon summon)
         {
             return SummonRuntimeRules.UsesReactiveDamageTriggerSummon(summon?.SkillData);
-        }
-
-        private static bool HasClientOwnedReactiveAttackChainVisual(SkillData skillData)
-        {
-            if (skillData == null)
-            {
-                return false;
-            }
-
-            if (skillData.SummonProjectileAnimations?.Count > 0)
-            {
-                return true;
-            }
-
-            return skillData.Projectile?.Animation?.Frames.Count > 0;
         }
 
         private static bool IsSpawnAnimationActive(ActiveSummon summon, int currentTime)

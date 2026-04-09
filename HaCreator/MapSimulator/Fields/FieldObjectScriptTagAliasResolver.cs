@@ -28,17 +28,21 @@ namespace HaCreator.MapSimulator.Fields
                 return new PublishedTagMutation(Array.Empty<string>(), Array.Empty<string>());
             }
 
-            string trimmedScriptName = scriptName.Trim();
             var resolvedTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var retiredTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            AddIfAvailable(trimmedScriptName, availableTagSet, resolvedTags);
-            AddQuestScriptAliasCandidates(trimmedScriptName, availableTagSet, resolvedTags);
-
-            if (TryParseTrailingStage(trimmedScriptName, out string scriptBaseName, out int stage))
+            foreach (string candidateScriptName in EnumerateScriptAliasCandidates(scriptName))
             {
-                string camelCaseBaseName = ToCamelCase(scriptBaseName);
-                if (!string.IsNullOrWhiteSpace(camelCaseBaseName))
+                AddIfAvailable(candidateScriptName, availableTagSet, resolvedTags);
+                AddQuestScriptAliasCandidates(candidateScriptName, availableTagSet, resolvedTags);
+
+                if (TryParseTrailingStage(candidateScriptName, out string scriptBaseName, out int stage))
                 {
+                    string camelCaseBaseName = ToCamelCase(scriptBaseName);
+                    if (string.IsNullOrWhiteSpace(camelCaseBaseName))
+                    {
+                        continue;
+                    }
+
                     if (stage <= 1)
                     {
                         AddIfAvailable(camelCaseBaseName, availableTagSet, resolvedTags);
@@ -54,11 +58,10 @@ namespace HaCreator.MapSimulator.Fields
                     }
 
                     AddSiblingStageTags(camelCaseBaseName, stage, availableTagSet, resolvedTags, retiredTags);
+                    continue;
                 }
-            }
-            else
-            {
-                AddIfAvailable(ToCamelCase(trimmedScriptName), availableTagSet, resolvedTags);
+
+                AddIfAvailable(ToCamelCase(candidateScriptName), availableTagSet, resolvedTags);
             }
 
             return new PublishedTagMutation(
@@ -81,6 +84,66 @@ namespace HaCreator.MapSimulator.Fields
             {
                 resolvedTags.Add(candidateTag);
             }
+        }
+
+        private static IEnumerable<string> EnumerateScriptAliasCandidates(string scriptName)
+        {
+            if (string.IsNullOrWhiteSpace(scriptName))
+            {
+                yield break;
+            }
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string candidate in EnumerateScriptAliasCandidatesCore(scriptName.Trim()))
+            {
+                if (!string.IsNullOrWhiteSpace(candidate) && seen.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateScriptAliasCandidatesCore(string scriptName)
+        {
+            yield return scriptName;
+
+            string fileName = TrimPathPrefix(scriptName);
+            if (!string.Equals(fileName, scriptName, StringComparison.OrdinalIgnoreCase))
+            {
+                yield return fileName;
+            }
+
+            string fileStem = TrimFileExtension(fileName);
+            if (!string.Equals(fileStem, fileName, StringComparison.OrdinalIgnoreCase))
+            {
+                yield return fileStem;
+            }
+        }
+
+        private static string TrimPathPrefix(string scriptName)
+        {
+            if (string.IsNullOrWhiteSpace(scriptName))
+            {
+                return scriptName;
+            }
+
+            int separatorIndex = scriptName.LastIndexOfAny(new[] { '/', '\\' });
+            return separatorIndex >= 0 && separatorIndex < scriptName.Length - 1
+                ? scriptName[(separatorIndex + 1)..]
+                : scriptName;
+        }
+
+        private static string TrimFileExtension(string scriptName)
+        {
+            if (string.IsNullOrWhiteSpace(scriptName))
+            {
+                return scriptName;
+            }
+
+            int extensionIndex = scriptName.LastIndexOf('.');
+            return extensionIndex > 0
+                ? scriptName[..extensionIndex]
+                : scriptName;
         }
 
         private static void AddQuestScriptAliasCandidates(

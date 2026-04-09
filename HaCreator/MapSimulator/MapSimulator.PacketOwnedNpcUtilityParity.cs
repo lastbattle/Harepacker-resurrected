@@ -15,6 +15,9 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedNpcShopOutboundOpcode = -1;
         private byte[] _lastPacketOwnedNpcShopOutboundPayload = Array.Empty<byte>();
         private string _lastPacketOwnedNpcShopOutboundSummary;
+        private int _lastPacketOwnedAdminShopOutboundOpcode = -1;
+        private byte[] _lastPacketOwnedAdminShopOutboundPayload = Array.Empty<byte>();
+        private string _lastPacketOwnedAdminShopOutboundSummary;
         private int _lastPacketOwnedStoreBankOutboundOpcode = -1;
         private byte[] _lastPacketOwnedStoreBankOutboundPayload = Array.Empty<byte>();
         private string _lastPacketOwnedStoreBankOutboundSummary;
@@ -116,6 +119,15 @@ namespace HaCreator.MapSimulator
             return $"{_packetOwnedNpcShopRuntime.BuildFooter()} {DescribePacketOwnedNpcUtilityOutboundStatus("shop", _lastPacketOwnedNpcShopOutboundOpcode, _lastPacketOwnedNpcShopOutboundPayload, _lastPacketOwnedNpcShopOutboundSummary)}";
         }
 
+        private string BuildPacketOwnedAdminShopFooter()
+        {
+            return DescribePacketOwnedNpcUtilityOutboundStatus(
+                "admin-shop",
+                _lastPacketOwnedAdminShopOutboundOpcode,
+                _lastPacketOwnedAdminShopOutboundPayload,
+                _lastPacketOwnedAdminShopOutboundSummary);
+        }
+
         private IReadOnlyList<string> BuildPacketOwnedStoreBankLines()
         {
             return _packetOwnedStoreBankRuntime.BuildLines();
@@ -172,6 +184,7 @@ namespace HaCreator.MapSimulator
                 {
                     "Packet-owned NPC utility owner family:",
                     $"Shop: {BuildPacketOwnedNpcShopFooter()}",
+                    $"AdminShop: {BuildPacketOwnedAdminShopFooter()}",
                     $"StoreBank: {BuildPacketOwnedStoreBankFooter()}",
                     $"BattleRecord: {_packetOwnedBattleRecordRuntime.BuildFooter()}"
                 });
@@ -428,6 +441,27 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void HandlePacketOwnedStoreBankGetButtonClick()
+        {
+            if (_packetOwnedStoreBankRuntime.HasPendingGetAllRequest)
+            {
+                bool hasGetAllOutbound = _packetOwnedStoreBankRuntime.TryBuildPendingGetAllOutboundRequest(
+                    out PacketOwnedNpcUtilityOutboundRequest getAllRequest,
+                    out string getAllOutboundError);
+                DispatchPacketOwnedStoreBankOutboundRequest(
+                    hasGetAllOutbound,
+                    getAllRequest,
+                    _packetOwnedStoreBankRuntime.ConsumePendingGetAllRequest(),
+                    getAllOutboundError);
+                return;
+            }
+
+            int selectedRowIndex = uiWindowManager?.GetWindow(MapSimulatorWindowNames.StoreBank) is StoreBankOwnerWindow storeBankWindow
+                ? storeBankWindow.SelectedOwnerRowIndex
+                : -1;
+            _packetOwnedStoreBankRuntime.NotifyOwnerGetButtonPressed(selectedRowIndex);
+        }
+
         private string DispatchPacketOwnedNpcShopOutboundRequest(
             bool hasRequest,
             PacketOwnedNpcUtilityOutboundRequest request,
@@ -442,6 +476,18 @@ namespace HaCreator.MapSimulator
                 ref _lastPacketOwnedNpcShopOutboundOpcode,
                 ref _lastPacketOwnedNpcShopOutboundPayload,
                 ref _lastPacketOwnedNpcShopOutboundSummary);
+        }
+
+        private string DispatchPacketOwnedAdminShopOutboundRequest(PacketOwnedNpcUtilityOutboundRequest request)
+        {
+            return DispatchPacketOwnedNpcUtilityOutboundRequest(
+                true,
+                request,
+                string.Empty,
+                null,
+                ref _lastPacketOwnedAdminShopOutboundOpcode,
+                ref _lastPacketOwnedAdminShopOutboundPayload,
+                ref _lastPacketOwnedAdminShopOutboundSummary).Trim();
         }
 
         private string DispatchPacketOwnedStoreBankOutboundRequest(

@@ -52,6 +52,7 @@ namespace HaCreator.MapSimulator.Interaction
             "Parcel draft state is simulator-owned so UIWindow2.img/Delivery can be exercised without packet auth.";
 
         private readonly List<MemoState> _memos = new();
+        private readonly HashSet<string> _packetOwnedSessionEntrySignatures = new(StringComparer.Ordinal);
         private readonly MemoDraftState _draft = new();
         private ParcelDialogTab _activeTab = ParcelDialogTab.Receive;
         private ParcelDialogTabAvailability _availableTabs = ParcelDialogTabAvailability.All;
@@ -80,13 +81,15 @@ namespace HaCreator.MapSimulator.Interaction
                     Body = memo.Body,
                     Preview = BuildPreview(memo.Body),
                     DeliveredAtText = FormatTimestamp(memo.DeliveredAt),
+                    ClaimDeadlineText = FormatClaimDeadline(memo.ExpirationTimestampUtc),
                     StatusText = BuildStatusText(memo),
                     IsRead = memo.IsRead,
                     IsKept = memo.IsKept,
                     IsQuickDelivery = memo.IsQuickDelivery,
                     HasAttachment = memo.Attachment != null,
-                    CanClaimAttachment = memo.Attachment != null && !memo.Attachment.IsClaimed,
+                    CanClaimAttachment = CanClaimAttachment(memo),
                     IsAttachmentClaimed = memo.Attachment?.IsClaimed == true,
+                    IsExpired = IsExpired(memo),
                     AttachmentSummary = BuildAttachmentSummary(memo.Attachment)
                 })
                 .ToArray();
@@ -145,11 +148,13 @@ namespace HaCreator.MapSimulator.Interaction
                 Sender = memo.Sender,
                 Subject = memo.Subject,
                 DeliveredAtText = FormatTimestamp(memo.DeliveredAt),
+                ClaimDeadlineText = FormatClaimDeadline(memo.ExpirationTimestampUtc),
                 StatusText = BuildStatusText(memo),
                 AttachmentSummary = BuildAttachmentSummary(memo.Attachment),
-                AttachmentDescription = BuildAttachmentDescription(memo.Attachment),
-                CanClaim = memo.Attachment != null && !memo.Attachment.IsClaimed,
-                IsClaimed = memo.Attachment?.IsClaimed == true
+                AttachmentDescription = BuildAttachmentDescription(memo),
+                CanClaim = CanClaimAttachment(memo),
+                IsClaimed = memo.Attachment?.IsClaimed == true,
+                IsExpired = IsExpired(memo)
             };
         }
 
@@ -217,6 +222,12 @@ namespace HaCreator.MapSimulator.Interaction
             ParcelDialogTab activeTab,
             out string message)
         {
+            HashSet<string> previousSignatures = _packetOwnedSessionEntrySignatures.Count > 0
+                ? new HashSet<string>(_packetOwnedSessionEntrySignatures, StringComparer.Ordinal)
+                : null;
+            var refreshedSignatures = new HashSet<string>(StringComparer.Ordinal);
+            List<string> newlyHydratedBodies = previousSignatures == null ? null : new();
+
             _memos.Clear();
             _nextMemoId = 1;
 
@@ -230,22 +241,59 @@ namespace HaCreator.MapSimulator.Interaction
                         continue;
                     }
 
+                    int attachmentMeso = ResolvePacketOwnedAttachmentMeso(entry);
+                    string resolvedSubject = ResolvePacketOwnedParcelSubject(entry);
+                    string resolvedBody = ResolvePacketOwnedParcelBody(entry);
+                    string signature = BuildPacketOwnedParcelEntrySignature(
+                        entry.ParcelSerial,
+                        entry.Sender,
+                        resolvedSubject,
+                        resolvedBody,
+                        entry.IsQuickDelivery,
+                        entry.AttachmentItemId,
+                        entry.AttachmentQuantity,
+                        attachmentMeso,
+                        entry.ExpirationTimestampUtc);
+                    refreshedSignatures.Add(signature);
+
                     DeliverMemo(
                         entry.ParcelSerial > 0 ? entry.ParcelSerial : null,
                         entry.Sender,
-                        ResolvePacketOwnedParcelSubject(entry),
-                        ResolvePacketOwnedParcelBody(entry),
+                        resolvedSubject,
+                        resolvedBody,
                         displayTime,
                         isRead: entry.IsRead,
                         isKept: entry.IsKept,
                         isQuickDelivery: entry.IsQuickDelivery,
                         attachmentItemId: entry.AttachmentItemId,
                         attachmentQuantity: entry.AttachmentQuantity,
-                        attachmentMeso: ResolvePacketOwnedAttachmentMeso(entry),
+                        attachmentMeso: attachmentMeso,
                         isAttachmentClaimed: entry.IsAttachmentClaimed,
                         expirationTimestampUtc: entry.ExpirationTimestampUtc,
                         notifySocialText: false);
+
+                    if (previousSignatures != null
+                        && !previousSignatures.Contains(signature)
+                        && !string.IsNullOrWhiteSpace(resolvedBody))
+                    {
+                        newlyHydratedBodies?.Add(resolvedBody.Trim());
+                    }
+
                     displayTime = displayTime.AddSeconds(-1);
+                }
+            }
+
+            _packetOwnedSessionEntrySignatures.Clear();
+            foreach (string signature in refreshedSignatures)
+            {
+                _packetOwnedSessionEntrySignatures.Add(signature);
+            }
+
+            if (newlyHydratedBodies != null)
+            {
+                foreach (string body in newlyHydratedBodies)
+                {
+                    NotifySocialChatObserved(body);
                 }
             }
 
@@ -433,6 +481,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _memos.Clear();
             _nextMemoId = 1;
+            _packetOwnedSessionEntrySignatures.Clear();
             ResetTabAvailability();
             _lastActionSummary = "Cleared the parcel receive session.";
         }
@@ -441,6 +490,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _memos.Clear();
             _nextMemoId = 1;
+            _packetOwnedSessionEntrySignatures.Clear();
             ResetTabAvailability();
             SeedDefaultParcels();
             _lastActionSummary = "Restored the seeded parcel receive session.";
@@ -560,6 +610,16 @@ namespace HaCreator.MapSimulator.Interaction
                 isAttachmentClaimed: isClaimed,
                 expirationTimestampUtc: expirationTimestampUtc,
                 notifySocialText: true);
+            _packetOwnedSessionEntrySignatures.Add(BuildPacketOwnedParcelEntrySignature(
+                memoId ?? 0,
+                sender,
+                resolvedSubject,
+                body,
+                isQuickDelivery,
+                attachmentItemId,
+                attachmentQuantity,
+                attachmentMeso,
+                expirationTimestampUtc));
             message = $"Queued packet-owned parcel '{resolvedSubject}' from {sender.Trim()}.";
             _lastActionSummary = message;
             return true;
@@ -614,7 +674,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool CanClaimAttachment(int memoId)
         {
             MemoState memo = FindMemo(memoId);
-            return memo?.Attachment != null && !memo.Attachment.IsClaimed;
+            return CanClaimAttachment(memo);
         }
 
         internal bool TryClaimAttachment(int memoId, out string message)
@@ -629,6 +689,14 @@ namespace HaCreator.MapSimulator.Interaction
             if (memo.Attachment.IsClaimed)
             {
                 message = "This memo attachment has already been claimed.";
+                return false;
+            }
+
+            if (IsExpired(memo))
+            {
+                message = memo.ExpirationTimestampUtc.HasValue
+                    ? $"This parcel package expired on {memo.ExpirationTimestampUtc.Value.ToLocalTime():yyyy.MM.dd HH:mm}."
+                    : "This parcel package can no longer be claimed.";
                 return false;
             }
 
@@ -1002,24 +1070,41 @@ namespace HaCreator.MapSimulator.Interaction
             return requestedMemoId.Value;
         }
 
-        private static string BuildAttachmentDescription(MemoAttachmentState attachment)
+        private static string BuildAttachmentDescription(MemoState memo)
         {
+            MemoAttachmentState attachment = memo?.Attachment;
             if (attachment == null)
             {
                 return "No package is attached to this memo.";
             }
 
-            return attachment.Kind switch
+            string description = attachment.Kind switch
             {
                 MemoAttachmentKind.Item => $"Item package: {ResolveItemName(attachment.ItemId)} x{Math.Max(1, attachment.Quantity)}.",
                 MemoAttachmentKind.Meso => $"Meso package: {attachment.Meso:N0} meso.",
                 _ => "No package is attached to this memo."
             };
+
+            if (memo?.ExpirationTimestampUtc.HasValue == true)
+            {
+                description += IsExpired(memo)
+                    ? $" Claim deadline passed at {memo.ExpirationTimestampUtc.Value.ToLocalTime():yyyy.MM.dd HH:mm}."
+                    : $" Claim deadline: {memo.ExpirationTimestampUtc.Value.ToLocalTime():yyyy.MM.dd HH:mm}.";
+            }
+
+            return description;
         }
 
         private static string FormatTimestamp(DateTimeOffset deliveredAt)
         {
             return deliveredAt.ToLocalTime().ToString("yyyy.MM.dd HH:mm");
+        }
+
+        private static string FormatClaimDeadline(DateTimeOffset? expirationTimestampUtc)
+        {
+            return expirationTimestampUtc.HasValue
+                ? expirationTimestampUtc.Value.ToLocalTime().ToString("yyyy.MM.dd HH:mm")
+                : string.Empty;
         }
 
         private static string BuildStatusText(MemoState memo)
@@ -1035,7 +1120,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (memo.ExpirationTimestampUtc.HasValue
-                && memo.ExpirationTimestampUtc.Value.ToLocalTime() <= DateTimeOffset.Now)
+                && IsExpired(memo))
             {
                 return "Expired";
             }
@@ -1056,6 +1141,19 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return memo.IsRead ? "Read" : "Unread";
+        }
+
+        private static bool CanClaimAttachment(MemoState memo)
+        {
+            return memo?.Attachment != null
+                && !memo.Attachment.IsClaimed
+                && !IsExpired(memo);
+        }
+
+        private static bool IsExpired(MemoState memo)
+        {
+            return memo?.ExpirationTimestampUtc.HasValue == true
+                && memo.ExpirationTimestampUtc.Value.ToLocalTime() <= DateTimeOffset.Now;
         }
 
         private string BuildModeSummary()
@@ -1167,6 +1265,29 @@ namespace HaCreator.MapSimulator.Interaction
             return normalized.Length <= 24
                 ? normalized
                 : normalized.Substring(0, 21) + "...";
+        }
+
+        private static string BuildPacketOwnedParcelEntrySignature(
+            int parcelSerial,
+            string sender,
+            string subject,
+            string body,
+            bool isQuickDelivery,
+            int attachmentItemId,
+            int attachmentQuantity,
+            int attachmentMeso,
+            DateTimeOffset? expirationTimestampUtc)
+        {
+            return string.Join("|",
+                parcelSerial.ToString(),
+                sender?.Trim() ?? string.Empty,
+                subject?.Trim() ?? string.Empty,
+                body?.Trim() ?? string.Empty,
+                isQuickDelivery ? "1" : "0",
+                attachmentItemId.ToString(),
+                attachmentQuantity.ToString(),
+                attachmentMeso.ToString(),
+                expirationTimestampUtc?.UtcTicks.ToString() ?? string.Empty);
         }
 
         private static string ResolveItemName(int itemId)

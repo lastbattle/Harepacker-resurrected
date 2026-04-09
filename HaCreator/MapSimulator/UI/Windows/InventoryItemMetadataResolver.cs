@@ -2,6 +2,7 @@ using MapleLib.ClientLib;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using HaCreator.MapSimulator.Managers;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -9,6 +10,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -32,11 +34,33 @@ namespace HaCreator.MapSimulator.UI
         public IReadOnlyList<string> MetadataLines { get; init; } = Array.Empty<string>();
     }
 
+    public readonly struct SkillBookUseMetadata
+    {
+        public SkillBookUseMetadata(
+            int masterLevel,
+            int requiredSkillLevel,
+            int successRatePercent,
+            IReadOnlyList<int> skillIds)
+        {
+            MasterLevel = masterLevel;
+            RequiredSkillLevel = requiredSkillLevel;
+            SuccessRatePercent = successRatePercent;
+            SkillIds = skillIds ?? Array.Empty<int>();
+        }
+
+        public int MasterLevel { get; }
+        public int RequiredSkillLevel { get; }
+        public int SuccessRatePercent { get; }
+        public IReadOnlyList<int> SkillIds { get; }
+        public bool IsValid => MasterLevel > 0 && SkillIds.Count > 0;
+    }
+
     public static class InventoryItemMetadataResolver
     {
         private const int DefaultStackLimit = 100;
         private const int RewardPreviewLineLimit = 5;
         private const int ConsumeItemRequirementLineLimit = 4;
+        private static readonly Regex SkillBookSuccessRateRegex = new(@"(\d+)\s*%\s*chance", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly (string Key, string Label)[] CurableStatusEffectKeys =
         {
             ("poison", "Poison"),
@@ -191,24 +215,56 @@ namespace HaCreator.MapSimulator.UI
                 : false;
         }
 
+        public static bool TryResolveSkillBookUseMetadata(int itemId, out SkillBookUseMetadata metadata)
+        {
+            metadata = default;
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            if (itemProperty?["info"] is not WzSubProperty infoProperty)
+            {
+                return false;
+            }
+
+            int masterLevel = GetIntValue(infoProperty["masterLevel"]);
+            if (masterLevel <= 0 || infoProperty["skill"] is not WzSubProperty skillProperty)
+            {
+                return false;
+            }
+
+            List<int> skillIds = new();
+            HashSet<int> seenSkillIds = new();
+            foreach (WzImageProperty child in skillProperty.WzProperties)
+            {
+                int skillId = GetIntValue(child);
+                if (skillId > 0 && seenSkillIds.Add(skillId))
+                {
+                    skillIds.Add(skillId);
+                }
+            }
+
+            if (skillIds.Count <= 0)
+            {
+                return false;
+            }
+
+            int requiredSkillLevel = GetIntValue(infoProperty["reqSkillLevel"]);
+            int successRatePercent = TryResolveItemDescription(itemId, out string description)
+                ? TryResolveSkillBookSuccessRate(description)
+                : 100;
+            metadata = new SkillBookUseMetadata(
+                masterLevel,
+                requiredSkillLevel,
+                successRatePercent,
+                skillIds);
+            return metadata.IsValid;
+        }
+
         public static bool TryResolveSpecScript(int itemId, out string script)
         {
             script = null;
 
             WzSubProperty itemProperty = LoadItemProperty(itemId);
-            if (itemProperty?["spec"] is not WzSubProperty specProperty)
-            {
-                return false;
-            }
-
-            string resolvedScript = (specProperty["script"] as WzStringProperty)?.Value;
-            if (string.IsNullOrWhiteSpace(resolvedScript))
-            {
-                return false;
-            }
-
-            script = resolvedScript.Trim();
-            return true;
+            return TryResolveSpecScript(itemProperty?["spec"] as WzSubProperty, out script);
         }
 
         public static bool TryResolveSpecNpc(int itemId, out int npcId)
@@ -244,6 +300,17 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        public static bool HasAuthoredNpcInteraction(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            return HasAuthoredNpcInteraction(itemProperty);
         }
 
         public static bool IsNotConsumedOnUse(int itemId)
@@ -510,6 +577,17 @@ namespace HaCreator.MapSimulator.UI
             return itemImage[itemNodeName] as WzSubProperty;
         }
 
+        private static int TryResolveSkillBookSuccessRate(string description)
+        {
+            Match match = SkillBookSuccessRateRegex.Match(description ?? string.Empty);
+            if (!match.Success || !int.TryParse(match.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value))
+            {
+                return 100;
+            }
+
+            return Math.Clamp(value, 0, 100);
+        }
+
         private static bool TryResolveNpcValue(WzSubProperty property, out int npcId)
         {
             npcId = 0;
@@ -521,6 +599,27 @@ namespace HaCreator.MapSimulator.UI
 
             npcId = resolvedNpcId;
             return true;
+        }
+
+        internal static bool TryResolveSpecScript(WzSubProperty specProperty, out string script)
+        {
+            script = null;
+
+            string resolvedScript = (specProperty?["script"] as WzStringProperty)?.Value;
+            if (string.IsNullOrWhiteSpace(resolvedScript))
+            {
+                return false;
+            }
+
+            script = resolvedScript.Trim();
+            return true;
+        }
+
+        internal static bool HasAuthoredNpcInteraction(WzSubProperty itemProperty)
+        {
+            return TryResolveNpcValue(itemProperty?["spec"] as WzSubProperty, out _)
+                   || TryResolveNpcValue(itemProperty?["info"] as WzSubProperty, out _)
+                   || TryResolveSpecScript(itemProperty?["spec"] as WzSubProperty, out _);
         }
 
         private static uint ComputeItemCommonCrc(int itemId, WzSubProperty itemProperty)
@@ -1285,6 +1384,8 @@ namespace HaCreator.MapSimulator.UI
             AppendRecoveryRateMetadataLines(metadataLines, infoProperty);
             AppendRandomChairEffectMetadataLines(metadataLines, infoProperty);
             AppendAdditionalExperienceMetadataLines(metadataLines, infoProperty);
+            AppendLevelUpWarningMetadataLines(metadataLines, infoProperty);
+            AppendRecipeMetadataLines(metadataLines, specProperty);
             AppendCashAvailabilityMetadataLines(metadataLines, infoProperty);
             AppendAdditionalInfoFlagsMetadataLines(metadataLines, infoProperty, specProperty);
         }
@@ -1557,6 +1658,96 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static void AppendLevelUpWarningMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty?["LvUpWarning"] is not WzSubProperty warningProperty
+                || warningProperty.WzProperties == null)
+            {
+                return;
+            }
+
+            SortedDictionary<string, List<int>> warningsByText = new(StringComparer.Ordinal);
+            foreach (WzImageProperty child in warningProperty.WzProperties)
+            {
+                if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int level)
+                    || level <= 0)
+                {
+                    continue;
+                }
+
+                string warningText = NormalizeTooltipText(GetStringValue(child));
+                if (string.IsNullOrWhiteSpace(warningText))
+                {
+                    continue;
+                }
+
+                if (!warningsByText.TryGetValue(warningText, out List<int> levels))
+                {
+                    levels = new List<int>();
+                    warningsByText[warningText] = levels;
+                }
+
+                if (!levels.Contains(level))
+                {
+                    levels.Add(level);
+                }
+            }
+
+            foreach (KeyValuePair<string, List<int>> entry in warningsByText)
+            {
+                entry.Value.Sort();
+                string levelLabel = string.Join("/", entry.Value.ConvertAll(
+                    level => level.ToString(CultureInfo.InvariantCulture)));
+                metadataLines.Add($"Level-up warning (Lv. {levelLabel}): {entry.Key}");
+            }
+        }
+
+        private static string GetStringValue(WzImageProperty property)
+        {
+            return property switch
+            {
+                WzStringProperty stringProperty => stringProperty.Value,
+                WzIntProperty intProperty => intProperty.Value.ToString(CultureInfo.InvariantCulture),
+                WzLongProperty longProperty => longProperty.Value.ToString(CultureInfo.InvariantCulture),
+                _ => null
+            };
+        }
+
+        private static void AppendRecipeMetadataLines(List<string> metadataLines, WzSubProperty specProperty)
+        {
+            if (specProperty == null)
+            {
+                return;
+            }
+
+            int recipeId = GetIntOrStringValue(specProperty["recipe"]);
+            if (recipeId > 0)
+            {
+                string recipeLine = TryResolveMakerRecipeFamily(recipeId, out string familyLabel)
+                    ? $"Recipe: {familyLabel} recipe #{recipeId.ToString(CultureInfo.InvariantCulture)}"
+                    : $"Recipe: #{recipeId.ToString(CultureInfo.InvariantCulture)}";
+                metadataLines.Add(recipeLine);
+            }
+
+            int requiredSkillLevel = GetIntOrStringValue(specProperty["reqSkillLevel"]);
+            if (requiredSkillLevel > 0)
+            {
+                metadataLines.Add($"Maker Skill Level Required: {requiredSkillLevel.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            int recipeUseCount = GetIntOrStringValue(specProperty["recipeUseCount"]);
+            if (recipeUseCount > 0)
+            {
+                metadataLines.Add($"Recipe Uses: {recipeUseCount.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            int recipeValidDays = GetIntOrStringValue(specProperty["recipeValidDay"]);
+            if (recipeValidDays > 0)
+            {
+                metadataLines.Add($"Recipe valid for {FormatDayCount(recipeValidDays)}");
+            }
+        }
+
         private static void AppendCashAvailabilityMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
         {
             if (infoProperty == null)
@@ -1639,6 +1830,8 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add("Not consumed on use");
             }
 
+            AppendPetUtilityMetadataLines(metadataLines, infoProperty);
+
             int expRate = GetIntOrStringValue(infoProperty["expRate"]);
             if (expRate > 0)
             {
@@ -1674,6 +1867,49 @@ namespace HaCreator.MapSimulator.UI
             }
 
             AppendPersonalityExperienceMetadataLines(metadataLines, infoProperty, specProperty);
+        }
+
+        private static void AppendPetUtilityMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            if (GetIntValue(infoProperty["pickupItem"]) == 1)
+            {
+                metadataLines.Add("Automatically loots items");
+            }
+
+            if (GetIntValue(infoProperty["sweepForDrop"]) == 1)
+            {
+                metadataLines.Add("Sweeps nearby drops");
+            }
+
+            if (GetIntValue(infoProperty["consumeHP"]) == 1)
+            {
+                metadataLines.Add("Automatically consumes HP items");
+            }
+
+            if (GetIntValue(infoProperty["consumeMP"]) == 1)
+            {
+                metadataLines.Add("Automatically consumes MP items");
+            }
+
+            if (GetIntValue(infoProperty["useBasicSkill"]) == 1)
+            {
+                metadataLines.Add("Uses pet basic skills");
+            }
+
+            if (GetIntValue(infoProperty["noScroll"]) == 1)
+            {
+                metadataLines.Add("Cannot use pet scrolls");
+            }
+
+            if (GetIntValue(infoProperty["noRevive"]) == 1)
+            {
+                metadataLines.Add("Cannot be revived");
+            }
         }
 
         private static void AppendPersonalityExperienceMetadataLines(
@@ -1840,6 +2076,35 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return $"Item #{itemId.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        private static bool TryResolveMakerRecipeFamily(int recipeId, out string familyLabel)
+        {
+            familyLabel = null;
+            if (recipeId <= 0)
+            {
+                return false;
+            }
+
+            ItemMakerRecipeFamily family = (recipeId / 10000) switch
+            {
+                9201 => ItemMakerRecipeFamily.Gloves,
+                9202 => ItemMakerRecipeFamily.Shoes,
+                9203 => ItemMakerRecipeFamily.Toys,
+                9200 => ItemMakerRecipeFamily.Generic,
+                _ => (ItemMakerRecipeFamily)(-1)
+            };
+
+            familyLabel = family switch
+            {
+                ItemMakerRecipeFamily.Gloves => "Glove",
+                ItemMakerRecipeFamily.Shoes => "Shoe",
+                ItemMakerRecipeFamily.Toys => "Toy",
+                ItemMakerRecipeFamily.Generic => "Generic",
+                _ => null
+            };
+
+            return !string.IsNullOrWhiteSpace(familyLabel);
         }
 
         private static string ResolveSkillTooltipLine(int skillId)

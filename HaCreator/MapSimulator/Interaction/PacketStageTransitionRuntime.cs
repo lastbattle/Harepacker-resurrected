@@ -30,7 +30,7 @@ namespace HaCreator.MapSimulator.Interaction
             0x40UL
         };
 
-        private const ulong CharacterDataKnownTailDirectDecodeUnsupportedFlags = 0x3D700UL;
+        private const ulong CharacterDataKnownOpaquePreMapTransferFlags = 0x38000UL;
         private const int CharacterDataMiniGameRecordByteLength = 0x14;
         private const int CharacterDataCoupleRecordByteLength = 0x21;
         private const int CharacterDataFriendRecordByteLength = 0x25;
@@ -42,6 +42,14 @@ namespace HaCreator.MapSimulator.Interaction
             MiniGameOnly,
             RelationshipsOnly,
             MiniGameAndRelationships
+        }
+
+        private enum CharacterDataPreMapTransferSectionLayout
+        {
+            None = 0,
+            SkillOnly,
+            SkillAndExpired,
+            SkillAndExpiredAndCooldown
         }
 
         private int _boundMapId = int.MinValue;
@@ -177,6 +185,7 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyDictionary<byte, int> visibleEquipmentByBodyPart = null,
             IReadOnlyDictionary<byte, int> hiddenEquipmentByBodyPart = null,
             int weaponStickerItemId = 0,
+            ulong additionalCharacterDataFlags = 0,
             byte[] characterDataTail = null,
             byte[] logoutGiftConfigPayload = null,
             long serverFileTime = 0)
@@ -211,7 +220,7 @@ namespace HaCreator.MapSimulator.Interaction
                     characterDataFlags |= 0x4UL;
                 }
 
-                writer.Write(characterDataFlags);
+                writer.Write(characterDataFlags | additionalCharacterDataFlags);
                 writer.Write((byte)0); // nCombatOrders
                 writer.Write((byte)0); // bBackwardUpdate
                 WriteCharacterDataStatAndTrailer(
@@ -1300,11 +1309,6 @@ namespace HaCreator.MapSimulator.Interaction
             out PacketCharacterDataSnapshot decoratedSnapshot)
         {
             decoratedSnapshot = snapshot;
-            if ((characterDataFlags & CharacterDataKnownTailDirectDecodeUnsupportedFlags) != 0)
-            {
-                return false;
-            }
-
             long startPosition = reader.BaseStream.Position;
             foreach (CharacterDataLeadingTailLayout leadingLayout in Enum.GetValues(typeof(CharacterDataLeadingTailLayout)))
             {
@@ -1339,6 +1343,83 @@ namespace HaCreator.MapSimulator.Interaction
             long startPosition = reader.BaseStream.Position;
             try
             {
+                if (!TryDecodeCharacterDataPreMapTransferSections(
+                        reader,
+                        characterDataFlags,
+                        decoratedSnapshot,
+                        out PacketCharacterDataSnapshot preMapTransferSnapshot))
+                {
+                    return false;
+                }
+
+                decoratedSnapshot = preMapTransferSnapshot;
+
+                long preKnownTailPosition = reader.BaseStream.Position;
+                ulong opaquePreMapTransferFlags = characterDataFlags & CharacterDataKnownOpaquePreMapTransferFlags;
+                if (opaquePreMapTransferFlags == 0)
+                {
+                    if (!TryDecodeKnownCharacterDataTailSectionsAfterOpaqueMiddleSections(
+                            reader,
+                            characterDataFlags,
+                            leadingLayout,
+                            decoratedSnapshot,
+                            Array.Empty<byte>(),
+                            opaquePreMapTransferFlags,
+                            out PacketCharacterDataSnapshot decodedTailSnapshot))
+                    {
+                        return false;
+                    }
+
+                    decoratedSnapshot = decodedTailSnapshot;
+                    return true;
+                }
+
+                byte[] remainingBytes = ReadRemainingBytes(reader);
+                for (int skippedByteCount = 0; skippedByteCount <= remainingBytes.Length; skippedByteCount++)
+                {
+                    reader.BaseStream.Position = preKnownTailPosition + skippedByteCount;
+                    byte[] opaqueBytes = skippedByteCount == 0
+                        ? Array.Empty<byte>()
+                        : remainingBytes.Take(skippedByteCount).ToArray();
+                    if (!TryDecodeKnownCharacterDataTailSectionsAfterOpaqueMiddleSections(
+                            reader,
+                            characterDataFlags,
+                            leadingLayout,
+                            decoratedSnapshot,
+                            opaqueBytes,
+                            opaquePreMapTransferFlags,
+                            out PacketCharacterDataSnapshot decodedTailSnapshot))
+                    {
+                        continue;
+                    }
+
+                    decoratedSnapshot = decodedTailSnapshot;
+                    return true;
+                }
+
+                return false;
+            }
+            catch (Exception) when (reader.BaseStream.CanSeek)
+            {
+                reader.BaseStream.Position = startPosition;
+                decoratedSnapshot = snapshot;
+                return false;
+            }
+        }
+
+        private static bool TryDecodeKnownCharacterDataTailSectionsAfterOpaqueMiddleSections(
+            BinaryReader reader,
+            ulong characterDataFlags,
+            CharacterDataLeadingTailLayout leadingLayout,
+            PacketCharacterDataSnapshot snapshot,
+            byte[] opaquePreMapTransferBytes,
+            ulong opaquePreMapTransferFlags,
+            out PacketCharacterDataSnapshot decoratedSnapshot)
+        {
+            decoratedSnapshot = snapshot;
+            long startPosition = reader.BaseStream.Position;
+            try
+            {
                 if (!TryDecodeCharacterDataLeadingTailSections(
                         reader,
                         characterDataFlags,
@@ -1351,8 +1432,11 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
-                decoratedSnapshot = decoratedSnapshot with
+                decoratedSnapshot = snapshot with
                 {
+                    OpaquePreMapTransferFlags = opaquePreMapTransferFlags,
+                    OpaquePreMapTransferSectionByteCount = opaquePreMapTransferBytes?.Length ?? 0,
+                    OpaquePreMapTransferSectionBytes = opaquePreMapTransferBytes ?? Array.Empty<byte>(),
                     MiniGameRecordCount = miniGameRecordCount,
                     CoupleRecordCount = coupleRecordCount,
                     FriendRecordCount = friendRecordCount,
@@ -1443,6 +1527,162 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        private static bool TryDecodeCharacterDataPreMapTransferSections(
+            BinaryReader reader,
+            ulong characterDataFlags,
+            PacketCharacterDataSnapshot snapshot,
+            out PacketCharacterDataSnapshot decoratedSnapshot)
+        {
+            decoratedSnapshot = snapshot;
+            long startPosition = reader.BaseStream.Position;
+            foreach (CharacterDataPreMapTransferSectionLayout layout in Enum.GetValues(typeof(CharacterDataPreMapTransferSectionLayout)))
+            {
+                if (TryDecodeCharacterDataPreMapTransferSectionsWithLayout(
+                        reader,
+                        characterDataFlags,
+                        snapshot,
+                        layout,
+                        out decoratedSnapshot))
+                {
+                    return true;
+                }
+
+                if (reader.BaseStream.CanSeek)
+                {
+                    reader.BaseStream.Position = startPosition;
+                }
+            }
+
+            decoratedSnapshot = snapshot;
+            return false;
+        }
+
+        private static bool TryDecodeCharacterDataPreMapTransferSectionsWithLayout(
+            BinaryReader reader,
+            ulong characterDataFlags,
+            PacketCharacterDataSnapshot snapshot,
+            CharacterDataPreMapTransferSectionLayout layout,
+            out PacketCharacterDataSnapshot decoratedSnapshot)
+        {
+            decoratedSnapshot = snapshot;
+            long startPosition = reader.BaseStream.Position;
+            try
+            {
+                bool hasSkillRecordSectionFlag = (characterDataFlags & 0x100UL) != 0;
+                bool hasSkillExpirationSectionFlag = (characterDataFlags & 0x200UL) != 0;
+                bool hasSkillCooldownSectionFlag = (characterDataFlags & 0x4000UL) != 0;
+                IReadOnlyDictionary<int, int> skillRecords = null;
+                IReadOnlyDictionary<int, long> skillExpirations = null;
+                IReadOnlyDictionary<int, int> skillCooldowns = null;
+                int skillRecordCount = 0;
+                int skillExpirationRecordCount = 0;
+                int skillCooldownRecordCount = 0;
+
+                bool decodeSkillRecords =
+                    layout is CharacterDataPreMapTransferSectionLayout.SkillOnly
+                        or CharacterDataPreMapTransferSectionLayout.SkillAndExpired
+                        or CharacterDataPreMapTransferSectionLayout.SkillAndExpiredAndCooldown;
+                bool decodeSkillExpirations =
+                    layout is CharacterDataPreMapTransferSectionLayout.SkillAndExpired
+                        or CharacterDataPreMapTransferSectionLayout.SkillAndExpiredAndCooldown;
+                bool decodeSkillCooldowns =
+                    layout is CharacterDataPreMapTransferSectionLayout.SkillAndExpiredAndCooldown;
+
+                if (hasSkillRecordSectionFlag != decodeSkillRecords
+                    || hasSkillExpirationSectionFlag != decodeSkillExpirations
+                    || hasSkillCooldownSectionFlag != decodeSkillCooldowns)
+                {
+                    return false;
+                }
+
+                if (decodeSkillRecords)
+                {
+                    skillRecords = ReadCharacterDataSkillRecords(reader);
+                    skillRecordCount = skillRecords.Count;
+                }
+
+                if (decodeSkillExpirations)
+                {
+                    skillExpirations = ReadCharacterDataSkillExpirationRecords(reader);
+                    skillExpirationRecordCount = skillExpirations.Count;
+                }
+
+                if (decodeSkillCooldowns)
+                {
+                    skillCooldowns = ReadCharacterDataSkillCooldownRecords(reader);
+                    skillCooldownRecordCount = skillCooldowns.Count;
+                }
+
+                decoratedSnapshot = snapshot with
+                {
+                    SkillRecordCount = skillRecordCount,
+                    SkillExpirationRecordCount = skillExpirationRecordCount,
+                    SkillCooldownRecordCount = skillCooldownRecordCount,
+                    SkillRecords = skillRecords,
+                    SkillExpirationFileTimes = skillExpirations,
+                    SkillCooldownRemainingSecondsBySkillId = skillCooldowns
+                };
+                return true;
+            }
+            catch (Exception) when (reader.BaseStream.CanSeek)
+            {
+                reader.BaseStream.Position = startPosition;
+                decoratedSnapshot = snapshot;
+                return false;
+            }
+        }
+
+        private static IReadOnlyDictionary<int, int> ReadCharacterDataSkillRecords(BinaryReader reader)
+        {
+            ushort count = reader.ReadUInt16();
+            Dictionary<int, int> records = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                int skillId = reader.ReadInt32();
+                int skillLevel = reader.ReadInt32();
+                if (skillId > 0)
+                {
+                    records[skillId] = Math.Max(0, skillLevel);
+                }
+            }
+
+            return records;
+        }
+
+        private static IReadOnlyDictionary<int, long> ReadCharacterDataSkillExpirationRecords(BinaryReader reader)
+        {
+            ushort count = reader.ReadUInt16();
+            Dictionary<int, long> records = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                int skillId = reader.ReadInt32();
+                long fileTime = reader.ReadInt64();
+                if (skillId > 0)
+                {
+                    records[skillId] = fileTime;
+                }
+            }
+
+            return records;
+        }
+
+        private static IReadOnlyDictionary<int, int> ReadCharacterDataSkillCooldownRecords(BinaryReader reader)
+        {
+            ushort count = reader.ReadUInt16();
+            Dictionary<int, int> records = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                int skillId = reader.ReadInt32();
+                int remainingSeconds = Math.Max(0, (int)reader.ReadUInt16());
+                if (skillId > 0)
+                {
+                    records[skillId] = remainingSeconds;
+                }
+            }
+
+            return records;
+        }
+
         private static bool TryDecodeCharacterDataLeadingTailSections(
             BinaryReader reader,
             ulong characterDataFlags,
@@ -1514,6 +1754,21 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return fields;
+        }
+
+        private static byte[] ReadRemainingBytes(BinaryReader reader)
+        {
+            long remainingLength = reader.BaseStream.Length - reader.BaseStream.Position;
+            if (remainingLength <= 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            int byteCount = checked((int)remainingLength);
+            long startPosition = reader.BaseStream.Position;
+            byte[] bytes = reader.ReadBytes(byteCount);
+            reader.BaseStream.Position = startPosition;
+            return bytes;
         }
 
         private static void SkipCharacterDataFixedRecordGroup(BinaryReader reader, int count, int recordByteLength)
@@ -1816,6 +2071,15 @@ namespace HaCreator.MapSimulator.Interaction
         LoginAvatarLook AvatarLook = null,
         int? PreInventoryHeaderValue1 = null,
         int? PreInventoryHeaderValue2 = null,
+        int SkillRecordCount = 0,
+        int SkillExpirationRecordCount = 0,
+        int SkillCooldownRecordCount = 0,
+        IReadOnlyDictionary<int, int> SkillRecords = null,
+        IReadOnlyDictionary<int, long> SkillExpirationFileTimes = null,
+        IReadOnlyDictionary<int, int> SkillCooldownRemainingSecondsBySkillId = null,
+        ulong OpaquePreMapTransferFlags = 0,
+        int OpaquePreMapTransferSectionByteCount = 0,
+        byte[] OpaquePreMapTransferSectionBytes = null,
         IReadOnlyList<int> RegularMapTransferFields = null,
         IReadOnlyList<int> ContinentMapTransferFields = null,
         int MiniGameRecordCount = 0,

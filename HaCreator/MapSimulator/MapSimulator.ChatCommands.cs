@@ -460,9 +460,16 @@ namespace HaCreator.MapSimulator
                         return ChatCommandHandler.CommandResult.Error(sessionUsage);
                     }
 
-                    return _transportOfficialSessionBridge.TryStart(listenPort, args[3], remotePort, out string startStatus)
-                        ? ChatCommandHandler.CommandResult.Ok(startStatus)
-                        : ChatCommandHandler.CommandResult.Error(startStatus);
+                    if (!_transportOfficialSessionBridge.TryStart(listenPort, args[3], remotePort, out string startStatus))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(startStatus);
+                    }
+
+                    string startInitStatus = ArmTransportFieldInitRequestForActiveWrapperMap();
+                    return ChatCommandHandler.CommandResult.Ok(
+                        string.IsNullOrWhiteSpace(startInitStatus)
+                            ? startStatus
+                            : $"{startStatus}{Environment.NewLine}{startInitStatus}");
 
                 case "startauto":
                     if (args.Length < 4
@@ -486,14 +493,21 @@ namespace HaCreator.MapSimulator
                         autoLocalPortFilter = parsedAutoLocalPort;
                     }
 
-                    return _transportOfficialSessionBridge.TryStartFromDiscovery(
+                    if (!_transportOfficialSessionBridge.TryStartFromDiscovery(
                         autoListenPort,
                         autoRemotePort,
                         autoProcessSelector,
                         autoLocalPortFilter,
-                        out string autoStartStatus)
-                        ? ChatCommandHandler.CommandResult.Ok(autoStartStatus)
-                        : ChatCommandHandler.CommandResult.Error(autoStartStatus);
+                        out string autoStartStatus))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(autoStartStatus);
+                    }
+
+                    string autoInitStatus = ArmTransportFieldInitRequestForActiveWrapperMap();
+                    return ChatCommandHandler.CommandResult.Ok(
+                        string.IsNullOrWhiteSpace(autoInitStatus)
+                            ? autoStartStatus
+                            : $"{autoStartStatus}{Environment.NewLine}{autoInitStatus}");
 
                 case "stop":
                     _transportOfficialSessionBridge.Stop();
@@ -3073,7 +3087,7 @@ namespace HaCreator.MapSimulator
                         {
                             if (args.Length < 4 || !TryParseSocialListTabToken(args[2], out SocialListTab resolveTab))
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet resolve <friend|party|guild|alliance|blacklist> <approve|reject> [summary]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet resolve <friend|party|guild|alliance|blacklist> <approve|reject> [level=n] [remain=m] [fund=mesos] [summary]");
                             }
 
                             bool approved = args[3].ToLowerInvariant() switch
@@ -3083,14 +3097,22 @@ namespace HaCreator.MapSimulator
                                 _ => throw new ArgumentException("Resolve action must be approve or reject.")
                             };
 
-                            string summary = args.Length > 4 ? string.Join(' ', args.Skip(4)) : null;
                             bool hadSocialPendingRequest = _socialListRuntime.HasPendingPacketOwnedRequest(resolveTab);
+                            GuildSkillPacketResolution? guildSkillResolution = null;
+                            string summary = args.Length > 4 ? string.Join(' ', args.Skip(4)) : null;
+                            if (resolveTab == SocialListTab.Guild
+                                && !hadSocialPendingRequest
+                                && _guildSkillRuntime.HasPendingPacketRequest)
+                            {
+                                TryParseGuildSkillPacketResolution(args.Skip(4), out guildSkillResolution, out summary);
+                            }
+
                             string resolveMessage = _socialListRuntime.ResolvePacketOwnedRequest(resolveTab, approved, summary);
                             if (resolveTab == SocialListTab.Guild
                                 && !hadSocialPendingRequest
                                 && _guildSkillRuntime.HasPendingPacketRequest)
                             {
-                                resolveMessage = _guildSkillRuntime.ResolvePendingPacketRequest(approved, summary) ?? resolveMessage;
+                                resolveMessage = _guildSkillRuntime.ResolvePendingPacketRequest(approved, summary, guildSkillResolution) ?? resolveMessage;
                             }
 
                             return ChatCommandHandler.CommandResult.Ok(resolveMessage);
@@ -3257,14 +3279,14 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "transport",
                 "Inspect or drive the transit/voyage transport packet inbox and official-session bridge",
-                        "/transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
+                        "/transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
                 args =>
                 {
                     bool transportActive = IsTransitVoyageWrapperMap(_mapBoard?.MapInfo) && _transportField.HasRouteConfiguration;
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
                         return ChatCommandHandler.CommandResult.Info(
-                            $"{_transportField.DescribeStatus()}{Environment.NewLine}{_transportPacketInbox.LastStatus}{Environment.NewLine}{_transportOfficialSessionBridge.DescribeStatus()}");
+                            $"{_transportField.DescribeStatus()}{Environment.NewLine}{_lastTransportFieldInitRequestSummary}{Environment.NewLine}{_transportPacketInbox.LastStatus}{Environment.NewLine}{_transportOfficialSessionBridge.DescribeStatus()}");
                     }
 
 
@@ -3370,7 +3392,7 @@ namespace HaCreator.MapSimulator
                         if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
                         {
                             return ChatCommandHandler.CommandResult.Info(
-                                $"{_transportField.DescribeStatus()}{Environment.NewLine}{_transportPacketInbox.LastStatus}{Environment.NewLine}{_transportOfficialSessionBridge.DescribeStatus()}");
+                                $"{_transportField.DescribeStatus()}{Environment.NewLine}{_lastTransportFieldInitRequestSummary}{Environment.NewLine}{_transportPacketInbox.LastStatus}{Environment.NewLine}{_transportOfficialSessionBridge.DescribeStatus()}");
                         }
 
 
@@ -3414,7 +3436,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
 
                 });
 
@@ -3455,7 +3477,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "partyraid",
                 "Inspect or drive the Party Raid runtime shell",
-                "/partyraid [status|stage <n>|point <n>|team <red|blue>|damage <red|blue> <n>|gaugecap <n>|clock <seconds|clear>|inbox [status|start [port]|stop]|key <field|party|session> <key> <value>|result <point> <bonus> <total> [win|lose|clear]|outcome <win|lose|clear>]",
+                "/partyraid [status|stage <n>|point <n>|team <red|blue>|damage <red|blue> <n>|gaugecap <n>|clock <seconds|clear>|raw <93|94|95|149> <hex>|packetraw <hex>|inbox [status|start [port]|stop]|key <field|party|session> <key> <value>|result <point> <bonus> <total> [win|lose|clear]|outcome <win|lose|clear>]",
                 args =>
                 {
                     PartyRaidField partyRaid = _specialFieldRuntime.PartyRaid;
@@ -3592,6 +3614,48 @@ namespace HaCreator.MapSimulator
 
                         return ChatCommandHandler.CommandResult.Ok(partyRaid.DescribeStatus());
 
+                    }
+
+                    if (string.Equals(args[0], "raw", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 3)
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /partyraid raw <93|94|95|149> <hex>");
+                        }
+
+                        if (!int.TryParse(args[1], out int rawPacketType))
+                        {
+                            return ChatCommandHandler.CommandResult.Error($"Invalid Party Raid packet type: {args[1]}");
+                        }
+
+                        byte[] rawPayload = ByteUtils.HexToBytes(string.Join(string.Empty, args.Skip(2)));
+                        if (!partyRaid.TryApplyRawPacket(rawPacketType, rawPayload, currTickCount, out string rawPacketError))
+                        {
+                            return ChatCommandHandler.CommandResult.Error(rawPacketError ?? "Failed to apply Party Raid packet.");
+                        }
+
+                        return ChatCommandHandler.CommandResult.Ok(partyRaid.DescribeStatus());
+                    }
+
+                    if (string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 2)
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /partyraid packetraw <hex>");
+                        }
+
+                        string framedText = $"packetclientraw {string.Join(string.Empty, args.Skip(1))}";
+                        if (!PartyRaidPacketInboxManager.TryParsePacketLine(framedText, out int framedPacketType, out byte[] framedPayload, out string framedError))
+                        {
+                            return ChatCommandHandler.CommandResult.Error(framedError ?? "Failed to decode Party Raid opcode-framed packet.");
+                        }
+
+                        if (!partyRaid.TryApplyRawPacket(framedPacketType, framedPayload, currTickCount, out string framedPacketError))
+                        {
+                            return ChatCommandHandler.CommandResult.Error(framedPacketError ?? "Failed to apply Party Raid opcode-framed packet.");
+                        }
+
+                        return ChatCommandHandler.CommandResult.Ok(partyRaid.DescribeStatus());
                     }
 
 
@@ -3738,7 +3802,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /partyraid [status|stage <n>|point <n>|team <red|blue>|damage <red|blue> <n>|gaugecap <n>|clock <seconds|clear>|inbox [status|start [port]|stop]|key <field|party|session> <key> <value>|result <point> <bonus> <total> [win|lose|clear]|outcome <win|lose|clear>]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /partyraid [status|stage <n>|point <n>|team <red|blue>|damage <red|blue> <n>|gaugecap <n>|clock <seconds|clear>|raw <93|94|95|149> <hex>|packetraw <hex>|inbox [status|start [port]|stop]|key <field|party|session> <key> <value>|result <point> <bonus> <total> [win|lose|clear]|outcome <win|lose|clear>]");
 
                 });
 
@@ -4111,7 +4175,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive the Coconut minigame packet and result flow",
 
-                "/coconut [status|clock <seconds>|hit <target|-1> <delay> <state>|score <maple> <story>|raw <type> <hex>|raw packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|request [peek|clear]]",
+                "/coconut [status|clock <seconds>|hit <target|-1> <delay> <state>|score <maple> <story>|team <maple|story|0|1>|raw <type> <hex>|raw packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|request [peek|clear]]",
                 args =>
                 {
                     CoconutField field = _specialFieldRuntime.Minigames.Coconut;
@@ -4169,6 +4233,32 @@ namespace HaCreator.MapSimulator
 
 
                             field.OnCoconutScore(mapleScore, storyScore, currTickCount);
+
+                            return ChatCommandHandler.CommandResult.Ok(field.DescribeStatus());
+
+
+
+                        case "team":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /coconut team <maple|story|0|1>");
+                            }
+
+
+                            int coconutLocalTeam = args[1].ToLowerInvariant() switch
+                            {
+                                "maple" or "0" => 0,
+                                "story" or "1" => 1,
+                                _ => -1
+                            };
+                            if (coconutLocalTeam < 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /coconut team <maple|story|0|1>");
+                            }
+
+
+                            field.SetLocalTeam(coconutLocalTeam);
+                            ApplyClientOwnedFieldWrappers();
 
                             return ChatCommandHandler.CommandResult.Ok(field.DescribeStatus());
 
@@ -4354,7 +4444,7 @@ namespace HaCreator.MapSimulator
 
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /coconut [status|clock <seconds>|hit <target|-1> <delay> <state>|score <maple> <story>|raw <type> <hex>|raw packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|request [peek|clear]]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /coconut [status|clock <seconds>|hit <target|-1> <delay> <state>|score <maple> <story>|team <maple|story|0|1>|raw <type> <hex>|raw packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|request [peek|clear]]");
                     }
 
                 });
@@ -6124,7 +6214,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "dojoresult",
                 "Trigger Mu Lung Dojo clear or time-over presentation",
-                "/dojoresult <clear|timeover> [auto|none|mapId]",
+                "/dojoresult <clear|timeover> [auto|none|mapId[:portal]|mapId portal]",
                 args =>
                 {
                     if (!_specialFieldRuntime.SpecialEffects.Dojo.IsActive)
@@ -6133,9 +6223,9 @@ namespace HaCreator.MapSimulator
                     }
 
 
-                    if (args.Length < 1 || args.Length > 2)
+                    if (args.Length < 1 || args.Length > 3)
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /dojoresult <clear|timeover> [auto|none|mapId]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /dojoresult <clear|timeover> [auto|none|mapId[:portal]|mapId portal]");
                     }
 
 
@@ -6155,13 +6245,13 @@ namespace HaCreator.MapSimulator
                         }
 
 
-                        if (!int.TryParse(args[1], out int nextMapId) || nextMapId <= 0)
+                        string transferOption = args.Length >= 3 ? $"{args[1]} {args[2]}" : args[1];
+                        if (!DojoField.TryParseTransferTargetOption(transferOption, out int nextMapId, out string nextPortalName, out _))
                         {
-                            return ChatCommandHandler.CommandResult.Error("Usage: /dojoresult <clear|timeover> [auto|none|mapId]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /dojoresult <clear|timeover> [auto|none|mapId[:portal]|mapId portal]");
                         }
 
-
-                        _specialFieldRuntime.SpecialEffects.Dojo.ShowClearResult(currTickCount, nextMapId);
+                        _specialFieldRuntime.SpecialEffects.Dojo.ShowClearResult(currTickCount, nextMapId, nextPortalName);
 
                         return ChatCommandHandler.CommandResult.Ok(_specialFieldRuntime.SpecialEffects.Dojo.DescribeStatus());
 
@@ -6200,8 +6290,8 @@ namespace HaCreator.MapSimulator
 
             _chat.CommandHandler.RegisterCommand(
                 "cookiepoint",
-                "Inspect or update the Cookie House event score or its loopback inbox",
-                "/cookiepoint [score]|inbox [status|start [port]|stop]",
+                "Inspect or update the Cookie House event score, loopback inbox, or official-session bridge",
+                "/cookiepoint [score]|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode>|unmap <opcode>|clearmap|recent|stop]",
                 args =>
                 {
                     if (!_specialFieldRuntime.CookieHouse.IsActive)
@@ -6222,7 +6312,7 @@ namespace HaCreator.MapSimulator
                         if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
                         {
                             return ChatCommandHandler.CommandResult.Info(
-                                $"{_specialFieldRuntime.CookieHouse.DescribeStatus()}{Environment.NewLine}{_cookieHousePointInbox.LastStatus}");
+                                $"{_specialFieldRuntime.CookieHouse.DescribeStatus()}{Environment.NewLine}{_cookieHousePointInbox.LastStatus}{Environment.NewLine}{_cookieHouseOfficialSessionBridge.DescribeStatus()}");
                         }
 
 
@@ -6251,6 +6341,133 @@ namespace HaCreator.MapSimulator
 
 
                         return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint inbox [status|start [port]|stop]");
+
+                    }
+
+                    if (string.Equals(args[0], "session", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Info(
+                                $"{_specialFieldRuntime.CookieHouse.DescribeStatus()}{Environment.NewLine}{_cookieHouseOfficialSessionBridge.DescribeStatus()}");
+                        }
+
+                        if (string.Equals(args[1], "discover", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 3
+                                || !int.TryParse(args[2], out int discoverRemotePort)
+                                || discoverRemotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session discover <remotePort> [processName|pid] [localPort]");
+                            }
+
+                            string processSelector = args.Length >= 4 ? args[3] : null;
+                            int? localPortFilter = null;
+                            if (args.Length >= 5)
+                            {
+                                if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session discover <remotePort> [processName|pid] [localPort]");
+                                }
+
+                                localPortFilter = parsedLocalPort;
+                            }
+
+                            return ChatCommandHandler.CommandResult.Info(
+                                _cookieHouseOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
+                        }
+
+                        if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 5
+                                || !int.TryParse(args[2], out int listenPort)
+                                || listenPort <= 0
+                                || !int.TryParse(args[4], out int remotePort)
+                                || remotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session start <listenPort> <serverHost> <serverPort>");
+                            }
+
+                            return _cookieHouseOfficialSessionBridge.TryStart(listenPort, args[3], remotePort, out string startStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(startStatus)
+                                : ChatCommandHandler.CommandResult.Error(startStatus);
+                        }
+
+                        if (string.Equals(args[1], "startauto", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 4
+                                || !int.TryParse(args[2], out int autoListenPort)
+                                || autoListenPort <= 0
+                                || !int.TryParse(args[3], out int autoRemotePort)
+                                || autoRemotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                            }
+
+                            string processSelector = args.Length >= 5 ? args[4] : null;
+                            int? localPortFilter = null;
+                            if (args.Length >= 6)
+                            {
+                                if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                }
+
+                                localPortFilter = parsedLocalPort;
+                            }
+
+                            return _cookieHouseOfficialSessionBridge.TryStartFromDiscovery(autoListenPort, autoRemotePort, processSelector, localPortFilter, out string startStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(startStatus)
+                                : ChatCommandHandler.CommandResult.Error(startStatus);
+                        }
+
+                        if (string.Equals(args[1], "map", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 3
+                                || !int.TryParse(args[2], out int opcode)
+                                || opcode <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session map <opcode>");
+                            }
+
+                            return _cookieHouseOfficialSessionBridge.TryAddMappedInboundPointOpcode(opcode, out string mapStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(mapStatus)
+                                : ChatCommandHandler.CommandResult.Error(mapStatus);
+                        }
+
+                        if (string.Equals(args[1], "unmap", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 3
+                                || !int.TryParse(args[2], out int opcode)
+                                || opcode <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session unmap <opcode>");
+                            }
+
+                            return _cookieHouseOfficialSessionBridge.TryRemoveMappedInboundPointOpcode(opcode, out string unmapStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(unmapStatus)
+                                : ChatCommandHandler.CommandResult.Error(unmapStatus);
+                        }
+
+                        if (string.Equals(args[1], "clearmap", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _cookieHouseOfficialSessionBridge.ClearMappedInboundPointOpcodes();
+                            return ChatCommandHandler.CommandResult.Ok(_cookieHouseOfficialSessionBridge.LastStatus);
+                        }
+
+                        if (string.Equals(args[1], "recent", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Info(
+                                $"{_specialFieldRuntime.CookieHouse.DescribeStatus()}{Environment.NewLine}{_cookieHouseOfficialSessionBridge.DescribeStatus()}");
+                        }
+
+                        if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _cookieHouseOfficialSessionBridge.Stop();
+                            return ChatCommandHandler.CommandResult.Ok(_cookieHouseOfficialSessionBridge.LastStatus);
+                        }
+
+                        return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode>|unmap <opcode>|clearmap|recent|stop]");
 
                     }
 
@@ -11311,6 +11528,72 @@ namespace HaCreator.MapSimulator
                 default:
                     return false;
             }
+        }
+
+        private static void TryParseGuildSkillPacketResolution(
+            IEnumerable<string> tokens,
+            out GuildSkillPacketResolution? packetResolution,
+            out string summary)
+        {
+            int? resolvedLevel = null;
+            int? remainingMinutes = null;
+            int? guildFundMeso = null;
+            List<string> summaryTokens = new();
+
+            foreach (string token in tokens ?? Array.Empty<string>())
+            {
+                if (TryParseGuildSkillPacketResolutionToken(token, out string key, out int value))
+                {
+                    switch (key)
+                    {
+                        case "level":
+                        case "lv":
+                            resolvedLevel = value;
+                            continue;
+
+                        case "remain":
+                        case "remaining":
+                        case "timer":
+                            remainingMinutes = value;
+                            continue;
+
+                        case "fund":
+                        case "meso":
+                        case "money":
+                            guildFundMeso = value;
+                            continue;
+                    }
+                }
+
+                summaryTokens.Add(token);
+            }
+
+            summary = summaryTokens.Count > 0
+                ? string.Join(' ', summaryTokens)
+                : null;
+            packetResolution = resolvedLevel.HasValue || remainingMinutes.HasValue || guildFundMeso.HasValue
+                ? new GuildSkillPacketResolution(resolvedLevel, remainingMinutes, guildFundMeso)
+                : null;
+        }
+
+        private static bool TryParseGuildSkillPacketResolutionToken(string token, out string key, out int value)
+        {
+            key = null;
+            value = 0;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            int separatorIndex = token.IndexOf('=');
+            if (separatorIndex <= 0 || separatorIndex >= token.Length - 1)
+            {
+                return false;
+            }
+
+            key = token[..separatorIndex].Trim().ToLowerInvariant();
+            string valueToken = token[(separatorIndex + 1)..].Trim();
+            return int.TryParse(valueToken, out value);
         }
 
     }

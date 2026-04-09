@@ -47,13 +47,22 @@ namespace HaCreator.MapSimulator
 
         private Vector2? ResolveDropPacketSourcePosition(int sourceId)
         {
-            return ResolveDropPacketSourcePosition(
+            Vector2? resolvedSourcePosition = ResolveDropPacketSourcePosition(
                 sourceId,
                 _playerManager?.Player?.Build?.Id ?? 0,
                 _playerManager?.Player?.Position,
                 ResolveLocalPetDropPacketSourcePosition,
                 ResolveRemoteUserDropPacketSourcePosition,
                 ResolveMobDropPacketSourcePosition);
+
+            if (resolvedSourcePosition.HasValue)
+            {
+                return resolvedSourcePosition;
+            }
+
+            return TryResolveRemotePetPickupPosition(sourceId, _remoteUserPool, out Vector2 remotePetPosition)
+                ? remotePetPosition
+                : null;
         }
 
         internal static Vector2? ResolveDropPacketSourcePosition(

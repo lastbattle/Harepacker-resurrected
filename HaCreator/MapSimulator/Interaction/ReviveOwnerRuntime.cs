@@ -78,7 +78,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public bool IsOpen => _openedAtTick != int.MinValue;
         public ReviveOwnerVariant Variant { get; private set; }
-        public bool HasPremiumChoice => Variant != ReviveOwnerVariant.DefaultOnly;
+        public bool HasPremiumChoice => HasPremiumChoiceForVariant(Variant);
 
         public void Open(
             string mapName,
@@ -194,12 +194,19 @@ namespace HaCreator.MapSimulator.Interaction
 
         public static bool HasPremiumChoiceForVariant(ReviveOwnerVariant variant)
         {
-            return variant != ReviveOwnerVariant.DefaultOnly;
+            // Client evidence from CUIRevive::OnCreate:
+            // - Soul Stone, Upgrade Tomb, and the premium safety-charm branch all allocate Yes/No buttons.
+            // - The default/safety-charm background falls through to a single confirmation button.
+            return variant is ReviveOwnerVariant.SoulStoneChoice
+                or ReviveOwnerVariant.UpgradeTombChoice
+                or ReviveOwnerVariant.PremiumSafetyCharmChoice;
         }
 
         public static bool UsesCurrentFieldRespawn(ReviveOwnerVariant variant)
         {
-            return variant != ReviveOwnerVariant.DefaultOnly;
+            return variant is ReviveOwnerVariant.SoulStoneChoice
+                or ReviveOwnerVariant.UpgradeTombChoice
+                or ReviveOwnerVariant.PremiumSafetyCharmChoice;
         }
 
         public static int GetConsumableCashItemId(ReviveOwnerVariant variant)
@@ -231,7 +238,7 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"Dedicated death-recovery owner for {_mapName}";
             string variantStatus = Variant switch
             {
-                ReviveOwnerVariant.SafetyCharmChoice => "Safety Charm branch available.",
+                ReviveOwnerVariant.SafetyCharmChoice => "Safety Charm protection is active on the default revive branch.",
                 ReviveOwnerVariant.PremiumSafetyCharmChoice => "Premium Safety Charm branch available.",
                 ReviveOwnerVariant.UpgradeTombChoice => "Upgrade Tomb branch available.",
                 ReviveOwnerVariant.SoulStoneChoice => "Soul Stone branch available.",
@@ -248,7 +255,7 @@ namespace HaCreator.MapSimulator.Interaction
                 PrimaryTitle = ResolvePrimaryTitle(Variant),
                 PrimaryDetail = HasPremiumChoice ? _premiumDetail : _normalDetail,
                 SecondaryTitle = ResolveSecondaryTitle(Variant),
-                SecondaryDetail = HasPremiumChoice ? _normalDetail : "This simulator-local owner still uses one recovery branch when no alternate local revive path is available.",
+                SecondaryDetail = HasPremiumChoice ? _normalDetail : string.Empty,
                 CountdownText = $"Auto revive in {remaining.Minutes:00}:{remaining.Seconds:00}",
                 StatusText = HasPremiumChoice
                     ? $"{variantStatus} Enter or Shift+R takes the premium branch. Escape, the close button, or R takes the default branch."
@@ -278,7 +285,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ReviveOwnerVariant.SoulStoneChoice => "Current Field Recovery",
                 ReviveOwnerVariant.UpgradeTombChoice => "Current Field Recovery",
                 ReviveOwnerVariant.PremiumSafetyCharmChoice => "Current Field Recovery",
-                ReviveOwnerVariant.SafetyCharmChoice => "Current Field Recovery",
+                ReviveOwnerVariant.SafetyCharmChoice => "Return to Safety",
                 _ => "Return to Safety"
             };
         }

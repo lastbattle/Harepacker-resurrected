@@ -80,6 +80,13 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetCashWeatherRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Use_Cash_Weather.Check(fieldLimit)
+                ? "Cash weather items cannot be used in this field."
+                : null;
+        }
+
         public static string GetAndroidRestrictionMessage(long fieldLimit)
         {
             return FieldLimitType.No_Android.Check(fieldLimit)
@@ -219,9 +226,9 @@ namespace HaCreator.MapSimulator.Fields
                 return "Wedding invitation items cannot be used in this field.";
             }
 
-            if (FieldLimitType.Unable_To_Use_Cash_Weather.Check(fieldLimit) && IsCashWeatherItem(inventoryType, itemId))
+            if (IsCashWeatherItem(inventoryType, itemId))
             {
-                return "Cash weather items cannot be used in this field.";
+                return GetCashWeatherRestrictionMessage(fieldLimit);
             }
 
             if (FieldLimitType.Unable_To_Use_Pet.Check(fieldLimit) && IsPetInteractionItem(inventoryType, itemId, itemName, itemDescription))
@@ -285,7 +292,8 @@ namespace HaCreator.MapSimulator.Fields
                 messages.Add("Wedding invitation items are disabled in this map.");
             }
 
-            if (FieldLimitType.Unable_To_Use_Cash_Weather.Check(fieldLimit))
+            string cashWeatherRestrictionMessage = GetCashWeatherRestrictionMessage(fieldLimit);
+            if (!string.IsNullOrWhiteSpace(cashWeatherRestrictionMessage))
             {
                 messages.Add("Cash weather items are disabled in this map.");
             }

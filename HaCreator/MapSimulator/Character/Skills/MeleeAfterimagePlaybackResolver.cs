@@ -1,10 +1,43 @@
 using HaCreator.MapSimulator.Character;
+using Microsoft.Xna.Framework;
+using System;
 using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Character.Skills
 {
     public static class MeleeAfterimagePlaybackResolver
     {
+        internal readonly record struct Snapshot(int FrameIndex, SkillFrame Frame, float Alpha);
+
+        internal static bool TryResolveSnapshot(
+            CharacterAssembler assembler,
+            string actionName,
+            MeleeAfterImageAction action,
+            int animationTime,
+            out Snapshot snapshot)
+        {
+            snapshot = default;
+            if (assembler == null
+                || action == null
+                || string.IsNullOrWhiteSpace(actionName)
+                || !assembler.TryGetFrameTimingAtTime(actionName, Math.Max(0, animationTime), out int frameIndex, out int frameElapsedMs))
+            {
+                return false;
+            }
+
+            SkillFrame frame = ResolveFrame(action, frameIndex, frameElapsedMs);
+            if (frame == null)
+            {
+                return false;
+            }
+
+            snapshot = new Snapshot(
+                frameIndex,
+                frame,
+                ResolveFrameAlpha(frame, frameElapsedMs));
+            return true;
+        }
+
         public static SkillFrame ResolveFrame(
             MeleeAfterImageAction action,
             int frameIndex,
@@ -48,6 +81,27 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return fallback;
+        }
+
+        public static float ResolveFrameAlpha(SkillFrame frame, int frameElapsedMs)
+        {
+            if (frame == null)
+            {
+                return 1f;
+            }
+
+            int startAlpha = Math.Clamp(frame.AlphaStart, 0, 255);
+            int endAlpha = Math.Clamp(frame.AlphaEnd, 0, 255);
+            if (startAlpha == endAlpha)
+            {
+                return startAlpha / 255f;
+            }
+
+            float progress = frame.Delay <= 0
+                ? 1f
+                : MathHelper.Clamp(frameElapsedMs / (float)Math.Max(1, frame.Delay), 0f, 1f);
+
+            return MathHelper.Lerp(startAlpha, endAlpha, progress) / 255f;
         }
     }
 }

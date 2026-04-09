@@ -25,5 +25,6 @@ namespace HaCreator.MapSimulator
         VerifyTrunkSpw = 20,
         RetryTrunkPic = 21,
         RetryTrunkSpw = 22,
+        LogoutGiftCompletion = 23,
     }
 }

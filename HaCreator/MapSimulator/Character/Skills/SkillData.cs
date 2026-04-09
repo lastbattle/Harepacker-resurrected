@@ -453,6 +453,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool HasMagicStealMetadata { get; set; }
         public bool HasInvincibleMetadata { get; set; }
         public bool HasDispelMetadata { get; set; }
+        public bool HasBlessingArmorMetadata { get; set; }
         public bool UsesEnergyChargeRuntime { get; set; }
         public bool HasChargingSkillMetadata { get; set; }
         public string FullChargeEffectName { get; set; }
@@ -603,6 +604,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool UsesAffectedSkillBodyAttack =>
             UsesAffectedSkillPassiveData
             && AffectedSkillEffect.IndexOf("bodyAttack", StringComparison.OrdinalIgnoreCase) >= 0;
+
+        public bool SuppressesStandaloneActiveCast => UsesAffectedSkillPassiveData;
 
         public bool HasShadowPartnerActionAnimations => ShadowPartnerActionAnimations != null && ShadowPartnerActionAnimations.Count > 0;
 
@@ -865,6 +868,28 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return SummonAttackIntervalMs;
+        }
+
+        public int ResolveExplicitSummonAttackAfterMs(string branchName = null)
+        {
+            if (!string.IsNullOrWhiteSpace(branchName)
+                && SummonAttackAfterMsByBranch != null
+                && SummonAttackAfterMsByBranch.TryGetValue(branchName, out int branchDelay)
+                && branchDelay > 0)
+            {
+                return branchDelay;
+            }
+
+            if (string.IsNullOrWhiteSpace(branchName)
+                && !string.IsNullOrWhiteSpace(SummonAttackBranchName)
+                && SummonAttackAfterMsByBranch != null
+                && SummonAttackAfterMsByBranch.TryGetValue(SummonAttackBranchName, out int defaultBranchDelay)
+                && defaultBranchDelay > 0)
+            {
+                return defaultBranchDelay;
+            }
+
+            return 0;
         }
 
         public int ResolveSummonAttackProjectileSpeed(string branchName = null)
@@ -1596,7 +1621,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             foreach (var skill in Skills.Values)
             {
-                if (!skill.IsPassive && !skill.Invisible)
+                if (!skill.IsPassive && !skill.Invisible && !skill.SuppressesStandaloneActiveCast)
                     yield return skill;
             }
         }

@@ -239,6 +239,7 @@ namespace HaCreator.MapSimulator.UI
             public int CommoditySerialNumber { get; set; }
             public bool CommodityOnSale { get; set; }
             public int MaxRequestCount { get; init; } = 1;
+            public long SuccessMesoReward { get; init; }
             public InventoryType SourceInventoryType { get; init; } = InventoryType.NONE;
             public int SourceItemId { get; init; }
             public int SourceItemQuantity { get; init; }
@@ -466,6 +467,7 @@ namespace HaCreator.MapSimulator.UI
         private long _prepaidCash;
         private bool _packetOwnedAdminShopSessionActive;
         private bool _pendingPacketOwnedAdminShopResult;
+        private bool _packetOwnedAdminShopWouldDisconnect;
         private int _packetOwnedAdminShopNpcTemplateId;
         private int _packetOwnedAdminShopDecodedItemCount;
         private int _packetOwnedAdminShopOpenCount;
@@ -661,6 +663,7 @@ namespace HaCreator.MapSimulator.UI
             _packetOwnedAdminShopLastResultCode = -1;
             _packetOwnedAdminShopLastNotice = string.Empty;
             _packetOwnedAdminShopLastOutboundSummary = string.Empty;
+            _packetOwnedAdminShopWouldDisconnect = false;
             ResetMode(AdminShopServiceMode.CashShop);
             _footerMessage = _packetOwnedAdminShopNpcTemplateId > 0
                 ? $"CAdminShopDlg::SetAdminShopDlg opened the packet-owned admin-shop owner for NPC {_packetOwnedAdminShopNpcTemplateId} with {_packetOwnedAdminShopDecodedItemCount} decoded row(s); wishlist prompt={(_packetOwnedAdminShopAskItemWishlist ? "on" : "off")}."
@@ -681,6 +684,7 @@ namespace HaCreator.MapSimulator.UI
             _packetOwnedAdminShopLastResultCode = -1;
             _packetOwnedAdminShopLastNotice = noticeText ?? string.Empty;
             _packetOwnedAdminShopLastOutboundSummary = DispatchPacketOwnedAdminShopOutbound(PacketOwnedAdminShopCloseMode, 0);
+            _packetOwnedAdminShopWouldDisconnect = false;
             ResetPendingRequestState();
             _footerMessage = string.IsNullOrWhiteSpace(noticeText)
                 ? $"Packet 367 rejected the admin-shop open request. {_packetOwnedAdminShopLastOutboundSummary}"
@@ -698,17 +702,24 @@ namespace HaCreator.MapSimulator.UI
             _packetOwnedAdminShopLastSubtype = subtype;
             _packetOwnedAdminShopLastResultCode = resultCode;
             _packetOwnedAdminShopLastOutboundSummary = string.Empty;
+            _packetOwnedAdminShopWouldDisconnect = false;
 
             if (!_packetOwnedAdminShopSessionActive)
             {
-                message = "Packet 366 arrived without an active packet-owned admin-shop session.";
-                return false;
+                _packetOwnedAdminShopWouldDisconnect = true;
+                message = "Packet 366 arrived without an active packet-owned admin-shop session. The v95 client would disconnect on this owner-state mismatch.";
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return true;
             }
 
             if (_pendingRequestEntry == null)
             {
-                message = "Packet 366 arrived without a pending admin-shop request.";
-                return false;
+                _packetOwnedAdminShopWouldDisconnect = true;
+                message = "Packet 366 arrived without a pending admin-shop request. The v95 client throws CDisconnectException when m_bShopRequestSent is clear.";
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return true;
             }
 
             _pendingPacketOwnedAdminShopResult = false;
@@ -1151,9 +1162,17 @@ namespace HaCreator.MapSimulator.UI
                 .ThenBy(match => match.Entry.Title, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
+            int alreadyWishlistedCount = matches.Count(match =>
+                match.Entry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(GetEntryKey(match.Entry)));
+            matches = matches
+                .Where(match => !match.Entry.Wishlisted && !_wishlistedEntryKeys[_currentMode].Contains(GetEntryKey(match.Entry)))
+                .ToList();
+
             if (matches.Count == 0)
             {
-                message = $"No wish-list results were found for \"{trimmedQuery}\" in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)}.";
+                message = alreadyWishlistedCount > 0
+                    ? $"SearchItemName only found rows that are already saved for \"{trimmedQuery}\" in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)}."
+                    : $"No wish-list results were found for \"{trimmedQuery}\" in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)}.";
                 _footerMessage = message;
                 UpdateActionButtonStates();
                 return Array.Empty<WishlistSearchResult>();
@@ -2083,6 +2102,7 @@ namespace HaCreator.MapSimulator.UI
                 AdminShopEntry selectedEntry = paneState.SelectedIndex >= 0 && paneState.SelectedIndex < paneState.Entries.Count
                     ? paneState.Entries[paneState.SelectedIndex]
                     : null;
+                string selectedEntryKey = GetEntryKey(selectedEntry);
 
                 paneState.Entries.Clear();
                 foreach (AdminShopEntry entry in paneState.SourceEntries)
@@ -2097,6 +2117,12 @@ namespace HaCreator.MapSimulator.UI
                 if (paneState.SelectedIndex < 0 && selectedEntry != null)
                 {
                     paneState.SelectedIndex = paneState.Entries.IndexOf(selectedEntry);
+                }
+
+                if (paneState.SelectedIndex < 0 && !string.IsNullOrWhiteSpace(selectedEntryKey))
+                {
+                    paneState.SelectedIndex = paneState.Entries.FindIndex(entry =>
+                        string.Equals(GetEntryKey(entry), selectedEntryKey, StringComparison.Ordinal));
                 }
 
                 if (paneState.SelectedIndex < 0 && paneState.Entries.Count > 0)
@@ -3550,18 +3576,27 @@ namespace HaCreator.MapSimulator.UI
         {
             if (UsesPacketOwnedAdminShopCatalog(mode))
             {
+                List<AdminShopEntry> packetSellTemplates = new();
                 foreach (PacketOwnedAdminShopCommoditySnapshot row in _packetOwnedAdminShopRows)
                 {
-                    AdminShopEntry entry = CreatePacketOwnedCommodityEntry(row);
+                    AdminShopEntry entry = row.Price > 0
+                        ? CreatePacketOwnedCommodityEntry(row)
+                        : CreatePacketOwnedSellTemplateEntry(row);
                     if (entry == null)
                     {
                         continue;
                     }
 
-                    AdminShopPane targetPane = row.Price > 0
-                        ? AdminShopPane.Npc
-                        : AdminShopPane.User;
-                    _paneStates[targetPane].SourceEntries.Add(entry);
+                    _paneStates[AdminShopPane.Npc].SourceEntries.Add(entry);
+                    if (RequiresInventorySource(entry))
+                    {
+                        packetSellTemplates.Add(entry);
+                    }
+                }
+
+                foreach (AdminShopEntry userEntry in CreateInventoryBackedUserEntries(packetSellTemplates))
+                {
+                    _paneStates[AdminShopPane.User].SourceEntries.Add(userEntry);
                 }
 
                 return;
@@ -3578,11 +3613,6 @@ namespace HaCreator.MapSimulator.UI
 
         private void RefreshDynamicUserEntries()
         {
-            if (UsesPacketOwnedAdminShopCatalog(_currentMode))
-            {
-                return;
-            }
-
             List<AdminShopEntry> npcEntries = _paneStates[AdminShopPane.Npc].SourceEntries
                 .Where(entry => entry != null)
                 .ToList();
@@ -3593,7 +3623,7 @@ namespace HaCreator.MapSimulator.UI
 
             _paneStates[AdminShopPane.User].SourceEntries.Clear();
             _paneStates[AdminShopPane.User].SourceEntries.AddRange(CreateInventoryBackedUserEntries(npcEntries));
-            if (_inventory == null)
+            if (_inventory == null && !UsesPacketOwnedAdminShopCatalog(_currentMode))
             {
                 _paneStates[AdminShopPane.User].SourceEntries.AddRange(CreateUserEntries(_currentMode));
             }
@@ -3677,13 +3707,17 @@ namespace HaCreator.MapSimulator.UI
                         CommoditySerialNumber = catalogEntry.CommoditySerialNumber,
                         CommodityOnSale = catalogEntry.CommodityOnSale,
                         MaxRequestCount = catalogEntry.MaxRequestCount,
+                        SuccessMesoReward = catalogEntry.SuccessMesoReward,
                         SourceInventoryType = catalogEntry.SourceInventoryType,
                         SourceItemId = catalogEntry.SourceItemId,
                         SourceItemQuantity = catalogEntry.SourceItemQuantity,
                         DisplayInventoryType = catalogEntry.SourceInventoryType,
                         DisplayItemId = catalogEntry.SourceItemId,
                         DisplayQuantity = stackQuantity,
-                        InventorySlotIndex = slotIndex
+                        InventorySlotIndex = slotIndex,
+                        PacketSerialNumber = catalogEntry.PacketSerialNumber,
+                        PacketSaleState = catalogEntry.PacketSaleState,
+                        IsPacketOwnedSnapshotRow = catalogEntry.IsPacketOwnedSnapshotRow
                     };
                 }
             }
@@ -3748,6 +3782,7 @@ namespace HaCreator.MapSimulator.UI
                 Response = response,
                 ResponseMessage = responseMessage,
                 MaxRequestCount = Math.Max(1, maxRequestCount),
+                SuccessMesoReward = 0,
                 SourceInventoryType = sourceInventoryType,
                 SourceItemId = sourceItemId,
                 SourceItemQuantity = Math.Max(1, sourceItemQuantity)
@@ -4275,15 +4310,34 @@ namespace HaCreator.MapSimulator.UI
         private void ResolveGrantedItemRequest(AdminShopEntry entry)
         {
             int deliveredQuantity = ComputeDeliveredQuantity(entry, _pendingRequestQuantity);
+            long mesoReward = ComputeSuccessMesoReward(entry, _pendingRequestQuantity);
             long totalPrice = ComputeRequestPrice(entry, _pendingRequestQuantity);
             if (entry.RewardInventoryType == InventoryType.NONE || entry.RewardItemId <= 0)
             {
+                if (!TryConsumeInventorySource(entry, _pendingRequestQuantity, out string sourceConsumeMessage))
+                {
+                    FinishRejectedRequest(
+                        entry,
+                        "Need item",
+                        sourceConsumeMessage,
+                        refundAmount: entry.ConsumeOnSuccess ? totalPrice : 0L);
+                    return;
+                }
+
+                if (mesoReward > 0 && _inventory != null)
+                {
+                    _inventory.AddMeso(mesoReward);
+                }
+
                 entry.State = AdminShopEntryState.RequestAccepted;
                 entry.StateLabel = "Accepted";
                 PersistEntrySessionState(entry);
-                _footerMessage = $"Catalog response received for {entry.Title}. The simulator accepted the request.";
+                _footerMessage = mesoReward > 0
+                    ? $"Catalog response received for {entry.Title}. Sold for {FormatPriceLabel(mesoReward)}."
+                    : $"Catalog response received for {entry.Title}. The simulator accepted the request.";
                 ResetPendingRequestState();
                 Money = _inventory?.GetMesoCount() ?? Money;
+                RefreshDynamicUserEntries();
                 UpdateActionButtonStates();
                 return;
             }
@@ -4298,12 +4352,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (!TryConsumeInventorySource(entry, _pendingRequestQuantity, out string sourceConsumeMessage))
+            if (!TryConsumeInventorySource(entry, _pendingRequestQuantity, out string sourceConsumeFailureMessage))
             {
                 FinishRejectedRequest(
                     entry,
                     "Need item",
-                    sourceConsumeMessage,
+                    sourceConsumeFailureMessage,
                     refundAmount: entry.ConsumeOnSuccess ? totalPrice : 0L);
                 return;
             }
@@ -4394,7 +4448,10 @@ namespace HaCreator.MapSimulator.UI
             string outboundText = string.IsNullOrWhiteSpace(_packetOwnedAdminShopLastOutboundSummary)
                 ? "no mirrored reopen/close packet yet"
                 : _packetOwnedAdminShopLastOutboundSummary;
-            return $"Packet-owned admin shop: {npcText}, open rows {_packetOwnedAdminShopDecodedItemCount}, packets open={_packetOwnedAdminShopOpenCount}/result={_packetOwnedAdminShopResultCount}, {resultText}, {outboundText}";
+            string disconnectText = _packetOwnedAdminShopWouldDisconnect
+                ? "client-disconnect parity hazard recorded"
+                : "no disconnect hazard recorded";
+            return $"Packet-owned admin shop: {npcText}, open rows {_packetOwnedAdminShopDecodedItemCount}, packets open={_packetOwnedAdminShopOpenCount}/result={_packetOwnedAdminShopResultCount}, {resultText}, {outboundText}, {disconnectText}";
         }
 
         private string GetEntryStateText(AdminShopEntry entry)
@@ -6226,6 +6283,66 @@ namespace HaCreator.MapSimulator.UI
                 PacketSaleState = commodity.SaleState,
                 IsPacketOwnedSnapshotRow = true
             };
+        }
+
+        private AdminShopEntry CreatePacketOwnedSellTemplateEntry(PacketOwnedAdminShopCommoditySnapshot commodity)
+        {
+            if (commodity == null || commodity.ItemId <= 0)
+            {
+                return null;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(commodity.ItemId);
+            AdminShopCategory category = ResolveCommodityCategory(inventoryType);
+            string title = InventoryItemMetadataResolver.TryResolveItemName(commodity.ItemId, out string itemName)
+                ? itemName
+                : $"Item {commodity.ItemId.ToString(CultureInfo.InvariantCulture)}";
+            string detail = InventoryItemMetadataResolver.TryResolveItemDescription(commodity.ItemId, out string description)
+                ? description
+                : "Packet-authored admin-shop sell template staged directly from CAdminShopDlg::SetAdminShopDlg.";
+            long mesoReward = Math.Abs((long)commodity.Price);
+            string packetSummary = $"SN {commodity.SerialNumber.ToString(CultureInfo.InvariantCulture)}, saleState {commodity.SaleState.ToString(CultureInfo.InvariantCulture)}, sellPrice {FormatPriceLabel(mesoReward)}, maxPerSlot {Math.Max(1, commodity.MaxPerSlot).ToString(CultureInfo.InvariantCulture)}.";
+            detail = string.IsNullOrWhiteSpace(detail)
+                ? packetSummary
+                : $"{detail} {packetSummary}";
+
+            bool available = commodity.SaleState == 0;
+            return new AdminShopEntry
+            {
+                Title = title,
+                Detail = $"{detail} Mirrors the client NPC sell template that CAdminShopDlg::SetUserItems binds to matching live inventory rows.",
+                Seller = _packetOwnedAdminShopNpcTemplateId > 0
+                    ? $"NPC {_packetOwnedAdminShopNpcTemplateId.ToString(CultureInfo.InvariantCulture)}"
+                    : "Packet-owned shop",
+                Price = -mesoReward,
+                PriceLabel = $"Sell {FormatPriceLabel(mesoReward)}",
+                Category = category,
+                SupportsWishlist = false,
+                State = available ? AdminShopEntryState.Available : AdminShopEntryState.PreviewOnly,
+                StateLabel = available ? string.Empty : $"SaleState {commodity.SaleState.ToString(CultureInfo.InvariantCulture)}",
+                RewardInventoryType = InventoryType.NONE,
+                RewardItemId = 0,
+                RewardQuantity = 1,
+                Response = available ? AdminShopResponse.GrantItem : AdminShopResponse.None,
+                MaxRequestCount = Math.Max(1, commodity.MaxPerSlot),
+                SuccessMesoReward = mesoReward,
+                SourceInventoryType = inventoryType,
+                SourceItemId = commodity.ItemId,
+                SourceItemQuantity = 1,
+                PacketSerialNumber = commodity.SerialNumber,
+                PacketSaleState = commodity.SaleState,
+                IsPacketOwnedSnapshotRow = true
+            };
+        }
+
+        private static long ComputeSuccessMesoReward(AdminShopEntry entry, int requestQuantity)
+        {
+            if (entry == null || entry.SuccessMesoReward <= 0)
+            {
+                return 0L;
+            }
+
+            return entry.SuccessMesoReward * Math.Max(1, requestQuantity);
         }
 
         private string DispatchPacketOwnedAdminShopOutbound(int mode, int npcTemplateId)

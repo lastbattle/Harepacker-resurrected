@@ -180,11 +180,17 @@ namespace HaCreator.MapSimulator.Fields
         private Texture2D _loseTexture;
         private Texture2D _drawTexture;
         private Texture2D _readyButtonTexture;
+        private Texture2D _readyButtonDisabledTexture;
         private Texture2D _startButtonTexture;
+        private Texture2D _startButtonDisabledTexture;
         private Texture2D _tieButtonTexture;
+        private Texture2D _tieButtonDisabledTexture;
         private Texture2D _giveUpButtonTexture;
+        private Texture2D _giveUpButtonDisabledTexture;
         private Texture2D _endButtonTexture;
+        private Texture2D _endButtonDisabledTexture;
         private Texture2D _banButtonTexture;
+        private Texture2D _banButtonDisabledTexture;
         private int _rows;
         private int _columns;
         private int _localPlayerIndex;
@@ -200,7 +206,9 @@ namespace HaCreator.MapSimulator.Fields
         private Func<LoginAvatarLook, CharacterBuild> _miniRoomAvatarBuildFactory;
         private CharacterBuild _localMiniRoomAvatarBuild;
         private MemoryGamePromptState _pendingPrompt;
+        private string _statusMessageBeforePrompt;
         private bool _localTieRequestSent;
+        private bool _localTieRequestSentThisTurn;
         private bool _localGiveUpRequestSent;
 
 
@@ -1821,7 +1829,7 @@ namespace HaCreator.MapSimulator.Fields
 
             }
 
-
+            _pendingHideTick = 0;
 
             _currentTurnIndex = Math.Clamp(currentTurnIndex, 0, _playerNames.Length - 1);
             _turnDeadlineTick = tickCount + 10000;
@@ -2657,26 +2665,36 @@ namespace HaCreator.MapSimulator.Fields
                 yield break;
             }
 
-            string[] words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            StringBuilder line = new();
-            foreach (string word in words)
+            string normalizedText = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+            foreach (string paragraph in normalizedText.Split('\n'))
             {
-                string candidate = line.Length == 0 ? word : $"{line} {word}";
-                if (font.MeasureString(candidate).X <= maxWidth || line.Length == 0)
+                if (string.IsNullOrWhiteSpace(paragraph))
                 {
-                    line.Clear();
-                    line.Append(candidate);
+                    yield return string.Empty;
                     continue;
                 }
 
-                yield return line.ToString();
-                line.Clear();
-                line.Append(word);
-            }
+                string[] words = paragraph.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                StringBuilder line = new();
+                foreach (string word in words)
+                {
+                    string candidate = line.Length == 0 ? word : $"{line} {word}";
+                    if (font.MeasureString(candidate).X <= maxWidth || line.Length == 0)
+                    {
+                        line.Clear();
+                        line.Append(candidate);
+                        continue;
+                    }
 
-            if (line.Length > 0)
-            {
-                yield return line.ToString();
+                    yield return line.ToString();
+                    line.Clear();
+                    line.Append(word);
+                }
+
+                if (line.Length > 0)
+                {
+                    yield return line.ToString();
+                }
             }
         }
 

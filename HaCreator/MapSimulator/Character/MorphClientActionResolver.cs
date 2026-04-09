@@ -136,7 +136,7 @@ namespace HaCreator.MapSimulator.Character
         {
             if (morphPart?.Animations == null
                 || string.IsNullOrWhiteSpace(actionName)
-                || !morphPart.Animations.ContainsKey(actionName))
+                || !HasPublishedAction(morphPart, actionName))
             {
                 return false;
             }
@@ -298,7 +298,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 if (!string.IsNullOrWhiteSpace(candidate)
                     && IsPublishedGenericMeleeAttackAlias(candidate)
-                    && morphPart.Animations.ContainsKey(candidate))
+                    && HasPublishedAction(morphPart, candidate))
                 {
                     yielded.Add(candidate);
                     yield return candidate;
@@ -329,7 +329,7 @@ namespace HaCreator.MapSimulator.Character
                 yield break;
             }
 
-            foreach (string candidate in morphPart.Animations.Keys)
+            foreach (string candidate in EnumeratePublishedActionNames(morphPart))
             {
                 if (IsPublishedGenericMeleeAttackAlias(candidate)
                     && IsMatchingGenericMeleeFamily(requestedActionName, candidate))
@@ -378,7 +378,7 @@ namespace HaCreator.MapSimulator.Character
 
             // Client s_sMorphAction still requests stab-family raw names while common
             // Morph/*.img variants such as 1003/1103 only publish generic swing branches.
-            foreach (string candidate in morphPart.Animations.Keys)
+            foreach (string candidate in EnumeratePublishedActionNames(morphPart))
             {
                 if (candidate.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
@@ -452,7 +452,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 foreach (string alias in ClientPublishedRangedMorphFallbackAliases)
                 {
-                    if (!string.IsNullOrWhiteSpace(alias) && morphPart.Animations.ContainsKey(alias))
+                    if (!string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
                     {
                         yield return alias;
                     }
@@ -461,7 +461,7 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (string alias in GenericMorphRangedAttackAliases)
             {
-                if (!string.IsNullOrWhiteSpace(alias) && morphPart.Animations.ContainsKey(alias))
+                if (!string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
                 {
                     yield return alias;
                 }
@@ -471,7 +471,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 foreach (string alias in ClientPublishedRangedMorphFallbackAliases)
                 {
-                    if (!string.IsNullOrWhiteSpace(alias) && morphPart.Animations.ContainsKey(alias))
+                    if (!string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
                     {
                         yield return alias;
                     }
@@ -488,7 +488,7 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (string alias in aliases)
             {
-                if (!string.IsNullOrWhiteSpace(alias) && morphPart.Animations.ContainsKey(alias))
+                if (!string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
                 {
                     yield return alias;
                 }
@@ -506,7 +506,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             foreach (var aliasEntry in aliases
-                         .Where(alias => !string.IsNullOrWhiteSpace(alias) && morphPart.Animations.ContainsKey(alias))
+                         .Where(alias => !string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
                          .Select((alias, index) => new
                          {
                              Alias = alias,
@@ -590,7 +590,7 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (string alias in aliases)
             {
-                if (!string.IsNullOrWhiteSpace(alias) && morphPart.Animations.ContainsKey(alias))
+                if (!string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
                 {
                     yield return alias;
                 }
@@ -630,7 +630,7 @@ namespace HaCreator.MapSimulator.Character
                          .ThenByDescending(alias =>
                              TryParseAlertActionIndex(alias, out int aliasIndex) ? aliasIndex : int.MinValue))
             {
-                if (morphPart.Animations.ContainsKey(alias))
+                if (HasPublishedAction(morphPart, alias))
                 {
                     yield return alias;
                 }
@@ -680,7 +680,7 @@ namespace HaCreator.MapSimulator.Character
                 yield break;
             }
 
-            foreach (string actionName in morphPart.Animations.Keys)
+            foreach (string actionName in EnumeratePublishedActionNames(morphPart))
             {
                 if (actionName.IndexOf("doublejump", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
@@ -696,7 +696,7 @@ namespace HaCreator.MapSimulator.Character
                 yield break;
             }
 
-            foreach (string actionName in morphPart.Animations.Keys)
+            foreach (string actionName in EnumeratePublishedActionNames(morphPart))
             {
                 if (IsHeuristicCombatAlias(actionName))
                 {
@@ -837,6 +837,42 @@ namespace HaCreator.MapSimulator.Character
                    || string.Equals(actionName, "shoot6", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "paralyze", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "arrowEruption", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static IEnumerable<string> EnumeratePublishedActionNames(CharacterPart morphPart)
+        {
+            if (morphPart == null)
+            {
+                yield break;
+            }
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string actionName in morphPart.Animations?.Keys ?? Enumerable.Empty<string>())
+            {
+                if (!string.IsNullOrWhiteSpace(actionName) && seen.Add(actionName))
+                {
+                    yield return actionName;
+                }
+            }
+
+            foreach (string actionName in morphPart.AvailableAnimations ?? Enumerable.Empty<string>())
+            {
+                if (!string.IsNullOrWhiteSpace(actionName) && seen.Add(actionName))
+                {
+                    yield return actionName;
+                }
+            }
+        }
+
+        private static bool HasPublishedAction(CharacterPart morphPart, string actionName)
+        {
+            if (morphPart == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return (morphPart.Animations?.ContainsKey(actionName) == true)
+                   || (morphPart.AvailableAnimations?.Contains(actionName) == true);
         }
     }
 }

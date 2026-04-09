@@ -24,15 +24,15 @@ namespace HaCreator.MapSimulator.UI
     {
         public sealed class PacketCatalogEntry
         {
-            public string Title { get; init; } = string.Empty;
-            public string Detail { get; init; } = string.Empty;
-            public string Seller { get; init; } = string.Empty;
-            public string PriceLabel { get; init; } = string.Empty;
-            public string StateLabel { get; init; } = string.Empty;
-            public int ListingId { get; init; }
-            public int ItemId { get; init; }
-            public int Quantity { get; init; } = 1;
-            public int Price { get; init; }
+            public string Title { get; set; } = string.Empty;
+            public string Detail { get; set; } = string.Empty;
+            public string Seller { get; set; } = string.Empty;
+            public string PriceLabel { get; set; } = string.Empty;
+            public string StateLabel { get; set; } = string.Empty;
+            public int ListingId { get; set; }
+            public int ItemId { get; set; }
+            public int Quantity { get; set; } = 1;
+            public int Price { get; set; }
         }
 
         private sealed class StageLayer
@@ -89,9 +89,11 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<int> _packetRouteOrder = new();
         private readonly List<PacketCatalogEntry> _cashPacketCatalogEntries = new();
         private readonly List<PacketCatalogEntry> _cashInventoryPacketEntries = new();
+        private readonly Dictionary<int, bool> _cashPurchaseRecordStates = new();
         private readonly List<PacketCatalogEntry> _itcPacketCatalogEntries = new();
         private readonly List<PacketCatalogEntry> _itcSalePacketEntries = new();
         private readonly List<PacketCatalogEntry> _itcPurchasePacketEntries = new();
+        private readonly List<PacketCatalogEntry> _itcWishPacketEntries = new();
 
         private SpriteFont _font;
         private CharacterBuild _build;
@@ -197,6 +199,7 @@ namespace HaCreator.MapSimulator.UI
         public IReadOnlyList<PacketCatalogEntry> ItcPacketCatalogEntries => _itcPacketCatalogEntries;
         public IReadOnlyList<PacketCatalogEntry> ItcSalePacketEntries => _itcSalePacketEntries;
         public IReadOnlyList<PacketCatalogEntry> ItcPurchasePacketEntries => _itcPurchasePacketEntries;
+        public IReadOnlyList<PacketCatalogEntry> ItcWishPacketEntries => _itcWishPacketEntries;
 
         public override void SetFont(SpriteFont font)
         {
@@ -293,6 +296,7 @@ namespace HaCreator.MapSimulator.UI
             _cashItemLastSummary = "No cash-item result routed yet.";
             _cashPacketCatalogEntries.Clear();
             _cashInventoryPacketEntries.Clear();
+            _cashPurchaseRecordStates.Clear();
             _cashGiftLastSummary = "No packet-authored gift result routed yet.";
             _cashPurchaseRecordSummary = "No packet-authored purchase record routed yet.";
             _itcNormalItemSubtype = -1;
@@ -312,6 +316,7 @@ namespace HaCreator.MapSimulator.UI
             _itcPacketCatalogEntries.Clear();
             _itcSalePacketEntries.Clear();
             _itcPurchasePacketEntries.Clear();
+            _itcWishPacketEntries.Clear();
             _itcNormalItemLastSummary = "No ITC normal-item packet routed yet.";
 
             if (_stageKind == CashServiceStageKind.CashShop)
@@ -644,6 +649,13 @@ namespace HaCreator.MapSimulator.UI
                         lines.Add($"{entry.Title} | {entry.PriceLabel} | {entry.StateLabel}");
                     }
                 }
+                else if (_itcWishPacketEntries.Count > 0)
+                {
+                    foreach (PacketCatalogEntry entry in _itcWishPacketEntries.Take(3))
+                    {
+                        lines.Add($"{entry.Title} | {entry.PriceLabel} | {entry.StateLabel}");
+                    }
+                }
             }
 
             if (_packetRouteOrder.Count == 0)
@@ -713,6 +725,11 @@ namespace HaCreator.MapSimulator.UI
                 lines.Add($"{entry.Title} | {entry.PriceLabel} | {entry.StateLabel}");
             }
 
+            if (_itcWishPacketEntries.Count > 0)
+            {
+                lines.Add($"Wish rows {_itcWishPacketEntries.Count.ToString(CultureInfo.InvariantCulture)} remain staged separately.");
+            }
+
             return lines;
         }
 
@@ -723,9 +740,11 @@ namespace HaCreator.MapSimulator.UI
                 $"Purchase owner remains separate from the main list. Packet list count {_itcPurchaseItemCount.ToString(CultureInfo.InvariantCulture)}.",
                 _itcPurchasePacketEntries.Count > 0
                     ? $"{_itcPurchasePacketEntries[0].Title} at {_itcPurchasePacketEntries[0].PriceLabel}."
+                    : (_itcWishPacketEntries.Count > 0
+                        ? $"{_itcWishPacketEntries[0].Title} at {_itcWishPacketEntries[0].PriceLabel} remains in the wish-sale owner."
                     : (_itcNormalItemMutationCount > 0
                         ? $"Last listing {_itcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)} at {_itcNormalItemSelectedPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos."
-                        : "No listing payload has reached the purchase owner yet."),
+                        : "No listing payload has reached the purchase owner yet.")),
                 _statusMessage
             };
 
@@ -928,28 +947,50 @@ namespace HaCreator.MapSimulator.UI
                     ? saleMessage
                     : BuildPacketDecodeFailure("CITC::OnGetUserSaleItemDone", packetPayload),
                 36 => BuildItcFailureMessage(packetPayload, "CITC::OnGetUserSaleItemFailed"),
-                37 => BuildItcSimpleResult("CITC::OnCancelSaleItemDone", "The selected sale entry was cancelled and the request lock cleared.", packetPayload),
+                37 => TryApplyItcCancelSaleDone(packetPayload, out string cancelSaleMessage)
+                    ? cancelSaleMessage
+                    : BuildPacketDecodeFailure("CITC::OnCancelSaleItemDone", packetPayload),
                 38 => BuildItcFailureMessage(packetPayload, "CITC::OnCancelSaleItemFailed"),
-                39 => BuildItcSimpleResult("CITC::OnMoveITCPurchaseItemLtoSDone", "A purchase item moved from the list owner into storage.", packetPayload),
+                39 => TryApplyItcMovePurchaseItemToStorage(packetPayload, out string movePurchaseMessage)
+                    ? movePurchaseMessage
+                    : BuildPacketDecodeFailure("CITC::OnMoveITCPurchaseItemLtoSDone", packetPayload),
                 40 => BuildItcFailureMessage(packetPayload, "CITC::OnMoveITCPurchaseItemLtoSFailed"),
-                41 => BuildItcSimpleResult("CITC::OnSetZzimDone", "The selected wish item was added to the packet-owned zzim list.", packetPayload),
+                41 => TryApplyItcWishMutation("CITC::OnSetZzimDone", addSelectedCatalogEntry: true, removeCurrentWishEntry: false, out string setWishMessage)
+                    ? setWishMessage
+                    : BuildPacketDecodeFailure("CITC::OnSetZzimDone", packetPayload),
                 42 => BuildItcFailureMessage(packetPayload, "CITC::OnSetZzimFailed"),
-                43 => BuildItcSimpleResult("CITC::OnDeleteZzimDone", "The selected wish item was removed from the packet-owned zzim list.", packetPayload),
+                43 => TryApplyItcWishMutation("CITC::OnDeleteZzimDone", addSelectedCatalogEntry: false, removeCurrentWishEntry: true, out string deleteWishMessage)
+                    ? deleteWishMessage
+                    : BuildPacketDecodeFailure("CITC::OnDeleteZzimDone", packetPayload),
                 44 => BuildItcFailureMessage(packetPayload, "CITC::OnDeleteZzimFailed"),
-                45 => BuildItcSimpleResult("CITC::OnLoadWishSaleListDone", "The packet-owned wish-sale list refreshed.", packetPayload),
+                45 => TryApplyItcWishSaleList(packetPayload, out string loadWishMessage)
+                    ? loadWishMessage
+                    : BuildPacketDecodeFailure("CITC::OnLoadWishSaleListDone", packetPayload),
                 46 => BuildItcFailureMessage(packetPayload, "CITC::OnLoadWishSaleListFailed"),
-                47 => BuildItcSimpleResult("CITC::OnBuyWishDone", "The selected wish entry completed its buy flow.", packetPayload),
+                47 => TryApplyItcBuyCatalogItemDone("CITC::OnBuyWishDone", fromWishList: true, out string buyWishMessage)
+                    ? buyWishMessage
+                    : BuildPacketDecodeFailure("CITC::OnBuyWishDone", packetPayload),
                 48 => BuildItcFailureMessage(packetPayload, "CITC::OnBuyWishFailed"),
-                49 => BuildItcSimpleResult("CITC::OnCancelWishDone", "The selected wish registration was cancelled.", packetPayload),
+                49 => TryApplyItcWishMutation("CITC::OnCancelWishDone", addSelectedCatalogEntry: false, removeCurrentWishEntry: true, out string cancelWishMessage)
+                    ? cancelWishMessage
+                    : BuildPacketDecodeFailure("CITC::OnCancelWishDone", packetPayload),
                 50 => BuildItcFailureMessage(packetPayload, "CITC::OnCancelWishFailed"),
-                51 => BuildItcSimpleResult("CITC::OnBuyItemDone", "The selected ITC listing was purchased successfully.", packetPayload),
+                51 => TryApplyItcBuyCatalogItemDone("CITC::OnBuyItemDone", fromWishList: false, out string buyItemMessage)
+                    ? buyItemMessage
+                    : BuildPacketDecodeFailure("CITC::OnBuyItemDone", packetPayload),
                 52 => BuildItcFailureMessage(packetPayload, "CITC::OnBuyItemFailed"),
-                53 => BuildItcSimpleResult("CITC::OnBuyZzimItemDone", "The selected zzim listing was purchased successfully.", packetPayload),
+                53 => TryApplyItcBuyCatalogItemDone("CITC::OnBuyZzimItemDone", fromWishList: true, out string buyWishCatalogMessage)
+                    ? buyWishCatalogMessage
+                    : BuildPacketDecodeFailure("CITC::OnBuyZzimItemDone", packetPayload),
                 54 => BuildItcFailureMessage(packetPayload, "CITC::OnBuyZzimItemFailed"),
-                55 => BuildItcSimpleResult("CITC::OnRegisterWishItemDone", "The selected item was registered into the wish list.", packetPayload),
+                55 => TryApplyItcWishMutation("CITC::OnRegisterWishItemDone", addSelectedCatalogEntry: true, removeCurrentWishEntry: false, out string registerWishMessage)
+                    ? registerWishMessage
+                    : BuildPacketDecodeFailure("CITC::OnRegisterWishItemDone", packetPayload),
                 56 => BuildItcFailureMessage(packetPayload, "CITC::OnRegisterWishItemFailed"),
                 60 => BuildItcFailureMessage(packetPayload, "CITC::OnBidAuctionFailed"),
-                61 => BuildItcSimpleResult("CITC::OnNotifyCancelWishResult", "A packet-owned cancel-wish result notice reached CITC.", packetPayload),
+                61 => TryApplyItcCancelWishNotification(packetPayload, out string cancelWishNoticeMessage)
+                    ? cancelWishNoticeMessage
+                    : BuildPacketDecodeFailure("CITC::OnNotifyCancelWishResult", packetPayload),
                 62 => BuildItcSimpleResult("CITC::OnSuccessBidInfoResult", "A packet-owned bid-success notice reached CITC.", packetPayload),
                 _ => $"{GetItcNormalItemSubtypeLabel(_itcNormalItemSubtype)} reached CITC with {packetPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s) of packet-owned state."
             };
@@ -1031,7 +1072,7 @@ namespace HaCreator.MapSimulator.UI
                     Detail = $"Commodity SN {_cashWishlistSerialNumbers[i].ToString(CultureInfo.InvariantCulture)} is now owned by the packet-authored wish list.",
                     Seller = "CCashShop wishlist",
                     PriceLabel = $"SN {_cashWishlistSerialNumbers[i].ToString(CultureInfo.InvariantCulture)}",
-                    StateLabel = "Wish",
+                    StateLabel = ResolveCashPurchaseRecordStateLabel(_cashWishlistSerialNumbers[i]),
                     ListingId = _cashWishlistSerialNumbers[i]
                 });
             }
@@ -1200,6 +1241,16 @@ namespace HaCreator.MapSimulator.UI
             _cashPurchaseRecordSummary = commoditySerialNumber > 0
                 ? $"Purchase record SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)} is {(purchaseRecorded ? "marked purchased" : "present but not purchased")}."
                 : $"Global purchase record state is {(purchaseRecorded ? "enabled" : "cleared")}.";
+            if (commoditySerialNumber > 0)
+            {
+                _cashPurchaseRecordStates[commoditySerialNumber] = purchaseRecorded;
+                ApplyCashPurchaseRecordStateToCatalogEntries(commoditySerialNumber, purchaseRecorded);
+            }
+            else
+            {
+                ApplyCashPurchaseRecordStateToCatalogEntries(0, purchaseRecorded);
+            }
+
             _noticeState = _cashPurchaseRecordSummary;
             message = $"CCashShop::OnCashItemResPurchaseRecord updated {_cashPurchaseRecordSummary}";
             return true;
@@ -1364,6 +1415,146 @@ namespace HaCreator.MapSimulator.UI
             PacketCatalogEntry selectedEntry = target.FirstOrDefault();
             _itcNormalItemSelectedListingId = selectedEntry?.ListingId ?? _itcNormalItemSelectedListingId;
             _itcNormalItemSelectedPrice = selectedEntry?.Price ?? _itcNormalItemSelectedPrice;
+            return true;
+        }
+
+        private bool TryApplyItcWishSaleList(byte[] payload, out string message)
+        {
+            message = null;
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (stream.Length < 1 + sizeof(int))
+            {
+                return false;
+            }
+
+            _ = reader.ReadByte();
+            int count = Math.Max(0, reader.ReadInt32());
+            _itcWishPacketEntries.Clear();
+            for (int i = 0; i < count; i++)
+            {
+                if (!TryReadItcItemEntry(reader, out PacketCatalogEntry entry))
+                {
+                    return false;
+                }
+
+                entry.StateLabel = string.IsNullOrWhiteSpace(entry.StateLabel)
+                    ? "Wish"
+                    : $"{entry.StateLabel} / Wish";
+                _itcWishPacketEntries.Add(entry);
+            }
+
+            _noticeState = _itcWishPacketEntries.Count > 0
+                ? $"Wish-sale owner loaded {_itcWishPacketEntries.Count.ToString(CultureInfo.InvariantCulture)} packet-authored row(s)."
+                : "Wish-sale owner loaded no packet-authored rows.";
+            message = $"CITC::OnLoadWishSaleListDone loaded {_itcWishPacketEntries.Count.ToString(CultureInfo.InvariantCulture)} packet-authored wish-sale row(s).";
+            return true;
+        }
+
+        private bool TryApplyItcCancelSaleDone(byte[] payload, out string message)
+        {
+            RemovePrimaryEntry(_itcSalePacketEntries, out PacketCatalogEntry removedEntry);
+            _itcSaleItemCount = Math.Max(0, _itcSalePacketEntries.Count);
+            _noticeState = removedEntry != null
+                ? $"Cancelled sale listing {removedEntry.ListingId.ToString(CultureInfo.InvariantCulture)} from the packet-owned sale owner."
+                : "Cancelled the focused packet-owned sale listing.";
+            message = $"CITC::OnCancelSaleItemDone removed {(removedEntry != null ? $"listing {removedEntry.ListingId.ToString(CultureInfo.InvariantCulture)}" : "the focused sale row")} from the sale owner.";
+            return true;
+        }
+
+        private bool TryApplyItcMovePurchaseItemToStorage(byte[] payload, out string message)
+        {
+            message = null;
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (stream.Length < 1 + (sizeof(int) * 2))
+            {
+                return false;
+            }
+
+            _ = reader.ReadByte();
+            int inventoryTab = Math.Max(0, reader.ReadInt32());
+            int slotIndex = Math.Max(0, reader.ReadInt32());
+            RemovePrimaryEntry(_itcPurchasePacketEntries, out PacketCatalogEntry movedEntry);
+            _itcPurchaseItemCount = Math.Max(0, _itcPurchasePacketEntries.Count);
+            _noticeState =
+                $"Purchase listing {(movedEntry?.ListingId ?? _itcNormalItemSelectedListingId).ToString(CultureInfo.InvariantCulture)} moved into inventory tab {inventoryTab.ToString(CultureInfo.InvariantCulture)} slot {slotIndex.ToString(CultureInfo.InvariantCulture)}.";
+            message =
+                $"CITC::OnMoveITCPurchaseItemLtoSDone moved {(movedEntry != null ? $"listing {movedEntry.ListingId.ToString(CultureInfo.InvariantCulture)}" : "the focused purchase row")} into tab {inventoryTab.ToString(CultureInfo.InvariantCulture)} slot {slotIndex.ToString(CultureInfo.InvariantCulture)}.";
+            UpdateItcSelectionFromPrimaryList(_itcPurchasePacketEntries);
+            return true;
+        }
+
+        private bool TryApplyItcWishMutation(
+            string ownerName,
+            bool addSelectedCatalogEntry,
+            bool removeCurrentWishEntry,
+            out string message)
+        {
+            PacketCatalogEntry focusedCatalogEntry = _itcPacketCatalogEntries.FirstOrDefault();
+            if (addSelectedCatalogEntry && focusedCatalogEntry != null)
+            {
+                UpsertWishEntry(_itcWishPacketEntries, ClonePacketCatalogEntry(focusedCatalogEntry, "Wish"));
+            }
+
+            PacketCatalogEntry removedWishEntry = null;
+            if (removeCurrentWishEntry)
+            {
+                RemovePrimaryEntry(_itcWishPacketEntries, out removedWishEntry);
+            }
+
+            _noticeState = ownerName switch
+            {
+                "CITC::OnSetZzimDone" or "CITC::OnRegisterWishItemDone" => focusedCatalogEntry != null
+                    ? $"Wish owner now tracks listing {focusedCatalogEntry.ListingId.ToString(CultureInfo.InvariantCulture)}."
+                    : "Wish owner accepted the focused catalog row.",
+                _ => removedWishEntry != null
+                    ? $"Wish owner removed listing {removedWishEntry.ListingId.ToString(CultureInfo.InvariantCulture)}."
+                    : "Wish owner cleared the focused row."
+            };
+
+            message = $"{ownerName} left {_itcWishPacketEntries.Count.ToString(CultureInfo.InvariantCulture)} packet-authored wish row(s) active.";
+            return true;
+        }
+
+        private bool TryApplyItcBuyCatalogItemDone(string ownerName, bool fromWishList, out string message)
+        {
+            List<PacketCatalogEntry> source = fromWishList ? _itcWishPacketEntries : _itcPacketCatalogEntries;
+            RemovePrimaryEntry(source, out PacketCatalogEntry removedEntry);
+            if (!fromWishList && removedEntry != null)
+            {
+                _itcCurrentCategoryItemCount = Math.Max(0, _itcCurrentCategoryItemCount - 1);
+                _itcNormalItemEntryCount = Math.Max(0, _itcCurrentCategoryItemCount);
+            }
+
+            if (fromWishList && removedEntry != null)
+            {
+                RemoveEntryByListingId(_itcPacketCatalogEntries, removedEntry.ListingId);
+            }
+
+            _noticeState = removedEntry != null
+                ? $"Purchased listing {removedEntry.ListingId.ToString(CultureInfo.InvariantCulture)} from the {(fromWishList ? "wish-sale" : "main list")} owner."
+                : $"Purchased the focused {(fromWishList ? "wish-sale" : "main-list")} row.";
+            message = $"{ownerName} completed for {(removedEntry != null ? $"listing {removedEntry.ListingId.ToString(CultureInfo.InvariantCulture)}" : "the focused row")} and refreshed the packet-owned {(fromWishList ? "wish-sale" : "catalog")} owner.";
+            UpdateItcSelectionFromPrimaryList(fromWishList ? _itcWishPacketEntries : _itcPacketCatalogEntries);
+            return true;
+        }
+
+        private bool TryApplyItcCancelWishNotification(byte[] payload, out string message)
+        {
+            message = null;
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (stream.Length < 1 + (sizeof(int) * 2))
+            {
+                return false;
+            }
+
+            _ = reader.ReadByte();
+            int reason = reader.ReadInt32();
+            int itemCount = reader.ReadInt32();
+            _noticeState = $"Wish cancellation notice reported reason {reason.ToString(CultureInfo.InvariantCulture)} with {itemCount.ToString(CultureInfo.InvariantCulture)} item(s) still pending.";
+            message = $"CITC::OnNotifyCancelWishResult surfaced reason {reason.ToString(CultureInfo.InvariantCulture)} for {itemCount.ToString(CultureInfo.InvariantCulture)} packet-owned item(s).";
             return true;
         }
 
@@ -1625,6 +1816,105 @@ namespace HaCreator.MapSimulator.UI
         {
             string trimmed = value?.Trim();
             return string.IsNullOrWhiteSpace(trimmed) ? fallback : trimmed;
+        }
+
+        private string ResolveCashPurchaseRecordStateLabel(int commoditySerialNumber)
+        {
+            if (commoditySerialNumber > 0 && _cashPurchaseRecordStates.TryGetValue(commoditySerialNumber, out bool purchased))
+            {
+                return purchased ? "Purchased" : "Wish";
+            }
+
+            return "Wish";
+        }
+
+        private void ApplyCashPurchaseRecordStateToCatalogEntries(int commoditySerialNumber, bool purchased)
+        {
+            foreach (PacketCatalogEntry entry in _cashPacketCatalogEntries)
+            {
+                if (commoditySerialNumber > 0 && entry.ListingId != commoditySerialNumber)
+                {
+                    continue;
+                }
+
+                entry.StateLabel = purchased ? "Purchased" : "Wish";
+            }
+        }
+
+        private static PacketCatalogEntry ClonePacketCatalogEntry(PacketCatalogEntry source, string appendedStateLabel)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            string stateLabel = string.IsNullOrWhiteSpace(source.StateLabel)
+                ? appendedStateLabel
+                : source.StateLabel.Contains(appendedStateLabel, StringComparison.Ordinal)
+                    ? source.StateLabel
+                    : $"{source.StateLabel} / {appendedStateLabel}";
+            return new PacketCatalogEntry
+            {
+                Title = source.Title,
+                Detail = source.Detail,
+                Seller = source.Seller,
+                PriceLabel = source.PriceLabel,
+                StateLabel = stateLabel,
+                ListingId = source.ListingId,
+                ItemId = source.ItemId,
+                Quantity = source.Quantity,
+                Price = source.Price
+            };
+        }
+
+        private static void UpsertWishEntry(List<PacketCatalogEntry> target, PacketCatalogEntry entry)
+        {
+            if (target == null || entry == null)
+            {
+                return;
+            }
+
+            int existingIndex = target.FindIndex(candidate => candidate.ListingId > 0 && candidate.ListingId == entry.ListingId);
+            if (existingIndex >= 0)
+            {
+                target[existingIndex] = entry;
+                return;
+            }
+
+            target.Insert(0, entry);
+        }
+
+        private static void RemovePrimaryEntry(List<PacketCatalogEntry> target, out PacketCatalogEntry removedEntry)
+        {
+            removedEntry = null;
+            if (target == null || target.Count == 0)
+            {
+                return;
+            }
+
+            removedEntry = target[0];
+            target.RemoveAt(0);
+        }
+
+        private static void RemoveEntryByListingId(List<PacketCatalogEntry> target, int listingId)
+        {
+            if (target == null || listingId <= 0)
+            {
+                return;
+            }
+
+            int index = target.FindIndex(candidate => candidate.ListingId == listingId);
+            if (index >= 0)
+            {
+                target.RemoveAt(index);
+            }
+        }
+
+        private void UpdateItcSelectionFromPrimaryList(IReadOnlyList<PacketCatalogEntry> entries)
+        {
+            PacketCatalogEntry selectedEntry = entries?.FirstOrDefault();
+            _itcNormalItemSelectedListingId = selectedEntry?.ListingId ?? 0;
+            _itcNormalItemSelectedPrice = selectedEntry?.Price ?? 0;
         }
 
         private string BuildItcFailureMessage(byte[] payload, string ownerName)

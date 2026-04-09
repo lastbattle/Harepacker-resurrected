@@ -51,7 +51,9 @@ namespace HaCreator.MapSimulator.UI
         private Func<string> _footerProvider;
         private float _activeOverlayAlpha;
         private float _inactiveLayerAlpha = 1f;
-        private int _lastIndicatorStateTick = int.MinValue;
+        private bool? _lastFadingInActiveLayer;
+        private float _fadeInStartAlpha;
+        private int _layerFadeStartTick = int.MinValue;
 
         internal RadioStatusWindow(
             GraphicsDevice device,
@@ -373,13 +375,21 @@ namespace HaCreator.MapSimulator.UI
         {
             bool ownsPlayback = _indicatorPlaybackProvider?.Invoke() == true;
             bool muted = _indicatorMutedProvider?.Invoke() == true;
-            int elapsedMs = _lastIndicatorStateTick == int.MinValue
-                ? IndicatorFadeDurationMs
-                : Math.Max(0, tickCount - _lastIndicatorStateTick);
+            bool fadeInActiveLayer = ShouldFadeInActiveLayer(ownsPlayback, muted);
+            if (_lastFadingInActiveLayer != fadeInActiveLayer)
+            {
+                _fadeInStartAlpha = fadeInActiveLayer ? _activeOverlayAlpha : _inactiveLayerAlpha;
+                _layerFadeStartTick = tickCount;
+                _lastFadingInActiveLayer = fadeInActiveLayer;
+            }
 
-            _activeOverlayAlpha = StepIndicatorAlpha(_activeOverlayAlpha, ownsPlayback, muted, elapsedMs);
-            _inactiveLayerAlpha = ResolveInactiveLayerAlpha(_activeOverlayAlpha);
-            _lastIndicatorStateTick = tickCount;
+            int elapsedMs = _layerFadeStartTick == int.MinValue
+                ? IndicatorFadeDurationMs
+                : Math.Max(0, tickCount - _layerFadeStartTick);
+            float fadeInAlpha = StepIndicatorFadeInAlpha(_fadeInStartAlpha, elapsedMs);
+            (float activeAlpha, float inactiveAlpha) = ResolveIndicatorLayerAlphas(fadeInAlpha, fadeInActiveLayer);
+            _activeOverlayAlpha = activeAlpha;
+            _inactiveLayerAlpha = inactiveAlpha;
         }
 
         private Texture2D ResolveActiveIndicatorTexture(int tickCount)
@@ -443,19 +453,13 @@ namespace HaCreator.MapSimulator.UI
             return frameDelays.Count - 1;
         }
 
-        internal static float ResolveTargetIndicatorAlpha(bool ownsPlayback, bool muted)
+        internal static bool ShouldFadeInActiveLayer(bool ownsPlayback, bool muted)
         {
-            return ownsPlayback && !muted ? 1f : 0f;
+            return ownsPlayback && !muted;
         }
 
-        internal static float ResolveInactiveLayerAlpha(float activeLayerAlpha)
+        internal static float StepIndicatorFadeInAlpha(float currentAlpha, int elapsedMs)
         {
-            return MathHelper.Clamp(1f - activeLayerAlpha, 0f, 1f);
-        }
-
-        internal static float StepIndicatorAlpha(float currentAlpha, bool ownsPlayback, bool muted, int elapsedMs)
-        {
-            float targetAlpha = ResolveTargetIndicatorAlpha(ownsPlayback, muted);
             if (elapsedMs <= 0)
             {
                 return currentAlpha;
@@ -463,11 +467,19 @@ namespace HaCreator.MapSimulator.UI
 
             if (elapsedMs >= IndicatorFadeDurationMs)
             {
-                return targetAlpha;
+                return 1f;
             }
 
             float step = elapsedMs / (float)IndicatorFadeDurationMs;
-            return MathHelper.Clamp(currentAlpha + ((targetAlpha - currentAlpha) * step), 0f, 1f);
+            return MathHelper.Clamp(currentAlpha + ((1f - currentAlpha) * step), 0f, 1f);
+        }
+
+        internal static (float ActiveAlpha, float InactiveAlpha) ResolveIndicatorLayerAlphas(float fadeInAlpha, bool fadeInActiveLayer)
+        {
+            float normalizedAlpha = MathHelper.Clamp(fadeInAlpha, 0f, 1f);
+            return fadeInActiveLayer
+                ? (normalizedAlpha, 1f - normalizedAlpha)
+                : (1f - normalizedAlpha, normalizedAlpha);
         }
 
         private IDXObject CacheFrame(Texture2D texture)

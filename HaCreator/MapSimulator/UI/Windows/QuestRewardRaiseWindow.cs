@@ -733,7 +733,10 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 DrawText(sprite, Truncate(piece.Label, 26), new Vector2(rowBounds.X + 26, rowBounds.Y + 2), new Color(66, 44, 26), 0.34f);
-                DrawText(sprite, Truncate($"Req #{piece.RequestId}  {piece.InventoryType} {piece.SlotIndex + 1}", 40), new Vector2(rowBounds.X + 26, rowBounds.Y + 11), new Color(120, 96, 74), 0.28f);
+                string detailText = piece.PacketOpcode > 0
+                    ? $"Req #{piece.RequestId}  op {piece.PacketOpcode}"
+                    : $"Req #{piece.RequestId}  {piece.InventoryType} {piece.SlotIndex + 1}";
+                DrawText(sprite, Truncate(detailText, 40), new Vector2(rowBounds.X + 26, rowBounds.Y + 11), new Color(120, 96, 74), 0.28f);
             }
         }
 
@@ -741,7 +744,9 @@ namespace HaCreator.MapSimulator.UI
         {
             return piece == null
                 ? $"QR {_state?.QrData ?? _prompt?.OwnerContext?.InitialQrData ?? 0}"
-                : $"{piece.InventoryType} slot {piece.SlotIndex + 1}  req #{piece.RequestId}";
+                : piece.PacketOpcode > 0
+                    ? $"Op {piece.PacketOpcode}  {piece.InventoryType} slot {piece.SlotIndex + 1}  req #{piece.RequestId}"
+                    : $"{piece.InventoryType} slot {piece.SlotIndex + 1}  req #{piece.RequestId}";
         }
 
         private string BuildPiecePlacementFooter()
@@ -750,6 +755,11 @@ namespace HaCreator.MapSimulator.UI
             int maxDropCount = Math.Max(1, _state?.MaxDropCount ?? _prompt?.OwnerContext?.MaxDropCount ?? 1);
             int qrData = _state?.QrData ?? _prompt?.OwnerContext?.InitialQrData ?? 0;
             int ownerItemId = Math.Max(0, _state?.OwnerItemId ?? _prompt?.OwnerContext?.OwnerItemId ?? 0);
+            if (!string.IsNullOrWhiteSpace(_state?.OpenDispatchSummary))
+            {
+                return Truncate(_state.OpenDispatchSummary, 118);
+            }
+
             return placedCount == 0
                 ? $"Drop inventory items into the raise surface. QR {qrData}  owner #{ownerItemId}."
                 : $"Ready to confirm {placedCount}/{maxDropCount} placed piece{(placedCount == 1 ? string.Empty : "s")}. QR {qrData}.";

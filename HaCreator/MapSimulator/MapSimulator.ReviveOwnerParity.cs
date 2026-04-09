@@ -68,7 +68,7 @@ namespace HaCreator.MapSimulator
             bool hasPremiumChoice = ReviveOwnerRuntime.HasPremiumChoiceForVariant(variant);
             string ownerLabel = ReviveOwnerRuntime.GetOwnerLabel(variant);
 
-            string normalDetail = BuildDefaultReviveDetail(spawnPoint);
+            string normalDetail = BuildDefaultReviveDetail(variant, ownerLabel, spawnPoint);
             string premiumDetail = hasPremiumChoice
                 ? BuildPremiumReviveDetail(variant, ownerLabel, deathPoint)
                 : string.Empty;
@@ -298,8 +298,14 @@ namespace HaCreator.MapSimulator
                 && mapId / 1000000 != 390;
         }
 
-        private static string BuildDefaultReviveDetail(Vector2 spawnPoint)
+        private static string BuildDefaultReviveDetail(ReviveOwnerVariant variant, string ownerLabel, Vector2 spawnPoint)
         {
+            if (variant == ReviveOwnerVariant.SafetyCharmChoice)
+            {
+                string detailPrefix = ResolveReviveOwnerDetailPrefix(variant, ownerLabel);
+                return $"{detailPrefix} still resolves through the default revive destination at ({spawnPoint.X:0}, {spawnPoint.Y:0}).";
+            }
+
             return $"Default branch returns to the simulator respawn seam at ({spawnPoint.X:0}, {spawnPoint.Y:0}).";
         }
 

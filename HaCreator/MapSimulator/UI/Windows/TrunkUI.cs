@@ -699,7 +699,7 @@ namespace HaCreator.MapSimulator.UI
             _currentTab = tabIndex;
             LoadCurrentTabState();
             CancelMesoEntry();
-            _statusMessage = "Select an item to deposit or withdraw.";
+            UpdateAccessStatusMessage();
             UpdateButtonStates();
         }
 
@@ -840,7 +840,6 @@ namespace HaCreator.MapSimulator.UI
                 storageRows.Sort(CompareSlots);
             }
 
-            _inventory?.SortSlots(inventoryType);
             _statusMessage = $"{inventoryType} items sorted.";
             ClampSelection();
             UpdateButtonStates();
@@ -948,6 +947,8 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<InventorySlotData> inventoryRows = _inventory?.GetSlots(inventoryType) ?? Array.Empty<InventorySlotData>();
             bool hasStorageAccess = HasStorageAccess();
             bool promptActive = _mesoEntryMode != MesoEntryMode.None;
+            bool canSelectStorageRows = !promptActive && hasStorageAccess;
+            bool canSelectInventoryRows = !promptActive;
 
             _withdrawButton?.SetEnabled(
                 !promptActive &&
@@ -971,7 +972,7 @@ namespace HaCreator.MapSimulator.UI
                 inventoryRows[_inventorySelectedIndex] != null &&
                 CanAcceptStorageItem(inventoryType, inventoryRows[_inventorySelectedIndex]));
 
-            _sortButton?.SetEnabled(!promptActive && hasStorageAccess && (storageRows.Count > 1 || inventoryRows.Count > 1));
+            _sortButton?.SetEnabled(!promptActive && hasStorageAccess && storageRows.Count > 1);
             _withdrawMesoButton?.SetEnabled(!promptActive && hasStorageAccess && _inventory != null && GetStorageMesoCount() > 0);
             _depositMesoButton?.SetEnabled(!promptActive && hasStorageAccess && _inventory != null && _inventory.GetMesoCount() > 0);
 
@@ -981,8 +982,8 @@ namespace HaCreator.MapSimulator.UI
                 bool inventoryVisible = _inventoryScrollOffset + row < inventoryRows.Count;
                 _storageRowButtons[row].SetVisible(storageVisible);
                 _inventoryRowButtons[row].SetVisible(inventoryVisible);
-                _storageRowButtons[row].SetEnabled(storageVisible && !promptActive);
-                _inventoryRowButtons[row].SetEnabled(inventoryVisible && !promptActive);
+                _storageRowButtons[row].SetEnabled(storageVisible && canSelectStorageRows);
+                _inventoryRowButtons[row].SetEnabled(inventoryVisible && canSelectInventoryRows);
             }
 
             SetTabEnabledState(!promptActive);
@@ -1189,7 +1190,9 @@ namespace HaCreator.MapSimulator.UI
 
         private bool CanInteractWithScrollbar(ScrollbarPane pane)
         {
-            return _mesoEntryMode == MesoEntryMode.None && GetMaxScrollOffset(pane) > 0;
+            return _mesoEntryMode == MesoEntryMode.None
+                && (pane != ScrollbarPane.Storage || HasStorageAccess())
+                && GetMaxScrollOffset(pane) > 0;
         }
 
         private Rectangle GetScrollBarBounds(ScrollbarPane pane)

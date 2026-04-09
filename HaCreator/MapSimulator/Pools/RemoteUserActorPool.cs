@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Physics;
 using HaCreator.MapSimulator.UI;
@@ -236,6 +237,7 @@ namespace HaCreator.MapSimulator.Pools
         private readonly Dictionary<int, PortableChairPairRecord> _portableChairPairRecordsByCharacterId = new();
         private int? _localPortableChairPreferredPairCharacterId;
         private readonly Dictionary<RemoteRelationshipOverlayType, Dictionary<int, RemoteUserRelationshipRecord>> _relationshipRecordsByOwnerCharacterId = new();
+        private readonly Dictionary<RemoteRelationshipOverlayType, Dictionary<RemoteRelationshipRecordDispatchKey, int>> _relationshipRecordOwnerByDispatchKey = new();
         private readonly List<RemoteUserActor> _visibleWorldActorsBuffer = new();
         private readonly List<StatusBarPreparedSkillRenderData> _preparedSkillWorldOverlayBuffer = new();
         private readonly List<MinimapUI.TrackedUserMarker> _helperMarkerBuffer = new();
@@ -482,6 +484,19 @@ namespace HaCreator.MapSimulator.Pools
             // remote inspect does not inherit unrelated local-player metadata from the
             // loader template used for visual decode fallbacks.
             build.ActivePortableChair = null;
+            build.HasAuthoritativeProfileLevel = false;
+            build.HasAuthoritativeProfileJob = false;
+            build.HasAuthoritativeProfileGuild = false;
+            build.HasAuthoritativeProfileAlliance = false;
+            build.HasAuthoritativeProfileFame = false;
+            build.HasAuthoritativeProfileWorldRank = false;
+            build.HasAuthoritativeProfileJobRank = false;
+            build.HasAuthoritativeProfileRide = false;
+            build.HasAuthoritativeProfileTraits = false;
+            build.HasAuthoritativeProfilePendantSlot = false;
+            build.HasAuthoritativeProfilePocketSlot = false;
+            build.HasAuthoritativeProfileMedal = false;
+            build.HasAuthoritativeProfileCollection = false;
             build.GuildName = string.Empty;
             build.AllianceName = string.Empty;
             build.Fame = 0;
@@ -496,6 +511,44 @@ namespace HaCreator.MapSimulator.Pools
             build.TraitCraft = 0;
             build.TraitSense = 0;
             build.TraitCharm = 0;
+        }
+
+        public bool TryApplyProfileMetadata(
+            int characterId,
+            int? level,
+            string guildName,
+            int? jobId,
+            out string message)
+        {
+            message = null;
+            if (!_actorsById.TryGetValue(characterId, out RemoteUserActor actor) || actor?.Build == null)
+            {
+                message = $"Remote user {characterId} does not exist.";
+                return false;
+            }
+
+            CharacterBuild build = actor.Build;
+            if (level.HasValue && level.Value > 0)
+            {
+                build.Level = Math.Max(1, level.Value);
+                build.HasAuthoritativeProfileLevel = true;
+            }
+
+            if (jobId.HasValue && jobId.Value >= 0)
+            {
+                build.Job = jobId.Value;
+                build.JobName = SkillDataLoader.GetJobName(jobId.Value);
+                build.HasAuthoritativeProfileJob = true;
+            }
+
+            if (guildName != null)
+            {
+                build.GuildName = string.IsNullOrWhiteSpace(guildName) ? string.Empty : guildName.Trim();
+                build.HasAuthoritativeProfileGuild = true;
+            }
+
+            message = $"Remote user {characterId} profile metadata applied.";
+            return true;
         }
 
         public bool TryMove(int characterId, Vector2 position, bool? facingRight, string actionName, out string message)
@@ -1147,18 +1200,20 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            int? pairCharacterId = packet.RelationshipType == RemoteRelationshipOverlayType.Marriage
-                ? ResolveMarriagePairCharacterId(ownerCharacterId.Value, packet.RelationshipRecord)
-                : packet.RelationshipRecord.PairCharacterId;
-
             EnsureRelationshipRecordTablesInitialized();
             Dictionary<int, RemoteUserRelationshipRecord> recordTable = GetRelationshipRecordTable(packet.RelationshipType);
-            RemoteUserRelationshipRecord normalizedRecord = NormalizeRelationshipRecordAdd(packet, recordTable);
+            Dictionary<RemoteRelationshipRecordDispatchKey, int> dispatchTable = GetRelationshipRecordDispatchOwnerTable(packet.RelationshipType);
+            RemoteUserRelationshipRecord normalizedRecord = NormalizeRelationshipRecordAdd(packet, recordTable, dispatchTable);
+            int? pairCharacterId = packet.RelationshipType == RemoteRelationshipOverlayType.Marriage
+                ? ResolveMarriagePairCharacterId(ownerCharacterId.Value, normalizedRecord)
+                : normalizedRecord.PairCharacterId;
             normalizedRecord = normalizedRecord with
             {
                 PairCharacterId = pairCharacterId
             };
+            RemoveRelationshipRecordDispatchKeysForOwner(packet.RelationshipType, ownerCharacterId.Value);
             recordTable[ownerCharacterId.Value] = normalizedRecord;
+            RegisterRelationshipRecordDispatchKey(packet.RelationshipType, packet.DispatchKey, ownerCharacterId.Value);
             RefreshRelationshipOverlays(packet.RelationshipType, currentTime);
 
             message = _actorsById.ContainsKey(ownerCharacterId.Value)
@@ -1169,7 +1224,8 @@ namespace HaCreator.MapSimulator.Pools
 
         private static RemoteUserRelationshipRecord NormalizeRelationshipRecordAdd(
             RemoteUserRelationshipRecordPacket packet,
-            IReadOnlyDictionary<int, RemoteUserRelationshipRecord> recordTable)
+            IReadOnlyDictionary<int, RemoteUserRelationshipRecord> recordTable,
+            IReadOnlyDictionary<RemoteRelationshipRecordDispatchKey, int> dispatchTable)
         {
             RemoteUserRelationshipRecord normalizedRecord = packet.RelationshipRecord;
             if (packet.PayloadKind != RemoteRelationshipRecordAddPayloadKind.PairLookup
@@ -1184,15 +1240,37 @@ namespace HaCreator.MapSimulator.Pools
                 || !recordTable.TryGetValue(ownerCharacterId, out RemoteUserRelationshipRecord existingRecord)
                 || !existingRecord.IsActive)
             {
-                return normalizedRecord;
+                existingRecord = default;
+            }
+
+            long? dispatchSerial = packet.DispatchKey.Kind == RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial
+                ? packet.DispatchKey.Serial
+                : null;
+            long? pairLookupSerial = packet.PairLookupSerial;
+            int? pairCharacterId = normalizedRecord.PairCharacterId;
+            if ((!pairCharacterId.HasValue || pairCharacterId.Value <= 0)
+                && pairLookupSerial.HasValue
+                && dispatchTable != null
+                && dispatchTable.TryGetValue(
+                    new RemoteRelationshipRecordDispatchKey(
+                        RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial,
+                        pairLookupSerial,
+                        CharacterId: null),
+                    out int matchedOwnerCharacterId)
+                && matchedOwnerCharacterId > 0
+                && matchedOwnerCharacterId != ownerCharacterId)
+            {
+                pairCharacterId = matchedOwnerCharacterId;
             }
 
             return normalizedRecord with
             {
                 ItemId = normalizedRecord.ItemId > 0 ? normalizedRecord.ItemId : existingRecord.ItemId,
-                ItemSerial = normalizedRecord.ItemSerial ?? existingRecord.ItemSerial,
-                PairItemSerial = normalizedRecord.PairItemSerial ?? existingRecord.PairItemSerial,
-                PairCharacterId = normalizedRecord.PairCharacterId ?? existingRecord.PairCharacterId
+                ItemSerial = normalizedRecord.ItemSerial
+                    ?? (dispatchSerial.HasValue ? dispatchSerial : existingRecord.ItemSerial),
+                PairItemSerial = normalizedRecord.PairItemSerial
+                    ?? (pairLookupSerial.HasValue ? pairLookupSerial : existingRecord.PairItemSerial),
+                PairCharacterId = pairCharacterId ?? existingRecord.PairCharacterId
             };
         }
 
@@ -1203,10 +1281,24 @@ namespace HaCreator.MapSimulator.Pools
             message = null;
             EnsureRelationshipRecordTablesInitialized();
             Dictionary<int, RemoteUserRelationshipRecord> recordTable = GetRelationshipRecordTable(packet.RelationshipType);
+            Dictionary<RemoteRelationshipRecordDispatchKey, int> dispatchTable = GetRelationshipRecordDispatchOwnerTable(packet.RelationshipType);
             List<int> removedOwnerCharacterIds = new();
+            if (packet.DispatchKey.HasValue
+                && dispatchTable.TryGetValue(packet.DispatchKey, out int dispatchOwnerCharacterId)
+                && recordTable.ContainsKey(dispatchOwnerCharacterId))
+            {
+                RemoveRelationshipRecordOwner(packet.RelationshipType, dispatchOwnerCharacterId, recordTable);
+                removedOwnerCharacterIds.Add(dispatchOwnerCharacterId);
+            }
+
             foreach (KeyValuePair<int, RemoteUserRelationshipRecord> entry in recordTable.ToArray())
             {
                 int ownerCharacterId = entry.Key;
+                if (removedOwnerCharacterIds.Contains(ownerCharacterId))
+                {
+                    continue;
+                }
+
                 RemoteUserRelationshipRecord record = entry.Value;
                 int? candidatePairCharacterId = packet.RelationshipType == RemoteRelationshipOverlayType.Marriage
                     ? ResolveMarriagePairCharacterId(ownerCharacterId, record)
@@ -1221,12 +1313,8 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                recordTable.Remove(ownerCharacterId);
+                RemoveRelationshipRecordOwner(packet.RelationshipType, ownerCharacterId, recordTable);
                 removedOwnerCharacterIds.Add(ownerCharacterId);
-                if (_actorsById.TryGetValue(ownerCharacterId, out RemoteUserActor ownerActor))
-                {
-                    ownerActor.RelationshipOverlays.Remove(packet.RelationshipType);
-                }
             }
 
             int removedCount = removedOwnerCharacterIds.Count;
@@ -2627,6 +2715,35 @@ namespace HaCreator.MapSimulator.Pools
             return (totalTokenCount, tensTokenCount);
         }
 
+        internal static Point ResolveCarryItemEffectOrbitOffset(
+            int currentTime,
+            int index,
+            int totalTokenCount,
+            bool facingRight,
+            out bool isFrontLayer)
+        {
+            float phase = ((currentTime % CarryItemEffectOrbitDurationMs) / (float)CarryItemEffectOrbitDurationMs)
+                + (index / (float)Math.Max(1, totalTokenCount));
+            float angle = MathHelper.TwoPi * (phase - (float)Math.Floor(phase));
+            isFrontLayer = Math.Sin(angle) >= 0f;
+
+            float orbitX = (float)Math.Cos(angle) * CarryItemEffectOrbitRadiusX;
+            float orbitY = CarryItemEffectBaseVerticalOffset + ((float)Math.Sin(angle) * CarryItemEffectOrbitRadiusY);
+            if (!facingRight)
+            {
+                orbitX = -orbitX;
+            }
+
+            return new Point(
+                (int)Math.Round(orbitX),
+                (int)Math.Round(orbitY));
+        }
+
+        internal static int ResolveCarryItemEffectAnimationTime(int currentTime, int index)
+        {
+            return currentTime + (index * CarryItemEffectAnimationOffsetMs);
+        }
+
         private bool TryResolveRelationshipOverlayPair(
             RemoteUserActor ownerActor,
             RemoteRelationshipOverlayState overlay,
@@ -2944,7 +3061,7 @@ namespace HaCreator.MapSimulator.Pools
                 || string.Equals(actionName, "darksight", StringComparison.OrdinalIgnoreCase);
         }
 
-        private static PortableChairLayer ResolveCarryItemEffectLayer(
+        internal static PortableChairLayer ResolveCarryItemEffectLayer(
             CarryItemEffectDefinition effect,
             int index,
             int tensTokenCount)
@@ -3314,11 +3431,21 @@ namespace HaCreator.MapSimulator.Pools
             {
                 _relationshipRecordsByOwnerCharacterId[relationshipType] = new Dictionary<int, RemoteUserRelationshipRecord>();
             }
+
+            if (!_relationshipRecordOwnerByDispatchKey.ContainsKey(relationshipType))
+            {
+                _relationshipRecordOwnerByDispatchKey[relationshipType] = new Dictionary<RemoteRelationshipRecordDispatchKey, int>();
+            }
         }
 
         private void ClearRelationshipRecordTables()
         {
             foreach (Dictionary<int, RemoteUserRelationshipRecord> table in _relationshipRecordsByOwnerCharacterId.Values)
+            {
+                table.Clear();
+            }
+
+            foreach (Dictionary<RemoteRelationshipRecordDispatchKey, int> table in _relationshipRecordOwnerByDispatchKey.Values)
             {
                 table.Clear();
             }
@@ -3328,6 +3455,55 @@ namespace HaCreator.MapSimulator.Pools
         {
             EnsureRelationshipRecordTable(relationshipType);
             return _relationshipRecordsByOwnerCharacterId[relationshipType];
+        }
+
+        private Dictionary<RemoteRelationshipRecordDispatchKey, int> GetRelationshipRecordDispatchOwnerTable(RemoteRelationshipOverlayType relationshipType)
+        {
+            EnsureRelationshipRecordTable(relationshipType);
+            return _relationshipRecordOwnerByDispatchKey[relationshipType];
+        }
+
+        private void RegisterRelationshipRecordDispatchKey(
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteRelationshipRecordDispatchKey dispatchKey,
+            int ownerCharacterId)
+        {
+            if (!dispatchKey.HasValue || ownerCharacterId <= 0)
+            {
+                return;
+            }
+
+            GetRelationshipRecordDispatchOwnerTable(relationshipType)[dispatchKey] = ownerCharacterId;
+        }
+
+        private void RemoveRelationshipRecordDispatchKeysForOwner(RemoteRelationshipOverlayType relationshipType, int ownerCharacterId)
+        {
+            if (ownerCharacterId <= 0)
+            {
+                return;
+            }
+
+            Dictionary<RemoteRelationshipRecordDispatchKey, int> dispatchTable = GetRelationshipRecordDispatchOwnerTable(relationshipType);
+            foreach (RemoteRelationshipRecordDispatchKey dispatchKey in dispatchTable
+                .Where(entry => entry.Value == ownerCharacterId)
+                .Select(entry => entry.Key)
+                .ToArray())
+            {
+                dispatchTable.Remove(dispatchKey);
+            }
+        }
+
+        private void RemoveRelationshipRecordOwner(
+            RemoteRelationshipOverlayType relationshipType,
+            int ownerCharacterId,
+            IDictionary<int, RemoteUserRelationshipRecord> recordTable)
+        {
+            recordTable?.Remove(ownerCharacterId);
+            RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, ownerCharacterId);
+            if (_actorsById.TryGetValue(ownerCharacterId, out RemoteUserActor ownerActor))
+            {
+                ownerActor.RelationshipOverlays.Remove(relationshipType);
+            }
         }
 
         private string DescribeRelationshipRecordTableStatus()
@@ -4046,6 +4222,24 @@ namespace HaCreator.MapSimulator.Pools
                 blessingArmorSkillId,
                 blessingArmorSkill,
                 Environment.TickCount);
+            ResolveRemoteRepeatEffectSkill(actor, knownState, out int? repeatEffectSkillId, out SkillData repeatEffectSkill);
+            actor.TemporaryStatRepeatEffect = UpdateRemoteTemporaryStatAvatarEffectState(
+                actor.TemporaryStatRepeatEffect,
+                repeatEffectSkillId,
+                repeatEffectSkill,
+                Environment.TickCount);
+            ResolveRemoteMagicShieldSkill(actor, knownState, out int? magicShieldSkillId, out SkillData magicShieldSkill);
+            actor.TemporaryStatMagicShieldEffect = UpdateRemoteTemporaryStatAvatarEffectState(
+                actor.TemporaryStatMagicShieldEffect,
+                magicShieldSkillId,
+                magicShieldSkill,
+                Environment.TickCount);
+            ResolveRemoteFinalCutSkill(actor, knownState, out int? finalCutSkillId, out SkillData finalCutSkill);
+            actor.TemporaryStatFinalCutEffect = UpdateRemoteTemporaryStatAvatarEffectState(
+                actor.TemporaryStatFinalCutEffect,
+                finalCutSkillId,
+                finalCutSkill,
+                Environment.TickCount);
             actor.HasMorphTemplate = overrideAvatarPart?.Type == CharacterPartType.Morph;
             actor.HiddenLikeClient = knownState.IsHiddenLikeClient;
             actor.ActionName = ResolveClientVisibleActionName(actor.BaseActionName, knownState);
@@ -4140,7 +4334,7 @@ namespace HaCreator.MapSimulator.Pools
             out int tamingMobItemId)
         {
             tamingMobItemId = 0;
-            if (!knownState.MechanicMode.HasValue || knownState.MechanicMode.Value <= 0)
+            if (!ClientOwnedVehicleSkillClassifier.IsExplicitMechanicVehiclePresentationSkillId(knownState.MechanicMode))
             {
                 return false;
             }
@@ -4575,6 +4769,57 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        private void ResolveRemoteRepeatEffectSkill(
+            RemoteUserActor actor,
+            RemoteUserTemporaryStatKnownState knownState,
+            out int? skillId,
+            out SkillData skill)
+        {
+            ResolveRemotePayloadDrivenEffectSkill(knownState.RepeatEffectSkillId, out skillId, out skill);
+        }
+
+        private void ResolveRemoteMagicShieldSkill(
+            RemoteUserActor actor,
+            RemoteUserTemporaryStatKnownState knownState,
+            out int? skillId,
+            out SkillData skill)
+        {
+            ResolveRemotePayloadDrivenEffectSkill(knownState.MagicShieldSkillId, out skillId, out skill);
+        }
+
+        private void ResolveRemoteFinalCutSkill(
+            RemoteUserActor actor,
+            RemoteUserTemporaryStatKnownState knownState,
+            out int? skillId,
+            out SkillData skill)
+        {
+            ResolveRemotePayloadDrivenEffectSkill(knownState.FinalCutSkillId, out skillId, out skill);
+        }
+
+        private void ResolveRemotePayloadDrivenEffectSkill(
+            int? payloadSkillId,
+            out int? skillId,
+            out SkillData skill)
+        {
+            skillId = null;
+            skill = null;
+            if (_skillLoader == null
+                || !payloadSkillId.HasValue
+                || payloadSkillId.Value <= 0)
+            {
+                return;
+            }
+
+            SkillData candidateSkill = _skillLoader.LoadSkill(payloadSkillId.Value);
+            if (!HasRemoteTemporaryStatAvatarEffect(candidateSkill))
+            {
+                return;
+            }
+
+            skillId = payloadSkillId.Value;
+            skill = candidateSkill;
+        }
+
         private static IReadOnlyList<int> EnumeratePreferredSkillIds(IReadOnlyList<int> skillIds, int preferredSkillId)
         {
             var orderedSkillIds = new List<int>(skillIds?.Count ?? 0);
@@ -4877,7 +5122,25 @@ namespace HaCreator.MapSimulator.Pools
                 spriteBatch,
                 skeletonRenderer,
                 actor,
+                actor.TemporaryStatRepeatEffect,
+                screenX,
+                screenY,
+                currentTime,
+                drawFrontLayers);
+            DrawRemoteTemporaryStatAvatarEffectState(
+                spriteBatch,
+                skeletonRenderer,
+                actor,
                 actor.TemporaryStatAuraEffect,
+                screenX,
+                screenY,
+                currentTime,
+                drawFrontLayers);
+            DrawRemoteTemporaryStatAvatarEffectState(
+                spriteBatch,
+                skeletonRenderer,
+                actor,
+                actor.TemporaryStatMagicShieldEffect,
                 screenX,
                 screenY,
                 currentTime,
@@ -4896,6 +5159,15 @@ namespace HaCreator.MapSimulator.Pools
                 skeletonRenderer,
                 actor,
                 actor.TemporaryStatWeaponChargeEffect,
+                screenX,
+                screenY,
+                currentTime,
+                drawFrontLayers);
+            DrawRemoteTemporaryStatAvatarEffectState(
+                spriteBatch,
+                skeletonRenderer,
+                actor,
+                actor.TemporaryStatFinalCutEffect,
                 screenX,
                 screenY,
                 currentTime,
@@ -5573,16 +5845,91 @@ namespace HaCreator.MapSimulator.Pools
                 candidates.Add(normalizedActionName);
             }
 
-            foreach (string alias in ShadowPartnerClientActionResolver.EnumerateClientActionAliases(actionName))
+            PlayerState state = ResolveShadowPartnerActionIdentityState(normalizedActionName);
+            foreach (string candidate in ShadowPartnerClientActionResolver.EnumerateHelperIdentityCandidates(
+                         actionName,
+                         state))
             {
-                string normalizedAlias = NormalizeActionName(alias, allowSitFallback: false);
-                if (!string.IsNullOrWhiteSpace(normalizedAlias))
+                string normalizedCandidate = NormalizeActionName(candidate, allowSitFallback: false);
+                if (!string.IsNullOrWhiteSpace(normalizedCandidate))
                 {
-                    candidates.Add(normalizedAlias);
+                    candidates.Add(normalizedCandidate);
                 }
             }
 
             return candidates;
+        }
+
+        private static PlayerState ResolveShadowPartnerActionIdentityState(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return PlayerState.Standing;
+            }
+
+            if (string.Equals(actionName, "jump", StringComparison.OrdinalIgnoreCase))
+            {
+                return PlayerState.Jumping;
+            }
+
+            if (string.Equals(actionName, "ladder", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "ladder2", StringComparison.OrdinalIgnoreCase))
+            {
+                return PlayerState.Ladder;
+            }
+
+            if (string.Equals(actionName, "rope", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "rope2", StringComparison.OrdinalIgnoreCase))
+            {
+                return PlayerState.Rope;
+            }
+
+            if (string.Equals(actionName, "sit", StringComparison.OrdinalIgnoreCase))
+            {
+                return PlayerState.Sitting;
+            }
+
+            if (string.Equals(actionName, "prone", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "proneStab", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "prone2", StringComparison.OrdinalIgnoreCase))
+            {
+                return PlayerState.Prone;
+            }
+
+            if (string.Equals(actionName, "swim", StringComparison.OrdinalIgnoreCase))
+            {
+                return PlayerState.Swimming;
+            }
+
+            if (string.Equals(actionName, "fly", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "fly2", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "fly2Move", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "fly2Skill", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "ghostfly", StringComparison.OrdinalIgnoreCase))
+            {
+                return PlayerState.Flying;
+            }
+
+            if (string.Equals(actionName, "dead", StringComparison.OrdinalIgnoreCase))
+            {
+                return PlayerState.Dead;
+            }
+
+            if (actionName.StartsWith("walk", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "move", StringComparison.OrdinalIgnoreCase))
+            {
+                return PlayerState.Walking;
+            }
+
+            if (actionName.StartsWith("alert", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "hit", StringComparison.OrdinalIgnoreCase))
+            {
+                return PlayerState.Hit;
+            }
+
+            return ShadowPartnerClientActionResolver.IsAttackAction(actionName)
+                ? PlayerState.Attacking
+                : PlayerState.Standing;
         }
 
         private static int ResolveRemoteShadowPartnerObservedActionTriggerTime(RemoteUserActor actor, PlayerState state)
@@ -6009,7 +6356,7 @@ namespace HaCreator.MapSimulator.Pools
                 && string.Equals(actor.ActionName, state.ActionName, StringComparison.OrdinalIgnoreCase);
             int frameIndex = state.LastFrameIndex;
             SkillFrame frame = state.LastResolvedFrame;
-            float alpha = 1f;
+            float alpha = MathHelper.Clamp(state.LastResolvedAlpha, 0f, 1f);
 
             if (activeAction)
             {
@@ -6025,6 +6372,8 @@ namespace HaCreator.MapSimulator.Pools
                     if (frame != null)
                     {
                         state.LastResolvedFrame = frame;
+                        alpha = MeleeAfterimagePlaybackResolver.ResolveFrameAlpha(frame, frameElapsedMs);
+                        state.LastResolvedAlpha = alpha;
                     }
                 }
             }
@@ -6037,7 +6386,8 @@ namespace HaCreator.MapSimulator.Pools
                     return;
                 }
 
-                alpha = 1f - (fadeElapsed / (float)Math.Max(1, state.FadeDuration));
+                float fadeAlpha = 1f - (fadeElapsed / (float)Math.Max(1, state.FadeDuration));
+                alpha *= fadeAlpha;
             }
 
             if (frame?.Texture == null)
@@ -6322,6 +6672,9 @@ namespace HaCreator.MapSimulator.Pools
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatWeaponChargeEffect { get; set; }
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatBarrierEffect { get; set; }
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatBlessingArmorEffect { get; set; }
+        public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatRepeatEffect { get; set; }
+        public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatMagicShieldEffect { get; set; }
+        public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatFinalCutEffect { get; set; }
         public RemoteUserActorPool.RemotePacketOwnedEmotionState PacketOwnedEmotion { get; set; }
         public int? CarryItemEffectId { get; set; }
         public int CompletedSetItemId { get; set; }
@@ -6483,6 +6836,7 @@ namespace HaCreator.MapSimulator.Pools
             public int FadeStartTime { get; set; } = -1;
             public int LastFrameIndex { get; set; } = -1;
             public SkillFrame LastResolvedFrame { get; set; }
+            public float LastResolvedAlpha { get; set; } = 1f;
     }
 
     public sealed class RemotePreparedSkillState

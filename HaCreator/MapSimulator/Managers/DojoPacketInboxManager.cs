@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Effects;
 using System;
 using System.Collections.Concurrent;
 using System.IO;
@@ -223,12 +224,12 @@ namespace HaCreator.MapSimulator.Managers
                     kind = DojoPacketMessageKind.Clear;
                     if (parts.Length >= 2)
                     {
-                        option = parts[1];
+                        option = parts.Length >= 3 ? $"{parts[1]} {parts[2]}" : parts[1];
                         if (!string.Equals(option, "auto", StringComparison.OrdinalIgnoreCase)
                             && !string.Equals(option, "none", StringComparison.OrdinalIgnoreCase)
-                            && (!int.TryParse(option, out value) || value <= 0))
+                            && !DojoField.TryParseTransferTargetOption(option, out value, out _, out error))
                         {
-                            error = "Dojo clear payload must be 'auto', 'none', or a positive map id.";
+                            error ??= "Dojo clear payload must be 'auto', 'none', or '<mapId>[:portal]' / '<mapId> <portal>'.";
                             return false;
                         }
                     }

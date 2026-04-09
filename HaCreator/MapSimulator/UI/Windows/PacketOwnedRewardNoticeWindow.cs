@@ -12,9 +12,11 @@ namespace HaCreator.MapSimulator.UI
     {
         private const float NormalBodyWrapWidth = 200f;
         private const float TightLineBodyWrapWidth = 234f;
-        private const float BodyTopY = 40f;
-        private const float BodyLeftX = 18f;
-        private const float BodyCenterX = 156f;
+        private const float CenteredBodyAreaLeftX = 15f;
+        private const float CenteredBodyAreaWidth = 234f;
+        private const float BodyTopY = 20f;
+        private const float BodyLeftX = 20f;
+        private const float BodyLineSpacing = 14f;
         private const int CenteredButtonX = 136;
         private const int ButtonY = 106;
         private const int CloseButtonRightMargin = 8;
@@ -34,6 +36,11 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => MapSimulatorWindowNames.PacketOwnedRewardResultNotice;
         public override bool SupportsDragging => false;
+
+        internal static float ResolveCenteredBodyLineX(float measuredWidth)
+        {
+            return CenteredBodyAreaLeftX + ((CenteredBodyAreaWidth - measuredWidth) / 2f);
+        }
 
         public void Configure(string title, string body, bool autoSeparated = true, bool tightLine = false)
         {
@@ -90,13 +97,13 @@ namespace HaCreator.MapSimulator.UI
                     _title,
                     new Vector2(Position.X + 16, Position.Y + 16),
                     Color.White);
-                y += 6f;
+                y += BodyLineSpacing;
             }
 
             foreach (string line in lines)
             {
                 float x = string.IsNullOrWhiteSpace(_title)
-                    ? Position.X + BodyCenterX - (MeasureWindowText(null, line).X / 2f)
+                    ? Position.X + ResolveCenteredBodyLineX(MeasureWindowText(null, line).X)
                     : Position.X + BodyLeftX;
                 SelectorWindowDrawing.DrawShadowedText(
                     sprite,
@@ -104,7 +111,7 @@ namespace HaCreator.MapSimulator.UI
                     line,
                     new Vector2(x, y),
                     new Color(232, 232, 232));
-                y += WindowLineSpacing;
+                y += BodyLineSpacing;
             }
         }
 
@@ -115,10 +122,7 @@ namespace HaCreator.MapSimulator.UI
                 string[] manualLines = _body.Replace("\r", string.Empty, StringComparison.Ordinal).Split('\n');
                 foreach (string line in manualLines)
                 {
-                    if (!string.IsNullOrWhiteSpace(line))
-                    {
-                        yield return line.Trim();
-                    }
+                    yield return line.Trim();
                 }
 
                 yield break;
@@ -141,10 +145,31 @@ namespace HaCreator.MapSimulator.UI
             string[] paragraphs = text.Replace("\r", string.Empty, StringComparison.Ordinal).Split('\n');
             foreach (string paragraph in paragraphs)
             {
+                if (string.IsNullOrWhiteSpace(paragraph))
+                {
+                    yield return string.Empty;
+                    continue;
+                }
+
                 string[] words = paragraph.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                 string currentLine = string.Empty;
                 foreach (string word in words)
                 {
+                    if (MeasureWindowText(null, word).X > maxWidth)
+                    {
+                        if (!string.IsNullOrEmpty(currentLine))
+                        {
+                            yield return currentLine;
+                            currentLine = string.Empty;
+                        }
+
+                        foreach (string segment in SplitOversizedWord(word, maxWidth))
+                        {
+                            yield return segment;
+                        }
+                        continue;
+                    }
+
                     string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
                     if (!string.IsNullOrEmpty(currentLine) && MeasureWindowText(null, candidate).X > maxWidth)
                     {
@@ -160,6 +185,34 @@ namespace HaCreator.MapSimulator.UI
                 if (!string.IsNullOrEmpty(currentLine))
                 {
                     yield return currentLine;
+                }
+            }
+        }
+
+        private IEnumerable<string> SplitOversizedWord(string word, float maxWidth)
+        {
+            if (string.IsNullOrEmpty(word))
+            {
+                yield break;
+            }
+
+            int startIndex = 0;
+            while (startIndex < word.Length)
+            {
+                int length = 1;
+                while (startIndex + length <= word.Length)
+                {
+                    string candidate = word.Substring(startIndex, length);
+                    if (startIndex + length < word.Length
+                        && MeasureWindowText(null, candidate + word[startIndex + length]).X <= maxWidth)
+                    {
+                        length++;
+                        continue;
+                    }
+
+                    yield return candidate;
+                    startIndex += length;
+                    break;
                 }
             }
         }

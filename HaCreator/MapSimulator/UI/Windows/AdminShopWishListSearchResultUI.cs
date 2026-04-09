@@ -1,5 +1,6 @@
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using HaCreator.MapSimulator.Interaction;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -132,12 +133,14 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.AdminShopWishListSearchResult;
         public override bool CapturesKeyboardInput => IsVisible;
 
+        private bool UseOwnerSession => _owner?.HasWishlistSearchResultSession() == true;
+
         public void PrepareForShow(AdminShopWishListUI owner, IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> results)
         {
             _owner = owner;
             _results = results ?? Array.Empty<AdminShopDialogUI.WishlistSearchResult>();
             _selectedIndex = -1;
-            _pageIndex = 0;
+            _pageIndex = UseOwnerSession ? _owner.GetWishlistSearchResultSessionPageIndex() : 0;
             _isRegisterConfirmationOpen = false;
             _confirmAcceptFocused = true;
             _statusMessage = owner?.GetStatusMessage() ?? string.Empty;
@@ -207,13 +210,42 @@ namespace HaCreator.MapSimulator.UI
             int wheelDelta = mouseState.ScrollWheelValue - _previousMouseState.ScrollWheelValue;
             if (!_isRegisterConfirmationOpen && wheelDelta != 0 && GetWindowBounds().Contains(mouseState.Position))
             {
-                if (_selectedIndex < 0)
+                if (UseOwnerSession)
                 {
-                    SelectIndex(wheelDelta > 0 ? 0 : GetPageStartIndex());
+                    if (_owner.TryMoveWishlistSearchResultSessionSelection(wheelDelta > 0 ? -1 : 1, out string message))
+                    {
+                        _statusMessage = message;
+                    }
+                    else
+                    {
+                        _statusMessage = _owner.GetStatusMessage();
+                    }
                 }
                 else
                 {
-                    SelectIndex(_selectedIndex + (wheelDelta > 0 ? -1 : 1));
+                    if (_selectedIndex < 0)
+                    {
+                        SelectIndex(wheelDelta > 0 ? 0 : GetPageStartIndex());
+                    }
+                    else
+                    {
+                        SelectIndex(_selectedIndex + (wheelDelta > 0 ? -1 : 1));
+                    }
+                }
+            }
+
+            bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
+            if (_isRegisterConfirmationOpen && leftJustPressed)
+            {
+                if (GetConfirmationButtonBounds(confirm: true).Contains(mouseState.Position))
+                {
+                    _confirmAcceptFocused = true;
+                    ConfirmSelectedResult();
+                }
+                else if (GetConfirmationButtonBounds(confirm: false).Contains(mouseState.Position))
+                {
+                    _confirmAcceptFocused = false;
+                    CancelSelectedResultConfirmation();
                 }
             }
 
@@ -290,55 +322,48 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(_font, TrimToWidth($"SearchItemName: {searchText}", 232f), new Vector2(bounds.X + HeaderX, bounds.Y + HeaderY), Color.White);
             sprite.DrawString(_font, TrimToWidth($"{categoryText} / {priceText}", 204f), new Vector2(bounds.X + HeaderX, bounds.Y + HeaderY + 18), new Color(255, 233, 160));
 
-            int pageStart = _pageIndex * ResultsPerPage;
-            int pageEnd = Math.Min(_results.Count, pageStart + ResultsPerPage);
-            for (int visibleRow = 0; visibleRow < ResultsPerPage; visibleRow++)
+            IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> visibleResults = GetVisibleResults();
+            for (int visibleRow = 0; visibleRow < visibleResults.Count; visibleRow++)
             {
-                int resultIndex = pageStart + visibleRow;
-                if (resultIndex >= pageEnd)
-                {
-                    break;
-                }
-
-                AdminShopDialogUI.WishlistSearchResult result = _results[resultIndex];
+                AdminShopDialogUI.WishlistSearchResult result = visibleResults[visibleRow];
                 Rectangle rowBounds = GetRowBounds(visibleRow);
-                bool selected = resultIndex == _selectedIndex;
+                bool selected = string.Equals(result.EntryKey, GetSelectedResult()?.EntryKey, StringComparison.Ordinal);
                 sprite.Draw(_pixelTexture, rowBounds, selected ? new Color(255, 255, 255, 120) : new Color(255, 255, 255, 32));
                 sprite.DrawString(_font, TrimToWidth(result.Title, 176f), new Vector2(rowBounds.X + 6, rowBounds.Y + 3), selected ? new Color(40, 55, 96) : Color.White);
                 sprite.DrawString(_font, TrimToWidth(result.PriceLabel, 54f), new Vector2(rowBounds.Right - 58, rowBounds.Y + 3), selected ? new Color(40, 55, 96) : new Color(255, 233, 160));
                 sprite.DrawString(_font, TrimToWidth(result.Seller, 140f), new Vector2(rowBounds.X + 6, rowBounds.Y + 13), selected ? new Color(40, 55, 96) : new Color(214, 223, 236));
             }
 
-            string pageLabel = _results.Count == 0
+            string pageLabel = GetResultCount() == 0
                 ? "0 / 0"
-                : $"{_pageIndex + 1} / {GetPageCount()}";
+                : $"{GetPageIndex() + 1} / {GetPageCount()}";
             sprite.DrawString(_font, pageLabel, new Vector2(bounds.X + 208, bounds.Y + 26), new Color(255, 233, 160));
 
-            if (_results.Count > 0 && _selectedIndex >= 0 && _selectedIndex < _results.Count)
+            AdminShopDialogUI.WishlistSearchResult selectedResult = GetSelectedResult();
+            if (GetResultCount() > 0 && selectedResult != null)
             {
-                AdminShopDialogUI.WishlistSearchResult selected = _results[_selectedIndex];
                 Rectangle iconBounds = new(bounds.X + IconX, bounds.Y + IconY, IconSize, IconSize);
                 if (_iconPlaceholderTexture != null)
                 {
                     sprite.Draw(_iconPlaceholderTexture, iconBounds.Location.ToVector2(), Color.White);
                 }
 
-                if (selected.IconTexture != null)
+                if (selectedResult.IconTexture != null)
                 {
-                    sprite.Draw(selected.IconTexture, iconBounds, Color.White);
+                    sprite.Draw(selectedResult.IconTexture, iconBounds, Color.White);
                 }
 
-                DrawDetailLine(sprite, bounds, 0, selected.Title, Color.White);
-                DrawDetailLine(sprite, bounds, 1, selected.CategoryLabel, new Color(255, 233, 160));
-                DrawDetailLine(sprite, bounds, 2, selected.Seller, Color.White);
-                DrawDetailLine(sprite, bounds, 3, selected.PriceLabel, new Color(255, 233, 160));
-                DrawDetailBlock(sprite, bounds, 5, selected.Detail, new Color(214, 223, 236));
-                string footer = selected.AlreadyWishlisted
-                    ? "This row is already staged in the local wish list."
+                DrawDetailLine(sprite, bounds, 0, selectedResult.Title, Color.White);
+                DrawDetailLine(sprite, bounds, 1, selectedResult.CategoryLabel, new Color(255, 233, 160));
+                DrawDetailLine(sprite, bounds, 2, selectedResult.Seller, Color.White);
+                DrawDetailLine(sprite, bounds, 3, selectedResult.PriceLabel, new Color(255, 233, 160));
+                DrawDetailBlock(sprite, bounds, 5, selectedResult.Detail, new Color(214, 223, 236));
+                string footer = selectedResult.AlreadyWishlisted
+                    ? "This row is already staged in the local wish-list cache."
                     : "BtRegist focuses the selected row in the admin-shop dialog.";
                 DrawDetailBlock(sprite, bounds, 10, footer, new Color(255, 233, 160));
             }
-            else if (_results.Count > 0)
+            else if (GetResultCount() > 0)
             {
                 DrawDetailBlock(sprite, bounds, 0, "Select a staged result to review or register it.", Color.White);
                 DrawDetailBlock(sprite, bounds, 2, "CUIAdminShopWishListSearchResult starts with no row selected.", new Color(255, 233, 160));
@@ -383,11 +408,11 @@ namespace HaCreator.MapSimulator.UI
 
             if (WasPressed(keyboardState, Keys.Up))
             {
-                SelectIndex(_selectedIndex < 0 ? GetPageStartIndex() : _selectedIndex - 1);
+                MoveSelection(-1);
             }
             else if (WasPressed(keyboardState, Keys.Down))
             {
-                SelectIndex(_selectedIndex < 0 ? GetPageStartIndex() : _selectedIndex + 1);
+                MoveSelection(1);
             }
             else if (WasPressed(keyboardState, Keys.PageUp))
             {
@@ -399,11 +424,11 @@ namespace HaCreator.MapSimulator.UI
             }
             else if (WasPressed(keyboardState, Keys.Home))
             {
-                SelectIndex(GetPageStartIndex());
+                SelectVisibleRow(0);
             }
             else if (WasPressed(keyboardState, Keys.End))
             {
-                SelectIndex(GetPageEndIndex());
+                SelectVisibleRow(Math.Max(0, GetVisibleResults().Count - 1));
             }
             else if (WasPressed(keyboardState, Keys.Left))
             {
@@ -417,6 +442,21 @@ namespace HaCreator.MapSimulator.UI
 
         private void ChangePage(int delta)
         {
+            if (UseOwnerSession)
+            {
+                if (_owner.TryChangeWishlistSearchResultSessionPage(delta, out string message))
+                {
+                    _statusMessage = message;
+                }
+                else
+                {
+                    _statusMessage = _owner.GetStatusMessage();
+                }
+
+                UpdateButtons();
+                return;
+            }
+
             int pageCount = GetPageCount();
             if (pageCount <= 1)
             {
@@ -431,7 +471,42 @@ namespace HaCreator.MapSimulator.UI
 
         private void SelectVisibleRow(int visibleRow)
         {
+            if (UseOwnerSession)
+            {
+                if (_owner.TrySelectWishlistSearchResultSessionVisibleRow(visibleRow, out string message))
+                {
+                    _statusMessage = message;
+                }
+                else
+                {
+                    _statusMessage = _owner.GetStatusMessage();
+                }
+
+                UpdateButtons();
+                return;
+            }
+
             SelectIndex((_pageIndex * ResultsPerPage) + visibleRow);
+        }
+
+        private void MoveSelection(int delta)
+        {
+            if (UseOwnerSession)
+            {
+                if (_owner.TryMoveWishlistSearchResultSessionSelection(delta, out string message))
+                {
+                    _statusMessage = message;
+                }
+                else
+                {
+                    _statusMessage = _owner.GetStatusMessage();
+                }
+
+                UpdateButtons();
+                return;
+            }
+
+            SelectIndex(_selectedIndex < 0 ? GetPageStartIndex() : _selectedIndex + delta);
         }
 
         private void SelectIndex(int index)
@@ -451,13 +526,20 @@ namespace HaCreator.MapSimulator.UI
 
         private void ApplySelectedResult()
         {
-            if (_owner == null || _results.Count == 0 || _selectedIndex < 0 || _selectedIndex >= _results.Count)
+            AdminShopDialogUI.WishlistSearchResult result = GetSelectedResult();
+            if (_owner == null || result == null)
             {
                 _statusMessage = "Select a wish-list result before using BtRegist.";
                 return;
             }
 
-            AdminShopDialogUI.WishlistSearchResult result = _results[_selectedIndex];
+            if (result.AlreadyWishlisted)
+            {
+                _statusMessage = $"{result.Title} is already saved in the in-session wish-list cache.";
+                UpdateButtons();
+                return;
+            }
+
             _isRegisterConfirmationOpen = true;
             _confirmAcceptFocused = true;
             _statusMessage = $"BtRegist opened the registration confirmation for {result.Title}.";
@@ -466,7 +548,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void ConfirmSelectedResult()
         {
-            if (_owner == null || _results.Count == 0 || _selectedIndex < 0 || _selectedIndex >= _results.Count)
+            if (_owner == null)
             {
                 _isRegisterConfirmationOpen = false;
                 _statusMessage = "Wish-list result selection is unavailable.";
@@ -474,8 +556,18 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            AdminShopDialogUI.WishlistSearchResult result = _results[_selectedIndex];
-            if (_owner.TryApplySearchResult(result, out string message))
+            bool applied;
+            string message;
+            if (UseOwnerSession)
+            {
+                applied = _owner.TryApplySelectedWishlistSearchResultSession(out message);
+            }
+            else
+            {
+                applied = _owner.TryApplySearchResult(_results[_selectedIndex], out message);
+            }
+
+            if (applied)
             {
                 _owner.Hide();
                 Hide();
@@ -493,16 +585,16 @@ namespace HaCreator.MapSimulator.UI
         {
             _isRegisterConfirmationOpen = false;
             _confirmAcceptFocused = true;
-            _statusMessage = _selectedIndex >= 0 && _selectedIndex < _results.Count
-                ? $"BtRegist confirmation cancelled for {_results[_selectedIndex].Title}."
+            AdminShopDialogUI.WishlistSearchResult selectedResult = GetSelectedResult();
+            _statusMessage = selectedResult != null
+                ? $"BtRegist confirmation cancelled for {selectedResult.Title}."
                 : "Wish-list registration confirmation cancelled.";
             UpdateButtons();
         }
 
         private void UpdateButtons()
         {
-            int pageStart = _pageIndex * ResultsPerPage;
-            int visibleCount = Math.Max(0, Math.Min(ResultsPerPage, _results.Count - pageStart));
+            int visibleCount = GetVisibleResults().Count;
             for (int i = 0; i < _rowButtons.Count; i++)
             {
                 bool active = IsVisible && !_isRegisterConfirmationOpen && i < visibleCount;
@@ -512,21 +604,24 @@ namespace HaCreator.MapSimulator.UI
 
             if (_previousButton != null)
             {
-                bool canMove = IsVisible && !_isRegisterConfirmationOpen && _pageIndex > 0;
+                bool canMove = IsVisible && !_isRegisterConfirmationOpen && CanMovePage(-1);
                 _previousButton.SetVisible(IsVisible);
                 _previousButton.SetEnabled(canMove);
             }
 
             if (_nextButton != null)
             {
-                bool canMove = IsVisible && !_isRegisterConfirmationOpen && _pageIndex + 1 < GetPageCount();
+                bool canMove = IsVisible && !_isRegisterConfirmationOpen && CanMovePage(1);
                 _nextButton.SetVisible(IsVisible);
                 _nextButton.SetEnabled(canMove);
             }
 
             if (_registerButton != null)
             {
-                bool canRegister = IsVisible && !_isRegisterConfirmationOpen && _selectedIndex >= 0 && _selectedIndex < _results.Count;
+                bool canRegister = IsVisible
+                    && !_isRegisterConfirmationOpen
+                    && GetSelectedResult() != null
+                    && !GetSelectedResult().AlreadyWishlisted;
                 _registerButton.SetVisible(IsVisible);
                 _registerButton.SetEnabled(canRegister);
             }
@@ -568,7 +663,9 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetPageCount()
         {
-            return _results.Count == 0 ? 0 : (int)Math.Ceiling(_results.Count / (float)ResultsPerPage);
+            return UseOwnerSession
+                ? _owner.GetWishlistSearchResultSessionPageCount()
+                : _results.Count == 0 ? 0 : (int)Math.Ceiling(_results.Count / (float)ResultsPerPage);
         }
 
         private int GetPageStartIndex()
@@ -624,10 +721,11 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_pixelTexture, confirmButtonBounds, _confirmAcceptFocused ? new Color(255, 233, 160) : new Color(214, 223, 236));
             sprite.Draw(_pixelTexture, cancelButtonBounds, !_confirmAcceptFocused ? new Color(255, 233, 160) : new Color(214, 223, 236));
 
-            string title = _selectedIndex >= 0 && _selectedIndex < _results.Count
-                ? _results[_selectedIndex].Title
+            AdminShopDialogUI.WishlistSearchResult selectedResult = GetSelectedResult();
+            string title = selectedResult != null
+                ? AdminShopWishListClientParityText.GetRegisterConfirmationText(selectedResult.Title)
                 : "this result";
-            sprite.DrawString(_font, TrimToWidth($"Register {title} to the wish list?", 206f), new Vector2(confirmBounds.X + 10, confirmBounds.Y + 10), Color.White);
+            sprite.DrawString(_font, TrimToWidth(title, 206f), new Vector2(confirmBounds.X + 10, confirmBounds.Y + 10), Color.White);
             sprite.DrawString(_font, "Enter = Yes / Esc = No", new Vector2(confirmBounds.X + 44, confirmBounds.Y + 28), new Color(255, 233, 160));
             sprite.DrawString(_font, "Yes", new Vector2(confirmButtonBounds.X + 25, confirmButtonBounds.Y + 3), new Color(40, 55, 96));
             sprite.DrawString(_font, "No", new Vector2(cancelButtonBounds.X + 28, cancelButtonBounds.Y + 3), new Color(40, 55, 96));
@@ -666,6 +764,33 @@ namespace HaCreator.MapSimulator.UI
         private bool WasPressed(KeyboardState keyboardState, Keys key)
         {
             return keyboardState.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
+        }
+
+        private int GetPageIndex()
+        {
+            return UseOwnerSession ? _owner.GetWishlistSearchResultSessionPageIndex() : _pageIndex;
+        }
+
+        private int GetResultCount()
+        {
+            return UseOwnerSession ? _owner.GetWishlistSearchResultSessionResultCount() : _results.Count;
+        }
+
+        private IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> GetVisibleResults()
+        {
+            return UseOwnerSession ? _owner.GetWishlistSearchResultSessionPage() : _results.Skip(_pageIndex * ResultsPerPage).Take(ResultsPerPage).ToList();
+        }
+
+        private AdminShopDialogUI.WishlistSearchResult GetSelectedResult()
+        {
+            return UseOwnerSession ? _owner.GetWishlistSearchResultSessionSelectedResult() : _selectedIndex >= 0 && _selectedIndex < _results.Count ? _results[_selectedIndex] : null;
+        }
+
+        private bool CanMovePage(int delta)
+        {
+            return UseOwnerSession
+                ? _owner.CanMoveWishlistSearchResultSessionPage(delta)
+                : delta < 0 ? _pageIndex > 0 : _pageIndex + 1 < GetPageCount();
         }
 
         private static string TrimToWidth(string text, float maxWidth)

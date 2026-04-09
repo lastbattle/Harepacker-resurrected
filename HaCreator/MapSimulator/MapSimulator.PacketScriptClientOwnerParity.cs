@@ -17,6 +17,7 @@ namespace HaCreator.MapSimulator
                     if (sync.CloseExistingOwner)
                     {
                         _initialQuizTimerRuntime.Clear();
+                        ClearInitialQuizOwnerInputState();
                         SyncUtilityChannelSelectorAvailability();
                         return "Cleared packet-authored initial quiz owner.";
                     }
@@ -29,6 +30,7 @@ namespace HaCreator.MapSimulator
                         sync.QuestionNumber,
                         sync.RemainingSeconds,
                         currTickCount);
+                    ResetInitialQuizOwnerInputState(currTickCount);
                     SyncUtilityChannelSelectorAvailability();
                     return initialQuizMessage;
 
@@ -56,6 +58,7 @@ namespace HaCreator.MapSimulator
         {
             _initialQuizTimerRuntime.Clear();
             _speedQuizOwnerRuntime.Clear();
+            ClearInitialQuizOwnerInputState();
             SyncUtilityChannelSelectorAvailability();
         }
     }

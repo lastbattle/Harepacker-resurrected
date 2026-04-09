@@ -717,7 +717,7 @@ namespace HaCreator.MapSimulator.Fields
                 firstNames = "no printable entrant names recovered";
             }
 
-            Summary = $"Tournament match table opened in a dedicated {MatchTableDialogOwnerText} dialog ({PayloadLength} byte(s), stage={Stage}, scroll={Scroll}, preview={firstNames}).";
+            Summary = $"Tournament match table opened in a dedicated {MatchTableDialogOwnerText} dialog (0x300-byte match buffer + state byte, payload={PayloadLength} byte(s), stage={Stage}, scroll={Scroll}, preview={firstNames}).";
             summary = Summary;
             return true;
         }
@@ -755,7 +755,7 @@ namespace HaCreator.MapSimulator.Fields
                 names = "none recovered";
             }
 
-            return $"Tournament match-table dialog: open | payload={PayloadLength} bytes | stage={Stage} | scroll={Scroll} | entrants={names}";
+            return $"Tournament match-table dialog: open | payload={PayloadLength} bytes (0x300-byte match buffer + state byte) | stage={Stage} | scroll={Scroll} | entrants={names}";
         }
 
         public bool HandleMouse(

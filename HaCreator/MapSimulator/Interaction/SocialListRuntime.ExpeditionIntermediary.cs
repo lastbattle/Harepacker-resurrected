@@ -95,6 +95,7 @@ namespace HaCreator.MapSimulator.Interaction
             };
             SyncExpeditionSearchEntryFromIntermediary();
             ClampSearchSelection(SocialSearchTab.Expedition);
+            NotifySocialChatObserved(_expeditionIntermediary.LastStatusMessage);
             return _expeditionIntermediary.LastStatusMessage;
         }
 
@@ -131,6 +132,7 @@ namespace HaCreator.MapSimulator.Interaction
             _expeditionIntermediary.LastPacketRetCode = retCode;
             SyncExpeditionSearchEntryFromIntermediary();
             ClampSearchSelection(SocialSearchTab.Expedition);
+            NotifySocialChatObserved(_expeditionIntermediary.LastStatusMessage);
             return _expeditionIntermediary.LastStatusMessage;
         }
 
@@ -147,6 +149,7 @@ namespace HaCreator.MapSimulator.Interaction
             _expeditionIntermediary.LastPacketRetCode = retCode;
             _expeditionIntermediary.LastStatusMessage = $"Expedition intermediary queued an invite from {resolvedInviter} (Lv. {Math.Max(1, level)}, job {Math.Max(0, jobCode)}).";
             _expeditionAdmissionActive = true;
+            NotifySocialChatObserved(_expeditionIntermediary.LastStatusMessage);
             return _expeditionIntermediary.LastStatusMessage;
         }
 
@@ -189,11 +192,13 @@ namespace HaCreator.MapSimulator.Interaction
 
                 _expeditionAdmissionActive = true;
                 _expeditionIntermediary.LastStatusMessage = $"{resolvedInviter} accepted the expedition admission flow and the intermediary now owns the roster.";
+                NotifySocialChatObserved(_expeditionIntermediary.LastStatusMessage);
                 return _expeditionIntermediary.LastStatusMessage;
             }
 
             _expeditionIntermediary.PendingInvite = null;
             _expeditionIntermediary.LastStatusMessage = GetExpeditionResponseMessage(resolvedInviter, responseCode);
+            NotifySocialChatObserved(_expeditionIntermediary.LastStatusMessage);
             return _expeditionIntermediary.LastStatusMessage;
         }
 
@@ -229,6 +234,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             SyncExpeditionSearchEntryFromIntermediary();
+            NotifySocialChatObserved(_expeditionIntermediary.LastStatusMessage);
             return _expeditionIntermediary.LastStatusMessage;
         }
 
@@ -241,6 +247,7 @@ namespace HaCreator.MapSimulator.Interaction
             _expeditionIntermediary.PendingRequestSummary = string.Empty;
             _expeditionIntermediary.LastStatusMessage = $"Expedition intermediary transferred master ownership to {_expeditionIntermediary.MasterName}.";
             SyncExpeditionSearchEntryFromIntermediary();
+            NotifySocialChatObserved(_expeditionIntermediary.LastStatusMessage);
             return _expeditionIntermediary.LastStatusMessage;
         }
 
@@ -276,6 +283,7 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"Local expedition intermediary created {resolvedTitle}.";
             SyncExpeditionSearchEntryFromIntermediary();
             ClampSearchSelection(SocialSearchTab.Expedition);
+            NotifySocialChatObserved(_expeditionIntermediary.LastStatusMessage);
             return _expeditionIntermediary.LastStatusMessage;
         }
 
@@ -295,6 +303,7 @@ namespace HaCreator.MapSimulator.Interaction
             _expeditionIntermediary.LastStatusMessage = quickJoin
                 ? $"Expedition intermediary staged a quick-join request to {resolvedOwner}."
                 : $"Expedition intermediary staged an admission request to {resolvedOwner}.";
+            NotifySocialChatObserved(_expeditionIntermediary.LastStatusMessage);
             return _expeditionIntermediary.LastStatusMessage;
         }
 
@@ -311,6 +320,7 @@ namespace HaCreator.MapSimulator.Interaction
             _expeditionAdmissionActive = false;
             RemoveIntermediaryOwnedSearchEntry();
             ClampSearchSelection(SocialSearchTab.Expedition);
+            NotifySocialChatObserved(_expeditionIntermediary.LastStatusMessage);
             return _expeditionIntermediary.LastStatusMessage;
         }
 
@@ -332,6 +342,7 @@ namespace HaCreator.MapSimulator.Interaction
             _expeditionAdmissionActive = false;
             RemoveIntermediaryOwnedSearchEntry();
             ClampSearchSelection(SocialSearchTab.Expedition);
+            NotifySocialChatObserved(_expeditionIntermediary.LastStatusMessage);
             return _expeditionIntermediary.LastStatusMessage;
         }
 

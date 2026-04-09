@@ -100,7 +100,9 @@ namespace HaCreator.MapSimulator.Fields
         public PartyRaidField PartyRaid => _partyRaid;
         public bool HasBlockingScriptedSequence =>
             _specialEffects.HasBlockingScriptedSequence
-            || _minigames.MemoryGame.IsVisible;
+            || _minigames.MemoryGame.IsVisible
+            || _minigames.Tournament.MatchTableDialog.IsVisible
+            || _minigames.RockPaperScissors.IsVisible;
 
         public void Initialize(
             GraphicsDevice graphicsDevice,

@@ -53,6 +53,8 @@ namespace HaCreator.MapSimulator.Character
         private const int BlockedWeaponStickerItemIdA = 1702099;
         private const int BlockedWeaponStickerItemIdB = 1702190;
         private const int MechanicTamingMobItemId = 1932016;
+        private const int ClientMorphReplayTailStringPoolId = 0x049F;
+        private const string ClientMorphReplayTailFallbackName = "zigzag";
 
         private static readonly SkinColor[] PreferredStarterSkins =
         {
@@ -73,6 +75,8 @@ namespace HaCreator.MapSimulator.Character
         private readonly Dictionary<int, HairPart> _hairCache = new();
         private readonly Dictionary<int, CharacterPart> _equipCache = new();
         private readonly Dictionary<int, CharacterPart> _morphCache = new();
+        private readonly Dictionary<int, MorphImageEntry> _morphImageEntryCache = new();
+        private readonly Dictionary<MorphActionCacheKey, CharacterAnimation> _morphActionCache = new();
         private readonly Dictionary<int, PortableChair> _portableChairCache = new();
         private readonly Dictionary<int, ItemEffectAnimationSet> _itemEffectCache = new();
         private readonly Dictionary<int, ItemEffectAnimationSet> _completedSetEffectCache = new();
@@ -133,6 +137,19 @@ namespace HaCreator.MapSimulator.Character
             public IReadOnlyDictionary<EquipSlot, CharacterPart> Equipment { get; init; } = new Dictionary<EquipSlot, CharacterPart>();
             public CharacterPart WeaponSticker { get; init; }
             public CharacterPart ActiveTamingMobPart { get; init; }
+        }
+
+        private readonly record struct MorphActionCacheKey(int TemplateId, string ActionName);
+
+        private sealed class MorphImageEntry
+        {
+            public int TemplateId { get; init; }
+            public int LinkedTemplateId { get; init; }
+            public bool IsSuperManMorph { get; init; }
+            public IReadOnlyDictionary<string, WzImageProperty> ActionNodes { get; init; } =
+                new Dictionary<string, WzImageProperty>(StringComparer.OrdinalIgnoreCase);
+            public IReadOnlySet<string> AvailableActionNames { get; init; } =
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
 
         public CharacterLoader(WzFile characterWz, GraphicsDevice device, TexturePool texturePool)
@@ -241,6 +258,11 @@ namespace HaCreator.MapSimulator.Character
 
             string imageName = morphTemplateId.ToString("D4") + ".img";
             WzImage morphImage = Program.FindImage("Morph", imageName);
+            MorphImageEntry morphImageEntry = GetMorphImageEntry(morphTemplateId, morphImage);
+            if (morphImageEntry == null || morphImageEntry.ActionNodes.Count == 0)
+            {
+                return null;
+            }
 
             var morphPart = new CharacterPart
             {
@@ -248,17 +270,398 @@ namespace HaCreator.MapSimulator.Character
                 Name = $"Morph_{morphTemplateId:D4}",
                 Type = CharacterPartType.Morph,
                 Slot = EquipSlot.None,
-                IsSuperManMorph = GetMorphSuperManFlag(morphImage)
+                IsSuperManMorph = morphImageEntry.IsSuperManMorph
             };
 
-            PopulateMorphAnimations(morphPart, morphTemplateId, morphImage);
+            morphPart.AvailableAnimations = new HashSet<string>(
+                morphImageEntry.AvailableActionNames?.ToArray() ?? Array.Empty<string>(),
+                StringComparer.OrdinalIgnoreCase);
+            morphPart.AnimationResolver = actionName => LoadMorphActionAnimation(morphTemplateId, actionName);
+            foreach (string actionName in BuildEagerActionLoadOrder(morphPart.AvailableAnimations, includeAttackActions: false))
+            {
+                CharacterAnimation animation = LoadMorphActionAnimation(morphTemplateId, actionName);
+                if (animation?.Frames?.Count > 0)
+                {
+                    morphPart.Animations[actionName] = animation;
+                }
+            }
+
             if (morphPart.Animations.Count == 0)
             {
                 return null;
             }
 
+            AttachMorphActionFrameOwner(morphPart);
             _morphCache[morphTemplateId] = morphPart;
             return morphPart;
+        }
+
+        private MorphImageEntry GetMorphImageEntry(int morphTemplateId, WzImage exactMorphImage = null)
+        {
+            return GetMorphImageEntry(morphTemplateId, exactMorphImage, new HashSet<int>());
+        }
+
+        private MorphImageEntry GetMorphImageEntry(
+            int morphTemplateId,
+            WzImage exactMorphImage,
+            ISet<int> activeTemplateIds)
+        {
+            if (morphTemplateId <= 0)
+            {
+                return null;
+            }
+
+            if (exactMorphImage == null
+                && _morphImageEntryCache.TryGetValue(morphTemplateId, out MorphImageEntry cachedEntry))
+            {
+                return cachedEntry;
+            }
+
+            if (activeTemplateIds != null && !activeTemplateIds.Add(morphTemplateId))
+            {
+                return null;
+            }
+
+            try
+            {
+                var actionNodes = new Dictionary<string, WzImageProperty>(StringComparer.OrdinalIgnoreCase);
+                bool isSuperManMorph = false;
+                int linkedTemplateId = 0;
+
+                foreach (int candidateTemplateId in EnumerateMorphTemplateCandidates(morphTemplateId, exactMorphImage))
+                {
+                    WzImage candidateImage = candidateTemplateId == morphTemplateId
+                        ? exactMorphImage ?? Program.FindImage("Morph", candidateTemplateId.ToString("D4") + ".img")
+                        : Program.FindImage("Morph", candidateTemplateId.ToString("D4") + ".img");
+                    if (candidateImage == null)
+                    {
+                        continue;
+                    }
+
+                    candidateImage.ParseImage();
+
+                    if (candidateTemplateId == morphTemplateId)
+                    {
+                        linkedTemplateId = GetMorphLinkTemplateId(candidateImage);
+                    }
+
+                    if (GetMorphSuperManFlag(candidateImage))
+                    {
+                        isSuperManMorph = true;
+                    }
+
+                    foreach (WzImageProperty property in candidateImage.WzProperties)
+                    {
+                        if (property != null
+                            && LooksLikeActionName(property.Name)
+                            && !actionNodes.ContainsKey(property.Name))
+                        {
+                            actionNodes[property.Name] = property;
+                        }
+                    }
+                }
+
+                if (actionNodes.Count == 0)
+                {
+                    return null;
+                }
+
+                var entry = new MorphImageEntry
+                {
+                    TemplateId = morphTemplateId,
+                    LinkedTemplateId = linkedTemplateId,
+                    IsSuperManMorph = isSuperManMorph,
+                    ActionNodes = actionNodes,
+                    AvailableActionNames = new HashSet<string>(actionNodes.Keys, StringComparer.OrdinalIgnoreCase)
+                };
+
+                _morphImageEntryCache[morphTemplateId] = entry;
+                return entry;
+            }
+            finally
+            {
+                activeTemplateIds?.Remove(morphTemplateId);
+            }
+        }
+
+        private CharacterAnimation LoadMorphActionAnimation(int morphTemplateId, string actionName)
+        {
+            if (morphTemplateId <= 0 || string.IsNullOrWhiteSpace(actionName))
+            {
+                return null;
+            }
+
+            MorphActionCacheKey cacheKey = new(morphTemplateId, actionName);
+            if (_morphActionCache.TryGetValue(cacheKey, out CharacterAnimation cachedAnimation))
+            {
+                return cachedAnimation;
+            }
+
+            MorphImageEntry morphImageEntry = GetMorphImageEntry(morphTemplateId);
+            if (morphImageEntry == null
+                || morphImageEntry.ActionNodes == null
+                || !morphImageEntry.ActionNodes.TryGetValue(actionName, out WzImageProperty actionNode))
+            {
+                return null;
+            }
+
+            CharacterAnimation animation = LoadMorphAnimation(actionNode, actionName);
+            if (animation?.Frames?.Count > 0)
+            {
+                _morphActionCache[cacheKey] = animation;
+                return animation;
+            }
+
+            return null;
+        }
+
+        private CharacterAnimation LoadMorphAnimation(WzImageProperty node, string actionName)
+        {
+            if (node == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return null;
+            }
+
+            if (node is WzUOLProperty actionUol && actionUol.LinkValue is WzImageProperty linkedActionNode)
+            {
+                return LoadMorphAnimation(linkedActionNode, actionName);
+            }
+
+            var animation = new CharacterAnimation
+            {
+                ActionName = actionName,
+                Action = CharacterPart.ParseActionString(actionName)
+            };
+
+            if (node is WzCanvasProperty canvas)
+            {
+                CharacterFrame frame = LoadMorphFrame(canvas, node, "0", frameUol: null);
+                if (frame != null)
+                {
+                    animation.Frames.Add(frame);
+                }
+            }
+            else if (node is WzSubProperty subProperty)
+            {
+                for (int i = 0; i < 100; i++)
+                {
+                    WzImageProperty frameNode = subProperty[i.ToString()];
+                    if (frameNode == null)
+                    {
+                        break;
+                    }
+
+                    CharacterFrame frame = LoadMorphFrameEntry(frameNode, i.ToString());
+                    if (frame != null)
+                    {
+                        animation.Frames.Add(frame);
+                    }
+                }
+
+                if (ShouldAppendMorphReplayTail(subProperty))
+                {
+                    AppendMorphReplayTail(animation);
+                }
+            }
+
+            animation.CalculateTotalDuration();
+            return animation.Frames.Count > 0 ? animation : null;
+        }
+
+        private CharacterFrame LoadMorphFrameEntry(WzImageProperty frameNode, string frameName)
+        {
+            if (frameNode == null)
+            {
+                return null;
+            }
+
+            if (frameNode is WzCanvasProperty frameCanvas)
+            {
+                return LoadMorphFrame(frameCanvas, frameNode, frameName, frameUol: null);
+            }
+
+            if (frameNode is WzUOLProperty frameUol)
+            {
+                WzImageProperty linkedProperty = frameUol.GetLinkedWzImageProperty();
+                if (linkedProperty is WzCanvasProperty linkedCanvas)
+                {
+                    return LoadMorphFrame(linkedCanvas, frameNode, frameName, frameUol.Value);
+                }
+            }
+
+            if (frameNode is WzSubProperty frameSubProperty)
+            {
+                foreach (WzImageProperty child in frameSubProperty.WzProperties)
+                {
+                    CharacterFrame nestedFrame = LoadMorphFrameEntry(child, frameName);
+                    if (nestedFrame != null)
+                    {
+                        return nestedFrame;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private CharacterFrame LoadMorphFrame(
+            WzCanvasProperty canvas,
+            WzImageProperty metadataNode,
+            string frameName,
+            string frameUol)
+        {
+            if (canvas == null)
+            {
+                return null;
+            }
+
+            IDXObject texture = LoadTexture(canvas);
+            if (texture == null)
+            {
+                return null;
+            }
+
+            Point origin = ResolveFrameOrigin(metadataNode, canvas);
+            CharacterFrame frame = new()
+            {
+                Texture = texture,
+                Origin = origin,
+                Delay = ResolveFrameInt(metadataNode, canvas, "delay", 120),
+                Z = ResolveZLayer(GetStringValue(metadataNode?["z"]) ?? GetStringValue(canvas["z"]), frameName),
+                Bounds = ResolveFrameBounds(metadataNode, canvas, texture, origin),
+                FrameUol = frameUol
+            };
+
+            AddFrameMapPoints(frame, metadataNode, canvas);
+            return frame;
+        }
+
+        private static void AddFrameMapPoints(CharacterFrame frame, WzImageProperty metadataNode, WzCanvasProperty canvas)
+        {
+            if (frame == null)
+            {
+                return;
+            }
+
+            WzImageProperty resolvedMetadataNode = ResolveFrameMetadataProperty(metadataNode, canvas);
+            if (resolvedMetadataNode?["map"] is WzSubProperty mapSubProperty)
+            {
+                foreach (WzImageProperty mapPoint in mapSubProperty.WzProperties)
+                {
+                    if (mapPoint is WzVectorProperty vectorProperty)
+                    {
+                        frame.Map[mapPoint.Name] = new Point(vectorProperty.X.Value, vectorProperty.Y.Value);
+                    }
+                }
+            }
+
+            foreach (WzImageProperty child in resolvedMetadataNode?.WzProperties ?? canvas?.WzProperties ?? Enumerable.Empty<WzImageProperty>())
+            {
+                if (child is not WzVectorProperty vectorProperty
+                    || frame.Map.ContainsKey(child.Name)
+                    || string.Equals(child.Name, "origin", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(child.Name, "lt", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(child.Name, "rb", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                frame.Map[child.Name] = new Point(vectorProperty.X.Value, vectorProperty.Y.Value);
+            }
+        }
+
+        private static WzImageProperty ResolveFrameMetadataProperty(WzImageProperty frameNode, WzCanvasProperty canvas)
+        {
+            if (frameNode != null
+                && (frameNode is WzCanvasProperty
+                    || frameNode["origin"] != null
+                    || frameNode["delay"] != null
+                    || frameNode["lt"] != null
+                    || frameNode["rb"] != null
+                    || frameNode["head"] != null
+                    || frameNode["z"] != null))
+            {
+                return frameNode;
+            }
+
+            return canvas;
+        }
+
+        private static int ResolveFrameInt(WzImageProperty metadataNode, WzCanvasProperty canvas, string propertyName, int defaultValue)
+        {
+            WzImageProperty resolvedMetadataNode = ResolveFrameMetadataProperty(metadataNode, canvas);
+            return GetIntValue(resolvedMetadataNode?[propertyName])
+                ?? GetIntValue(canvas?[propertyName])
+                ?? defaultValue;
+        }
+
+        private static Point ResolveFrameOrigin(WzImageProperty metadataNode, WzCanvasProperty canvas)
+        {
+            Point? metadataOrigin = GetVectorValue(ResolveFrameMetadataProperty(metadataNode, canvas)?["origin"]);
+            if (metadataOrigin.HasValue)
+            {
+                return metadataOrigin.Value;
+            }
+
+            Point? canvasOrigin = GetVectorValue(canvas?["origin"]);
+            return canvasOrigin ?? Point.Zero;
+        }
+
+        private static Rectangle ResolveFrameBounds(
+            WzImageProperty metadataNode,
+            WzCanvasProperty canvas,
+            IDXObject texture,
+            Point origin)
+        {
+            WzImageProperty resolvedMetadataNode = ResolveFrameMetadataProperty(metadataNode, canvas);
+            Point? lt = GetVectorValue(resolvedMetadataNode?["lt"]) ?? GetVectorValue(canvas?["lt"]);
+            Point? rb = GetVectorValue(resolvedMetadataNode?["rb"]) ?? GetVectorValue(canvas?["rb"]);
+            if (lt.HasValue && rb.HasValue)
+            {
+                int left = lt.Value.X;
+                int top = lt.Value.Y;
+                int width = Math.Max(1, rb.Value.X - left);
+                int height = Math.Max(1, rb.Value.Y - top);
+                return new Rectangle(left, top, width, height);
+            }
+
+            return new Rectangle(-origin.X, -origin.Y, texture?.Width ?? 0, texture?.Height ?? 0);
+        }
+
+        private static Point? GetVectorValue(WzImageProperty property)
+        {
+            if (property is WzVectorProperty vectorProperty)
+            {
+                return new Point(vectorProperty.X.Value, vectorProperty.Y.Value);
+            }
+
+            return null;
+        }
+
+        private static bool ShouldAppendMorphReplayTail(WzImageProperty actionNode)
+        {
+            if (actionNode == null)
+            {
+                return false;
+            }
+
+            string replayTailFlagName = MapleStoryStringPool.GetOrFallback(
+                ClientMorphReplayTailStringPoolId,
+                ClientMorphReplayTailFallbackName);
+            return ResolveFrameInt(actionNode, canvas: null, replayTailFlagName, 0) != 0;
+        }
+
+        private static void AppendMorphReplayTail(CharacterAnimation animation)
+        {
+            if (animation?.Frames == null || animation.Frames.Count < 3)
+            {
+                return;
+            }
+
+            for (int i = animation.Frames.Count - 1; i >= 1; i--)
+            {
+                animation.Frames.Add(animation.Frames[i].Clone());
+            }
         }
 
         internal static bool CanResolveMorphTemplate(int morphTemplateId)
@@ -2181,6 +2584,18 @@ namespace HaCreator.MapSimulator.Character
             part.TamingMobActionFrameOwner ??= new TamingMobActionFrameOwner(part.ItemId);
         }
 
+        private static void AttachMorphActionFrameOwner(CharacterPart part)
+        {
+            if (part?.Type != CharacterPartType.Morph)
+            {
+                return;
+            }
+
+            part.MorphActionFrameOwner ??= new MorphActionFrameOwner(
+                part.ItemId,
+                actionName => part.AnimationResolver?.Invoke(actionName));
+        }
+
         private void AttachTamingMobOverlayResolver(CharacterPart part)
         {
             if (part?.ItemId / 10000 != 191)
@@ -2505,7 +2920,10 @@ namespace HaCreator.MapSimulator.Character
                     }
                     else if (frameNode is WzUOLProperty frameUol && frameUol.LinkValue is WzCanvasProperty resolvedFrameCanvas)
                     {
-                        var frame = LoadFrame(resolvedFrameCanvas, i.ToString());
+                        var frame = LoadFrame(
+                            resolvedFrameCanvas,
+                            i.ToString(),
+                            frameUol.Value);
                         if (frame != null)
                         {
                             anim.Frames.Add(frame);
@@ -2562,7 +2980,10 @@ namespace HaCreator.MapSimulator.Character
 
                             if (headCanvas != null)
                             {
-                                var frame = LoadFrame(headCanvas, i.ToString());
+                                var frame = LoadFrame(
+                                    headCanvas,
+                                    i.ToString(),
+                                    (headProp as WzUOLProperty)?.Value);
                                 if (frame != null)
                                 {
                                     anim.Frames.Add(frame);
@@ -2588,7 +3009,10 @@ namespace HaCreator.MapSimulator.Character
 
                                     if (foundCanvas != null)
                                     {
-                                        var frame = LoadFrame(foundCanvas, child.Name);
+                                        var frame = LoadFrame(
+                                            foundCanvas,
+                                            child.Name,
+                                            (child as WzUOLProperty)?.Value);
                                         if (frame != null)
                                         {
                                             anim.Frames.Add(frame);
@@ -2631,7 +3055,7 @@ namespace HaCreator.MapSimulator.Character
             return anim;
         }
 
-        private CharacterFrame LoadFrame(WzCanvasProperty canvas, string frameName)
+        private CharacterFrame LoadFrame(WzCanvasProperty canvas, string frameName, string frameUol = null)
         {
             if (canvas == null) return null;
 
@@ -2643,7 +3067,8 @@ namespace HaCreator.MapSimulator.Character
             var frame = new CharacterFrame
             {
                 Texture = texture,
-                Delay = GetIntValue(canvas["delay"]) ?? 200
+                Delay = GetIntValue(canvas["delay"]) ?? 200,
+                FrameUol = frameUol
             };
 
             // Load origin

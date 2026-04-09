@@ -1432,6 +1432,16 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Error($"Usage: /fieldfeedback {args[0]} <mode> <value>");
             }
 
+            if (kind == PacketFieldFeedbackPacketKind.HontaleTimer)
+            {
+                if (value < byte.MinValue || value > byte.MaxValue)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Hontale timer value must be between 0 and 255.");
+                }
+
+                return ApplyPacketOwnedFieldFeedbackHelper(kind, PacketFieldFeedbackRuntime.BuildHontaleTimerPayload(mode, (byte)value));
+            }
+
             return ApplyPacketOwnedFieldFeedbackHelper(kind, PacketFieldFeedbackRuntime.BuildBossTimerPayload(mode, value));
         }
 

@@ -152,11 +152,13 @@ namespace HaCreator.MapSimulator.UI
                 string requestedFontFamily = MapleStoryStringPool.GetOrFallback(ClientFontStringPoolId, "Arial");
                 string resolvedFontFamily = ClientTextRasterizer.ResolvePreferredFontFamily(
                     requestedFontFamily,
-                    preferredPrivateFontFamilyCandidates: ClientFontFamilyCandidates);
+                    preferredPrivateFontFamilyCandidates: ClientFontFamilyCandidates,
+                    preferEmbeddedPrivateFontSources: true);
                 _clientTextRasterizer = new ClientTextRasterizer(
                     _pixelTexture.GraphicsDevice,
                     resolvedFontFamily,
-                    basePointSize: 12f);
+                    basePointSize: 12f,
+                    preferEmbeddedPrivateFontSources: true);
             }
             catch
             {

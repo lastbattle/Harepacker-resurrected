@@ -67,6 +67,8 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Point RightTabOrigin = new(414, 38);
         private static readonly Point SummaryValueOrigin = new(98, 90);
         private static readonly Point PageMarkerAnchor = new(236, 296);
+        private static readonly Point ClientLeftCollectionPageOrigin = new(0, 0);
+        private static readonly Point ClientRightCollectionPageOrigin = new(220, 0);
         private static readonly Rectangle SelectedCardIconBounds = new(69, 3, 32, 32);
         private static readonly Rectangle SelectedCardNameBounds = new(10, 38, 151, 16);
         private static readonly Rectangle SelectedCardDetailBounds = new(10, 54, 151, 20);
@@ -76,10 +78,12 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Rectangle LeftPageIndexBounds = new(143, 286, 84, 18);
         private static readonly Rectangle RightPageIndexBounds = new(249, 286, 84, 18);
         private static readonly Rectangle StatusBounds = new(16, 286, 184, 18);
-        private static readonly Rectangle ClientLeftCollectionPageContentBounds = new(23, 34, 190, 248);
-        private static readonly Rectangle ClientRightCollectionPageContentBounds = new(243, 34, 190, 248);
-        private static readonly Rectangle ClientLeftCollectionPageIndexBounds = new(23, 293, 190, 16);
-        private static readonly Rectangle ClientRightCollectionPageIndexBounds = new(243, 293, 190, 16);
+        // CBookDlg::Draw offsets CT_INFO page-local rows from a recovered +35,+30 base and centers
+        // the page counter in that same 190px lane with an extra +3 left bias.
+        private static readonly Rectangle ClientLeftCollectionPageContentBounds = new(35, 30, 190, 248);
+        private static readonly Rectangle ClientRightCollectionPageContentBounds = new(255, 30, 190, 248);
+        private static readonly Rectangle ClientLeftCollectionPageIndexBounds = new(38, 293, 190, 16);
+        private static readonly Rectangle ClientRightCollectionPageIndexBounds = new(258, 293, 190, 16);
         private static readonly Color TitleColor = new(82, 59, 29);
         private static readonly Color ValueColor = new(56, 45, 33);
         private static readonly Color AccentColor = new(173, 120, 48);
@@ -144,6 +148,7 @@ namespace HaCreator.MapSimulator.UI
         private bool _contextMenuVisible;
         private string _searchQuery = string.Empty;
         private string _compositionText = string.Empty;
+        private IReadOnlyList<int> _compositionClauseOffsets = Array.Empty<int>();
         private int _searchCursorPosition;
         private int _searchSelectionAnchor = -1;
         private int _compositionInsertionIndex = -1;
@@ -192,6 +197,7 @@ namespace HaCreator.MapSimulator.UI
 
             DeleteSearchSelectionIfAny();
             _compositionText = state?.Text ?? string.Empty;
+            _compositionClauseOffsets = state?.ClauseOffsets ?? Array.Empty<int>();
             _compositionInsertionIndex = Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length);
             _compositionCursorPosition = Math.Clamp(state?.CursorPosition ?? -1, -1, _compositionText.Length);
         }
@@ -206,6 +212,7 @@ namespace HaCreator.MapSimulator.UI
 
             DeleteSearchSelectionIfAny();
             _compositionText = text ?? string.Empty;
+            _compositionClauseOffsets = Array.Empty<int>();
             _compositionInsertionIndex = Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length);
             _compositionCursorPosition = _compositionText.Length;
         }
@@ -213,6 +220,7 @@ namespace HaCreator.MapSimulator.UI
         public override void ClearCompositionText()
         {
             _compositionText = string.Empty;
+            _compositionClauseOffsets = Array.Empty<int>();
             _compositionInsertionIndex = -1;
             _compositionCursorPosition = -1;
             ClearImeCandidateList();
@@ -1282,14 +1290,16 @@ namespace HaCreator.MapSimulator.UI
             DrawCollectionPage(
                 sprite,
                 spreadStart,
+                new Point(Position.X + ClientLeftCollectionPageOrigin.X, Position.Y + ClientLeftCollectionPageOrigin.Y),
                 OffsetBounds(ClientLeftCollectionPageContentBounds, Point.Zero));
             DrawCollectionPage(
                 sprite,
                 spreadStart + 1,
+                new Point(Position.X + ClientRightCollectionPageOrigin.X, Position.Y + ClientRightCollectionPageOrigin.Y),
                 OffsetBounds(ClientRightCollectionPageContentBounds, Point.Zero));
         }
 
-        private void DrawCollectionPage(SpriteBatch sprite, int pageIndex, Rectangle contentBounds)
+        private void DrawCollectionPage(SpriteBatch sprite, int pageIndex, Point pageOrigin, Rectangle contentBounds)
         {
             CollectionBookPageSnapshot page = GetCollectionPage(pageIndex);
 
@@ -1305,7 +1315,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 foreach (CollectionBookRecordSnapshot record in records)
                 {
-                    DrawCollectionRecord(sprite, contentBounds, record);
+                    DrawCollectionRecord(sprite, pageOrigin, record);
                 }
 
                 return;
@@ -1337,7 +1347,7 @@ namespace HaCreator.MapSimulator.UI
             DrawTextLine(sprite, entry.Detail, new Vector2(bounds.X + 8, bounds.Y + 12), GetBookStyle(10), bounds.Width - 10, HorizontalAlignment.Left);
         }
 
-        private void DrawCollectionRecord(SpriteBatch sprite, Rectangle pageBounds, CollectionBookRecordSnapshot record)
+        private void DrawCollectionRecord(SpriteBatch sprite, Point pageOrigin, CollectionBookRecordSnapshot record)
         {
             if (record == null)
             {
@@ -1347,7 +1357,7 @@ namespace HaCreator.MapSimulator.UI
             switch (record.Type)
             {
                 case CollectionBookRecordType.Rule:
-                    DrawRule(sprite, new Rectangle(pageBounds.X + record.Left, pageBounds.Y + record.Top, record.Width, Math.Max(1, record.Height)));
+                    DrawRule(sprite, ResolveCollectionRuleBounds(pageOrigin, record));
                     break;
                 case CollectionBookRecordType.Text:
                     HorizontalAlignment alignment = record.Alignment switch
@@ -1356,22 +1366,48 @@ namespace HaCreator.MapSimulator.UI
                         CollectionBookTextAlignment.Right => HorizontalAlignment.Right,
                         _ => HorizontalAlignment.Left
                     };
-                    Vector2 clientOffset = ResolveCollectionRecordTextOffset(record, alignment);
-                    float anchorX = pageBounds.X + record.Left + clientOffset.X;
-                    if (alignment == HorizontalAlignment.Right)
-                    {
-                        anchorX += record.Width;
-                    }
-
                     DrawTextLine(
                         sprite,
                         record.Text,
-                        new Vector2(anchorX, pageBounds.Y + record.Top + clientOffset.Y),
+                        ResolveCollectionRecordTextAnchor(pageOrigin, record),
                         GetBookStyle(record.StyleIndex),
                         record.Width,
                         alignment);
                     break;
             }
+        }
+
+        private static Rectangle ResolveCollectionRuleBounds(Point pageOrigin, CollectionBookRecordSnapshot record)
+        {
+            if (record == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            // CBookDlg::Draw places CT_INFO rule records from a page-local +3,+30 origin.
+            return new Rectangle(
+                pageOrigin.X + record.Left + 3,
+                pageOrigin.Y + record.Top + 30,
+                record.Width,
+                Math.Max(1, record.Height));
+        }
+
+        private static Vector2 ResolveCollectionRecordTextAnchor(Point pageOrigin, CollectionBookRecordSnapshot record)
+        {
+            HorizontalAlignment alignment = record?.Alignment switch
+            {
+                CollectionBookTextAlignment.Center => HorizontalAlignment.Center,
+                CollectionBookTextAlignment.Right => HorizontalAlignment.Right,
+                _ => HorizontalAlignment.Left
+            };
+            Vector2 clientOffset = ResolveCollectionRecordTextOffset(record, alignment);
+            float anchorX = pageOrigin.X + record.Left + 35 + clientOffset.X;
+            if (alignment == HorizontalAlignment.Right)
+            {
+                anchorX += record.Width;
+            }
+
+            return new Vector2(anchorX, pageOrigin.Y + record.Top + 30 + clientOffset.Y);
         }
 
         private static Vector2 ResolveCollectionRecordTextOffset(CollectionBookRecordSnapshot record, HorizontalAlignment alignment)
@@ -1597,6 +1633,7 @@ namespace HaCreator.MapSimulator.UI
             _searchMode = false;
             _searchQuery = string.Empty;
             _compositionText = string.Empty;
+            _compositionClauseOffsets = Array.Empty<int>();
             _searchCursorPosition = 0;
             _searchSelectionAnchor = -1;
             _compositionInsertionIndex = -1;
@@ -2537,8 +2574,8 @@ namespace HaCreator.MapSimulator.UI
                 return Rectangle.Empty;
             }
 
-            int viewportWidth = Math.Max(1, viewport.Width);
-            int viewportHeight = Math.Max(1, viewport.Height);
+            int viewportWidth = Math.Max(1, Math.Min(viewport.Width, SkillMacroImeCandidateWindowLayout.ClientViewportWidth));
+            int viewportHeight = Math.Max(1, Math.Min(viewport.Height, SkillMacroImeCandidateWindowLayout.ClientViewportHeight));
             int width;
             int height;
             if (_candidateListState.Vertical)
@@ -2555,6 +2592,11 @@ namespace HaCreator.MapSimulator.UI
                     widestEntryWidth = Math.Max(widestEntryWidth, entryWidth);
                 }
 
+                if (widestEntryWidth > SkillMacroImeCandidateWindowLayout.VerticalOverflowThreshold)
+                {
+                    widestEntryWidth = SkillMacroImeCandidateWindowLayout.ClientViewportWidth;
+                }
+
                 width = widestEntryWidth + GetScaledLineHeight() + 7;
                 height = (count * GetCandidateRowHeight()) + 3;
             }
@@ -2564,34 +2606,36 @@ namespace HaCreator.MapSimulator.UI
                 height = GetScaledLineHeight() + 8;
             }
 
-            Rectangle ownerBounds = GetWindowBounds();
-            int availableWidth = ownerBounds.Width > 0 ? ownerBounds.Width : viewportWidth;
-            int availableHeight = ownerBounds.Height > 0 ? ownerBounds.Height : viewportHeight;
-            width = Math.Max(64, Math.Min(Math.Min(viewportWidth, availableWidth), width));
-            height = Math.Max(4, Math.Min(Math.Min(viewportHeight, availableHeight), height));
+            width = Math.Max(64, Math.Min(viewportWidth, width));
+            height = Math.Max(4, Math.Min(viewportHeight, height));
 
             Point origin = ResolveCandidateWindowOrigin(viewport, width, height);
-            int minX = Math.Max(0, ownerBounds.X);
-            int maxX = Math.Min(viewportWidth, ownerBounds.Right) - width;
-            if (maxX < minX)
+            int x = origin.X;
+            if (x < 0)
             {
-                minX = 0;
-                maxX = Math.Max(0, viewportWidth - width);
+                x = 0;
             }
 
-            int x = Math.Clamp(origin.X, minX, Math.Max(minX, maxX));
+            if (x + width > viewportWidth)
+            {
+                x = viewportWidth - width;
+            }
+
             int y = origin.Y;
-            int ownerBottom = ownerBounds.Height > 0 ? Math.Min(viewportHeight, ownerBounds.Bottom) : viewportHeight;
-            if (y + height > ownerBottom)
+            if (y + height > viewportHeight)
             {
-                y = origin.Y - height - (GetScaledLineHeight() + 2);
+                y = origin.Y - height - 1;
             }
 
-            int minY = Math.Max(0, ownerBounds.Y);
-            int maxY = ownerBounds.Height > 0
-                ? Math.Min(viewportHeight, ownerBounds.Bottom) - height
-                : viewportHeight - height;
-            y = Math.Clamp(y, minY, Math.Max(minY, maxY));
+            if (y < 0)
+            {
+                y = 0;
+            }
+            else if (y + height > viewportHeight)
+            {
+                y = Math.Max(0, viewportHeight - height);
+            }
+
             return new Rectangle(x, y, width, height);
         }
 
@@ -2604,9 +2648,18 @@ namespace HaCreator.MapSimulator.UI
 
             Rectangle bounds = OffsetBounds(SearchBoxBounds, InfoPageOrigin);
             SearchInputVisualState searchVisual = BuildSearchInputVisualState();
-            int anchorIndex = searchVisual.VisibleCompositionLength > 0
-                ? searchVisual.VisibleCompositionStart
-                : searchVisual.VisibleCaretIndex;
+            int anchorIndex;
+            if (searchVisual.VisibleCompositionLength > 0)
+            {
+                (_, _, _, _, int compositionStart, _) = BuildDisplayedSearchText();
+                int anchorDisplayIndex = compositionStart + ResolveCompositionAnchorIndex();
+                anchorIndex = Math.Clamp(anchorDisplayIndex - searchVisual.VisibleStart, 0, searchVisual.VisibleText.Length);
+            }
+            else
+            {
+                anchorIndex = searchVisual.VisibleCaretIndex;
+            }
+
             string prefix = anchorIndex <= 0
                 ? string.Empty
                 : searchVisual.VisibleText[..Math.Clamp(anchorIndex, 0, searchVisual.VisibleText.Length)];
@@ -2663,10 +2716,34 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            x = Math.Clamp(x, 0, Math.Max(0, viewportWidth - width));
-            y = Math.Clamp(y, 0, Math.Max(0, viewportHeight - height));
             origin = new Point(x, y);
             return true;
+        }
+
+        private int ResolveCompositionAnchorIndex()
+        {
+            if (string.IsNullOrEmpty(_compositionText))
+            {
+                return 0;
+            }
+
+            if (_compositionClauseOffsets?.Count >= 2)
+            {
+                int cursor = Math.Clamp(_compositionCursorPosition, 0, _compositionText.Length);
+                for (int i = 0; i < _compositionClauseOffsets.Count - 1; i++)
+                {
+                    int start = Math.Clamp(_compositionClauseOffsets[i], 0, _compositionText.Length);
+                    int end = Math.Clamp(_compositionClauseOffsets[i + 1], start, _compositionText.Length);
+                    if (cursor >= start && cursor <= end)
+                    {
+                        return start;
+                    }
+                }
+            }
+
+            return _compositionCursorPosition >= 0
+                ? Math.Clamp(_compositionCursorPosition, 0, _compositionText.Length)
+                : _compositionText.Length;
         }
 
         private int GetVisibleCandidateCount()
@@ -2753,7 +2830,7 @@ namespace HaCreator.MapSimulator.UI
 
         private bool IsPointInImeCandidateWindow(int mouseX, int mouseY)
         {
-            Rectangle candidateBounds = GetImeCandidateWindowBounds(_graphicsDevice?.Viewport ?? default);
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(GetCandidateViewport());
             return !candidateBounds.IsEmpty && candidateBounds.Contains(mouseX, mouseY);
         }
 
@@ -2771,7 +2848,7 @@ namespace HaCreator.MapSimulator.UI
                 return -1;
             }
 
-            Rectangle candidateBounds = GetImeCandidateWindowBounds(_graphicsDevice?.Viewport ?? default);
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(GetCandidateViewport());
             int localIndex = SkillMacroImeCandidateWindowLayout.HitTestCandidate(
                 candidateBounds,
                 new Point(mouseX, mouseY),
@@ -2782,6 +2859,20 @@ namespace HaCreator.MapSimulator.UI
             return localIndex >= 0
                 ? start + localIndex
                 : -1;
+        }
+
+        private Viewport GetCandidateViewport()
+        {
+            if (_graphicsDevice != null)
+            {
+                return _graphicsDevice.Viewport;
+            }
+
+            return new Viewport(
+                0,
+                0,
+                SkillMacroImeCandidateWindowLayout.ClientViewportWidth,
+                SkillMacroImeCandidateWindowLayout.ClientViewportHeight);
         }
     }
 }

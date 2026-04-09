@@ -187,7 +187,7 @@ namespace HaCreator.MapSimulator.UI
         public override bool CapturesKeyboardInput => IsVisible && _editingMacroIndex >= 0 && _nameFieldFocused;
         bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _editingMacroIndex >= 0 && _nameFieldFocused && _softKeyboardActive;
         SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => SoftKeyboardKeyboardType.AlphaNumeric;
-        int ISoftKeyboardHost.SoftKeyboardTextLength => _editingMacroName?.Length ?? 0;
+        int ISoftKeyboardHost.SoftKeyboardTextLength => GetSoftKeyboardTextLengthBytes(_editingMacroName);
         int ISoftKeyboardHost.SoftKeyboardMaxLength => SkillMacroNameRules.MaxNameBytes;
         bool ISoftKeyboardHost.CanSubmitSoftKeyboard => CanSaveCurrentMacro();
         public bool IsDraggingSkillSlot => _dragMode == MacroDragMode.Skill;
@@ -1170,9 +1170,14 @@ namespace HaCreator.MapSimulator.UI
             return SkillMacroSoftKeyboardConstraintType.AlphaNumeric;
         }
 
+        internal static int GetSoftKeyboardTextLengthBytes(string text, Encoding encoding = null)
+        {
+            return SkillMacroNameRules.GetByteCount(text, encoding);
+        }
+
         private int GetSoftKeyboardConstraintLength()
         {
-            return SkillMacroNameRules.GetByteCount(_editingMacroName);
+            return GetSoftKeyboardTextLengthBytes(_editingMacroName);
         }
 
         private int GetSoftKeyboardConstraintMaxLength()

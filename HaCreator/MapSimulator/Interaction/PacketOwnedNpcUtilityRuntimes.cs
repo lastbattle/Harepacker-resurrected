@@ -13,6 +13,31 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyList<byte> Payload,
         string Summary);
 
+    internal readonly record struct StoreBankDecodedItemSnapshot(
+        byte SlotType,
+        int ItemId,
+        int ClientStock,
+        int Quantity,
+        InventoryType InventoryType,
+        bool HasCashSerialNumber,
+        long ItemSerialNumber,
+        long CashSerialNumber,
+        string ClientDisplayName,
+        string Title,
+        string MetadataSummary,
+        int EncodedByteLength);
+
+    internal readonly record struct StoreBankOwnerRowSnapshot(
+        int OwnerRowIndex,
+        int PacketGroupRowIndex,
+        InventoryType InventoryType,
+        string PrimaryText,
+        string SecondaryText,
+        string SelectionSummary,
+        bool HasCashSerialNumber,
+        bool IsRechargeBundle,
+        bool WasRetainedFromPreviousSnapshot);
+
     internal sealed class PacketOwnedShopDialogRuntime
     {
         private sealed class ShopItemEntry
@@ -935,6 +960,10 @@ namespace HaCreator.MapSimulator.Interaction
 
         private sealed class StoreBankItemEntry
         {
+            internal int ClientRowIndex { get; init; }
+            internal string ClientDisplayName { get; init; } = string.Empty;
+            internal int ClientStock { get; init; }
+            internal int EncodedByteLength { get; init; }
             internal int ItemId { get; init; }
             internal string ItemName { get; init; } = string.Empty;
             internal string Title { get; init; } = string.Empty;
@@ -997,6 +1026,9 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool IsOpen { get; private set; }
         internal bool HasPendingGetAllRequest { get; private set; }
         internal bool GetAllRequestWasAccepted { get; private set; }
+        internal bool HasDecodedItems => _decodedItems.Count > 0;
+        internal bool IsOwnerGetButtonEnabled => IsOpen && (HasPendingGetAllRequest || HasDecodedItems);
+        internal int OwnerMoney => _money;
         internal string StatusMessage { get; private set; } = "CStoreBankDlg::OnPacket idle.";
 
         internal void Close()
@@ -1090,6 +1122,94 @@ namespace HaCreator.MapSimulator.Interaction
             return StatusMessage;
         }
 
+        internal IReadOnlyList<StoreBankOwnerRowSnapshot> BuildOwnerRows()
+        {
+            if (_decodedItems.Count == 0)
+            {
+                return Array.Empty<StoreBankOwnerRowSnapshot>();
+            }
+
+            StoreBankOwnerRowSnapshot[] rows = new StoreBankOwnerRowSnapshot[_decodedItems.Count];
+            for (int i = 0; i < _decodedItems.Count; i++)
+            {
+                StoreBankItemEntry item = _decodedItems[i];
+                string primaryText = item.Quantity > 1
+                    ? $"{item.ItemName} x{item.Quantity.ToString(CultureInfo.InvariantCulture)}"
+                    : item.ItemName;
+
+                List<string> secondaryParts = new()
+                {
+                    item.InventoryType.ToString(),
+                    $"row {item.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)}"
+                };
+
+                if (item.IsRechargeBundle)
+                {
+                    secondaryParts.Add("recharge");
+                }
+
+                if (item.HasCashSerialNumber)
+                {
+                    secondaryParts.Add("cash");
+                }
+
+                if (item.WasRetainedFromPreviousSnapshot)
+                {
+                    secondaryParts.Add("retained");
+                }
+
+                if (!string.IsNullOrWhiteSpace(item.MetadataSummary))
+                {
+                    secondaryParts.Add(item.MetadataSummary);
+                }
+
+                rows[i] = new StoreBankOwnerRowSnapshot(
+                    i,
+                    item.PacketGroupRowIndex,
+                    item.InventoryType,
+                    primaryText,
+                    string.Join(" | ", secondaryParts),
+                    BuildOwnerSelectionSummary(item),
+                    item.HasCashSerialNumber,
+                    item.IsRechargeBundle,
+                    item.WasRetainedFromPreviousSnapshot);
+            }
+
+            return rows;
+        }
+
+        internal void NotifyOwnerGetButtonPressed()
+        {
+            NotifyOwnerGetButtonPressed(-1);
+        }
+
+        internal void NotifyOwnerGetButtonPressed(int ownerRowIndex)
+        {
+            if (!IsOpen)
+            {
+                StatusMessage = "CStoreBankDlg ignored BtGet because the owner is closed.";
+            }
+            else if (HasPendingGetAllRequest)
+            {
+                StatusMessage = "CStoreBankDlg BtGet accepted the staged SendGetAllRequest prompt.";
+            }
+            else if (ownerRowIndex >= 0 && ownerRowIndex < _decodedItems.Count)
+            {
+                StoreBankItemEntry selectedItem = _decodedItems[ownerRowIndex];
+                StatusMessage = $"CStoreBankDlg BtGet acknowledged selected row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}), but the native per-row retrieval packet/body is still not modeled.";
+            }
+            else if (HasDecodedItems)
+            {
+                StatusMessage = "CStoreBankDlg BtGet is selection-owned when packet rows are staged; select a row first.";
+            }
+            else
+            {
+                StatusMessage = "CStoreBankDlg BtGet is disabled because no staged rows or get-all prompt are available.";
+            }
+
+            AppendNote(StatusMessage);
+        }
+
         private bool TryApply369Packet(byte[] payload, out string message)
         {
             if (payload.Length == 0)
@@ -1114,7 +1234,9 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 HasPendingGetAllRequest = false;
                 GetAllRequestWasAccepted = false;
+                _decodedItems.Clear();
                 _decodedCountsByType.Clear();
+                _retainedCountsByType.Clear();
             }
 
             AppendNote(StatusMessage);
@@ -1191,8 +1313,9 @@ namespace HaCreator.MapSimulator.Interaction
             IsOpen = true;
             HasPendingGetAllRequest = false;
             GetAllRequestWasAccepted = false;
+            ResetShipmentPromptState();
 
-            if (!TryParseOpenPayload(payload))
+            if (payload.Length <= 1 || !TryParseOpenPayload(payload, 1))
             {
                 StatusMessage = $"CStoreBankDlg::SetStoreBankDlg opened the packet-owned store-bank owner from packet 370 subtype 35 with {payload.Length.ToString(CultureInfo.InvariantCulture)} byte(s), but only the owner lifecycle could be confirmed.";
                 AppendNote(StatusMessage);
@@ -1206,19 +1329,28 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private bool TryParseOpenPayload(byte[] payload)
+        private void ResetShipmentPromptState()
+        {
+            _lastPromptContextValue = 0;
+            _lastPromptTokenValue = 0;
+            _lastPromptChannelId = -1;
+        }
+
+        private bool TryParseOpenPayload(byte[] payload, int startOffset)
         {
             Dictionary<InventoryType, int> previousCountsByType = new(_decodedCountsByType);
             List<StoreBankItemEntry> previousItems = new(_decodedItems);
             _decodedCountsByType.Clear();
             _retainedCountsByType.Clear();
             _decodedItems.Clear();
-            if (payload.Length < sizeof(int) + sizeof(byte) + sizeof(long))
+            if (payload == null
+                || startOffset < 0
+                || payload.Length - startOffset < sizeof(int) + sizeof(byte) + sizeof(long))
             {
                 return false;
             }
 
-            using MemoryStream stream = new(payload, writable: false);
+            using MemoryStream stream = new(payload, startOffset, payload.Length - startOffset, writable: false);
             using BinaryReader reader = new(stream, Encoding.ASCII, leaveOpen: false);
             _npcTemplateId = reader.ReadInt32();
             _slotCount = reader.ReadByte();
@@ -1379,8 +1511,9 @@ namespace HaCreator.MapSimulator.Interaction
                     string metadataSuffix = string.IsNullOrWhiteSpace(item.MetadataSummary)
                         ? string.Empty
                         : $" | {item.MetadataSummary}";
+                    string clientObjectSuffix = BuildDecodedItemClientObjectSuffix(item);
                     string bodySuffix = BuildDecodedItemBodySuffix(item);
-                    names.Add($"#{item.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} {item.ItemName}{quantitySuffix}{BuildDecodedItemMarker(item)}{BuildDecodedItemSerialMarker(item)}{metadataSuffix}{bodySuffix}");
+                    names.Add($"#{item.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} {item.ItemName}{quantitySuffix}{BuildDecodedItemMarker(item)}{BuildDecodedItemSerialMarker(item)}{clientObjectSuffix}{metadataSuffix}{bodySuffix}");
                     if (names.Count >= 4)
                     {
                         break;
@@ -1409,6 +1542,37 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return $"Shipment prompt: context {_lastPromptContextValue.ToString(CultureInfo.InvariantCulture)}, token {_lastPromptTokenValue.ToString(CultureInfo.InvariantCulture)}, channel {_lastPromptChannelId.ToString(CultureInfo.InvariantCulture)}.";
+        }
+
+        private static string BuildOwnerSelectionSummary(StoreBankItemEntry item)
+        {
+            List<string> parts = new()
+            {
+                $"packet row {item.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)}",
+                item.InventoryType.ToString()
+            };
+
+            if (item.Quantity > 1)
+            {
+                parts.Add($"qty {item.Quantity.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (item.HasCashSerialNumber)
+            {
+                parts.Add("cash serial");
+            }
+
+            if (item.IsRechargeBundle)
+            {
+                parts.Add("recharge");
+            }
+
+            if (!string.IsNullOrWhiteSpace(item.Title))
+            {
+                parts.Add($"title {item.Title}");
+            }
+
+            return string.Join(" | ", parts);
         }
 
         private static string BuildDecodedItemMarker(StoreBankItemEntry item)
@@ -1448,6 +1612,30 @@ namespace HaCreator.MapSimulator.Interaction
             return item.CashSerialNumber > 0
                 ? $" (itemSN {item.ItemSerialNumber.ToString(CultureInfo.InvariantCulture)}, cashSN {item.CashSerialNumber.ToString(CultureInfo.InvariantCulture)})"
                 : $" (itemSN {item.ItemSerialNumber.ToString(CultureInfo.InvariantCulture)})";
+        }
+
+        private static string BuildDecodedItemClientObjectSuffix(StoreBankItemEntry item)
+        {
+            List<string> parts = new()
+            {
+                $"clientRow {item.ClientRowIndex.ToString(CultureInfo.InvariantCulture)}",
+                $"stock {item.ClientStock.ToString(CultureInfo.InvariantCulture)}"
+            };
+
+            if (!string.IsNullOrWhiteSpace(item.ClientDisplayName)
+                && !string.Equals(item.ClientDisplayName, item.ItemName, StringComparison.Ordinal))
+            {
+                parts.Add($"name '{item.ClientDisplayName}'");
+            }
+
+            if (item.EncodedByteLength > 0)
+            {
+                parts.Add($"decodeBytes {item.EncodedByteLength.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            return parts.Count > 0
+                ? $" | {string.Join(", ", parts)}"
+                : string.Empty;
         }
 
         private static string BuildDecodedItemBodySuffix(StoreBankItemEntry item)
@@ -1541,6 +1729,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             entry = null;
             Stream stream = reader.BaseStream;
+            long itemStartPosition = stream.Position;
             if (stream.Length - stream.Position < sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long))
             {
                 return false;
@@ -1619,8 +1808,15 @@ namespace HaCreator.MapSimulator.Interaction
                 itemName = $"{itemName} ({title})";
             }
 
+            int clientStock = ResolveClientStock(slotType, quantity);
+            int encodedByteLength = checked((int)(stream.Position - itemStartPosition));
+
             entry = new StoreBankItemEntry
             {
+                ClientRowIndex = Math.Max(0, packetGroupRowIndex),
+                ClientDisplayName = resolvedName ?? itemName,
+                ClientStock = clientStock,
+                EncodedByteLength = encodedByteLength,
                 ItemId = itemId,
                 ItemName = itemName,
                 Title = title,
@@ -1628,7 +1824,7 @@ namespace HaCreator.MapSimulator.Interaction
                 PacketGroupInventoryType = expectedInventoryType,
                 PacketGroupRowIndex = Math.Max(1, packetGroupRowIndex + 1),
                 WasRetainedFromPreviousSnapshot = false,
-                Quantity = Math.Max(1, quantity),
+                Quantity = clientStock,
                 SlotType = slotType,
                 HasCashSerialNumber = hasCashSerialNumber,
                 ItemSerialNumber = itemSerialNumber,
@@ -1642,6 +1838,40 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal static bool TryDecodeStoreBankItemForTest(byte[] payload, InventoryType expectedInventoryType, out StoreBankDecodedItemSnapshot snapshot, out string error)
+        {
+            snapshot = default;
+            error = null;
+            if (payload == null || payload.Length == 0)
+            {
+                error = "Store-bank item payload is empty.";
+                return false;
+            }
+
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream, Encoding.ASCII, leaveOpen: false);
+            if (!TryReadStoreBankItem(reader, expectedInventoryType, packetGroupRowIndex: 0, out StoreBankItemEntry entry))
+            {
+                error = "Store-bank item payload could not be decoded.";
+                return false;
+            }
+
+            snapshot = new StoreBankDecodedItemSnapshot(
+                entry.SlotType,
+                entry.ItemId,
+                entry.ClientStock,
+                entry.Quantity,
+                entry.InventoryType,
+                entry.HasCashSerialNumber,
+                entry.ItemSerialNumber,
+                entry.CashSerialNumber,
+                entry.ClientDisplayName,
+                entry.Title,
+                entry.MetadataSummary,
+                entry.EncodedByteLength);
+            return true;
+        }
+
         private static StoreBankItemEntry CloneRetainedItem(StoreBankItemEntry item)
         {
             if (item == null)
@@ -1651,6 +1881,10 @@ namespace HaCreator.MapSimulator.Interaction
 
             return new StoreBankItemEntry
             {
+                ClientRowIndex = item.ClientRowIndex,
+                ClientDisplayName = item.ClientDisplayName,
+                ClientStock = item.ClientStock,
+                EncodedByteLength = item.EncodedByteLength,
                 ItemId = item.ItemId,
                 ItemName = item.ItemName,
                 Title = item.Title,
@@ -1668,6 +1902,15 @@ namespace HaCreator.MapSimulator.Interaction
                 EquipData = item.EquipData,
                 BundleData = item.BundleData,
                 PetData = item.PetData
+            };
+        }
+
+        private static int ResolveClientStock(byte slotType, int quantity)
+        {
+            return slotType switch
+            {
+                2 => Math.Max(1, quantity),
+                _ => 1
             };
         }
 

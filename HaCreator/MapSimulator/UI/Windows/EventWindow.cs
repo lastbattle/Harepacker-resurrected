@@ -189,7 +189,7 @@ namespace HaCreator.MapSimulator.UI
                 if (clickedDate.HasValue)
                 {
                     _selectedCalendarDate = clickedDate.Value;
-                    DisableAutoDismiss();
+                    KeepEventAlarmVisible(EventAlarmInteractionKind.CalendarDateSelection);
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
                     return true;
                 }
@@ -207,7 +207,6 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 _selectedIndex = (_pageIndex * GetRowsPerPage()) + i;
-                DisableAutoDismiss();
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
                 return true;
             }
@@ -401,7 +400,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void SetFilter(EventEntryStatus? filter, bool showCalendar)
         {
-            DisableAutoDismiss();
+            KeepEventAlarmVisible(EventAlarmInteractionKind.FilterControl);
             _filter = filter;
             _pageIndex = 0;
             _selectedIndex = 0;
@@ -495,9 +494,9 @@ namespace HaCreator.MapSimulator.UI
 
         private void MovePreviousPage()
         {
-            DisableAutoDismiss();
             if (_showCalendar)
             {
+                KeepEventAlarmVisible(EventAlarmInteractionKind.CalendarMonthNavigation);
                 SetCalendarMonth(_calendarMonth.AddMonths(-1));
                 return;
             }
@@ -507,9 +506,9 @@ namespace HaCreator.MapSimulator.UI
 
         private void MoveNextPage()
         {
-            DisableAutoDismiss();
             if (_showCalendar)
             {
+                KeepEventAlarmVisible(EventAlarmInteractionKind.CalendarMonthNavigation);
                 SetCalendarMonth(_calendarMonth.AddMonths(1));
                 return;
             }
@@ -519,7 +518,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void ToggleCalendarView()
         {
-            DisableAutoDismiss();
+            KeepEventAlarmVisible(EventAlarmInteractionKind.CalendarToggle);
             _showCalendar = !_showCalendar;
             if (_showCalendar)
             {
@@ -558,9 +557,16 @@ namespace HaCreator.MapSimulator.UI
             AddButton(button);
             button.ButtonClickReleased += _ =>
             {
-                DisableAutoDismiss();
                 action?.Invoke();
             };
+        }
+
+        private void KeepEventAlarmVisible(EventAlarmInteractionKind interactionKind)
+        {
+            if (ProgressionUtilityParityRules.ShouldKeepEventAlarmOwnerVisible(interactionKind))
+            {
+                DisableAutoDismiss();
+            }
         }
 
         private Texture2D ResolveStatusIcon(EventEntryStatus status)

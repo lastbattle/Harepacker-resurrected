@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
 using System.Text;
+using HaCreator.MapSimulator.Interaction;
 
 namespace HaCreator.MapSimulator
 {
@@ -1335,13 +1336,19 @@ namespace HaCreator.MapSimulator
 
             if (validationResult == WhisperTargetValidationResult.Invalid)
             {
-                AddClientMessage("Please enter a valid character name.", tickCount, ClientChatLogType.System);
+                AddClientMessage(
+                    MapleStoryStringPool.GetOrFallback(0x031F, "Please enter a valid character name."),
+                    tickCount,
+                    ClientChatLogType.System);
                 return false;
             }
 
             if (validationResult == WhisperTargetValidationResult.Self)
             {
-                AddClientMessage("You cannot whisper yourself.", tickCount, ClientChatLogType.System);
+                AddClientMessage(
+                    MapleStoryStringPool.GetOrFallback(0x0320, "You cannot whisper yourself."),
+                    tickCount,
+                    ClientChatLogType.System);
                 return false;
             }
 

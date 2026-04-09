@@ -88,6 +88,17 @@ namespace HaCreator.MapSimulator
         private void ShowUtilityQuitDialog(string source = null)
         {
             string body = MapleStoryStringPool.GetOrFallback(3304, "Are you sure you want to quit?");
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is InGameConfirmDialogWindow confirmDialogWindow)
+            {
+                string footer = string.IsNullOrWhiteSpace(source)
+                    ? "Recovered in-field FadeYesNo owner path."
+                    : $"Launch source: {source}";
+                confirmDialogWindow.Configure("Game Menu", body, footer);
+                confirmDialogWindow.Show();
+                uiWindowManager.ShowWindow(confirmDialogWindow);
+                return;
+            }
+
             ShowLoginUtilityDialog(
                 "Game Menu",
                 body,
@@ -95,6 +106,38 @@ namespace HaCreator.MapSimulator
                 LoginUtilityDialogAction.ConfirmUtilityQuit,
                 inputPlaceholder: string.IsNullOrWhiteSpace(source) ? null : $"Launch source: {source}.",
                 frameVariant: LoginUtilityDialogFrameVariant.InGameFadeYesNo);
+        }
+
+        private void WireInGameConfirmDialogWindow()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is not InGameConfirmDialogWindow confirmDialogWindow)
+            {
+                return;
+            }
+
+            confirmDialogWindow.SetFont(_fontChat);
+            confirmDialogWindow.ConfirmRequested -= HandleInGameConfirmDialogAccepted;
+            confirmDialogWindow.CancelRequested -= HandleInGameConfirmDialogCancelled;
+            confirmDialogWindow.ConfirmRequested += HandleInGameConfirmDialogAccepted;
+            confirmDialogWindow.CancelRequested += HandleInGameConfirmDialogCancelled;
+        }
+
+        private void HandleInGameConfirmDialogAccepted()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is InGameConfirmDialogWindow confirmDialogWindow)
+            {
+                confirmDialogWindow.Hide();
+            }
+
+            Exit();
+        }
+
+        private void HandleInGameConfirmDialogCancelled()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is InGameConfirmDialogWindow confirmDialogWindow)
+            {
+                confirmDialogWindow.Hide();
+            }
         }
 
         private RankingWindowSnapshot BuildUtilityRankingSnapshot()

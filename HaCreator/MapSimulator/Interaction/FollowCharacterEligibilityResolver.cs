@@ -58,7 +58,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (explicitMountedVehicleId == MechanicTamingMobItemId
-                || mechanicMode.GetValueOrDefault() > 0
+                || ClientOwnedVehicleSkillClassifier.IsExplicitMechanicVehiclePresentationSkillId(mechanicMode)
                 || ClientOwnedVehicleSkillClassifier.IsOwnerlessMechanicVehicleInferenceActionName(
                     actionName,
                     includeTransformStates: true))
@@ -94,7 +94,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return equippedMountedOwnerItemId;
             }
 
-            return mechanicMode.GetValueOrDefault() > 0
+            return ClientOwnedVehicleSkillClassifier.IsExplicitMechanicVehiclePresentationSkillId(mechanicMode)
                 ? MechanicTamingMobItemId
                 : 0;
         }

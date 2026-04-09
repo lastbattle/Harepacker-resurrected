@@ -537,13 +537,29 @@ namespace HaCreator.MapSimulator.Interaction
 
             string detail = firstEntry switch
             {
-                { AttachmentItemId: > 0, AttachmentMeso: > 0 } => $" carrying {firstEntry.AttachmentMeso.ToString("N0", CultureInfo.InvariantCulture)} meso and item {firstEntry.AttachmentItemId}",
-                { AttachmentItemId: > 0 } => $" carrying item {firstEntry.AttachmentItemId}",
+                { AttachmentItemId: > 0, AttachmentMeso: > 0 } => $" carrying {DescribeItemAttachment(firstEntry)} and {firstEntry.AttachmentMeso.ToString("N0", CultureInfo.InvariantCulture)} meso",
+                { AttachmentItemId: > 0 } => $" carrying {DescribeItemAttachment(firstEntry)}",
                 { HasMesoAttachment: true, AttachmentMeso: > 0 } => $" carrying {firstEntry.AttachmentMeso.ToString("N0", CultureInfo.InvariantCulture)} meso",
                 { IsQuickDelivery: true } => " on the quick-delivery branch",
                 _ => string.Empty
             };
             return $", plus {arrivalEntries.Count.ToString(CultureInfo.InvariantCulture)} arrival notice(s) led by {sender}{detail}";
+        }
+
+        private static string DescribeItemAttachment(PacketOwnedParcelDecodedEntry entry)
+        {
+            if (entry == null || entry.AttachmentItemId <= 0)
+            {
+                return "an item attachment";
+            }
+
+            string itemName = global::HaCreator.Program.InfoManager?.ItemNameCache != null
+                              && global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(entry.AttachmentItemId, out Tuple<string, string, string> itemInfo)
+                              && !string.IsNullOrWhiteSpace(itemInfo.Item2)
+                ? itemInfo.Item2
+                : $"item {entry.AttachmentItemId.ToString(CultureInfo.InvariantCulture)}";
+            int quantity = Math.Max(1, entry.AttachmentQuantity);
+            return $"{itemName} x{quantity.ToString(CultureInfo.InvariantCulture)}";
         }
 
         private static bool TryReadPacketString(BinaryReader reader, out string value)

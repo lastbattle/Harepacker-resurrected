@@ -500,6 +500,13 @@ namespace HaCreator.MapSimulator
 
 
             RegisterStatusBarPopupUtilityWindows(uiStatus2BarImage, uiBasicImage, soundUIImage);
+            UIWindowLoader.RegisterInGameConfirmDialogWindow(
+                uiWindowManager,
+                uiWindow2Image,
+                soundUIImage,
+                GraphicsDevice,
+                _renderParams.RenderWidth,
+                _renderParams.RenderHeight);
             RegisterPacketOwnedAntiMacroWindows();
             RegisterPacketOwnedLogoutGiftWindow();
 
@@ -569,11 +576,7 @@ namespace HaCreator.MapSimulator
                     ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.CashTradingRoom);
                     return "CCSWnd_Char handed the selected listing to CCashTradingRoomDlg.";
                 };
-                cashAvatarPreviewReload.WeatherRequested = () =>
-                {
-                    _fieldEffects?.AddWeatherMessage("Cash Shop weather preview staged.", WeatherEffectType.None, currTickCount);
-                    return "CCSWnd_Char::BlowWeather staged the selected cash-weather preview action.";
-                };
+                cashAvatarPreviewReload.WeatherRequested = PreviewCashAvatarWeatherAction;
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts) is AdminShopDialogUI mtsWindowReload)
             {
@@ -988,11 +991,7 @@ namespace HaCreator.MapSimulator
                     ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.CashTradingRoom);
                     return "CCSWnd_Char handed the selected listing to CCashTradingRoomDlg.";
                 };
-                cashAvatarPreviewRebuild.WeatherRequested = () =>
-                {
-                    _fieldEffects?.AddWeatherMessage("Cash Shop weather preview staged.", WeatherEffectType.None, currTickCount);
-                    return "CCSWnd_Char::BlowWeather staged the selected cash-weather preview action.";
-                };
+                cashAvatarPreviewRebuild.WeatherRequested = PreviewCashAvatarWeatherAction;
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts) is AdminShopDialogUI mtsWindowRebuild)
             {
@@ -1793,11 +1792,7 @@ namespace HaCreator.MapSimulator
                     ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.CashTradingRoom);
                     return "CCSWnd_Char handed the selected listing to CCashTradingRoomDlg.";
                 };
-                cashAvatarPreviewWindow.WeatherRequested = () =>
-                {
-                    _fieldEffects?.AddWeatherMessage("Cash Shop weather preview staged.", WeatherEffectType.None, currTickCount);
-                    return "CCSWnd_Char::BlowWeather staged the selected cash-weather preview action.";
-                };
+                cashAvatarPreviewWindow.WeatherRequested = PreviewCashAvatarWeatherAction;
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts) is AdminShopDialogUI mtsWindow)
             {

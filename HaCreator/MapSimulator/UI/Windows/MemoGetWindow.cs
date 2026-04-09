@@ -121,6 +121,13 @@ namespace HaCreator.MapSimulator.UI
             {
                 DrawWindowText(sprite, Truncate(snapshot.StatusText, 24), new Vector2(bounds.X, bounds.Y + 44), new Color(103, 111, 123), 0.37f);
             }
+            if (!string.IsNullOrWhiteSpace(snapshot.ClaimDeadlineText))
+            {
+                string deadlineLabel = snapshot.IsExpired
+                    ? $"Expired {snapshot.ClaimDeadlineText}"
+                    : $"Claim by {snapshot.ClaimDeadlineText}";
+                DrawWindowText(sprite, Truncate(deadlineLabel, 28), new Vector2(bounds.X + 116, bounds.Y + 44), snapshot.IsExpired ? new Color(152, 88, 68) : new Color(101, 117, 89), 0.34f);
+            }
             DrawWindowText(sprite, "Attachment", new Vector2(bounds.X, bounds.Y + 56), new Color(99, 107, 119), 0.39f);
             DrawWindowText(sprite, Truncate(snapshot.AttachmentSummary, 28), new Vector2(bounds.X, bounds.Y + 72), new Color(58, 68, 81), 0.46f);
 
@@ -133,11 +140,15 @@ namespace HaCreator.MapSimulator.UI
 
             string footer = snapshot.CanClaim
                 ? "Press CLAIM to receive the attached package."
+                : snapshot.IsExpired
+                    ? "This package expired before it could be claimed."
                 : snapshot.IsClaimed
                     ? "This package has already been claimed."
                     : "No claimable package is attached to this memo.";
             Color footerColor = snapshot.CanClaim
                 ? new Color(74, 134, 80)
+                : snapshot.IsExpired
+                    ? new Color(152, 88, 68)
                 : new Color(123, 129, 141);
             DrawWindowText(sprite, footer, new Vector2(bounds.X, bounds.Bottom - 12), footerColor, 0.38f);
         }

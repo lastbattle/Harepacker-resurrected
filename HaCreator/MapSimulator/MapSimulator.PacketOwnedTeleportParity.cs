@@ -416,6 +416,14 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (TryResolvePacketOwnedTeleportPortalIndexByCandidateNames(
+                _portalPool,
+                target.TargetPortalNameCandidates,
+                out portalIndex))
+            {
+                return true;
+            }
+
             if (target.HasFallbackCoordinates
                 && TryResolvePacketOwnedTeleportPortalByPosition(
                     target.FallbackX.Value,
@@ -439,6 +447,42 @@ namespace HaCreator.MapSimulator
 
             portalIndex = portalPool.GetPortalIndexByName(portalName);
             return portalPool.GetPortal(portalIndex)?.PortalInstance != null;
+        }
+
+        internal static bool TryResolvePacketOwnedTeleportPortalIndexByCandidateNames(
+            PortalPool portalPool,
+            IEnumerable<string> candidatePortalNames,
+            out int portalIndex)
+        {
+            portalIndex = -1;
+            if (portalPool == null || candidatePortalNames == null)
+            {
+                return false;
+            }
+
+            int resolvedPortalIndex = -1;
+            foreach (string candidatePortalName in candidatePortalNames)
+            {
+                if (!TryResolvePacketOwnedTeleportPortalIndexByName(portalPool, candidatePortalName, out int candidatePortalIndex))
+                {
+                    continue;
+                }
+
+                if (resolvedPortalIndex < 0)
+                {
+                    resolvedPortalIndex = candidatePortalIndex;
+                    continue;
+                }
+
+                if (resolvedPortalIndex != candidatePortalIndex)
+                {
+                    portalIndex = -1;
+                    return false;
+                }
+            }
+
+            portalIndex = resolvedPortalIndex;
+            return portalIndex >= 0;
         }
 
         private static bool TryResolvePacketOwnedTeleportPortalByPosition(
@@ -691,6 +735,225 @@ namespace HaCreator.MapSimulator
                 out sourcePortalName);
         }
 
+        private static bool TryCollectPacketOwnedSourcePortalNamesByPosition(
+            IEnumerable<PortalInstance> currentFieldPortals,
+            int targetMapId,
+            float sourceX,
+            float sourceY,
+            out string[] sourcePortalNames,
+            out bool usedExactCoordinateMatch)
+        {
+            sourcePortalNames = Array.Empty<string>();
+            usedExactCoordinateMatch = false;
+            if (currentFieldPortals == null || targetMapId <= 0)
+            {
+                return false;
+            }
+
+            return TryCollectPacketOwnedTeleportPortalNamesByPosition(
+                currentFieldPortals.Where(portal => portal != null && portal.tm == targetMapId),
+                sourceX,
+                sourceY,
+                out sourcePortalNames,
+                out usedExactCoordinateMatch);
+        }
+
+        private static bool TryCollectPacketOwnedSourcePortalNamesByTargetPortalName(
+            IEnumerable<PortalInstance> currentFieldPortals,
+            int targetMapId,
+            string targetPortalName,
+            out string[] sourcePortalNames)
+        {
+            sourcePortalNames = Array.Empty<string>();
+            if (currentFieldPortals == null
+                || targetMapId <= 0
+                || string.IsNullOrWhiteSpace(targetPortalName))
+            {
+                return false;
+            }
+
+            var names = new List<string>();
+            foreach (PortalInstance portal in currentFieldPortals)
+            {
+                if (portal == null
+                    || portal.tm != targetMapId
+                    || string.IsNullOrWhiteSpace(portal.pn)
+                    || !string.Equals(portal.tn, targetPortalName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                AddPacketOwnedTeleportCandidateName(names, portal.pn);
+            }
+
+            sourcePortalNames = names.ToArray();
+            return sourcePortalNames.Length > 0;
+        }
+
+        private static bool TryCollectPacketOwnedSourcePortalNamesByTargetPortalCandidates(
+            IEnumerable<PortalInstance> currentFieldPortals,
+            int targetMapId,
+            IEnumerable<string> targetPortalNames,
+            out string[] sourcePortalNames)
+        {
+            sourcePortalNames = Array.Empty<string>();
+            if (currentFieldPortals == null || targetMapId <= 0 || targetPortalNames == null)
+            {
+                return false;
+            }
+
+            var names = new List<string>();
+            foreach (string targetPortalName in targetPortalNames)
+            {
+                if (!TryCollectPacketOwnedSourcePortalNamesByTargetPortalName(
+                    currentFieldPortals,
+                    targetMapId,
+                    targetPortalName,
+                    out string[] candidateSourcePortalNames))
+                {
+                    continue;
+                }
+
+                foreach (string candidateSourcePortalName in candidateSourcePortalNames)
+                {
+                    AddPacketOwnedTeleportCandidateName(names, candidateSourcePortalName);
+                }
+            }
+
+            sourcePortalNames = names.ToArray();
+            return sourcePortalNames.Length > 0;
+        }
+
+        private static bool TryCollectPacketOwnedSourcePortalNamesByTargetMapOnly(
+            IEnumerable<PortalInstance> currentFieldPortals,
+            int targetMapId,
+            out string[] sourcePortalNames)
+        {
+            sourcePortalNames = Array.Empty<string>();
+            if (currentFieldPortals == null || targetMapId <= 0)
+            {
+                return false;
+            }
+
+            var names = new List<string>();
+            foreach (PortalInstance portal in currentFieldPortals)
+            {
+                if (portal == null
+                    || portal.tm != targetMapId
+                    || string.IsNullOrWhiteSpace(portal.pn))
+                {
+                    continue;
+                }
+
+                AddPacketOwnedTeleportCandidateName(names, portal.pn);
+            }
+
+            sourcePortalNames = names.ToArray();
+            return sourcePortalNames.Length > 0;
+        }
+
+        private static bool TryResolvePacketOwnedUniqueCandidateIntersection(
+            IEnumerable<string> firstCandidateSet,
+            IEnumerable<string> secondCandidateSet,
+            out string uniquePortalName)
+        {
+            uniquePortalName = null;
+            if (firstCandidateSet == null || secondCandidateSet == null)
+            {
+                return false;
+            }
+
+            var first = new HashSet<string>(
+                firstCandidateSet.Where(candidate => !string.IsNullOrWhiteSpace(candidate)),
+                StringComparer.OrdinalIgnoreCase);
+            if (first.Count == 0)
+            {
+                return false;
+            }
+
+            var intersection = new List<string>();
+            foreach (string candidate in secondCandidateSet)
+            {
+                if (string.IsNullOrWhiteSpace(candidate) || !first.Contains(candidate))
+                {
+                    continue;
+                }
+
+                AddPacketOwnedTeleportCandidateName(intersection, candidate);
+            }
+
+            return TryResolvePacketOwnedTeleportUniqueCandidatePortalName(intersection, out uniquePortalName);
+        }
+
+        internal static bool TryResolvePacketOwnedSourcePortalNameByPositionAndTargetMetadata(
+            IEnumerable<PortalInstance> currentFieldPortals,
+            int targetMapId,
+            float sourceX,
+            float sourceY,
+            string targetPortalName,
+            IEnumerable<string> targetPortalNameCandidates,
+            out string sourcePortalName)
+        {
+            sourcePortalName = null;
+            if (currentFieldPortals == null || targetMapId <= 0)
+            {
+                return false;
+            }
+
+            TryCollectPacketOwnedSourcePortalNamesByPosition(
+                currentFieldPortals,
+                targetMapId,
+                sourceX,
+                sourceY,
+                out string[] coordinateSourcePortalNames,
+                out _);
+            if (TryResolvePacketOwnedTeleportUniqueCandidatePortalName(coordinateSourcePortalNames, out sourcePortalName))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(targetPortalName)
+                && TryCollectPacketOwnedSourcePortalNamesByTargetPortalName(
+                    currentFieldPortals,
+                    targetMapId,
+                    targetPortalName,
+                    out string[] targetSourcePortalNames)
+                && TryResolvePacketOwnedUniqueCandidateIntersection(
+                    coordinateSourcePortalNames,
+                    targetSourcePortalNames,
+                    out sourcePortalName))
+            {
+                return true;
+            }
+
+            if (TryCollectPacketOwnedSourcePortalNamesByTargetPortalCandidates(
+                currentFieldPortals,
+                targetMapId,
+                targetPortalNameCandidates,
+                out string[] targetCandidateSourcePortalNames)
+                && TryResolvePacketOwnedUniqueCandidateIntersection(
+                    coordinateSourcePortalNames,
+                    targetCandidateSourcePortalNames,
+                    out sourcePortalName))
+            {
+                return true;
+            }
+
+            if (TryCollectPacketOwnedSourcePortalNamesByTargetMapOnly(
+                currentFieldPortals,
+                targetMapId,
+                out string[] mapOnlySourcePortalNames)
+                && TryResolvePacketOwnedUniqueCandidateIntersection(
+                    coordinateSourcePortalNames,
+                    mapOnlySourcePortalNames,
+                    out sourcePortalName))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
         private bool TryResolvePacketOwnedTemporarySourcePortal(
             int targetMapId,
             float sourceX,
@@ -702,20 +965,23 @@ namespace HaCreator.MapSimulator
         {
             sourcePortal = null;
             sourcePortalName = null;
+            IEnumerable<PortalInstance> currentFieldPortals = _mapBoard?.BoardItems?.Portals;
 
-            if (TryResolvePacketOwnedTeleportPortalByPosition(
+            if (TryResolvePacketOwnedSourcePortalNameByPositionAndTargetMetadata(
+                currentFieldPortals,
+                targetMapId,
                 sourceX,
                 sourceY,
-                out _,
-                out PortalInstance resolvedSourcePortal))
+                targetPortalName,
+                targetPortalNameCandidates,
+                out string collapsedSourcePortalName))
             {
-                sourcePortal = resolvedSourcePortal;
-                sourcePortalName = resolvedSourcePortal.pn;
+                sourcePortalName = collapsedSourcePortalName;
             }
 
             if (string.IsNullOrWhiteSpace(sourcePortalName)
                 && TryResolvePacketOwnedSyntheticSourcePortalName(
-                    _mapBoard?.BoardItems?.Portals,
+                    currentFieldPortals,
                     targetMapId,
                     targetPortalName,
                     targetPortalNameCandidates,
@@ -727,7 +993,7 @@ namespace HaCreator.MapSimulator
             if (sourcePortal == null && !string.IsNullOrWhiteSpace(sourcePortalName))
             {
                 string requestedSourcePortalName = sourcePortalName;
-                sourcePortal = _mapBoard?.BoardItems?.Portals
+                sourcePortal = currentFieldPortals
                     ?.FirstOrDefault(portal => string.Equals(portal?.pn, requestedSourcePortalName, StringComparison.OrdinalIgnoreCase));
             }
 
@@ -1399,15 +1665,19 @@ namespace HaCreator.MapSimulator
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray()
                 ?? Array.Empty<string>();
+            IEnumerable<PortalInstance> currentFieldPortals = _mapBoard?.BoardItems?.Portals;
 
             if (string.IsNullOrWhiteSpace(sourcePortalName)
-                && TryResolvePacketOwnedTeleportPortalByPosition(
+                && TryResolvePacketOwnedSourcePortalNameByPositionAndTargetMetadata(
+                    currentFieldPortals,
+                    targetMapId,
                     sourceX,
                     sourceY,
-                    out _,
-                    out PortalInstance resolvedSourcePortal))
+                    targetPortalName,
+                    resolvedTargetPortalNameCandidates,
+                    out string resolvedSourcePortalName))
             {
-                sourcePortalName = resolvedSourcePortal.pn;
+                sourcePortalName = resolvedSourcePortalName;
             }
 
             int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
@@ -1456,7 +1726,7 @@ namespace HaCreator.MapSimulator
 
             if (string.IsNullOrWhiteSpace(sourcePortalName)
                 && TryResolvePacketOwnedSyntheticSourcePortalName(
-                    _mapBoard?.BoardItems?.Portals,
+                    currentFieldPortals,
                     targetMapId,
                     targetPortalName,
                     resolvedTargetPortalNameCandidates,

@@ -198,6 +198,7 @@ namespace HaCreator.MapSimulator.Character
             public int FadeStartTime { get; set; } = -1;
             public int LastFrameIndex { get; set; } = -1;
             public SkillFrame LastResolvedFrame { get; set; }
+            public float LastResolvedAlpha { get; set; } = 1f;
         }
 
         private sealed class ShadowPartnerState
@@ -295,6 +296,13 @@ namespace HaCreator.MapSimulator.Character
             public SkillAvatarEffectPlane Plane { get; }
             public int? PositionCode { get; }
         }
+
+        internal readonly record struct PersistentSkillAvatarEffectRenderSelection(
+            SkillAnimation OverlayAnimation,
+            SkillAnimation OverlaySecondaryAnimation,
+            SkillAnimation UnderFaceAnimation,
+            SkillAnimation UnderFaceSecondaryAnimation,
+            bool OverlayUsesBehindCharacterPlane);
 
         #region Constants
 
@@ -1983,6 +1991,12 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
+            if (ShouldSuppressPacketOwnedEmotionApplication(HasActiveMorphTransform))
+            {
+                message = $"Ignored packet-owned avatar emotion '{emotionName}' ({emotionId}) because a morph transform is active.";
+                return true;
+            }
+
             _packetOwnedEmotionId = emotionId;
             _packetOwnedEmotionDurationMs = resolvedDurationMs;
             _packetOwnedEmotionAppliedAt = currentTime;
@@ -2024,18 +2038,12 @@ namespace HaCreator.MapSimulator.Character
             out bool usedFaceLookDurationFallback)
         {
             usedFaceLookDurationFallback = false;
+            _ = byItemOption;
 
             int resolvedDurationMs = Math.Max(0, durationMs);
             if (resolvedDurationMs > 0)
             {
                 return resolvedDurationMs;
-            }
-
-            // Item-option authored emotions are owned by the separate active-effect-item seam,
-            // so they should persist until an explicit clear when the packet does not carry a duration.
-            if (byItemOption)
-            {
-                return 0;
             }
 
             if (emotionEffectDurationMs > 0)
@@ -2050,6 +2058,11 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return 0;
+        }
+
+        private static bool ShouldSuppressPacketOwnedEmotionApplication(bool hasActiveMorphTransform)
+        {
+            return hasActiveMorphTransform;
         }
 
         internal bool TryGetPacketOwnedEmotionState(int currentTime, out PacketOwnedEmotionState state)
@@ -2857,52 +2870,115 @@ namespace HaCreator.MapSimulator.Character
                 yield break;
             }
 
-            if (effectState.IsFinishing)
+            PersistentSkillAvatarEffectRenderSelection selection =
+                ResolvePersistentSkillAvatarEffectRenderSelectionForParity(
+                    effectState.IsFinishing,
+                    effectState.Mode == SkillAvatarEffectMode.LadderOrRope,
+                    effectState.HideOnLadderOrRope,
+                    effectState.LadderOverlayAnimation,
+                    effectState.GroundOverlayAnimation,
+                    effectState.GroundOverlaySecondaryAnimation,
+                    effectState.GroundUnderFaceAnimation,
+                    effectState.GroundUnderFaceSecondaryAnimation,
+                    effectState.LadderOverlayFinishAnimation,
+                    effectState.GroundOverlayFinishAnimation,
+                    effectState.GroundUnderFaceFinishAnimation);
+
+            if (selection.OverlayAnimation != null)
             {
-                if (effectState.Mode == SkillAvatarEffectMode.LadderOrRope)
+                yield return selection.OverlayAnimation;
+            }
+
+            if (selection.OverlaySecondaryAnimation != null)
+            {
+                yield return selection.OverlaySecondaryAnimation;
+            }
+
+            if (selection.UnderFaceAnimation != null)
+            {
+                yield return selection.UnderFaceAnimation;
+            }
+
+            if (selection.UnderFaceSecondaryAnimation != null)
+            {
+                yield return selection.UnderFaceSecondaryAnimation;
+            }
+        }
+
+        internal static PersistentSkillAvatarEffectRenderSelection ResolvePersistentSkillAvatarEffectRenderSelectionForParity(
+            bool isFinishing,
+            bool onLadderOrRope,
+            bool hideOnLadderOrRope,
+            SkillAnimation ladderOverlayAnimation,
+            SkillAnimation groundOverlayAnimation,
+            SkillAnimation groundOverlaySecondaryAnimation,
+            SkillAnimation groundUnderFaceAnimation,
+            SkillAnimation groundUnderFaceSecondaryAnimation,
+            SkillAnimation ladderOverlayFinishAnimation,
+            SkillAnimation groundOverlayFinishAnimation,
+            SkillAnimation groundUnderFaceFinishAnimation)
+        {
+            if (onLadderOrRope)
+            {
+                if (hideOnLadderOrRope)
                 {
-                    if (effectState.LadderOverlayFinishAnimation != null)
+                    return default;
+                }
+
+                if (isFinishing)
+                {
+                    if (ladderOverlayFinishAnimation != null)
                     {
-                        yield return effectState.LadderOverlayFinishAnimation;
-                        yield break;
+                        return new PersistentSkillAvatarEffectRenderSelection(
+                            ladderOverlayFinishAnimation,
+                            null,
+                            null,
+                            null,
+                            OverlayUsesBehindCharacterPlane: true);
                     }
+
+                    return new PersistentSkillAvatarEffectRenderSelection(
+                        groundOverlayFinishAnimation,
+                        null,
+                        groundUnderFaceFinishAnimation,
+                        null,
+                        OverlayUsesBehindCharacterPlane: false);
                 }
 
-                if (effectState.GroundOverlayFinishAnimation != null)
+                if (ladderOverlayAnimation != null)
                 {
-                    yield return effectState.GroundOverlayFinishAnimation;
+                    return new PersistentSkillAvatarEffectRenderSelection(
+                        ladderOverlayAnimation,
+                        null,
+                        null,
+                        null,
+                        OverlayUsesBehindCharacterPlane: true);
                 }
 
-                if (effectState.Mode != SkillAvatarEffectMode.LadderOrRope
-                    && effectState.GroundUnderFaceFinishAnimation != null)
-                {
-                    yield return effectState.GroundUnderFaceFinishAnimation;
-                }
-
-                yield break;
+                return new PersistentSkillAvatarEffectRenderSelection(
+                    groundOverlayAnimation,
+                    groundOverlaySecondaryAnimation,
+                    groundUnderFaceAnimation,
+                    groundUnderFaceSecondaryAnimation,
+                    OverlayUsesBehindCharacterPlane: false);
             }
 
-            if (effectState.Mode == SkillAvatarEffectMode.LadderOrRope && effectState.LadderOverlayAnimation != null)
+            if (isFinishing)
             {
-                yield return effectState.LadderOverlayAnimation;
-                yield break;
+                return new PersistentSkillAvatarEffectRenderSelection(
+                    groundOverlayFinishAnimation,
+                    null,
+                    groundUnderFaceFinishAnimation,
+                    null,
+                    OverlayUsesBehindCharacterPlane: false);
             }
 
-            if (effectState.Mode == SkillAvatarEffectMode.LadderOrRope && effectState.HideOnLadderOrRope)
-            {
-                yield break;
-            }
-
-            if (effectState.GroundOverlayAnimation != null)
-            {
-                yield return effectState.GroundOverlayAnimation;
-            }
-
-            if (effectState.Mode != SkillAvatarEffectMode.LadderOrRope
-                && effectState.GroundUnderFaceAnimation != null)
-            {
-                yield return effectState.GroundUnderFaceAnimation;
-            }
+            return new PersistentSkillAvatarEffectRenderSelection(
+                groundOverlayAnimation,
+                groundOverlaySecondaryAnimation,
+                groundUnderFaceAnimation,
+                groundUnderFaceSecondaryAnimation,
+                OverlayUsesBehindCharacterPlane: false);
         }
 
         /// <summary>
@@ -3778,7 +3854,7 @@ namespace HaCreator.MapSimulator.Character
 
             int frameIndex = _activeMeleeAfterImage.LastFrameIndex;
             SkillFrame frame = _activeMeleeAfterImage.LastResolvedFrame;
-            float alpha = 1f;
+            float alpha = MathHelper.Clamp(_activeMeleeAfterImage.LastResolvedAlpha, 0f, 1f);
             if (activeAction)
             {
                 int animationTime = Math.Max(0, currentTime - _activeMeleeAfterImage.AnimationStartTime);
@@ -3793,6 +3869,8 @@ namespace HaCreator.MapSimulator.Character
                     if (frame != null)
                     {
                         _activeMeleeAfterImage.LastResolvedFrame = frame;
+                        alpha = MeleeAfterimagePlaybackResolver.ResolveFrameAlpha(frame, frameElapsedMs);
+                        _activeMeleeAfterImage.LastResolvedAlpha = alpha;
                     }
                 }
             }
@@ -3805,7 +3883,8 @@ namespace HaCreator.MapSimulator.Character
                     return;
                 }
 
-                alpha = 1f - (fadeElapsed / (float)Math.Max(1, _activeMeleeAfterImage.FadeDuration));
+                float fadeAlpha = 1f - (fadeElapsed / (float)Math.Max(1, _activeMeleeAfterImage.FadeDuration));
+                alpha *= fadeAlpha;
             }
 
             if (frame?.Texture == null)
@@ -4329,7 +4408,10 @@ namespace HaCreator.MapSimulator.Character
             {
                 preparedLayer.RenderLayer = renderLayer;
                 preparedLayer.SourceSignature = sourceSignature;
-                preparedLayer.PreparedCurrentTime = currentTime;
+                preparedLayer.PreparedCurrentTime = ResolveMirrorImagePreparedSourceLayerUpdateTime(
+                    preparedLayer.PreparedCurrentTime,
+                    reusesExistingLayer: true,
+                    currentTime);
                 preparedLayer.PreparedFacingRight = facingRight;
                 preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
                 return preparedLayer;
@@ -4350,7 +4432,10 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.Origin = bounds.IsEmpty
                 ? Point.Zero
                 : new Point(-bounds.X, -bounds.Y);
-            preparedLayer.PreparedCurrentTime = currentTime;
+            preparedLayer.PreparedCurrentTime = ResolveMirrorImagePreparedSourceLayerUpdateTime(
+                preparedLayer.PreparedCurrentTime,
+                reusesExistingLayer: false,
+                currentTime);
             preparedLayer.PreparedFacingRight = facingRight;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
             preparedLayer.Parts = clonedParts;
@@ -4389,6 +4474,19 @@ namespace HaCreator.MapSimulator.Character
         {
             return existingSourceSignature == incomingSourceSignature
                    && existingPartCount > 0;
+        }
+
+        internal static int ResolveMirrorImagePreparedSourceLayerUpdateTime(
+            int existingPreparedCurrentTime,
+            bool reusesExistingLayer,
+            int currentTime)
+        {
+            if (reusesExistingLayer && existingPreparedCurrentTime != int.MinValue)
+            {
+                return existingPreparedCurrentTime;
+            }
+
+            return currentTime;
         }
 
         internal static bool CanUseLiveMirrorImageSourceLayer(
@@ -4823,41 +4921,27 @@ namespace HaCreator.MapSimulator.Character
 
                 elapsedTime = Math.Max(0, currentTime - effectState.AnimationStartTime);
 
-                if (effectState.IsFinishing)
-                {
-                    SkillAnimation finishOverlay = effectState.Mode == SkillAvatarEffectMode.LadderOrRope
-                        ? effectState.LadderOverlayFinishAnimation ?? effectState.GroundOverlayFinishAnimation
-                        : effectState.GroundOverlayFinishAnimation;
-                    SkillAnimation finishUnderFace = effectState.Mode == SkillAvatarEffectMode.LadderOrRope
-                        ? null
-                        : effectState.GroundUnderFaceFinishAnimation;
-
-                    AddAvatarEffectRenderable(renderables, finishOverlay, SkillAvatarEffectPlane.OverCharacter, elapsedTime);
-                    AddAvatarEffectRenderable(renderables, finishUnderFace, SkillAvatarEffectPlane.UnderFace, elapsedTime);
-                    continue;
-                }
-
-                SkillAnimation overlayAnimation = effectState.Mode == SkillAvatarEffectMode.LadderOrRope
-                    ? effectState.LadderOverlayAnimation ?? effectState.GroundOverlayAnimation
-                    : effectState.GroundOverlayAnimation;
-                SkillAnimation overlaySecondaryAnimation = effectState.Mode == SkillAvatarEffectMode.LadderOrRope
-                    ? null
-                    : effectState.GroundOverlaySecondaryAnimation;
-                SkillAnimation underFaceAnimation = effectState.Mode == SkillAvatarEffectMode.LadderOrRope
-                    ? null
-                    : effectState.GroundUnderFaceAnimation;
-                SkillAnimation underFaceSecondaryAnimation = effectState.Mode == SkillAvatarEffectMode.LadderOrRope
-                    ? null
-                    : effectState.GroundUnderFaceSecondaryAnimation;
-                SkillAvatarEffectPlane overlayPlane = effectState.Mode == SkillAvatarEffectMode.LadderOrRope
-                    && effectState.LadderOverlayAnimation != null
+                PersistentSkillAvatarEffectRenderSelection selection =
+                    ResolvePersistentSkillAvatarEffectRenderSelectionForParity(
+                        effectState.IsFinishing,
+                        effectState.Mode == SkillAvatarEffectMode.LadderOrRope,
+                        effectState.HideOnLadderOrRope,
+                        effectState.LadderOverlayAnimation,
+                        effectState.GroundOverlayAnimation,
+                        effectState.GroundOverlaySecondaryAnimation,
+                        effectState.GroundUnderFaceAnimation,
+                        effectState.GroundUnderFaceSecondaryAnimation,
+                        effectState.LadderOverlayFinishAnimation,
+                        effectState.GroundOverlayFinishAnimation,
+                        effectState.GroundUnderFaceFinishAnimation);
+                SkillAvatarEffectPlane overlayPlane = selection.OverlayUsesBehindCharacterPlane
                     ? SkillAvatarEffectPlane.BehindCharacter
                     : SkillAvatarEffectPlane.OverCharacter;
 
-                AddAvatarEffectRenderable(renderables, overlayAnimation, overlayPlane, elapsedTime);
-                AddAvatarEffectRenderable(renderables, overlaySecondaryAnimation, overlayPlane, elapsedTime);
-                AddAvatarEffectRenderable(renderables, underFaceAnimation, SkillAvatarEffectPlane.UnderFace, elapsedTime);
-                AddAvatarEffectRenderable(renderables, underFaceSecondaryAnimation, SkillAvatarEffectPlane.UnderFace, elapsedTime);
+                AddAvatarEffectRenderable(renderables, selection.OverlayAnimation, overlayPlane, elapsedTime);
+                AddAvatarEffectRenderable(renderables, selection.OverlaySecondaryAnimation, overlayPlane, elapsedTime);
+                AddAvatarEffectRenderable(renderables, selection.UnderFaceAnimation, SkillAvatarEffectPlane.UnderFace, elapsedTime);
+                AddAvatarEffectRenderable(renderables, selection.UnderFaceSecondaryAnimation, SkillAvatarEffectPlane.UnderFace, elapsedTime);
             }
 
             for (int i = 0; i < _transientSkillAvatarEffects.Count; i++)
@@ -7230,8 +7314,11 @@ namespace HaCreator.MapSimulator.Character
                     transform = CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre", "flamethrower", "flamethrower_after");
                     return true;
                 case 35101009:
-                    transform = string.Equals(normalizedAction, "tank_mRush", StringComparison.OrdinalIgnoreCase)
-                        ? CreateSingleActionTransform(skillId, "tank_mRush", exitActionName: null)
+                    transform = IsMechanicTankOwnedRushAction(normalizedAction)
+                        ? CreateSingleActionTransform(
+                            skillId,
+                            ResolveMechanicTankOwnedTransformActionName(normalizedAction, "mRush", "tank_mRush"),
+                            exitActionName: null)
                         : CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre2", "flamethrower2", "flamethrower_after2");
                     return true;
                 case 35121003:
@@ -7364,10 +7451,13 @@ namespace HaCreator.MapSimulator.Character
             if (string.Equals(normalizedAction, "flamethrower_pre2", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "flamethrower2", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "flamethrower_after2", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalizedAction, "tank_mRush", StringComparison.OrdinalIgnoreCase))
+                || IsMechanicTankOwnedRushAction(normalizedAction))
             {
-                transform = string.Equals(normalizedAction, "tank_mRush", StringComparison.OrdinalIgnoreCase)
-                    ? CreateSingleActionTransform(skillId, "tank_mRush", exitActionName: null)
+                transform = IsMechanicTankOwnedRushAction(normalizedAction)
+                    ? CreateSingleActionTransform(
+                        skillId,
+                        ResolveMechanicTankOwnedTransformActionName(normalizedAction, "mRush", "tank_mRush"),
+                        exitActionName: null)
                     : CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre2", "flamethrower2", "flamethrower_after2");
                 return true;
             }
@@ -7635,7 +7725,7 @@ namespace HaCreator.MapSimulator.Character
                 stage == PreparedAvatarActionStage.Prepare ? null : exitActionName);
         }
 
-        private static string ResolveMechanicSummonTransformActionName(
+        private static string ResolveMechanicTankOwnedTransformActionName(
             string currentActionName,
             string baseActionName,
             string tankActionName)
@@ -7643,6 +7733,20 @@ namespace HaCreator.MapSimulator.Character
             return string.Equals(currentActionName, tankActionName, StringComparison.OrdinalIgnoreCase)
                 ? tankActionName
                 : baseActionName;
+        }
+
+        private static string ResolveMechanicSummonTransformActionName(
+            string currentActionName,
+            string baseActionName,
+            string tankActionName)
+        {
+            return ResolveMechanicTankOwnedTransformActionName(currentActionName, baseActionName, tankActionName);
+        }
+
+        private static bool IsMechanicTankOwnedRushAction(string actionName)
+        {
+            return string.Equals(actionName, "mRush", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "tank_mRush", StringComparison.OrdinalIgnoreCase);
         }
 
         private static SkillAvatarTransformState CreatePreparedMechanicStateTransform(

@@ -116,6 +116,9 @@ namespace HaCreator.MapSimulator.Pools
         public int PacketMoveStartY { get; set; }
         public int PacketMoveTargetX { get; set; }
         public int PacketMoveTargetY { get; set; }
+        public bool PacketMoveUsesDefaultRelMove { get; set; }
+        public int PacketEnterFadeStartTime { get; set; }
+        public int PacketEnterFadeEndTime { get; set; }
         internal ReactorActivationTypeMask SupportedActivationTypes { get; set; } = ReactorActivationTypeMask.None;
         public int? RequiredItemId { get; set; }
         public int? RequiredQuestId { get; set; }
@@ -150,6 +153,8 @@ namespace HaCreator.MapSimulator.Pools
         private const float TOUCH_DETECTION_RANGE = 30f;     // Range for touch activation
         private const float SKILL_DETECTION_RANGE = 100f;    // Range for skill activation
         private const int ACTIVATION_ANIMATION_TIME = 500;   // Animation time for activation
+        private const int PACKET_ENTER_FADE_DURATION_MS = 800;
+        private const int PACKET_RELMOVE_FALLBACK_DURATION_MS = 800; // Best-effort default until the client's missing-variant RelMove timing is recovered.
         #endregion
 
         #region Collections
@@ -274,6 +279,9 @@ namespace HaCreator.MapSimulator.Pools
                     PacketMoveStartY = instance.Y,
                     PacketMoveTargetX = instance.X,
                     PacketMoveTargetY = instance.Y,
+                    PacketMoveUsesDefaultRelMove = false,
+                    PacketEnterFadeStartTime = 0,
+                    PacketEnterFadeEndTime = 0,
                     RequiredItemId = interactionMetadata.RequiredItemId,
                     RequiredQuestId = interactionMetadata.RequiredQuestId,
                     RequiredQuestState = interactionMetadata.RequiredQuestState,
@@ -978,6 +986,9 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketMoveStartY = reactor?.ReactorInstance?.Y ?? 0;
             data.PacketMoveTargetX = reactor?.ReactorInstance?.X ?? 0;
             data.PacketMoveTargetY = reactor?.ReactorInstance?.Y ?? 0;
+            data.PacketMoveUsesDefaultRelMove = false;
+            data.PacketEnterFadeStartTime = 0;
+            data.PacketEnterFadeEndTime = 0;
             data.PreferredAuthoredEventOrder = -1;
             data.PreferredAuthoredActivationType = ReactorActivationType.None;
             PublishScriptState(reactor, data, isEnabled: false, currentTick);
@@ -1236,6 +1247,9 @@ namespace HaCreator.MapSimulator.Pools
                     data.PacketMoveStartY = newReactor.ReactorInstance?.Y ?? 0;
                     data.PacketMoveTargetX = newReactor.ReactorInstance?.X ?? 0;
                     data.PacketMoveTargetY = newReactor.ReactorInstance?.Y ?? 0;
+                    data.PacketMoveUsesDefaultRelMove = false;
+                    data.PacketEnterFadeStartTime = 0;
+                    data.PacketEnterFadeEndTime = 0;
                     data.ScriptStatePublished = false;
                     data.PreferredAuthoredEventOrder = -1;
                     data.PreferredAuthoredActivationType = ReactorActivationType.None;
@@ -1406,6 +1420,7 @@ namespace HaCreator.MapSimulator.Pools
                 PacketMoveStartY = y,
                 PacketMoveTargetX = x,
                 PacketMoveTargetY = y,
+                PacketMoveUsesDefaultRelMove = false,
                 PreferredAuthoredEventOrder = -1,
                 PreferredAuthoredActivationType = ReactorActivationType.None
             };
@@ -1514,7 +1529,9 @@ namespace HaCreator.MapSimulator.Pools
             int currentY = reactor.ReactorInstance?.Y ?? y;
             int moveEndTime = data.PacketStateEndTime > currentTick
                 ? data.PacketStateEndTime
-                : 0;
+                : ResolvePacketStandaloneMoveEndTime(reactor, currentX, currentY, x, y, currentTick);
+            bool usesDefaultRelMove = moveEndTime > currentTick
+                && data.PacketStateEndTime <= currentTick;
 
             ConfigurePacketStateMovement(
                 reactor,
@@ -1524,6 +1541,7 @@ namespace HaCreator.MapSimulator.Pools
                 x,
                 y,
                 moveEndTime);
+            data.PacketMoveUsesDefaultRelMove = usesDefaultRelMove;
 
             if (data.PacketMoveEndTime > currentTick)
             {
@@ -1543,7 +1561,9 @@ namespace HaCreator.MapSimulator.Pools
 
             data.StateStartTime = currentTick;
             RefreshReactorLayerPlacement(reactor);
-            message = $"Moved packet-owned reactor {packetObjectId} to ({x}, {y}).";
+            message = moveEndTime > currentTick && data.PacketStateEndTime <= currentTick
+                ? $"Moved packet-owned reactor {packetObjectId} to ({x}, {y}) with fallback RelMove timing."
+                : $"Moved packet-owned reactor {packetObjectId} to ({x}, {y}).";
             return true;
         }
 
@@ -1960,6 +1980,7 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketMoveStartY = y;
             data.PacketMoveTargetX = x;
             data.PacketMoveTargetY = y;
+            data.PacketMoveUsesDefaultRelMove = false;
             ClearPreferredAuthoredOrder(data);
 
             if (index < _spawnPoints.Count)
@@ -2016,6 +2037,7 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketMoveStartY = startY;
             data.PacketMoveTargetX = targetX;
             data.PacketMoveTargetY = targetY;
+            data.PacketMoveUsesDefaultRelMove = false;
 
             if (reactor == null
                 || !reactor.TemplateMoveEnabled
@@ -2026,6 +2048,24 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             data.PacketMoveEndTime = moveEndTime;
+        }
+
+        private static int ResolvePacketStandaloneMoveEndTime(
+            ReactorItem reactor,
+            int startX,
+            int startY,
+            int targetX,
+            int targetY,
+            int currentTick)
+        {
+            if (reactor == null
+                || !reactor.TemplateMoveEnabled
+                || (startX == targetX && startY == targetY))
+            {
+                return 0;
+            }
+
+            return currentTick + PACKET_RELMOVE_FALLBACK_DURATION_MS;
         }
 
         private static void StartPacketStateMovement(ReactorItem reactor, ReactorRuntimeData data, int currentTick)
@@ -2066,6 +2106,11 @@ namespace HaCreator.MapSimulator.Pools
 
             int duration = Math.Max(1, data.PacketMoveEndTime - data.PacketMoveStartTime);
             float progress = MathHelper.Clamp((currentTick - data.PacketMoveStartTime) / (float)duration, 0f, 1f);
+            if (data.PacketMoveUsesDefaultRelMove)
+            {
+                progress = progress * progress * (3f - (2f * progress));
+            }
+
             int x = (int)Math.Round(MathHelper.Lerp(data.PacketMoveStartX, data.PacketMoveTargetX, progress));
             int y = (int)Math.Round(MathHelper.Lerp(data.PacketMoveStartY, data.PacketMoveTargetY, progress));
             if (reactor.ReactorInstance?.X != x || reactor.ReactorInstance?.Y != y)
@@ -2095,6 +2140,7 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketMoveStartY = resolvedY;
             data.PacketMoveTargetX = resolvedX;
             data.PacketMoveTargetY = resolvedY;
+            data.PacketMoveUsesDefaultRelMove = false;
         }
 
         private static void SyncReactorVisualState(ReactorItem reactor, ReactorRuntimeData data, int currentTick)

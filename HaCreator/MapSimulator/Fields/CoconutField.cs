@@ -79,6 +79,10 @@ namespace HaCreator.MapSimulator.Fields
             Lose,
             Draw
         }
+        public readonly record struct AvatarAppearanceContract(int TeamId, CharacterGender Gender, int CapItemId, int ClothesItemId)
+        {
+            public bool HasAppearanceItems => CapItemId > 0 || ClothesItemId > 0;
+        }
         public class Coconut
         {
             public int Id;
@@ -199,13 +203,16 @@ namespace HaCreator.MapSimulator.Fields
         private int _defaultRoundDurationSeconds = DefaultRoundDurationSecondsValue;
         private int _messageDurationMs = DefaultMessageDurationMs;
         private int _finalScoreMessageDurationMs = DefaultMessageDurationMs;
+        private int _authoredTotalCoconutCount;
         private string _eventName = "Coconut harvest begins!";
+        private string _eventObjectName = "Coconut";
         private string _victoryEffectPath = "event/coconut/victory";
         private string _loseEffectPath = "event/coconut/lose";
         private string _victorySoundPath = "Coconut/Victory";
         private string _loseSoundPath = "Coconut/Failed";
         private string _victorySoundKey;
         private string _loseSoundKey;
+        private readonly Dictionary<(int TeamId, CharacterGender Gender), AvatarAppearanceContract> _avatarAppearanceContracts = new();
         // UI
         private string _currentMessage;
         private int _messageEndTime;
@@ -230,12 +237,15 @@ namespace HaCreator.MapSimulator.Fields
         internal int DefaultRoundDurationSeconds => _defaultRoundDurationSeconds;
         internal int MessageDurationMs => _messageDurationMs;
         internal int FinalScoreMessageDurationMs => _finalScoreMessageDurationMs;
+        internal int AuthoredTotalCoconutCount => _authoredTotalCoconutCount;
         internal string EventName => _eventName;
+        internal string EventObjectName => _eventObjectName;
         internal bool HasClientClock => _finishTick != 0;
         internal string VictoryEffectPath => _victoryEffectPath;
         internal string LoseEffectPath => _loseEffectPath;
         internal string VictorySoundPath => _victorySoundPath;
         internal string LoseSoundPath => _loseSoundPath;
+        public int LocalTeam => _localTeam;
         #endregion
         #region Initialization
         public void Initialize(GraphicsDevice graphicsDevice, SoundManager soundManager = null)
@@ -262,6 +272,10 @@ namespace HaCreator.MapSimulator.Fields
                 .ToList();
             if (coconutObjects.Count == 0)
             {
+                if (_authoredTotalCoconutCount > 0)
+                {
+                    Initialize(_authoredTotalCoconutCount, _treeArea, _groundY);
+                }
                 return;
             }
             Rectangle objectBounds = GetObjectBounds(coconutObjects);
@@ -447,10 +461,21 @@ namespace HaCreator.MapSimulator.Fields
                     : "idle";
             int pendingRequests = _pendingAttackPacketRequests.Count;
             int unsentRequests = PendingUndispatchedAttackPacketRequestCount;
-            return $"Coconut runtime active, coconuts={_coconuts.Count}, round={roundState}, score={_team0Score}-{_team1Score}, time={_timeRemaining}, result={_lastRoundResult}, pendingRequests={pendingRequests}, unsentRequests={unsentRequests}, lastPacket={(_lastPacketType?.ToString() ?? "None")}, lastScoreTick={(_lastScorePacketTick?.ToString() ?? "None")}";
+            return $"Coconut runtime active, coconuts={_coconuts.Count}, authoredTotal={_authoredTotalCoconutCount}, localTeam={_localTeam}, objectName={_eventObjectName}, round={roundState}, score={_team0Score}-{_team1Score}, time={_timeRemaining}, result={_lastRoundResult}, pendingRequests={pendingRequests}, unsentRequests={unsentRequests}, lastPacket={(_lastPacketType?.ToString() ?? "None")}, lastScoreTick={(_lastScorePacketTick?.ToString() ?? "None")}";
         }
         #endregion
         #region Simulation (for testing)
+        public void SetLocalTeam(int localTeam)
+        {
+            _localTeam = localTeam == 1 ? 1 : 0;
+        }
+
+        public bool TryGetLocalAvatarAppearanceContract(CharacterGender gender, out AvatarAppearanceContract contract)
+        {
+            return _avatarAppearanceContracts.TryGetValue((_localTeam, gender), out contract)
+                && contract.HasAppearanceItems;
+        }
+
         public bool TryStartGame(int currentTick, out string message)
         {
             return TryStartGame(currentTick, null, out message);
@@ -1252,17 +1277,24 @@ namespace HaCreator.MapSimulator.Fields
             _defaultRoundDurationSeconds = DefaultRoundDurationSecondsValue;
             _messageDurationMs = DefaultMessageDurationMs;
             _finalScoreMessageDurationMs = DefaultMessageDurationMs;
+            _authoredTotalCoconutCount = 0;
             _eventName = "Coconut harvest begins!";
+            _eventObjectName = "Coconut";
             _victoryEffectPath = "event/coconut/victory";
             _loseEffectPath = "event/coconut/lose";
             _victorySoundPath = "Coconut/Victory";
             _loseSoundPath = "Coconut/Failed";
+            _avatarAppearanceContracts.Clear();
 
             if (mapImage?["coconut"] is not WzImageProperty coconutConfig)
             {
                 return;
             }
 
+            int countFalling = Math.Max(0, InfoTool.GetOptionalInt(coconutConfig["countFalling"], 0) ?? 0);
+            int countBombing = Math.Max(0, InfoTool.GetOptionalInt(coconutConfig["countBombing"], 0) ?? 0);
+            int countStopped = Math.Max(0, InfoTool.GetOptionalInt(coconutConfig["countStopped"], 0) ?? 0);
+            _authoredTotalCoconutCount = ResolveAuthoredTotalCoconutCount(countFalling, countBombing, countStopped);
             _previewTreeHitCount = Math.Max(1, InfoTool.GetOptionalInt(coconutConfig["countHit"], DefaultPreviewTreeHitCount) ?? DefaultPreviewTreeHitCount);
             _defaultRoundDurationSeconds = Math.Max(0, InfoTool.GetOptionalInt(coconutConfig["timeDefault"], DefaultRoundDurationSecondsValue) ?? DefaultRoundDurationSecondsValue);
 
@@ -1275,6 +1307,12 @@ namespace HaCreator.MapSimulator.Fields
             if (!string.IsNullOrWhiteSpace(authoredEventName))
             {
                 _eventName = authoredEventName.Trim();
+            }
+
+            string authoredEventObjectName = InfoTool.GetOptionalString(coconutConfig["eventObjectName"]);
+            if (!string.IsNullOrWhiteSpace(authoredEventObjectName))
+            {
+                _eventObjectName = authoredEventObjectName.Trim();
             }
 
             string authoredVictoryEffect = InfoTool.GetOptionalString(coconutConfig["effectWin"]);
@@ -1300,6 +1338,11 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _loseSoundPath = authoredLoseSound.Trim();
             }
+
+            if (coconutConfig["avatar"] is WzImageProperty avatarConfig)
+            {
+                LoadAuthoredAvatarContracts(avatarConfig);
+            }
         }
         internal void ConfigureAuthoredPreviewForTesting(
             int previewTreeHitCount,
@@ -1324,6 +1367,57 @@ namespace HaCreator.MapSimulator.Fields
             _loseEffectPath = string.IsNullOrWhiteSpace(loseEffectPath) ? "event/coconut/lose" : loseEffectPath.Trim();
             _victorySoundPath = string.IsNullOrWhiteSpace(victorySoundPath) ? "Coconut/Victory" : victorySoundPath.Trim();
             _loseSoundPath = string.IsNullOrWhiteSpace(loseSoundPath) ? "Coconut/Failed" : loseSoundPath.Trim();
+        }
+        internal void ConfigureAuthoredAvatarContractForTesting(int teamId, CharacterGender gender, int capItemId, int clothesItemId)
+        {
+            int normalizedTeamId = teamId == 1 ? 1 : 0;
+            var contract = new AvatarAppearanceContract(
+                normalizedTeamId,
+                gender,
+                Math.Max(0, capItemId),
+                Math.Max(0, clothesItemId));
+            if (contract.HasAppearanceItems)
+            {
+                _avatarAppearanceContracts[(normalizedTeamId, gender)] = contract;
+            }
+            else
+            {
+                _avatarAppearanceContracts.Remove((normalizedTeamId, gender));
+            }
+        }
+        internal void ConfigureAuthoredCountContractForTesting(int countFalling, int countBombing, int countStopped, string eventObjectName = null)
+        {
+            _authoredTotalCoconutCount = ResolveAuthoredTotalCoconutCount(countFalling, countBombing, countStopped);
+            _eventObjectName = string.IsNullOrWhiteSpace(eventObjectName) ? "Coconut" : eventObjectName.Trim();
+        }
+        internal static int ResolveAuthoredTotalCoconutCount(int countFalling, int countBombing, int countStopped)
+        {
+            long total = Math.Max(0, countFalling) + (long)Math.Max(0, countBombing) + Math.Max(0, countStopped);
+            return total > int.MaxValue ? int.MaxValue : (int)total;
+        }
+        private void LoadAuthoredAvatarContracts(WzImageProperty avatarConfig)
+        {
+            _avatarAppearanceContracts.Clear();
+            for (int teamId = 0; teamId <= 1; teamId++)
+            {
+                if (avatarConfig[teamId.ToString(CultureInfo.InvariantCulture)] is not WzImageProperty teamConfig)
+                {
+                    continue;
+                }
+
+                for (int genderIndex = 0; genderIndex <= 1; genderIndex++)
+                {
+                    if (teamConfig[genderIndex.ToString(CultureInfo.InvariantCulture)] is not WzImageProperty genderConfig)
+                    {
+                        continue;
+                    }
+
+                    int capItemId = Math.Max(0, InfoTool.GetOptionalInt(genderConfig["cap"], 0) ?? 0);
+                    int clothesItemId = Math.Max(0, InfoTool.GetOptionalInt(genderConfig["clothes"], 0) ?? 0);
+                    CharacterGender gender = genderIndex == 1 ? CharacterGender.Female : CharacterGender.Male;
+                    ConfigureAuthoredAvatarContractForTesting(teamId, gender, capItemId, clothesItemId);
+                }
+            }
         }
         private static WzImageProperty ResolveSlashPathProperty(WzImage image, string path)
         {

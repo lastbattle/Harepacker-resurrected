@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Animation;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
@@ -50,12 +51,14 @@ namespace HaCreator.MapSimulator.UI
         private IReadOnlyList<VegaAnimationFrame> _failFrames = Array.Empty<VegaAnimationFrame>();
         private SpriteFont _font;
         private ItemUpgradeUI _itemUpgradeBackend;
+        private ProductionEnhancementAnimationDisplayer _productionEnhancementAnimationDisplayer;
         private int? _modifierItemId;
         private int _selectedIndex;
         private string _statusMessage = "Select equipment and cast Vega's Spell.";
         private VegaAnimationState _state = VegaAnimationState.Idle;
         private ItemUpgradeUI.ItemUpgradeAttemptResult _pendingResult;
         private int _stateElapsedMs;
+        private bool _sharedResultAnimationStarted;
         private UIObject _startButton;
         private UIObject _okButton;
         private UIObject _cancelButton;
@@ -73,6 +76,24 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.VegaSpell;
 
         public override CharacterBuild CharacterBuild
+        {
+            get;
+            set;
+        }
+
+        public Func<VegaOwnerRequest, bool> StartSpellCastRequested
+        {
+            get;
+            set;
+        }
+
+        public Action<VegaOwnerValidationFailure> ValidationFailed
+        {
+            get;
+            set;
+        }
+
+        public Action ResultAcknowledged
         {
             get;
             set;
@@ -119,6 +140,11 @@ namespace HaCreator.MapSimulator.UI
         public void SetItemUpgradeBackend(ItemUpgradeUI itemUpgradeBackend)
         {
             _itemUpgradeBackend = itemUpgradeBackend;
+        }
+
+        internal void SetProductionEnhancementAnimationDisplayer(ProductionEnhancementAnimationDisplayer animationDisplayer)
+        {
+            _productionEnhancementAnimationDisplayer = animationDisplayer;
         }
 
         public void InitializeButtons(UIObject startButton, UIObject okButton, UIObject cancelButton, UIObject prevButton, UIObject nextButton)
@@ -179,10 +205,59 @@ namespace HaCreator.MapSimulator.UI
             _state = VegaAnimationState.Idle;
             _stateElapsedMs = 0;
             _pendingResult = default;
+            _sharedResultAnimationStarted = false;
             ClampSelection();
             RefreshFrame();
             _statusMessage = BuildReadyMessage();
             UpdateButtonStates();
+        }
+
+        public void SetOwnerStatusMessage(string message)
+        {
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _statusMessage = message;
+                UpdateButtonStates();
+            }
+        }
+
+        public void RestoreReadyStatusMessage()
+        {
+            if (_state == VegaAnimationState.Idle)
+            {
+                _statusMessage = BuildReadyMessage();
+                UpdateButtonStates();
+            }
+        }
+
+        public int GetCastingDurationMs()
+        {
+            return ResolveCastingDuration();
+        }
+
+        public void StartSpellCast(string statusMessage)
+        {
+            _state = VegaAnimationState.Casting;
+            _stateElapsedMs = 0;
+            _pendingResult = default;
+            _sharedResultAnimationStarted = false;
+            _statusMessage = string.IsNullOrWhiteSpace(statusMessage)
+                ? $"Casting {ResolveModifierName()}..."
+                : statusMessage;
+            _productionEnhancementAnimationDisplayer?.PlayVegaCasting(Environment.TickCount);
+            UpdateButtonStates();
+        }
+
+        public void ApplyResolvedSpellResult(ItemUpgradeUI.ItemUpgradeAttemptResult result)
+        {
+            _pendingResult = result;
+            PromotePendingResultIfReady();
+            UpdateButtonStates();
+        }
+
+        public bool TryBuildSelectedRequest(out VegaOwnerRequest request)
+        {
+            return TryBuildSelectedRequest(out request, out _);
         }
 
         public override void Show()
@@ -202,12 +277,7 @@ namespace HaCreator.MapSimulator.UI
                 _stateElapsedMs += (int)gameTime.ElapsedGameTime.TotalMilliseconds;
             }
 
-            if (_state == VegaAnimationState.Casting && _stateElapsedMs >= ResolveCastingDuration())
-            {
-                _state = VegaAnimationState.Result;
-                _stateElapsedMs = 0;
-                _statusMessage = _pendingResult.StatusMessage;
-            }
+            PromotePendingResultIfReady();
 
             UpdateButtonStates();
         }
@@ -257,7 +327,10 @@ namespace HaCreator.MapSimulator.UI
 
             if (_state == VegaAnimationState.Casting)
             {
-                DrawCastingEffects(sprite, windowX, windowY);
+                if (_productionEnhancementAnimationDisplayer == null)
+                {
+                    DrawCastingEffects(sprite, windowX, windowY);
+                }
             }
             else if (_state == VegaAnimationState.Result)
             {
@@ -314,7 +387,10 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawItemIcon(sprite, selectedPart?.IconRaw ?? selectedPart?.Icon, windowX + ResultIconX, windowY + ResultIconY);
-            DrawAnimation(sprite, _pendingResult.Success == true ? _successFrames : _failFrames, _stateElapsedMs, windowX, windowY);
+            if (_productionEnhancementAnimationDisplayer == null)
+            {
+                DrawAnimation(sprite, _pendingResult.Success == true ? _successFrames : _failFrames, _stateElapsedMs, windowX, windowY);
+            }
         }
 
         private void DrawAnimation(SpriteBatch sprite, IReadOnlyList<VegaAnimationFrame> frames, int elapsedMs, int windowX, int windowY)
@@ -438,40 +514,37 @@ namespace HaCreator.MapSimulator.UI
 
         private void BeginSpellCast()
         {
-            IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> candidates = GetCandidates();
-            if (candidates.Count == 0 || !_modifierItemId.HasValue || _itemUpgradeBackend == null)
+            if (!TryBuildSelectedRequest(out VegaOwnerRequest request, out VegaOwnerValidationFailure failure))
             {
-                _statusMessage = "No eligible equipment is available for Vega's Spell.";
+                ValidationFailed?.Invoke(failure);
                 return;
             }
 
-            KeyValuePair<EquipSlot, CharacterPart> selection = candidates[_selectedIndex];
-            if (!_itemUpgradeBackend.TryGetModifierPreview(selection.Key, _modifierItemId.Value, out _))
+            if (StartSpellCastRequested?.Invoke(request) == true)
             {
-                _statusMessage = "No compatible enhancement scroll is available for the selected Vega modifier.";
                 return;
             }
 
-            _itemUpgradeBackend.PrepareEquipmentSelection(selection.Key);
-            _itemUpgradeBackend.PrepareConsumableSelection(_modifierItemId.Value);
-            _pendingResult = _itemUpgradeBackend.TryApplyPreparedUpgrade();
+            _itemUpgradeBackend.PrepareEquipmentSelection(request.Slot);
+            _itemUpgradeBackend.PrepareConsumableSelection(request.ModifierItemId);
+            ItemUpgradeUI.ItemUpgradeAttemptResult result = _itemUpgradeBackend.TryApplyPreparedUpgrade();
             if (!_pendingResult.Success.HasValue)
             {
-                _statusMessage = _pendingResult.StatusMessage;
+                _statusMessage = result.StatusMessage;
                 return;
             }
 
-            _state = VegaAnimationState.Casting;
-            _stateElapsedMs = 0;
-            _statusMessage = $"Casting {ResolveModifierName()}...";
-            UpdateButtonStates();
+            StartSpellCast($"Casting {ResolveModifierName()}...");
+            ApplyResolvedSpellResult(result);
         }
 
         private void ResetResultState()
         {
+            ResultAcknowledged?.Invoke();
             _state = VegaAnimationState.Idle;
             _stateElapsedMs = 0;
             _pendingResult = default;
+            _sharedResultAnimationStarted = false;
             _statusMessage = BuildReadyMessage();
             UpdateButtonStates();
         }
@@ -529,6 +602,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 _okButton.SetEnabled(_state == VegaAnimationState.Result);
                 _okButton.ButtonVisible = _state == VegaAnimationState.Result;
+            }
+
+            if (_cancelButton != null)
+            {
+                _cancelButton.SetEnabled(idle);
             }
 
             bool canCycle = idle && candidates.Count > 1;
@@ -630,6 +708,61 @@ namespace HaCreator.MapSimulator.UI
             return string.IsNullOrWhiteSpace(part?.Name) ? $"Equip {part?.ItemId ?? 0}" : part.Name;
         }
 
+        private bool TryBuildSelectedRequest(out VegaOwnerRequest request, out VegaOwnerValidationFailure failure)
+        {
+            request = default;
+            failure = VegaOwnerValidationFailure.MissingSelection;
+
+            IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> candidates = GetCandidates();
+            if (candidates.Count == 0 || !_modifierItemId.HasValue || _itemUpgradeBackend == null)
+            {
+                _statusMessage = "No eligible equipment is available for Vega's Spell.";
+                return false;
+            }
+
+            KeyValuePair<EquipSlot, CharacterPart> selection = candidates[_selectedIndex];
+            if (!_itemUpgradeBackend.TryGetVegaRequestPreview(selection.Key, _modifierItemId.Value, out ItemUpgradeUI.VegaRequestPreview preview))
+            {
+                failure = VegaOwnerValidationFailure.IncompatiblePair;
+                _statusMessage = "No compatible enhancement scroll is available for the selected Vega modifier.";
+                return false;
+            }
+
+            CharacterPart selectedPart = selection.Value;
+            request = new VegaOwnerRequest(
+                selection.Key,
+                selectedPart?.ItemId ?? 0,
+                ResolveItemName(selectedPart),
+                _modifierItemId.Value,
+                ResolveModifierName(),
+                preview.ConsumableItemId,
+                preview.ConsumableName,
+                preview.ConsumableCount,
+                (int)Math.Round(preview.BaseSuccessRate * 100f),
+                (int)Math.Round(preview.ModifiedSuccessRate * 100f),
+                preview.RequiresDestroyWarning);
+            return true;
+        }
+
+        private void PromotePendingResultIfReady()
+        {
+            if (_state != VegaAnimationState.Casting ||
+                !_pendingResult.Success.HasValue ||
+                _stateElapsedMs < ResolveCastingDuration())
+            {
+                return;
+            }
+
+            _state = VegaAnimationState.Result;
+            _stateElapsedMs = 0;
+            _statusMessage = _pendingResult.StatusMessage;
+            if (!_sharedResultAnimationStarted)
+            {
+                _sharedResultAnimationStarted = true;
+                _productionEnhancementAnimationDisplayer?.PlayVegaResult(_pendingResult.Success == true, Environment.TickCount);
+            }
+        }
+
         private void DrawShadowedText(SpriteBatch sprite, string text, Vector2 position, Color color)
         {
             if (_font == null || string.IsNullOrWhiteSpace(text))
@@ -659,6 +792,53 @@ namespace HaCreator.MapSimulator.UI
             public Texture2D Texture { get; }
             public Point Offset { get; }
             public int DelayMs { get; }
+        }
+
+        public readonly struct VegaOwnerRequest
+        {
+            public VegaOwnerRequest(
+                EquipSlot slot,
+                int equipItemId,
+                string equipName,
+                int modifierItemId,
+                string modifierName,
+                int scrollItemId,
+                string scrollName,
+                int scrollCount,
+                int baseSuccessRate,
+                int modifiedSuccessRate,
+                bool requiresWhiteScrollPrompt)
+            {
+                Slot = slot;
+                EquipItemId = equipItemId;
+                EquipName = equipName ?? string.Empty;
+                ModifierItemId = modifierItemId;
+                ModifierName = modifierName ?? string.Empty;
+                ScrollItemId = scrollItemId;
+                ScrollName = scrollName ?? string.Empty;
+                ScrollCount = Math.Max(0, scrollCount);
+                BaseSuccessRate = Math.Max(0, baseSuccessRate);
+                ModifiedSuccessRate = Math.Max(0, modifiedSuccessRate);
+                RequiresWhiteScrollPrompt = requiresWhiteScrollPrompt;
+            }
+
+            public EquipSlot Slot { get; }
+            public int EquipItemId { get; }
+            public string EquipName { get; }
+            public int ModifierItemId { get; }
+            public string ModifierName { get; }
+            public int ScrollItemId { get; }
+            public string ScrollName { get; }
+            public int ScrollCount { get; }
+            public int BaseSuccessRate { get; }
+            public int ModifiedSuccessRate { get; }
+            public bool RequiresWhiteScrollPrompt { get; }
+        }
+
+        public enum VegaOwnerValidationFailure
+        {
+            MissingSelection,
+            IncompatiblePair
         }
     }
 }

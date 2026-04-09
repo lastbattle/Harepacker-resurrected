@@ -69,6 +69,15 @@ namespace HaCreator.MapSimulator.Interaction
         private const int BossHpBarWidth = 288;
         private const int BossHpBarHeight = 16;
         private const int BossHpFramePadding = 4;
+        private const int ZakumTimerBeforeStringPoolId = 0x107E;
+        private const int ZakumTimerWarningStringPoolId = 0x107F;
+        private const int ZakumTimerExpiredStringPoolId = 0x1080;
+        private const int HorntailTimerBeforeStringPoolId = 0x1081;
+        private const int HorntailTimerWarningStringPoolId = 0x1082;
+        private const int HorntailTimerExpiredStringPoolId = 0x1083;
+        private const int HontaleTimerStageTwoStringPoolId = 0x16EF;
+        private const int HontaleTimerStageOneStringPoolId = 0x16F0;
+        private const int HontaleTimerStageZeroStringPoolId = 0x16F1;
         private static readonly Encoding SwindleEncoding = Encoding.Default;
         // Recovered from CCurseProcess::s_FilterChars in the v95 client.
         private static readonly byte[] SwindleFilteredCharacters =
@@ -266,10 +275,31 @@ namespace HaCreator.MapSimulator.Interaction
                     PacketFieldFeedbackPacketKind.TransferChannelReqIgnored => TryApplyTransferChannelIgnored(payload, currentTick, callbacks, out message),
                     PacketFieldFeedbackPacketKind.SummonItemUnavailable => TryApplySummonItemUnavailable(payload, currentTick, callbacks, out message),
                     PacketFieldFeedbackPacketKind.DestroyClock => ApplyDestroyClock(out message),
-                    PacketFieldFeedbackPacketKind.ZakumTimer => TryApplyBossTimer("Zakum", payload, currentTick, callbacks, out message),
-                    PacketFieldFeedbackPacketKind.HontailTimer => TryApplyBossTimer("Horntail", payload, currentTick, callbacks, out message),
-                    PacketFieldFeedbackPacketKind.ChaosZakumTimer => TryApplyBossTimer("Chaos Zakum", payload, currentTick, callbacks, out message),
-                    PacketFieldFeedbackPacketKind.HontaleTimer => TryApplyBossTimer("Hontale", payload, currentTick, callbacks, out message),
+                    PacketFieldFeedbackPacketKind.ZakumTimer => TryApplyBossTimer(
+                        "Zakum",
+                        payload,
+                        callbacks,
+                        ZakumTimerBeforeStringPoolId,
+                        ZakumTimerWarningStringPoolId,
+                        ZakumTimerExpiredStringPoolId,
+                        out message),
+                    PacketFieldFeedbackPacketKind.HontailTimer => TryApplyBossTimer(
+                        "Horntail",
+                        payload,
+                        callbacks,
+                        HorntailTimerBeforeStringPoolId,
+                        HorntailTimerWarningStringPoolId,
+                        HorntailTimerExpiredStringPoolId,
+                        out message),
+                    PacketFieldFeedbackPacketKind.ChaosZakumTimer => TryApplyBossTimer(
+                        "Chaos Zakum",
+                        payload,
+                        callbacks,
+                        ZakumTimerBeforeStringPoolId,
+                        ZakumTimerWarningStringPoolId,
+                        ZakumTimerExpiredStringPoolId,
+                        out message),
+                    PacketFieldFeedbackPacketKind.HontaleTimer => TryApplyHontaleTimer(payload, callbacks, out message),
                     PacketFieldFeedbackPacketKind.FieldFadeOutForce => TryApplyFieldFadeOutForce(payload, callbacks, out message),
                     _ => Unsupported(kind, out message),
                 };
@@ -443,6 +473,16 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         internal static byte[] BuildBossTimerPayload(byte mode, int value)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write(mode);
+            writer.Write(value);
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        internal static byte[] BuildHontaleTimerPayload(byte mode, byte value)
         {
             using MemoryStream stream = new();
             using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
@@ -905,23 +945,54 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private bool TryApplyBossTimer(string bossName, byte[] payload, int currentTick, PacketFieldFeedbackCallbacks callbacks, out string message)
+        private bool TryApplyBossTimer(
+            string bossName,
+            byte[] payload,
+            PacketFieldFeedbackCallbacks callbacks,
+            int normalStringPoolId,
+            int warningStringPoolId,
+            int expiredStringPoolId,
+            out string message)
         {
             using MemoryStream stream = new(payload, writable: false);
             using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
             byte mode = reader.ReadByte();
             int value = reader.ReadInt32();
-            string text = mode switch
-            {
-                0 when value > 0 => $"{bossName} timer update: {value} remaining.",
-                0 => $"{bossName} timer expired.",
-                1 => $"{bossName} warning stage {value}.",
-                2 => $"{bossName} emergency stage {value}.",
-                _ => $"{bossName} timer packet mode {mode} value {value}."
-            };
+            string text = ResolveBossTimerChatText(
+                bossName,
+                mode,
+                value,
+                normalStringPoolId,
+                warningStringPoolId,
+                expiredStringPoolId);
             callbacks?.AddClientChatMessage?.Invoke($"[System] {text}", 12, null);
             _lastBossTimerSummary = text;
             _statusMessage = $"Applied packet-owned {bossName} timer feedback.";
+            message = _statusMessage;
+            return true;
+        }
+
+        private bool TryApplyHontaleTimer(byte[] payload, PacketFieldFeedbackCallbacks callbacks, out string message)
+        {
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+            if (stream.Length < 2)
+            {
+                message = "Hontale timer payload is shorter than the client packet shape.";
+                return false;
+            }
+
+            byte mode = reader.ReadByte();
+            byte value = reader.ReadByte();
+            if (!TryResolveHontaleTimerChatText(mode, value, out string text))
+            {
+                message = $"Unsupported Hontale timer mode {mode}.";
+                return false;
+            }
+
+            callbacks?.AddClientChatMessage?.Invoke($"[System] {text}", 12, null);
+            _lastBossTimerSummary = text;
+            _statusMessage = "Applied packet-owned Hontale timer feedback.";
             message = _statusMessage;
             return true;
         }
@@ -1009,6 +1080,80 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        private static string ResolveBossTimerChatText(
+            string bossName,
+            byte mode,
+            int value,
+            int normalStringPoolId,
+            int warningStringPoolId,
+            int expiredStringPoolId)
+        {
+            if (value == 0)
+            {
+                return MapleStoryStringPool.GetOrFallback(expiredStringPoolId, $"{bossName} timer expired.");
+            }
+
+            int stringPoolId = mode != 0 ? warningStringPoolId : normalStringPoolId;
+            string fallbackFormat = mode != 0
+                ? $"{bossName} warning stage {{0}}."
+                : $"{bossName} timer update: {{0}} remaining.";
+            return FormatStringPoolTimerText(stringPoolId, fallbackFormat, value);
+        }
+
+        private static bool TryResolveHontaleTimerChatText(byte mode, byte value, out string text)
+        {
+            switch (mode)
+            {
+                case 0:
+                    text = FormatStringPoolTimerText(
+                        HontaleTimerStageZeroStringPoolId,
+                        "Hontale timer stage {0}.",
+                        value);
+                    return true;
+                case 1:
+                    text = FormatStringPoolTimerText(
+                        HontaleTimerStageOneStringPoolId,
+                        "Hontale warning stage {0}.",
+                        value);
+                    return true;
+                case 2:
+                    text = FormatStringPoolTimerText(
+                        HontaleTimerStageTwoStringPoolId,
+                        "Hontale emergency stage {0}.",
+                        value);
+                    return true;
+                default:
+                    text = string.Empty;
+                    return false;
+            }
+        }
+
+        private static string FormatStringPoolTimerText(int stringPoolId, string fallbackFormat, int value)
+        {
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                stringPoolId,
+                fallbackFormat,
+                maxPlaceholderCount: 1,
+                out bool usedResolvedText);
+            if (string.IsNullOrWhiteSpace(format))
+            {
+                format = fallbackFormat;
+            }
+
+            try
+            {
+                return string.Format(CultureInfo.InvariantCulture, format, value);
+            }
+            catch (FormatException)
+            {
+                return usedResolvedText
+                    ? MapleStoryStringPool.GetOrFallback(
+                        stringPoolId,
+                        string.Format(CultureInfo.InvariantCulture, fallbackFormat, value))
+                    : string.Format(CultureInfo.InvariantCulture, fallbackFormat, value);
+            }
+        }
+
         private void TryAddSwindleWarning(string message, bool allowGroupFamilyWarning, int currentTick, PacketFieldFeedbackCallbacks callbacks)
         {
             if (!allowGroupFamilyWarning
@@ -1029,15 +1174,18 @@ namespace HaCreator.MapSimulator.Interaction
             out string warningText)
         {
             warningText = null;
-            byte[] filteredMessage = FilterSwindleBytes(message);
-            if (filteredMessage.Length == 0
+            string filteredMessageText = FilterSwindleText(message);
+            byte[] filteredMessage = TryEncodeLosslessSwindleText(filteredMessageText, out byte[] encodedMessage)
+                ? encodedMessage
+                : Array.Empty<byte>();
+            if (string.IsNullOrWhiteSpace(filteredMessageText)
                 || warningEntries == null
                 || warningEntries.Count == 0)
             {
                 return false;
             }
 
-            foreach (PacketFieldSwindleWarningEntry entry in warningEntries.OrderByDescending(static candidate => candidate.GroupId))
+            foreach (PacketFieldSwindleWarningEntry entry in warningEntries)
             {
                 if (entry?.Keywords == null
                     || entry.WarningTexts == null
@@ -1053,7 +1201,7 @@ namespace HaCreator.MapSimulator.Interaction
                         continue;
                     }
 
-                    if (ContainsSwindleKeyword(filteredMessage, keyword))
+                    if (ContainsSwindleKeyword(filteredMessage, filteredMessageText, keyword))
                     {
                         warningText = entry.WarningTexts[Random.Shared.Next(entry.WarningTexts.Count)];
                         return !string.IsNullOrWhiteSpace(warningText);
@@ -1064,25 +1212,32 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
-        private static bool ContainsSwindleKeyword(byte[] filteredMessage, string keyword)
+        private static bool ContainsSwindleKeyword(byte[] filteredMessage, string filteredMessageText, string keyword)
         {
-            if (filteredMessage == null
-                || filteredMessage.Length == 0
+            if (string.IsNullOrWhiteSpace(filteredMessageText)
                 || string.IsNullOrWhiteSpace(keyword))
             {
                 return false;
             }
 
-            byte[] keywordBytes = SwindleEncoding.GetBytes(keyword);
-            if (keywordBytes.Length == 0)
+            string filteredKeyword = FilterSwindleText(keyword);
+            if (string.IsNullOrWhiteSpace(filteredKeyword))
             {
                 return false;
             }
 
-            return FindSwindleSubstring(
-                filteredMessage,
-                keywordBytes,
-                static value => IsDbcsLeadByte(value)) >= 0;
+            if (filteredMessage != null
+                && filteredMessage.Length > 0
+                && TryEncodeLosslessSwindleText(filteredKeyword, out byte[] keywordBytes)
+                && keywordBytes.Length > 0)
+            {
+                return FindSwindleSubstring(
+                    filteredMessage,
+                    keywordBytes,
+                    static value => IsDbcsLeadByte(value)) >= 0;
+            }
+
+            return ContainsSwindleKeywordUnicode(filteredMessageText, filteredKeyword);
         }
 
         private static string FilterSwindleText(string message)
@@ -1158,6 +1313,35 @@ namespace HaCreator.MapSimulator.Interaction
 
             Array.Resize(ref filteredBytes, count);
             return filteredBytes;
+        }
+
+        private static bool ContainsSwindleKeywordUnicode(string filteredMessage, string filteredKeyword)
+        {
+            if (string.IsNullOrWhiteSpace(filteredMessage)
+                || string.IsNullOrWhiteSpace(filteredKeyword))
+            {
+                return false;
+            }
+
+            return filteredMessage.IndexOf(filteredKeyword, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool TryEncodeLosslessSwindleText(string text, out byte[] bytes)
+        {
+            bytes = Array.Empty<byte>();
+            if (string.IsNullOrEmpty(text))
+            {
+                return false;
+            }
+
+            byte[] encoded = SwindleEncoding.GetBytes(text);
+            if (!string.Equals(SwindleEncoding.GetString(encoded), text, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            bytes = encoded;
+            return true;
         }
 
         private static int FindSwindleSubstring(
@@ -1314,7 +1498,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static bool ContainsSwindleKeywordForTest(string filteredMessage, string keyword)
         {
-            return ContainsSwindleKeyword(SwindleEncoding.GetBytes(filteredMessage ?? string.Empty), keyword);
+            string normalized = FilterSwindleText(filteredMessage);
+            byte[] filteredBytes = TryEncodeLosslessSwindleText(normalized, out byte[] encoded)
+                ? encoded
+                : Array.Empty<byte>();
+            return ContainsSwindleKeyword(filteredBytes, normalized, keyword);
         }
 
         internal static string FilterSwindleCharacterTableForTest()

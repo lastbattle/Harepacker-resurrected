@@ -1,4 +1,5 @@
 using MapleLib;
+using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Character;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
@@ -187,6 +188,7 @@ namespace HaCreator.MapSimulator.UI
         private int _presentationElapsedMs;
         private ItemUpgradeAttemptResult _presentationResult;
         private VisualThemeKind? _lockedThemeKind;
+        private ProductionEnhancementAnimationDisplayer _productionEnhancementAnimationDisplayer;
 
         public ItemUpgradeUI(IDXObject frame)
             : base(frame)
@@ -208,6 +210,11 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+        }
+
+        internal void SetProductionEnhancementAnimationDisplayer(ProductionEnhancementAnimationDisplayer animationDisplayer)
+        {
+            _productionEnhancementAnimationDisplayer = animationDisplayer;
         }
 
         public void SetInventory(IInventoryRuntime inventory)
@@ -570,12 +577,38 @@ namespace HaCreator.MapSimulator.UI
                 : ResolveCurrentVisualThemeKind();
 
             ItemUpgradeAttemptResult result = TryApplyPreparedUpgrade();
+            if (preparedConsumable?.EffectType == ConsumableEffectType.Hammer &&
+                result.Success.HasValue)
+            {
+                _productionEnhancementAnimationDisplayer?.PlayViciousHammerResult(Environment.TickCount);
+            }
+            else if (result.Success.HasValue &&
+                ShouldUseSharedItemUpgradeAnimation(preparedConsumable))
+            {
+                _productionEnhancementAnimationDisplayer?.PlayItemUpgradeResult(
+                    result.Success.Value,
+                    enchantSkillBranch: true,
+                    currentTimeMs: Environment.TickCount);
+            }
+
             if (preparedConsumable?.EffectType == ConsumableEffectType.Cube &&
                 result.Success.HasValue &&
                 TryStartThemePresentation(presentationThemeKind, result))
             {
                 return;
             }
+        }
+
+        private static bool ShouldUseSharedItemUpgradeAnimation(EnhancementConsumable consumable)
+        {
+            if (consumable == null)
+            {
+                return false;
+            }
+
+            return consumable.EffectType != ConsumableEffectType.Cube
+                && consumable.EffectType != ConsumableEffectType.Hammer
+                && consumable.EffectType != ConsumableEffectType.Modifier;
         }
 
         public ItemUpgradeAttemptResult TryApplyPreparedUpgrade()
@@ -2514,8 +2547,9 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            reason = consumable.Definition.ItemId == MapleMiracleCubeId
-                ? $"{consumable.Name} only applies to Maple 8th Anniversary Crimson equipment."
+            string requiredFamilyLabel = ResolveRequiredEquipFamilyLabel(consumable.Definition);
+            reason = !string.IsNullOrWhiteSpace(requiredFamilyLabel)
+                ? $"{consumable.Name} only applies to {requiredFamilyLabel}."
                 : $"{consumable.Name} does not apply to {ResolveItemName(selectedPart)}.";
             if (!matchesTargetSlot &&
                 TryGetScrollTargetSlots(consumable.Definition.ItemId, out targetSlots) &&
@@ -2526,6 +2560,46 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        private static string ResolveRequiredEquipFamilyLabel(EnhancementConsumableDefinition definition)
+        {
+            IReadOnlyCollection<int> requiredItems = GetRequiredEquipItemIds(definition);
+            if (requiredItems.Count == 0)
+            {
+                return null;
+            }
+
+            string[] itemNames = requiredItems
+                .Select(ResolveCachedItemNameOrFallback)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToArray();
+            if (itemNames.Length == 0)
+            {
+                return "the equipment listed in its WZ req data";
+            }
+
+            string[] commonTokens = itemNames
+                .Select(name => name.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
+                .Aggregate((current, next) =>
+                {
+                    int commonLength = Math.Min(current.Length, next.Length);
+                    int index = 0;
+                    while (index < commonLength &&
+                           string.Equals(current[index], next[index], StringComparison.OrdinalIgnoreCase))
+                    {
+                        index++;
+                    }
+
+                    return current.Take(index).ToArray();
+                });
+
+            if (commonTokens.Length >= 3)
+            {
+                return $"{string.Join(" ", commonTokens)} equipment";
+            }
+
+            return "the equipment listed in its WZ req data";
         }
 
         private bool TryGetHammerBlockReason(EnhancementConsumable consumable, CharacterPart selectedPart, UpgradeState state, out string reason)
@@ -3061,10 +3135,16 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 Match genericPercentMatch = PercentRateRegex.Match(description);
-                if (genericPercentMatch.Success &&
-                    int.TryParse(genericPercentMatch.Groups[1].Value, out int genericPercent))
+                if (genericPercentMatch.Success)
                 {
-                    return Math.Clamp(genericPercent, 0, 100);
+                    foreach (Group group in genericPercentMatch.Groups.Cast<Group>().Skip(1))
+                    {
+                        if (group.Success &&
+                            int.TryParse(group.Value, out int genericPercent))
+                        {
+                            return Math.Clamp(genericPercent, 0, 100);
+                        }
+                    }
                 }
             }
 
@@ -3705,6 +3785,36 @@ namespace HaCreator.MapSimulator.UI
             return TryParseSuccessRateText(description, out int percent)
                 ? MathHelper.Clamp(percent / 100f, 0f, 1.0f)
                 : 0f;
+        }
+
+        internal static int ResolveHammerSuccessRateFromDescriptionForTesting(string description)
+        {
+            if (string.IsNullOrWhiteSpace(description))
+            {
+                return 100;
+            }
+
+            Match explicitChanceMatch = PercentChanceRegex.Match(description);
+            if (explicitChanceMatch.Success &&
+                int.TryParse(explicitChanceMatch.Groups[1].Value, out int explicitChance))
+            {
+                return Math.Clamp(explicitChance, 0, 100);
+            }
+
+            Match genericPercentMatch = PercentRateRegex.Match(description);
+            if (genericPercentMatch.Success)
+            {
+                foreach (Group group in genericPercentMatch.Groups.Cast<Group>().Skip(1))
+                {
+                    if (group.Success &&
+                        int.TryParse(group.Value, out int genericPercent))
+                    {
+                        return Math.Clamp(genericPercent, 0, 100);
+                    }
+                }
+            }
+
+            return 100;
         }
 
         // For Vega-marked scrolls, the authored item name is the stronger target-family signal when it disagrees with the description text.
