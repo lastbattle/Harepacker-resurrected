@@ -432,6 +432,20 @@ The main baseline updates worth keeping visible are:
 - NPC and quest interaction now have a usable simulator baseline through dialogue overlays, quest lists, and common quest-state mutations, but full scripting and inventory-backed requirements remain incomplete.
 - Progression or utility window groundwork now has a shared seam: named owners for world map, map transfer, cash-service, crafting, enhancement, character-info, and quest-side utility windows are registered with `UIWindowManager`, while minimap and status-bar utility buttons now route into those owners instead of staying entirely dead-ended. The dedicated pre-field `WorldSelect`, `ChannelSelect`, and `ChannelShift` selector family is tracked in backlog 11; this utility-window document only keeps the gameplay-side launch and gating hooks that hand control over to those login-owned selectors. The map-transfer owner now also keeps saved teleport destinations in a character-scoped destination book keyed to the active player or selected login-roster character instead of sharing one global saved list across every simulator avatar, persists that destination book under the simulator AppData profile across restarts, and hands the currently selected transfer target into the world-map owner when `BtMap` is used so the two navigation surfaces stay linked.
 
+## Broad IDA Cross-Check
+
+A broad follow-up `list_functions` sweep against the v95 client, compared back against the full backlog corpus, did not surface another major owner family that still lacks a backlog home.
+
+The candidates that initially looked like possible omissions are already represented by existing rows instead of needing a new split document or duplicate utility section:
+
+- `CWorldMapDlg` / `CreateWorldMapDlg` remain covered by the world-map and minimap-owner rows in this backlog.
+- `CSlideMenuDlg` remains covered by the packet-script/message row in backlog 7, where the client owns it through `OnAskSlideMenu`.
+- `CConnectionNoticeDlg`, `CPinCodeDlg`, and `CConfirmRaceDlg` remain covered by the login and character-entry backlog in document 11.
+- `CWeddingWishListDlg` plus `CWishListRecvDlg`, `CWishListGiveDlg`, and `CWishListInputDlg` remain covered by the companion/social backlog in document 10.
+- `CAdminShopDlg`, `CBookDlg`, `CStoreBankDlg`, `CGuildRankDlg`, and the other high-signal utility/social families surfaced by the scan are already named inside this backlog or the dedicated social backlog instead of being truly absent.
+
+That means the right follow-up from this scan is to keep extending the existing rows above, not to add another umbrella utility backlog section that would duplicate ownership across documents.
+
 ## Remaining Parity Backlog
 
 ### 1. Progression and utility window parity
