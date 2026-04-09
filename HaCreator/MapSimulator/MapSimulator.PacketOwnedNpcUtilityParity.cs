@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator
                     bool applied = _packetOwnedNpcShopRuntime.TryApplyPacket(packetType, payload, out message);
                     if (applied && packetType == 364)
                     {
+                        PublishDynamicObjectTagStatesForNpc(_packetOwnedNpcShopRuntime.NpcTemplateId, currTickCount);
                         message = ShowPacketOwnedUniqueUtilityWindow(MapSimulatorWindowNames.NpcShop, "NPC Shop", message);
                     }
 
@@ -47,6 +48,7 @@ namespace HaCreator.MapSimulator
                     bool applied = _packetOwnedStoreBankRuntime.TryApplyPacket(packetType, payload, out message);
                     if (applied && packetType == 370 && payload.Length > 0 && payload[0] == 35)
                     {
+                        PublishDynamicObjectTagStatesForNpc(_packetOwnedStoreBankRuntime.NpcTemplateId, currTickCount);
                         message = ShowPacketOwnedUniqueUtilityWindow(MapSimulatorWindowNames.StoreBank, "Store Bank", message);
                     }
 
@@ -247,6 +249,7 @@ namespace HaCreator.MapSimulator
                         return false;
                     }
 
+                    PublishDynamicObjectTagStatesForNpc(npcTemplateId, currTickCount);
                     message = ShowPacketOwnedUniqueUtilityWindow(MapSimulatorWindowNames.CashShop, "Admin Shop", message);
                     return true;
                 }
@@ -284,6 +287,7 @@ namespace HaCreator.MapSimulator
 
             if (reopenRequested)
             {
+                PublishDynamicObjectTagStatesForNpc(adminShopWindow.PacketOwnedAdminShopNpcTemplateId, currTickCount);
                 message = ShowPacketOwnedUniqueUtilityWindow(MapSimulatorWindowNames.CashShop, "Admin Shop", message);
             }
 

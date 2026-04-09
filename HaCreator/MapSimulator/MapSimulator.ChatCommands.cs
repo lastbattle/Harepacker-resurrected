@@ -3912,7 +3912,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "tournament",
                 "Inspect or drive the Tournament field wrapper",
-                "/tournament [status|dialog [status|close|scroll <up|down|0..2>]|raw <374|375|376|377|378> <hex>|packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
+                "/tournament [status|dialog [status|close|scroll <up|down|0..2>]|raw <type> <hex>|packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
                 args =>
                 {
                     TournamentField field = _specialFieldRuntime.Minigames.Tournament;
@@ -3987,17 +3987,16 @@ namespace HaCreator.MapSimulator
 
                     if (string.Equals(args[0], "raw", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (args.Length < 3 || !int.TryParse(args[1], out int packetType))
+                        if (args.Length < 3)
                         {
-                            return ChatCommandHandler.CommandResult.Error("Usage: /tournament raw <374|375|376|377|378> <hex>");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /tournament raw <type> <hex>");
                         }
 
-
-                        if (!TryDecodeHexBytes(args[2], out byte[] payload))
+                        string rawLine = $"{args[1]} {string.Join(' ', args.Skip(2))}";
+                        if (!TournamentPacketInboxManager.TryParsePacketLine(rawLine, out int packetType, out byte[] payload, out string parseError))
                         {
-                            return ChatCommandHandler.CommandResult.Error($"Invalid Tournament hex payload: {args[2]}");
+                            return ChatCommandHandler.CommandResult.Error(parseError ?? "Usage: /tournament raw <type> <hex>");
                         }
-
 
                         return field.TryApplyRawPacket(packetType, payload, currTickCount, out string errorMessage)
                             ? ChatCommandHandler.CommandResult.Ok(field.DescribeStatus())
@@ -4007,14 +4006,17 @@ namespace HaCreator.MapSimulator
 
                     if (string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (args.Length < 2 || !TryDecodeHexBytes(args[1], out byte[] packetBytes) || packetBytes.Length < 2)
+                        if (args.Length < 2)
                         {
                             return ChatCommandHandler.CommandResult.Error("Usage: /tournament packetraw <hex>");
                         }
 
+                        string wrappedLine = $"packetraw {string.Join(' ', args.Skip(1))}";
+                        if (!TournamentPacketInboxManager.TryParsePacketLine(wrappedLine, out int packetType, out byte[] payload, out string parseError))
+                        {
+                            return ChatCommandHandler.CommandResult.Error(parseError ?? "Usage: /tournament packetraw <hex>");
+                        }
 
-                        int packetType = BitConverter.ToUInt16(packetBytes, 0);
-                        byte[] payload = packetBytes.Length > 2 ? packetBytes[2..] : Array.Empty<byte>();
                         return field.TryApplyRawPacket(packetType, payload, currTickCount, out string packetError)
                             ? ChatCommandHandler.CommandResult.Ok(field.DescribeStatus())
                             : ChatCommandHandler.CommandResult.Error(packetError);
@@ -4141,7 +4143,7 @@ namespace HaCreator.MapSimulator
                     }
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /tournament [status|dialog [status|close|scroll <up|down|0..2>]|raw <374|375|376|377|378> <hex>|packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /tournament [status|dialog [status|close|scroll <up|down|0..2>]|raw <type> <hex>|packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
                 });
 
 
@@ -6392,7 +6394,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "cookiepoint",
                 "Inspect or update the Cookie House event score, loopback inbox, or official-session bridge",
-                "/cookiepoint [score]|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode>|unmap <opcode>|clearmap|recent|stop]",
+                "/cookiepoint [score]|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode>|unmap <opcode>|clearmap|infer|clearinfer|recent|stop]",
                 args =>
                 {
                     if (!_specialFieldRuntime.CookieHouse.IsActive)

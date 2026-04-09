@@ -756,10 +756,96 @@ namespace HaCreator.MapSimulator.Companions
 
             if (property is WzStringProperty stringProperty && !string.IsNullOrWhiteSpace(stringProperty.Value))
             {
-                return ResolveActionProperty(stringProperty.Parent?[stringProperty.Value] as WzImageProperty);
+                return ResolveActionProperty(ResolveLinkedPropertyPath(stringProperty.Parent, stringProperty.Value));
             }
 
             return property;
+        }
+
+        private static WzImageProperty ResolveLinkedPropertyPath(WzObject context, string path)
+        {
+            if (context == null || string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            string normalizedPath = path.Replace('\\', '/').Trim();
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                return null;
+            }
+
+            if (context is WzImageProperty propertyContext)
+            {
+                WzImageProperty resolvedFromProperty = ResolveLinkedPropertyPath(propertyContext, normalizedPath);
+                if (resolvedFromProperty != null)
+                {
+                    return resolvedFromProperty;
+                }
+            }
+
+            if (context is WzImage imageContext)
+            {
+                imageContext.ParseImage();
+                return imageContext.GetFromPath(normalizedPath);
+            }
+
+            return null;
+        }
+
+        private static WzImageProperty ResolveLinkedPropertyPath(WzImageProperty context, string path)
+        {
+            if (context == null || string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            string normalizedPath = path.Replace('\\', '/').Trim();
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                return null;
+            }
+
+            if (!normalizedPath.Contains('/'))
+            {
+                return context[normalizedPath] ?? context.ParentImage?.GetFromPath(normalizedPath);
+            }
+
+            string[] segments = normalizedPath
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0)
+            {
+                return null;
+            }
+
+            WzObject current = normalizedPath.StartsWith("../", StringComparison.Ordinal) ? context.Parent : context;
+            foreach (string segment in segments)
+            {
+                if (string.Equals(segment, ".", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (string.Equals(segment, "..", StringComparison.Ordinal))
+                {
+                    current = current?.Parent;
+                    continue;
+                }
+
+                current = current switch
+                {
+                    WzImageProperty currentProperty => currentProperty[segment],
+                    WzImage currentImage => currentImage.GetFromPath(segment),
+                    _ => null
+                };
+
+                if (current == null)
+                {
+                    return context.ParentImage?.GetFromPath(normalizedPath);
+                }
+            }
+
+            return current as WzImageProperty;
         }
 
         private WzImageProperty ResolvePetWearActionNode(int petWearItemId, int petItemId, string requestedAction)
@@ -848,14 +934,10 @@ namespace HaCreator.MapSimulator.Companions
 
         private static WzCanvasProperty ResolveCanvasProperty(WzImageProperty property)
         {
-            if (property is WzCanvasProperty canvasProperty)
+            WzImageProperty resolvedProperty = ResolveActionProperty(property);
+            if (resolvedProperty is WzCanvasProperty canvasProperty)
             {
                 return canvasProperty;
-            }
-
-            if (property is WzUOLProperty uol)
-            {
-                return ResolveCanvasProperty(uol.LinkValue as WzImageProperty);
             }
 
             return null;

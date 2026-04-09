@@ -20,8 +20,8 @@ namespace HaCreator.MapSimulator.Interaction
         int Quantity,
         InventoryType InventoryType,
         bool HasCashSerialNumber,
-        long ItemSerialNumber,
         long CashSerialNumber,
+        long BaseExpirationTime,
         string ClientDisplayName,
         string Title,
         string MetadataSummary,
@@ -31,9 +31,13 @@ namespace HaCreator.MapSimulator.Interaction
         int OwnerRowIndex,
         int PacketGroupRowIndex,
         InventoryType InventoryType,
+        int ItemId,
+        int ClientStock,
         string PrimaryText,
         string SecondaryText,
         string SelectionSummary,
+        bool ShowsClientStock,
+        bool IsCashItem,
         bool HasCashSerialNumber,
         bool IsRechargeBundle,
         bool WasRetainedFromPreviousSnapshot);
@@ -75,6 +79,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _lastDecodedOpenItemCount;
 
         internal bool IsOpen { get; private set; }
+        internal int NpcTemplateId => _npcTemplateId;
         internal string StatusMessage { get; private set; } = "CShopDlg::OnPacket idle.";
 
         internal void Close()
@@ -919,7 +924,7 @@ namespace HaCreator.MapSimulator.Interaction
             internal short MagicDefense { get; init; }
             internal short Accuracy { get; init; }
             internal short Avoidability { get; init; }
-            internal short Hands { get; init; }
+            internal short Craft { get; init; }
             internal short Speed { get; init; }
             internal short Jump { get; init; }
             internal short Attribute { get; init; }
@@ -936,8 +941,11 @@ namespace HaCreator.MapSimulator.Interaction
             internal short Socket1 { get; init; }
             internal short Socket2 { get; init; }
             internal long? NonCashSerialNumber { get; init; }
+            internal short Hands { get; init; }
             internal long ExpirationTime { get; init; }
             internal int IucOrExp { get; init; }
+            internal long EquippedTime { get; init; }
+            internal int PreviousBonusExpRate { get; init; }
         }
 
         private sealed class StoreBankBundleData
@@ -952,9 +960,11 @@ namespace HaCreator.MapSimulator.Interaction
             internal short Closeness { get; init; }
             internal byte Fullness { get; init; }
             internal long ExpirationTime { get; init; }
-            internal short Attribute { get; init; }
+            internal long DateDead { get; init; }
+            internal short PetAttribute { get; init; }
             internal ushort Skill { get; init; }
             internal int RemainingLife { get; init; }
+            internal short Attribute { get; init; }
             internal short Fatigue { get; init; }
         }
 
@@ -976,6 +986,7 @@ namespace HaCreator.MapSimulator.Interaction
             internal bool HasCashSerialNumber { get; init; }
             internal long ItemSerialNumber { get; init; }
             internal long CashSerialNumber { get; init; }
+            internal long BaseExpirationTime { get; init; }
             internal bool IsRechargeBundle { get; init; }
             internal string MetadataSummary { get; init; } = string.Empty;
             internal StoreBankEquipData EquipData { get; init; }
@@ -1026,6 +1037,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _lastPromptChannelId = -1;
 
         internal bool IsOpen { get; private set; }
+        internal int NpcTemplateId => _npcTemplateId;
         internal bool HasPendingGetAllRequest { get; private set; }
         internal bool HasPendingFeeCalculationRequest { get; private set; }
         internal bool GetAllRequestWasAccepted { get; private set; }
@@ -1174,9 +1186,13 @@ namespace HaCreator.MapSimulator.Interaction
                     i,
                     item.PacketGroupRowIndex,
                     item.InventoryType,
+                    item.ItemId,
+                    item.ClientStock,
                     primaryText,
                     string.Join(" | ", secondaryParts),
                     BuildOwnerSelectionSummary(item),
+                    ShowsClientStock(item),
+                    IsCashItem(item),
                     item.HasCashSerialNumber,
                     item.IsRechargeBundle,
                     item.WasRetainedFromPreviousSnapshot);
@@ -1754,6 +1770,22 @@ namespace HaCreator.MapSimulator.Interaction
             return parts.Count > 0
                 ? $" | {string.Join(", ", parts)}"
                 : string.Empty;
+        }
+
+        private static bool ShowsClientStock(StoreBankItemEntry item)
+        {
+            if (item == null || item.ClientStock <= 0)
+            {
+                return false;
+            }
+
+            return item.ItemId / 1000000 is 2 or 3 or 4
+                || item.InventoryType == InventoryType.CASH;
+        }
+
+        private static bool IsCashItem(StoreBankItemEntry item)
+        {
+            return item != null && item.InventoryType == InventoryType.CASH;
         }
 
         private static string FormatFileTime(long value)

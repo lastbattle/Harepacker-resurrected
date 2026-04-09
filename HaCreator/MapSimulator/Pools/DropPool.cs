@@ -197,6 +197,8 @@ namespace HaCreator.MapSimulator.Pools
         public bool TriggerPacketExplodeEffectOnRemove { get; set; }
         public float RemovalStartScale { get; set; } = 1f;
         public float RemovalTargetScale { get; set; } = 1f;
+        public int PacketEnterAlphaRampStartTime { get; set; }
+        public int PacketEnterAlphaRampDurationMs { get; set; }
         #endregion
 
         #region Constants
@@ -212,6 +214,7 @@ namespace HaCreator.MapSimulator.Pools
         public const float SPAWN_FLOAT_HEIGHT = 50f;    // Initial offset (client uses parabolic arc)
         public const int PACKET_REMOVE_DURATION = 1000;
         public const int PACKET_ABSORB_DURATION = 220;
+        public const int PACKET_ENTER_TYPE3_ALPHA_RAMP_DURATION = 1000;
         #endregion
 
         public bool IsExpired => State == DropState.Expired || State == DropState.Removed;
@@ -240,12 +243,19 @@ namespace HaCreator.MapSimulator.Pools
                     break;
             }
 
+            ApplyPacketEnterAlphaRamp(currentTime);
+
             // Update animation frames
             UpdateAnimation(currentTime);
         }
 
         private void UpdateSpawning(int currentTime)
         {
+            if (ShouldHoldPacketEnterAlphaAtZero(currentTime))
+            {
+                Alpha = 0f;
+            }
+
             if (CreateDelayMs > 0 && currentTime < SpawnTime + CreateDelayMs)
             {
                 return;
@@ -257,6 +267,11 @@ namespace HaCreator.MapSimulator.Pools
             MotionLastUpdateTime = currentTime;
             CurrentFrame = 0;
             LastFrameTime = currentTime;
+            if (IsPacketEnterType3AlphaRampActive)
+            {
+                PacketEnterAlphaRampStartTime = currentTime;
+                Alpha = 0f;
+            }
         }
 
         private void UpdateFalling(int currentTime, float deltaTime)
@@ -470,6 +485,44 @@ namespace HaCreator.MapSimulator.Pools
             LastStateChangeTime = currentTime;
             MotionElapsedMs = 0;
             MotionLastUpdateTime = currentTime;
+        }
+
+        private bool IsPacketEnterType3AlphaRampActive =>
+            IsPacketControlled
+            && PacketEnterType == 3
+            && PacketEnterAlphaRampDurationMs > 0;
+
+        private bool ShouldHoldPacketEnterAlphaAtZero(int currentTime)
+        {
+            return IsPacketEnterType3AlphaRampActive
+                && currentTime < SpawnTime + Math.Max(0, CreateDelayMs);
+        }
+
+        private void ApplyPacketEnterAlphaRamp(int currentTime)
+        {
+            if (!IsPacketEnterType3AlphaRampActive
+                || State == DropState.PickingUp
+                || State == DropState.Expired
+                || State == DropState.Removed)
+            {
+                return;
+            }
+
+            if (ShouldHoldPacketEnterAlphaAtZero(currentTime))
+            {
+                Alpha = 0f;
+                return;
+            }
+
+            int elapsed = currentTime - PacketEnterAlphaRampStartTime;
+            if (elapsed <= 0)
+            {
+                Alpha = 0f;
+                return;
+            }
+
+            Alpha = Math.Min(Alpha, 1f);
+            Alpha = Math.Max(Alpha, Math.Clamp(elapsed / (float)PacketEnterAlphaRampDurationMs, 0f, 1f));
         }
 
         private void UpdateAnimation(int currentTime)
@@ -941,6 +994,8 @@ namespace HaCreator.MapSimulator.Pools
             drop.TriggerPacketExplodeEffectOnRemove = false;
             drop.RemovalStartScale = 1f;
             drop.RemovalTargetScale = 1f;
+            drop.PacketEnterAlphaRampStartTime = 0;
+            drop.PacketEnterAlphaRampDurationMs = 0;
             drop.CanPickup = true;
             drop.IsRare = false;
             drop.GlowColor = Color.White;
@@ -2271,6 +2326,10 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             drop.DrawOnElevatedLayer = packet.ElevateLayer;
+            drop.PacketEnterAlphaRampDurationMs = packet.EnterType == 3
+                ? DropItem.PACKET_ENTER_TYPE3_ALPHA_RAMP_DURATION
+                : 0;
+            drop.PacketEnterAlphaRampStartTime = currentTime + Math.Max(0, (int)packet.DelayMs);
 
             if (packet.EnterType == 2)
             {
@@ -2279,6 +2338,10 @@ namespace HaCreator.MapSimulator.Pools
             else
             {
                 drop.State = DropState.Spawning;
+                if (packet.EnterType == 3)
+                {
+                    drop.Alpha = 0f;
+                }
             }
 
             _activeDrops.Add(drop);

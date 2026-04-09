@@ -58,23 +58,6 @@ namespace HaCreator.MapSimulator.Interaction
         }
     }
 
-    internal readonly record struct SocialRoomEmployeeLegacyPacketState(
-        bool HasPacketData,
-        bool ActorHidden,
-        int EmployerId,
-        int FootholdId,
-        string NameTag,
-        byte MiniRoomType,
-        int MiniRoomSerial,
-        string BalloonTitle,
-        byte BalloonByte0,
-        byte BalloonByte1,
-        byte BalloonByte2,
-        int TemplateId,
-        int WorldX,
-        int WorldY,
-        bool HasWorldPosition);
-
     internal static class SocialRoomEmployeePoolCodec
     {
         internal readonly record struct RoutingHint(int EmployerId, byte MiniRoomType);
@@ -304,6 +287,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (snapshots?.Count > 0)
             {
+                int restoredPreferredEmployerId = 0;
                 foreach (SocialRoomEmployeePoolEntrySnapshot snapshot in snapshots.Where(entry => entry != null))
                 {
                     int employerId = Math.Max(0, snapshot.EmployerId);
@@ -328,48 +312,28 @@ namespace HaCreator.MapSimulator.Interaction
                         BalloonByte2 = snapshot.BalloonByte2
                     };
                     _entries[employerId] = state;
-                    _lastTouchedEmployerId = employerId;
+                    if (restoredPreferredEmployerId <= 0)
+                    {
+                        restoredPreferredEmployerId = employerId;
+                    }
                 }
 
-                return;
+                _preferredEmployerId = restoredPreferredEmployerId;
+                _lastTouchedEmployerId = restoredPreferredEmployerId;
             }
-        }
-
-        internal void Restore(
-            IReadOnlyList<SocialRoomEmployeePoolEntrySnapshot> snapshots,
-            SocialRoomEmployeeLegacyPacketState legacyState)
-        {
-            Restore(snapshots);
-            if (_entries.Count > 0
-                || !legacyState.HasPacketData
-                || legacyState.EmployerId <= 0)
-            {
-                return;
-            }
-
-            SocialRoomEmployeePoolEntryState state = new(legacyState.EmployerId)
-            {
-                Flags = legacyState.ActorHidden ? SocialRoomEmployeePoolFlags.None : SocialRoomEmployeePoolFlags.EnteredField,
-                TemplateId = Math.Max(0, legacyState.TemplateId),
-                WorldX = legacyState.HasWorldPosition ? (short)Math.Max(short.MinValue, Math.Min(short.MaxValue, legacyState.WorldX)) : (short)0,
-                WorldY = legacyState.HasWorldPosition ? (short)Math.Max(short.MinValue, Math.Min(short.MaxValue, legacyState.WorldY)) : (short)0,
-                FootholdId = (short)Math.Max(short.MinValue, Math.Min(short.MaxValue, legacyState.FootholdId)),
-                NameTag = legacyState.NameTag ?? string.Empty,
-                MiniRoomType = legacyState.MiniRoomType,
-                MiniRoomSerial = legacyState.MiniRoomSerial,
-                BalloonTitle = legacyState.BalloonTitle ?? string.Empty,
-                BalloonByte0 = legacyState.BalloonByte0,
-                BalloonByte1 = legacyState.BalloonByte1,
-                BalloonByte2 = legacyState.BalloonByte2
-            };
-            _entries[state.EmployerId] = state;
-            _lastTouchedEmployerId = state.EmployerId;
         }
 
         internal IReadOnlyList<SocialRoomEmployeePoolEntrySnapshot> BuildSnapshots()
         {
+            if (_entries.Count == 0)
+            {
+                return Array.Empty<SocialRoomEmployeePoolEntrySnapshot>();
+            }
+
+            TryGetPersistencePrimaryEntry(out SocialRoomEmployeePoolEntryState primaryEntry);
             return _entries.Values
-                .OrderBy(entry => entry.EmployerId)
+                .OrderBy(entry => primaryEntry != null && entry.EmployerId == primaryEntry.EmployerId ? 0 : 1)
+                .ThenBy(entry => entry.EmployerId)
                 .Select(entry => entry.ToSnapshot())
                 .ToList();
         }
@@ -413,6 +377,34 @@ namespace HaCreator.MapSimulator.Interaction
                 .OrderByDescending(entry => entry.IsVisible)
                 .ThenBy(entry => entry.EmployerId)
                 .FirstOrDefault(entry => entry.IsVisible);
+            return state != null;
+        }
+
+        private bool TryGetPersistencePrimaryEntry(out SocialRoomEmployeePoolEntryState state)
+        {
+            state = null;
+            if (_entries.Count == 0)
+            {
+                return false;
+            }
+
+            if (_preferredEmployerId > 0
+                && _entries.TryGetValue(_preferredEmployerId, out SocialRoomEmployeePoolEntryState preferred))
+            {
+                state = preferred;
+                return true;
+            }
+
+            if (_lastTouchedEmployerId > 0
+                && _entries.TryGetValue(_lastTouchedEmployerId, out SocialRoomEmployeePoolEntryState lastTouched))
+            {
+                state = lastTouched;
+                return true;
+            }
+
+            state = _entries.Values
+                .OrderBy(entry => entry.EmployerId)
+                .FirstOrDefault();
             return state != null;
         }
 

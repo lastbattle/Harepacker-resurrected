@@ -799,19 +799,24 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (eligibleCandidates.Count > 1)
+            InboundPointOpcodeCandidateSummary bestCandidate = eligibleCandidates[0];
+            List<InboundPointOpcodeCandidateSummary> topRankedCandidates = eligibleCandidates
+                .Where(candidate => HaveEquivalentInferenceRanking(candidate, bestCandidate))
+                .ToList();
+
+            if (topRankedCandidates.Count > 1)
             {
-                status = $"Cookie House official-session bridge observed multiple eligible point-opcode candidates and will not auto-map ambiguously: {FormatCandidateList(eligibleCandidates)}.";
+                status = $"Cookie House official-session bridge observed multiple equally ranked point-opcode candidates and will not auto-map ambiguously: {FormatCandidateList(topRankedCandidates)}.";
                 return false;
             }
 
-            opcode = eligibleCandidates[0].Opcode;
+            opcode = bestCandidate.Opcode;
             if (_mappedInboundPointOpcodes.Add(opcode))
             {
                 _inferredInboundPointOpcodes.Add(opcode);
             }
 
-            status = $"Cookie House official-session bridge promoted the unique eligible point-opcode candidate after {eligibleCandidates[0].ObservationCount} observations and {eligibleCandidates[0].DistinctPointValueCount} distinct point values.";
+            status = $"Cookie House official-session bridge promoted the best-ranked point-opcode candidate after {bestCandidate.ObservationCount} observations, {bestCandidate.DistinctPointValueCount} distinct point values, and {bestCandidate.TransitionCount} score transitions.";
             return true;
         }
 
@@ -848,12 +853,22 @@ namespace HaCreator.MapSimulator.Managers
         private static string FormatCandidateList(IEnumerable<InboundPointOpcodeCandidateSummary> candidates)
         {
             return string.Join(", ", candidates.Select(candidate =>
-                $"{candidate.Opcode}/0x{candidate.Opcode:X} obs={candidate.ObservationCount} distinct={candidate.DistinctPointValueCount} lastPoint={candidate.LastPoint}"));
+                $"{candidate.Opcode}/0x{candidate.Opcode:X} obs={candidate.ObservationCount} distinct={candidate.DistinctPointValueCount} changes={candidate.TransitionCount} lastPoint={candidate.LastPoint}"));
+        }
+
+        private static bool HaveEquivalentInferenceRanking(
+            InboundPointOpcodeCandidateSummary left,
+            InboundPointOpcodeCandidateSummary right)
+        {
+            return left.ObservationCount == right.ObservationCount
+                && left.DistinctPointValueCount == right.DistinctPointValueCount
+                && left.TransitionCount == right.TransitionCount;
         }
 
         private sealed class InboundPointOpcodeCandidateAccumulator
         {
             private readonly HashSet<int> _distinctPoints = new();
+            private bool _hasLastObservedPoint;
 
             public InboundPointOpcodeCandidateAccumulator(int opcode)
             {
@@ -863,18 +878,25 @@ namespace HaCreator.MapSimulator.Managers
             public int Opcode { get; }
             public int ObservationCount { get; private set; }
             public int DistinctPointValueCount => _distinctPoints.Count;
+            public int TransitionCount { get; private set; }
             public int LastPoint { get; private set; }
 
             public void AddPoint(int point)
             {
                 ObservationCount++;
+                if (_hasLastObservedPoint && LastPoint != point)
+                {
+                    TransitionCount++;
+                }
+
                 LastPoint = point;
+                _hasLastObservedPoint = true;
                 _distinctPoints.Add(point);
             }
 
             public InboundPointOpcodeCandidateSummary ToSummary()
             {
-                return new InboundPointOpcodeCandidateSummary(Opcode, ObservationCount, DistinctPointValueCount, LastPoint);
+                return new InboundPointOpcodeCandidateSummary(Opcode, ObservationCount, DistinctPointValueCount, TransitionCount, LastPoint);
             }
         }
 
@@ -882,6 +904,7 @@ namespace HaCreator.MapSimulator.Managers
             int Opcode,
             int ObservationCount,
             int DistinctPointValueCount,
+            int TransitionCount,
             int LastPoint);
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

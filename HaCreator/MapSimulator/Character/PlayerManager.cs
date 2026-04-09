@@ -27,6 +27,12 @@ namespace HaCreator.MapSimulator.Character
     {
         private const int AffectedAreaAvatarEffectIdBase = int.MinValue;
 
+        private sealed class AffectedAreaAvatarEffectCacheEntry
+        {
+            public int Signature { get; init; }
+            public SkillData Skill { get; init; }
+        }
+
         #region Properties
 
         public PlayerCharacter Player { get; private set; }
@@ -83,7 +89,7 @@ namespace HaCreator.MapSimulator.Character
         private int _pendingRepeatSkillModeEndReturnSkillId;
         private int _pendingRepeatSkillModeEndRequestTime = int.MinValue;
         private readonly HashSet<int> _activeAffectedAreaAvatarEffectIds = new();
-        private readonly Dictionary<int, SkillData> _affectedAreaAvatarEffectSkillCache = new();
+        private readonly Dictionary<int, AffectedAreaAvatarEffectCacheEntry> _affectedAreaAvatarEffectSkillCache = new();
         private int _lastForcedHorizontalDirection;
 
         // Sound callbacks
@@ -1076,6 +1082,7 @@ namespace HaCreator.MapSimulator.Character
                     localPlayerId,
                     area.OwnerId,
                     ownerIsPartyMember,
+                    ownerIsSameTeamMember: false,
                     effectiveLevelData))
             {
                 return false;
@@ -1190,18 +1197,28 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
-            if (_affectedAreaAvatarEffectSkillCache.TryGetValue(skill.SkillId, out SkillData cachedSkill))
+            if (!AffectedAreaAvatarEffectResolver.TryBuildLoopingAvatarEffectSkill(
+                    skill,
+                    supportSkills,
+                    out SkillData effectSkill,
+                    out int signature))
             {
-                return cachedSkill;
-            }
-
-            SkillData effectSkill = AffectedAreaAvatarEffectResolver.BuildLoopingAvatarEffectSkill(skill, supportSkills);
-            if (effectSkill == null)
-            {
+                _affectedAreaAvatarEffectSkillCache.Remove(skill.SkillId);
                 return null;
             }
 
-            _affectedAreaAvatarEffectSkillCache[skill.SkillId] = effectSkill;
+            if (_affectedAreaAvatarEffectSkillCache.TryGetValue(skill.SkillId, out AffectedAreaAvatarEffectCacheEntry cachedEntry)
+                && cachedEntry?.Skill != null
+                && cachedEntry.Signature == signature)
+            {
+                return cachedEntry.Skill;
+            }
+
+            _affectedAreaAvatarEffectSkillCache[skill.SkillId] = new AffectedAreaAvatarEffectCacheEntry
+            {
+                Signature = signature,
+                Skill = effectSkill
+            };
             return effectSkill;
         }
 

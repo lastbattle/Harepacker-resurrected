@@ -481,17 +481,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _employeeWorldY;
         private bool _employeeHasWorldPosition;
         private bool? _employeeFlip;
-        private bool _employeeHasPacketData;
-        private bool _employeePacketActorHidden;
         private int _employeePacketEmployerId;
-        private int _employeePacketFootholdId;
-        private string _employeePacketNameTag = string.Empty;
-        private byte _employeePacketMiniRoomType;
-        private int _employeePacketMiniRoomSerial;
-        private string _employeePacketBalloonTitle = string.Empty;
-        private byte _employeePacketBalloonByte0;
-        private byte _employeePacketBalloonByte1;
-        private byte _employeePacketBalloonByte2;
         private readonly SocialRoomEmployeePoolRuntime _employeePoolRuntime = new();
         private bool _inventoryBackedRows;
         private bool _suspendPersistence;
@@ -733,8 +723,6 @@ namespace HaCreator.MapSimulator.Interaction
                 EmployeeWorldY = _employeeWorldY,
                 EmployeeHasWorldPosition = _employeeHasWorldPosition,
                 EmployeeFlip = _employeeFlip,
-                EmployeeHasPacketData = _employeeHasPacketData,
-                EmployeePreferredEmployerId = _employeePoolRuntime.PreferredEmployerId,
                 EmployeePoolEntries = _employeePoolRuntime.BuildSnapshots().ToList(),
                 Occupants = _occupants
                     .Select(occupant => new SocialRoomOccupantSnapshot
@@ -877,11 +865,12 @@ namespace HaCreator.MapSimulator.Interaction
                 _employeeWorldY = source?.EmployeeWorldY ?? _defaultSnapshot.EmployeeWorldY;
                 _employeeHasWorldPosition = source?.EmployeeHasWorldPosition ?? _defaultSnapshot.EmployeeHasWorldPosition;
                 _employeeFlip = source?.EmployeeFlip ?? _defaultSnapshot.EmployeeFlip;
-                _employeeHasPacketData = source?.EmployeeHasPacketData ?? _defaultSnapshot.EmployeeHasPacketData;
+                _employeePacketEmployerId = 0;
                 _employeePoolRuntime.Restore(source?.EmployeePoolEntries);
-                int restoredPreferredEmployerId = source?.EmployeePreferredEmployerId ?? _defaultSnapshot.EmployeePreferredEmployerId;
-                _employeePoolRuntime.SetPreferredEmployerId(restoredPreferredEmployerId);
-                SyncLegacyEmployeePacketStateFromPool(restoredPreferredEmployerId);
+                if (_employeePoolRuntime.PreferredEmployerId > 0)
+                {
+                    _employeePacketEmployerId = _employeePoolRuntime.PreferredEmployerId;
+                }
                 _remoteInventoryMeso = Math.Max(0, source?.RemoteInventoryMeso ?? _defaultSnapshot.RemoteInventoryMeso);
 
                 _occupants.Clear();
@@ -1205,7 +1194,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 hasPooledEmployee = TryGetVisibleEmployeePoolEntry(out pooledEmployee);
             }
-            if (_employeeHasPacketData
+            if (_employeePoolRuntime.HasEntries
                 && !hasPooledEmployee
                 && (Kind == SocialRoomKind.PersonalShop || Kind == SocialRoomKind.EntrustedShop))
             {
@@ -1232,12 +1221,12 @@ namespace HaCreator.MapSimulator.Interaction
                     worldY: hasPooledEmployee ? pooledEmployee.WorldY : _employeeWorldY,
                     hasWorldPosition: hasPooledEmployee || _employeeHasWorldPosition,
                     flip: _employeeFlip,
-                    miniRoomType: hasPooledEmployee ? pooledEmployee.MiniRoomType : _employeePacketMiniRoomType,
-                    miniRoomSerial: hasPooledEmployee ? pooledEmployee.MiniRoomSerial : _employeePacketMiniRoomSerial,
-                    miniRoomBalloonTitle: hasPooledEmployee ? pooledEmployee.BalloonTitle : _employeePacketBalloonTitle,
-                    miniRoomBalloonByte0: hasPooledEmployee ? pooledEmployee.BalloonByte0 : _employeePacketBalloonByte0,
-                    miniRoomBalloonByte1: hasPooledEmployee ? pooledEmployee.BalloonByte1 : _employeePacketBalloonByte1,
-                    miniRoomBalloonByte2: hasPooledEmployee ? pooledEmployee.BalloonByte2 : _employeePacketBalloonByte2);
+                    miniRoomType: hasPooledEmployee ? pooledEmployee.MiniRoomType : (byte)0,
+                    miniRoomSerial: hasPooledEmployee ? pooledEmployee.MiniRoomSerial : 0,
+                    miniRoomBalloonTitle: hasPooledEmployee ? pooledEmployee.BalloonTitle : string.Empty,
+                    miniRoomBalloonByte0: hasPooledEmployee ? pooledEmployee.BalloonByte0 : (byte)0,
+                    miniRoomBalloonByte1: hasPooledEmployee ? pooledEmployee.BalloonByte1 : (byte)0,
+                    miniRoomBalloonByte2: hasPooledEmployee ? pooledEmployee.BalloonByte2 : (byte)0);
             }
 
             if (Kind != SocialRoomKind.EntrustedShop)
@@ -1260,25 +1249,21 @@ namespace HaCreator.MapSimulator.Interaction
                     worldX: _employeeWorldX,
                     worldY: _employeeWorldY,
                     hasWorldPosition: _employeeHasWorldPosition,
-                    flip: _employeeFlip,
-                    miniRoomType: _employeePacketMiniRoomType,
-                    miniRoomSerial: _employeePacketMiniRoomSerial,
-                    miniRoomBalloonTitle: _employeePacketBalloonTitle,
-                    miniRoomBalloonByte0: _employeePacketBalloonByte0,
-                    miniRoomBalloonByte1: _employeePacketBalloonByte1,
-                    miniRoomBalloonByte2: _employeePacketBalloonByte2);
+                    flip: _employeeFlip);
             }
 
             int entrustedTemplateId = hasPooledEmployee ? pooledEmployee.TemplateId : _employeeTemplateId;
-            bool usesCashEmployeeForEntrusted = entrustedTemplateId > 0;
-            string entrustedHeadline = ResolveEmployeeDisplayHeadline("Entrusted Shop");
+            byte entrustedMiniRoomType = hasPooledEmployee ? pooledEmployee.MiniRoomType : (byte)0;
+            SocialRoomFieldActorTemplate entrustedTemplate = ResolveEntrustedFieldActorTemplate(entrustedTemplateId, entrustedMiniRoomType);
+            string entrustedHeadline = ResolveEmployeeDisplayHeadline(
+                entrustedTemplate == SocialRoomFieldActorTemplate.StoreBanker ? "Store Banker" : "Entrusted Shop");
             string entrustedDetail = $"{ResolveEmployeeDisplayOwnerName(pooledEmployee)} | {RoomState} | {permitStatus}";
             return new SocialRoomFieldActorSnapshot(
                 Kind,
-                usesCashEmployeeForEntrusted ? SocialRoomFieldActorTemplate.CashEmployee : SocialRoomFieldActorTemplate.Merchant,
+                entrustedTemplate,
                 entrustedHeadline,
                 entrustedDetail,
-                $"{(usesCashEmployeeForEntrusted ? "cash" : "merchant")}|{entrustedTemplateId}|{ModeName}|{RoomState}|{permitStatus}{BuildEmployeePacketStateKeySuffix()}",
+                $"{ResolveEntrustedStateKeyTemplate(entrustedTemplate)}|{entrustedTemplateId}|{ModeName}|{RoomState}|{permitStatus}{BuildEmployeePacketStateKeySuffix()}",
                 templateId: entrustedTemplateId,
                 useOwnerAnchor: hasPooledEmployee ? false : _employeeUseOwnerAnchor,
                 anchorOffsetX: _employeeAnchorOffsetX,
@@ -1287,12 +1272,34 @@ namespace HaCreator.MapSimulator.Interaction
                 worldY: hasPooledEmployee ? pooledEmployee.WorldY : _employeeWorldY,
                 hasWorldPosition: hasPooledEmployee || _employeeHasWorldPosition,
                 flip: _employeeFlip,
-                miniRoomType: hasPooledEmployee ? pooledEmployee.MiniRoomType : _employeePacketMiniRoomType,
-                miniRoomSerial: hasPooledEmployee ? pooledEmployee.MiniRoomSerial : _employeePacketMiniRoomSerial,
-                miniRoomBalloonTitle: hasPooledEmployee ? pooledEmployee.BalloonTitle : _employeePacketBalloonTitle,
-                miniRoomBalloonByte0: hasPooledEmployee ? pooledEmployee.BalloonByte0 : _employeePacketBalloonByte0,
-                miniRoomBalloonByte1: hasPooledEmployee ? pooledEmployee.BalloonByte1 : _employeePacketBalloonByte1,
-                miniRoomBalloonByte2: hasPooledEmployee ? pooledEmployee.BalloonByte2 : _employeePacketBalloonByte2);
+                miniRoomType: entrustedMiniRoomType,
+                miniRoomSerial: hasPooledEmployee ? pooledEmployee.MiniRoomSerial : 0,
+                miniRoomBalloonTitle: hasPooledEmployee ? pooledEmployee.BalloonTitle : string.Empty,
+                miniRoomBalloonByte0: hasPooledEmployee ? pooledEmployee.BalloonByte0 : (byte)0,
+                miniRoomBalloonByte1: hasPooledEmployee ? pooledEmployee.BalloonByte1 : (byte)0,
+                miniRoomBalloonByte2: hasPooledEmployee ? pooledEmployee.BalloonByte2 : (byte)0);
+        }
+
+        private static SocialRoomFieldActorTemplate ResolveEntrustedFieldActorTemplate(int templateId, byte miniRoomType)
+        {
+            if (templateId > 0)
+            {
+                return SocialRoomFieldActorTemplate.CashEmployee;
+            }
+
+            return miniRoomType == 5
+                ? SocialRoomFieldActorTemplate.StoreBanker
+                : SocialRoomFieldActorTemplate.Merchant;
+        }
+
+        private static string ResolveEntrustedStateKeyTemplate(SocialRoomFieldActorTemplate template)
+        {
+            return template switch
+            {
+                SocialRoomFieldActorTemplate.CashEmployee => "cash",
+                SocialRoomFieldActorTemplate.StoreBanker => "banker",
+                _ => "merchant"
+            };
         }
 
         public bool TryDispatchPacket(
@@ -2465,6 +2472,11 @@ namespace HaCreator.MapSimulator.Interaction
             int? stringPoolId = ResolveMiniRoomGameMessageStringPoolId(messageCode);
             string chatText = ResolveMiniRoomBaseGameMessageText(messageCode, characterName, stringPoolId);
             AppendSocialRoomChatEntry(chatText, SocialRoomChatTone.System, persistState: false);
+            if (!string.IsNullOrWhiteSpace(chatText))
+            {
+                NotifySocialChatObserved(chatText);
+            }
+
             RoomState = "Chat update";
             StatusMessage = stringPoolId.HasValue
                 ? $"CMiniRoomBaseDlg::OnChat applied shared base subtype {packetSubType} game message code {messageCode} through StringPool id 0x{stringPoolId.Value:X}."
@@ -3404,6 +3416,7 @@ namespace HaCreator.MapSimulator.Interaction
         public void AddMiniRoomSystemMessage(string message, bool isWarning = false)
         {
             AddMiniRoomChatEntry(message, isWarning ? SocialRoomChatTone.Warning : SocialRoomChatTone.System);
+            NotifySocialChatObserved(message);
         }
 
         private void NotifySocialChatObserved(string message)
@@ -6206,9 +6219,9 @@ namespace HaCreator.MapSimulator.Interaction
             string placement = _employeeHasWorldPosition && !_employeeUseOwnerAnchor
                 ? $"world({_employeeWorldX},{_employeeWorldY})"
                 : $"owner({_employeeAnchorOffsetX},{_employeeAnchorOffsetY})";
-            if (_employeeHasPacketData)
+            if (_employeePoolRuntime.HasEntries)
             {
-                return $"{templateText}@hidden, pkt(employer={_employeePacketEmployerId})";
+                return $"{templateText}@hidden, pkt(employer={ResolveEmployeePoolEmployerId()})";
             }
 
             return $"{templateText}@{placement}";
@@ -6234,11 +6247,6 @@ namespace HaCreator.MapSimulator.Interaction
                 return visiblePooledEmployee.NameTag;
             }
 
-            if (_employeeHasPacketData && !string.IsNullOrWhiteSpace(_employeePacketNameTag))
-            {
-                return _employeePacketNameTag;
-            }
-
             return string.IsNullOrWhiteSpace(OwnerName) ? "Owner" : OwnerName;
         }
 
@@ -6249,12 +6257,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return $"|pkt|{pooledEmployee.EmployerId}|{pooledEmployee.FootholdId}|{pooledEmployee.MiniRoomType}|{pooledEmployee.MiniRoomSerial}|{pooledEmployee.BalloonTitle}|{pooledEmployee.BalloonByte0}|{pooledEmployee.BalloonByte1}|{pooledEmployee.BalloonByte2}";
             }
 
-            if (!_employeeHasPacketData)
-            {
-                return string.Empty;
-            }
-
-            return $"|pkt|{_employeePacketEmployerId}|{_employeePacketFootholdId}|{_employeePacketMiniRoomType}|{_employeePacketMiniRoomSerial}|{_employeePacketBalloonTitle}|{_employeePacketBalloonByte0}|{_employeePacketBalloonByte1}|{_employeePacketBalloonByte2}";
+            return string.Empty;
         }
 
         private bool TryGetVisibleEmployeePoolEntry(out SocialRoomEmployeePoolEntryState state)
@@ -6278,9 +6281,6 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal void ApplyPacketOwnedEmployeePoolState(
             IReadOnlyList<SocialRoomEmployeePoolEntrySnapshot> snapshots,
-            int preferredEmployerId,
-            bool hasPacketState,
-            int lastKnownEmployerId,
             string statusMessage,
             bool persistState)
         {
@@ -6290,9 +6290,10 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _employeePoolRuntime.Restore(snapshots);
-            _employeePoolRuntime.SetPreferredEmployerId(Math.Max(0, preferredEmployerId));
-            _employeeHasPacketData = hasPacketState || (snapshots?.Count > 0);
-            SyncLegacyEmployeePacketStateFromPool(Math.Max(lastKnownEmployerId, preferredEmployerId));
+            if (_employeePoolRuntime.PreferredEmployerId > 0)
+            {
+                _employeePacketEmployerId = _employeePoolRuntime.PreferredEmployerId;
+            }
 
             if (!string.IsNullOrWhiteSpace(statusMessage))
             {
@@ -6305,37 +6306,19 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private void SyncLegacyEmployeePacketStateFromPool(int fallbackEmployerId = 0)
+        private int ResolveEmployeePoolEmployerId()
         {
             if (TryGetVisibleEmployeePoolEntry(out SocialRoomEmployeePoolEntryState pooledEmployee))
             {
-                _employeePacketActorHidden = false;
-                _employeePacketEmployerId = pooledEmployee.EmployerId;
-                _employeePacketFootholdId = pooledEmployee.FootholdId;
-                _employeePacketNameTag = pooledEmployee.NameTag ?? string.Empty;
-                _employeePacketMiniRoomType = pooledEmployee.MiniRoomType;
-                _employeePacketMiniRoomSerial = pooledEmployee.MiniRoomSerial;
-                _employeePacketBalloonTitle = pooledEmployee.BalloonTitle ?? string.Empty;
-                _employeePacketBalloonByte0 = pooledEmployee.BalloonByte0;
-                _employeePacketBalloonByte1 = pooledEmployee.BalloonByte1;
-                _employeePacketBalloonByte2 = pooledEmployee.BalloonByte2;
-                return;
+                return pooledEmployee.EmployerId;
             }
 
-            _employeePacketActorHidden = _employeeHasPacketData;
-            if (fallbackEmployerId > 0)
+            if (_employeePoolRuntime.PreferredEmployerId > 0)
             {
-                _employeePacketEmployerId = fallbackEmployerId;
+                return _employeePoolRuntime.PreferredEmployerId;
             }
 
-            _employeePacketFootholdId = 0;
-            _employeePacketNameTag = string.Empty;
-            _employeePacketMiniRoomType = 0;
-            _employeePacketMiniRoomSerial = 0;
-            _employeePacketBalloonTitle = string.Empty;
-            _employeePacketBalloonByte0 = 0;
-            _employeePacketBalloonByte1 = 0;
-            _employeePacketBalloonByte2 = 0;
+            return Math.Max(0, _employeePacketEmployerId);
         }
 
         private static bool HasEmployeeTemplate(int templateId)

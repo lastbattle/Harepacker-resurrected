@@ -26,6 +26,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int MaxRecentOutboundPackets = 32;
         private const int MaxRecentSg88ManualAttackRequests = 16;
         private const int Sg88ManualAttackCaptureGraceMs = 120;
+        private const int MaxLearnedSg88ManualAttackTemplatesPerTargetCount = 8;
         private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket);
         private sealed class LearnedSg88ManualAttackTemplate
         {
@@ -34,6 +35,8 @@ namespace HaCreator.MapSimulator.Managers
             public required int ObservedAt { get; init; }
             public required string Source { get; init; }
             public required string Evidence { get; init; }
+            public required int PrimaryTargetMobId { get; init; }
+            public required int[] TargetMobIds { get; init; }
             public string ResolutionSource { get; set; }
         }
 
@@ -59,7 +62,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly Queue<OutboundPacketTrace> _recentOutboundPackets = new();
         private readonly List<Sg88ManualAttackCapture> _pendingSg88ManualAttackCaptures = new();
         private readonly Queue<Sg88ManualAttackCapture> _recentSg88ManualAttackCaptures = new();
-        private readonly Dictionary<int, LearnedSg88ManualAttackTemplate> _learnedSg88ManualAttackTemplates = new();
+        private readonly Dictionary<int, List<LearnedSg88ManualAttackTemplate>> _learnedSg88ManualAttackTemplates = new();
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
@@ -529,6 +532,8 @@ namespace HaCreator.MapSimulator.Managers
             {
                 if (!TryResolveLearnedSg88ManualAttackRequestTemplate(
                         resolvedTargetMobIds.Length,
+                        primaryTargetMobId,
+                        resolvedTargetMobIds,
                         out template,
                         out templateStatus))
                 {
@@ -1356,6 +1361,8 @@ namespace HaCreator.MapSimulator.Managers
 
         internal bool TryResolveLearnedSg88ManualAttackRequestTemplate(
             int targetCount,
+            int primaryTargetMobId,
+            IReadOnlyList<int> targetMobIds,
             out Sg88ManualAttackRequestPacketTemplate template,
             out string status)
         {
@@ -1367,10 +1374,12 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             PruneExpiredSg88ManualAttackCaptures(Environment.TickCount);
+            int[] resolvedTargetMobIds = NormalizeTargetMobIds(targetMobIds);
 
             Sg88ManualAttackCapture selectedCapture = null;
             bool selectedCaptureIsPending = false;
             int selectedObservedAt = int.MinValue;
+            int selectedLaneScore = int.MinValue;
             Sg88ManualAttackRequestPacketTemplate selectedTemplate = default;
 
             bool TryConsiderCapture(Sg88ManualAttackCapture capture, bool isPendingCapture)
@@ -1393,8 +1402,14 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
+                int laneScore = GetSg88TemplateLaneScore(
+                    primaryTargetMobId,
+                    resolvedTargetMobIds,
+                    capture.PrimaryTargetMobId,
+                    capture.TargetMobIds);
                 if (selectedCapture != null
-                    && requestPacket.ObservedAt < selectedObservedAt)
+                    && (laneScore < selectedLaneScore
+                        || (laneScore == selectedLaneScore && requestPacket.ObservedAt < selectedObservedAt)))
                 {
                     return false;
                 }
@@ -1403,6 +1418,7 @@ namespace HaCreator.MapSimulator.Managers
                 selectedCapture = capture;
                 selectedCaptureIsPending = isPendingCapture;
                 selectedObservedAt = requestPacket.ObservedAt;
+                selectedLaneScore = laneScore;
                 return true;
             }
 
@@ -1423,18 +1439,32 @@ namespace HaCreator.MapSimulator.Managers
                     ? "live official capture"
                     : $"archived official capture ({selectedCapture.ResolutionSource ?? "resolved"})";
                 status =
-                    $"Using learned SG-88 request template from opcode 0x{template.Opcode:X} captured at tick {selectedCapture.RequestedAt} via {captureState}.";
+                    $"Using learned SG-88 request template from opcode 0x{template.Opcode:X} captured at tick {selectedCapture.RequestedAt} via {captureState} laneScore={selectedLaneScore}.";
                 return true;
             }
 
-            if (_learnedSg88ManualAttackTemplates.TryGetValue(targetCount, out LearnedSg88ManualAttackTemplate learnedTemplate))
+            if (_learnedSg88ManualAttackTemplates.TryGetValue(targetCount, out List<LearnedSg88ManualAttackTemplate> learnedTemplates)
+                && learnedTemplates.Count > 0)
             {
+                LearnedSg88ManualAttackTemplate learnedTemplate = learnedTemplates
+                    .OrderByDescending(candidate => GetSg88TemplateLaneScore(
+                        primaryTargetMobId,
+                        resolvedTargetMobIds,
+                        candidate.PrimaryTargetMobId,
+                        candidate.TargetMobIds))
+                    .ThenByDescending(candidate => candidate.ObservedAt)
+                    .First();
+                int laneScore = GetSg88TemplateLaneScore(
+                    primaryTargetMobId,
+                    resolvedTargetMobIds,
+                    learnedTemplate.PrimaryTargetMobId,
+                    learnedTemplate.TargetMobIds);
                 template = learnedTemplate.Template;
                 string resolution = string.IsNullOrWhiteSpace(learnedTemplate.ResolutionSource)
                     ? "cached official capture"
                     : $"cached official capture ({learnedTemplate.ResolutionSource})";
                 status =
-                    $"Using cached learned SG-88 request template from opcode 0x{template.Opcode:X} captured at tick {learnedTemplate.RequestedAt} via {resolution}.";
+                    $"Using cached learned SG-88 request template from opcode 0x{template.Opcode:X} captured at tick {learnedTemplate.RequestedAt} via {resolution} laneScore={laneScore}.";
                 return true;
             }
 
@@ -1476,23 +1506,114 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            if (_learnedSg88ManualAttackTemplates.TryGetValue(targetCount, out LearnedSg88ManualAttackTemplate existingTemplate)
-                && (existingTemplate.ObservedAt > trace.ObservedAt
-                    || (existingTemplate.ObservedAt == trace.ObservedAt
-                        && string.CompareOrdinal(existingTemplate.Evidence, binding.Evidence) >= 0)))
+            if (!_learnedSg88ManualAttackTemplates.TryGetValue(targetCount, out List<LearnedSg88ManualAttackTemplate> templates))
             {
-                return;
+                templates = new List<LearnedSg88ManualAttackTemplate>();
+                _learnedSg88ManualAttackTemplates[targetCount] = templates;
             }
 
-            _learnedSg88ManualAttackTemplates[targetCount] = new LearnedSg88ManualAttackTemplate
+            int existingIndex = templates.FindIndex(candidate =>
+                candidate.PrimaryTargetMobId == capture.PrimaryTargetMobId
+                && candidate.TargetMobIds.SequenceEqual(capture.TargetMobIds));
+            if (existingIndex >= 0)
+            {
+                LearnedSg88ManualAttackTemplate existingTemplate = templates[existingIndex];
+                if (existingTemplate.ObservedAt > trace.ObservedAt
+                    || (existingTemplate.ObservedAt == trace.ObservedAt
+                        && string.CompareOrdinal(existingTemplate.Evidence, binding.Evidence) >= 0))
+                {
+                    return;
+                }
+
+                templates.RemoveAt(existingIndex);
+            }
+
+            templates.Add(new LearnedSg88ManualAttackTemplate
             {
                 Template = template,
                 RequestedAt = capture.RequestedAt,
                 ObservedAt = trace.ObservedAt,
                 Source = trace.Source,
                 Evidence = binding.Evidence,
+                PrimaryTargetMobId = capture.PrimaryTargetMobId,
+                TargetMobIds = (int[])capture.TargetMobIds.Clone(),
                 ResolutionSource = capture.ResolutionSource
-            };
+            });
+            templates.Sort((left, right) =>
+            {
+                int observedCompare = right.ObservedAt.CompareTo(left.ObservedAt);
+                if (observedCompare != 0)
+                {
+                    return observedCompare;
+                }
+
+                return string.CompareOrdinal(right.Evidence, left.Evidence);
+            });
+
+            while (templates.Count > MaxLearnedSg88ManualAttackTemplatesPerTargetCount)
+            {
+                templates.RemoveAt(templates.Count - 1);
+            }
+        }
+
+        private static int[] NormalizeTargetMobIds(IReadOnlyList<int> targetMobIds)
+        {
+            if (targetMobIds == null || targetMobIds.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            List<int> normalized = new(targetMobIds.Count);
+            HashSet<int> seen = new();
+            foreach (int mobId in targetMobIds)
+            {
+                if (mobId <= 0 || !seen.Add(mobId))
+                {
+                    continue;
+                }
+
+                normalized.Add(mobId);
+            }
+
+            return normalized.ToArray();
+        }
+
+        private static int GetSg88TemplateLaneScore(
+            int primaryTargetMobId,
+            IReadOnlyList<int> targetMobIds,
+            int candidatePrimaryTargetMobId,
+            IReadOnlyList<int> candidateTargetMobIds)
+        {
+            int[] normalizedTargets = NormalizeTargetMobIds(targetMobIds);
+            int[] normalizedCandidateTargets = NormalizeTargetMobIds(candidateTargetMobIds);
+            bool samePrimary = primaryTargetMobId > 0
+                && candidatePrimaryTargetMobId > 0
+                && primaryTargetMobId == candidatePrimaryTargetMobId;
+            bool sameOrderedTargets = normalizedTargets.SequenceEqual(normalizedCandidateTargets);
+            bool sameTargetSet = normalizedTargets.Length == normalizedCandidateTargets.Length
+                && normalizedTargets.OrderBy(static mobId => mobId)
+                    .SequenceEqual(normalizedCandidateTargets.OrderBy(static mobId => mobId));
+            if (samePrimary && sameOrderedTargets)
+            {
+                return 4;
+            }
+
+            if (samePrimary && sameTargetSet)
+            {
+                return 3;
+            }
+
+            if (samePrimary)
+            {
+                return 2;
+            }
+
+            if (sameTargetSet)
+            {
+                return 1;
+            }
+
+            return 0;
         }
 
         private static int[] FindAllInt32Offsets(byte[] payload, int value)

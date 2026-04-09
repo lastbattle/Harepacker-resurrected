@@ -126,10 +126,7 @@ namespace HaCreator.MapSimulator
                 publishedScriptTemplateId = request.SpeakerNpcId;
             }
 
-            IReadOnlyList<string> publishedScriptNames = npc != null
-                ? FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames(npc.NpcInstance)
-                : FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames(publishedScriptTemplateId);
-            PublishDynamicObjectTagStatesForScriptNames(publishedScriptNames, currTickCount);
+            PublishDynamicObjectTagStatesForNpc(publishedScriptTemplateId, currTickCount, npc);
 
             _npcInteractionOverlay.Open(request.State);
             return DispatchPacketOwnedScriptAutoResponse(request.AutoResponse);

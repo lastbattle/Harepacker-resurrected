@@ -75,6 +75,7 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _btnNpc;
 
         private bool _bIsCollapsedState = false; // minimised minimap state
+        private bool _isMiniMapVisible = true;
         private int _currentOption = ClientOptionExpanded;
         private int _previousExpandedOption = ClientOptionExpanded;
         private readonly int _minimapImageWidth;
@@ -105,9 +106,9 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientButtonIdMinimapRestore = 1001;
         private const int ClientButtonIdMap = 1002;
         private const int ClientButtonIdOption = 1003;
-        private const int ClientOptionCollapsed = 0;
+        private const int ClientOptionExpanded = 0;
         private const int ClientOptionCompact = 1;
-        private const int ClientOptionExpanded = 2;
+        private const int ClientOptionCollapsed = 2;
         private const int ClientTopRowButtonTop = 4;
         private const int ClientTopRowButtonRightPadding = 6;
         private const int ClientOptionButtonBottomPadding = 4;
@@ -328,6 +329,11 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
+            if (!_isMiniMapVisible)
+            {
+                return;
+            }
+
             // control minimap render UI position via
             //  Position.X, Position.Y
 
@@ -444,9 +450,23 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public bool IsMiniMapVisible => _isMiniMapVisible;
+
         public bool IsCollapsed => _bIsCollapsedState;
 
-        public bool IsExpandedOptionActive => !_bIsCollapsedState && NormalizeExpandedOption(_currentOption) >= ClientOptionExpanded;
+        public bool IsExpandedOptionActive => _isMiniMapVisible && !_bIsCollapsedState && NormalizeExpandedOption(_currentOption) == ClientOptionExpanded;
+
+        public void ReloadMiniMap(bool isVisible)
+        {
+            _isMiniMapVisible = isVisible;
+            if (isVisible)
+            {
+                return;
+            }
+
+            ResetDragState();
+            ResetTransientHoverState();
+        }
 
         public void EnsureExpanded()
         {
@@ -499,6 +519,11 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public bool ContainsPoint(int x, int y)
         {
+            if (!_isMiniMapVisible)
+            {
+                return false;
+            }
+
             BaseDXDrawableItem activeFrame = GetVisibleFrame();
             IDXObject activeFrameDrawn = activeFrame?.LastFrameDrawn ?? activeFrame?.Frame0;
             int frameWidth = activeFrameDrawn?.Width ?? 100;
@@ -515,6 +540,13 @@ namespace HaCreator.MapSimulator.UI
 
         public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
         {
+            if (!_isMiniMapVisible)
+            {
+                ResetDragState();
+                ResetTransientHoverState();
+                return false;
+            }
+
             ResetTransientHoverState();
 
             foreach (UIObject uiBtn in uiButtons)
@@ -657,7 +689,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void CollapseMinimapToRememberedOption()
         {
-            if (_currentOption > ClientOptionCollapsed)
+            if (_currentOption != ClientOptionCollapsed)
             {
                 _previousExpandedOption = _currentOption;
             }
@@ -675,7 +707,7 @@ namespace HaCreator.MapSimulator.UI
         {
             _btnMin.SetButtonState(UIObjectState.Normal);
             _btnMax.SetButtonState(UIObjectState.Disabled);
-            _currentOption = NormalizeExpandedOption(_previousExpandedOption > ClientOptionCollapsed ? _previousExpandedOption : ClientOptionCompact);
+            _currentOption = NormalizeRememberedExpandedOption(_previousExpandedOption);
             SyncFramePositionsFrom(_collapsedFrame);
             _bIsCollapsedState = false;
             UpdateButtonLayout();
@@ -694,7 +726,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            SetExpandedOption(_currentOption >= ClientOptionExpanded ? ClientOptionCompact : ClientOptionExpanded);
+            SetExpandedOption(_currentOption == ClientOptionExpanded ? ClientOptionCompact : ClientOptionExpanded);
         }
 
         private void SetExpandedOption(int option)
@@ -714,12 +746,19 @@ namespace HaCreator.MapSimulator.UI
                 return ClientOptionCompact;
             }
 
-            return option >= ClientOptionExpanded ? ClientOptionExpanded : ClientOptionCompact;
+            return option == ClientOptionExpanded ? ClientOptionExpanded : ClientOptionCompact;
+        }
+
+        private static int NormalizeRememberedExpandedOption(int option)
+        {
+            return option == ClientOptionExpanded || option == ClientOptionCompact
+                ? option
+                : ClientOptionCompact;
         }
 
         private BaseDXDrawableItem GetActiveExpandedFrame()
         {
-            return _currentOption >= ClientOptionExpanded && _expandedFrame != null ? _expandedFrame : this;
+            return _currentOption == ClientOptionExpanded && _expandedFrame != null ? _expandedFrame : this;
         }
 
         private BaseDXDrawableItem GetVisibleFrame()
@@ -729,7 +768,7 @@ namespace HaCreator.MapSimulator.UI
 
         private Point GetCurrentMarkerOffset()
         {
-            return NormalizeExpandedOption(_currentOption) >= ClientOptionExpanded
+            return NormalizeExpandedOption(_currentOption) == ClientOptionExpanded
                 ? _expandedMarkerOffset
                 : _compactMarkerOffset;
         }
@@ -918,43 +957,49 @@ namespace HaCreator.MapSimulator.UI
             int previousExpandedOption,
             bool supportsExpandedOption)
         {
-            static int NormalizeExpandedOptionForState(int option, bool supportsExpanded)
+            static int NormalizeClientOptionForState(int option, bool supportsExpanded)
             {
                 if (!supportsExpanded)
                 {
                     return ClientOptionCompact;
                 }
 
-                return option >= ClientOptionExpanded ? ClientOptionExpanded : ClientOptionCompact;
+                return option switch
+                {
+                    ClientOptionExpanded => ClientOptionExpanded,
+                    ClientOptionCompact => ClientOptionCompact,
+                    ClientOptionCollapsed => ClientOptionCollapsed,
+                    _ => ClientOptionCompact
+                };
             }
 
-            int normalizedCurrentOption = currentOption <= ClientOptionCollapsed
-                ? ClientOptionCollapsed
-                : NormalizeExpandedOptionForState(currentOption, supportsExpandedOption);
-            int normalizedPreviousExpandedOption = previousExpandedOption > ClientOptionCollapsed
-                ? NormalizeExpandedOptionForState(previousExpandedOption, supportsExpandedOption)
-                : ClientOptionCompact;
+            int normalizedCurrentOption = NormalizeClientOptionForState(currentOption, supportsExpandedOption);
+            int normalizedPreviousExpandedOption = NormalizeRememberedExpandedOption(previousExpandedOption);
 
             return buttonId switch
             {
-                ClientButtonIdMinimapState => normalizedCurrentOption <= ClientOptionCollapsed
-                    ? new ClientStateTransition(normalizedPreviousExpandedOption, normalizedPreviousExpandedOption, false)
-                    : new ClientStateTransition(ClientOptionCollapsed, normalizedCurrentOption, true),
+                ClientButtonIdMinimapState => new ClientStateTransition(
+                    normalizedCurrentOption != ClientOptionExpanded
+                        ? (normalizedCurrentOption + 1) % 3
+                        : ClientOptionCollapsed,
+                    normalizedCurrentOption,
+                    normalizedCurrentOption != ClientOptionExpanded
+                        ? ((normalizedCurrentOption + 1) % 3) == ClientOptionCollapsed
+                        : true),
                 ClientButtonIdMinimapRestore => new ClientStateTransition(
-                    normalizedCurrentOption <= ClientOptionCollapsed
-                        ? normalizedPreviousExpandedOption
-                        : normalizedCurrentOption,
+                    NormalizeRememberedExpandedOption(normalizedPreviousExpandedOption),
                     normalizedPreviousExpandedOption,
                     false),
-                ClientButtonIdOption when supportsExpandedOption => normalizedCurrentOption <= ClientOptionCollapsed
-                    ? new ClientStateTransition(ClientOptionCompact, normalizedPreviousExpandedOption, false)
-                    : normalizedCurrentOption >= ClientOptionExpanded
-                        ? new ClientStateTransition(ClientOptionCompact, ClientOptionCompact, false)
-                        : new ClientStateTransition(ClientOptionExpanded, ClientOptionExpanded, false),
-                _ => new ClientStateTransition(
-                    normalizedCurrentOption <= ClientOptionCollapsed ? ClientOptionCompact : normalizedCurrentOption,
+                ClientButtonIdOption when supportsExpandedOption => new ClientStateTransition(
+                    normalizedCurrentOption == ClientOptionExpanded
+                        ? ClientOptionCompact
+                        : ClientOptionExpanded,
                     normalizedPreviousExpandedOption,
-                    normalizedCurrentOption <= ClientOptionCollapsed)
+                    false),
+                _ => new ClientStateTransition(
+                    normalizedCurrentOption,
+                    normalizedPreviousExpandedOption,
+                    normalizedCurrentOption == ClientOptionCollapsed)
             };
         }
 
@@ -963,43 +1008,38 @@ namespace HaCreator.MapSimulator.UI
             int previousExpandedOption,
             bool supportsExpandedOption)
         {
-            static int NormalizeExpandedOptionForState(int option, bool supportsExpanded)
+            static int NormalizeClientOptionForState(int option, bool supportsExpanded)
             {
                 if (!supportsExpanded)
                 {
                     return ClientOptionCompact;
                 }
 
-                return option >= ClientOptionExpanded ? ClientOptionExpanded : ClientOptionCompact;
+                return option switch
+                {
+                    ClientOptionExpanded => ClientOptionExpanded,
+                    ClientOptionCompact => ClientOptionCompact,
+                    ClientOptionCollapsed => ClientOptionCollapsed,
+                    _ => ClientOptionCompact
+                };
             }
 
-            int normalizedCurrentOption = currentOption <= ClientOptionCollapsed
-                ? ClientOptionCollapsed
-                : NormalizeExpandedOptionForState(currentOption, supportsExpandedOption);
-            int normalizedPreviousExpandedOption = previousExpandedOption > ClientOptionCollapsed
-                ? NormalizeExpandedOptionForState(previousExpandedOption, supportsExpandedOption)
-                : ClientOptionCompact;
-
-            if (normalizedCurrentOption <= ClientOptionCollapsed)
+            int normalizedCurrentOption = NormalizeClientOptionForState(currentOption, supportsExpandedOption);
+            int nextOption = normalizedCurrentOption switch
             {
-                return new ClientStateTransition(
-                    supportsExpandedOption ? ClientOptionExpanded : ClientOptionCompact,
-                    ClientOptionCompact,
-                    false);
-            }
-
-            if (normalizedCurrentOption == ClientOptionCompact)
-            {
-                return new ClientStateTransition(
-                    ClientOptionCollapsed,
-                    normalizedCurrentOption,
-                    true);
-            }
+                ClientOptionExpanded => ClientOptionCollapsed,
+                ClientOptionCompact => ClientOptionExpanded,
+                ClientOptionCollapsed => ClientOptionCompact,
+                _ => ClientOptionCompact
+            };
+            int rememberedOption = nextOption == ClientOptionCollapsed
+                ? ClientOptionCompact
+                : normalizedCurrentOption;
 
             return new ClientStateTransition(
-                ClientOptionCompact,
-                normalizedCurrentOption,
-                false);
+                nextOption,
+                rememberedOption,
+                nextOption == ClientOptionCollapsed);
         }
 
         internal static ClientStateTransition ResolveEnsureExpandedTransitionForTesting(
@@ -1014,20 +1054,18 @@ namespace HaCreator.MapSimulator.UI
                     return ClientOptionCompact;
                 }
 
-                return option >= ClientOptionExpanded ? ClientOptionExpanded : ClientOptionCompact;
+                return option == ClientOptionExpanded ? ClientOptionExpanded : ClientOptionCompact;
             }
 
-            int normalizedCurrentOption = currentOption <= ClientOptionCollapsed
+            int normalizedCurrentOption = currentOption == ClientOptionCollapsed
                 ? ClientOptionCollapsed
                 : NormalizeExpandedOptionForState(currentOption, supportsExpandedOption);
-            int normalizedPreviousExpandedOption = previousExpandedOption > ClientOptionCollapsed
-                ? NormalizeExpandedOptionForState(previousExpandedOption, supportsExpandedOption)
-                : ClientOptionCompact;
+            int normalizedPreviousExpandedOption = NormalizeRememberedExpandedOption(previousExpandedOption);
 
-            if (normalizedCurrentOption <= ClientOptionCollapsed)
+            if (normalizedCurrentOption == ClientOptionCollapsed)
             {
                 return new ClientStateTransition(
-                    normalizedPreviousExpandedOption,
+                    NormalizeRememberedExpandedOption(normalizedPreviousExpandedOption),
                     normalizedPreviousExpandedOption,
                     false);
             }
@@ -1050,16 +1088,14 @@ namespace HaCreator.MapSimulator.UI
                     return ClientOptionCompact;
                 }
 
-                return option >= ClientOptionExpanded ? ClientOptionExpanded : ClientOptionCompact;
+                return option == ClientOptionExpanded ? ClientOptionExpanded : ClientOptionCompact;
             }
 
-            int normalizedCurrentOption = currentOption <= ClientOptionCollapsed
+            int normalizedCurrentOption = currentOption == ClientOptionCollapsed
                 ? ClientOptionCollapsed
                 : NormalizeExpandedOptionForState(currentOption, supportsExpandedOption);
-            int normalizedPreviousExpandedOption = previousExpandedOption > ClientOptionCollapsed
-                ? NormalizeExpandedOptionForState(previousExpandedOption, supportsExpandedOption)
-                : ClientOptionCompact;
-            int rememberedExpandedOption = normalizedCurrentOption > ClientOptionCollapsed
+            int normalizedPreviousExpandedOption = NormalizeRememberedExpandedOption(previousExpandedOption);
+            int rememberedExpandedOption = normalizedCurrentOption != ClientOptionCollapsed
                 ? normalizedCurrentOption
                 : normalizedPreviousExpandedOption;
 
@@ -1075,13 +1111,15 @@ namespace HaCreator.MapSimulator.UI
             bool supportsExpandedOption,
             bool supportsNpcButton)
         {
-            int normalizedCurrentOption = currentOption <= ClientOptionCollapsed
-                ? ClientOptionCollapsed
-                : supportsExpandedOption && currentOption >= ClientOptionExpanded
-                    ? ClientOptionExpanded
-                    : ClientOptionCompact;
+            int normalizedCurrentOption = currentOption switch
+            {
+                ClientOptionExpanded when supportsExpandedOption => ClientOptionExpanded,
+                ClientOptionCompact => ClientOptionCompact,
+                ClientOptionCollapsed => ClientOptionCollapsed,
+                _ => ClientOptionCompact
+            };
 
-            if (isCollapsed || normalizedCurrentOption <= ClientOptionCollapsed)
+            if (isCollapsed || normalizedCurrentOption == ClientOptionCollapsed)
             {
                 return new ClientButtonVisibility(
                     MinVisible: false,
@@ -1095,7 +1133,7 @@ namespace HaCreator.MapSimulator.UI
                 MinVisible: true,
                 MaxVisible: false,
                 BigVisible: supportsExpandedOption && normalizedCurrentOption == ClientOptionCompact,
-                SmallVisible: supportsExpandedOption && normalizedCurrentOption >= ClientOptionExpanded,
+                SmallVisible: supportsExpandedOption && normalizedCurrentOption == ClientOptionExpanded,
                 NpcVisible: supportsNpcButton);
         }
 

@@ -57,6 +57,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int MesoGiveFailedPacketType = 237;
         public const int RandomMesobagSucceededPacketType = 238;
         public const int RandomMesobagFailedPacketType = 239;
+        public const int SkillLearnItemResultClientPacketType = 50;
         public const int OpenSkillGuideClientPacketType = 262;
         public const int PlayEventSoundClientPacketType = 246;
         public const int PlayMinigameSoundClientPacketType = 247;
@@ -102,6 +103,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int RepeatSkillModeEndAckPacketType = PacketOwnedMechanicRepeatSkillRuntime.RepeatSkillModeEndAckPacketType;
         public const int Sg88ManualAttackConfirmPacketType = PacketOwnedMechanicRepeatSkillRuntime.Sg88ManualAttackConfirmPacketType;
         public const int MechanicEquipStatePacketType = 1023;
+        public const int PetConsumeResultPacketType = 1024;
         public const int RepairDurabilityResultPacketType = 1025;
 
         private readonly ConcurrentQueue<LocalUtilityPacketInboxMessage> _pendingMessages = new();
@@ -662,6 +664,16 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("petconsumeresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("petitemuseresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("petuseresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("hpresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("hazardresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = PetConsumeResultPacketType;
+                return true;
+            }
+
             if (token.Equals("classcompetition", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("openclasscompetitionpage", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("onopenclasscompetitionpage", StringComparison.OrdinalIgnoreCase)
@@ -754,6 +766,15 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("skilllearnitem", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("skilllearnitemresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("masterybookresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onskilllearnitemresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = SkillLearnItemResultClientPacketType;
+                return true;
+            }
+
             if (token.Equals("funckeymap", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("keymap", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("funckeyinit", StringComparison.OrdinalIgnoreCase))
@@ -842,6 +863,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == QuestGuideResultPacketType
                 || packetType == DeliveryQuestPacketType
                 || packetType == SkillCooltimeSetPacketType
+                || packetType == SkillLearnItemResultClientPacketType
                 || packetType == FuncKeyMapInitPacketType
                 || packetType == PetConsumeItemInitPacketType
                 || packetType == PetConsumeMpItemInitPacketType
@@ -987,6 +1009,7 @@ namespace HaCreator.MapSimulator.Managers
                 MesoGiveFailedPacketType => "OnMesoGive_Failed(237)",
                 RandomMesobagSucceededPacketType => "OnRandomMesobag_Succeeded(238)",
                 RandomMesobagFailedPacketType => "OnRandomMesobag_Failed(239)",
+                SkillLearnItemResultClientPacketType => "OnSkillLearnItemResult(50)",
                 PlayEventSoundClientPacketType => "PlayEventSound(246)",
                 PlayMinigameSoundClientPacketType => "PlayMinigameSound(247)",
                 QuestResultPacketType => "OnQuestResult(242)",

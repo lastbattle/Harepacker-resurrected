@@ -805,6 +805,14 @@ namespace HaCreator.MapSimulator
                         SyncAnimationDisplayerRemoteUserState(enterPacket.CharacterId);
                     }
 
+                    if (applied)
+                    {
+                        _remoteUserPool.TryApplyEnterFieldAvatarPresentation(
+                            enterPacket,
+                            currentTime,
+                            out _);
+                    }
+
                     result = applied
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {enterPacket.Name} ({enterPacket.CharacterId})."
                         : enterMessage;
@@ -1074,14 +1082,20 @@ namespace HaCreator.MapSimulator
                         return false;
                     }
 
-                    string pickupActorName = ResolveRemotePickupActorName(dropPickupPacket.ActorKind, dropPickupPacket.ActorId, dropPickupPacket.ActorName);
+                    string pickupActorName = ResolveRemoteUserDropPickupActorName(
+                        dropPickupPacket,
+                        _remoteUserPool,
+                        ResolveMobPickupSourceName,
+                        ResolvePickupItemName);
+                    Vector2? pickupTargetPosition = ResolveRemoteUserDropPickupTargetPosition(dropPickupPacket);
                     bool pickupApplied = _dropPool.ResolveRemotePickup(
                         drop,
                         dropPickupPacket.ActorId,
                         currentTime,
                         dropPickupPacket.ActorKind,
                         pickupActorName,
-                        pickedByPet: dropPickupPacket.ActorKind == DropPickupActorKind.Pet);
+                        pickedByPet: dropPickupPacket.ActorKind == DropPickupActorKind.Pet,
+                        pickupTargetPosition: pickupTargetPosition);
                     result = pickupApplied
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for drop {dropPickupPacket.DropId}."
                         : $"Remote drop pickup could not be applied for drop {dropPickupPacket.DropId}.";
@@ -1250,6 +1264,29 @@ namespace HaCreator.MapSimulator
                     => FormatOtherPickupActorLabel(actorId),
                 _ => null
             };
+        }
+
+        internal static string ResolveRemoteUserDropPickupActorName(
+            RemoteUserDropPickupPacket packet,
+            RemoteUserActorPool remoteUserPool,
+            Func<int, string> mobNameResolver,
+            Func<int, string> itemNameResolver)
+        {
+            return ResolveRemotePickupActorName(
+                packet.ActorKind,
+                packet.ActorId,
+                packet.ActorName,
+                remoteUserPool,
+                mobNameResolver,
+                itemNameResolver,
+                packet.FallbackOwnerId);
+        }
+
+        internal static Vector2? ResolveRemoteUserDropPickupTargetPosition(RemoteUserDropPickupPacket packet)
+        {
+            return packet.TargetX.HasValue && packet.TargetY.HasValue
+                ? new Vector2(packet.TargetX.Value, packet.TargetY.Value)
+                : null;
         }
 
         internal static string FormatPlayerPickupActorLabel(int actorId)

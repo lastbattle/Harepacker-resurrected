@@ -961,14 +961,16 @@ namespace HaCreator.MapSimulator
             foreach ((int scanCode, PacketOwnedFuncKeyMappedEntry entry) in EnumeratePacketOwnedCurrentMappedEntries())
             {
                 if (!IsPacketOwnedCastEntryType(entry.Type)
-                    || entry.Id <= 0
-                    || IsPacketOwnedCastEntryHandledByLiveHotkeyBinding(scanCode))
+                    || entry.Id <= 0)
                 {
                     continue;
                 }
 
                 Keys key = ResolvePacketOwnedScanCodeKey(scanCode);
-                if (key == Keys.None)
+                if (!ShouldHandlePacketOwnedCastEntryViaRawRuntime(
+                    _playerManager?.Input,
+                    key,
+                    IsPacketOwnedCastEntryHandledByLiveHotkeyBinding(scanCode)))
                 {
                     continue;
                 }
@@ -1013,6 +1015,16 @@ namespace HaCreator.MapSimulator
         private static bool WasPacketOwnedFuncKeyReleased(KeyboardState keyboardState, KeyboardState previousKeyboardState, Keys key)
         {
             return !keyboardState.IsKeyDown(key) && previousKeyboardState.IsKeyDown(key);
+        }
+
+        private static bool ShouldHandlePacketOwnedCastEntryViaRawRuntime(
+            PlayerInput input,
+            Keys key,
+            bool handledByLiveHotkeyBinding)
+        {
+            return !handledByLiveHotkeyBinding
+                && key != Keys.None
+                && !IsPacketOwnedHotkeyKeyProtected(input, key);
         }
 
         private static int ComposePacketOwnedFuncKeyInputToken(int scanCode)

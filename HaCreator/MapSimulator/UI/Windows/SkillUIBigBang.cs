@@ -1932,7 +1932,7 @@ namespace HaCreator.MapSimulator.UI
 
                     string tokenText = segmentText[start..index];
                     if (whitespace)
-                        tokenText = Regex.Replace(tokenText, "\\s+", " ");
+                        tokenText = tokenText.Replace('\t', ' ');
 
                     if (tokenText.Length > 0)
                         tokens.Add(new TooltipToken(tokenText, segmentColor, isWhitespace: whitespace, isNewLine: false));

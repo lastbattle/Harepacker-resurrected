@@ -10,17 +10,27 @@ namespace HaCreator.MapSimulator.Character
             SkillData sourceSkill,
             IReadOnlyCollection<SkillData> supportSkills = null)
         {
-            return ResolveAuthoredAuraOwnerSkill(sourceSkill, supportSkills) != null;
+            return TryResolveAuthoredAuraOwnerSkills(
+                sourceSkill,
+                supportSkills,
+                out _,
+                out _);
         }
 
-        internal static SkillData BuildLoopingAvatarEffectSkill(
+        internal static bool TryBuildLoopingAvatarEffectSkill(
             SkillData sourceSkill,
-            IReadOnlyCollection<SkillData> supportSkills = null)
+            IReadOnlyCollection<SkillData> supportSkills,
+            out SkillData effectSkill,
+            out int signature)
         {
-            SkillData ownerSkill = ResolveAuthoredAuraOwnerSkill(sourceSkill, supportSkills);
-            if (ownerSkill == null)
+            effectSkill = null;
+            if (!TryResolveAuthoredAuraOwnerSkills(
+                    sourceSkill,
+                    supportSkills,
+                    out IReadOnlyList<SkillData> ownerSkills,
+                    out signature))
             {
-                return null;
+                return false;
             }
 
             SkillAnimation overlayAnimation = null;
@@ -28,20 +38,23 @@ namespace HaCreator.MapSimulator.Character
             SkillAnimation underFaceAnimation = null;
             SkillAnimation underFaceSecondaryAnimation = null;
 
-            AssignAffectedAreaAvatarEffectPlane(
-                CreateLoopingAvatarEffect(ownerSkill.AffectedEffect),
-                ref overlayAnimation,
-                ref overlaySecondaryAnimation,
-                ref underFaceAnimation,
-                ref underFaceSecondaryAnimation);
-            AssignAffectedAreaAvatarEffectPlane(
-                CreateLoopingAvatarEffect(ownerSkill.AffectedSecondaryEffect),
-                ref overlayAnimation,
-                ref overlaySecondaryAnimation,
-                ref underFaceAnimation,
-                ref underFaceSecondaryAnimation);
+            foreach (SkillData ownerSkill in ownerSkills)
+            {
+                AssignAffectedAreaAvatarEffectPlane(
+                    CreateLoopingAvatarEffect(ownerSkill.AffectedEffect),
+                    ref overlayAnimation,
+                    ref overlaySecondaryAnimation,
+                    ref underFaceAnimation,
+                    ref underFaceSecondaryAnimation);
+                AssignAffectedAreaAvatarEffectPlane(
+                    CreateLoopingAvatarEffect(ownerSkill.AffectedSecondaryEffect),
+                    ref overlayAnimation,
+                    ref overlaySecondaryAnimation,
+                    ref underFaceAnimation,
+                    ref underFaceSecondaryAnimation);
+            }
 
-            return new SkillData
+            effectSkill = new SkillData
             {
                 SkillId = sourceSkill?.SkillId ?? 0,
                 AvatarOverlayEffect = overlayAnimation,
@@ -49,22 +62,35 @@ namespace HaCreator.MapSimulator.Character
                 AvatarUnderFaceEffect = underFaceAnimation,
                 AvatarUnderFaceSecondaryEffect = underFaceSecondaryAnimation
             };
+            return true;
         }
 
-        internal static SkillData ResolveAuthoredAuraOwnerSkill(
+        private static bool TryResolveAuthoredAuraOwnerSkills(
             SkillData sourceSkill,
-            IReadOnlyCollection<SkillData> supportSkills = null)
+            IReadOnlyCollection<SkillData> supportSkills,
+            out IReadOnlyList<SkillData> ownerSkills,
+            out int signature)
         {
+            var resolvedOwnerSkills = new List<SkillData>();
+            var hash = new HashCode();
+
             foreach (SkillData skill in EnumerateEffectSourceSkills(sourceSkill, supportSkills))
             {
                 if (skill?.AffectedEffect?.Frames?.Count > 0
                     || skill?.AffectedSecondaryEffect?.Frames?.Count > 0)
                 {
-                    return skill;
+                    resolvedOwnerSkills.Add(skill);
+                    hash.Add(skill.SkillId);
+                    hash.Add(skill.AffectedEffect?.Frames?.Count ?? 0);
+                    hash.Add(skill.AffectedSecondaryEffect?.Frames?.Count ?? 0);
                 }
             }
 
-            return null;
+            ownerSkills = resolvedOwnerSkills;
+            signature = resolvedOwnerSkills.Count > 0
+                ? hash.ToHashCode()
+                : 0;
+            return resolvedOwnerSkills.Count > 0;
         }
 
         private static IEnumerable<SkillData> EnumerateEffectSourceSkills(

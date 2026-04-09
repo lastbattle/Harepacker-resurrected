@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Loaders;
 using Microsoft.Xna.Framework;
@@ -176,6 +177,11 @@ namespace HaCreator.MapSimulator.Effects
             int TotalLifetimeMs,
             int CriticalDelayMs,
             int RiseDistancePx);
+        internal readonly record struct PreparedDamageNumberLayerRegistration(
+            CompositeCanvasPlacement Placement,
+            DamageNumberAnimationTimeline Timeline,
+            Point CriticalBannerOffset,
+            bool HasCriticalBanner);
         internal sealed record PreparedDamageNumberLayer(
             int CanvasWidth,
             int CanvasHeight,
@@ -193,6 +199,7 @@ namespace HaCreator.MapSimulator.Effects
         private readonly Queue<WzDamageNumber> _pool = new Queue<WzDamageNumber>();
         private GraphicsDevice _device;
         private bool _initialized = false;
+        private AnimationEffects _animationEffects;
 
         // Fallback font for when WZ sprites not loaded
         private SpriteFont _fallbackFont;
@@ -220,6 +227,11 @@ namespace HaCreator.MapSimulator.Effects
         /// Whether WZ-based rendering is available.
         /// </summary>
         public bool HasWzSprites => DamageNumberLoader.IsInitialized;
+
+        public void SetAnimationEffects(AnimationEffects animationEffects)
+        {
+            _animationEffects = animationEffects;
+        }
         #endregion
 
         #region Spawn Methods
@@ -273,6 +285,11 @@ namespace HaCreator.MapSimulator.Effects
                 dmgNumber.PreparedVisual = PrepareVisual(dmgNumber);
                 dmgNumber.LayerState = PrepareLayer(dmgNumber.PreparedVisual);
                 dmgNumber.CompositeCanvasTexture = CreateCompositeCanvasTexture(dmgNumber.PreparedVisual, colorType, useCriticalPresentation);
+
+                if (TryRegisterPreparedCanvasLayer(dmgNumber))
+                {
+                    return;
+                }
             }
 
             _activeNumbers.Add(dmgNumber);
@@ -623,6 +640,26 @@ namespace HaCreator.MapSimulator.Effects
                 ResolveAnimationTimeline());
         }
 
+        internal static PreparedDamageNumberLayerRegistration BuildOneTimeLayerRegistration(
+            PreparedDamageNumberVisual visual,
+            PreparedDamageNumberLayer layer,
+            int centerX,
+            int centerTop)
+        {
+            CompositeCanvasPlacement placement = ResolveCompositeCanvasPlacement(
+                centerX,
+                centerTop,
+                layer?.CanvasWidth ?? visual?.CanvasWidth ?? 0);
+            PreparedSpriteDrawInfo? criticalBanner = visual?.CriticalBannerSprite;
+            return new PreparedDamageNumberLayerRegistration(
+                placement,
+                layer?.Timeline ?? ResolveAnimationTimeline(),
+                criticalBanner is PreparedSpriteDrawInfo banner
+                    ? new Point(banner.DrawOffsetX, banner.DrawOffsetY)
+                    : Point.Zero,
+                criticalBanner.HasValue);
+        }
+
         internal static CompositeCanvasPlacement ResolveCompositeCanvasPlacement(
             int centerX,
             int centerTop,
@@ -756,6 +793,48 @@ namespace HaCreator.MapSimulator.Effects
             return renderTarget;
         }
 
+        private bool TryRegisterPreparedCanvasLayer(WzDamageNumber dmgNumber)
+        {
+            if (_animationEffects == null
+                || dmgNumber?.PreparedVisual == null
+                || dmgNumber.LayerState == null
+                || dmgNumber.CompositeCanvasTexture == null)
+            {
+                return false;
+            }
+
+            PreparedDamageNumberLayerRegistration registration = BuildOneTimeLayerRegistration(
+                dmgNumber.PreparedVisual,
+                dmgNumber.LayerState,
+                (int)Math.Round(dmgNumber.X),
+                (int)Math.Round(dmgNumber.BaseY));
+
+            DamageNumberDigitSet largeDigitSet = ResolveLargeDigitSet(dmgNumber.ColorType, dmgNumber.IsCritical);
+            Texture2D criticalBannerTexture = registration.HasCriticalBanner
+                ? largeDigitSet?.CriticalEffectTexture
+                : null;
+
+            _animationEffects.RegisterOneTimeCanvasLayer(
+                dmgNumber.CompositeCanvasTexture,
+                registration.Placement.Left,
+                registration.Placement.Top,
+                registration.Timeline.HoldDurationMs,
+                registration.Timeline.FadeDurationMs,
+                registration.Timeline.RiseDistancePx,
+                dmgNumber.SpawnTime,
+                criticalBannerTexture,
+                registration.HasCriticalBanner ? registration.CriticalBannerOffset : Point.Zero,
+                registration.Timeline.CriticalDelayMs,
+                ownsCanvasTexture: true,
+                owner: AnimationCanvasLayerOwner.DamageNumber);
+
+            dmgNumber.CompositeCanvasTexture = null;
+            dmgNumber.PreparedVisual = null;
+            dmgNumber.LayerState = null;
+            _pool.Enqueue(dmgNumber);
+            return true;
+        }
+
         private static void ReleaseCompositeCanvas(WzDamageNumber dmgNumber)
         {
             if (dmgNumber?.CompositeCanvasTexture == null)
@@ -808,6 +887,7 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         public void Clear()
         {
+            _animationEffects?.ClearDamageNumberLayers();
             foreach (var dmgNumber in _activeNumbers)
             {
                 ReleaseCompositeCanvas(dmgNumber);
@@ -819,7 +899,7 @@ namespace HaCreator.MapSimulator.Effects
         /// <summary>
         /// Get the count of active damage numbers.
         /// </summary>
-        public int ActiveCount => _activeNumbers.Count;
+        public int ActiveCount => _activeNumbers.Count + (_animationEffects?.DamageNumberLayerCount ?? 0);
 
         /// <summary>
         /// Dispose resources.

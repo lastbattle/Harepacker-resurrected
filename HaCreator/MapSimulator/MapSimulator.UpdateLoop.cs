@@ -328,6 +328,7 @@ namespace HaCreator.MapSimulator
             UpdateInitialQuizOwner(currTickCount);
             UpdateSpeedQuizOwner(currTickCount);
             UpdatePacketOwnedTutorRuntime(currTickCount);
+            SyncClientOwnedTutorialTutorOwner(currTickCount);
             UpdateVegaSpellOwnerState();
             UpdatePacketOwnedRadioSchedule(currTickCount);
             UpdateUtilityAudioMix(currTickCount);
@@ -1058,6 +1059,7 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            TryApplyClientOwnedWeddingPhotoSceneCameraLock();
 
             UpdateFieldRuleRuntime(currTickCount);
 

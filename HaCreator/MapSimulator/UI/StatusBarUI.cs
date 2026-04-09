@@ -963,7 +963,7 @@ namespace HaCreator.MapSimulator.UI {
 
         private void DrawHoveredBuffTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
         {
-            if (_font == null || !TryGetHoveredBuffEntry(out StatusBarBuffRenderData buffEntry, out Rectangle iconRect))
+            if (!HasStatusBarTextRenderer() || !TryGetHoveredBuffEntry(out StatusBarBuffRenderData buffEntry, out Rectangle iconRect))
             {
                 return;
             }
@@ -1184,7 +1184,7 @@ namespace HaCreator.MapSimulator.UI {
                         DrawCooldownMask(sprite, iconRect, cooldownEntry.MaskFrameIndex);
                     }
 
-                    if (_font == null || cooldownEntry.RemainingMs <= 0 || cooldownEntry.SuppressCounterText)
+                    if (!HasStatusBarTextRenderer() || cooldownEntry.RemainingMs <= 0 || cooldownEntry.SuppressCounterText)
                     {
                         continue;
                     }
@@ -1205,7 +1205,7 @@ namespace HaCreator.MapSimulator.UI {
 
         private void DrawHoveredCooldownTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
         {
-            if (_font == null || !TryGetHoveredCooldownEntry(out StatusBarCooldownRenderData cooldownEntry, out Rectangle iconRect))
+            if (!HasStatusBarTextRenderer() || !TryGetHoveredCooldownEntry(out StatusBarCooldownRenderData cooldownEntry, out Rectangle iconRect))
             {
                 return;
             }
@@ -1600,7 +1600,7 @@ namespace HaCreator.MapSimulator.UI {
 
         private string[] WrapTooltipText(string text, float maxWidth)
         {
-            if (_font == null || string.IsNullOrWhiteSpace(text))
+            if (!HasStatusBarTextRenderer() || string.IsNullOrWhiteSpace(text))
             {
                 return Array.Empty<string>();
             }
@@ -1655,7 +1655,7 @@ namespace HaCreator.MapSimulator.UI {
 
         private string ClipTextToWidth(string text, float maxWidth, float scale)
         {
-            if (_font == null || string.IsNullOrWhiteSpace(text))
+            if (!HasStatusBarTextRenderer() || string.IsNullOrWhiteSpace(text))
             {
                 return text ?? string.Empty;
             }
@@ -1707,7 +1707,7 @@ namespace HaCreator.MapSimulator.UI {
                 return MeasureBitmapString(text, bitmapScale);
             }
 
-            if (_font == null || string.IsNullOrEmpty(text))
+            if (!HasStatusBarTextRenderer() || string.IsNullOrEmpty(text))
             {
                 return 0f;
             }
@@ -1877,7 +1877,7 @@ namespace HaCreator.MapSimulator.UI {
 
         private void DrawPlainText(SpriteBatch sprite, string text, Vector2 position, Color textColor, float scale = 1.0f, float? maxWidth = null)
         {
-            if (_font == null || string.IsNullOrEmpty(text))
+            if (!HasStatusBarTextRenderer() || string.IsNullOrEmpty(text))
             {
                 return;
             }
@@ -1894,7 +1894,7 @@ namespace HaCreator.MapSimulator.UI {
 
         private void DrawDiagonalShadowText(SpriteBatch sprite, string text, Vector2 position, Color textColor, Color shadowColor, float scale = 1.0f, float? maxWidth = null)
         {
-            if (_font == null || string.IsNullOrEmpty(text))
+            if (!HasStatusBarTextRenderer() || string.IsNullOrEmpty(text))
             {
                 return;
             }

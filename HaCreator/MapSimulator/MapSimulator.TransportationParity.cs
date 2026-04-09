@@ -31,7 +31,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _lastTransportFieldInitRequestSummary = $"Prepared transport field-init opcode {TransportationFieldInitRequestCodec.OutboundFieldInitOpcode} for field {fieldId} shipKind {shipKind}, but no live transport official-session bridge is armed.";
+            _lastTransportFieldInitRequestSummary = $"Prepared {TransportationFieldInitRequestCodec.DescribeFieldInitRequest(fieldId, shipKind)}, but no live transport official-session bridge is armed.";
         }
 
         private bool TryDispatchTransportFieldInitRequest(bool queueOnly, int? fieldIdOverride, int? shipKindOverride, out string status)
@@ -83,7 +83,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            status = $"Resolved transport field-init request for field {fieldId} shipKind {shipKind}.";
+            status = $"Resolved {TransportationFieldInitRequestCodec.DescribeFieldInitRequest(fieldId, shipKind)}.";
             return true;
         }
 

@@ -82,6 +82,7 @@ namespace HaCreator.MapSimulator.Fields
         private bool _exitButtonEnabled;
         private bool _requestSent;
         private bool _receiveCompensation;
+        private int? _pendingNoticeStringPoolId;
         private int _currentNpcDisplayIndex;
         private int _lastSwitchTick;
         private int _switchCadenceMs;
@@ -91,6 +92,7 @@ namespace HaCreator.MapSimulator.Fields
         private RockPaperScissorsChoice _npcChoice = RockPaperScissorsChoice.None;
         private RockPaperScissorsMainButtonType _mainButtonType = RockPaperScissorsMainButtonType.Start;
         private RockPaperScissorsResultType _resultType = RockPaperScissorsResultType.None;
+        private string _pendingNoticeMessage;
 
         public bool IsVisible => _isVisible;
         public bool ChoiceButtonsEnabled => _choiceButtonsEnabled;
@@ -504,6 +506,23 @@ namespace HaCreator.MapSimulator.Fields
             return $"RPS: visible | opcode={OwnerOpcode} | owner={ClientDialogOwnerName} | entry={_entryDialogValue} | main={_mainButtonType} | buttons={(_choiceButtonsEnabled ? "enabled" : "disabled")} | requestSent={_requestSent} | player={DescribeChoice(_playerChoice)} | npc={DescribeChoice(_npcChoice)} | streak={StraightVictoryCount} | result={DescribeResultType(_resultType)} | compensation={_receiveCompensation} | summary={LastPacketSummary}";
         }
 
+        public bool TryConsumePendingNotice(out int stringPoolId, out string message)
+        {
+            if (_pendingNoticeStringPoolId is not int pendingStringPoolId
+                || string.IsNullOrWhiteSpace(_pendingNoticeMessage))
+            {
+                stringPoolId = 0;
+                message = null;
+                return false;
+            }
+
+            stringPoolId = pendingStringPoolId;
+            message = _pendingNoticeMessage;
+            _pendingNoticeStringPoolId = null;
+            _pendingNoticeMessage = null;
+            return true;
+        }
+
         public void Reset()
         {
             _isVisible = false;
@@ -527,6 +546,7 @@ namespace HaCreator.MapSimulator.Fields
             CurrentStatusMessage = "Rock-Paper-Scissors dialog inactive.";
             LastPacketSummary = "No Rock-Paper-Scissors packet applied yet.";
             LastPacketType = 0;
+            ClearPendingNotice();
         }
 
         private bool TryApplyOpenPacket(byte[] payload, int currentTimeMs, out string errorMessage)
@@ -566,6 +586,7 @@ namespace HaCreator.MapSimulator.Fields
             LastDialogOwner = ClientDialogOwnerName;
             CurrentStatusMessage = $"{ResolveOpenNoticeText()} [StringPool 0x{OpenNoticeStringPoolId:X}]";
             LastPacketSummary = $"open (8) notice -> {ClientDialogOwnerName} entry={_entryDialogValue}";
+            QueuePacketOwnedNotice(OpenNoticeStringPoolId, ResolveOpenNoticeText());
             _roundDeadlineTick = 0;
             _switchCadenceMs = 0;
             _resultExpireTick = 0;
@@ -596,10 +617,12 @@ namespace HaCreator.MapSimulator.Fields
                 case 6:
                 case 7:
                 case 14:
+                    ClearPendingNotice();
                     _choiceButtonsEnabled = false;
                     _mainButtonEnabled = true;
                     _exitButtonEnabled = true;
                     _requestSent = false;
+                    _receiveCompensation = false;
                     _npcChoice = RockPaperScissorsChoice.None;
                     _playerChoice = RockPaperScissorsChoice.None;
                     StraightVictoryCount = 0;
@@ -619,19 +642,30 @@ namespace HaCreator.MapSimulator.Fields
                         7 => "reset (7) -> main button restored + notice 3723",
                         _ => "reset (14) -> main button restored without a notice"
                     };
+                    if (packetType == 6)
+                    {
+                        QueuePacketOwnedNotice(WinNoticeStringPoolId, ResolveWinNoticeText());
+                    }
+                    else if (packetType == 7)
+                    {
+                        QueuePacketOwnedNotice(LoseNoticeStringPoolId, ResolveLoseNoticeText());
+                    }
                     break;
 
                 case 9:
                 case 12:
+                    ClearPendingNotice();
                     BeginRound(currentTimeMs);
                     CurrentStatusMessage = $"RPS subtype {packetType} started a live round, cleared the NPC choice, armed the 30000 ms limit, and enabled the three RPS buttons.";
                     LastPacketSummary = $"round-start ({packetType}) -> switching=120 limit=30000";
                     break;
 
                 case 10:
+                    ClearPendingNotice();
                     _choiceButtonsEnabled = false;
                     _roundDeadlineTick = 0;
                     _switchCadenceMs = 0;
+                    _receiveCompensation = false;
                     _npcChoice = RockPaperScissorsChoice.None;
                     StraightVictoryCount = -1;
                     ShowResult(currentTimeMs);
@@ -640,6 +674,7 @@ namespace HaCreator.MapSimulator.Fields
                     break;
 
                 case 11:
+                    ClearPendingNotice();
                     using (var stream = new MemoryStream(payload, writable: false))
                     using (var reader = new BinaryReader(stream))
                     {
@@ -702,6 +737,7 @@ namespace HaCreator.MapSimulator.Fields
             _playerChoice = RockPaperScissorsChoice.None;
             _resultType = RockPaperScissorsResultType.None;
             _requestSent = false;
+            _receiveCompensation = false;
             _choiceButtonsEnabled = true;
             _mainButtonEnabled = false;
             _exitButtonEnabled = false;
@@ -888,6 +924,24 @@ namespace HaCreator.MapSimulator.Fields
         private static string ResolveWinNoticeText() => MapleStoryStringPool.GetOrFallback(WinNoticeStringPoolId, "Rock-Paper-Scissors round complete: win notice.");
 
         private static string ResolveLoseNoticeText() => MapleStoryStringPool.GetOrFallback(LoseNoticeStringPoolId, "Rock-Paper-Scissors round complete: lose notice.");
+
+        private void QueuePacketOwnedNotice(int stringPoolId, string message)
+        {
+            if (stringPoolId <= 0 || string.IsNullOrWhiteSpace(message))
+            {
+                ClearPendingNotice();
+                return;
+            }
+
+            _pendingNoticeStringPoolId = stringPoolId;
+            _pendingNoticeMessage = message;
+        }
+
+        private void ClearPendingNotice()
+        {
+            _pendingNoticeStringPoolId = null;
+            _pendingNoticeMessage = null;
+        }
 
         private static string DescribeChoice(RockPaperScissorsChoice choice)
         {

@@ -55,6 +55,20 @@ namespace HaCreator.MapSimulator.UI
         public bool IsValid => MasterLevel > 0 && SkillIds.Count > 0;
     }
 
+    public readonly struct ConsumeItemRequirementMetadata
+    {
+        public ConsumeItemRequirementMetadata(int itemId, int count, int rate)
+        {
+            ItemId = itemId;
+            Count = Math.Max(1, count);
+            Rate = Math.Max(0, rate);
+        }
+
+        public int ItemId { get; }
+        public int Count { get; }
+        public int Rate { get; }
+    }
+
     public static class InventoryItemMetadataResolver
     {
         private const int DefaultStackLimit = 100;
@@ -395,6 +409,58 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        public static IReadOnlyList<ConsumeItemRequirementMetadata> ResolveConsumeItemRequirements(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return Array.Empty<ConsumeItemRequirementMetadata>();
+            }
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            return ResolveConsumeItemRequirements(itemProperty?["info"] as WzSubProperty);
+        }
+
+        public static IReadOnlyList<ConsumeItemRequirementMetadata> ResolveConsumeItemRequirements(WzSubProperty infoProperty)
+        {
+            WzSubProperty consumeItemProperty = infoProperty?["consumeitem"] as WzSubProperty
+                                               ?? infoProperty?["consumeItem"] as WzSubProperty;
+            List<ConsumeItemRequirementEntry> entries = GetConsumeItemRequirementEntries(consumeItemProperty);
+            if (entries.Count == 0)
+            {
+                return Array.Empty<ConsumeItemRequirementMetadata>();
+            }
+
+            List<ConsumeItemRequirementMetadata> resolvedEntries = new(entries.Count);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                ConsumeItemRequirementEntry entry = entries[i];
+                if (entry.ItemId <= 0)
+                {
+                    continue;
+                }
+
+                resolvedEntries.Add(new ConsumeItemRequirementMetadata(entry.ItemId, entry.Count, entry.Rate));
+            }
+
+            return resolvedEntries;
+        }
+
+        public static int ResolveItemCooldownSeconds(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return 0;
+            }
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            return ResolveItemCooldownSeconds(itemProperty?["info"] as WzSubProperty);
+        }
+
+        public static int ResolveItemCooldownSeconds(WzSubProperty infoProperty)
+        {
+            return Math.Max(0, GetIntOrStringValue(infoProperty?["cooltime"]));
+        }
+
         public static bool TryResolveClientItemCrc(int itemId, out uint crc)
         {
             crc = 0;
@@ -426,6 +492,7 @@ namespace HaCreator.MapSimulator.UI
             WzSubProperty itemProperty = LoadItemProperty(itemId);
             WzSubProperty infoProperty = itemProperty?["info"] as WzSubProperty;
             WzSubProperty specProperty = itemProperty?["spec"] as WzSubProperty;
+            WzSubProperty specExProperty = itemProperty?["specEx"] as WzSubProperty;
 
             bool isCashItem = GetIntValue(infoProperty?["cash"]) == 1;
             bool isNotForSale = GetIntValue(infoProperty?["notSale"]) == 1;
@@ -443,11 +510,12 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            List<string> effectLines = BuildEffectLines(itemId, itemProperty, infoProperty, specProperty);
+            List<string> effectLines = BuildEffectLines(itemId, itemProperty, infoProperty, specProperty, specExProperty);
             List<string> metadataLines = BuildMetadataLines(
                 itemId,
                 infoProperty,
                 specProperty,
+                specExProperty,
                 isNotForSale,
                 isQuestItem,
                 isTradeBlocked,
@@ -794,7 +862,12 @@ namespace HaCreator.MapSimulator.UI
             return crc;
         }
 
-        private static List<string> BuildEffectLines(int itemId, WzSubProperty itemProperty, WzSubProperty infoProperty, WzSubProperty specProperty)
+        private static List<string> BuildEffectLines(
+            int itemId,
+            WzSubProperty itemProperty,
+            WzSubProperty infoProperty,
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty)
         {
             List<string> effectLines = new();
             AppendInfoEffectLines(effectLines, infoProperty);
@@ -806,54 +879,52 @@ namespace HaCreator.MapSimulator.UI
             AppendMobEffectLines(effectLines, itemProperty?["mob"] as WzSubProperty);
             AppendRewardEffectLines(effectLines, itemProperty?["reward"] as WzSubProperty);
 
-            if (specProperty == null)
+            if (specProperty == null && specExProperty == null)
             {
                 return effectLines;
             }
 
-            AppendStatEffectLine(effectLines, "HP", TryGetPositiveInt(specProperty["hp"]), false);
-            AppendStatEffectLine(effectLines, "HP", ResolveFirstPositiveInt(specProperty, "hpR", "hpRatio", "hpPer"), true);
-            AppendStatEffectLine(effectLines, "MP", TryGetPositiveInt(specProperty["mp"]), false);
-            AppendStatEffectLine(effectLines, "MP", ResolveFirstPositiveInt(specProperty, "mpR", "mpRatio", "mpPer"), true);
-            AppendStatEffectLine(effectLines, "Weapon ATT", TryGetPositiveInt(specProperty["pad"]), false);
-            AppendStatEffectLine(effectLines, "Magic ATT", TryGetPositiveInt(specProperty["mad"]), false);
-            AppendStatEffectLine(effectLines, "Weapon DEF", TryGetPositiveInt(specProperty["pdd"]), false);
-            AppendStatEffectLine(effectLines, "Magic DEF", TryGetPositiveInt(specProperty["mdd"]), false);
-            AppendStatEffectLine(effectLines, "Accuracy", TryGetPositiveInt(specProperty["acc"]), false);
-            AppendStatEffectLine(effectLines, "Avoidability", TryGetPositiveInt(specProperty["eva"]), false);
-            AppendStatEffectLine(effectLines, "Speed", TryGetPositiveInt(specProperty["speed"]), false);
-            AppendStatEffectLine(effectLines, "Jump", TryGetPositiveInt(specProperty["jump"]), false);
-            AppendPrimaryFlatEffectLines(effectLines, specProperty);
-            AppendPercentEffectLines(effectLines, specProperty);
-            AppendIndependentFlatEffectLines(effectLines, specProperty);
-            AppendIndependentPercentEffectLines(effectLines, specProperty);
-            AppendCureEffectLine(effectLines, specProperty);
-            AppendFatigueEffectLine(effectLines, specProperty["incFatigue"]);
-            AppendMoveToEffectLine(effectLines, TryGetPositiveInt(specProperty["moveTo"]));
-            AppendMorphEffectLine(effectLines, specProperty);
-            AppendBoosterEffectLine(effectLines, specProperty["booster"], specProperty["indieBooster"]);
-            AppendBerserkEffectLine(effectLines, specProperty["berserk"]);
-            AppendThawEffectLine(effectLines, specProperty["thaw"]);
-            AppendCrossContinentEffectLine(effectLines, specProperty["ignoreContinent"]);
-            AppendReturnMapRecordEffectLine(effectLines, specProperty["returnMapQR"]);
-            AppendRandomMoveInFieldSetEffectLine(effectLines, specProperty["randomMoveInFieldSet"]);
-            AppendExperienceEffectLines(effectLines, specProperty);
-            AppendMobEffectLines(effectLines, specProperty["mob"] as WzSubProperty);
+            WzSubProperty effectSpecProperty = specProperty ?? specExProperty;
+            AppendStatEffectLine(effectLines, "HP", TryGetPositiveInt(effectSpecProperty["hp"]), false);
+            AppendStatEffectLine(effectLines, "HP", ResolveFirstPositiveInt(effectSpecProperty, "hpR", "hpRatio", "hpPer"), true);
+            AppendStatEffectLine(effectLines, "MP", TryGetPositiveInt(effectSpecProperty["mp"]), false);
+            AppendStatEffectLine(effectLines, "MP", ResolveFirstPositiveInt(effectSpecProperty, "mpR", "mpRatio", "mpPer"), true);
+            AppendStatEffectLine(effectLines, "Weapon ATT", TryGetPositiveInt(effectSpecProperty["pad"]), false);
+            AppendStatEffectLine(effectLines, "Magic ATT", TryGetPositiveInt(effectSpecProperty["mad"]), false);
+            AppendStatEffectLine(effectLines, "Weapon DEF", TryGetPositiveInt(effectSpecProperty["pdd"]), false);
+            AppendStatEffectLine(effectLines, "Magic DEF", TryGetPositiveInt(effectSpecProperty["mdd"]), false);
+            AppendStatEffectLine(effectLines, "Accuracy", TryGetPositiveInt(effectSpecProperty["acc"]), false);
+            AppendStatEffectLine(effectLines, "Avoidability", TryGetPositiveInt(effectSpecProperty["eva"]), false);
+            AppendStatEffectLine(effectLines, "Speed", TryGetPositiveInt(effectSpecProperty["speed"]), false);
+            AppendStatEffectLine(effectLines, "Jump", TryGetPositiveInt(effectSpecProperty["jump"]), false);
+            AppendPrimaryFlatEffectLines(effectLines, effectSpecProperty);
+            AppendPercentEffectLines(effectLines, effectSpecProperty);
+            AppendIndependentFlatEffectLines(effectLines, effectSpecProperty);
+            AppendIndependentPercentEffectLines(effectLines, effectSpecProperty);
+            AppendCureEffectLine(effectLines, effectSpecProperty);
+            AppendFatigueEffectLine(effectLines, effectSpecProperty["incFatigue"]);
+            AppendMoveToEffectLine(effectLines, TryGetPositiveInt(effectSpecProperty["moveTo"]));
+            AppendMorphEffectLine(effectLines, effectSpecProperty);
+            AppendBoosterEffectLine(effectLines, effectSpecProperty["booster"], effectSpecProperty["indieBooster"]);
+            AppendBerserkEffectLine(effectLines, effectSpecProperty["berserk"]);
+            AppendThawEffectLine(effectLines, effectSpecProperty["thaw"]);
+            AppendCrossContinentEffectLine(effectLines, effectSpecProperty["ignoreContinent"]);
+            AppendReturnMapRecordEffectLine(effectLines, effectSpecProperty["returnMapQR"]);
+            AppendRandomMoveInFieldSetEffectLine(effectLines, effectSpecProperty["randomMoveInFieldSet"]);
+            AppendExperienceEffectLines(effectLines, effectSpecProperty);
+            AppendMobEffectLines(effectLines, effectSpecProperty["mob"] as WzSubProperty);
+            AppendSpecExMobSkillEffectLines(effectLines, specExProperty);
+            AppendPickupTriggerEffectLines(effectLines, specProperty, specExProperty);
 
-            int? durationMs = TryGetPositiveInt(specProperty["time"]);
+            int? durationMs = TryGetPositiveInt(effectSpecProperty["time"]);
             if (durationMs.HasValue)
             {
                 effectLines.Add($"Duration: {FormatDuration(durationMs.Value)}");
             }
 
-            if (GetIntValue(specProperty["party"]) == 1)
+            if (GetIntValue(effectSpecProperty["party"]) == 1)
             {
                 effectLines.Add("Applies to party members");
-            }
-
-            if (GetIntValue(specProperty["consumeOnPickup"]) == 1)
-            {
-                effectLines.Add("Consumed on pickup");
             }
 
             return effectLines;
@@ -863,6 +934,7 @@ namespace HaCreator.MapSimulator.UI
             int itemId,
             WzSubProperty infoProperty,
             WzSubProperty specProperty,
+            WzSubProperty specExProperty,
             bool isNotForSale,
             bool isQuestItem,
             bool isTradeBlocked,
@@ -894,7 +966,7 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add($"Expires {expirationDateUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}");
             }
 
-            AppendInfoMetadataLines(metadataLines, itemId, infoProperty, specProperty);
+            AppendInfoMetadataLines(metadataLines, itemId, infoProperty, specProperty, specExProperty);
             AppendMonsterBookMetadataLines(metadataLines, infoProperty);
             AppendQuestRequirementMetadataLines(metadataLines, infoProperty);
             AppendConsumeItemMetadataLines(metadataLines, infoProperty);
@@ -1080,7 +1152,39 @@ namespace HaCreator.MapSimulator.UI
                 && morphRandom.WzProperties != null
                 && morphRandom.WzProperties.Count > 0)
             {
-                effectLines.Add("Transforms into a random morph");
+                List<WzSubProperty> randomMorphEntries = GetNumericNamedChildren(morphRandom);
+                if (randomMorphEntries.Count <= 0)
+                {
+                    effectLines.Add("Transforms into a random morph");
+                    return;
+                }
+
+                List<string> previewEntries = new();
+                for (int i = 0; i < randomMorphEntries.Count && previewEntries.Count < 3; i++)
+                {
+                    WzSubProperty entry = randomMorphEntries[i];
+                    int randomMorphId = GetIntOrStringValue(entry["morph"]);
+                    if (randomMorphId <= 0)
+                    {
+                        continue;
+                    }
+
+                    int probability = GetIntOrStringValue(entry["prop"]);
+                    previewEntries.Add(probability > 0
+                        ? $"#{randomMorphId.ToString(CultureInfo.InvariantCulture)} ({probability.ToString(CultureInfo.InvariantCulture)}%)"
+                        : $"#{randomMorphId.ToString(CultureInfo.InvariantCulture)}");
+                }
+
+                if (previewEntries.Count <= 0)
+                {
+                    effectLines.Add("Transforms into a random morph");
+                    return;
+                }
+
+                string suffix = randomMorphEntries.Count > previewEntries.Count
+                    ? $", +{(randomMorphEntries.Count - previewEntries.Count).ToString(CultureInfo.InvariantCulture)} more"
+                    : string.Empty;
+                effectLines.Add($"Random Morphs: {string.Join(", ", previewEntries)}{suffix}");
             }
         }
 
@@ -1139,6 +1243,31 @@ namespace HaCreator.MapSimulator.UI
             if (GetIntValue(specProperty["runOnPickup"]) == 1)
             {
                 effectLines.Add("Runs immediately on pickup");
+            }
+        }
+
+        private static void AppendPickupTriggerEffectLines(
+            List<string> effectLines,
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty)
+        {
+            bool consumedOnPickup = GetIntValue(specProperty?["consumeOnPickup"]) == 1
+                                    || GetIntValue(specExProperty?["consumeOnPickup"]) == 1;
+            if (consumedOnPickup)
+            {
+                effectLines.Add("Consumed on pickup");
+            }
+
+            if (GetIntValue(specProperty?["onlyPickup"]) == 1
+                || GetIntValue(specExProperty?["onlyPickup"]) == 1)
+            {
+                effectLines.Add("Can only be used when picked up");
+            }
+
+            if (GetIntValue(specProperty?["notPickupByPet"]) == 1
+                || GetIntValue(specExProperty?["notPickupByPet"]) == 1)
+            {
+                effectLines.Add("Cannot be picked up by pets");
             }
         }
 
@@ -1356,7 +1485,8 @@ namespace HaCreator.MapSimulator.UI
             List<string> metadataLines,
             int itemId,
             WzSubProperty infoProperty,
-            WzSubProperty specProperty = null)
+            WzSubProperty specProperty = null,
+            WzSubProperty specExProperty = null)
         {
             if (infoProperty == null)
             {
@@ -1388,8 +1518,62 @@ namespace HaCreator.MapSimulator.UI
             AppendLevelUpWarningMetadataLines(metadataLines, infoProperty);
             AppendRecipeMetadataLines(metadataLines, specProperty);
             AppendConditionalMapMetadataLines(metadataLines, specProperty);
+            AppendSpecExMobSkillMetadataLines(metadataLines, specExProperty);
             AppendCashAvailabilityMetadataLines(metadataLines, infoProperty);
             AppendAdditionalInfoFlagsMetadataLines(metadataLines, infoProperty, specProperty);
+        }
+
+        private static void AppendSpecExMobSkillEffectLines(List<string> effectLines, WzSubProperty specExProperty)
+        {
+            if (specExProperty?.WzProperties == null)
+            {
+                return;
+            }
+
+            HashSet<string> seenLines = new(StringComparer.Ordinal);
+            List<WzSubProperty> entries = GetNumericNamedChildren(specExProperty);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                WzSubProperty entry = entries[i];
+                int mobSkillId = GetIntOrStringValue(entry["mobSkill"]);
+                if (mobSkillId <= 0)
+                {
+                    continue;
+                }
+
+                int level = Math.Max(1, GetIntOrStringValue(entry["level"]));
+                string line = $"Applies Mob Skill #{mobSkillId.ToString(CultureInfo.InvariantCulture)} Lv. {level.ToString(CultureInfo.InvariantCulture)}";
+                if (seenLines.Add(line))
+                {
+                    effectLines.Add(line);
+                }
+            }
+        }
+
+        private static void AppendSpecExMobSkillMetadataLines(List<string> metadataLines, WzSubProperty specExProperty)
+        {
+            if (specExProperty?.WzProperties == null)
+            {
+                return;
+            }
+
+            HashSet<string> seenLines = new(StringComparer.Ordinal);
+            List<WzSubProperty> entries = GetNumericNamedChildren(specExProperty);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                WzSubProperty entry = entries[i];
+                int target = GetIntOrStringValue(entry["target"]);
+                if (target <= 0)
+                {
+                    continue;
+                }
+
+                string line = $"Mob Skill Target: {FormatMobSkillTargetLabel(target)}";
+                if (seenLines.Add(line))
+                {
+                    metadataLines.Add(line);
+                }
+            }
         }
 
         private static void AppendStateChangeItemMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
@@ -1943,6 +2127,16 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add("Automatically loots items");
             }
 
+            if (GetIntValue(infoProperty["pickupAll"]) == 1)
+            {
+                metadataLines.Add("Automatically loots items and mesos");
+            }
+
+            if (GetIntValue(infoProperty["ignorePickup"]) == 1)
+            {
+                metadataLines.Add("Ignores pet looting");
+            }
+
             if (GetIntValue(infoProperty["sweepForDrop"]) == 1)
             {
                 metadataLines.Add("Sweeps nearby drops");
@@ -2103,6 +2297,17 @@ namespace HaCreator.MapSimulator.UI
             return string.IsNullOrWhiteSpace(mobName)
                 ? $"Mob #{mobId.ToString(CultureInfo.InvariantCulture)}"
                 : mobName;
+        }
+
+        private static string FormatMobSkillTargetLabel(int target)
+        {
+            return target switch
+            {
+                1 => "Self",
+                2 => "Target",
+                3 => "Area",
+                _ => $"Target {target.ToString(CultureInfo.InvariantCulture)}"
+            };
         }
 
         private static string FormatTooltipKeywordLabel(string value)
@@ -2389,17 +2594,17 @@ namespace HaCreator.MapSimulator.UI
 
         public static IReadOnlyList<string> BuildEffectLinesForTests(WzSubProperty specProperty)
         {
-            return BuildEffectLines(0, null, null, specProperty);
+            return BuildEffectLines(0, null, null, specProperty, null);
         }
 
         public static IReadOnlyList<string> BuildEffectLinesForTests(WzSubProperty infoProperty, WzSubProperty specProperty)
         {
-            return BuildEffectLines(0, null, infoProperty, specProperty);
+            return BuildEffectLines(0, null, infoProperty, specProperty, null);
         }
 
         public static IReadOnlyList<string> BuildEffectLinesForTests(WzSubProperty itemProperty, WzSubProperty infoProperty, WzSubProperty specProperty)
         {
-            return BuildEffectLines(0, itemProperty, infoProperty, specProperty);
+            return BuildEffectLines(0, itemProperty, infoProperty, specProperty, null);
         }
 
         public static IReadOnlyList<string> BuildQuestRequirementMetadataLinesForTests(WzSubProperty infoProperty)
@@ -2422,6 +2627,7 @@ namespace HaCreator.MapSimulator.UI
                 0,
                 infoProperty,
                 specProperty,
+                null,
                 isNotForSale: false,
                 isQuestItem: false,
                 isTradeBlocked: false,

@@ -139,6 +139,16 @@ namespace HaCreator.MapSimulator.Character.Skills
         public static bool TryResolveRemotePreparedSkillReleaseOwner(int skillId, int? followUpValue, out int preparedSkillId)
         {
             preparedSkillId = 0;
+            if (followUpValue.HasValue)
+            {
+                int followUpSkillId = followUpValue.Value;
+                if (UsesReleaseTriggeredExecution(followUpSkillId))
+                {
+                    preparedSkillId = followUpSkillId;
+                    return true;
+                }
+            }
+
             if (UsesReleaseTriggeredExecution(skillId))
             {
                 preparedSkillId = skillId;

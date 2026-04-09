@@ -12,9 +12,8 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class FamilyTreeWindow : UIWindowBase
     {
-        // Shaped around the shipped FamilyTree art and the verified _DrawChartItem text offsets.
-        // The raw aptNode_ coordinate table still has to be lifted from the client data section.
-        private static readonly Point[] SlotPositions =
+        // Lifted from MapleStory.exe `CUIFamilyChart::_DrawChartItem` anonymous `aptNode_` table.
+        private static readonly Point[] ClientNodePositions =
         {
             new(222, 40),
             new(222, 94),
@@ -30,6 +29,8 @@ namespace HaCreator.MapSimulator.UI
         };
 
         private const int CenterFocusSlotIndex = 3;
+        private const int LeaderPlateWidth = 134;
+        private const int LeaderPlateHeight = 36;
         private const int MemberPlateWidth = 133;
         private const int MemberPlateHeight = 34;
 
@@ -214,20 +215,13 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (FamilyTreeNodeSnapshot node in snapshot.Nodes)
             {
-                Point position = SlotPositions[node.SlotIndex];
+                Point position = ClientNodePositions[node.SlotIndex];
                 IDXObject plate = ResolvePlate(node);
                 Rectangle bounds = CreateNodeBounds(
                     new Point(Position.X + position.X, Position.Y + position.Y),
-                    plate?.Width ?? MemberPlateWidth,
-                    plate?.Height ?? MemberPlateHeight);
+                    plate?.Width ?? GetClientNodeWidth(node.SlotIndex),
+                    plate?.Height ?? GetClientNodeHeight(node.SlotIndex));
                 _nodeBounds[node.SlotIndex] = bounds;
-
-                if (node.MemberId == 0)
-                {
-                    DrawPlaceholderNode(sprite, node, bounds);
-                    DrawNodeStatistic(sprite, node, bounds);
-                    continue;
-                }
 
                 if (node.IsSelected)
                 {
@@ -240,6 +234,13 @@ namespace HaCreator.MapSimulator.UI
                         Color.White,
                         false,
                         drawReflectionInfo);
+                }
+
+                if (node.MemberId == 0)
+                {
+                    DrawPlaceholderNode(sprite, node, bounds);
+                    DrawNodeStatistic(sprite, node, bounds);
+                    continue;
                 }
 
                 if (plate != null)
@@ -351,6 +352,16 @@ namespace HaCreator.MapSimulator.UI
         private static Rectangle CreateNodeBounds(Point position, int width, int height)
         {
             return new Rectangle(position.X, position.Y, width, height);
+        }
+
+        private static int GetClientNodeWidth(int slotIndex)
+        {
+            return slotIndex == 0 ? LeaderPlateWidth : MemberPlateWidth;
+        }
+
+        private static int GetClientNodeHeight(int slotIndex)
+        {
+            return slotIndex == 0 ? LeaderPlateHeight : MemberPlateHeight;
         }
 
         private static int GetClientTextTop(int slotTop, int slotIndex, int offset)

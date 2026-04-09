@@ -7,10 +7,12 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int TitleFormatStringPoolId = 0xE4C;
         internal const int DeleteNoticeStringPoolId = 0x106F;
         internal const int EmptyMaximizeNoticeStringPoolId = 0x18EC;
+        internal const int RecentUpdateTooltipStringPoolId = 0x18A8;
 
         private const string TitleFormatFallback = "Quest Helper ({0}/5)";
         private const string DeleteNoticeFallback = "[{0}] It has been excluded from the auto alarm and it will not be automatically reigstered until you re log-on";
         private const string EmptyMaximizeNoticeFallback = "There are no quests in the quest helper.";
+        private const string RecentUpdateTooltipFallback = "This quest has recent progress updates.";
 
         public static string FormatTitle(int count)
         {
@@ -44,6 +46,18 @@ namespace HaCreator.MapSimulator.Interaction
             return MapleStoryStringPool.TryGet(stringPoolId, out text);
         }
 
+        public static string GetRecentUpdateTooltip(bool appendFallbackSuffix = false)
+        {
+            if (TryResolve(RecentUpdateTooltipStringPoolId, out string resolvedText) && IsPlausibleRecentUpdateTooltip(resolvedText))
+            {
+                return resolvedText.Trim();
+            }
+
+            return appendFallbackSuffix
+                ? $"{RecentUpdateTooltipFallback} ({MapleStoryStringPool.FormatFallbackLabel(RecentUpdateTooltipStringPoolId)} fallback)"
+                : RecentUpdateTooltipFallback;
+        }
+
         internal static bool IsPlausibleTitleFormat(string text)
         {
             return IsPlausibleQuestAlarmText(text)
@@ -70,6 +84,21 @@ namespace HaCreator.MapSimulator.Interaction
             return normalized.Contains("quest", System.StringComparison.OrdinalIgnoreCase)
                 || normalized.Contains("alarm", System.StringComparison.OrdinalIgnoreCase)
                 || normalized.Contains("register", System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool IsPlausibleRecentUpdateTooltip(string text)
+        {
+            if (!IsPlausibleQuestAlarmText(text))
+            {
+                return false;
+            }
+
+            string normalized = text.Trim();
+            return normalized.Contains("quest", System.StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("update", System.StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("progress", System.StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("check", System.StringComparison.OrdinalIgnoreCase)
+                || normalized.Contains("detail", System.StringComparison.OrdinalIgnoreCase);
         }
 
         private static string ResolveTitleFormat()

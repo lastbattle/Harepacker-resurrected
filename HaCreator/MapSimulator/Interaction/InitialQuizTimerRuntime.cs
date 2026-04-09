@@ -42,7 +42,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Packet-owned initial quiz idle.";
             }
 
-            int remainingSeconds = (GetRemainingMs(currentTickCount) + 999) / 1000;
+            int remainingSeconds = GetDisplayRemainingSeconds(currentTickCount);
             return $"Packet-owned initial quiz active: question {_questionNumber}, {remainingSeconds}s remaining, title={FormatQuotedValue(_title)}.";
         }
 
@@ -61,9 +61,14 @@ namespace HaCreator.MapSimulator.Interaction
                 _hintText,
                 _answer,
                 _questionNumber,
-                (remainingMs + 999) / 1000,
+                GetDisplayRemainingSeconds(currentTickCount),
                 remainingMs);
             return true;
+        }
+
+        internal int GetDisplayRemainingSeconds(int currentTickCount)
+        {
+            return Math.Max(0, GetRemainingMs(currentTickCount) / 1000);
         }
 
         internal void Clear()

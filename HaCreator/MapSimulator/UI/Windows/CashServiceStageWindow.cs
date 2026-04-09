@@ -129,6 +129,10 @@ namespace HaCreator.MapSimulator.UI
         private string _cashItemLastSummary = "No cash-item result routed yet.";
         private string _cashGiftLastSummary = "No packet-authored gift result routed yet.";
         private string _cashPurchaseRecordSummary = "No packet-authored purchase record routed yet.";
+        private string _cashCouponLastSummary = "No packet-authored coupon result routed yet.";
+        private string _cashNameChangeLastSummary = "No packet-authored name-change result routed yet.";
+        private string _cashTransferWorldLastSummary = "No packet-authored transfer-world result routed yet.";
+        private string _cashGachaponLastSummary = "No packet-authored cash gachapon result routed yet.";
         private int _itcNormalItemSubtype = -1;
         private int _itcNormalItemPage;
         private int _itcNormalItemCategory;
@@ -179,6 +183,10 @@ namespace HaCreator.MapSimulator.UI
         public string CashItemLastSummary => _cashItemLastSummary;
         public string CashGiftLastSummary => _cashGiftLastSummary;
         public string CashPurchaseRecordSummary => _cashPurchaseRecordSummary;
+        public string CashCouponLastSummary => _cashCouponLastSummary;
+        public string CashNameChangeLastSummary => _cashNameChangeLastSummary;
+        public string CashTransferWorldLastSummary => _cashTransferWorldLastSummary;
+        public string CashGachaponLastSummary => _cashGachaponLastSummary;
         public IReadOnlyList<PacketCatalogEntry> CashInventoryPacketEntries => _cashInventoryPacketEntries;
         public int ItcNormalItemMutationCount => _itcNormalItemMutationCount;
         public int ItcNormalItemSubtype => _itcNormalItemSubtype;
@@ -299,6 +307,10 @@ namespace HaCreator.MapSimulator.UI
             _cashPurchaseRecordStates.Clear();
             _cashGiftLastSummary = "No packet-authored gift result routed yet.";
             _cashPurchaseRecordSummary = "No packet-authored purchase record routed yet.";
+            _cashCouponLastSummary = "No packet-authored coupon result routed yet.";
+            _cashNameChangeLastSummary = "No packet-authored name-change result routed yet.";
+            _cashTransferWorldLastSummary = "No packet-authored transfer-world result routed yet.";
+            _cashGachaponLastSummary = "No packet-authored cash gachapon result routed yet.";
             _itcNormalItemSubtype = -1;
             _itcNormalItemPage = 0;
             _itcNormalItemCategory = 0;
@@ -699,7 +711,11 @@ namespace HaCreator.MapSimulator.UI
             return new[]
             {
                 balanceLine,
-                _statusMessage
+                _statusMessage,
+                _noticeState,
+                _stageKind == CashServiceStageKind.CashShop
+                    ? $"{_cashCouponLastSummary} {_cashNameChangeLastSummary} {_cashTransferWorldLastSummary} {_cashGachaponLastSummary}".Trim()
+                    : _itcNormalItemLastSummary
             };
         }
 
@@ -778,26 +794,26 @@ namespace HaCreator.MapSimulator.UI
                     detail = _cashItemLastSummary;
                     break;
                 case 385:
-                    detail = "Purchase-exp update routed through Cash Shop packet ownership.";
+                    detail = BuildCashPurchaseExpResult(payload);
                     break;
                 case 386:
-                    detail = "Gift-mate result stayed inside Cash Shop packet ownership.";
+                    detail = BuildCashGiftMateResult(payload);
                     break;
                 case 387:
-                    detail = "Duplicate-id result stayed inside Cash Shop packet ownership.";
+                    detail = BuildCashDuplicateIdResult(payload);
                     break;
                 case 388:
-                    detail = "Name-change result stayed inside Cash Shop packet ownership.";
+                    detail = BuildCashNameChangePacketResult(payload);
                     break;
                 case 390:
-                    detail = "Transfer-world result stayed inside Cash Shop packet ownership.";
+                    detail = BuildCashTransferWorldPacketResult(payload);
                     break;
                 case 391:
-                    detail = "CashShop gachapon stamp result reached the dedicated stage.";
+                    detail = BuildCashGachaponStampResult(payload);
                     break;
                 case 392:
                 case 393:
-                    detail = "CashShop gachapon result reached the dedicated stage.";
+                    detail = BuildCashGachaponPacketResult(payload, packetType);
                     break;
                 case 395:
                     detail = "One-a-day result reached the dedicated stage.";
@@ -869,6 +885,13 @@ namespace HaCreator.MapSimulator.UI
                     ? buyDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResBuyDone", packetPayload),
                 101 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResBuyFailed"),
+                102 => TryApplyCashCouponDone(packetPayload, isGiftCoupon: false, out string couponDoneMessage)
+                    ? couponDoneMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResUseCouponDone", packetPayload),
+                104 => TryApplyCashCouponDone(packetPayload, isGiftCoupon: true, out string giftCouponDoneMessage)
+                    ? giftCouponDoneMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResGiftCouponDone", packetPayload),
+                105 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResUseCouponFailed"),
                 107 => TryApplyCashGiftDone(packetPayload, out string giftDoneMessage)
                     ? giftDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResGiftDone", packetPayload),
@@ -884,6 +907,25 @@ namespace HaCreator.MapSimulator.UI
                 -81 => TryApplyCashPurchaseRecord(packetPayload, out string purchaseRecordMessage)
                     ? purchaseRecordMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResPurchaseRecord", packetPayload),
+                -77 => TryApplyCashNameChangeDone(packetPayload, out string nameChangeDoneMessage)
+                    ? nameChangeDoneMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemNameChangeResBuyDone", packetPayload),
+                -75 => TryApplyCashTransferWorldDone(packetPayload, out string transferWorldDoneMessage)
+                    ? transferWorldDoneMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResTransferWorldDone", packetPayload),
+                -74 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResTransferWorldFailed"),
+                -73 => TryApplyCashGachaponDone(packetPayload, isCopyResult: false, out string gachaponOpenDoneMessage)
+                    ? gachaponOpenDoneMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResCashGachaponOpenDone", packetPayload),
+                -72 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResCashGachaponOpenFailed"),
+                -71 => TryApplyCashGachaponDone(packetPayload, isCopyResult: true, out string gachaponCopyDoneMessage)
+                    ? gachaponCopyDoneMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResCashGachaponCopyDone", packetPayload),
+                -70 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResCashGachaponCopyFailed"),
+                -69 => TryApplyCashMaplePointChangeDone(packetPayload, out string maplePointChangeDoneMessage)
+                    ? maplePointChangeDoneMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResChangeMaplePointDone", packetPayload),
+                -68 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResChangeMaplePointFailed"),
                 -106 => TryApplyCashRebateDone(packetPayload, out string rebateDoneMessage)
                     ? rebateDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResRebateDone", packetPayload),
@@ -1126,6 +1168,38 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        private bool TryApplyCashCouponDone(byte[] payload, bool isGiftCoupon, out string message)
+        {
+            message = null;
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (stream.Length < 1)
+            {
+                return false;
+            }
+
+            _ = reader.ReadByte();
+            string firstString = TryReadMapleString(reader, out string decodedString)
+                ? SanitizePacketString(decodedString, isGiftCoupon ? "coupon recipient" : "coupon code")
+                : string.Empty;
+            int value = stream.Length - stream.Position >= sizeof(int)
+                ? Math.Max(0, reader.ReadInt32())
+                : 0;
+            _cashCouponLastSummary = isGiftCoupon
+                ? (string.IsNullOrWhiteSpace(firstString)
+                    ? "Gift coupon registration completed inside the dedicated Cash Shop status owner."
+                    : $"Gift coupon registration completed for {firstString}.")
+                : (string.IsNullOrWhiteSpace(firstString)
+                    ? "Coupon registration completed inside the dedicated Cash Shop status owner."
+                    : $"Coupon registration completed for {firstString}.")
+                    + (value > 0 ? $" Packet value {value.ToString(CultureInfo.InvariantCulture)} was acknowledged." : string.Empty);
+            _noticeState = _cashCouponLastSummary;
+            message = isGiftCoupon
+                ? $"CCashShop::OnCashItemResGiftCouponDone confirmed {_cashCouponLastSummary}"
+                : $"CCashShop::OnCashItemResUseCouponDone confirmed {_cashCouponLastSummary}";
+            return true;
+        }
+
         private bool TryApplyCashBuyPackageDone(byte[] payload, out string message)
         {
             message = null;
@@ -1256,6 +1330,95 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        private bool TryApplyCashNameChangeDone(byte[] payload, out string message)
+        {
+            message = null;
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (stream.Length < 1)
+            {
+                return false;
+            }
+
+            _ = reader.ReadByte();
+            string requestedName = TryReadMapleString(reader, out string decodedName)
+                ? SanitizePacketString(decodedName, "requested name")
+                : string.Empty;
+            _cashNameChangeLastSummary = string.IsNullOrWhiteSpace(requestedName)
+                ? "Name-change purchase completed inside the dedicated Cash Shop stage."
+                : $"Name-change purchase completed for {requestedName}.";
+            _noticeState = _cashNameChangeLastSummary;
+            message = $"CCashShop::OnCashItemNameChangeResBuyDone confirmed {_cashNameChangeLastSummary}";
+            return true;
+        }
+
+        private bool TryApplyCashTransferWorldDone(byte[] payload, out string message)
+        {
+            message = null;
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (stream.Length < 1)
+            {
+                return false;
+            }
+
+            _ = reader.ReadByte();
+            int worldId = stream.Length - stream.Position >= sizeof(int)
+                ? Math.Max(0, reader.ReadInt32())
+                : 0;
+            string targetName = TryReadMapleString(reader, out string decodedName)
+                ? SanitizePacketString(decodedName, "transfer target")
+                : string.Empty;
+            _cashTransferWorldLastSummary = worldId > 0 || !string.IsNullOrWhiteSpace(targetName)
+                ? $"Transfer-world purchase completed{(worldId > 0 ? $" for world {worldId.ToString(CultureInfo.InvariantCulture)}" : string.Empty)}{(!string.IsNullOrWhiteSpace(targetName) ? $" on {targetName}" : string.Empty)}."
+                : "Transfer-world purchase completed inside the dedicated Cash Shop stage.";
+            _noticeState = _cashTransferWorldLastSummary;
+            message = $"CCashShop::OnCashItemResTransferWorldDone confirmed {_cashTransferWorldLastSummary}";
+            return true;
+        }
+
+        private bool TryApplyCashGachaponDone(byte[] payload, bool isCopyResult, out string message)
+        {
+            message = null;
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (stream.Length < 1)
+            {
+                return false;
+            }
+
+            _ = reader.ReadByte();
+            int itemId = stream.Length - stream.Position >= sizeof(int)
+                ? Math.Max(0, reader.ReadInt32())
+                : 0;
+            int count = stream.Length - stream.Position >= sizeof(short)
+                ? Math.Max(1, (int)reader.ReadInt16())
+                : 1;
+            _cashGachaponLastSummary = itemId > 0
+                ? $"{(isCopyResult ? "Cash gachapon copy" : "Cash gachapon open")} yielded item {itemId.ToString(CultureInfo.InvariantCulture)} x{count.ToString(CultureInfo.InvariantCulture)}."
+                : $"{(isCopyResult ? "Cash gachapon copy" : "Cash gachapon open")} completed inside the dedicated stage.";
+            _noticeState = _cashGachaponLastSummary;
+            message = isCopyResult
+                ? $"CCashShop::OnCashItemResCashGachaponCopyDone confirmed {_cashGachaponLastSummary}"
+                : $"CCashShop::OnCashItemResCashGachaponOpenDone confirmed {_cashGachaponLastSummary}";
+            return true;
+        }
+
+        private bool TryApplyCashMaplePointChangeDone(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length < 1 + sizeof(int))
+            {
+                return false;
+            }
+
+            int maplePoint = Math.Max(0, BitConverter.ToInt32(payload, 1));
+            _maplePoint = maplePoint;
+            _noticeState = $"Cash-service Maple Point balance changed to {_maplePoint.ToString("N0", CultureInfo.InvariantCulture)}.";
+            message = $"CCashShop::OnCashItemResChangeMaplePointDone updated the dedicated status owner to {_maplePoint.ToString("N0", CultureInfo.InvariantCulture)} Maple Points.";
+            return true;
+        }
+
         private bool TryApplyCashRebateDone(byte[] payload, out string message)
         {
             message = null;
@@ -1299,16 +1462,116 @@ namespace HaCreator.MapSimulator.UI
         private string BuildCashItemFailureMessage(byte[] payload, string ownerName)
         {
             int reason = payload.Length >= 2 ? payload[1] : -1;
-            _noticeState = reason >= 0
+            string failureMessage = reason >= 0
                 ? $"{ownerName} failed with reason {reason.ToString(CultureInfo.InvariantCulture)}."
                 : $"{ownerName} failed before a reason byte could be decoded.";
-            return _noticeState;
+            _noticeState = failureMessage;
+
+            if (ownerName.Contains("Coupon", StringComparison.Ordinal))
+            {
+                _cashCouponLastSummary = failureMessage;
+            }
+            else if (ownerName.Contains("NameChange", StringComparison.Ordinal))
+            {
+                _cashNameChangeLastSummary = failureMessage;
+            }
+            else if (ownerName.Contains("TransferWorld", StringComparison.Ordinal))
+            {
+                _cashTransferWorldLastSummary = failureMessage;
+            }
+            else if (ownerName.Contains("Gachapon", StringComparison.Ordinal))
+            {
+                _cashGachaponLastSummary = failureMessage;
+            }
+
+            return failureMessage;
         }
 
         private string BuildCashSimpleResult(string ownerName, byte[] payload)
         {
             _noticeState = $"{ownerName} completed with {payload.Length.ToString(CultureInfo.InvariantCulture)} byte(s) of packet-owned state.";
             return _noticeState;
+        }
+
+        private string BuildCashPurchaseExpResult(byte[] payload)
+        {
+            int value = payload != null && payload.Length >= sizeof(int)
+                ? Math.Max(0, BitConverter.ToInt32(payload, 0))
+                : 0;
+            _noticeState = value > 0
+                ? $"Purchase-exp packet updated the dedicated Cash Shop stage with value {value.ToString(CultureInfo.InvariantCulture)}."
+                : "Purchase-exp update routed through Cash Shop packet ownership.";
+            return _noticeState;
+        }
+
+        private string BuildCashGiftMateResult(byte[] payload)
+        {
+            string accountName = TryReadUtf8Text(payload, out string decodedText)
+                ? SanitizePacketString(decodedText, "gift mate")
+                : string.Empty;
+            _noticeState = string.IsNullOrWhiteSpace(accountName)
+                ? "Gift-mate result stayed inside Cash Shop packet ownership."
+                : $"Gift-mate result refreshed the packet-owned recipient state for {accountName}.";
+            return _noticeState;
+        }
+
+        private string BuildCashDuplicateIdResult(byte[] payload)
+        {
+            string duplicateId = TryReadUtf8Text(payload, out string decodedText)
+                ? SanitizePacketString(decodedText, "duplicate id")
+                : string.Empty;
+            _noticeState = string.IsNullOrWhiteSpace(duplicateId)
+                ? "Duplicate-id result stayed inside Cash Shop packet ownership."
+                : $"Duplicate-id result checked {duplicateId} inside the dedicated Cash Shop stage.";
+            return _noticeState;
+        }
+
+        private string BuildCashNameChangePacketResult(byte[] payload)
+        {
+            string requestedName = TryReadUtf8Text(payload, out string decodedText)
+                ? SanitizePacketString(decodedText, "requested name")
+                : string.Empty;
+            _cashNameChangeLastSummary = string.IsNullOrWhiteSpace(requestedName)
+                ? "Name-change result stayed inside Cash Shop packet ownership."
+                : $"Name-change packet refreshed the dedicated owner for {requestedName}.";
+            _noticeState = _cashNameChangeLastSummary;
+            return _cashNameChangeLastSummary;
+        }
+
+        private string BuildCashTransferWorldPacketResult(byte[] payload)
+        {
+            int worldId = payload != null && payload.Length >= sizeof(int)
+                ? Math.Max(0, BitConverter.ToInt32(payload, 0))
+                : 0;
+            _cashTransferWorldLastSummary = worldId > 0
+                ? $"Transfer-world packet refreshed world target {worldId.ToString(CultureInfo.InvariantCulture)} inside the dedicated stage."
+                : "Transfer-world result stayed inside Cash Shop packet ownership.";
+            _noticeState = _cashTransferWorldLastSummary;
+            return _cashTransferWorldLastSummary;
+        }
+
+        private string BuildCashGachaponStampResult(byte[] payload)
+        {
+            int stampCount = payload != null && payload.Length >= sizeof(int)
+                ? Math.Max(0, BitConverter.ToInt32(payload, 0))
+                : 0;
+            _cashGachaponLastSummary = stampCount > 0
+                ? $"CashShop gachapon stamp result reported {stampCount.ToString(CultureInfo.InvariantCulture)} stamp(s) on the dedicated stage."
+                : "CashShop gachapon stamp result reached the dedicated stage.";
+            _noticeState = _cashGachaponLastSummary;
+            return _cashGachaponLastSummary;
+        }
+
+        private string BuildCashGachaponPacketResult(byte[] payload, int packetType)
+        {
+            int itemId = payload != null && payload.Length >= sizeof(int)
+                ? Math.Max(0, BitConverter.ToInt32(payload, 0))
+                : 0;
+            _cashGachaponLastSummary = itemId > 0
+                ? $"CashShop gachapon packet {packetType.ToString(CultureInfo.InvariantCulture)} staged item {itemId.ToString(CultureInfo.InvariantCulture)}."
+                : "CashShop gachapon result reached the dedicated stage.";
+            _noticeState = _cashGachaponLastSummary;
+            return _cashGachaponLastSummary;
         }
 
         private bool TryApplyItcCatalogList(byte[] payload, bool isSearchResult, out string message)

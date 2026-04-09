@@ -48,6 +48,16 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            ContextOwnedStagePeriodValidationResult validation = callbacks.ValidateStagePeriodChange?.Invoke(packet)
+                ?? ContextOwnedStagePeriodValidationResult.Accepted();
+            if (!validation.Success)
+            {
+                _status = validation.Detail
+                    ?? $"CWvsContext::OnStageChange rejected '{packet.StagePeriod}' mode {packet.Mode.ToString(CultureInfo.InvariantCulture)} because CStageSystem::BuildCacheData would fail for that stage-theme cache key.";
+                message = _status;
+                return false;
+            }
+
             if (string.Equals(_currentStagePeriod, packet.StagePeriod, StringComparison.Ordinal)
                 && _currentMode == packet.Mode)
             {
@@ -138,6 +148,20 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class ContextOwnedStagePeriodCallbacks
     {
         internal Func<PacketStagePeriodChangePacket, int, string> ApplyStagePeriodChange { get; init; }
+        internal Func<PacketStagePeriodChangePacket, ContextOwnedStagePeriodValidationResult> ValidateStagePeriodChange { get; init; }
+    }
+
+    internal readonly record struct ContextOwnedStagePeriodValidationResult(bool Success, string Detail)
+    {
+        internal static ContextOwnedStagePeriodValidationResult Accepted(string detail = null)
+        {
+            return new(true, detail);
+        }
+
+        internal static ContextOwnedStagePeriodValidationResult Rejected(string detail)
+        {
+            return new(false, detail);
+        }
     }
 
     internal readonly record struct PacketStagePeriodChangePacket(string StagePeriod, byte Mode);

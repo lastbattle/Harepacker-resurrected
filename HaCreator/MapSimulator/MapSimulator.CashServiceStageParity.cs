@@ -4,6 +4,7 @@ using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using MapleLib.WzLib.WzProperties;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -47,6 +48,16 @@ namespace HaCreator.MapSimulator
             public int FirstPosition { get; init; } = 1;
             public int ScrollOffset { get; init; }
             public int RowFocusIndex { get; init; }
+        }
+
+        private sealed class CashShopOneADayArtSnapshot
+        {
+            public bool HasKeyFocusCanvas { get; init; }
+            public bool HasPlateCanvas { get; init; }
+            public bool HasPlateBigCanvas { get; init; }
+            public bool HasShortcutHelpCanvas { get; init; }
+            public int NumberCanvasCount { get; init; }
+            public int PlateCount { get; init; }
         }
 
         private string PreviewCashAvatarWeatherAction()
@@ -222,26 +233,27 @@ namespace HaCreator.MapSimulator
                         return null;
                     }
 
+                    CashShopOneADayArtSnapshot artSnapshot = ResolveCashShopOneADayArtSnapshot();
                     return new CashShopStageChildWindow.OneADayOwnerState
                     {
                         IsPending = stageWindow.IsOneADayPending,
                         NoticeState = stageWindow.NoticeState,
-                        SelectorIndex = stageWindow.IsOneADayPending ? 0 : 1,
+                        SelectorIndex = 0,
                         SelectorStartX = 2,
                         SelectorStartY = 2,
                         TodaySelectorLabel = MapleStoryStringPool.GetOrFallback(0x16A1, "Today"),
                         PreviousSelectorLabel = MapleStoryStringPool.GetOrFallback(0x16A2, "Previous"),
-                        HasKeyFocusCanvas = true,
-                        HasPlateCanvas = true,
-                        HasPlateBigCanvas = true,
-                        NumberCanvasCount = 10,
-                        PlateCount = 3,
+                        HasKeyFocusCanvas = artSnapshot.HasKeyFocusCanvas,
+                        HasPlateCanvas = artSnapshot.HasPlateCanvas,
+                        HasPlateBigCanvas = artSnapshot.HasPlateBigCanvas,
+                        NumberCanvasCount = artSnapshot.NumberCanvasCount,
+                        PlateCount = Math.Max(1, artSnapshot.PlateCount),
                         PreviousOfferCount = 10,
                         PlateCanvasBaseName = "NoItem",
-                        ShortcutHelpCanvasName = "ShortcutHelp",
+                        ShortcutHelpCanvasName = artSnapshot.HasShortcutHelpCanvas ? "ShortcutHelp" : string.Empty,
                         Hour = 0,
-                        Minute = stageWindow.IsOneADayPending ? 0 : 59,
-                        Second = stageWindow.IsOneADayPending ? 30 : 0,
+                        Minute = 0,
+                        Second = 0,
                         RecentPackets = stageWindow.GetRecentPacketSummaries()
                     };
                 });
@@ -579,6 +591,7 @@ namespace HaCreator.MapSimulator
                 };
             }
 
+            CashShopOneADayArtSnapshot artSnapshot = ResolveCashShopOneADayArtSnapshot();
             List<string> lines = new()
             {
                 stageWindow.IsOneADayPending
@@ -586,6 +599,9 @@ namespace HaCreator.MapSimulator
                     : "No one-a-day packet is currently pending.",
                 stageWindow.NoticeState
             };
+            lines.Add(artSnapshot.HasKeyFocusCanvas || artSnapshot.HasPlateBigCanvas || artSnapshot.NumberCanvasCount > 0
+                ? $"WZ-backed OneADay art exposes Base01={artSnapshot.HasKeyFocusCanvas}, ItemBox={artSnapshot.HasPlateCanvas}, ItemBoxBig={artSnapshot.HasPlateBigCanvas}, Counter digits={artSnapshot.NumberCanvasCount}."
+                : "The active UI export does not expose OneADay.img/CSOneADay Base01/ItemBox/ItemBoxBig/Counter, so CCSWnd_OneADay keeps those seams explicit in owner state only while PicturePlate remains the visible fallback.");
 
             foreach (string recentPacket in stageWindow.GetRecentPacketSummaries())
             {
@@ -593,6 +609,49 @@ namespace HaCreator.MapSimulator
             }
 
             return lines;
+        }
+
+        private static CashShopOneADayArtSnapshot ResolveCashShopOneADayArtSnapshot()
+        {
+            var cashShopImage = global::HaCreator.Program.FindImage("ui", "CashShop.img");
+            WzSubProperty picturePlateProperty = cashShopImage?["PicturePlate"] as WzSubProperty;
+            int plateCount = 0;
+            if (picturePlateProperty?["NoItem"] != null)
+            {
+                plateCount++;
+            }
+
+            if (picturePlateProperty?["NoItem0"] != null)
+            {
+                plateCount++;
+            }
+
+            if (picturePlateProperty?["NoItem1"] != null)
+            {
+                plateCount++;
+            }
+
+            var oneADayImage = global::HaCreator.Program.FindImage("ui", "OneADay.img");
+            WzSubProperty oneADayProperty = oneADayImage?["CSOneADay"] as WzSubProperty;
+            WzSubProperty counterProperty = oneADayProperty?["Counter"] as WzSubProperty;
+            int numberCanvasCount = 0;
+            for (int i = 0; i < 10; i++)
+            {
+                if (counterProperty?[i.ToString(CultureInfo.InvariantCulture)] != null)
+                {
+                    numberCanvasCount++;
+                }
+            }
+
+            return new CashShopOneADayArtSnapshot
+            {
+                HasKeyFocusCanvas = oneADayProperty?["Base01"] != null,
+                HasPlateCanvas = oneADayProperty?["ItemBox"] != null || picturePlateProperty?["NoItem"] != null,
+                HasPlateBigCanvas = oneADayProperty?["ItemBoxBig"] != null,
+                HasShortcutHelpCanvas = picturePlateProperty?["ShortcutHelp"] != null,
+                NumberCanvasCount = numberCanvasCount,
+                PlateCount = plateCount
+            };
         }
 
         private void WireItcChildOwnerWindows()

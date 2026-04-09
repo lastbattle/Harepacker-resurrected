@@ -29,6 +29,7 @@ namespace HaCreator.MapSimulator.Managers
             MapSimulatorWindowNames.CashShopOneADay,
             MapSimulatorWindowNames.MtsStatus,
             MapSimulatorWindowNames.LoginUtilityDialog,
+            MapSimulatorWindowNames.InGameConfirmDialog,
             MapSimulatorWindowNames.ItcCharacter,
             MapSimulatorWindowNames.ItcSale,
             MapSimulatorWindowNames.ItcPurchase,

@@ -30,7 +30,7 @@ namespace HaCreator.MapSimulator.Interaction
             0x40UL
         };
 
-        private const ulong CharacterDataKnownOpaquePreMapTransferFlags = 0x38000UL;
+        private const ulong CharacterDataKnownOpaquePreMapTransferFlags = 0x30000UL;
         private const int CharacterDataMiniGameRecordByteLength = 0x14;
         private const int CharacterDataCoupleRecordByteLength = 0x21;
         private const int CharacterDataFriendRecordByteLength = 0x25;
@@ -1530,65 +1530,51 @@ namespace HaCreator.MapSimulator.Interaction
             try
             {
                 IReadOnlyList<PacketCharacterDataSkillRecord> skillRecordEntries = null;
-                IReadOnlyList<int> skillMasterLevels = null;
                 IReadOnlyDictionary<int, int> skillRecords = null;
                 IReadOnlyDictionary<int, long> skillExpirations = null;
-                IReadOnlyDictionary<int, int> int16ValueRecords = null;
-                IReadOnlyDictionary<int, string> questRecords = null;
-                IReadOnlyDictionary<int, long> shortFileTimeRecords = null;
+                IReadOnlyDictionary<int, int> skillCooldowns = null;
                 int skillRecordCount = 0;
-                int skillMasterLevelRecordCount = 0;
-                int int16ValueRecordCount = 0;
-                int questRecordCount = 0;
-                int shortFileTimeRecordCount = 0;
+                int skillExpirationRecordCount = 0;
+                int skillCooldownRecordCount = 0;
 
                 if ((characterDataFlags & 0x100UL) != 0)
                 {
                     ReadCharacterDataSkillRecordSection(
                         reader,
                         out skillRecordEntries,
-                        out skillMasterLevels,
-                        out skillRecords,
-                        out skillExpirations);
+                        out skillRecords);
                     skillRecordCount = skillRecordEntries?.Count ?? 0;
-                    skillMasterLevelRecordCount = skillMasterLevels?.Count ?? 0;
-                }
-
-                if ((characterDataFlags & 0x8000UL) != 0)
-                {
-                    int16ValueRecords = ReadCharacterDataInt16ValueRecords(reader);
-                    int16ValueRecordCount = int16ValueRecords.Count;
                 }
 
                 if ((characterDataFlags & 0x200UL) != 0)
                 {
-                    questRecords = ReadCharacterDataQuestStringRecords(reader);
-                    questRecordCount = questRecords.Count;
+                    skillExpirations = ReadCharacterDataSkillExpirationRecords(reader);
+                    skillExpirationRecordCount = skillExpirations.Count;
                 }
 
                 if ((characterDataFlags & 0x4000UL) != 0)
                 {
-                    shortFileTimeRecords = ReadCharacterDataShortFileTimeRecords(reader);
-                    shortFileTimeRecordCount = shortFileTimeRecords.Count;
+                    skillCooldowns = ReadCharacterDataInt16ValueRecords(reader);
+                    skillCooldownRecordCount = skillCooldowns.Count;
                 }
 
                 decoratedSnapshot = snapshot with
                 {
                     SkillRecordCount = skillRecordCount,
-                    SkillExpirationRecordCount = skillExpirations?.Count ?? 0,
-                    SkillCooldownRecordCount = int16ValueRecordCount,
+                    SkillExpirationRecordCount = skillExpirationRecordCount,
+                    SkillCooldownRecordCount = skillCooldownRecordCount,
                     SkillRecords = skillRecords,
                     SkillExpirationFileTimes = skillExpirations,
-                    SkillCooldownRemainingSecondsBySkillId = int16ValueRecords,
+                    SkillCooldownRemainingSecondsBySkillId = skillCooldowns,
                     SkillRecordEntries = skillRecordEntries,
-                    SkillMasterLevelRecordCount = skillMasterLevelRecordCount,
-                    SkillMasterLevels = skillMasterLevels,
-                    Int16ValueRecordCount = int16ValueRecordCount,
-                    Int16ValueRecords = int16ValueRecords,
-                    QuestRecordCount = questRecordCount,
-                    QuestRecordValues = questRecords,
-                    ShortFileTimeRecordCount = shortFileTimeRecordCount,
-                    ShortFileTimeRecords = shortFileTimeRecords
+                    SkillMasterLevelRecordCount = 0,
+                    SkillMasterLevels = null,
+                    Int16ValueRecordCount = 0,
+                    Int16ValueRecords = null,
+                    QuestRecordCount = 0,
+                    QuestRecordValues = null,
+                    ShortFileTimeRecordCount = 0,
+                    ShortFileTimeRecords = null
                 };
                 return true;
             }
@@ -1603,43 +1589,41 @@ namespace HaCreator.MapSimulator.Interaction
         private static void ReadCharacterDataSkillRecordSection(
             BinaryReader reader,
             out IReadOnlyList<PacketCharacterDataSkillRecord> skillRecordEntries,
-            out IReadOnlyList<int> skillMasterLevels,
-            out IReadOnlyDictionary<int, int> skillRecords,
-            out IReadOnlyDictionary<int, long> skillExpirations)
+            out IReadOnlyDictionary<int, int> skillRecords)
         {
             ushort count = reader.ReadUInt16();
             List<PacketCharacterDataSkillRecord> entries = new(count);
             Dictionary<int, int> levelsBySkillId = new(count);
-            Dictionary<int, long> fileTimesBySkillId = new(count);
             for (int i = 0; i < count; i++)
             {
                 int skillId = reader.ReadInt32();
                 int skillLevel = reader.ReadInt32();
-                long expirationFileTime = reader.ReadInt64();
                 if (skillId > 0)
                 {
-                    entries.Add(new PacketCharacterDataSkillRecord(skillId, Math.Max(0, skillLevel), expirationFileTime));
+                    entries.Add(new PacketCharacterDataSkillRecord(skillId, Math.Max(0, skillLevel), 0));
                     levelsBySkillId[skillId] = Math.Max(0, skillLevel);
-                    fileTimesBySkillId[skillId] = expirationFileTime;
                 }
             }
 
-            long remainingBytes = reader.BaseStream.CanSeek
-                ? reader.BaseStream.Length - reader.BaseStream.Position
-                : 0;
-            int candidateMasterLevelCount = remainingBytes > 0
-                ? (int)Math.Min(count, remainingBytes / sizeof(int))
-                : 0;
-            List<int> masterLevels = new(candidateMasterLevelCount);
-            for (int i = 0; i < candidateMasterLevelCount; i++)
+            skillRecordEntries = entries;
+            skillRecords = levelsBySkillId;
+        }
+
+        private static IReadOnlyDictionary<int, long> ReadCharacterDataSkillExpirationRecords(BinaryReader reader)
+        {
+            ushort count = reader.ReadUInt16();
+            Dictionary<int, long> records = new(count);
+            for (int i = 0; i < count; i++)
             {
-                masterLevels.Add(reader.ReadInt32());
+                int key = reader.ReadInt32();
+                long value = reader.ReadInt64();
+                if (key > 0)
+                {
+                    records[key] = value;
+                }
             }
 
-            skillRecordEntries = entries;
-            skillMasterLevels = masterLevels;
-            skillRecords = levelsBySkillId;
-            skillExpirations = fileTimesBySkillId;
+            return records;
         }
 
         private static IReadOnlyDictionary<int, int> ReadCharacterDataInt16ValueRecords(BinaryReader reader)

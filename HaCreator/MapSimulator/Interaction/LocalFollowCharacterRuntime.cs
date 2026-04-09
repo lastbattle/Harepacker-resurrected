@@ -293,7 +293,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _lastStatusMessage = string.IsNullOrWhiteSpace(info.Message)
-                ? "Local follow request failed."
+                ? FollowCharacterFailureCodec.Resolve(0, 0).Message
                 : info.Message.Trim();
             return _lastStatusMessage;
         }
@@ -301,7 +301,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string ApplyFollowFailureText(string message)
         {
             _lastStatusMessage = string.IsNullOrWhiteSpace(message)
-                ? "Local follow request failed."
+                ? FollowCharacterFailureCodec.Resolve(0, 0).Message
                 : message.Trim();
             return _lastStatusMessage;
         }

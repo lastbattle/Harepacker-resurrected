@@ -16,10 +16,11 @@ namespace HaCreator.MapSimulator.UI
             public int MapId { get; init; }
             public string DisplayName { get; init; }
             public string DetailText { get; init; }
+            public string RestrictionMessage { get; init; }
             public string TargetPortalName { get; init; }
             public int SavedSlotIndex { get; init; } = -1;
             public bool CanDelete { get; init; }
-            public bool CanMove => MapId > 0;
+            public bool CanMove => MapId > 0 && string.IsNullOrWhiteSpace(RestrictionMessage);
             public bool IsSavedSlot => SavedSlotIndex >= 0;
         }
 

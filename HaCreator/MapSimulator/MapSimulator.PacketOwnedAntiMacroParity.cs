@@ -6,6 +6,7 @@ using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -50,9 +51,20 @@ namespace HaCreator.MapSimulator
         private string _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
         private bool _packetOwnedAntiMacroComboHeld;
         private bool _packetOwnedAntiMacroAwaitingResult;
+        private PacketOwnedAntiMacroSubmitTransportPath _lastPacketOwnedAntiMacroSubmitTransportPath;
+        private byte[] _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
 
         private sealed record PacketOwnedAntiMacroNoticeDefinition(int StringPoolId, string Text, string AvatarCanvasPath);
         private sealed record PacketOwnedAntiMacroChatDefinition(int StringPoolId, string FormatText, bool SaveScreenshot);
+        private enum PacketOwnedAntiMacroSubmitTransportPath
+        {
+            None = 0,
+            SimulatorOwned,
+            OfficialSessionBridge,
+            PacketOutbox,
+            DeferredOfficialSessionBridge,
+            DeferredPacketOutbox
+        }
 
         internal static bool IsPacketOwnedAntiMacroChallengeLaunchMode(int mode)
         {
@@ -313,8 +325,12 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedAntiMacroSubmittedRemainingMs,
                 out string dispatchStatus,
                 out string payloadHex,
-                out bool externallyObserved))
+                out bool externallyObserved,
+                out PacketOwnedAntiMacroSubmitTransportPath transportPath,
+                out byte[] rawPacket))
             {
+                _lastPacketOwnedAntiMacroSubmitTransportPath = transportPath;
+                _lastPacketOwnedAntiMacroSubmittedRawPacket = rawPacket;
                 _lastPacketOwnedAntiMacroSummary =
                     externallyObserved
                         ? $"Queued anti-macro answer outpacket {PacketOwnedAntiMacroAnswerSubmitOpcode} [{payloadHex}] with remaining={_lastPacketOwnedAntiMacroSubmittedRemainingMs}ms and handed it off to an external transport path. {dispatchStatus}"
@@ -322,6 +338,8 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.SimulatorOwned;
+            _lastPacketOwnedAntiMacroSubmittedRawPacket = rawPacket;
             _lastPacketOwnedAntiMacroSummary =
                 $"Queued anti-macro answer outpacket {PacketOwnedAntiMacroAnswerSubmitOpcode} [{payloadHex}] with remaining={_lastPacketOwnedAntiMacroSubmittedRemainingMs}ms; no local-utility transport path accepted it, so the request remains simulator-owned while awaiting packet-owned result resolution. {dispatchStatus}";
         }
@@ -336,8 +354,9 @@ namespace HaCreator.MapSimulator
             }
             else
             {
+                string transportState = DescribePacketOwnedAntiMacroAwaitingTransportState();
                 ownerState = _packetOwnedAntiMacroAwaitingResult
-                    ? $"owner pending result, submitted=\"{_lastPacketOwnedAntiMacroSubmittedAnswer}\", remainingAtSubmit={_lastPacketOwnedAntiMacroSubmittedRemainingMs}ms"
+                    ? $"owner pending result, submitted=\"{_lastPacketOwnedAntiMacroSubmittedAnswer}\", remainingAtSubmit={_lastPacketOwnedAntiMacroSubmittedRemainingMs}ms, transport={transportState}"
                     : "owner inactive";
             }
 
@@ -380,6 +399,8 @@ namespace HaCreator.MapSimulator
             _packetOwnedAntiMacroAwaitingResult = false;
             _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
             _lastPacketOwnedAntiMacroSubmittedRemainingMs = -1;
+            _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
+            _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
             _lastPacketOwnedAntiMacroSummary = "Closed packet-owned anti-macro owner.";
             return _lastPacketOwnedAntiMacroSummary;
         }
@@ -423,6 +444,8 @@ namespace HaCreator.MapSimulator
             _packetOwnedAntiMacroAwaitingResult = false;
             _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
             _lastPacketOwnedAntiMacroSubmittedRemainingMs = -1;
+            _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
+            _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
             _lastPacketOwnedAntiMacroSummary = $"Opened packet-owned {(adminVariant ? "admin " : string.Empty)}anti-macro challenge and held Ctrl combo input.";
             return _lastPacketOwnedAntiMacroSummary;
         }
@@ -627,64 +650,165 @@ namespace HaCreator.MapSimulator
             int remainingMs,
             out string status,
             out string payloadHex,
-            out bool externallyObserved)
+            out bool externallyObserved,
+            out PacketOwnedAntiMacroSubmitTransportPath transportPath,
+            out byte[] rawPacket)
         {
             byte[] payload = BuildPacketOwnedAntiMacroAnswerPayload(submittedAnswer);
             payloadHex = BitConverter.ToString(payload).Replace("-", string.Empty);
             externallyObserved = false;
+            transportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
+            rawPacket = BuildPacketOwnedAntiMacroAnswerRawPacket(payload);
 
-            if (_localUtilityOfficialSessionBridge.HasConnectedSession)
+            string bridgeStatus;
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                payload,
+                out bridgeStatus))
             {
-                bool sent = _localUtilityOfficialSessionBridge.TrySendOutboundPacket(
-                    PacketOwnedAntiMacroAnswerSubmitOpcode,
-                    payload,
-                    out string bridgeStatus);
                 status = $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms. {bridgeStatus}";
-                externallyObserved = sent;
-                return sent;
-            }
-
-            if (_localUtilityOfficialSessionBridge.HasAttachedClient
-                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
-                    PacketOwnedAntiMacroAnswerSubmitOpcode,
-                    payload,
-                    out string queuedStatus))
-            {
-                status =
-                    $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms and queued opcode {PacketOwnedAntiMacroAnswerSubmitOpcode} until the attached Maple session finishes init. {queuedStatus}";
+                externallyObserved = true;
+                transportPath = PacketOwnedAntiMacroSubmitTransportPath.OfficialSessionBridge;
                 return true;
             }
 
+            string outboxStatus;
             if (_localUtilityPacketOutbox.TrySendOutboundPacket(
                 PacketOwnedAntiMacroAnswerSubmitOpcode,
                 payload,
-                out string outboxStatus))
+                out outboxStatus))
             {
                 status =
-                    $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms and dispatched opcode {PacketOwnedAntiMacroAnswerSubmitOpcode} through the generic local-utility outbox after the live bridge path was unavailable. Outbox: {outboxStatus}";
+                    $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms and dispatched opcode {PacketOwnedAntiMacroAnswerSubmitOpcode} through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
                 externallyObserved = true;
+                transportPath = PacketOwnedAntiMacroSubmitTransportPath.PacketOutbox;
                 return true;
             }
 
+            string deferredBridgeStatus = "Official-session bridge deferred delivery is disabled.";
+            if (_localUtilityOfficialSessionBridgeEnabled
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    payload,
+                    out deferredBridgeStatus))
+            {
+                status =
+                    $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms and queued opcode {PacketOwnedAntiMacroAnswerSubmitOpcode} for deferred official-session injection after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus}";
+                transportPath = PacketOwnedAntiMacroSubmitTransportPath.DeferredOfficialSessionBridge;
+                return true;
+            }
+
+            string queuedOutboxStatus;
             if (_localUtilityPacketOutbox.TryQueueOutboundPacket(
-                PacketOwnedAntiMacroAnswerSubmitOpcode,
-                payload,
-                out string queuedOutboxStatus))
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    payload,
+                    out queuedOutboxStatus))
             {
                 status =
-                    $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms and queued opcode {PacketOwnedAntiMacroAnswerSubmitOpcode} for deferred generic local-utility outbox delivery after the live bridge path was unavailable. Deferred outbox: {queuedOutboxStatus}";
+                    $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms and queued opcode {PacketOwnedAntiMacroAnswerSubmitOpcode} for deferred generic local-utility outbox delivery after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus} Deferred outbox: {queuedOutboxStatus}";
+                transportPath = PacketOwnedAntiMacroSubmitTransportPath.DeferredPacketOutbox;
                 return true;
             }
 
-            if (!_localUtilityOfficialSessionBridge.HasConnectedSession)
+            status =
+                $"Neither the live local-utility bridge nor the deferred official-session bridge queue nor the generic outbox transport or deferred outbox queue accepted opcode {PacketOwnedAntiMacroAnswerSubmitOpcode}. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred official bridge: {deferredBridgeStatus} Deferred outbox: {queuedOutboxStatus}";
+            transportPath = PacketOwnedAntiMacroSubmitTransportPath.SimulatorOwned;
+            return false;
+        }
+
+        private string DescribePacketOwnedAntiMacroAwaitingTransportState()
+        {
+            if (!_packetOwnedAntiMacroAwaitingResult)
             {
-                status =
-                    "Local utility official-session bridge has no connected Maple session for anti-macro outbound injection, and the generic local-utility outbox was unavailable.";
-                return false;
+                return "inactive";
             }
 
-            status = "Local utility official-session bridge could not inject or queue the anti-macro outbound packet, and the generic local-utility outbox was unavailable.";
-            return false;
+            if (_lastPacketOwnedAntiMacroSubmitTransportPath == PacketOwnedAntiMacroSubmitTransportPath.None)
+            {
+                return "unknown";
+            }
+
+            if (_lastPacketOwnedAntiMacroSubmittedRawPacket == null
+                || _lastPacketOwnedAntiMacroSubmittedRawPacket.Length == 0)
+            {
+                return DescribePacketOwnedAntiMacroSubmitTransportPath(_lastPacketOwnedAntiMacroSubmitTransportPath);
+            }
+
+            return _lastPacketOwnedAntiMacroSubmitTransportPath switch
+            {
+                PacketOwnedAntiMacroSubmitTransportPath.OfficialSessionBridge
+                    => _localUtilityOfficialSessionBridge.WasLastSentOutboundPacket(
+                        PacketOwnedAntiMacroAnswerSubmitOpcode,
+                        _lastPacketOwnedAntiMacroSubmittedRawPacket)
+                        ? "injected into the live Maple session"
+                        : "handed to the live Maple-session bridge",
+                PacketOwnedAntiMacroSubmitTransportPath.PacketOutbox
+                    => _localUtilityPacketOutbox.WasLastSentOutboundPacket(
+                        PacketOwnedAntiMacroAnswerSubmitOpcode,
+                        _lastPacketOwnedAntiMacroSubmittedRawPacket)
+                        ? "sent through the local-utility packet outbox"
+                        : "handed to the local-utility packet outbox",
+                PacketOwnedAntiMacroSubmitTransportPath.DeferredOfficialSessionBridge
+                    => DescribePacketOwnedAntiMacroDeferredBridgeTransportState(),
+                PacketOwnedAntiMacroSubmitTransportPath.DeferredPacketOutbox
+                    => DescribePacketOwnedAntiMacroDeferredOutboxTransportState(),
+                _ => DescribePacketOwnedAntiMacroSubmitTransportPath(_lastPacketOwnedAntiMacroSubmitTransportPath)
+            };
+        }
+
+        private string DescribePacketOwnedAntiMacroDeferredBridgeTransportState()
+        {
+            if (_localUtilityOfficialSessionBridge.HasQueuedOutboundPacket(
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                _lastPacketOwnedAntiMacroSubmittedRawPacket))
+            {
+                return _localUtilityOfficialSessionBridge.HasAttachedClient
+                    ? "still queued on the deferred official-session bridge while the attached Maple client is waiting for crypto init"
+                    : "still queued on the deferred official-session bridge awaiting a Maple client/session";
+            }
+
+            if (_localUtilityOfficialSessionBridge.WasLastSentOutboundPacket(
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                _lastPacketOwnedAntiMacroSubmittedRawPacket))
+            {
+                return "left the deferred official-session queue and was injected into the live Maple session";
+            }
+
+            return _localUtilityOfficialSessionBridge.HasConnectedSession
+                ? "left the deferred official-session queue and is awaiting an authoritative anti-macro result"
+                : "no longer present in the deferred official-session queue";
+        }
+
+        private string DescribePacketOwnedAntiMacroDeferredOutboxTransportState()
+        {
+            if (_localUtilityPacketOutbox.HasQueuedOutboundPacket(
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                _lastPacketOwnedAntiMacroSubmittedRawPacket))
+            {
+                return "still queued on the deferred local-utility packet outbox";
+            }
+
+            if (_localUtilityPacketOutbox.WasLastSentOutboundPacket(
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                _lastPacketOwnedAntiMacroSubmittedRawPacket))
+            {
+                return "left the deferred local-utility packet outbox queue for delivery";
+            }
+
+            return "no longer present in the deferred local-utility packet outbox queue";
+        }
+
+        private static string DescribePacketOwnedAntiMacroSubmitTransportPath(PacketOwnedAntiMacroSubmitTransportPath transportPath)
+        {
+            return transportPath switch
+            {
+                PacketOwnedAntiMacroSubmitTransportPath.SimulatorOwned => "simulator-owned",
+                PacketOwnedAntiMacroSubmitTransportPath.OfficialSessionBridge => "live official-session bridge",
+                PacketOwnedAntiMacroSubmitTransportPath.PacketOutbox => "generic packet outbox",
+                PacketOwnedAntiMacroSubmitTransportPath.DeferredOfficialSessionBridge => "deferred official-session bridge",
+                PacketOwnedAntiMacroSubmitTransportPath.DeferredPacketOutbox => "deferred packet outbox",
+                _ => "none"
+            };
         }
 
         private static byte[] BuildPacketOwnedAntiMacroAnswerPayload(string submittedAnswer)
@@ -694,6 +818,19 @@ namespace HaCreator.MapSimulator
             WritePacketOwnedAntiMacroMapleString(writer, submittedAnswer);
             writer.Flush();
             return stream.ToArray();
+        }
+
+        private static byte[] BuildPacketOwnedAntiMacroAnswerRawPacket(IReadOnlyList<byte> payload)
+        {
+            int payloadLength = payload?.Count ?? 0;
+            byte[] raw = new byte[sizeof(ushort) + payloadLength];
+            BitConverter.GetBytes((ushort)PacketOwnedAntiMacroAnswerSubmitOpcode).CopyTo(raw, 0);
+            for (int i = 0; i < payloadLength; i++)
+            {
+                raw[sizeof(ushort) + i] = payload[i];
+            }
+
+            return raw;
         }
 
         private static void WritePacketOwnedAntiMacroMapleString(BinaryWriter writer, string text)

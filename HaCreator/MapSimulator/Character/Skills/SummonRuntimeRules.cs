@@ -53,6 +53,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             "hit/0",
             "hit/0/1"
         };
+        private static readonly string[] ClientSummonSupportActionNames =
+        {
+            "heal",
+            "support"
+        };
 
         public static int ResolveAuthoredDurationMs(SkillData skill, SkillLevelData levelData, int skillLevel)
         {
@@ -166,6 +171,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return GetAnimationDuration(skill.SummonAttackPrepareAnimation);
+        }
+
+        public static int ResolveSummonImpactDelayMs(
+            SkillData skill,
+            int authoredDelayMs,
+            string branchName)
+        {
+            return Math.Max(0, authoredDelayMs)
+                   + ResolveSummonActionPrepareDurationMs(skill, branchName);
         }
 
         public static string ResolvePacketSkillBranch(SkillData skill, byte packetAction, SummonAssistType? assistType = null)
@@ -325,7 +339,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static string ResolveLocalSummonActionBranch(SkillData skill)
         {
-            return ResolveNamedSummonBranch(skill, "subsummon", "skill1", "skill2");
+            return ResolveNamedSummonBranch(skill, "subsummon", "skill1", "skill2")
+                   ?? ResolveAuthoredCustomSummonSkillBranch(skill, 0);
         }
 
         private static string ResolveAssistOwnedPacketSkillBranch(SkillData skill, SummonAssistType assistType)
@@ -347,7 +362,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SummonAssistType.Support
                     => ResolveSupportOwnedBranch(skill, preferHealFirst: false),
                 SummonAssistType.SummonAction
-                    => ResolveNamedSummonBranch(skill, "subsummon", "skill1", "skill2"),
+                    => ResolveNamedSummonBranch(skill, "subsummon", "skill1", "skill2")
+                       ?? ResolveAuthoredCustomSummonSkillBranch(skill, 0),
                 _ => null
             };
         }
@@ -371,7 +387,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SummonAssistType.Support
                     => ResolveSupportOwnedBranch(skill, preferHealFirst: false),
                 SummonAssistType.SummonAction
-                    => ResolveNamedSummonBranch(skill, "subsummon", "skill1", "skill2"),
+                    => ResolveNamedSummonBranch(skill, "subsummon", "skill1", "skill2")
+                       ?? ResolveAuthoredCustomSummonSkillBranch(skill, 0),
                 _ => null
             };
         }
@@ -420,8 +437,110 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return ResolveNamedSummonBranch(
-                skill,
-                EnumeratePacketSkillBranchCandidates(skill, normalizedAction));
+                       skill,
+                       EnumeratePacketSkillBranchCandidates(skill, normalizedAction))
+                   ?? ResolveAuthoredCustomSummonSkillBranch(
+                       skill,
+                       normalizedAction - PacketSkillActionSkillBranchMin);
+        }
+
+        private static string ResolveAuthoredCustomSummonSkillBranch(SkillData skill, int customActionIndex)
+        {
+            if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)
+            {
+                return null;
+            }
+
+            if (customActionIndex < 0)
+            {
+                customActionIndex = 0;
+            }
+
+            int currentIndex = 0;
+            foreach (string branchName in EnumerateAuthoredCustomSummonSkillBranches(skill))
+            {
+                if (currentIndex == customActionIndex)
+                {
+                    return branchName;
+                }
+
+                currentIndex++;
+            }
+
+            return null;
+        }
+
+        private static IEnumerable<string> EnumerateAuthoredCustomSummonSkillBranches(SkillData skill)
+        {
+            if (skill?.SummonNamedAnimations == null)
+            {
+                yield break;
+            }
+
+            foreach (string branchName in skill.SummonNamedAnimations.Keys)
+            {
+                if (IsAuthoredCustomSummonSkillBranch(branchName))
+                {
+                    yield return branchName;
+                }
+            }
+        }
+
+        private static bool IsAuthoredCustomSummonSkillBranch(string branchName)
+        {
+            if (string.IsNullOrWhiteSpace(branchName))
+            {
+                return false;
+            }
+
+            if (branchName.StartsWith("attack", StringComparison.OrdinalIgnoreCase)
+                || branchName.StartsWith("skill", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (string.Equals(branchName, "prepare", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(branchName, "summon", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(branchName, "create", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(branchName, "summoned", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(branchName, "die", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(branchName, "die1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(branchName, "effect", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(branchName, "effect0", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(branchName, "hit", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(branchName, "hit/0", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(branchName, "hit/0/1", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (IsNamedClientSummonBranch(branchName, ClientSummonSpawnActionNames)
+                || IsNamedClientSummonBranch(branchName, ClientSummonIdleActionNames)
+                || IsNamedClientSummonBranch(branchName, ClientSummonSupportActionNames)
+                || SkillLoader.IsRepeatStyleSummonBranchName(branchName))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool IsNamedClientSummonBranch(string branchName, IEnumerable<string> candidates)
+        {
+            if (string.IsNullOrWhiteSpace(branchName) || candidates == null)
+            {
+                return false;
+            }
+
+            foreach (string candidate in candidates)
+            {
+                if (string.Equals(branchName, candidate, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static int ResolveSupportSuspendDurationMs(

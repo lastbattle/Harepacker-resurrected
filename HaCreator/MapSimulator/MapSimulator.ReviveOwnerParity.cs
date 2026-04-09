@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
+using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
 using Microsoft.Xna.Framework;
@@ -231,17 +232,17 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (TryGetUnsupportedMapInfoFlag(mapInfo, "reviveCurField", out bool reviveCurField))
+            if (TryGetReviveOwnerMapInfoFlag(mapInfo, "reviveCurField", out bool reviveCurField))
             {
                 return reviveCurField;
             }
 
-            if (TryGetUnsupportedMapInfoFlag(mapInfo, "ReviveCurFieldOfNoTransfer", out bool reviveCurFieldOfNoTransfer))
+            if (TryGetReviveOwnerMapInfoFlag(mapInfo, "ReviveCurFieldOfNoTransfer", out bool reviveCurFieldOfNoTransfer))
             {
                 return reviveCurFieldOfNoTransfer;
             }
 
-            if (TryGetUnsupportedMapInfoFlag(mapInfo, "forceReturnOnDead", out bool forceReturnOnDead) && forceReturnOnDead)
+            if (TryGetReviveOwnerMapInfoFlag(mapInfo, "forceReturnOnDead", out bool forceReturnOnDead) && forceReturnOnDead)
             {
                 return false;
             }
@@ -259,12 +260,12 @@ namespace HaCreator.MapSimulator
                 return fallbackPoint;
             }
 
-            return TryGetUnsupportedMapInfoPoint(_mapBoard?.MapInfo, "ReviveCurFieldOfNoTransferPoint", out Vector2 revivePoint)
+            return TryGetReviveOwnerMapInfoPoint(_mapBoard?.MapInfo, "ReviveCurFieldOfNoTransferPoint", out Vector2 revivePoint)
                 ? revivePoint
                 : fallbackPoint;
         }
 
-        private static bool TryGetUnsupportedMapInfoFlag(MapInfo mapInfo, string propertyName, out bool value)
+        internal static bool TryGetReviveOwnerMapInfoFlag(MapInfo mapInfo, string propertyName, out bool value)
         {
             value = false;
             if (mapInfo?.unsupportedInfoProperties == null || string.IsNullOrWhiteSpace(propertyName))
@@ -273,7 +274,7 @@ namespace HaCreator.MapSimulator
             }
 
             var property = mapInfo.unsupportedInfoProperties.FirstOrDefault(
-                candidate => string.Equals(candidate?.Name, propertyName, StringComparison.Ordinal));
+                candidate => string.Equals(candidate?.Name, propertyName, StringComparison.OrdinalIgnoreCase));
             if (property == null)
             {
                 return false;
@@ -281,13 +282,14 @@ namespace HaCreator.MapSimulator
 
             value = property switch
             {
+                WzStringProperty stringProperty when bool.TryParse(stringProperty.Value, out bool parsedBool) => parsedBool,
                 WzStringProperty stringProperty when int.TryParse(stringProperty.Value, out int parsed) => parsed != 0,
                 _ => InfoTool.GetInt(property, 0) != 0
             };
             return true;
         }
 
-        private static bool TryGetUnsupportedMapInfoPoint(MapInfo mapInfo, string propertyName, out Vector2 point)
+        internal static bool TryGetReviveOwnerMapInfoPoint(MapInfo mapInfo, string propertyName, out Vector2 point)
         {
             point = default;
             if (mapInfo?.unsupportedInfoProperties == null || string.IsNullOrWhiteSpace(propertyName))
@@ -296,13 +298,26 @@ namespace HaCreator.MapSimulator
             }
 
             var property = mapInfo.unsupportedInfoProperties.FirstOrDefault(
-                candidate => string.Equals(candidate?.Name, propertyName, StringComparison.Ordinal));
-            if (property is not WzVectorProperty vectorProperty)
+                candidate => string.Equals(candidate?.Name, propertyName, StringComparison.OrdinalIgnoreCase));
+            if (property is WzVectorProperty vectorProperty)
+            {
+                point = new Vector2(vectorProperty.X.Value, vectorProperty.Y.Value);
+                return true;
+            }
+
+            if (property is not WzSubProperty subProperty)
             {
                 return false;
             }
 
-            point = new Vector2(vectorProperty.X.Value, vectorProperty.Y.Value);
+            WzImageProperty xProperty = subProperty["x"] ?? subProperty["X"];
+            WzImageProperty yProperty = subProperty["y"] ?? subProperty["Y"];
+            if (xProperty == null || yProperty == null)
+            {
+                return false;
+            }
+
+            point = new Vector2(InfoTool.GetInt(xProperty, 0), InfoTool.GetInt(yProperty, 0));
             return true;
         }
 
@@ -478,7 +493,7 @@ namespace HaCreator.MapSimulator
             return $"{summary} The request remained simulator-owned because neither the live bridge nor the packet outbox accepted opcode {ReviveOwnerTransferFieldRequestOpcode}. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
         }
 
-        private static bool TryBuildReviveOwnerTransferFieldPayload(bool premium, out byte[] payload)
+        internal static bool TryBuildReviveOwnerTransferFieldPayload(bool premium, out byte[] payload)
         {
             try
             {

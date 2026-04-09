@@ -47,6 +47,41 @@ namespace HaCreator.MapSimulator.Loaders
             }
         }
 
+        private static UIObject[] LoadButtonCopies(
+            WzSubProperty parent,
+            string buttonName,
+            WzBinaryProperty clickSound,
+            WzBinaryProperty overSound,
+            GraphicsDevice device,
+            int count)
+        {
+            if (count <= 0)
+            {
+                return Array.Empty<UIObject>();
+            }
+
+            WzSubProperty buttonProperty = parent?[buttonName] as WzSubProperty;
+            if (buttonProperty == null)
+            {
+                return Array.Empty<UIObject>();
+            }
+
+            UIObject[] buttons = new UIObject[count];
+            for (int index = 0; index < count; index++)
+            {
+                try
+                {
+                    buttons[index] = new UIObject(buttonProperty, clickSound, overSound, false, Point.Zero, device);
+                }
+                catch
+                {
+                    buttons[index] = null;
+                }
+            }
+
+            return buttons;
+        }
+
         private static UIObject LoadButton(WzImage parent, string buttonName,
             WzBinaryProperty clickSound, WzBinaryProperty overSound, GraphicsDevice device)
         {
@@ -672,6 +707,88 @@ namespace HaCreator.MapSimulator.Loaders
 
             return texture;
 
+        }
+
+        private static Texture2D CreateUtilDlgNoticeFrameTexture(
+            WzSubProperty utilDialogProperty,
+            GraphicsDevice device,
+            int width = 312,
+            int height = 132)
+        {
+            Texture2D topTexture = LoadCanvasTexture(utilDialogProperty, "t", device);
+            Texture2D centerTexture = LoadCanvasTexture(utilDialogProperty, "c", device);
+            Texture2D bottomTexture = LoadCanvasTexture(utilDialogProperty, "s", device);
+
+            if (topTexture == null || centerTexture == null || bottomTexture == null)
+            {
+                return LoadCanvasTexture(utilDialogProperty, "notice", device);
+            }
+
+            int frameWidth = Math.Max(1, width);
+            int frameHeight = Math.Max(1, height);
+            int topHeight = Math.Min(topTexture.Height, frameHeight);
+            int bottomHeight = Math.Min(bottomTexture.Height, Math.Max(0, frameHeight - topHeight));
+            int centerHeight = Math.Max(0, frameHeight - topHeight - bottomHeight);
+
+            Color[] topData = GetTextureData(topTexture);
+            Color[] centerData = GetTextureData(centerTexture);
+            Color[] bottomData = GetTextureData(bottomTexture);
+            Color[] frameData = Enumerable.Repeat(Color.Transparent, frameWidth * frameHeight).ToArray();
+
+            BlitTextureStrip(frameData, frameWidth, 0, topData, topTexture.Width, topHeight, frameWidth);
+
+            int centerY = topHeight;
+            while (centerY < topHeight + centerHeight)
+            {
+                int stripHeight = Math.Min(centerTexture.Height, (topHeight + centerHeight) - centerY);
+                BlitTextureStrip(frameData, frameWidth, centerY, centerData, centerTexture.Width, stripHeight, frameWidth);
+                centerY += stripHeight;
+            }
+
+            if (bottomHeight > 0)
+            {
+                int sourceY = Math.Max(0, bottomTexture.Height - bottomHeight);
+                BlitTextureStrip(frameData, frameWidth, frameHeight - bottomHeight, bottomData, bottomTexture.Width, bottomHeight, frameWidth, sourceY);
+            }
+
+            Texture2D frameTexture = new Texture2D(device, frameWidth, frameHeight);
+            frameTexture.SetData(frameData);
+            return frameTexture;
+        }
+
+        private static Color[] GetTextureData(Texture2D texture)
+        {
+            Color[] data = new Color[texture.Width * texture.Height];
+            texture.GetData(data);
+            return data;
+        }
+
+        private static void BlitTextureStrip(
+            Color[] destination,
+            int destinationWidth,
+            int destinationY,
+            Color[] source,
+            int sourceWidth,
+            int sourceHeight,
+            int blitWidth,
+            int sourceY = 0)
+        {
+            if (destination == null
+                || source == null
+                || destinationWidth <= 0
+                || sourceWidth <= 0
+                || sourceHeight <= 0
+                || blitWidth <= 0)
+            {
+                return;
+            }
+
+            int copyWidth = Math.Min(Math.Min(destinationWidth, sourceWidth), blitWidth);
+            for (int row = 0; row < sourceHeight; row++)
+            {
+                int sourceRow = sourceY + row;
+                Array.Copy(source, sourceRow * sourceWidth, destination, (destinationY + row) * destinationWidth, copyWidth);
+            }
         }
 
 
@@ -2156,6 +2273,8 @@ namespace HaCreator.MapSimulator.Loaders
                 new Point(x + (cascade * 7), y + cascade));
             RegisterRadioWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 6), y + (cascade * 4)));
+            RegisterDragonBoxWindow(manager, basicImage, soundUIImage, device,
+                new Point(x + (cascade * 8), y + (cascade * 3)));
         }
 
 
@@ -2903,6 +3022,25 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             UIWindowBase window = CreateCashServiceStageWindow(device, windowName, stageKind, position);
+            if (window != null)
+            {
+                manager.RegisterCustomWindow(window);
+            }
+        }
+
+        private static void RegisterDragonBoxWindow(
+            UIWindowManager manager,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            if (manager == null || manager.GetWindow(MapSimulatorWindowNames.DragonBox) != null)
+            {
+                return;
+            }
+
+            UIWindowBase window = CreateDragonBoxWindow(basicImage, soundUIImage, device, position);
             if (window != null)
             {
                 manager.RegisterCustomWindow(window);
@@ -7195,7 +7333,7 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadButton(sourceProperty, "BtQuit", btClickSound, btOverSound, device),
                 LoadButton(sourceProperty, "BtReply", btClickSound, btOverSound, device),
                 LoadButton(sourceProperty, "BtReplyDelete", btClickSound, btOverSound, device),
-                Array.Empty<UIObject>(),
+                LoadButtonCopies(sourceProperty, "BtReplyDelete", btClickSound, btOverSound, device, 4),
                 LoadButton(sourceProperty["MoveEmoticon"] as WzSubProperty, "BtLeft", btClickSound, btOverSound, device),
                 LoadButton(sourceProperty["MoveEmoticon"] as WzSubProperty, "BtRight", btClickSound, btOverSound, device));
 
@@ -7990,6 +8128,73 @@ namespace HaCreator.MapSimulator.Loaders
             };
             return window;
         }
+
+        private static UIWindowBase CreateDragonBoxWindow(
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzImage uiWindowImage = Program.FindImage("UI", "UIWindow.img");
+            WzSubProperty unsummonableProperty = uiWindowImage?["DragonBall_A"] as WzSubProperty;
+            WzSubProperty summonableProperty = uiWindowImage?["DragonBall_B"] as WzSubProperty;
+            if (unsummonableProperty == null || summonableProperty == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.DragonBox,
+                    "Dragon Box",
+                    "Fallback owner because UIWindow.img/DragonBall_A or DragonBall_B assets were unavailable.",
+                    position);
+            }
+
+            Texture2D unsummonableBackground = LoadCanvasTexture(unsummonableProperty, "backgrnd", device);
+            Texture2D summonableBackground = LoadCanvasTexture(summonableProperty, "backgrnd", device);
+            if (unsummonableBackground == null || summonableBackground == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.DragonBox,
+                    "Dragon Box",
+                    "Fallback owner because the Dragon Box background textures could not be loaded.",
+                    position);
+            }
+
+            int frameWidth = Math.Max(unsummonableBackground.Width, summonableBackground.Width);
+            int frameHeight = Math.Max(unsummonableBackground.Height, summonableBackground.Height);
+            Texture2D frameTexture = CreateFilledTexture(device, frameWidth, frameHeight, Color.Transparent, Color.Transparent);
+            DragonBoxWindow window = new DragonBoxWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                MapSimulatorWindowNames.DragonBox,
+                unsummonableBackground,
+                ResolveCanvasOffset(unsummonableProperty, "backgrnd", Point.Zero),
+                summonableBackground,
+                ResolveCanvasOffset(summonableProperty, "backgrnd", Point.Zero))
+            {
+                Position = position
+            };
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject summonButton = LoadButton(summonableProperty, "BtSummon", btClickSound, btOverSound, device);
+            if (summonButton != null)
+            {
+                window.InitializeSummonButton(summonButton);
+            }
+
+            UIObject closeButton = LoadButton(summonableProperty, "BtClose", btClickSound, btOverSound, device)
+                ?? LoadButton(unsummonableProperty, "BtClose", btClickSound, btOverSound, device);
+            if (closeButton != null)
+            {
+                window.InitializeCloseButton(closeButton);
+            }
+
+            return window;
+        }
         private static PlaceholderUtilityWindow CreateWzPlaceholderUtilityWindow(
             WzSubProperty sourceProperty,
             WzImage basicImage,
@@ -8338,7 +8543,7 @@ namespace HaCreator.MapSimulator.Loaders
             Point position)
         {
             WzSubProperty utilDialogProperty = uiWindow2Image?["UtilDlgEx"] as WzSubProperty;
-            Texture2D frameTexture = LoadCanvasTexture(utilDialogProperty, "notice", device);
+            Texture2D frameTexture = CreateUtilDlgNoticeFrameTexture(utilDialogProperty, device);
             if (frameTexture == null)
             {
                 return CreatePlaceholderUtilityWindow(
@@ -8359,25 +8564,23 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
             UIObject okButton = LoadButton(utilDialogProperty, "BtOK", btClickSound, btOverSound, device);
-            UIObject closeButton = LoadButton(utilDialogProperty, "BtClose", btClickSound, btOverSound, device);
+            UIObject closeButton = null;
+            WzSubProperty basicCloseButton = basicImage?["BtClose"] as WzSubProperty;
+            if (basicCloseButton != null)
+            {
+                try
+                {
+                    closeButton = new UIObject(basicCloseButton, btClickSound, btOverSound, false, Point.Zero, device);
+                }
+                catch
+                {
+                    closeButton = null;
+                }
+            }
+
             if (closeButton == null)
             {
-                WzSubProperty basicCloseButton = basicImage?["BtClose"] as WzSubProperty;
-                if (basicCloseButton != null)
-                {
-                    try
-                    {
-                        closeButton = new UIObject(basicCloseButton, btClickSound, btOverSound, false, Point.Zero, device)
-                        {
-                            X = Math.Max(8, frameTexture.Width - 24),
-                            Y = 8
-                        };
-                    }
-                    catch
-                    {
-                        closeButton = null;
-                    }
-                }
+                closeButton = LoadButton(utilDialogProperty, "BtClose", btClickSound, btOverSound, device);
             }
 
             window.InitializeButtons(okButton, closeButton);
@@ -8422,7 +8625,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             if (backgrounds.Count == 0)
             {
-                Texture2D fallbackTexture = LoadCanvasTexture(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, "notice", device);
+                Texture2D fallbackTexture = CreateUtilDlgNoticeFrameTexture(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, device);
                 if (fallbackTexture != null)
                 {
                     IDXObject fallbackFrame = new DXObject(0, 0, fallbackTexture, 0);

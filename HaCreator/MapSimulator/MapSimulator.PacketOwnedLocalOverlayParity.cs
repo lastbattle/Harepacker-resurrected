@@ -650,6 +650,7 @@ namespace HaCreator.MapSimulator
                     CurrentMapId = _mapBoard?.MapInfo?.id,
                     ResolveItemCountText = ResolvePacketOwnedBalloonItemCountText,
                     ResolveQuestStateText = ResolvePacketOwnedBalloonQuestStateText,
+                    ResolveQuestRecordText = ResolvePacketOwnedBalloonQuestRecordText,
                     ResolveJobNameText = ResolvePacketOwnedBalloonJobNameText
                 });
             for (int i = 0; i < sanitized.Length; i++)
@@ -839,6 +840,15 @@ namespace HaCreator.MapSimulator
             return jobId > 0
                 ? SkillDataLoader.GetJobName(jobId)
                 : "your job";
+        }
+
+        private string ResolvePacketOwnedBalloonQuestRecordText(int questId)
+        {
+            return questId > 0 &&
+                   _questRuntime.TryGetQuestRecordValue(questId, out string value) &&
+                   !string.IsNullOrWhiteSpace(value)
+                ? value
+                : "0";
         }
 
         private int SkipPacketOwnedBalloonLineLeadingSpaces(PacketOwnedBalloonGlyph[] glyphs, int startIndex)

@@ -228,6 +228,14 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        public bool RequiresRadioCreateLayerCharacterReset(int runtimeCharacterId)
+        {
+            int resolvedCharacterId = NormalizeRuntimeCharacterId(runtimeCharacterId);
+            return resolvedCharacterId > 0
+                && RadioCreateLayerBoundCharacterId > 0
+                && RadioCreateLayerBoundCharacterId != resolvedCharacterId;
+        }
+
         public void ResetRadioCreateLayerForCharacter(int runtimeCharacterId)
         {
             int resolvedCharacterId = NormalizeRuntimeCharacterId(runtimeCharacterId);

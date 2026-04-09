@@ -20,7 +20,11 @@ namespace HaCreator.MapSimulator.Interaction
         SelfEnterResult = 12
     }
 
-    internal readonly record struct MessengerInvitePacket(string ContactName);
+    internal readonly record struct MessengerInvitePacket(
+        string ContactName,
+        byte InviteType,
+        int InviteSequence,
+        bool SkipBlacklistAutoReject);
 
     internal readonly record struct MessengerChatPacket(string ContactName, string Message);
 
@@ -110,20 +114,9 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 PacketReader reader = new(payload);
                 string contactName = reader.ReadString16();
-                if (reader.HasRemaining)
-                {
-                    reader.ReadByte();
-                }
-
-                if (reader.HasRemaining)
-                {
-                    reader.ReadInt32();
-                }
-
-                if (reader.HasRemaining)
-                {
-                    reader.ReadByte();
-                }
+                byte inviteType = reader.HasRemaining ? reader.ReadByte() : (byte)0;
+                int inviteSequence = reader.HasRemaining ? reader.ReadInt32() : 0;
+                bool skipBlacklistAutoReject = reader.HasRemaining && reader.ReadByte() != 0;
 
                 if (string.IsNullOrWhiteSpace(contactName))
                 {
@@ -131,7 +124,11 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
-                packet = new MessengerInvitePacket(contactName.Trim());
+                packet = new MessengerInvitePacket(
+                    contactName.Trim(),
+                    inviteType,
+                    inviteSequence,
+                    skipBlacklistAutoReject);
                 return true;
             }
             catch (InvalidOperationException ex)

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Buffers.Binary;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Xna.Framework;
@@ -68,9 +69,12 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class WeddingPacketInboxManager : IDisposable
     {
         public const int DefaultPort = 18486;
+        private const int PacketTypeWeddingProgress = 379;
+        private const int PacketTypeWeddingCeremonyEnd = 380;
         private const int PacketTypeUserEnterField = 179;
         private const int PacketTypeUserLeaveField = 180;
-        private const int PacketTypeUserMove = 210;
+        private const int PacketTypeUserMoveOfficial = 181;
+        private const int PacketTypeUserMoveOrChairAlias = 210;
         private const int PacketTypeSetActivePortableChair = 222;
         private const int PacketTypeAvatarModified = 223;
         private const int PacketTypeTemporaryStatSet = 225;
@@ -152,6 +156,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             message = null;
             error = null;
+            string trimmed = text?.Trim() ?? string.Empty;
 
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -159,9 +164,26 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (trimmed.StartsWith("packetraw", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryParsePacketRawLine(trimmed, out int packetType, out byte[] payload, out error))
+                {
+                    return false;
+                }
+
+                message = new WeddingInboxMessage(packetType, payload, "wedding-inbox", text);
+                return true;
+            }
+
             string[] tokens = text.Trim().Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
             if (tokens.Length < 2)
             {
+                if (TryParsePacketType(text, out int barePacketType) && barePacketType == PacketTypeWeddingCeremonyEnd)
+                {
+                    message = new WeddingInboxMessage(PacketTypeWeddingCeremonyEnd, Array.Empty<byte>(), "wedding-inbox", text);
+                    return true;
+                }
+
                 error = "Wedding inbox line is missing a subject and action.";
                 return false;
             }
@@ -284,6 +306,11 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (packetType == PacketTypeWeddingCeremonyEnd && string.IsNullOrWhiteSpace(payloadToken))
+            {
+                return true;
+            }
+
             string compactHex = RemoveWhitespace(payloadToken);
             if (string.IsNullOrWhiteSpace(compactHex))
             {
@@ -306,6 +333,56 @@ namespace HaCreator.MapSimulator.Managers
                 error = $"Invalid wedding packet hex payload: {payloadToken}";
                 return false;
             }
+        }
+
+        private static bool TryParsePacketRawLine(string text, out int packetType, out byte[] payload, out string error)
+        {
+            packetType = 0;
+            payload = Array.Empty<byte>();
+            error = null;
+
+            string hex = text["packetraw".Length..].Trim();
+            if (string.IsNullOrWhiteSpace(hex))
+            {
+                error = "Wedding packetraw requires an opcode-wrapped hex payload.";
+                return false;
+            }
+
+            string compactHex = RemoveWhitespace(hex);
+            if (compactHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                compactHex = compactHex[2..];
+            }
+
+            byte[] packetBytes;
+            try
+            {
+                packetBytes = Convert.FromHexString(compactHex);
+            }
+            catch (FormatException)
+            {
+                error = $"Invalid wedding packetraw hex payload: {hex}";
+                return false;
+            }
+
+            if (packetBytes.Length < sizeof(ushort))
+            {
+                error = "Wedding packetraw payload is too short.";
+                return false;
+            }
+
+            ushort opcode = BinaryPrimitives.ReadUInt16LittleEndian(packetBytes.AsSpan(0, sizeof(ushort)));
+            packetType = opcode;
+            if (!IsSupportedPacketRawType(packetType))
+            {
+                error = $"Wedding packetraw payload does not contain a supported opcode {opcode} packet.";
+                return false;
+            }
+
+            payload = packetBytes.Length == sizeof(ushort)
+                ? Array.Empty<byte>()
+                : packetBytes.AsSpan(sizeof(ushort)).ToArray();
+            return true;
         }
 
         private static bool TryParseCoupleLine(string[] tokens, string rawText, out WeddingInboxMessage message, out string error)
@@ -581,15 +658,32 @@ namespace HaCreator.MapSimulator.Managers
             string normalized = token.Trim().ToLowerInvariant();
             return normalized switch
             {
+                "379" or "progress" or "weddingprogress" => AssignPacketType(PacketTypeWeddingProgress, out packetType),
+                "380" or "end" or "ceremonyend" or "weddingend" => AssignPacketType(PacketTypeWeddingCeremonyEnd, out packetType),
                 "179" or "userenter" or "spawn" => AssignPacketType(PacketTypeUserEnterField, out packetType),
                 "180" or "userleave" or "despawn" => AssignPacketType(PacketTypeUserLeaveField, out packetType),
-                "210" or "usermove" or "move" => AssignPacketType(PacketTypeUserMove, out packetType),
+                "181" or "usermove" or "move" => AssignPacketType(PacketTypeUserMoveOfficial, out packetType),
+                "210" => AssignPacketType(PacketTypeUserMoveOrChairAlias, out packetType),
                 "222" or "chair" or "setchair" => AssignPacketType(PacketTypeSetActivePortableChair, out packetType),
                 "223" or "avatarmod" or "avatarmodified" or "look" => AssignPacketType(PacketTypeAvatarModified, out packetType),
                 "225" or "tempset" or "tempstatset" => AssignPacketType(PacketTypeTemporaryStatSet, out packetType),
                 "226" or "tempreset" or "tempstatreset" => AssignPacketType(PacketTypeTemporaryStatReset, out packetType),
                 _ => int.TryParse(normalized, out packetType)
             };
+        }
+
+        private static bool IsSupportedPacketRawType(int packetType)
+        {
+            return packetType == PacketTypeWeddingProgress
+                || packetType == PacketTypeWeddingCeremonyEnd
+                || packetType == PacketTypeUserEnterField
+                || packetType == PacketTypeUserLeaveField
+                || packetType == PacketTypeUserMoveOfficial
+                || packetType == PacketTypeUserMoveOrChairAlias
+                || packetType == 215
+                || packetType == 223
+                || packetType == 225
+                || packetType == 226;
         }
 
         private static bool AssignPacketType(int value, out int packetType)
@@ -602,9 +696,12 @@ namespace HaCreator.MapSimulator.Managers
         {
             return packetType switch
             {
+                PacketTypeWeddingProgress => "weddingprogress (379)",
+                PacketTypeWeddingCeremonyEnd => "ceremonyend (380)",
                 PacketTypeUserEnterField => "userenter (179)",
                 PacketTypeUserLeaveField => "userleave (180)",
-                PacketTypeUserMove => "usermove (210)",
+                PacketTypeUserMoveOfficial => "usermove (181)",
+                PacketTypeUserMoveOrChairAlias => "usermove/chair (210)",
                 PacketTypeSetActivePortableChair => "chair (222)",
                 PacketTypeAvatarModified => "avatarmodified (223)",
                 PacketTypeTemporaryStatSet => "tempset (225)",

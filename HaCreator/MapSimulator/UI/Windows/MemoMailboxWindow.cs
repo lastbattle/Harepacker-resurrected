@@ -2306,7 +2306,23 @@ namespace HaCreator.MapSimulator.UI
                 return windowFormOrigin;
             }
 
-            return new Point(ownerBounds.X, ownerBounds.Bottom + 2);
+            Rectangle placementBounds = ResolveImePlacementBounds();
+            if (placementBounds.IsEmpty)
+            {
+                placementBounds = ownerBounds;
+            }
+
+            bool useClauseAnchor = ShouldUseCompositionClauseAnchor();
+            string prefix = useClauseAnchor
+                ? ResolveImeClauseAnchorPrefix()
+                : ResolveImeCaretPrefix();
+            int x = placementBounds.X + ResolveImePlacementTextInset() + MeasureImePlacementWidth(prefix);
+            if (_candidateListState.Vertical && useClauseAnchor)
+            {
+                x -= _font?.LineSpacing + 4 ?? 4;
+            }
+
+            return new Point(x, placementBounds.Bottom + 1);
         }
 
         private bool TryResolveCandidateWindowOriginFromWindowForm(Viewport viewport, int width, int height, out Point origin)

@@ -54,6 +54,8 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         public Action<string, int> SocialChatObserved { get; set; }
+        public Func<string, bool> IsBlacklistedName { get; set; }
+        public Action<MessengerIncomingInvitePromptState> IncomingInvitePromptChanged { get; set; }
 
         public void UpdateLocalContext(string playerName, string locationSummary, int channel)
         {
@@ -280,7 +282,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         public string ReceiveInvite(string contactName)
         {
-            string resolvedName = NormalizeParticipantName(contactName);
+            return ReceiveInvite(new MessengerInvitePacket(contactName, 0, 0, false));
+        }
+
+        public string ReceiveInvite(MessengerInvitePacket packet)
+        {
+            string resolvedName = NormalizeParticipantName(packet.ContactName);
             if (resolvedName == null)
             {
                 return "Messenger remote invite flow needs a contact name.";
@@ -309,21 +316,41 @@ namespace HaCreator.MapSimulator.Interaction
                 return $"Messenger invite from {_incomingInvite.ContactName} is already waiting.";
             }
 
+            if (!packet.SkipBlacklistAutoReject && IsBlacklistedName?.Invoke(contact.Name) == true)
+            {
+                _lastActionSummary = $"Automatically rejected Messenger invite from {contact.Name} through the blacklist seam.";
+                AddSystemLog(_lastActionSummary);
+                RecordPacketSummary(
+                    $"CUIMessenger::OnInvite auto-rejected {contact.Name} through the blacklist branch and emitted blocked subtype 5 with the local sender name.");
+                NotifyIncomingInvitePromptChanged();
+                return _lastActionSummary;
+            }
+
             _incomingInvite = new PendingMessengerInviteState(
                 _nextInviteId++,
                 contact.Name,
                 0,
-                true);
+                true,
+                packet.InviteType,
+                packet.InviteSequence,
+                packet.SkipBlacklistAutoReject);
             _lastActionSummary = MessengerClientParityText.FormatIncomingInviteNotice(contact.Name);
             AddSystemLog(_lastActionSummary);
             StartBlink(Environment.TickCount);
-            RecordPacketSummary($"Applied simulated Messenger invite packet from {contact.Name}.");
+            RecordPacketSummary(
+                $"Applied simulated Messenger invite packet from {contact.Name} (type {packet.InviteType}, sequence {packet.InviteSequence}, skipBlacklistAutoReject={(packet.SkipBlacklistAutoReject ? 1 : 0)}).");
+            NotifyIncomingInvitePromptChanged();
             return _lastActionSummary;
         }
 
         public string ReceiveInvitePacket(string contactName)
         {
             return ReceiveInvite(contactName);
+        }
+
+        public string ReceiveInvitePacket(MessengerInvitePacket packet)
+        {
+            return ReceiveInvite(packet);
         }
 
         public string AcceptIncomingInvite()
@@ -335,6 +362,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             PendingMessengerInviteState incomingInvite = _incomingInvite;
             _incomingInvite = null;
+            NotifyIncomingInvitePromptChanged();
 
             if (!_contacts.TryGetValue(incomingInvite.ContactName, out MessengerContactState contact))
             {
@@ -369,6 +397,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             PendingMessengerInviteState incomingInvite = _incomingInvite;
             _incomingInvite = null;
+            NotifyIncomingInvitePromptChanged();
             _lastActionSummary = $"Rejected Messenger invite from {incomingInvite.ContactName}.";
             AddSystemLog(_lastActionSummary);
             StartBlink(Environment.TickCount);
@@ -827,7 +856,7 @@ namespace HaCreator.MapSimulator.Interaction
                         return inviteError ?? "Messenger invite packet payload could not be decoded.";
                     }
 
-                    return ReceiveInvitePacket(invitePacket.ContactName);
+                    return ReceiveInvitePacket(invitePacket);
                 case MessengerPacketType.InviteAccept:
                     if (!MessengerPacketCodec.TryParseInvite(payload, out MessengerInvitePacket acceptPacket, out string acceptError))
                     {
@@ -1252,6 +1281,19 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _lastPacketSummary = summary.Trim();
             }
+        }
+
+        private void NotifyIncomingInvitePromptChanged()
+        {
+            IncomingInvitePromptChanged?.Invoke(_incomingInvite == null
+                ? MessengerIncomingInvitePromptState.Hidden
+                : new MessengerIncomingInvitePromptState(
+                    true,
+                    _incomingInvite.ContactName,
+                    MessengerClientParityText.FormatIncomingInvitePrompt(_incomingInvite.ContactName),
+                    _incomingInvite.InviteType,
+                    _incomingInvite.InviteSequence,
+                    _incomingInvite.SkipBlacklistAutoReject));
         }
 
         private int FindParticipantIndex(string name)
@@ -1991,7 +2033,10 @@ namespace HaCreator.MapSimulator.Interaction
             int InviteId,
             string ContactName,
             int ResolveAtTick,
-            bool WillAccept);
+            bool WillAccept,
+            byte InviteType = 0,
+            int InviteSequence = 0,
+            bool SkipBlacklistAutoReject = false);
 
         private sealed record MessengerParticipantState
         {
@@ -2101,6 +2146,18 @@ namespace HaCreator.MapSimulator.Interaction
         public string ExitPromptText { get; init; } = string.Empty;
         public bool ShouldCloseWindow { get; init; }
         public string WindowCloseSummary { get; init; } = string.Empty;
+    }
+
+    internal sealed record MessengerIncomingInvitePromptState(
+        bool IsVisible,
+        string ContactName,
+        string PromptText,
+        byte InviteType,
+        int InviteSequence,
+        bool SkipBlacklistAutoReject)
+    {
+        public static MessengerIncomingInvitePromptState Hidden { get; } =
+            new(false, string.Empty, string.Empty, 0, 0, false);
     }
 
     internal sealed class MessengerParticipantSnapshot

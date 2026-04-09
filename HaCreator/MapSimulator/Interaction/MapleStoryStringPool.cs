@@ -211,6 +211,34 @@ namespace HaCreator.MapSimulator.Interaction
             [0x1031] = "UI/UIWindow.img/MonsterCarnival/BtSide",
             [0x1032] = "UI/UIWindow.img/MonsterCarnival/Tab/enabled",
             [0x1033] = "UI/UIWindow.img/MonsterCarnival/Tab/disabled",
+            // Recovered from MapleStory.exe v95 `CTimerboard_Massacre::OnCreate`,
+            // `CField_Massacre::Update`, `CField_Massacre::Init`, and
+            // `CField_MassacreResult::OnMassacreResult`. The generated table drifts across
+            // this block in the current workspace, which can resolve real but incorrect
+            // MapleEvent / MonsterKilling resources. Pin the exact Massacre ids here so the
+            // HUD, timerboard, key animation, gauge, and result-owner surfaces stay on the
+            // client-backed resource paths.
+            [0x14EC] = "killing/clear",
+            [0x14EE] = "Map/Obj/etc.img/killing/backgrnd",
+            [0x1510] = "UI/UIWindow.img/MonsterKilling/Count/keyBackgrd/close",
+            [0x1511] = "UI/UIWindow.img/MonsterKilling/Count/keyBackgrd/ing",
+            [0x1512] = "UI/UIWindow.img/MonsterKilling/Count/keyBackgrd/open",
+            [0x1513] = "UI/UIWindow.img/MonsterKilling/Count/number2",
+            [0x1516] = "UI/UIWindow.img/MonsterKilling/Gauge/backgrdD",
+            [0x1517] = "UI/UIWindow.img/MonsterKilling/Gauge/danger",
+            [0x1518] = "UI/UIWindow.img/MonsterKilling/Gauge/iconD",
+            [0x1519] = "UI/UIWindow.img/MonsterKilling/Gauge/pixel",
+            [0x151A] = "UI/UIWindow.img/MonsterKilling/Gauge/text",
+            [0x151B] = "UI/UIWindow.img/MonsterKilling/Gauge/textD",
+            [0x151C] = "UI/UIWindow.img/MonsterKilling/Result/backgrd",
+            [0x151D] = "UI/UIWindow.img/MonsterKilling/Result/backgrd2",
+            [0x151E] = "UI/UIWindow.img/MonsterKilling/Result/number",
+            [0x151F] = "UI/UIWindow.img/MonsterKilling/Result/number2",
+            [0x1520] = "UI/UIWindow.img/MonsterKilling/Result/Rank/a",
+            [0x1521] = "UI/UIWindow.img/MonsterKilling/Result/Rank/b",
+            [0x1522] = "UI/UIWindow.img/MonsterKilling/Result/Rank/c",
+            [0x1523] = "UI/UIWindow.img/MonsterKilling/Result/Rank/d",
+            [0x1524] = "UI/UIWindow.img/MonsterKilling/Result/Rank/s",
             // Recovered from MapleStory.exe v95 `CUIQuestAlarm::Draw` and
             // `CUIQuestAlarm::OnButtonClicked`. Keep these quest-alarm ids explicit so the
             // owner retains the exact client title and notice strings even if regenerated

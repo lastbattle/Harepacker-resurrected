@@ -521,6 +521,30 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        private static IEnumerable<string> EnumerateClientOrderedPresentAliases(
+            CharacterPart morphPart,
+            IEnumerable<string> aliases)
+        {
+            if (morphPart?.Animations == null || aliases == null)
+            {
+                yield break;
+            }
+
+            foreach (var entry in aliases
+                         .Where(alias => !string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
+                         .Select((alias, index) => new
+                         {
+                             Alias = alias,
+                             Index = index,
+                             RawActionCode = GetClientMorphActionCodeOrDefault(alias)
+                         })
+                         .OrderBy(entry => entry.RawActionCode)
+                         .ThenBy(entry => entry.Index))
+            {
+                yield return entry.Alias;
+            }
+        }
+
         private static IEnumerable<string> EnumeratePreferredAuthoredAttackAliases(
             CharacterPart morphPart,
             string requestedActionName,
@@ -537,9 +561,11 @@ namespace HaCreator.MapSimulator.Character
                          {
                              Alias = alias,
                              Index = index,
-                             Score = GetRequestedAuthoredAliasScore(requestedActionName, alias)
-                         })
-                         .OrderByDescending(entry => entry.Score)
+                             Score = GetRequestedAuthoredAliasScore(requestedActionName, alias),
+                             RawActionCode = GetClientMorphActionCodeOrDefault(alias)
+                          })
+                          .OrderByDescending(entry => entry.Score)
+                         .ThenBy(entry => entry.RawActionCode)
                          .ThenBy(entry => entry.Index))
             {
                 yield return aliasEntry.Alias;
@@ -806,7 +832,7 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (IEnumerable<string> familyAliases in orderedFamilies)
             {
-                foreach (string actionName in EnumeratePresentAliases(morphPart, familyAliases))
+                foreach (string actionName in EnumerateClientOrderedPresentAliases(morphPart, familyAliases))
                 {
                     yield return actionName;
                 }
@@ -1017,6 +1043,13 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return false;
+        }
+
+        private static int GetClientMorphActionCodeOrDefault(string actionName)
+        {
+            return CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode)
+                ? rawActionCode
+                : int.MaxValue;
         }
     }
 }

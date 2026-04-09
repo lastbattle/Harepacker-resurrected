@@ -392,6 +392,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation Animation { get; set; }
         public SkillAnimation HitAnimation { get; set; }
         public List<SkillAnimation> VariantAnimations { get; set; } = new();
+        public SortedDictionary<int, List<SkillAnimation>> CharacterLevelVariantAnimations { get; set; } = new();
+        public Dictionary<int, List<SkillAnimation>> LevelVariantAnimations { get; set; } = new();
 
         public ProjectileBehavior Behavior { get; set; } = ProjectileBehavior.Straight;
         public float Speed { get; set; } = 400f;
@@ -407,17 +409,68 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public SkillAnimation ResolveAnimationVariant(int level, int maxLevel = 0)
         {
-            if (VariantAnimations == null || VariantAnimations.Count == 0)
+            return ResolveAnimationVariant(VariantAnimations, level, maxLevel, Animation);
+        }
+
+        public SkillAnimation ResolveGetBallLikeAnimation(int skillLevel, int characterLevel, int maxLevel = 0)
+        {
+            if (CharacterLevelVariantAnimations != null && CharacterLevelVariantAnimations.Count > 0)
             {
-                return Animation;
+                List<SkillAnimation> characterLevelVariants = null;
+                foreach ((int requiredLevel, List<SkillAnimation> variants) in CharacterLevelVariantAnimations)
+                {
+                    if (requiredLevel > characterLevel)
+                    {
+                        break;
+                    }
+
+                    characterLevelVariants = variants;
+                }
+
+                SkillAnimation characterLevelAnimation = ResolveAnimationVariant(
+                    characterLevelVariants,
+                    skillLevel,
+                    maxLevel);
+                if (characterLevelAnimation?.Frames.Count > 0)
+                {
+                    return characterLevelAnimation;
+                }
             }
 
-            List<SkillAnimation> renderableVariants = VariantAnimations
+            if (skillLevel > 0
+                && LevelVariantAnimations != null
+                && LevelVariantAnimations.TryGetValue(skillLevel, out List<SkillAnimation> levelVariants))
+            {
+                SkillAnimation levelAnimation = ResolveAnimationVariant(
+                    levelVariants,
+                    skillLevel,
+                    maxLevel);
+                if (levelAnimation?.Frames.Count > 0)
+                {
+                    return levelAnimation;
+                }
+            }
+
+            return ResolveAnimationVariant(skillLevel, maxLevel);
+        }
+
+        private static SkillAnimation ResolveAnimationVariant(
+            IReadOnlyList<SkillAnimation> variants,
+            int level,
+            int maxLevel = 0,
+            SkillAnimation fallback = null)
+        {
+            if (variants == null || variants.Count == 0)
+            {
+                return fallback;
+            }
+
+            List<SkillAnimation> renderableVariants = variants
                 .Where(static animation => animation?.Frames.Count > 0)
                 .ToList();
             if (renderableVariants.Count == 0)
             {
-                return Animation;
+                return fallback;
             }
 
             if (renderableVariants.Count == 1)

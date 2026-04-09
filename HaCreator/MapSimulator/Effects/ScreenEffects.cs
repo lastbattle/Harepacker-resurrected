@@ -236,6 +236,26 @@ namespace HaCreator.MapSimulator.Effects
         }
 
         /// <summary>
+        /// Mirrors the client's tone-vector fade more closely by scaling the
+        /// remaining time to the current tone level instead of always replaying
+        /// the full 600 ms overlay window from scratch.
+        /// </summary>
+        public void StageTransitionFadeIn(int durationMs, int currentTimeMs, Action onComplete = null)
+        {
+            StartStageTransitionToneFade(targetTone: 255, durationMs, currentTimeMs, onComplete);
+        }
+
+        /// <summary>
+        /// Mirrors the client's tone-vector fade more closely by scaling the
+        /// remaining time to the current tone level instead of always replaying
+        /// the full 600 ms overlay window from scratch.
+        /// </summary>
+        public void StageTransitionFadeOut(int durationMs, int currentTimeMs, Action onComplete = null)
+        {
+            StartStageTransitionToneFade(targetTone: 0, durationMs, currentTimeMs, onComplete);
+        }
+
+        /// <summary>
         /// Force the fade to complete state immediately (skip animation)
         /// </summary>
         public void ForceFadeComplete()
@@ -259,6 +279,8 @@ namespace HaCreator.MapSimulator.Effects
         /// Check if fade in is complete (screen is fully clear)
         /// </summary>
         public bool IsFadeInComplete => !_fadeActive && _fadeAlpha <= 0.0f;
+
+        internal int FadeDurationMs => _fadeDuration;
 
         /// <summary>
         /// Update the fade effect
@@ -286,6 +308,51 @@ namespace HaCreator.MapSimulator.Effects
             // Linear interpolation from start to target
             float t = (float)elapsed / _fadeDuration;
             _fadeAlpha = MathHelper.Lerp(_fadeStartAlpha, _fadeTargetAlpha, t);
+        }
+
+        private void StartStageTransitionToneFade(byte targetTone, int durationMs, int currentTimeMs, Action onComplete)
+        {
+            byte currentTone = GetCurrentToneLevel();
+            if (currentTone == targetTone)
+            {
+                _fadeActive = false;
+                _fadeAlpha = 1.0f - (targetTone / 255f);
+                _fadeStartAlpha = _fadeAlpha;
+                _fadeTargetAlpha = _fadeAlpha;
+                _fadeDuration = 0;
+                _fadeStartTime = currentTimeMs;
+                _fadeColor = Color.Black;
+                _fadeCompleteCallback = null;
+                onComplete?.Invoke();
+                return;
+            }
+
+            int scaledDuration = ScaleStageTransitionDuration(durationMs, currentTone, targetTone);
+            StartFade(
+                1.0f - (currentTone / 255f),
+                1.0f - (targetTone / 255f),
+                scaledDuration,
+                Color.Black,
+                currentTimeMs,
+                onComplete);
+        }
+
+        internal static int ScaleStageTransitionDuration(int durationMs, byte startTone, byte targetTone)
+        {
+            int clampedDuration = Math.Max(0, durationMs);
+            if (clampedDuration == 0 || startTone == targetTone)
+            {
+                return 0;
+            }
+
+            int remaining = Math.Abs(targetTone - startTone);
+            return Math.Max(1, (clampedDuration * remaining + 254) / 255);
+        }
+
+        private byte GetCurrentToneLevel()
+        {
+            float tone = (1.0f - MathHelper.Clamp(_fadeAlpha, 0.0f, 1.0f)) * 255.0f;
+            return (byte)Math.Clamp((int)Math.Round(tone, MidpointRounding.AwayFromZero), 0, 255);
         }
 
         #endregion

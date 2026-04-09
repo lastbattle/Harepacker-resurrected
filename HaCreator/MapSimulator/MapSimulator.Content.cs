@@ -399,6 +399,7 @@ namespace HaCreator.MapSimulator
                 if (!_gameState.IsLoginMap && !_mapBoard.MapInfo.hideMinimap && !_gameState.IsCashShopMap)
                 {
                     miniMapUi = MapSimulatorLoader.CreateMinimapFromProperty(uiWindow1Image, uiWindow2Image, uiBasicImage, _mapBoard, GraphicsDevice, UserScreenScaleFactor, _mapBoard.MapInfo.strMapName, _mapBoard.MapInfo.strStreetName, soundUIImage, _gameState.IsBigBangUpdate);
+                    miniMapUi?.ReloadMiniMap(_packetOwnedMiniMapOnOffVisible);
                     if (_packetFieldUtilityMinimapHiddenByAdminResult)
                     {
                         miniMapUi?.EnsureCollapsed();
@@ -809,6 +810,7 @@ namespace HaCreator.MapSimulator
             // Initialize combat effects (damage numbers, hit effects)
 
             _combatEffects.Initialize(_DxDeviceManager.GraphicsDevice, _fontDebugValues);
+            _combatEffects.SetAnimationEffects(_animationEffects);
 
 
 
@@ -1517,6 +1519,7 @@ namespace HaCreator.MapSimulator
                 if (!_gameState.IsLoginMap && !_mapBoard.MapInfo.hideMinimap && !_gameState.IsCashShopMap)
                 {
                     miniMapUi = MapSimulatorLoader.CreateMinimapFromProperty(uiWindow1Image, uiWindow2Image, uiBasicImage, _mapBoard, GraphicsDevice, UserScreenScaleFactor, _mapBoard.MapInfo.strMapName, _mapBoard.MapInfo.strStreetName, soundUIImage, _gameState.IsBigBangUpdate);
+                    miniMapUi?.ReloadMiniMap(_packetOwnedMiniMapOnOffVisible);
                     if (_packetFieldUtilityMinimapHiddenByAdminResult)
                     {
                         miniMapUi?.EnsureCollapsed();

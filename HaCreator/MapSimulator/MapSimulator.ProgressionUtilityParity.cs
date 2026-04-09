@@ -15,6 +15,7 @@ namespace HaCreator.MapSimulator
         private const int RankingStringPoolUrlTemplateId = 0xAA2;
         private const int RankingOwnerNavigateDelayMs = 250;
         private const int EventAlarmOwnerMaxVisibleLines = 3;
+        private const int EventAlarmFeedLifetimeMs = 8000;
         private int _lastRankingOpenTick = int.MinValue;
         private int _lastRankingNavigateTick = int.MinValue;
         private string _lastRankingLaunchSource = string.Empty;
@@ -68,6 +69,16 @@ namespace HaCreator.MapSimulator
                 allowVisibleReset: false);
         }
 
+        private void NotifyEventAlarmOwnerActivity(string source)
+        {
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return;
+            }
+
+            TryAutoShowEventAlarmOwner(source.Trim());
+        }
+
         private void ShowRecordedUtilityWindow(string windowName, string source)
         {
             if (string.IsNullOrWhiteSpace(windowName))
@@ -99,7 +110,6 @@ namespace HaCreator.MapSimulator
                     footer,
                     onConfirm: Exit,
                     onCancel: null);
-                confirmDialogWindow.Show();
                 uiWindowManager.ShowWindow(confirmDialogWindow);
                 return;
             }
@@ -149,6 +159,64 @@ namespace HaCreator.MapSimulator
             Action cancelledAction = _inGameConfirmCancelledAction;
             ClearInGameConfirmDialogActions();
             cancelledAction?.Invoke();
+        }
+
+        private void HandleMessengerIncomingInvitePromptChanged(MessengerIncomingInvitePromptState state)
+        {
+            if (state?.IsVisible != true)
+            {
+                HideMessengerIncomingInvitePromptDialog();
+                return;
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is not InGameConfirmDialogWindow confirmDialogWindow)
+            {
+                return;
+            }
+
+            string footer = $"Recovered CUIFadeYesNo::CreateMSMInvite seam. type={state.InviteType}, sequence={state.InviteSequence}.";
+            ConfigureInGameConfirmDialog(
+                "Messenger",
+                state.PromptText,
+                footer,
+                onConfirm: AcceptMessengerIncomingInvitePrompt,
+                onCancel: RejectMessengerIncomingInvitePrompt);
+            _messengerInvitePromptOwnedDialogActive = true;
+            confirmDialogWindow.Show();
+            uiWindowManager.ShowWindow(confirmDialogWindow);
+        }
+
+        private void AcceptMessengerIncomingInvitePrompt()
+        {
+            _messengerInvitePromptOwnedDialogActive = false;
+            string message = _messengerRuntime.AcceptIncomingInvite();
+            ShowUtilityFeedbackMessage(message);
+            if (_messengerRuntime.BuildSnapshot(Environment.TickCount).Participants.Any(participant => participant is { IsLocalPlayer: false }))
+            {
+                ShowMessengerWindow();
+            }
+        }
+
+        private void RejectMessengerIncomingInvitePrompt()
+        {
+            _messengerInvitePromptOwnedDialogActive = false;
+            ShowUtilityFeedbackMessage(_messengerRuntime.RejectIncomingInvite());
+        }
+
+        private void HideMessengerIncomingInvitePromptDialog()
+        {
+            if (!_messengerInvitePromptOwnedDialogActive)
+            {
+                return;
+            }
+
+            _messengerInvitePromptOwnedDialogActive = false;
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is InGameConfirmDialogWindow confirmDialogWindow)
+            {
+                confirmDialogWindow.Hide();
+            }
+
+            ClearInGameConfirmDialogActions();
         }
 
         private RankingWindowSnapshot BuildUtilityRankingSnapshot()
@@ -643,42 +711,66 @@ namespace HaCreator.MapSimulator
 
         private IReadOnlyList<EventAlarmLineSnapshot> BuildEventAlarmOwnerLines(int currentTick)
         {
-            List<(string Text, int Tick, bool Highlight)> candidates = new();
+            List<(string Text, int Tick, bool Highlight, bool IsActive)> candidates = new();
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedNoticeMessage))
             {
-                candidates.Add(($"Notice: {TruncatePacketOwnedUtilityText(_lastPacketOwnedNoticeMessage, 64)}", _lastPacketOwnedNoticeTick, true));
+                AddEventAlarmLineCandidate(
+                    candidates,
+                    $"Notice: {TruncatePacketOwnedUtilityText(_lastPacketOwnedNoticeMessage, 64)}",
+                    _lastPacketOwnedNoticeTick,
+                    currentTick,
+                    highlight: true);
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedChatMessage))
             {
-                candidates.Add(($"Chat: {TruncatePacketOwnedUtilityText(_lastPacketOwnedChatMessage, 64)}", _lastPacketOwnedChatTick, false));
+                AddEventAlarmLineCandidate(
+                    candidates,
+                    $"Chat: {TruncatePacketOwnedUtilityText(_lastPacketOwnedChatMessage, 64)}",
+                    _lastPacketOwnedChatTick,
+                    currentTick);
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedBuffzoneMessage))
             {
-                candidates.Add(($"Buff zone: {TruncatePacketOwnedUtilityText(_lastPacketOwnedBuffzoneMessage, 60)}", _lastPacketOwnedBuffzoneTick, false));
+                AddEventAlarmLineCandidate(
+                    candidates,
+                    $"Buff zone: {TruncatePacketOwnedUtilityText(_lastPacketOwnedBuffzoneMessage, 60)}",
+                    _lastPacketOwnedBuffzoneTick,
+                    currentTick);
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedAskApspMessage))
             {
                 string apspPrefix = _packetOwnedApspPromptActive ? "AP/SP prompt" : "AP/SP event";
-                candidates.Add(($"{apspPrefix}: {TruncatePacketOwnedUtilityText(_lastPacketOwnedAskApspMessage, 58)}", _lastPacketOwnedAskApspTick, false));
+                AddEventAlarmLineCandidate(
+                    candidates,
+                    $"{apspPrefix}: {TruncatePacketOwnedUtilityText(_lastPacketOwnedAskApspMessage, 58)}",
+                    _lastPacketOwnedAskApspTick,
+                    currentTick,
+                    isActive: _packetOwnedApspPromptActive);
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedSkillGuideMessage))
             {
-                candidates.Add((
+                AddEventAlarmLineCandidate(
+                    candidates,
                     _lastPacketOwnedSkillGuideGrade > 0
                         ? $"Skill guide G{_lastPacketOwnedSkillGuideGrade}: {TruncatePacketOwnedUtilityText(_lastPacketOwnedSkillGuideMessage, 53)}"
                         : $"Skill guide: {TruncatePacketOwnedUtilityText(_lastPacketOwnedSkillGuideMessage, 60)}",
                     _lastPacketOwnedSkillGuideTick,
-                    false));
+                    currentTick);
             }
 
             if (_packetOwnedTutorRuntime.IsActive || _packetOwnedTutorRuntime.HasRegisteredTutorVariants)
             {
-                candidates.Add((TruncatePacketOwnedUtilityText(DescribePacketOwnedTutorStatus(currentTick), 70), _packetOwnedTutorRuntime.ActiveMessageStartedAt, false));
+                AddEventAlarmLineCandidate(
+                    candidates,
+                    TruncatePacketOwnedUtilityText(DescribePacketOwnedTutorStatus(currentTick), 70),
+                    _packetOwnedTutorRuntime.ActiveMessageStartedAt,
+                    currentTick,
+                    isActive: _packetOwnedTutorRuntime.IsActive);
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedRadioStatusMessage)
@@ -688,17 +780,23 @@ namespace HaCreator.MapSimulator
                 int radioTick = _lastPacketOwnedRadioLastPollTick != int.MinValue
                     ? _lastPacketOwnedRadioLastPollTick
                     : _lastPacketOwnedRadioStartTick;
-                candidates.Add((
+                AddEventAlarmLineCandidate(
+                    candidates,
                     IsPacketOwnedRadioPlaying()
                         ? $"Radio: {TruncatePacketOwnedUtilityText(_lastPacketOwnedRadioDisplayName ?? _lastPacketOwnedRadioTrackDescriptor, 60)}"
                         : $"Radio: {TruncatePacketOwnedUtilityText(_lastPacketOwnedRadioStatusMessage, 60)}",
                     radioTick,
-                    false));
+                    currentTick,
+                    isActive: IsPacketOwnedRadioPlaying());
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedFollowFailureMessage))
             {
-                candidates.Add(($"Follow: {TruncatePacketOwnedUtilityText(_lastPacketOwnedFollowFailureMessage, 62)}", _lastPacketOwnedFollowFailureTick, false));
+                AddEventAlarmLineCandidate(
+                    candidates,
+                    $"Follow: {TruncatePacketOwnedUtilityText(_lastPacketOwnedFollowFailureMessage, 62)}",
+                    _lastPacketOwnedFollowFailureTick,
+                    currentTick);
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedLogoutGiftSummary)
@@ -707,7 +805,12 @@ namespace HaCreator.MapSimulator
                 int logoutGiftTick = _lastPacketOwnedLogoutGiftSelectionTick != int.MinValue
                     ? _lastPacketOwnedLogoutGiftSelectionTick
                     : _lastPacketOwnedLogoutGiftRefreshTick;
-                candidates.Add(($"Logout gift: {TruncatePacketOwnedUtilityText(_lastPacketOwnedLogoutGiftSummary, 56)}", logoutGiftTick, false));
+                AddEventAlarmLineCandidate(
+                    candidates,
+                    $"Logout gift: {TruncatePacketOwnedUtilityText(_lastPacketOwnedLogoutGiftSummary, 56)}",
+                    logoutGiftTick,
+                    currentTick,
+                    isActive: uiWindowManager?.GetWindow(MapSimulatorWindowNames.LogoutGift)?.IsVisible == true);
             }
 
             if (candidates.Count == 0)
@@ -716,13 +819,46 @@ namespace HaCreator.MapSimulator
             }
 
             List<EventAlarmLineSnapshot> lines = candidates
-                .OrderBy(candidate => ResolveEventAlarmLineAge(candidate.Tick, currentTick))
+                .OrderByDescending(candidate => candidate.IsActive)
+                .ThenBy(candidate => ResolveEventAlarmLineAge(candidate.Tick, currentTick))
                 .ThenByDescending(candidate => candidate.Highlight)
                 .Take(EventAlarmOwnerMaxVisibleLines)
                 .Select((candidate, index) => CreateEventAlarmLine(candidate.Text, index, candidate.Highlight))
                 .ToList();
 
             return lines;
+        }
+
+        private static void AddEventAlarmLineCandidate(
+            ICollection<(string Text, int Tick, bool Highlight, bool IsActive)> candidates,
+            string text,
+            int sourceTick,
+            int currentTick,
+            bool highlight = false,
+            bool isActive = false)
+        {
+            if (candidates == null || string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            if (!isActive && !IsEventAlarmLineRecent(sourceTick, currentTick))
+            {
+                return;
+            }
+
+            candidates.Add((text, sourceTick, highlight, isActive));
+        }
+
+        private static bool IsEventAlarmLineRecent(int sourceTick, int currentTick)
+        {
+            if (sourceTick == int.MinValue)
+            {
+                return false;
+            }
+
+            int age = ResolveEventAlarmLineAge(sourceTick, currentTick);
+            return age <= EventAlarmFeedLifetimeMs;
         }
 
         private static int ResolveEventAlarmLineAge(int sourceTick, int currentTick)

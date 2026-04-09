@@ -38,6 +38,29 @@ namespace HaCreator.MapSimulator.Character.Skills
             return true;
         }
 
+        internal static bool TryCaptureFadeSnapshot(
+            CharacterAssembler assembler,
+            string actionName,
+            MeleeAfterImageAction action,
+            int animationTime,
+            out Snapshot snapshot)
+        {
+            if (TryResolveSnapshot(assembler, actionName, action, animationTime, out snapshot))
+            {
+                return true;
+            }
+
+            snapshot = default;
+            int frameIndex = assembler?.GetFrameIndexAtTime(actionName, Math.Max(0, animationTime)) ?? -1;
+            if (frameIndex < 0)
+            {
+                return false;
+            }
+
+            snapshot = new Snapshot(frameIndex, null, 1f);
+            return true;
+        }
+
         public static SkillFrame ResolveFrame(
             MeleeAfterImageAction action,
             int frameIndex,

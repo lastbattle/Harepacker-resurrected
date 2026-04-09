@@ -40,6 +40,7 @@ namespace HaCreator.MapSimulator.Animation
         }
 
         private readonly List<OneTimeAnimation> _oneTimeAnimations = new();
+        private readonly List<OneTimeCanvasLayerAnimation> _oneTimeCanvasLayers = new();
         private readonly List<RepeatAnimation> _repeatAnimations = new();
         private readonly List<ChainLightning> _chainLightnings = new();
         private readonly List<FallingAnimation> _fallingAnimations = new();
@@ -52,6 +53,7 @@ namespace HaCreator.MapSimulator.Animation
 
         // Object pools for reduced allocations
         private readonly Queue<OneTimeAnimation> _oneTimePool = new();
+        private readonly Queue<OneTimeCanvasLayerAnimation> _oneTimeCanvasLayerPool = new();
         private readonly Queue<FallingAnimation> _fallingPool = new();
 
         #region One-Time Animation (ONETIMEINFO)
@@ -98,6 +100,82 @@ namespace HaCreator.MapSimulator.Animation
             anim.Initialize(frames, x, y, flip, currentTimeMs, zOrder);
             anim.FadeOut = true;
             _oneTimeAnimations.Add(anim);
+        }
+
+        public void RegisterOneTimeCanvasLayer(
+            Texture2D canvasTexture,
+            float left,
+            float top,
+            int holdDurationMs,
+            int fadeDurationMs,
+            int riseDistancePx,
+            int currentTimeMs,
+            Texture2D overlayTexture = null,
+            Point? overlayOffset = null,
+            int overlayDelayMs = 0,
+            bool ownsCanvasTexture = false,
+            AnimationCanvasLayerOwner owner = AnimationCanvasLayerOwner.Generic)
+        {
+            if (canvasTexture == null)
+            {
+                return;
+            }
+
+            OneTimeCanvasLayerAnimation anim = _oneTimeCanvasLayerPool.Count > 0
+                ? _oneTimeCanvasLayerPool.Dequeue()
+                : new OneTimeCanvasLayerAnimation();
+            anim.Initialize(
+                canvasTexture,
+                left,
+                top,
+                holdDurationMs,
+                fadeDurationMs,
+                riseDistancePx,
+                currentTimeMs,
+                overlayTexture,
+                overlayOffset ?? Point.Zero,
+                overlayDelayMs,
+                ownsCanvasTexture,
+                owner);
+            _oneTimeCanvasLayers.Add(anim);
+        }
+
+        public void ClearCanvasLayers(AnimationCanvasLayerOwner owner)
+        {
+            for (int i = _oneTimeCanvasLayers.Count - 1; i >= 0; i--)
+            {
+                OneTimeCanvasLayerAnimation animation = _oneTimeCanvasLayers[i];
+                if (animation.Owner != owner)
+                {
+                    continue;
+                }
+
+                animation.Reset();
+                _oneTimeCanvasLayerPool.Enqueue(animation);
+                _oneTimeCanvasLayers.RemoveAt(i);
+            }
+        }
+
+        public void ClearDamageNumberLayers()
+        {
+            ClearCanvasLayers(AnimationCanvasLayerOwner.DamageNumber);
+        }
+
+        public int DamageNumberLayerCount
+        {
+            get
+            {
+                int count = 0;
+                for (int i = 0; i < _oneTimeCanvasLayers.Count; i++)
+                {
+                    if (_oneTimeCanvasLayers[i].Owner == AnimationCanvasLayerOwner.DamageNumber)
+                    {
+                        count++;
+                    }
+                }
+
+                return count;
+            }
         }
 
         #endregion
@@ -449,6 +527,15 @@ namespace HaCreator.MapSimulator.Animation
                 }
             }
 
+            for (int i = _oneTimeCanvasLayers.Count - 1; i >= 0; i--)
+            {
+                if (!_oneTimeCanvasLayers[i].Update(currentTimeMs))
+                {
+                    _oneTimeCanvasLayerPool.Enqueue(_oneTimeCanvasLayers[i]);
+                    _oneTimeCanvasLayers.RemoveAt(i);
+                }
+            }
+
             // Update repeat animations
             for (int i = _repeatAnimations.Count - 1; i >= 0; i--)
             {
@@ -535,6 +622,11 @@ namespace HaCreator.MapSimulator.Animation
                 anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY);
             }
 
+            foreach (var anim in _oneTimeCanvasLayers)
+            {
+                anim.Draw(spriteBatch, mapShiftX, mapShiftY);
+            }
+
             // Draw repeat animations
             foreach (var anim in _repeatAnimations)
             {
@@ -580,6 +672,11 @@ namespace HaCreator.MapSimulator.Animation
         public void Clear()
         {
             _oneTimeAnimations.Clear();
+            for (int i = 0; i < _oneTimeCanvasLayers.Count; i++)
+            {
+                _oneTimeCanvasLayers[i].Reset();
+            }
+            _oneTimeCanvasLayers.Clear();
             _repeatAnimations.Clear();
             _chainLightnings.Clear();
             _fallingAnimations.Clear();
@@ -592,7 +689,7 @@ namespace HaCreator.MapSimulator.Animation
         /// Get count of active animations
         /// </summary>
         public int ActiveCount =>
-            _oneTimeAnimations.Count + _repeatAnimations.Count +
+            _oneTimeAnimations.Count + _oneTimeCanvasLayers.Count + _repeatAnimations.Count +
             _chainLightnings.Count + _fallingAnimations.Count +
             _followAnimations.Count + _areaAnimations.Count +
             _userStateAnimations.Count;
@@ -832,6 +929,121 @@ namespace HaCreator.MapSimulator.Animation
     }
 
     #region Animation Classes
+
+    /// <summary>
+    /// Shared one-time canvas layer owners used by animation-displayer parity paths.
+    /// </summary>
+    public enum AnimationCanvasLayerOwner
+    {
+        Generic = 0,
+        DamageNumber = 1
+    }
+
+    /// <summary>
+    /// One-shot canvas-backed animation that mirrors RegisterOneTimeAnimation ownership.
+    /// </summary>
+    internal class OneTimeCanvasLayerAnimation
+    {
+        private Texture2D _canvasTexture;
+        private Texture2D _overlayTexture;
+        private float _left;
+        private float _top;
+        private int _holdDurationMs;
+        private int _fadeDurationMs;
+        private int _riseDistancePx;
+        private int _startTimeMs;
+        private int _elapsedMs;
+        private int _overlayDelayMs;
+        private Point _overlayOffset;
+        private bool _ownsCanvasTexture;
+
+        public AnimationCanvasLayerOwner Owner { get; private set; } = AnimationCanvasLayerOwner.Generic;
+
+        public void Initialize(
+            Texture2D canvasTexture,
+            float left,
+            float top,
+            int holdDurationMs,
+            int fadeDurationMs,
+            int riseDistancePx,
+            int currentTimeMs,
+            Texture2D overlayTexture,
+            Point overlayOffset,
+            int overlayDelayMs,
+            bool ownsCanvasTexture,
+            AnimationCanvasLayerOwner owner)
+        {
+            _canvasTexture = canvasTexture;
+            _overlayTexture = overlayTexture;
+            _left = left;
+            _top = top;
+            _holdDurationMs = Math.Max(0, holdDurationMs);
+            _fadeDurationMs = Math.Max(0, fadeDurationMs);
+            _riseDistancePx = riseDistancePx;
+            _startTimeMs = currentTimeMs;
+            _elapsedMs = 0;
+            _overlayDelayMs = Math.Max(0, overlayDelayMs);
+            _overlayOffset = overlayOffset;
+            _ownsCanvasTexture = ownsCanvasTexture;
+            Owner = owner;
+        }
+
+        public bool Update(int currentTimeMs)
+        {
+            _elapsedMs = Math.Max(0, currentTimeMs - _startTimeMs);
+            return _elapsedMs < _holdDurationMs + _fadeDurationMs;
+        }
+
+        public void Draw(SpriteBatch spriteBatch, int mapShiftX, int mapShiftY)
+        {
+            if (_canvasTexture == null)
+            {
+                return;
+            }
+
+            float fadeProgress = 0f;
+            if (_elapsedMs > _holdDurationMs && _fadeDurationMs > 0)
+            {
+                fadeProgress = Math.Clamp((float)(_elapsedMs - _holdDurationMs) / _fadeDurationMs, 0f, 1f);
+            }
+
+            float alpha = 1f - fadeProgress;
+            float riseOffset = -_riseDistancePx * fadeProgress;
+            Vector2 position = new(_left + mapShiftX, _top + mapShiftY + riseOffset);
+
+            spriteBatch.Draw(_canvasTexture, position, Color.White * alpha);
+
+            if (_overlayTexture != null && _elapsedMs >= _overlayDelayMs)
+            {
+                spriteBatch.Draw(
+                    _overlayTexture,
+                    position + new Vector2(_overlayOffset.X, _overlayOffset.Y),
+                    Color.White * alpha);
+            }
+        }
+
+        public void Reset()
+        {
+            if (_ownsCanvasTexture)
+            {
+                _canvasTexture?.Dispose();
+            }
+
+            _canvasTexture = null;
+            _overlayTexture = null;
+            _left = 0f;
+            _top = 0f;
+            _holdDurationMs = 0;
+            _fadeDurationMs = 0;
+            _riseDistancePx = 0;
+            _startTimeMs = 0;
+            _elapsedMs = 0;
+            _overlayDelayMs = 0;
+            _overlayOffset = Point.Zero;
+            _ownsCanvasTexture = false;
+            Owner = AnimationCanvasLayerOwner.Generic;
+        }
+    }
 
     /// <summary>
     /// One-shot animation that plays once and removes itself

@@ -31,6 +31,22 @@ namespace HaCreator.MapSimulator.Pools
             "all team"
         };
 
+        private static readonly string[] FriendlyPartyDescriptionTokens =
+        {
+            "party member",
+            "party members",
+            "nearby party",
+            "all party"
+        };
+
+        private static readonly string[] FriendlyTeamDescriptionTokens =
+        {
+            "team member",
+            "team members",
+            "nearby team",
+            "all team"
+        };
+
         private static readonly string[] FriendlyAreaSupportTokens =
         {
             "heal",
@@ -420,6 +436,7 @@ namespace HaCreator.MapSimulator.Pools
             int localPlayerId,
             int ownerId,
             bool ownerIsPartyMember,
+            bool ownerIsSameTeamMember,
             SkillLevelData levelData = null)
         {
             if (skill == null || localPlayerId <= 0 || ownerId <= 0)
@@ -437,7 +454,12 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            return ownerIsPartyMember && SupportsPartyMembers(skill, supportSkills);
+            if (ownerIsPartyMember && SupportsPartyMembers(skill, supportSkills))
+            {
+                return true;
+            }
+
+            return ownerIsSameTeamMember && SupportsTeamMembers(skill, supportSkills);
         }
 
         public static bool CanAffectLocalPlayer(
@@ -445,6 +467,7 @@ namespace HaCreator.MapSimulator.Pools
             int localPlayerId,
             int ownerId,
             bool ownerIsPartyMember,
+            bool ownerIsSameTeamMember,
             SkillLevelData levelData = null)
         {
             return CanAffectLocalPlayer(
@@ -453,6 +476,7 @@ namespace HaCreator.MapSimulator.Pools
                 localPlayerId,
                 ownerId,
                 ownerIsPartyMember,
+                ownerIsSameTeamMember,
                 levelData);
         }
 
@@ -699,6 +723,34 @@ namespace HaCreator.MapSimulator.Pools
             return false;
         }
 
+        public static bool SupportsTeamMembers(SkillData skill, IEnumerable<SkillData> supportSkills = null)
+        {
+            if (SupportsTeamMembers(skill))
+            {
+                return true;
+            }
+
+            if (supportSkills == null)
+            {
+                return false;
+            }
+
+            foreach (SkillData supportSkill in supportSkills)
+            {
+                if (supportSkill == null || ReferenceEquals(supportSkill, skill))
+                {
+                    continue;
+                }
+
+                if (SupportsTeamMembers(supportSkill))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static bool IsFriendlyPlayerAreaSkillCore(SkillData skill, SkillLevelData levelData)
         {
             if (skill == null)
@@ -728,30 +780,31 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            if (SupportsPartyMembers(skill)
+            if (SupportsAlliedMembers(skill)
                 && HasProtectiveSupportMetadata(skill))
             {
                 return true;
             }
 
-            if (SupportsPartyMembers(skill)
+            if (SupportsAlliedMembers(skill)
                 && (ContainsToken(skill.Name, FriendlyAreaSupportTokens)
-                    || ContainsToken(skill.Description, FriendlyAreaSupportTokens)))
+                    || ContainsToken(skill.Description, FriendlyAreaSupportTokens)
+                    || ContainsToken(skill.DescriptionHints, FriendlyAreaSupportTokens)))
             {
                 return true;
             }
 
             if (HasPositiveSupportMetadata(levelData))
             {
-                return !HasHostileMobGameplay(skill, levelData) || SupportsPartyMembers(skill);
+                return !HasHostileMobGameplay(skill, levelData) || SupportsAlliedMembers(skill);
             }
 
             bool hasDerivedSupportAliasMetadata =
                 levelData != null
-                && ((levelData.X > 0 && ContainsToken(skill.Description, "movement speed", "speed", "attack", "damage"))
-                    || (levelData.Y != 0 && ContainsToken(skill.Description, "attack speed", "weapon speed"))
-                    || (levelData.Z > 0 && ContainsToken(skill.Description, "dodge chance", "avoidability")));
-            return hasDerivedSupportAliasMetadata && SupportsPartyMembers(skill);
+                && ((levelData.X > 0 && ContainsToken(skill.DescriptionHints ?? skill.Description, "movement speed", "speed", "attack", "damage"))
+                    || (levelData.Y != 0 && ContainsToken(skill.DescriptionHints ?? skill.Description, "attack speed", "weapon speed"))
+                    || (levelData.Z > 0 && ContainsToken(skill.DescriptionHints ?? skill.Description, "dodge chance", "avoidability")));
+            return hasDerivedSupportAliasMetadata && SupportsAlliedMembers(skill);
         }
 
         private static bool HasPositiveSupportMetadata(SkillLevelData levelData)
@@ -834,13 +887,26 @@ namespace HaCreator.MapSimulator.Pools
                        || SupportsPartyMembersViaSupportSummonMetadata(skill)
                        || skill.Type == SkillType.PartyBuff
                        || skill.Target == SkillTarget.Party
-                       || ContainsToken(skill.Description, FriendlyAreaDescriptionTokens));
+                       || ContainsToken(skill.Description, FriendlyPartyDescriptionTokens)
+                       || ContainsToken(skill.DescriptionHints, FriendlyPartyDescriptionTokens));
+        }
+
+        private static bool SupportsTeamMembers(SkillData skill)
+        {
+            return skill != null
+                   && (ContainsToken(skill.Description, FriendlyTeamDescriptionTokens)
+                       || ContainsToken(skill.DescriptionHints, FriendlyTeamDescriptionTokens));
         }
 
         private static bool SupportsPartyMembersViaSupportSummonMetadata(SkillData skill)
         {
             return skill?.ClientInfoType == 33
                    && ContainsToken(skill.MinionAbility, "heal", "amplifyDamage");
+        }
+
+        private static bool SupportsAlliedMembers(SkillData skill)
+        {
+            return SupportsPartyMembers(skill) || SupportsTeamMembers(skill);
         }
 
         private static void MergeProjectableSupportStats(SkillLevelData target, SkillLevelData source)
@@ -1030,6 +1096,11 @@ namespace HaCreator.MapSimulator.Pools
             if (!string.IsNullOrWhiteSpace(skill.Description))
             {
                 values.Add(skill.Description);
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill.DescriptionHints))
+            {
+                values.Add(skill.DescriptionHints);
             }
         }
 

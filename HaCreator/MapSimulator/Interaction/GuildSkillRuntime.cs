@@ -333,6 +333,55 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"{summary.Trim()} {result}";
         }
 
+        internal string ApplyPacketOwnedResult(GuildSkillResultPacket packet)
+        {
+            if (!_isInGuild)
+            {
+                return "Ignored guild-skill packet result because no guild is currently active.";
+            }
+
+            SkillDisplayData selectedSkill = _skills.FirstOrDefault(skill => skill?.SkillId == packet.SkillId);
+            if (selectedSkill == null)
+            {
+                return $"Guild-skill packet result for skill {packet.SkillId} could not be applied because that skill is not loaded.";
+            }
+
+            GuildSkillPendingRequest pendingRequest = ResolveMatchingPendingRequest(packet);
+            if (!packet.Approved)
+            {
+                if (pendingRequest != null)
+                {
+                    _pendingRequest = null;
+                }
+
+                string rejectedMessage = pendingRequest != null
+                    ? $"{ResolvePacketActionLabel(packet.Kind)} for {selectedSkill.SkillName} was rejected by the packet-owned guild authority."
+                    : $"{ResolvePacketActionLabel(packet.Kind)} rejection for {selectedSkill.SkillName} arrived without a matching pending request.";
+                return string.IsNullOrWhiteSpace(packet.Summary)
+                    ? rejectedMessage
+                    : $"{packet.Summary.Trim()} {rejectedMessage}";
+            }
+
+            GuildSkillPacketResolution packetResolution = new(
+                packet.SkillLevel,
+                packet.RemainingDurationMinutes,
+                packet.GuildFundMeso);
+            string result;
+            if (pendingRequest != null)
+            {
+                _pendingRequest = null;
+                result = ApplyPacketResolution(pendingRequest, selectedSkill, packetResolution);
+            }
+            else
+            {
+                result = ApplyStandalonePacketResult(packet, selectedSkill, packetResolution);
+            }
+
+            return string.IsNullOrWhiteSpace(packet.Summary)
+                ? result
+                : $"{packet.Summary.Trim()} {result}";
+        }
+
         internal string TryLevelSelectedSkill(bool packetOwned)
         {
             if (!_isInGuild)
@@ -544,6 +593,129 @@ namespace HaCreator.MapSimulator.Interaction
             return resolvedRemainingMinutes > 0
                 ? $"{selectedSkill.SkillName} now mirrors the packet-owned renewal window with {FormatDuration(resolvedRemainingMinutes)} remaining. Guild fund: {FormatMeso(_guildFundMeso)}."
                 : $"{selectedSkill.SkillName} approval arrived without an active renewal timer. Guild fund: {FormatMeso(_guildFundMeso)}.";
+        }
+
+        private GuildSkillPendingRequest ResolveMatchingPendingRequest(GuildSkillResultPacket packet)
+        {
+            if (_pendingRequest == null || _pendingRequest.SkillId != packet.SkillId)
+            {
+                return null;
+            }
+
+            if (!TryResolvePendingKind(packet.Kind, out GuildSkillPendingRequestKind expectedKind))
+            {
+                return null;
+            }
+
+            return _pendingRequest.Kind == expectedKind ? _pendingRequest : null;
+        }
+
+        private string ApplyStandalonePacketResult(
+            GuildSkillResultPacket packet,
+            SkillDisplayData selectedSkill,
+            GuildSkillPacketResolution packetResolution)
+        {
+            return packet.Kind switch
+            {
+                GuildSkillResultPacketKind.LevelUp => ApplyStandalonePacketOwnedLevelSync(selectedSkill, packetResolution),
+                GuildSkillResultPacketKind.Renew => ApplyStandalonePacketOwnedRenewalSync(selectedSkill, packetResolution),
+                _ => $"Unsupported packet-owned guild skill result for {selectedSkill.SkillName}."
+            };
+        }
+
+        private string ApplyStandalonePacketOwnedLevelSync(
+            SkillDisplayData selectedSkill,
+            GuildSkillPacketResolution packetResolution)
+        {
+            int previousLevel = selectedSkill.CurrentLevel;
+            int resolvedLevel = Math.Clamp(packetResolution.ResolvedSkillLevel ?? previousLevel, 0, Math.Max(0, selectedSkill.MaxLevel));
+            bool changedLevel = resolvedLevel != previousLevel;
+            bool gainedLevel = resolvedLevel > previousLevel;
+
+            selectedSkill.CurrentLevel = resolvedLevel;
+            if (gainedLevel && previousLevel == 0)
+            {
+                _activeGuildSkillExpirations.Remove(selectedSkill.SkillId);
+            }
+
+            if (packetResolution.GuildFundMeso.HasValue)
+            {
+                _guildFundMeso = Math.Max(0, packetResolution.GuildFundMeso.Value);
+            }
+
+            if (gainedLevel)
+            {
+                _availablePoints = Math.Max(0, _availablePoints - (resolvedLevel - previousLevel));
+            }
+
+            SaveCurrentGuildState(_activeGuildStateKey);
+            EnsureRecommendation();
+
+            if (changedLevel)
+            {
+                return $"{selectedSkill.SkillName} now mirrors the packet-owned Lv. {selectedSkill.CurrentLevel} echo. Guild fund: {FormatMeso(_guildFundMeso)}.";
+            }
+
+            return packetResolution.GuildFundMeso.HasValue
+                ? $"{selectedSkill.SkillName} kept Lv. {selectedSkill.CurrentLevel} while syncing the packet-owned guild fund to {FormatMeso(_guildFundMeso)}."
+                : $"{selectedSkill.SkillName} packet-owned level echo matched the current local state.";
+        }
+
+        private string ApplyStandalonePacketOwnedRenewalSync(
+            SkillDisplayData selectedSkill,
+            GuildSkillPacketResolution packetResolution)
+        {
+            if (!packetResolution.RemainingDurationMinutes.HasValue && !packetResolution.GuildFundMeso.HasValue)
+            {
+                return $"{selectedSkill.SkillName} packet-owned renewal echo did not carry any timer or guild-fund update.";
+            }
+
+            int resolvedRemainingMinutes = Math.Max(0, packetResolution.RemainingDurationMinutes ?? GetRemainingDurationMinutes(selectedSkill));
+            if (packetResolution.RemainingDurationMinutes.HasValue)
+            {
+                if (resolvedRemainingMinutes > 0)
+                {
+                    _activeGuildSkillExpirations[selectedSkill.SkillId] = DateTimeOffset.UtcNow.AddMinutes(resolvedRemainingMinutes);
+                }
+                else
+                {
+                    _activeGuildSkillExpirations.Remove(selectedSkill.SkillId);
+                }
+            }
+
+            if (packetResolution.GuildFundMeso.HasValue)
+            {
+                _guildFundMeso = Math.Max(0, packetResolution.GuildFundMeso.Value);
+            }
+
+            SaveCurrentGuildState(_activeGuildStateKey);
+
+            return resolvedRemainingMinutes > 0
+                ? $"{selectedSkill.SkillName} now mirrors the packet-owned renewal echo with {FormatDuration(resolvedRemainingMinutes)} remaining. Guild fund: {FormatMeso(_guildFundMeso)}."
+                : $"{selectedSkill.SkillName} packet-owned renewal echo cleared the active timer. Guild fund: {FormatMeso(_guildFundMeso)}.";
+        }
+
+        private static string ResolvePacketActionLabel(GuildSkillResultPacketKind kind)
+        {
+            return kind == GuildSkillResultPacketKind.Renew ? "Renewal" : "Level-up";
+        }
+
+        private static bool TryResolvePendingKind(GuildSkillResultPacketKind kind, out GuildSkillPendingRequestKind pendingKind)
+        {
+            switch (kind)
+            {
+                case GuildSkillResultPacketKind.LevelUp:
+                    pendingKind = GuildSkillPendingRequestKind.LevelUp;
+                    return true;
+
+                case GuildSkillResultPacketKind.Renew:
+                    pendingKind = GuildSkillPendingRequestKind.Renew;
+                    return true;
+
+                default:
+                    pendingKind = default;
+                    return false;
+            }
         }
 
         private SkillDisplayData GetSelectedSkill()

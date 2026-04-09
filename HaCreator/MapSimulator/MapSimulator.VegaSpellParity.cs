@@ -222,7 +222,6 @@ namespace HaCreator.MapSimulator
                     _pendingVegaPromptState = null;
                 });
 
-            confirmDialogWindow.Show();
             uiWindowManager.ShowWindow(confirmDialogWindow);
         }
 

@@ -13,11 +13,12 @@ namespace HaCreator.MapSimulator.Interaction
             Vector2 driverPosition,
             bool driverFacingRight,
             string driverActionName,
+            int driverFootholdId,
             int currentTime)
         {
             PassivePositionSnapshot passivePosition = driverMovementSnapshot != null
                 ? driverMovementSnapshot.SampleAtTime(currentTime)
-                : CreateFallbackPassivePosition(driverPosition, driverFacingRight, driverActionName, currentTime);
+                : CreateFallbackPassivePosition(driverPosition, driverFacingRight, driverActionName, driverFootholdId, currentTime);
 
             Vector2 driverWorldPosition = new(passivePosition.X, passivePosition.Y);
             string sampledActionName = ResolveActionName(passivePosition.Action, driverActionName);
@@ -44,6 +45,7 @@ namespace HaCreator.MapSimulator.Interaction
             Vector2 driverPosition,
             bool driverFacingRight,
             string driverActionName,
+            int driverFootholdId,
             int currentTime)
         {
             return new PassivePositionSnapshot
@@ -53,7 +55,7 @@ namespace HaCreator.MapSimulator.Interaction
                 VelocityX = 0,
                 VelocityY = 0,
                 Action = ResolveMoveAction(driverActionName),
-                FootholdId = 0,
+                FootholdId = driverFootholdId,
                 TimeStamp = currentTime,
                 FacingRight = driverFacingRight
             };

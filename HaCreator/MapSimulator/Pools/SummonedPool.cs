@@ -327,6 +327,7 @@ namespace HaCreator.MapSimulator.Pools
                 localPlayerId,
                 ownerCharacterId,
                 ownerIsPartyMember,
+                ownerIsSameTeamMember: false,
                 summon.LevelData);
         }
 
@@ -754,7 +755,9 @@ namespace HaCreator.MapSimulator.Pools
                 state.Summon.SkillData,
                 state.LastAttackAction);
             ArmPacketOwnedOneTimeAction(state, currentTime, state.LastAttackAction, isSkillAction: false);
-            int prepareDuration = GetSkillAnimationDuration(state.Summon.SkillData?.SummonAttackPrepareAnimation) ?? 0;
+            int prepareDuration = SummonRuntimeRules.ResolveSummonActionPrepareDurationMs(
+                state.Summon.SkillData,
+                state.Summon.CurrentAnimationBranchName);
             if (state.Summon.LastAttackAnimationStartTime == int.MinValue
                 || prepareDuration <= 0
                 || currentTime - state.Summon.LastAttackAnimationStartTime > prepareDuration)
@@ -896,7 +899,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             SchedulePacketAttackImpactEffects(state.Summon, targets, currentTime);
-            SchedulePacketReactiveChainEffects(state.Summon, targets, currentTime);
+            SchedulePacketReactiveChainEffects(state, targets, currentTime);
         }
 
         private void TryRegisterClientOwnedAttackTileOverlay(PacketOwnedSummonState state, int currentTime)
@@ -1872,7 +1875,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (idleState == SummonActorState.Idle)
             {
-                if (ShouldClearPacketOwnedHealingRobotSupportSuspend(state, currentTime))
+                if (ShouldClearPacketOwnedSupportSuspend(state, currentTime))
                 {
                     state.Summon.SupportSuspendUntilTime = int.MinValue;
                 }
@@ -1896,12 +1899,11 @@ namespace HaCreator.MapSimulator.Pools
             return elapsed >= 0 && duration > 0 && elapsed < duration;
         }
 
-        private static bool ShouldClearPacketOwnedHealingRobotSupportSuspend(PacketOwnedSummonState state, int currentTime)
+        private static bool ShouldClearPacketOwnedSupportSuspend(PacketOwnedSummonState state, int currentTime)
         {
-            return SummonRuntimeRules.ShouldClearHealingRobotSupportSuspend(
+            return SummonRuntimeRules.ShouldClearSupportSuspend(
                 state?.Summon,
-                currentTime,
-                HealingRobotSkillId);
+                currentTime);
         }
 
         private static void AdvanceSummonHitPeriod(ActiveSummon summon, int currentTime)
@@ -3013,13 +3015,17 @@ namespace HaCreator.MapSimulator.Pools
                 .GroupBy(static mob => mob.PoolId)
                 .ToDictionary(static group => group.Key, static group => group.First());
 
+            PlayerCharacter localPlayer = state.OwnerIsLocal
+                ? _localPlayerAccessor?.Invoke()
+                : null;
             int[] orderedTargetIds = ResolvePacketOwnedExpiryTargetOrder(
                 summon,
                 candidatesById.Values.Select(mob => new PacketOwnedExpiryTargetCandidate(
                     mob.PoolId,
                     GetMobHitbox(mob, currentTime))),
                 maxTargets,
-                ResolvePacketOwnedExpiryPreferredTargetMobIds(state));
+                ResolvePacketOwnedExpiryPreferredTargetMobIds(state),
+                localPlayer?.X);
 
             return orderedTargetIds
                 .Where(candidatesById.ContainsKey)
@@ -3031,7 +3037,8 @@ namespace HaCreator.MapSimulator.Pools
             ActiveSummon summon,
             IEnumerable<PacketOwnedExpiryTargetCandidate> candidates,
             int maxTargets,
-            IReadOnlyList<int> preferredTargetMobIds = null)
+            IReadOnlyList<int> preferredTargetMobIds = null,
+            float? ownerReferenceX = null)
         {
             if (summon?.SkillData == null || candidates == null || maxTargets <= 0)
             {
@@ -3072,7 +3079,8 @@ namespace HaCreator.MapSimulator.Pools
 
             bool fallbackFacingRight = ResolvePacketOwnedExpiryFallbackFacingRight(
                 summon,
-                candidatesById.Values.Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId)));
+                candidatesById.Values.Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId)),
+                ownerReferenceX);
             Rectangle summonBounds = GetPacketOwnedSummonAttackBounds(summon, fallbackFacingRight);
             IEnumerable<int> fallbackTargetIds = candidatesById.Values
                 .Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId)
@@ -3114,7 +3122,8 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static bool ResolvePacketOwnedExpiryFallbackFacingRight(
             ActiveSummon summon,
-            IEnumerable<PacketOwnedExpiryTargetCandidate> candidates)
+            IEnumerable<PacketOwnedExpiryTargetCandidate> candidates,
+            float? ownerReferenceX = null)
         {
             if (summon?.SkillData == null || candidates == null)
             {
@@ -3132,6 +3141,16 @@ namespace HaCreator.MapSimulator.Pools
             if (rightScore.InRangeCount != leftScore.InRangeCount)
             {
                 return rightScore.InRangeCount > leftScore.InRangeCount;
+            }
+
+            if (ownerReferenceX.HasValue
+                && rightScore.InRangeCount > 0)
+            {
+                float ownerDeltaX = ownerReferenceX.Value - summon.PositionX;
+                if (MathF.Abs(ownerDeltaX) > 0.5f)
+                {
+                    return ownerDeltaX >= 0f;
+                }
             }
 
             int nearestDistanceComparison = rightScore.NearestDistanceSq.CompareTo(leftScore.NearestDistanceSq);
@@ -3533,10 +3552,11 @@ namespace HaCreator.MapSimulator.Pools
         }
 
         private void SchedulePacketReactiveChainEffects(
-            ActiveSummon summon,
+            PacketOwnedSummonState state,
             IReadOnlyList<MobItem> targets,
             int currentTime)
         {
+            ActiveSummon summon = state?.Summon;
             if (summon == null
                 || targets == null
                 || targets.Count == 0
@@ -3546,7 +3566,9 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             const int chainDurationMs = 270;
-            SkillAnimation chainAnimation = ResolveClientOwnedReactiveAttackChainAnimation(summon);
+            SkillAnimation chainAnimation = ResolveClientOwnedReactiveAttackChainAnimation(
+                summon,
+                state?.OwnerCharacterLevel ?? 1);
             bool canRenderChain = chainAnimation?.Frames.Count > 0 || _animationEffects != null;
             if (!canRenderChain)
             {
@@ -3581,17 +3603,20 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        internal static SkillAnimation ResolveClientOwnedReactiveAttackChainAnimation(ActiveSummon summon)
+        internal static SkillAnimation ResolveClientOwnedReactiveAttackChainAnimation(
+            ActiveSummon summon,
+            int ownerCharacterLevel = 1)
         {
             SkillData skill = summon?.SkillData;
             if (summon?.SkillId == 4111007)
             {
-                SkillAnimation rootBallVariant = skill?.Projectile?.ResolveAnimationVariant(
+                SkillAnimation resolvedBallAnimation = skill?.Projectile?.ResolveGetBallLikeAnimation(
                     summon.Level,
+                    Math.Max(1, ownerCharacterLevel),
                     skill.MaxLevel);
-                if (rootBallVariant?.Frames.Count > 0)
+                if (resolvedBallAnimation?.Frames.Count > 0)
                 {
-                    return rootBallVariant;
+                    return resolvedBallAnimation;
                 }
             }
 
@@ -3773,7 +3798,10 @@ namespace HaCreator.MapSimulator.Pools
 
             string attackBranchName = summon.CurrentAnimationBranchName;
             int delayMs = ResolvePacketAttackImpactAuthoredDelayMs(summon.SkillData, targetIndex, attackBranchName);
-            delayMs += GetSkillAnimationDuration(summon.SkillData.SummonAttackPrepareAnimation) ?? 0;
+            delayMs = SummonRuntimeRules.ResolveSummonImpactDelayMs(
+                summon.SkillData,
+                delayMs,
+                attackBranchName);
 
             int projectileSpeed = summon.SkillData.ResolveSummonAttackProjectileSpeed(attackBranchName);
             if (projectileSpeed <= 0)

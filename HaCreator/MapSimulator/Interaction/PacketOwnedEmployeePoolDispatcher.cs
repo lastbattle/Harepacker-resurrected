@@ -23,17 +23,15 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            bool hasPoolState = snapshot.EmployeePoolEntries?.Count > 0 || snapshot.EmployeeHasPacketData;
-            if (!hasPoolState)
+            if (snapshot.EmployeePoolEntries?.Count <= 0)
             {
                 return;
             }
 
             _poolRuntime.Restore(snapshot.EmployeePoolEntries);
-            _poolRuntime.SetPreferredEmployerId(snapshot.EmployeePreferredEmployerId);
             _activeKind = snapshot.Kind;
-            _hasPacketState = snapshot.EmployeeHasPacketData || snapshot.EmployeePoolEntries?.Count > 0;
-            _lastKnownEmployerId = ResolveLastKnownEmployerId(snapshot.EmployeePreferredEmployerId);
+            _hasPacketState = _poolRuntime.HasEntries;
+            _lastKnownEmployerId = ResolveLastKnownEmployerId();
             _lastDispatchSummary = $"Restored packet-owned employee pool state from {snapshot.Kind}.";
         }
 
@@ -72,7 +70,7 @@ namespace HaCreator.MapSimulator.Interaction
                     _lastKnownEmployerId = employerId;
                 }
 
-                _hasPacketState = true;
+                _hasPacketState = _poolRuntime.HasEntries;
                 _activeKind = kind;
             }
 
@@ -96,9 +94,6 @@ namespace HaCreator.MapSimulator.Interaction
         {
             runtime?.ApplyPacketOwnedEmployeePoolState(
                 _poolRuntime.BuildSnapshots(),
-                _poolRuntime.PreferredEmployerId,
-                _hasPacketState,
-                _lastKnownEmployerId,
                 statusMessage,
                 persistState);
         }
@@ -136,7 +131,7 @@ namespace HaCreator.MapSimulator.Interaction
                 || pooledEmployee == null
                 || !pooledEmployee.IsVisible)
             {
-                if (_hasPacketState)
+                if (_poolRuntime.HasEntries)
                 {
                     return $"Packet-owned employee pool hidden. Entries={EntryCount}, lastEmployer={_lastKnownEmployerId}. Last dispatch: {_lastDispatchSummary}";
                 }
@@ -190,7 +185,7 @@ namespace HaCreator.MapSimulator.Interaction
             return kind == SocialRoomKind.PersonalShop || kind == SocialRoomKind.EntrustedShop;
         }
 
-        private int ResolveLastKnownEmployerId(int fallbackEmployerId)
+        private int ResolveLastKnownEmployerId()
         {
             if (_poolRuntime.TryGetPrimaryEntry(out SocialRoomEmployeePoolEntryState pooledEmployee)
                 && pooledEmployee != null)
@@ -198,7 +193,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return pooledEmployee.EmployerId;
             }
 
-            return Math.Max(0, fallbackEmployerId);
+            return Math.Max(0, _poolRuntime.PreferredEmployerId);
         }
     }
 }

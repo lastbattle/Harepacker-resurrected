@@ -51,6 +51,21 @@ namespace HaCreator.MapSimulator.Interaction
         string GuildName,
         int GuildLevel);
 
+    internal enum GuildSkillResultPacketKind : byte
+    {
+        LevelUp = 0,
+        Renew = 1
+    }
+
+    internal readonly record struct GuildSkillResultPacket(
+        GuildSkillResultPacketKind Kind,
+        int SkillId,
+        bool Approved,
+        int? SkillLevel,
+        int? RemainingDurationMinutes,
+        int? GuildFundMeso,
+        string Summary);
+
     internal enum SocialListClientGuildResultKind : byte
     {
         Ranking = 76,
@@ -351,6 +366,52 @@ namespace HaCreator.MapSimulator.Interaction
                         error = $"Unsupported client guild-result subtype {(byte)kind}.";
                         return false;
                 }
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseGuildSkillResult(ReadOnlySpan<byte> payload, out GuildSkillResultPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload);
+                GuildSkillResultPacketKind kind = (GuildSkillResultPacketKind)reader.ReadByte();
+                if (kind != GuildSkillResultPacketKind.LevelUp && kind != GuildSkillResultPacketKind.Renew)
+                {
+                    error = $"Unsupported guild-skill result kind {(byte)kind}.";
+                    return false;
+                }
+
+                int skillId = reader.ReadInt32();
+                if (skillId <= 0)
+                {
+                    error = "Guild-skill result packet skill id must be positive.";
+                    return false;
+                }
+
+                bool approved = reader.ReadBoolean();
+                byte flags = reader.ReadByte();
+                int? skillLevel = (flags & 0x01) != 0 ? reader.ReadInt32() : null;
+                int? remainingDurationMinutes = (flags & 0x02) != 0 ? reader.ReadInt32() : null;
+                int? guildFundMeso = (flags & 0x04) != 0 ? reader.ReadInt32() : null;
+                string summary = reader.HasRemaining ? reader.ReadString16().Trim() : null;
+
+                packet = new GuildSkillResultPacket(
+                    kind,
+                    skillId,
+                    approved,
+                    skillLevel,
+                    remainingDurationMinutes,
+                    guildFundMeso,
+                    summary);
+                return true;
             }
             catch (InvalidOperationException ex)
             {

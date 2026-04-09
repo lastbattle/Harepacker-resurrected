@@ -96,6 +96,7 @@ namespace HaCreator.MapSimulator.UI
         private int _resultScrollOffset;
         private int _selectedResultIndex;
         private int _searchResultSessionPageIndex;
+        private int _searchResultSessionToken;
         private string _searchResultSessionSelectedEntryKey = string.Empty;
         private PopupMode _popupMode;
 
@@ -281,6 +282,11 @@ namespace HaCreator.MapSimulator.UI
         public int GetWishlistSearchResultSessionPageIndex()
         {
             return _searchResultSessionPageIndex;
+        }
+
+        public int GetWishlistSearchResultSessionToken()
+        {
+            return _searchResultSessionToken;
         }
 
         public int GetWishlistSearchResultSessionPageCount()
@@ -1605,7 +1611,8 @@ namespace HaCreator.MapSimulator.UI
 
         private void BeginWishlistSearchResultSession(IEnumerable<AdminShopDialogUI.WishlistSearchResult> results)
         {
-            ClearWishlistSearchResultSession();
+            AdvanceWishlistSearchResultSessionToken();
+            ClearWishlistSearchResultSession(advanceToken: false);
             if (results == null)
             {
                 return;
@@ -1623,8 +1630,13 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void ClearWishlistSearchResultSession()
+        private void ClearWishlistSearchResultSession(bool advanceToken = true)
         {
+            if (advanceToken)
+            {
+                AdvanceWishlistSearchResultSessionToken();
+            }
+
             _searchResultSessionEntryKeys.Clear();
             _searchResultSessionPageIndex = 0;
             _searchResultSessionSelectedEntryKey = string.Empty;
@@ -1635,6 +1647,11 @@ namespace HaCreator.MapSimulator.UI
             _searchResults.Clear();
             _selectedResultIndex = 0;
             _resultScrollOffset = 0;
+            if (IsSearchResultAddOnOpen())
+            {
+                HideSearchResultAddOnRequested?.Invoke();
+            }
+
             if (_popupMode == PopupMode.Results)
             {
                 _popupMode = PopupMode.None;
@@ -1666,25 +1683,40 @@ namespace HaCreator.MapSimulator.UI
                 liveResults.Add(result);
             }
 
-            if (writeIndex < _searchResultSessionEntryKeys.Count)
+            bool prunedEntries = writeIndex < _searchResultSessionEntryKeys.Count;
+            if (prunedEntries)
             {
                 _searchResultSessionEntryKeys.RemoveRange(writeIndex, _searchResultSessionEntryKeys.Count - writeIndex);
             }
 
+            bool droppedSelectedEntry = false;
             if (!string.IsNullOrWhiteSpace(_searchResultSessionSelectedEntryKey)
                 && !_searchResultSessionEntryKeys.Contains(_searchResultSessionSelectedEntryKey, StringComparer.Ordinal))
             {
                 _searchResultSessionSelectedEntryKey = string.Empty;
+                droppedSelectedEntry = true;
             }
 
             int pageCount = liveResults.Count == 0
                 ? 0
                 : (int)Math.Ceiling(liveResults.Count / (float)ResultSessionPageSize);
+            int previousPageIndex = _searchResultSessionPageIndex;
             _searchResultSessionPageIndex = pageCount == 0
                 ? 0
                 : Math.Clamp(_searchResultSessionPageIndex, 0, pageCount - 1);
+            if (prunedEntries || droppedSelectedEntry || previousPageIndex != _searchResultSessionPageIndex)
+            {
+                AdvanceWishlistSearchResultSessionToken();
+            }
 
             return liveResults;
+        }
+
+        private void AdvanceWishlistSearchResultSessionToken()
+        {
+            _searchResultSessionToken = _searchResultSessionToken == int.MaxValue
+                ? 1
+                : _searchResultSessionToken + 1;
         }
 
         private int GetWishlistSearchResultSessionSelectedIndex(IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> liveResults)

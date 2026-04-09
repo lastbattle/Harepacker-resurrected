@@ -691,7 +691,14 @@ namespace HaCreator.MapSimulator.UI
                     }
                     if (WasPressedOrRepeated(keyboard, Keys.Delete, tickCount))
                     {
-                        if (HasSearchSelection)
+                        if (shift)
+                        {
+                            if (HasSearchSelection)
+                            {
+                                CopySelectedSearchText(cutSelection: true);
+                            }
+                        }
+                        else if (HasSearchSelection)
                         {
                             DeleteSearchSelectionIfAny();
                             OnSearchQueryChanged();
@@ -1400,7 +1407,7 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private static Rectangle ResolveCollectionRuleBounds(Point pageOrigin, CollectionBookRecordSnapshot record)
+        internal static Rectangle ResolveCollectionRuleBounds(Point pageOrigin, CollectionBookRecordSnapshot record)
         {
             if (record == null)
             {
@@ -1415,7 +1422,7 @@ namespace HaCreator.MapSimulator.UI
                 Math.Max(1, record.Height));
         }
 
-        private static Vector2 ResolveCollectionRecordTextAnchor(Point pageOrigin, CollectionBookRecordSnapshot record)
+        internal static Vector2 ResolveCollectionRecordTextAnchor(Point pageOrigin, CollectionBookRecordSnapshot record)
         {
             HorizontalAlignment alignment = record?.Alignment switch
             {
@@ -1423,34 +1430,13 @@ namespace HaCreator.MapSimulator.UI
                 CollectionBookTextAlignment.Right => HorizontalAlignment.Right,
                 _ => HorizontalAlignment.Left
             };
-            Vector2 clientOffset = ResolveCollectionRecordTextOffset(record, alignment);
-            float anchorX = pageOrigin.X + record.Left + 35 + clientOffset.X;
+            float anchorX = pageOrigin.X + record.Left + 35;
             if (alignment == HorizontalAlignment.Right)
             {
                 anchorX += record.Width;
             }
 
-            return new Vector2(anchorX, pageOrigin.Y + record.Top + 30 + clientOffset.Y);
-        }
-
-        private static Vector2 ResolveCollectionRecordTextOffset(CollectionBookRecordSnapshot record, HorizontalAlignment alignment)
-        {
-            if (record == null)
-            {
-                return Vector2.Zero;
-            }
-
-            return record.Role switch
-            {
-                CollectionBookRecordRole.Title => new Vector2(0f, -1f),
-                CollectionBookRecordRole.Subtitle => new Vector2(0f, -1f),
-                CollectionBookRecordRole.Label => new Vector2(0f, -1f),
-                CollectionBookRecordRole.Value when alignment == HorizontalAlignment.Right => new Vector2(1f, -1f),
-                CollectionBookRecordRole.Value => new Vector2(0f, -1f),
-                CollectionBookRecordRole.Detail => new Vector2(0f, 1f),
-                CollectionBookRecordRole.Footer => new Vector2(0f, 1f),
-                _ => Vector2.Zero
-            };
+            return new Vector2(anchorX, pageOrigin.Y + record.Top + 30);
         }
 
         private void DrawRule(SpriteBatch sprite, Rectangle bounds)

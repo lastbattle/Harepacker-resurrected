@@ -88,6 +88,8 @@ namespace HaCreator.MapSimulator.UI
         private const int NAME_FIELD_TEXT_INSET_Y = 0;
         private const float NAME_FIELD_COUNTER_SCALE = 0.55f;
         private const int OWNER_TOOLTIP_MARGIN = 4;
+        // `CCtrlEdit::CreateIMECandWnd` formats candidate ordinals through StringPool 0x1A15.
+        private const int CandidateNumberFormatStringPoolId = 0x1A15;
         private static readonly Color NameFieldCounterColor = new(196, 196, 178);
 
         // WZ `Skill/macro/check` resolves to (161, 235) inside the owner.
@@ -2314,7 +2316,7 @@ namespace HaCreator.MapSimulator.UI
                 for (int i = 0; i < count; i++)
                 {
                     int candidateIndex = start + i;
-                    string numberText = $"{i + 1}.";
+                    string numberText = FormatCandidateNumber(i + 1);
                     Rectangle rowBounds = new(candidateBounds.X + 2, candidateBounds.Y + 2 + (i * rowHeight), candidateBounds.Width - 4, rowHeight);
                     bool selected = candidateIndex == _candidateListState.Selection;
                     if (selected)
@@ -2339,8 +2341,8 @@ namespace HaCreator.MapSimulator.UI
                 {
                     int candidateIndex = start + i;
                     int cellX = candidateBounds.X + 3 + (i * cellWidth);
-                    string numberText = $"{i + 1}.";
-                    int numberWidth = (int)Math.Ceiling(_font.MeasureString(numberText).X);
+                    string numberText = FormatCandidateNumber(i + 1);
+                    int numberWidth = (int)Math.Ceiling(MeasureCandidateWindowText(numberText).X);
                     Rectangle cellBounds = new(cellX - 1, candidateBounds.Y + 1, cellWidth, Math.Max(1, candidateBounds.Height - 2));
                     bool selected = candidateIndex == _candidateListState.Selection;
                     if (selected)
@@ -2379,7 +2381,7 @@ namespace HaCreator.MapSimulator.UI
                 for (int i = 0; i < count; i++)
                 {
                     int candidateIndex = start + i;
-                    string numberText = $"{i + 1}.";
+                    string numberText = FormatCandidateNumber(i + 1);
                     string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
                     int entryWidth = (int)Math.Ceiling(
                         MeasureCandidateWindowText(numberText).X
@@ -2475,7 +2477,7 @@ namespace HaCreator.MapSimulator.UI
 
             float prefixWidth = prefix.Length > 0 ? _font.MeasureString(prefix).X : 0f;
             int x = bounds.X + NAME_FIELD_TEXT_INSET_X + (int)Math.Round(prefixWidth);
-            if (_candidateListState.Vertical && useClauseAnchor)
+            if (useClauseAnchor)
             {
                 x -= _font.LineSpacing + 4;
             }
@@ -2625,7 +2627,17 @@ namespace HaCreator.MapSimulator.UI
         private int GetCandidateNumberWidth()
         {
             int widestIndex = Math.Max(1, GetVisibleCandidateCount());
-            return (int)Math.Ceiling(MeasureCandidateWindowText($"{widestIndex}.").X);
+            return (int)Math.Ceiling(MeasureCandidateWindowText(FormatCandidateNumber(widestIndex)).X);
+        }
+
+        private static string FormatCandidateNumber(int candidateNumber)
+        {
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                CandidateNumberFormatStringPoolId,
+                "{0}",
+                maxPlaceholderCount: 1,
+                out _);
+            return string.Format(CultureInfo.InvariantCulture, format, candidateNumber);
         }
 
         private Vector2 MeasureCandidateWindowText(string text)

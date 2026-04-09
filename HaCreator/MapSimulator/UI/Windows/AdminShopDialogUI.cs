@@ -433,6 +433,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<string, AdminShopBrowseSurfaceState> _browseSurfaceStates = new(StringComparer.Ordinal);
         private readonly IReadOnlyList<WishlistPriceRange> _wishlistPriceRanges = BuildWishlistPriceRanges();
         private readonly List<PacketOwnedAdminShopCommoditySnapshot> _packetOwnedAdminShopRows = new();
+        private readonly List<AdminShopEntry> _packetOwnedAdminShopSellTemplates = new();
+        private readonly List<AdminShopUserSellMutationRow> _pendingPacketOwnedUserSellSnapshotRows = new();
 
         private IInventoryRuntime _inventory;
         private IStorageRuntime _storageRuntime;
@@ -477,6 +479,8 @@ namespace HaCreator.MapSimulator.UI
         private string _packetOwnedAdminShopLastNotice = string.Empty;
         private string _packetOwnedAdminShopLastOutboundSummary = string.Empty;
         private bool _packetOwnedAdminShopAskItemWishlist;
+        private InventoryType _pendingPacketOwnedUserSellSnapshotInventoryType = InventoryType.NONE;
+        private int _pendingPacketOwnedUserSellSnapshotScrollOffset;
         public Action<AdminShopDialogUI> WishlistWindowRequested { get; set; }
         public Action<AdminShopDialogUI> WindowHidden { get; set; }
         public Func<long, bool> TryConsumeCashBalance { get; set; }
@@ -710,6 +714,7 @@ namespace HaCreator.MapSimulator.UI
             _packetOwnedAdminShopLastNotice = string.Empty;
             _packetOwnedAdminShopLastOutboundSummary = string.Empty;
             _packetOwnedAdminShopWouldDisconnect = false;
+            ClearPendingPacketOwnedUserSellSnapshot();
             ResetMode(AdminShopServiceMode.CashShop);
             _footerMessage = _packetOwnedAdminShopNpcTemplateId > 0
                 ? $"CAdminShopDlg::SetAdminShopDlg opened the packet-owned admin-shop owner for NPC {_packetOwnedAdminShopNpcTemplateId} with {_packetOwnedAdminShopDecodedItemCount} decoded row(s); wishlist prompt={(_packetOwnedAdminShopAskItemWishlist ? "on" : "off")}."
@@ -726,11 +731,13 @@ namespace HaCreator.MapSimulator.UI
             _packetOwnedAdminShopDecodedItemCount = 0;
             _packetOwnedAdminShopAskItemWishlist = false;
             _packetOwnedAdminShopRows.Clear();
+            _packetOwnedAdminShopSellTemplates.Clear();
             _packetOwnedAdminShopLastSubtype = -1;
             _packetOwnedAdminShopLastResultCode = -1;
             _packetOwnedAdminShopLastNotice = noticeText ?? string.Empty;
             _packetOwnedAdminShopLastOutboundSummary = DispatchPacketOwnedAdminShopOutbound(PacketOwnedAdminShopCloseMode, 0);
             _packetOwnedAdminShopWouldDisconnect = false;
+            ClearPendingPacketOwnedUserSellSnapshot();
             ResetPendingRequestState();
             _footerMessage = string.IsNullOrWhiteSpace(noticeText)
                 ? $"Packet 367 rejected the admin-shop open request. {_packetOwnedAdminShopLastOutboundSummary}"
@@ -774,6 +781,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 message = AdminShopDialogClientParityText.BuildUnsupportedResultMessage(subtype, resultCode);
                 ResetPendingRequestState();
+                ClearPendingPacketOwnedUserSellSnapshot();
                 _footerMessage = message;
                 UpdateActionButtonStates();
                 return false;
@@ -2124,6 +2132,8 @@ namespace HaCreator.MapSimulator.UI
             _modalQuantity = 1;
             _modalQuantityMin = 1;
             _modalQuantityMax = 1;
+            ClearPendingPacketOwnedUserSellSnapshot();
+            _packetOwnedAdminShopSellTemplates.Clear();
             _paneStates[AdminShopPane.Npc].SourceEntries.Clear();
             _paneStates[AdminShopPane.User].SourceEntries.Clear();
             PopulateSourceEntries(mode);
@@ -3107,6 +3117,7 @@ namespace HaCreator.MapSimulator.UI
             _pendingModalEntry = null;
             _pendingRequestEntry = entry;
             _pendingRequestQuantity = Math.Max(1, requestQuantity);
+            CapturePendingPacketOwnedUserSellSnapshot(entry);
             _pendingStorageExpansionCommoditySerialNumber = entry?.IsStorageExpansion == true
                 ? ResolveStorageExpansionCommoditySerialNumberForEntry(entry)
                 : 0;
@@ -3651,7 +3662,6 @@ namespace HaCreator.MapSimulator.UI
         {
             if (UsesPacketOwnedAdminShopCatalog(mode))
             {
-                List<AdminShopEntry> packetSellTemplates = new();
                 foreach (PacketOwnedAdminShopCommoditySnapshot row in _packetOwnedAdminShopRows)
                 {
                     AdminShopEntry entry = row.Price > 0
@@ -3664,14 +3674,14 @@ namespace HaCreator.MapSimulator.UI
 
                     if (RequiresInventorySource(entry))
                     {
-                        packetSellTemplates.Add(entry);
+                        _packetOwnedAdminShopSellTemplates.Add(entry);
                         continue;
                     }
 
                     _paneStates[AdminShopPane.Npc].SourceEntries.Add(entry);
                 }
 
-                foreach (AdminShopEntry userEntry in CreateInventoryBackedUserEntries(packetSellTemplates))
+                foreach (AdminShopEntry userEntry in CreateInventoryBackedUserEntries(_packetOwnedAdminShopSellTemplates))
                 {
                     _paneStates[AdminShopPane.User].SourceEntries.Add(userEntry);
                 }
@@ -3690,16 +3700,12 @@ namespace HaCreator.MapSimulator.UI
 
         private void RefreshDynamicUserEntries()
         {
-            List<AdminShopEntry> npcEntries = _paneStates[AdminShopPane.Npc].SourceEntries
+            List<AdminShopEntry> userCatalogEntries = ResolveUserPaneCatalogEntries()
                 .Where(entry => entry != null)
                 .ToList();
-            if (npcEntries.Count == 0)
-            {
-                return;
-            }
 
             _paneStates[AdminShopPane.User].SourceEntries.Clear();
-            _paneStates[AdminShopPane.User].SourceEntries.AddRange(CreateInventoryBackedUserEntries(npcEntries));
+            _paneStates[AdminShopPane.User].SourceEntries.AddRange(CreateInventoryBackedUserEntries(userCatalogEntries));
             if (_inventory == null && !UsesPacketOwnedAdminShopCatalog(_currentMode))
             {
                 _paneStates[AdminShopPane.User].SourceEntries.AddRange(CreateUserEntries(_currentMode));
@@ -3712,10 +3718,30 @@ namespace HaCreator.MapSimulator.UI
             UpdateRowButtons();
         }
 
+        private IEnumerable<AdminShopEntry> ResolveUserPaneCatalogEntries()
+        {
+            if (UsesPacketOwnedAdminShopCatalog(_currentMode) && _packetOwnedAdminShopSellTemplates.Count > 0)
+            {
+                return _packetOwnedAdminShopSellTemplates;
+            }
+
+            return _paneStates[AdminShopPane.Npc].SourceEntries;
+        }
+
         private IEnumerable<AdminShopEntry> CreateInventoryBackedUserEntries(IEnumerable<AdminShopEntry> npcEntries)
         {
             if (_inventory == null || npcEntries == null)
             {
+                yield break;
+            }
+
+            if (UsesPacketOwnedAdminShopCatalog(_currentMode))
+            {
+                foreach (AdminShopEntry entry in CreatePacketOwnedInventoryBackedUserEntries(npcEntries))
+                {
+                    yield return entry;
+                }
+
                 yield break;
             }
 
@@ -3748,56 +3774,119 @@ namespace HaCreator.MapSimulator.UI
                         continue;
                     }
 
-                    int stackQuantity = Math.Max(1, slot.Quantity);
-                    string sourceItemName = !string.IsNullOrWhiteSpace(slot.ItemName)
-                        ? slot.ItemName
-                        : ResolveSourceItemLabel(catalogEntry);
-                    string slotLabel = $"Slot {slotIndex + 1}";
-                    string detail = $"{catalogEntry.Detail} Mirrors CAdminShopDlg::SetUserItems by binding the request to {slotLabel} carrying {sourceItemName} x{stackQuantity}.";
-                    string priceLabel = $"Stock x{stackQuantity}";
-                    if (stackQuantity < Math.Max(1, catalogEntry.SourceItemQuantity))
-                    {
-                        priceLabel = $"Need x{catalogEntry.SourceItemQuantity} ({stackQuantity} ready)";
-                    }
-
-                    yield return new AdminShopEntry
-                    {
-                        Title = catalogEntry.Title,
-                        Detail = detail,
-                        Seller = slotLabel,
-                        Price = catalogEntry.Price,
-                        PriceLabel = priceLabel,
-                        Category = ResolveCategoryForInventoryType(catalogEntry.SourceInventoryType),
-                        SupportsWishlist = false,
-                        Featured = catalogEntry.Featured,
-                        State = catalogEntry.State,
-                        StateLabel = catalogEntry.StateLabel,
-                        RewardInventoryType = catalogEntry.RewardInventoryType,
-                        RewardItemId = catalogEntry.RewardItemId,
-                        RewardQuantity = catalogEntry.RewardQuantity,
-                        RewardMaxStackSize = catalogEntry.RewardMaxStackSize,
-                        ConsumeOnSuccess = catalogEntry.ConsumeOnSuccess,
-                        LockAfterSuccess = catalogEntry.LockAfterSuccess,
-                        Response = catalogEntry.Response,
-                        ResponseMessage = catalogEntry.ResponseMessage,
-                        WasPurchased = catalogEntry.WasPurchased,
-                        CommoditySerialNumber = catalogEntry.CommoditySerialNumber,
-                        CommodityOnSale = catalogEntry.CommodityOnSale,
-                        MaxRequestCount = catalogEntry.MaxRequestCount,
-                        SuccessMesoReward = catalogEntry.SuccessMesoReward,
-                        SourceInventoryType = catalogEntry.SourceInventoryType,
-                        SourceItemId = catalogEntry.SourceItemId,
-                        SourceItemQuantity = catalogEntry.SourceItemQuantity,
-                        DisplayInventoryType = catalogEntry.SourceInventoryType,
-                        DisplayItemId = catalogEntry.SourceItemId,
-                        DisplayQuantity = stackQuantity,
-                        InventorySlotIndex = slotIndex,
-                        PacketSerialNumber = catalogEntry.PacketSerialNumber,
-                        PacketSaleState = catalogEntry.PacketSaleState,
-                        IsPacketOwnedSnapshotRow = catalogEntry.IsPacketOwnedSnapshotRow
-                    };
+                    yield return CreateInventoryBackedUserEntry(catalogEntry, slot, slotIndex);
                 }
             }
+        }
+
+        private IEnumerable<AdminShopEntry> CreatePacketOwnedInventoryBackedUserEntries(IEnumerable<AdminShopEntry> npcEntries)
+        {
+            Dictionary<InventoryType, Dictionary<int, AdminShopEntry>> sellTemplatesByType = BuildPacketOwnedSellTemplateLookup(npcEntries);
+            foreach ((InventoryType inventoryType, Dictionary<int, AdminShopEntry> templatesByItemId) in sellTemplatesByType)
+            {
+                IReadOnlyList<InventorySlotData> slots = _inventory.GetSlots(inventoryType);
+                if (slots == null || slots.Count == 0)
+                {
+                    continue;
+                }
+
+                for (int slotIndex = 0; slotIndex < slots.Count; slotIndex++)
+                {
+                    InventorySlotData slot = slots[slotIndex];
+                    if (slot == null
+                        || slot.IsDisabled
+                        || !templatesByItemId.TryGetValue(slot.ItemId, out AdminShopEntry catalogEntry))
+                    {
+                        continue;
+                    }
+
+                    if (InventoryItemMetadataResolver.TryResolveTradeRestrictionFlags(slot.ItemId, out bool isCashItem, out bool isNotForSale, out bool isQuestItem)
+                        && (isCashItem || isNotForSale || isQuestItem))
+                    {
+                        continue;
+                    }
+
+                    yield return CreateInventoryBackedUserEntry(catalogEntry, slot, slotIndex);
+                }
+            }
+        }
+
+        private static Dictionary<InventoryType, Dictionary<int, AdminShopEntry>> BuildPacketOwnedSellTemplateLookup(IEnumerable<AdminShopEntry> npcEntries)
+        {
+            Dictionary<InventoryType, Dictionary<int, AdminShopEntry>> lookup = new();
+            foreach (AdminShopEntry entry in npcEntries)
+            {
+                if (!RequiresInventorySource(entry)
+                    || !entry.IsPacketOwnedSnapshotRow
+                    || entry.PacketSaleState != 0
+                    || entry.SourceInventoryType == InventoryType.NONE
+                    || entry.SourceItemId <= 0)
+                {
+                    continue;
+                }
+
+                if (!lookup.TryGetValue(entry.SourceInventoryType, out Dictionary<int, AdminShopEntry> entriesByItemId))
+                {
+                    entriesByItemId = new Dictionary<int, AdminShopEntry>();
+                    lookup[entry.SourceInventoryType] = entriesByItemId;
+                }
+
+                entriesByItemId.TryAdd(entry.SourceItemId, entry);
+            }
+
+            return lookup;
+        }
+
+        private static AdminShopEntry CreateInventoryBackedUserEntry(AdminShopEntry catalogEntry, InventorySlotData slot, int slotIndex)
+        {
+            int stackQuantity = Math.Max(1, slot.Quantity);
+            string sourceItemName = !string.IsNullOrWhiteSpace(slot.ItemName)
+                ? slot.ItemName
+                : ResolveSourceItemLabel(catalogEntry);
+            string slotLabel = $"Slot {slotIndex + 1}";
+            string detail = $"{catalogEntry.Detail} Mirrors CAdminShopDlg::SetUserItems by binding the request to {slotLabel} carrying {sourceItemName} x{stackQuantity}.";
+            string priceLabel = $"Stock x{stackQuantity}";
+            if (stackQuantity < Math.Max(1, catalogEntry.SourceItemQuantity))
+            {
+                priceLabel = $"Need x{catalogEntry.SourceItemQuantity} ({stackQuantity} ready)";
+            }
+
+            return new AdminShopEntry
+            {
+                Title = catalogEntry.Title,
+                Detail = detail,
+                Seller = slotLabel,
+                Price = catalogEntry.Price,
+                PriceLabel = priceLabel,
+                Category = ResolveCategoryForInventoryType(catalogEntry.SourceInventoryType),
+                SupportsWishlist = false,
+                Featured = catalogEntry.Featured,
+                State = catalogEntry.State,
+                StateLabel = catalogEntry.StateLabel,
+                RewardInventoryType = catalogEntry.RewardInventoryType,
+                RewardItemId = catalogEntry.RewardItemId,
+                RewardQuantity = catalogEntry.RewardQuantity,
+                RewardMaxStackSize = catalogEntry.RewardMaxStackSize,
+                ConsumeOnSuccess = catalogEntry.ConsumeOnSuccess,
+                LockAfterSuccess = catalogEntry.LockAfterSuccess,
+                Response = catalogEntry.Response,
+                ResponseMessage = catalogEntry.ResponseMessage,
+                WasPurchased = catalogEntry.WasPurchased,
+                CommoditySerialNumber = catalogEntry.CommoditySerialNumber,
+                CommodityOnSale = catalogEntry.CommodityOnSale,
+                MaxRequestCount = catalogEntry.MaxRequestCount,
+                SuccessMesoReward = catalogEntry.SuccessMesoReward,
+                SourceInventoryType = catalogEntry.SourceInventoryType,
+                SourceItemId = catalogEntry.SourceItemId,
+                SourceItemQuantity = catalogEntry.SourceItemQuantity,
+                DisplayInventoryType = catalogEntry.SourceInventoryType,
+                DisplayItemId = catalogEntry.SourceItemId,
+                DisplayQuantity = stackQuantity,
+                InventorySlotIndex = slotIndex,
+                PacketSerialNumber = catalogEntry.PacketSerialNumber,
+                PacketSaleState = catalogEntry.PacketSaleState,
+                IsPacketOwnedSnapshotRow = catalogEntry.IsPacketOwnedSnapshotRow
+            };
         }
 
         private static AdminShopCategory ResolveCategoryForInventoryType(InventoryType inventoryType)
@@ -4415,6 +4504,7 @@ namespace HaCreator.MapSimulator.UI
                 ResetPendingRequestState();
                 Money = _inventory?.GetMesoCount() ?? Money;
                 RefreshDynamicUserEntries();
+                ApplyPendingPacketOwnedUserSellMutationParity();
                 UpdateActionButtonStates();
                 return;
             }
@@ -4451,6 +4541,7 @@ namespace HaCreator.MapSimulator.UI
             ResetPendingRequestState();
             Money = _inventory.GetMesoCount();
             RefreshDynamicUserEntries();
+            ClearPendingPacketOwnedUserSellSnapshot();
             UpdateActionButtonStates();
         }
 
@@ -4466,6 +4557,7 @@ namespace HaCreator.MapSimulator.UI
             PersistEntrySessionState(entry);
             _footerMessage = footerMessage;
             ResetPendingRequestState();
+            ClearPendingPacketOwnedUserSellSnapshot();
             Money = _inventory?.GetMesoCount() ?? Money;
             UpdateActionButtonStates();
         }
@@ -4478,6 +4570,95 @@ namespace HaCreator.MapSimulator.UI
             _pendingStorageExpansionCommoditySerialNumber = 0;
             _pendingPacketOwnedAdminShopResult = false;
             _requestResolveTick = 0;
+        }
+
+        private void CapturePendingPacketOwnedUserSellSnapshot(AdminShopEntry entry)
+        {
+            ClearPendingPacketOwnedUserSellSnapshot();
+            if (!_packetOwnedAdminShopSessionActive
+                || entry == null
+                || !RequiresInventorySource(entry)
+                || entry.InventoryExpansionType != InventoryType.NONE
+                || entry.IsStorageExpansion
+                || entry.SourceInventoryType == InventoryType.NONE)
+            {
+                return;
+            }
+
+            _pendingPacketOwnedUserSellSnapshotInventoryType = entry.SourceInventoryType;
+            _pendingPacketOwnedUserSellSnapshotScrollOffset = Math.Max(0, _paneStates[AdminShopPane.User].ScrollOffset);
+            _pendingPacketOwnedUserSellSnapshotRows.AddRange(BuildUserSellMutationRows(entry.SourceInventoryType));
+        }
+
+        private void ApplyPendingPacketOwnedUserSellMutationParity()
+        {
+            if (_pendingPacketOwnedUserSellSnapshotInventoryType == InventoryType.NONE)
+            {
+                return;
+            }
+
+            IReadOnlyList<AdminShopUserSellMutationRow> currentRows = BuildUserSellMutationRows(_pendingPacketOwnedUserSellSnapshotInventoryType);
+            AdminShopUserSellMutationResolution resolution = AdminShopUserSellMutationParity.Resolve(
+                _pendingPacketOwnedUserSellSnapshotRows,
+                currentRows,
+                _pendingPacketOwnedUserSellSnapshotScrollOffset,
+                MaxVisibleRows);
+
+            _activePane = AdminShopPane.User;
+            _activeBrowseMode = AdminShopBrowseMode.All;
+            _activeCategory = ResolveCategoryForInventoryType(_pendingPacketOwnedUserSellSnapshotInventoryType);
+            ApplyFilters();
+
+            AdminShopPaneState paneState = _paneStates[AdminShopPane.User];
+            paneState.SelectedIndex = resolution.SelectedIndex >= 0 && resolution.SelectedIndex < paneState.Entries.Count
+                ? resolution.SelectedIndex
+                : paneState.Entries.Count == 0 ? -1 : Math.Clamp(resolution.SelectedIndex, 0, paneState.Entries.Count - 1);
+            paneState.ScrollOffset = resolution.SelectedIndex < 0
+                ? Math.Max(0, paneState.ScrollOffset)
+                : resolution.ScrollOffset;
+            ClampPaneState(paneState);
+            PersistBrowseSurfaceState(AdminShopPane.User);
+            UpdateRowButtons();
+            _footerMessage = string.IsNullOrWhiteSpace(_footerMessage)
+                ? "Applied packet-owned sell-list mutation parity."
+                : $"{_footerMessage} Rebuilt the user pane through the recovered CmpSellItem-style selection and scrollbar mutation.";
+            ClearPendingPacketOwnedUserSellSnapshot();
+        }
+
+        private List<AdminShopUserSellMutationRow> BuildUserSellMutationRows(InventoryType inventoryType)
+        {
+            List<AdminShopUserSellMutationRow> rows = new();
+            if (inventoryType == InventoryType.NONE)
+            {
+                return rows;
+            }
+
+            foreach (AdminShopEntry entry in _paneStates[AdminShopPane.User].SourceEntries)
+            {
+                if (entry == null
+                    || !entry.IsPacketOwnedSnapshotRow
+                    || entry.SourceInventoryType != inventoryType
+                    || entry.SourceItemId <= 0
+                    || entry.InventorySlotIndex < 0)
+                {
+                    continue;
+                }
+
+                rows.Add(new AdminShopUserSellMutationRow(
+                    inventoryType,
+                    entry.SourceItemId,
+                    entry.InventorySlotIndex + 1,
+                    Math.Max(0, entry.DisplayQuantity)));
+            }
+
+            return rows;
+        }
+
+        private void ClearPendingPacketOwnedUserSellSnapshot()
+        {
+            _pendingPacketOwnedUserSellSnapshotRows.Clear();
+            _pendingPacketOwnedUserSellSnapshotInventoryType = InventoryType.NONE;
+            _pendingPacketOwnedUserSellSnapshotScrollOffset = 0;
         }
 
         private void TryReselectPacketOwnedPendingEntry(AdminShopEntry entry)

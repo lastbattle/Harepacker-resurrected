@@ -83,6 +83,8 @@ namespace HaCreator.MapSimulator.Entities
         private readonly bool _templateMoveEnabled;
         private readonly int _originWorldX;
         private readonly int _originWorldY;
+        private int _currentWorldX;
+        private int _currentWorldY;
         private int _activeState;
         private int _activeFrameIndex;
         private int _lastStateTick;
@@ -117,6 +119,8 @@ namespace HaCreator.MapSimulator.Entities
             _templateMoveEnabled = false;
             _originWorldX = reactorInstance?.X ?? 0;
             _originWorldY = reactorInstance?.Y ?? 0;
+            _currentWorldX = _originWorldX;
+            _currentWorldY = _originWorldY;
         }
 
         public ReactorItem(
@@ -142,6 +146,8 @@ namespace HaCreator.MapSimulator.Entities
             _templateMoveEnabled = LoadTemplateMoveEnabled(reactorInstance);
             _originWorldX = reactorInstance?.X ?? 0;
             _originWorldY = reactorInstance?.Y ?? 0;
+            _currentWorldX = _originWorldX;
+            _currentWorldY = _originWorldY;
 
             if (stateFrames != null)
             {
@@ -177,6 +183,8 @@ namespace HaCreator.MapSimulator.Entities
             _templateMoveEnabled = false;
             _originWorldX = reactorInstance?.X ?? 0;
             _originWorldY = reactorInstance?.Y ?? 0;
+            _currentWorldX = _originWorldX;
+            _currentWorldY = _originWorldY;
         }
 
         public int RenderSortKey { get; set; }
@@ -184,6 +192,10 @@ namespace HaCreator.MapSimulator.Entities
         public int TemplateLayerMode => _templateLayerMode;
 
         public bool TemplateMoveEnabled => _templateMoveEnabled;
+
+        public int CurrentWorldX => _currentWorldX;
+
+        public int CurrentWorldY => _currentWorldY;
 
         public void SetAnimationState(int state, int tickCount, bool restartIfSameState = false)
         {
@@ -202,14 +214,16 @@ namespace HaCreator.MapSimulator.Entities
             return ResolveInitialState();
         }
 
-        public void SetWorldPosition(int x, int y)
+        public void SetWorldPosition(int x, int y, bool persistInstance = true)
         {
-            if (_reactorInstance != null)
+            if (persistInstance && _reactorInstance != null)
             {
                 _reactorInstance.X = x;
                 _reactorInstance.Y = y;
             }
 
+            _currentWorldX = x;
+            _currentWorldY = y;
             Position = new Point(_originWorldX - x, _originWorldY - y);
         }
 
@@ -459,8 +473,21 @@ namespace HaCreator.MapSimulator.Entities
 
         internal bool TryResolveAutoHitEventIndex(int currentState, ReactorType reactorType, out int eventIndex)
         {
-            AuthoredStateTransition[] transitions = GetAuthoredTransitions(
-                currentState,
+            int resolvedState = ResolveState(currentState);
+            if (!_stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
+                || transitions.Length == 0)
+            {
+                eventIndex = -1;
+                return false;
+            }
+
+            if (TryResolveClientHitEventIndex(transitions.Select(static transition => transition.EventType), reactorType, out eventIndex))
+            {
+                return true;
+            }
+
+            transitions = GetAuthoredTransitions(
+                resolvedState,
                 new ReactorTransitionRequest(ReactorActivationType.Hit, reactorType));
             if (transitions.Length == 0)
             {
@@ -552,6 +579,37 @@ namespace HaCreator.MapSimulator.Entities
             return duration > 0;
         }
 
+        internal static bool TryResolveClientHitEventIndex(IEnumerable<int> eventTypes, ReactorType reactorType, out int eventIndex)
+        {
+            eventIndex = -1;
+            if (eventTypes == null)
+            {
+                return false;
+            }
+
+            bool found = false;
+            int bestPriority = int.MaxValue;
+            int index = 0;
+            foreach (int eventType in eventTypes)
+            {
+                int? priority = TryResolveClientHitEventPriority(eventType, reactorType);
+                if (priority.HasValue && priority.Value < bestPriority)
+                {
+                    bestPriority = priority.Value;
+                    eventIndex = index;
+                    found = true;
+                    if (bestPriority == 0)
+                    {
+                        break;
+                    }
+                }
+
+                index++;
+            }
+
+            return found;
+        }
+
         public Rectangle GetCurrentBounds(int tickCount)
         {
             IDXObject frame = _stateFrames.Count > 0
@@ -560,8 +618,8 @@ namespace HaCreator.MapSimulator.Entities
 
             if (frame == null)
             {
-                int fallbackX = ReactorInstance?.X ?? 0;
-                int fallbackY = ReactorInstance?.Y ?? 0;
+                int fallbackX = _currentWorldX;
+                int fallbackY = _currentWorldY;
                 int fallbackWidth = Math.Max(1, ReactorInstance?.Width ?? 1);
                 int fallbackHeight = Math.Max(1, ReactorInstance?.Height ?? 1);
                 return new Rectangle(fallbackX, fallbackY, fallbackWidth, fallbackHeight);
@@ -879,6 +937,12 @@ namespace HaCreator.MapSimulator.Entities
 
         private static int GetHitEventPriority(int eventType, ReactorType reactorType)
         {
+            int? clientPriority = TryResolveClientHitEventPriority(eventType, reactorType);
+            if (clientPriority.HasValue)
+            {
+                return clientPriority.Value;
+            }
+
             return reactorType switch
             {
                 ReactorType.ActivatedLeftHit => eventType switch
@@ -912,12 +976,53 @@ namespace HaCreator.MapSimulator.Entities
             };
         }
 
+        private static int? TryResolveClientHitEventPriority(int eventType, ReactorType reactorType)
+        {
+            int? hitOption = reactorType switch
+            {
+                ReactorType.ActivatedRightHit => 1,
+                ReactorType.ActivatedLeftHit or ReactorType.ActivatedByAnyHit => 0,
+                _ => null
+            };
+            if (!hitOption.HasValue)
+            {
+                return null;
+            }
+
+            return ResolveClientHitTypePriority(hitOption.Value, eventType);
+        }
+
+        internal static int? ResolveClientHitTypePriority(int hitOption, int eventType)
+        {
+            int directionBit = hitOption & 1;
+            if ((hitOption & 2) != 0)
+            {
+                return eventType switch
+                {
+                    0 => 1,
+                    1 => directionBit != 0 ? -1 : 0,
+                    2 => directionBit != 0 ? 0 : -1,
+                    _ => null
+                };
+            }
+
+            return eventType switch
+            {
+                0 => 2,
+                1 => directionBit == 0 ? 1 : -1,
+                2 => directionBit != 0 ? 1 : -1,
+                3 => directionBit != 0 ? -1 : 0,
+                4 => directionBit != 0 ? 0 : -1,
+                _ => null
+            };
+        }
+
         private static bool MatchesAuthoredEventType(int eventType, ReactorActivationType activationType)
         {
             return activationType switch
             {
                 ReactorActivationType.Touch or ReactorActivationType.Quest => eventType is 0 or 6 or 100,
-                ReactorActivationType.Hit => eventType is 1 or 2 or 8,
+                ReactorActivationType.Hit => eventType is 0 or 1 or 2 or 3 or 4 or 8,
                 ReactorActivationType.Skill => eventType == 5,
                 ReactorActivationType.Item => eventType == 9,
                 ReactorActivationType.Time => eventType is 7 or 101,

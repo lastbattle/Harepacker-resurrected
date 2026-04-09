@@ -151,7 +151,22 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal int ResolveSummonObjectId(int skillId)
         {
-            return skillId == CygnusTutorSkillId ? CygnusTutorObjectId : AranTutorObjectId;
+            return ResolveSummonObjectId(skillId, boundCharacterId: 0);
+        }
+
+        internal int ResolveSummonObjectId(int skillId, int boundCharacterId)
+        {
+            int baseObjectId = skillId == CygnusTutorSkillId ? CygnusTutorObjectId : AranTutorObjectId;
+            int normalizedCharacterId = Math.Max(0, boundCharacterId);
+            if (normalizedCharacterId <= 0)
+            {
+                return baseObjectId;
+            }
+
+            // The client allocates a distinct CTutor object per owner. The simulator keeps that
+            // separation on the summoned seam by synthesizing a stable owner-specific object id.
+            int tutorVariantPrefix = skillId == CygnusTutorSkillId ? 0x36000000 : 0x37000000;
+            return tutorVariantPrefix | (normalizedCharacterId & 0x0FFFFFFF);
         }
 
         internal static int ResolveClientTutorSkillIdForJob(int jobId)
@@ -235,7 +250,7 @@ namespace HaCreator.MapSimulator.Interaction
             ActiveSkillId = variant.SkillId;
             ActiveSummonObjectId = variant.SummonObjectId > 0
                 ? variant.SummonObjectId
-                : ResolveSummonObjectId(variant.SkillId);
+                : ResolveSummonObjectId(variant.SkillId, variant.BoundCharacterId);
             ActiveActorHeight = variant.ActorHeight > 0
                 ? variant.ActorHeight
                 : ResolveFallbackActorHeight(variant.SkillId);
@@ -265,7 +280,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             IsActive = true;
             ActiveSkillId = normalizedSkillId;
-            ActiveSummonObjectId = ResolveSummonObjectId(normalizedSkillId);
+            ActiveSummonObjectId = ResolveSummonObjectId(normalizedSkillId, BoundCharacterId);
             ActiveActorHeight = actorHeight > 0
                 ? actorHeight
                 : normalizedSkillId == CygnusTutorSkillId
@@ -462,6 +477,54 @@ namespace HaCreator.MapSimulator.Interaction
             return variants;
         }
 
+        internal IReadOnlyList<TutorVariantSnapshot> SnapshotActiveDisplayTutorVariants()
+        {
+            List<TutorVariantSnapshot> variants = new();
+            HashSet<long> emittedVariantKeys = new();
+
+            if (IsActive && ActiveSkillId > 0)
+            {
+                TutorVariantSnapshot activeVariant = new(
+                    ActiveSkillId,
+                    ActiveSummonObjectId > 0
+                        ? ActiveSummonObjectId
+                        : ResolveSummonObjectId(ActiveSkillId, BoundCharacterId),
+                    ResolveActorHeight(),
+                    BoundCharacterId,
+                    true,
+                    LastHireTick,
+                    int.MinValue,
+                    LastRegistryMutationTick);
+                if (emittedVariantKeys.Add(BuildTutorVariantKey(activeVariant)))
+                {
+                    variants.Add(activeVariant);
+                }
+            }
+
+            IReadOnlyList<TutorVariantSnapshot> registeredVariants = SnapshotSharedRegisteredTutorVariants();
+            for (int i = 0; i < registeredVariants.Count; i++)
+            {
+                TutorVariantSnapshot variant = registeredVariants[i];
+                if (!variant.IsActive || variant.SkillId <= 0)
+                {
+                    continue;
+                }
+
+                TutorVariantSnapshot normalizedVariant = variant with
+                {
+                    SummonObjectId = variant.SummonObjectId > 0
+                        ? variant.SummonObjectId
+                        : ResolveSummonObjectId(variant.SkillId, variant.BoundCharacterId)
+                };
+                if (emittedVariantKeys.Add(BuildTutorVariantKey(normalizedVariant)))
+                {
+                    variants.Add(normalizedVariant);
+                }
+            }
+
+            return variants;
+        }
+
         internal bool TryResolveDisplayMessageSnapshot(TutorVariantSnapshot displayVariant, int currentTick, out TutorMessageSnapshot snapshot)
         {
             if (displayVariant.SkillId > 0
@@ -566,7 +629,7 @@ namespace HaCreator.MapSimulator.Interaction
                 int index = FindRegisteredTutorVariantIndex(SharedRegisteredTutorVariants, skillId, normalizedCharacterId);
                 TutorVariantSnapshot nextSnapshot = new(
                     skillId,
-                    ResolveSummonObjectId(skillId),
+                    ResolveSummonObjectId(skillId, normalizedCharacterId),
                     actorHeight > 0 ? actorHeight : ResolveFallbackActorHeight(skillId),
                     normalizedCharacterId,
                     isActive,
@@ -639,7 +702,7 @@ namespace HaCreator.MapSimulator.Interaction
             bool isActiveVariant = IsActive && ActiveSkillId == skillId;
             return new TutorVariantSnapshot(
                 skillId,
-                ResolveSummonObjectId(skillId),
+                ResolveSummonObjectId(skillId, isActiveVariant ? BoundCharacterId : preferredVariant.BoundCharacterId),
                 isActiveVariant ? ResolveActorHeight() : ResolveFallbackActorHeight(skillId),
                 isActiveVariant ? BoundCharacterId : 0,
                 isActiveVariant,

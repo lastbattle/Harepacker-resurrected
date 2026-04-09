@@ -32,6 +32,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentQueue<DojoPacketInboxMessage> _pendingMessages = new();
         private readonly ConcurrentDictionary<int, int> _opcodeMappings = new();
         private readonly ConcurrentDictionary<int, LearnedOpcodeEntry> _learnedOpcodeTable = new();
+        private readonly List<DeferredInboundPacket> _deferredPackets = new();
         private readonly Queue<string> _recentPackets = new();
         private readonly object _sync = new();
         private int _inferenceClearMapId = -1;
@@ -72,6 +73,26 @@ namespace HaCreator.MapSimulator.Managers
                 Evidence = evidence ?? string.Empty;
                 Count++;
             }
+        }
+
+        private sealed class DeferredInboundPacket
+        {
+            public DeferredInboundPacket(int opcode, byte[] rawPacket, byte[] payload, string source, int tentativePacketType, string evidence)
+            {
+                Opcode = opcode;
+                RawPacket = rawPacket != null ? (byte[])rawPacket.Clone() : Array.Empty<byte>();
+                Payload = payload != null ? (byte[])payload.Clone() : Array.Empty<byte>();
+                Source = source ?? string.Empty;
+                TentativePacketType = tentativePacketType;
+                Evidence = evidence ?? string.Empty;
+            }
+
+            public int Opcode { get; }
+            public byte[] RawPacket { get; }
+            public byte[] Payload { get; }
+            public string Source { get; }
+            public int TentativePacketType { get; }
+            public string Evidence { get; }
         }
 
         private sealed class BridgePair
@@ -132,7 +153,7 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Dojo official-session bridge {lifecycle}; {session}; received={ReceivedCount}; mappings={DescribePacketMappings()}; learned={DescribeLearnedPacketTable()}; inference={DescribeInferenceContext()}; recent={DescribeRecentPackets()}. {LastStatus}";
+            return $"Dojo official-session bridge {lifecycle}; {session}; received={ReceivedCount}; mappings={DescribePacketMappings()}; learned={DescribeLearnedPacketTable()}; deferred={DescribeDeferredPackets()}; inference={DescribeInferenceContext()}; recent={DescribeRecentPackets()}. {LastStatus}";
         }
 
         public void UpdateInferenceContext(DojoField field)
@@ -148,6 +169,7 @@ namespace HaCreator.MapSimulator.Managers
                     _inferenceTimerExpired = false;
                     _inferenceClearActive = false;
                     _inferenceTimeOverActive = false;
+                    _deferredPackets.Clear();
                     return;
                 }
 
@@ -158,6 +180,7 @@ namespace HaCreator.MapSimulator.Managers
                 _inferenceTimerExpired = field.IsTimerExpired;
                 _inferenceClearActive = field.IsClearResultActive;
                 _inferenceTimeOverActive = field.IsTimeOverResultActive;
+                PromoteDeferredPacketsNoLock();
             }
         }
 
@@ -427,6 +450,22 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public string DescribeDeferredPackets()
+        {
+            lock (_sync)
+            {
+                if (_deferredPackets.Count == 0)
+                {
+                    return "none";
+                }
+
+                return string.Join(
+                    ", ",
+                    _deferredPackets
+                        .Select(packet => $"{packet.Opcode}->{DescribePacketType(packet.TentativePacketType)}[{packet.Evidence}]"));
+            }
+        }
+
         public bool TryMapInboundPacket(byte[] rawPacket, string source, out DojoPacketInboxMessage message)
         {
             message = null;
@@ -665,6 +704,7 @@ namespace HaCreator.MapSimulator.Managers
                 lock (_sync)
                 {
                     _recentPackets.Clear();
+                    _deferredPackets.Clear();
                 }
             }
         }
@@ -732,6 +772,14 @@ namespace HaCreator.MapSimulator.Managers
 
             if (inferredFromPayload)
             {
+                if (ShouldDeferTentativeTransferPayload(payload, inferredReason))
+                {
+                    DeferPacket(opcode, payload, inferredPacketType, inferredReason);
+                    packetType = -1;
+                    mappingReason = $"deferred:{inferredReason}";
+                    return false;
+                }
+
                 packetType = inferredPacketType;
                 mappingReason = $"tentative:{inferredReason}";
                 RememberLearnedOpcode(opcode, packetType, mappingReason);
@@ -746,6 +794,127 @@ namespace HaCreator.MapSimulator.Managers
                 ? $"Ignored unmapped Dojo opcode {opcode}; payload did not match any known Dojo packet shape."
                 : $"Ignored unmapped Dojo opcode {opcode}; payload matched multiple Dojo packet candidates ({candidateSummary}).";
             return false;
+        }
+
+        private void PromoteDeferredPacketsNoLock()
+        {
+            if (_deferredPackets.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = _deferredPackets.Count - 1; i >= 0; i--)
+            {
+                DeferredInboundPacket packet = _deferredPackets[i];
+                if (!TryResolveDeferredPacketNoLock(packet, out int packetType, out string evidence))
+                {
+                    continue;
+                }
+
+                _opcodeMappings[packet.Opcode] = packetType;
+                RememberLearnedOpcode(packet.Opcode, packetType, $"deferred:{evidence}");
+                _pendingMessages.Enqueue(CreateRawPacketMessage(packet.RawPacket, packet.Source, packetType, packet.Payload));
+                RecordRecentPacket(packet.Opcode, packet.RawPacket, packetType, $"deferred:{evidence}");
+                ReceivedCount++;
+                LastStatus = $"Promoted deferred Dojo opcode {packet.Opcode} to {DescribePacketType(packetType)} after field-state evidence ({evidence}).";
+                _deferredPackets.RemoveAt(i);
+            }
+        }
+
+        private bool TryResolveDeferredPacketNoLock(DeferredInboundPacket packet, out int packetType, out string evidence)
+        {
+            packetType = -1;
+            evidence = string.Empty;
+            if (packet == null)
+            {
+                return false;
+            }
+
+            if (_opcodeMappings.TryGetValue(packet.Opcode, out packetType))
+            {
+                evidence = "configured mapping";
+                return true;
+            }
+
+            bool inferredFromPayload = DojoField.TryInferPacketType(
+                packet.Payload,
+                _inferenceClearMapId,
+                _inferenceClearPortalName,
+                _inferenceExitMapId,
+                out int inferredPacketType,
+                out string inferredReason,
+                out bool isStableInference);
+            if (inferredFromPayload && isStableInference)
+            {
+                packetType = inferredPacketType;
+                evidence = $"stable payload {inferredReason}";
+                return true;
+            }
+
+            if (inferredFromPayload
+                && TryInferTransferPacketTypeFromFieldState(
+                    packet.Payload,
+                    _inferenceClearMapId,
+                    _inferenceClearPortalName,
+                    _inferenceExitMapId,
+                    _inferenceTimerRunning,
+                    _inferenceTimerExpired,
+                    _inferenceClearActive,
+                    _inferenceTimeOverActive,
+                    out packetType,
+                    out string stateReason))
+            {
+                evidence = stateReason;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool ShouldDeferTentativeTransferPayload(byte[] payload, string inferredReason)
+        {
+            if (payload == null)
+            {
+                return false;
+            }
+
+            if (!inferredReason.Contains("default transfer tie-break", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            string candidateSummary = DojoField.DescribeFieldSpecificPayloadCandidates(payload);
+            return candidateSummary.Contains("clear(", StringComparison.OrdinalIgnoreCase)
+                && candidateSummary.Contains("timeover(", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void DeferPacket(int opcode, byte[] payload, int tentativePacketType, string inferredReason)
+        {
+            byte[] rawPacket = BuildRawPacket(opcode, payload);
+            lock (_sync)
+            {
+                _deferredPackets.Add(new DeferredInboundPacket(
+                    opcode,
+                    rawPacket,
+                    payload,
+                    $"official-session:opcode-{opcode}",
+                    tentativePacketType,
+                    inferredReason));
+                RecordRecentPacket(opcode, rawPacket, null, $"deferred:{inferredReason}");
+                LastStatus = $"Deferred tentative Dojo opcode {opcode} as {DescribePacketType(tentativePacketType)} from payload inference ({inferredReason}); waiting for clear or timeout field-state evidence before dispatch.";
+            }
+        }
+
+        private static DojoPacketInboxMessage CreateRawPacketMessage(byte[] rawPacket, string source, int packetType, byte[] payload)
+        {
+            return new DojoPacketInboxMessage(
+                DojoPacketMessageKind.RawPacket,
+                value: 0,
+                option: string.Empty,
+                source: source,
+                rawText: $"packetraw {Convert.ToHexString(rawPacket ?? Array.Empty<byte>())}",
+                packetType: packetType,
+                payload: payload);
         }
 
         private string DescribeInferenceContext()

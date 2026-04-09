@@ -1828,13 +1828,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return Array.Empty<WzImageProperty>();
             }
 
-            List<(int Index, WzImageProperty Property)> orderedFrames = new();
-            foreach (WzImageProperty child in frameSetNode.WzProperties)
+            int childCount = frameSetNode.WzProperties.Count;
+            List<WzImageProperty> orderedFrames = new(childCount);
+            for (int i = 0; i < childCount; i++)
             {
-                if (child != null
-                    && int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int frameIndex))
+                WzImageProperty child = frameSetNode[i.ToString(CultureInfo.InvariantCulture)];
+                if (child != null)
                 {
-                    orderedFrames.Add((frameIndex, child));
+                    orderedFrames.Add(child);
                 }
             }
 
@@ -1843,8 +1844,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return Array.Empty<WzImageProperty>();
             }
 
-            orderedFrames.Sort(static (left, right) => left.Index.CompareTo(right.Index));
-            return orderedFrames.Select(static entry => entry.Property).ToArray();
+            return orderedFrames;
         }
 
         private static int GetWeaponAfterImageMasteryIndex(int masteryPercent)
@@ -2537,103 +2537,107 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
-            string attackBranchName = SelectPreferredSummonAttackBranch(branchNames);
-            if (attackBranchName == null && skill.SelfDestructMinion)
-            {
-                attackBranchName = SelectPreferredSummonBranch(branchNames, new[] { "die", "die1" });
-            }
-            if (attackBranchName == null)
-            {
-                return;
-            }
-
-            var attackBranch = summonNode[attackBranchName];
-            if (attackBranch == null)
-            {
-                return;
-            }
-
             string removalBranchName = skill.SelfDestructMinion
                 ? SelectPreferredSummonBranch(branchNames, new[] { "die", "die1" })
                 : null;
             WzImageProperty removalBranch = !string.IsNullOrWhiteSpace(removalBranchName)
                 ? summonNode[removalBranchName]
                 : null;
-
-            PopulateSummonAttackMetadata(skill, attackBranch, attackBranchName);
-            if (skill.SelfDestructMinion
-                && removalBranch != null
-                && !string.Equals(removalBranchName, attackBranchName, StringComparison.OrdinalIgnoreCase))
+            string attackBranchName = SelectPreferredSummonAttackBranch(branchNames);
+            if (attackBranchName == null && skill.SelfDestructMinion)
             {
-                PopulateSummonAttackMetadata(skill, removalBranch, removalBranchName);
-            }
-            skill.SummonAttackBranchName = attackBranchName;
-
-            SkillAnimation attackAnimation = GetOrLoadSummonActionAnimation(skill, attackBranch, attackBranchName);
-            if (attackAnimation.Frames.Count > 0)
-            {
-                skill.SummonAttackAnimation = attackAnimation;
-                RegisterSummonActionAnimation(skill, attackBranchName, attackAnimation);
+                attackBranchName = SelectPreferredSummonBranch(branchNames, new[] { "die", "die1" });
             }
 
-              if (removalBranch != null)
-              {
-                  SkillAnimation removalAnimation = GetOrLoadSummonActionAnimation(skill, removalBranch, removalBranchName);
-                  if (removalAnimation.Frames.Count > 0)
-                  {
-                      skill.SummonRemovalAnimation = removalAnimation;
-                      skill.SummonRemovalBranchName = removalBranchName;
-                      RegisterSummonActionAnimation(skill, removalBranchName, removalAnimation);
-                  }
-              }
+            WzImageProperty attackBranch = !string.IsNullOrWhiteSpace(attackBranchName)
+                ? summonNode[attackBranchName]
+                : null;
 
-              skill.SummonProjectileAnimations = LoadSummonIndexedAnimations(summonNode["ball"], "ball");
-              skill.SummonTargetHitPresentations = LoadSummonImpactPresentations(summonNode["mob"], "mob");
+            if (attackBranch != null)
+            {
+                PopulateSummonAttackMetadata(skill, attackBranch, attackBranchName);
+                if (skill.SelfDestructMinion
+                    && removalBranch != null
+                    && !string.Equals(removalBranchName, attackBranchName, StringComparison.OrdinalIgnoreCase))
+                {
+                    PopulateSummonAttackMetadata(skill, removalBranch, removalBranchName);
+                }
 
-              List<SkillAnimation> attackBranchProjectileAnimations = BuildSummonBranchProjectileAnimations(
-                  skill.SummonProjectileAnimations,
-                  LoadSummonIndexedAnimations(attackBranch["info"]?["ball"], $"{attackBranchName}/info/ball"));
-              List<SummonImpactPresentation> attackBranchImpactPresentations = BuildSummonBranchImpactPresentations(
-                  skill.SummonTargetHitPresentations,
-                  LoadSummonImpactPresentations(attackBranch["info"]?["mob"], $"{attackBranchName}/info/mob"));
-              skill.SummonProjectileAnimations = attackBranchProjectileAnimations;
-              skill.SummonTargetHitPresentations = attackBranchImpactPresentations;
-              RegisterSummonBranchImpactMetadata(
-                  skill,
-                  attackBranchName,
-                  attackBranchProjectileAnimations,
-                  attackBranchImpactPresentations);
-              if (removalBranch != null)
-              {
-                  AppendSummonIndexedAnimations(
-                      skill.SummonProjectileAnimations,
-                      LoadSummonIndexedAnimations(removalBranch["info"]?["ball"], $"{removalBranchName}/info/ball"));
-                  AppendSummonImpactPresentations(
-                      skill.SummonTargetHitPresentations,
-                      LoadSummonImpactPresentations(removalBranch["info"]?["mob"], $"{removalBranchName}/info/mob"));
-              }
+                skill.SummonAttackBranchName = attackBranchName;
 
-              WzImageProperty hitNode = summonNode["hit"] ?? (summonNode.Parent as WzImageProperty)?["hit"];
-              AppendSummonImpactPresentations(
-                  skill.SummonTargetHitPresentations,
-                  LoadSummonHitTargetAnimations(hitNode, "hit"));
-              SkillAnimation hitAnimation = LoadSummonHitAnimation(skill, hitNode, out string hitBranchName);
-              if (hitAnimation?.Frames.Count > 0)
-              {
-                  skill.SummonHitAnimation = hitAnimation;
-                  skill.SummonHitBranchName = hitBranchName;
-                  RegisterSummonActionAnimation(skill, hitBranchName, hitAnimation);
-              }
+                SkillAnimation attackAnimation = GetOrLoadSummonActionAnimation(skill, attackBranch, attackBranchName);
+                if (attackAnimation.Frames.Count > 0)
+                {
+                    skill.SummonAttackAnimation = attackAnimation;
+                    RegisterSummonActionAnimation(skill, attackBranchName, attackAnimation);
+                }
+            }
 
-              skill.SummonTargetHitAnimations = skill.SummonTargetHitPresentations
-                  .Select(static presentation => presentation?.Animation)
-                  .Where(static animation => animation?.Frames.Count > 0)
-                  .ToList();
+            if (removalBranch != null)
+            {
+                SkillAnimation removalAnimation = GetOrLoadSummonActionAnimation(skill, removalBranch, removalBranchName);
+                if (removalAnimation.Frames.Count > 0)
+                {
+                    skill.SummonRemovalAnimation = removalAnimation;
+                    skill.SummonRemovalBranchName = removalBranchName;
+                    RegisterSummonActionAnimation(skill, removalBranchName, removalAnimation);
+                }
+            }
 
-              LoadSupplementalSummonAnimations(skill, summonNode, branchNames);
-              LoadRemainingSummonActionAnimations(skill, summonNode, branchNames);
-              PopulateSummonHitTimingMetadata(skill, attackBranchName, hitNode);
-          }
+            skill.SummonProjectileAnimations = LoadSummonIndexedAnimations(summonNode["ball"], "ball");
+            skill.SummonTargetHitPresentations = LoadSummonImpactPresentations(summonNode["mob"], "mob");
+
+            if (attackBranch != null)
+            {
+                List<SkillAnimation> attackBranchProjectileAnimations = BuildSummonBranchProjectileAnimations(
+                    skill.SummonProjectileAnimations,
+                    LoadSummonIndexedAnimations(attackBranch["info"]?["ball"], $"{attackBranchName}/info/ball"));
+                List<SummonImpactPresentation> attackBranchImpactPresentations = BuildSummonBranchImpactPresentations(
+                    skill.SummonTargetHitPresentations,
+                    LoadSummonImpactPresentations(attackBranch["info"]?["mob"], $"{attackBranchName}/info/mob"));
+                skill.SummonProjectileAnimations = attackBranchProjectileAnimations;
+                skill.SummonTargetHitPresentations = attackBranchImpactPresentations;
+                RegisterSummonBranchImpactMetadata(
+                    skill,
+                    attackBranchName,
+                    attackBranchProjectileAnimations,
+                    attackBranchImpactPresentations);
+            }
+
+            if (removalBranch != null)
+            {
+                AppendSummonIndexedAnimations(
+                    skill.SummonProjectileAnimations,
+                    LoadSummonIndexedAnimations(removalBranch["info"]?["ball"], $"{removalBranchName}/info/ball"));
+                AppendSummonImpactPresentations(
+                    skill.SummonTargetHitPresentations,
+                    LoadSummonImpactPresentations(removalBranch["info"]?["mob"], $"{removalBranchName}/info/mob"));
+            }
+
+            WzImageProperty hitNode = summonNode["hit"] ?? (summonNode.Parent as WzImageProperty)?["hit"];
+            AppendSummonImpactPresentations(
+                skill.SummonTargetHitPresentations,
+                LoadSummonHitTargetAnimations(hitNode, "hit"));
+            SkillAnimation hitAnimation = LoadSummonHitAnimation(skill, hitNode, out string hitBranchName);
+            if (hitAnimation?.Frames.Count > 0)
+            {
+                skill.SummonHitAnimation = hitAnimation;
+                skill.SummonHitBranchName = hitBranchName;
+                RegisterSummonActionAnimation(skill, hitBranchName, hitAnimation);
+            }
+
+            skill.SummonTargetHitAnimations = skill.SummonTargetHitPresentations
+                .Select(static presentation => presentation?.Animation)
+                .Where(static animation => animation?.Frames.Count > 0)
+                .ToList();
+
+            LoadSupplementalSummonAnimations(skill, summonNode, branchNames);
+            LoadRemainingSummonActionAnimations(skill, summonNode, branchNames);
+            if (!string.IsNullOrWhiteSpace(attackBranchName))
+            {
+                PopulateSummonHitTimingMetadata(skill, attackBranchName, hitNode);
+            }
+        }
 
         internal WzImageProperty ResolveSummonSourceProperty(SkillData skill, WzImageProperty skillNode)
         {
@@ -4172,6 +4176,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 projectile.Animation = projectile.ResolveAnimationVariant(level: 1);
             }
 
+            PopulateProjectileCharacterLevelVariants(projectile, skillNode?["CharLevel"]);
+            PopulateProjectileLevelVariants(projectile, skillNode?["level"]);
+
             // Load hit animation
             var hitNode = ballNode["hit"] ?? skillNode["hit"];
             if (hitNode != null)
@@ -4212,6 +4219,66 @@ namespace HaCreator.MapSimulator.Character.Skills
             projectile.MaxHits = GetInt(ballNode, "mobCount", 1);
 
             return projectile;
+        }
+
+        private void PopulateProjectileCharacterLevelVariants(ProjectileData projectile, WzImageProperty charLevelNode)
+        {
+            if (projectile == null || charLevelNode == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in charLevelNode.WzProperties)
+            {
+                if (child == null || !int.TryParse(child.Name, out int requiredLevel))
+                {
+                    continue;
+                }
+
+                WzImageProperty ballVariantNode = child["ball"];
+                if (ballVariantNode == null)
+                {
+                    continue;
+                }
+
+                List<SkillAnimation> variants = LoadSummonIndexedAnimations(
+                    ballVariantNode,
+                    $"ball/CharLevel/{requiredLevel}");
+                if (variants.Count > 0)
+                {
+                    projectile.CharacterLevelVariantAnimations[requiredLevel] = variants;
+                }
+            }
+        }
+
+        private void PopulateProjectileLevelVariants(ProjectileData projectile, WzImageProperty levelNode)
+        {
+            if (projectile == null || levelNode == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in levelNode.WzProperties)
+            {
+                if (child == null || !int.TryParse(child.Name, out int skillLevel))
+                {
+                    continue;
+                }
+
+                WzImageProperty ballVariantNode = child["ball"];
+                if (ballVariantNode == null)
+                {
+                    continue;
+                }
+
+                List<SkillAnimation> variants = LoadSummonIndexedAnimations(
+                    ballVariantNode,
+                    $"ball/level/{skillLevel}");
+                if (variants.Count > 0)
+                {
+                    projectile.LevelVariantAnimations[skillLevel] = variants;
+                }
+            }
         }
 
         private void LoadSkillIcon(SkillData skill, WzImageProperty skillNode)
@@ -4361,23 +4428,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             while (pending.Count > 0)
             {
                 SkillData parent = pending.Dequeue();
-                foreach (SkillData candidate in skillsById.Values)
+                int[] linkedDummySkillIds = parent.DummySkillParents;
+                if (linkedDummySkillIds == null || linkedDummySkillIds.Length == 0)
                 {
-                    if (candidate == null
-                        || swallowSkillIds.Contains(candidate.SkillId)
-                        || candidate.DummySkillParents == null
-                        || candidate.DummySkillParents.Length == 0)
+                    continue;
+                }
+
+                foreach (int linkedSkillId in linkedDummySkillIds)
+                {
+                    if (linkedSkillId <= 0
+                        || swallowSkillIds.Contains(linkedSkillId)
+                        || !skillsById.TryGetValue(linkedSkillId, out SkillData linkedSkill)
+                        || linkedSkill == null)
                     {
                         continue;
                     }
 
-                    if (Array.IndexOf(candidate.DummySkillParents, parent.SkillId) < 0)
-                    {
-                        continue;
-                    }
-
-                    swallowSkillIds.Add(candidate.SkillId);
-                    pending.Enqueue(candidate);
+                    swallowSkillIds.Add(linkedSkillId);
+                    pending.Enqueue(linkedSkill);
                 }
             }
 

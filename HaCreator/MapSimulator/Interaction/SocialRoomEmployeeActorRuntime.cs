@@ -555,7 +555,8 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             WzImage itemImage = global::HaCreator.Program.FindImage("Item", $"Cash/{templateId / 10000:D4}.img");
-            return itemImage?[templateId.ToString("D8")]?["employee"];
+            itemImage?.ParseImage();
+            return ResolveLinkedProperty(itemImage?[templateId.ToString("D8")]?["employee"]);
         }
 
         private List<IDXObject> LoadEmployeeActionFrames(
@@ -597,17 +598,114 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static WzCanvasProperty ResolveCanvasProperty(WzImageProperty property)
         {
-            if (property is WzCanvasProperty canvasProperty)
+            WzImageProperty resolvedProperty = ResolveLinkedProperty(property);
+            if (resolvedProperty is WzCanvasProperty canvasProperty)
             {
                 return canvasProperty;
             }
 
+            return null;
+        }
+
+        private static WzImageProperty ResolveLinkedProperty(WzImageProperty property)
+        {
             if (property is WzUOLProperty uol)
             {
-                return ResolveCanvasProperty(uol.LinkValue as WzImageProperty);
+                return ResolveLinkedProperty(uol.LinkValue as WzImageProperty);
+            }
+
+            if (property is WzStringProperty stringProperty && !string.IsNullOrWhiteSpace(stringProperty.Value))
+            {
+                return ResolveLinkedProperty(ResolveLinkedPropertyPath(stringProperty.Parent, stringProperty.Value));
+            }
+
+            return property;
+        }
+
+        private static WzImageProperty ResolveLinkedPropertyPath(WzObject context, string path)
+        {
+            if (context == null || string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            string normalizedPath = path.Replace('\\', '/').Trim();
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                return null;
+            }
+
+            if (context is WzImageProperty propertyContext)
+            {
+                WzImageProperty resolvedFromProperty = ResolveLinkedPropertyPath(propertyContext, normalizedPath);
+                if (resolvedFromProperty != null)
+                {
+                    return resolvedFromProperty;
+                }
+            }
+
+            if (context is WzImage imageContext)
+            {
+                imageContext.ParseImage();
+                return imageContext.GetFromPath(normalizedPath);
             }
 
             return null;
+        }
+
+        private static WzImageProperty ResolveLinkedPropertyPath(WzImageProperty context, string path)
+        {
+            if (context == null || string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            string normalizedPath = path.Replace('\\', '/').Trim();
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                return null;
+            }
+
+            if (!normalizedPath.Contains('/'))
+            {
+                return context[normalizedPath] ?? context.ParentImage?.GetFromPath(normalizedPath);
+            }
+
+            string[] segments = normalizedPath
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0)
+            {
+                return null;
+            }
+
+            WzObject current = normalizedPath.StartsWith("../", StringComparison.Ordinal) ? context.Parent : context;
+            foreach (string segment in segments)
+            {
+                if (string.Equals(segment, ".", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (string.Equals(segment, "..", StringComparison.Ordinal))
+                {
+                    current = current?.Parent;
+                    continue;
+                }
+
+                current = current switch
+                {
+                    WzImageProperty currentProperty => currentProperty[segment],
+                    WzImage currentImage => currentImage.GetFromPath(segment),
+                    _ => null
+                };
+
+                if (current == null)
+                {
+                    return context.ParentImage?.GetFromPath(normalizedPath);
+                }
+            }
+
+            return current as WzImageProperty;
         }
 
         private IDXObject CreateEmployeeFrame(TexturePool texturePool, WzCanvasProperty canvasProperty, GraphicsDevice device, int defaultDelay)
@@ -1272,6 +1370,12 @@ namespace HaCreator.MapSimulator.Interaction
                         continue;
                     }
 
+                    WzImageProperty resolvedActionProperty = ResolveLinkedProperty(childProperty);
+                    if (resolvedActionProperty == null)
+                    {
+                        continue;
+                    }
+
                     string normalizedActionName = childProperty.Name.Trim().ToLowerInvariant();
                     if (!seenActionNames.Add(normalizedActionName))
                     {
@@ -1281,7 +1385,7 @@ namespace HaCreator.MapSimulator.Interaction
                     int clientActionIndex = string.Equals(normalizedActionName, BaseActionName, StringComparison.Ordinal)
                         ? 0
                         : nextTemplateActionIndex++;
-                    actions.Add(new Entry(normalizedActionName, clientActionIndex, childProperty));
+                    actions.Add(new Entry(normalizedActionName, clientActionIndex, resolvedActionProperty));
                     orderedActionNames.Add(normalizedActionName);
                 }
 

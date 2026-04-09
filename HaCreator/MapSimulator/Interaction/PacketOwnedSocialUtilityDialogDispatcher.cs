@@ -63,6 +63,8 @@ namespace HaCreator.MapSimulator.Interaction
             return applied;
         }
 
+        internal bool ShouldShowParcelOwnerAfterLastPacket => _parcelDialogRuntime.ShouldShowOwnerWindowAfterApply;
+
         internal bool TryDeliverParcel(
             string sender,
             string subject,
@@ -310,10 +312,12 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool IsOpen { get; private set; }
         internal int LastSubtype { get; private set; } = -1;
         internal string StatusMessage { get; private set; } = "CParcelDlg::OnPacket idle.";
+        internal bool ShouldShowOwnerWindowAfterApply { get; private set; }
 
         internal bool TryApplyPacket(byte[] payload, out string message)
         {
             message = null;
+            ShouldShowOwnerWindowAfterApply = false;
             if (payload == null || payload.Length == 0)
             {
                 message = "Parcel dialog packet payload must contain a subtype byte.";
@@ -334,6 +338,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case 26:
                     _openCount++;
                     IsOpen = true;
+                    ShouldShowOwnerWindowAfterApply = true;
                     _currentDialogMode = 1;
                     _memoMailbox.ApplyPacketOwnedDialogMode(_currentDialogMode);
                     StatusMessage = "CParcelDlg packet 26 opened the packet-owned quick-delivery owner.";
@@ -342,7 +347,12 @@ namespace HaCreator.MapSimulator.Interaction
                 case 27:
                     return TryApplyAlarmPacket(payload, expectsSender: false, out message);
                 default:
-                    IsOpen = true;
+                    if (!IsOpen)
+                    {
+                        message = $"CParcelDlg result {LastSubtype.ToString(CultureInfo.InvariantCulture)} requires an open packet-owned parcel owner.";
+                        return false;
+                    }
+
                     _noticeCount++;
                     if (LastSubtype == 18)
                     {
@@ -430,6 +440,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _openCount++;
             IsOpen = true;
+            ShouldShowOwnerWindowAfterApply = true;
             _currentDialogMode = modeTwoOpen ? 2 : 0;
             _memoMailbox.ReplacePacketOwnedParcelSession(
                 session.ReceiveEntries,
@@ -460,11 +471,16 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (!IsOpen)
+            {
+                message = "Parcel dialog packet 23 requires an open packet-owned parcel owner.";
+                return false;
+            }
+
             int memoId = BitConverter.ToInt32(payload, 1);
             byte resultCode = payload[5];
             _memoMailbox.DeleteMemo(memoId);
             _removalCount++;
-            IsOpen = true;
             StatusMessage = resultCode == 3
                 ? $"CParcelDlg packet 23 removed parcel #{memoId} through the claim-success branch."
                 : $"CParcelDlg packet 23 removed parcel #{memoId} through the discard-result branch ({resultCode.ToString(CultureInfo.InvariantCulture)}).";
@@ -474,6 +490,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryApplyDeliverPacket(byte[] payload, out string message)
         {
+            if (!IsOpen)
+            {
+                message = "Parcel dialog packet 24 requires an open packet-owned parcel owner.";
+                return false;
+            }
+
             if (!PacketOwnedParcelPacketCodec.TryDecodeSingleEntryPayload(payload.AsSpan(1), out PacketOwnedParcelDecodedEntry entry, out string error))
             {
                 message = $"Parcel dialog packet 24 could not decode the PARCEL::Decode payload. {error}";
@@ -486,7 +508,6 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            IsOpen = true;
             LastSubtype = 24;
             _deliveryCount++;
             StatusMessage = $"CParcelDlg packet 24 decoded PARCEL::Decode payload serial {entry.ParcelSerial.ToString(CultureInfo.InvariantCulture)} from {entry.Sender}.";
@@ -511,7 +532,6 @@ namespace HaCreator.MapSimulator.Interaction
 
             bool hasAttachment = stream.Position < stream.Length && reader.ReadByte() != 0;
             _noticeCount++;
-            IsOpen = true;
             _lastAlarmSender = sender ?? string.Empty;
             _lastAlarmWasQuickDelivery = hasAttachment;
             StatusMessage = expectsSender

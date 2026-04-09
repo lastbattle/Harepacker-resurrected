@@ -69,6 +69,8 @@ namespace HaCreator.MapSimulator.Fields
     /// </summary>
     public sealed class SpecialFieldRuntimeCoordinator
     {
+        public const int CurrentWrapperRelayOpcode = 163;
+
         private readonly SpecialEffectFields _specialEffects = new();
         private readonly MinigameFields _minigames = new();
         private readonly CookieHouseField _cookieHouse = new();
@@ -214,7 +216,23 @@ namespace HaCreator.MapSimulator.Fields
             _partyRaid.Update(currentTimeMs);
         }
 
+        public bool TryDispatchCurrentWrapperPacketRelay(int packetType, byte[] payload, int currentTimeMs, out string message)
+        {
+            bool applied = TryDispatchCurrentWrapperPacketCore(packetType, payload, currentTimeMs, out string relayMessage);
+            string relayPrefix =
+                $"CField::OnPacket opcode {CurrentWrapperRelayOpcode} relayed wrapper packet {packetType}.";
+            message = string.IsNullOrWhiteSpace(relayMessage)
+                ? relayPrefix
+                : $"{relayPrefix} {relayMessage}";
+            return applied;
+        }
+
         public bool TryDispatchCurrentWrapperPacket(int packetType, byte[] payload, int currentTimeMs, out string message)
+        {
+            return TryDispatchCurrentWrapperPacketCore(packetType, payload, currentTimeMs, out message);
+        }
+
+        private bool TryDispatchCurrentWrapperPacketCore(int packetType, byte[] payload, int currentTimeMs, out string message)
         {
             payload ??= Array.Empty<byte>();
 

@@ -976,6 +976,28 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        public bool TryApplyEnterFieldAvatarPresentation(
+            RemoteUserEnterFieldPacket packet,
+            int currentTime,
+            out string message)
+        {
+            message = null;
+            if (!_actorsById.TryGetValue(packet.CharacterId, out RemoteUserActor actor))
+            {
+                message = $"Remote user {packet.CharacterId} does not exist.";
+                return false;
+            }
+
+            actor.CarryItemEffectId = packet.CarryItemEffect is > 0
+                ? packet.CarryItemEffect
+                : null;
+            actor.CompletedSetItemId = Math.Max(0, packet.CompletedSetItemId);
+            return TryApplyActiveEffectItem(
+                new RemoteUserActiveEffectItemPacket(packet.CharacterId, packet.ActiveEffectItemId),
+                currentTime,
+                out message);
+        }
+
         public bool TrySetItemEffect(int characterId, int? itemId, int? pairCharacterId, int currentTime, out string message)
         {
             return TrySetItemEffect(
@@ -5913,7 +5935,8 @@ namespace HaCreator.MapSimulator.Pools
                         observedPlayerActionName,
                         weaponType,
                         actor.BaseActionRawCode,
-                        weaponType))
+                        weaponType,
+                        actor.BaseActionRawCode))
                 {
                     return true;
                 }
@@ -5924,7 +5947,8 @@ namespace HaCreator.MapSimulator.Pools
                 observedPlayerActionName,
                 weaponType,
                 actor.BaseActionRawCode,
-                weaponType);
+                weaponType,
+                actor.BaseActionRawCode);
         }
 
         internal static bool ShadowPartnerHelperActionFamiliesMatch(
@@ -6857,13 +6881,18 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            if (Assembler != null && !string.IsNullOrWhiteSpace(MeleeAfterImage.ActionName))
+            if (MeleeAfterimagePlaybackResolver.TryCaptureFadeSnapshot(
+                    Assembler,
+                    MeleeAfterImage.ActionName,
+                    MeleeAfterImage.AfterImageAction,
+                    Math.Max(0, currentTime - MeleeAfterImage.AnimationStartTime),
+                    out MeleeAfterimagePlaybackResolver.Snapshot snapshot))
             {
-                int animationTime = Math.Max(0, currentTime - MeleeAfterImage.AnimationStartTime);
-                int frameIndex = Assembler.GetFrameIndexAtTime(MeleeAfterImage.ActionName, animationTime);
-                if (frameIndex >= 0)
+                MeleeAfterImage.LastFrameIndex = snapshot.FrameIndex;
+                if (snapshot.Frame != null)
                 {
-                    MeleeAfterImage.LastFrameIndex = frameIndex;
+                    MeleeAfterImage.LastResolvedFrame = snapshot.Frame;
+                    MeleeAfterImage.LastResolvedAlpha = snapshot.Alpha;
                 }
             }
 

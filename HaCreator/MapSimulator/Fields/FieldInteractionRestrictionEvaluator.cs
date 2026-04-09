@@ -413,6 +413,18 @@ namespace HaCreator.MapSimulator.Fields
             return null;
         }
 
+        public static string GetMapTransferEntryRestrictionMessage(
+            MapInfo mapInfo,
+            FieldEntryRestrictionContext? context)
+        {
+            if (mapInfo == null || !context.HasValue)
+            {
+                return null;
+            }
+
+            return FieldEntryRestrictionEvaluator.GetRestrictionMessage(mapInfo, context.Value);
+        }
+
         public static string GetJumpRestrictionMessage(long fieldLimit)
         {
             return FieldLimitType.Unable_To_Jump.Check(fieldLimit)

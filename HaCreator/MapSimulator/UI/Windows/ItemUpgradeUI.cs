@@ -620,6 +620,32 @@ namespace HaCreator.MapSimulator.UI
 
         public ItemUpgradeAttemptResult TryApplyPreparedUpgrade()
         {
+            return TryApplyPreparedUpgradeCore(
+                forcedConsumableInventoryType: null,
+                forcedConsumableSlotIndex: null,
+                forcedModifierInventoryType: null,
+                forcedModifierSlotIndex: null);
+        }
+
+        public ItemUpgradeAttemptResult TryApplyPreparedUpgradeAtSlots(
+            InventoryType consumableInventoryType,
+            int consumableSlotIndex,
+            InventoryType? modifierInventoryType = null,
+            int? modifierSlotIndex = null)
+        {
+            return TryApplyPreparedUpgradeCore(
+                consumableInventoryType,
+                consumableSlotIndex,
+                modifierInventoryType,
+                modifierSlotIndex);
+        }
+
+        private ItemUpgradeAttemptResult TryApplyPreparedUpgradeCore(
+            InventoryType? forcedConsumableInventoryType,
+            int? forcedConsumableSlotIndex,
+            InventoryType? forcedModifierInventoryType,
+            int? forcedModifierSlotIndex)
+        {
             IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> candidates = GetCandidates();
             if (candidates.Count == 0)
             {
@@ -762,16 +788,25 @@ namespace HaCreator.MapSimulator.UI
                 return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
             }
 
-            if (!_inventory.TryConsumeItem(consumable.InventoryType, consumable.ItemId, 1))
+            if (!TryConsumePreparedInventoryItem(
+                    consumable,
+                    forcedConsumableInventoryType,
+                    forcedConsumableSlotIndex,
+                    out string consumableFailureReason))
             {
-                _statusMessage = $"{consumable.Name} could not be consumed.";
+                _statusMessage = consumableFailureReason;
                 _lastUpgradeSucceeded = false;
                 return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
             }
 
-            if (modifier != null && !_inventory.TryConsumeItem(modifier.InventoryType, modifier.ItemId, 1))
+            if (modifier != null &&
+                !TryConsumePreparedInventoryItem(
+                    modifier,
+                    forcedModifierInventoryType,
+                    forcedModifierSlotIndex,
+                    out string modifierFailureReason))
             {
-                _statusMessage = $"{modifier.Name} could not be consumed.";
+                _statusMessage = modifierFailureReason;
                 _lastUpgradeSucceeded = false;
                 return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId, modifier.ItemId);
             }
@@ -816,6 +851,41 @@ namespace HaCreator.MapSimulator.UI
             ClampSelection();
             _preferredModifierItemId = null;
             return new ItemUpgradeAttemptResult(success, _statusMessage, consumable.ItemId, modifier?.ItemId ?? 0);
+        }
+
+        private bool TryConsumePreparedInventoryItem(
+            EnhancementConsumable consumable,
+            InventoryType? forcedInventoryType,
+            int? forcedSlotIndex,
+            out string failureReason)
+        {
+            failureReason = $"{consumable?.Name ?? "Item"} could not be consumed.";
+            if (_inventory == null || consumable == null)
+            {
+                return false;
+            }
+
+            if (forcedInventoryType.HasValue && forcedSlotIndex.HasValue && forcedSlotIndex.Value >= 0)
+            {
+                if (_inventory.TryConsumeItemAtSlot(
+                        forcedInventoryType.Value,
+                        forcedSlotIndex.Value,
+                        consumable.ItemId,
+                        1))
+                {
+                    return true;
+                }
+
+                failureReason = $"{consumable.Name} could not be consumed from the staged inventory slot.";
+                return false;
+            }
+
+            if (_inventory.TryConsumeItem(consumable.InventoryType, consumable.ItemId, 1))
+            {
+                return true;
+            }
+
+            return false;
         }
 
         private void ApplyUpgradeBonus(EquipSlot slot, CharacterPart selectedPart, UpgradeState state, EnhancementConsumable consumable)
@@ -2527,6 +2597,15 @@ namespace HaCreator.MapSimulator.UI
                             }
                         }
                     }
+                }
+            }
+
+            if (requiredItems.Count == 0 &&
+                definition.ItemId == MapleMiracleCubeId)
+            {
+                foreach (int itemId in MapleMiracleCubeRequiredEquipIds)
+                {
+                    requiredItems.Add(itemId);
                 }
             }
 

@@ -1,6 +1,8 @@
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Interaction;
+using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -32,6 +34,7 @@ namespace HaCreator.MapSimulator
         private const int AnimationDisplayerFollowThetaDegrees = 20;
         private const int AnimationDisplayerFollowUpdateIntervalMs = 100;
         private const int AnimationDisplayerFollowDurationMs = 10000;
+        private const int AnimationDisplayerPacketOwnedFollowRegistrationMask = unchecked((int)0xC0000000);
         private const int AnimationDisplayerTransientLayerWidth = 800;
         private const int AnimationDisplayerTransientLayerHeight = 600;
         private const int AnimationDisplayerTransientLayerDurationMs = 30000;
@@ -50,6 +53,7 @@ namespace HaCreator.MapSimulator
         };
 
         private readonly Dictionary<string, List<IDXObject>> _animationDisplayerEffectCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<List<IDXObject>>> _animationDisplayerSkillUseEffectCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, int> _animationDisplayerFollowAnimationIds = new();
         private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
         private int _animationDisplayerLocalQuestDeliveryItemId;
@@ -196,7 +200,9 @@ namespace HaCreator.MapSimulator
             string localQuestDelivery = _animationDisplayerLocalQuestDeliveryItemId > 0
                 ? _animationDisplayerLocalQuestDeliveryItemId.ToString(CultureInfo.InvariantCulture)
                 : "idle";
-            return $"Animation displayer parity: userStates={_animationEffects.UserStateCount}, followAnimations={_animationEffects.FollowAnimationCount}, areaAnimations={_animationEffects.AreaAnimationCount}, localUserState={(localUserStateActive ? "active" : "idle")}, localQuestDelivery={localQuestDelivery}, localFade={(_packetOwnedFieldFadeOverlay.IsActive ? "active" : "idle")}.";
+            bool packetOwnedFollowActive = localCharacterId > 0
+                && _animationDisplayerFollowAnimationIds.ContainsKey(BuildAnimationDisplayerPacketOwnedFollowRegistrationKey(localCharacterId));
+            return $"Animation displayer parity: userStates={_animationEffects.UserStateCount}, followAnimations={_animationEffects.FollowAnimationCount}, areaAnimations={_animationEffects.AreaAnimationCount}, localUserState={(localUserStateActive ? "active" : "idle")}, localQuestDelivery={localQuestDelivery}, packetOwnedFollow={(packetOwnedFollowActive ? "active" : "idle")}, localFade={(_packetOwnedFieldFadeOverlay.IsActive ? "active" : "idle")}.";
         }
 
         private void ClearAnimationDisplayerState()
@@ -319,7 +325,12 @@ namespace HaCreator.MapSimulator
 
         private bool TryRegisterAnimationDisplayerFollow(int ownerCharacterId, Func<Vector2> getPosition, bool relativeEmission = true)
         {
-            if (ownerCharacterId <= 0 || getPosition == null)
+            return TryRegisterAnimationDisplayerFollow(ownerCharacterId, ownerCharacterId, getPosition, relativeEmission);
+        }
+
+        private bool TryRegisterAnimationDisplayerFollow(int registrationKey, int ownerCharacterId, Func<Vector2> getPosition, bool relativeEmission = true)
+        {
+            if (registrationKey == 0 || ownerCharacterId <= 0 || getPosition == null)
             {
                 return false;
             }
@@ -332,7 +343,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            ClearAnimationDisplayerFollow(ownerCharacterId);
+            ClearAnimationDisplayerFollowRegistration(registrationKey);
             int followId = _animationEffects.AddFollow(
                 frames,
                 getPosition,
@@ -357,7 +368,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            _animationDisplayerFollowAnimationIds[ownerCharacterId] = followId;
+            _animationDisplayerFollowAnimationIds[registrationKey] = followId;
             return true;
         }
 
@@ -561,6 +572,250 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private void TryRegisterAnimationDisplayerSkillUse(SkillCastInfo castInfo)
+        {
+            if (castInfo?.SkillData == null
+                || _animationEffects == null
+                || castInfo.SuppressEffectAnimation)
+            {
+                return;
+            }
+
+            int skillId = castInfo.SkillId;
+            int delayRate = ResolveAnimationDisplayerSkillUseDelayRate(castInfo);
+            bool handledPrimary = castInfo.EffectAnimation == null;
+            bool handledSecondary = castInfo.SecondaryEffectAnimation == null;
+
+            foreach (string branchName in EnumerateAnimationDisplayerSkillUseBranchNames(castInfo))
+            {
+                if (!TryRegisterAnimationDisplayerSkillUseBranch(
+                        skillId,
+                        branchName,
+                        castInfo.CasterX,
+                        castInfo.CasterY,
+                        castInfo.FacingRight,
+                        castInfo.CastTime,
+                        delayRate))
+                {
+                    continue;
+                }
+
+                if (!handledPrimary
+                    && string.Equals(castInfo.EffectAnimation?.Name, branchName, StringComparison.OrdinalIgnoreCase))
+                {
+                    handledPrimary = true;
+                }
+
+                if (!handledSecondary
+                    && string.Equals(castInfo.SecondaryEffectAnimation?.Name, branchName, StringComparison.OrdinalIgnoreCase))
+                {
+                    handledSecondary = true;
+                }
+            }
+
+            if (handledPrimary && handledSecondary)
+            {
+                castInfo.SuppressEffectAnimation = true;
+            }
+        }
+
+        private bool TryRegisterAnimationDisplayerSkillUseBranch(
+            int skillId,
+            string branchName,
+            float casterX,
+            float casterY,
+            bool facingRight,
+            int currentTime,
+            int delayRate)
+        {
+            if (skillId <= 0 || string.IsNullOrWhiteSpace(branchName))
+            {
+                return false;
+            }
+
+            string effectUol = BuildAnimationDisplayerSkillUseBranchUol(skillId, branchName);
+            if (!TryGetAnimationDisplayerSkillUseFrameVariants(effectUol, out List<List<IDXObject>> variants))
+            {
+                return false;
+            }
+
+            bool registered = false;
+            for (int i = 0; i < variants.Count; i++)
+            {
+                List<IDXObject> adjustedFrames = ApplyAnimationDisplayerDelayRate(variants[i], delayRate);
+                if (!Animation.AnimationEffects.HasFrames(adjustedFrames))
+                {
+                    continue;
+                }
+
+                _animationEffects.AddOneTime(adjustedFrames, casterX, casterY, facingRight, currentTime);
+                registered = true;
+            }
+
+            return registered;
+        }
+
+        private bool TryGetAnimationDisplayerSkillUseFrameVariants(string effectUol, out List<List<IDXObject>> variants)
+        {
+            if (_animationDisplayerSkillUseEffectCache.TryGetValue(effectUol, out variants) && variants?.Count > 0)
+            {
+                return true;
+            }
+
+            variants = LoadAnimationDisplayerSkillUseFrameVariants(effectUol);
+            if (variants == null || variants.Count == 0)
+            {
+                variants = null;
+                return false;
+            }
+
+            _animationDisplayerSkillUseEffectCache[effectUol] = variants;
+            return true;
+        }
+
+        private List<List<IDXObject>> LoadAnimationDisplayerSkillUseFrameVariants(string effectUol)
+        {
+            var variants = new List<List<IDXObject>>();
+
+            string defaultChildUol = $"{effectUol}/default";
+            string indexedChildUol = $"{effectUol}/0";
+            bool hasCompositeChildren = IsAnimationDisplayerStructuredLayer(defaultChildUol)
+                || IsAnimationDisplayerStructuredLayer(indexedChildUol);
+
+            if (hasCompositeChildren)
+            {
+                TryAddAnimationDisplayerVariantFrames(variants, defaultChildUol);
+
+                for (int i = 0; ; i++)
+                {
+                    string candidateUol = $"{effectUol}/{i.ToString(CultureInfo.InvariantCulture)}";
+                    if (!IsAnimationDisplayerStructuredLayer(candidateUol))
+                    {
+                        break;
+                    }
+
+                    TryAddAnimationDisplayerVariantFrames(variants, candidateUol);
+                }
+            }
+            else
+            {
+                TryAddAnimationDisplayerVariantFrames(variants, effectUol);
+            }
+
+            return variants.Count > 0 ? variants : null;
+        }
+
+        private static List<IDXObject> ApplyAnimationDisplayerDelayRate(List<IDXObject> frames, int delayRate)
+        {
+            if (!Animation.AnimationEffects.HasFrames(frames) || delayRate <= 0 || delayRate == 1000)
+            {
+                return frames;
+            }
+
+            var adjusted = new List<IDXObject>(frames.Count);
+            for (int i = 0; i < frames.Count; i++)
+            {
+                IDXObject frame = frames[i];
+                int scaledDelay = Math.Max(1, (int)Math.Round(frame.Delay * (delayRate / 1000d)));
+                adjusted.Add(new DelayAdjustedDxObject(frame, scaledDelay));
+            }
+
+            return adjusted;
+        }
+
+        private void TryAddAnimationDisplayerVariantFrames(List<List<IDXObject>> variants, string effectUol)
+        {
+            List<IDXObject> frames = LoadAnimationDisplayerFrames(effectUol);
+            if (Animation.AnimationEffects.HasFrames(frames))
+            {
+                variants.Add(frames);
+            }
+        }
+
+        private bool IsAnimationDisplayerStructuredLayer(string effectUol)
+        {
+            WzImageProperty property = ResolveAnimationDisplayerProperty(effectUol)?.GetLinkedWzImageProperty();
+            if (property == null || property is WzCanvasProperty)
+            {
+                return false;
+            }
+
+            List<IDXObject> frames = LoadPacketOwnedAnimationFrames(property);
+            return Animation.AnimationEffects.HasFrames(frames);
+        }
+
+        private IEnumerable<string> EnumerateAnimationDisplayerSkillUseBranchNames(SkillCastInfo castInfo)
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (!string.IsNullOrWhiteSpace(castInfo?.EffectAnimation?.Name) && seen.Add(castInfo.EffectAnimation.Name))
+            {
+                yield return castInfo.EffectAnimation.Name;
+            }
+
+            if (!string.IsNullOrWhiteSpace(castInfo?.SecondaryEffectAnimation?.Name) && seen.Add(castInfo.SecondaryEffectAnimation.Name))
+            {
+                yield return castInfo.SecondaryEffectAnimation.Name;
+            }
+
+            int skillId = castInfo?.SkillId ?? 0;
+            if (skillId <= 0)
+            {
+                yield break;
+            }
+
+            WzImage skillImage = Program.FindImage("Skill", $"{skillId / 10000}.img");
+            skillImage?.ParseImage();
+            if (skillImage?["skill"]?[skillId.ToString("D7", CultureInfo.InvariantCulture)] is not WzImageProperty skillNode)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in skillNode.WzProperties)
+            {
+                if (!IsAnimationDisplayerSkillUseBranchName(child?.Name) || !seen.Add(child.Name))
+                {
+                    continue;
+                }
+
+                yield return child.Name;
+            }
+        }
+
+        private static bool IsAnimationDisplayerSkillUseBranchName(string branchName)
+        {
+            if (string.IsNullOrWhiteSpace(branchName) || !branchName.StartsWith("effect", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (branchName.Length == "effect".Length)
+            {
+                return true;
+            }
+
+            for (int i = "effect".Length; i < branchName.Length; i++)
+            {
+                if (!char.IsDigit(branchName[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static string BuildAnimationDisplayerSkillUseBranchUol(int skillId, string branchName)
+        {
+            return $"Skill/{(skillId / 10000).ToString(CultureInfo.InvariantCulture)}.img/skill/{skillId.ToString("D7", CultureInfo.InvariantCulture)}/{branchName}";
+        }
+
+        private int ResolveAnimationDisplayerSkillUseDelayRate(SkillCastInfo castInfo)
+        {
+            int delayRate = _playerManager?.Skills?.ResolveSharedSkillUseDelayRate(castInfo?.SkillId ?? 0) ?? 1000;
+            return delayRate > 0 ? delayRate : 1000;
+        }
+
         private bool TryLoadAnimationDisplayerQuestDeliveryPhaseFrames(
             WzImageProperty sourceProperty,
             out List<IDXObject> startFrames,
@@ -686,6 +941,13 @@ namespace HaCreator.MapSimulator
         {
             return ownerCharacterId > 0
                 ? unchecked(int.MinValue | ownerCharacterId)
+                : 0;
+        }
+
+        internal static int BuildAnimationDisplayerPacketOwnedFollowRegistrationKey(int ownerCharacterId)
+        {
+            return ownerCharacterId > 0
+                ? unchecked(AnimationDisplayerPacketOwnedFollowRegistrationMask | ownerCharacterId)
                 : 0;
         }
 
@@ -1244,16 +1506,45 @@ namespace HaCreator.MapSimulator
 
         private void ClearAnimationDisplayerFollow(int ownerCharacterId)
         {
-            if (ownerCharacterId <= 0)
+            ClearAnimationDisplayerFollowRegistration(ownerCharacterId);
+        }
+
+        private void ClearAnimationDisplayerFollowRegistration(int registrationKey)
+        {
+            if (registrationKey == 0)
             {
                 return;
             }
 
-            if (_animationDisplayerFollowAnimationIds.TryGetValue(ownerCharacterId, out int followId))
+            if (_animationDisplayerFollowAnimationIds.TryGetValue(registrationKey, out int followId))
             {
                 _animationEffects.RemoveFollow(followId);
-                _animationDisplayerFollowAnimationIds.Remove(ownerCharacterId);
+                _animationDisplayerFollowAnimationIds.Remove(registrationKey);
             }
+        }
+
+        private void SyncPacketOwnedAnimationDisplayerFollow()
+        {
+            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+            int registrationKey = BuildAnimationDisplayerPacketOwnedFollowRegistrationKey(localCharacterId);
+            if (localCharacterId <= 0 || registrationKey == 0)
+            {
+                ClearAnimationDisplayerFollowRegistration(registrationKey);
+                return;
+            }
+
+            PlayerCharacter player = _playerManager?.Player;
+            if (_localFollowRuntime.AttachedDriverId <= 0 || player == null)
+            {
+                ClearAnimationDisplayerFollowRegistration(registrationKey);
+                return;
+            }
+
+            TryRegisterAnimationDisplayerFollow(
+                registrationKey,
+                localCharacterId,
+                () => _playerManager?.Player?.Position ?? player.Position,
+                relativeEmission: true);
         }
 
         private void ClearAnimationDisplayerLocalQuestDeliveryOwner()
@@ -1320,6 +1611,51 @@ namespace HaCreator.MapSimulator
                 return actor.Position;
             };
             return true;
+        }
+
+        private sealed class DelayAdjustedDxObject : IDXObject
+        {
+            private readonly IDXObject _inner;
+            private readonly int _delay;
+
+            public DelayAdjustedDxObject(IDXObject inner, int delay)
+            {
+                _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+                _delay = delay;
+            }
+
+            public void DrawObject(
+                Microsoft.Xna.Framework.Graphics.SpriteBatch sprite,
+                Spine.SkeletonMeshRenderer meshRenderer,
+                Microsoft.Xna.Framework.GameTime gameTime,
+                int mapShiftX,
+                int mapShiftY,
+                bool flip,
+                ReflectionDrawableBoundary drawReflectionInfo)
+            {
+                _inner.DrawObject(sprite, meshRenderer, gameTime, mapShiftX, mapShiftY, flip, drawReflectionInfo);
+            }
+
+            public void DrawBackground(
+                Microsoft.Xna.Framework.Graphics.SpriteBatch sprite,
+                Spine.SkeletonMeshRenderer meshRenderer,
+                Microsoft.Xna.Framework.GameTime gameTime,
+                int x,
+                int y,
+                Microsoft.Xna.Framework.Color color,
+                bool flip,
+                ReflectionDrawableBoundary drawReflectionInfo)
+            {
+                _inner.DrawBackground(sprite, meshRenderer, gameTime, x, y, color, flip, drawReflectionInfo);
+            }
+
+            public int Delay => _delay;
+            public int X => _inner.X;
+            public int Y => _inner.Y;
+            public int Width => _inner.Width;
+            public int Height => _inner.Height;
+            public object Tag { get => _inner.Tag; set => _inner.Tag = value; }
+            public Microsoft.Xna.Framework.Graphics.Texture2D Texture => _inner.Texture;
         }
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Buffers.Binary;
+using System.Text;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Loaders;
@@ -13,6 +14,22 @@ namespace HaCreator.MapSimulator
 {
     internal static class RepairDurabilityClientParity
     {
+        internal readonly struct ResultPayload
+        {
+            public ResultPayload(bool success, int? reasonCode, short? operationCode, string statusText)
+            {
+                Success = success;
+                ReasonCode = reasonCode;
+                OperationCode = operationCode;
+                StatusText = statusText ?? string.Empty;
+            }
+
+            public bool Success { get; }
+            public int? ReasonCode { get; }
+            public short? OperationCode { get; }
+            public string StatusText { get; }
+        }
+
         private static readonly string[] ExplicitNpcActionFallbacks =
         {
             "shop",
@@ -176,12 +193,10 @@ namespace HaCreator.MapSimulator
 
         internal static bool TryDecodeSyntheticResultPayload(
             byte[] payload,
-            out bool success,
-            out int? reasonCode,
+            out ResultPayload result,
             out string error)
         {
-            success = true;
-            reasonCode = null;
+            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, statusText: string.Empty);
             error = null;
 
             if (payload == null || payload.Length == 0)
@@ -189,19 +204,58 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (payload.Length != 1 && payload.Length != 1 + sizeof(int))
+            int offset = 0;
+            short? operationCode = null;
+            if (payload[0] == 130 || payload[0] == 131)
             {
-                error = "Repair-result payload must be empty, 1 byte, or 5 bytes (result + optional reason code).";
+                operationCode = payload[0];
+                offset++;
+            }
+
+            int remainingLength = payload.Length - offset;
+            if (remainingLength != 1 && remainingLength < 1 + sizeof(int))
+            {
+                error = "Repair-result payload must be empty, [result], [result+reason], [opcode+result], or [opcode+result+reason(+text)].";
                 return false;
             }
 
-            success = payload[0] == 0;
-            if (payload.Length >= 1 + sizeof(int))
+            bool success = payload[offset] == 0;
+            int? reasonCode = null;
+            string statusText = string.Empty;
+            if (remainingLength >= 1 + sizeof(int))
             {
-                reasonCode = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(1, sizeof(int)));
+                reasonCode = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset + 1, sizeof(int)));
+                int textOffset = offset + 1 + sizeof(int);
+                int textLength = payload.Length - textOffset;
+                if (textLength > 0)
+                {
+                    statusText = DecodeResultStatusText(payload.AsSpan(textOffset, textLength));
+                }
             }
 
+            result = new ResultPayload(success, reasonCode, operationCode, statusText);
             return true;
+        }
+
+        private static string DecodeResultStatusText(ReadOnlySpan<byte> payload)
+        {
+            if (payload.Length <= 0)
+            {
+                return string.Empty;
+            }
+
+            int terminatorIndex = payload.IndexOf((byte)0);
+            if (terminatorIndex >= 0)
+            {
+                payload = payload[..terminatorIndex];
+            }
+
+            if (payload.Length <= 0)
+            {
+                return string.Empty;
+            }
+
+            return Encoding.UTF8.GetString(payload).Trim();
         }
     }
 }

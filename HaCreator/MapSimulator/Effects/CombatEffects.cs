@@ -478,6 +478,7 @@ namespace HaCreator.MapSimulator.Effects
         // WZ-based damage number renderer
         private DamageNumberRenderer _wzDamageRenderer;
         private bool _useWzDamageNumbers = false;
+        private AnimationEffects _animationEffects;
         #endregion
 
         #region State
@@ -538,6 +539,7 @@ namespace HaCreator.MapSimulator.Effects
                 // Initialize the WZ damage renderer
                 _wzDamageRenderer = new DamageNumberRenderer();
                 _wzDamageRenderer.Initialize(_device, _damageFont);
+                _wzDamageRenderer.SetAnimationEffects(_animationEffects);
                 _useWzDamageNumbers = true;
 
                 System.Diagnostics.Debug.WriteLine($"[CombatEffects] Loaded {DamageNumberLoader.LoadedSetCount} damage number digit sets from WZ");
@@ -554,6 +556,12 @@ namespace HaCreator.MapSimulator.Effects
         /// Whether WZ-based damage numbers are available.
         /// </summary>
         public bool HasWzDamageNumbers => _useWzDamageNumbers && _wzDamageRenderer != null;
+
+        public void SetAnimationEffects(AnimationEffects animationEffects)
+        {
+            _animationEffects = animationEffects;
+            _wzDamageRenderer?.SetAnimationEffects(animationEffects);
+        }
         #endregion
 
         #region Add Effects

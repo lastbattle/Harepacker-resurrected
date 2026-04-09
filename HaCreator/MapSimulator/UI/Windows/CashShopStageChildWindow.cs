@@ -429,10 +429,12 @@ namespace HaCreator.MapSimulator.UI
                 ? state.SharedCharacterNames
                 : new[] { "No shared characters" };
             int selectedIndex = sharedNames.Count == 0 ? -1 : Math.Clamp(_lockerCharacterIndex, 0, sharedNames.Count - 1);
-            for (int i = 0; i < sharedNames.Count && i < 3; i++)
+            int visibleStart = Math.Clamp(Math.Max(state.ScrollOffset, _lockerScrollOffset), 0, Math.Max(0, sharedNames.Count - 3));
+            for (int i = 0; (visibleStart + i) < sharedNames.Count && i < 3; i++)
             {
-                string prefix = i == selectedIndex ? ">" : " ";
-                sprite.DrawString(_font, $"{prefix} {sharedNames[i]}", new Vector2(Position.X + contentBounds.X + 12, lineY), i == selectedIndex ? accentColor : detailColor);
+                int visibleIndex = visibleStart + i;
+                string prefix = visibleIndex == selectedIndex ? ">" : " ";
+                sprite.DrawString(_font, $"{prefix} {sharedNames[visibleIndex]}", new Vector2(Position.X + contentBounds.X + 12, lineY), visibleIndex == selectedIndex ? accentColor : detailColor);
                 lineY += _font.LineSpacing;
             }
 

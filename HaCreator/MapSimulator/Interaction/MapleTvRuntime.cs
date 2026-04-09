@@ -51,6 +51,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _showMessage;
         private bool _queueExists;
         private bool _isSelfMessage = true;
+        private bool _awaitingQueueReuseConfirmation;
         private MapleTvItemProfile _itemProfile;
         private MapleTvSendResultFeedback _pendingSendResultFeedback;
 
@@ -145,6 +146,7 @@ namespace HaCreator.MapSimulator.Interaction
                 IsShowingMessage = _showMessage,
                 QueueExists = _queueExists,
                 IsSelfMessage = _isSelfMessage,
+                AwaitingQueueReuseConfirmation = _awaitingQueueReuseConfirmation,
                 MessageType = _messageType,
                 SenderBuild = _senderBuild,
                 ReceiverBuild = _receiverBuild,
@@ -170,7 +172,10 @@ namespace HaCreator.MapSimulator.Interaction
             string itemLabel = snapshot.ItemId > 0
                 ? $"{snapshot.ItemId} ({snapshot.ItemName})"
                 : $"{snapshot.DefaultItemId} ({snapshot.DefaultItemName})";
-            return $"MapleTV {mode}: {snapshot.SenderName} -> {receiver}, item {itemLabel}, {timer}. {snapshot.StatusMessage}";
+            string queueConfirmationSuffix = snapshot.AwaitingQueueReuseConfirmation
+                ? " Queue reuse confirmation is pending."
+                : string.Empty;
+            return $"MapleTV {mode}: {snapshot.SenderName} -> {receiver}, item {itemLabel}, {timer}. {snapshot.StatusMessage}{queueConfirmationSuffix}";
         }
 
         internal string ToggleReceiverMode()
@@ -358,9 +363,17 @@ namespace HaCreator.MapSimulator.Interaction
                 return "At least one MapleTV draft line is required before sending.";
             }
 
+            if (_queueExists && !_awaitingQueueReuseConfirmation)
+            {
+                _awaitingQueueReuseConfirmation = true;
+                _statusMessage = BuildQueueReuseConfirmationText();
+                return _statusMessage;
+            }
+
             Array.Copy(_draftLines, _displayLines, DisplayLineCount);
             _showMessage = true;
             _queueExists = true;
+            _awaitingQueueReuseConfirmation = false;
             _messageStartedAt = currentTick;
             _activeDurationMs = _draftDurationMs;
             _isSelfMessage = !_useReceiver;
@@ -380,6 +393,7 @@ namespace HaCreator.MapSimulator.Interaction
             _queueExists = preserveQueue;
             _messageStartedAt = int.MinValue;
             _activeDurationMs = 0;
+            _awaitingQueueReuseConfirmation = false;
             Array.Clear(_displayLines, 0, _displayLines.Length);
             _pendingSendResultFeedback = null;
             _statusMessage = preserveQueue
@@ -522,6 +536,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Array.Copy(lines, _displayLines, DisplayLineCount);
                 _showMessage = true;
                 _queueExists = true;
+                _awaitingQueueReuseConfirmation = false;
                 _messageStartedAt = currentTick;
                 _activeDurationMs = Math.Max(0, totalWaitTime);
                 // CMapleTVMan::OnSetMessage keeps the packet wait time verbatim and
@@ -722,6 +737,15 @@ namespace HaCreator.MapSimulator.Interaction
             return _draftDurationMs;
         }
 
+        private string BuildQueueReuseConfirmationText()
+        {
+            int seconds = Math.Max(0, ResolveSnapshotTotalWaitMs()) / 1000;
+            string template = MapleStoryStringPool.GetOrFallback(
+                0x0FA2,
+                "This message will be sent to \r\nMaple TV in %d seconds. \r\n Do you want to proceed?");
+            return template.Replace("%d", seconds.ToString());
+        }
+
         private string QueueSendResultFeedback(MapleTvSendResultDefinition definition)
         {
             _lastClientSendResultCode = definition.ResultCode;
@@ -802,6 +826,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsShowingMessage { get; init; }
         public bool QueueExists { get; init; }
         public bool IsSelfMessage { get; init; }
+        public bool AwaitingQueueReuseConfirmation { get; init; }
         public int MessageType { get; init; }
         public CharacterBuild SenderBuild { get; init; }
         public CharacterBuild ReceiverBuild { get; init; }

@@ -13,6 +13,9 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     internal sealed class FaceLookLoader
     {
+        private const string DefaultExpressionName = "default";
+        private const string AccessoryQBlueFallbackExpressionName = "qBlue";
+
         private readonly record struct FaceLookCacheKey(
             SkinColor SkinColor,
             string ExpressionName,
@@ -94,50 +97,38 @@ namespace HaCreator.MapSimulator.Character
         private static string NormalizeExpressionName(string expression)
         {
             return string.IsNullOrWhiteSpace(expression)
-                ? "default"
+                ? DefaultExpressionName
                 : expression.Trim();
         }
 
         private static CharacterAnimation ResolveAccessoryExpression(CharacterPart faceAccessoryPart, string expression)
         {
+            string normalizedExpression = NormalizeAccessoryExpressionName(expression);
             if (TryResolveAccessoryAnimation(faceAccessoryPart, expression, out CharacterAnimation animation))
             {
                 return animation;
             }
 
-            if (TryResolveAccessoryAnimation(faceAccessoryPart, "default", out animation))
+            if (!string.Equals(normalizedExpression, expression, StringComparison.OrdinalIgnoreCase)
+                && TryResolveAccessoryAnimation(faceAccessoryPart, normalizedExpression, out animation))
             {
                 return animation;
             }
 
-            if (TryResolveAccessoryAnimation(faceAccessoryPart, "blink", out animation))
+            if (TryResolveAccessoryAnimation(faceAccessoryPart, DefaultExpressionName, out animation))
             {
                 return animation;
-            }
-
-            if (faceAccessoryPart?.AvailableAnimations != null)
-            {
-                foreach (string authoredExpression in faceAccessoryPart.AvailableAnimations.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase))
-                {
-                    if (TryResolveAccessoryAnimation(faceAccessoryPart, authoredExpression, out animation))
-                    {
-                        return animation;
-                    }
-                }
-            }
-
-            if (faceAccessoryPart?.Animations != null)
-            {
-                foreach ((_, CharacterAnimation fallbackAnimation) in faceAccessoryPart.Animations)
-                {
-                    if (fallbackAnimation?.Frames?.Count > 0)
-                    {
-                        return fallbackAnimation;
-                    }
-                }
             }
 
             return null;
+        }
+
+        private static string NormalizeAccessoryExpressionName(string expression)
+        {
+            string normalizedExpression = NormalizeExpressionName(expression);
+            return string.Equals(normalizedExpression, AccessoryQBlueFallbackExpressionName, StringComparison.OrdinalIgnoreCase)
+                ? DefaultExpressionName
+                : normalizedExpression;
         }
 
         private static bool TryResolveAccessoryAnimation(CharacterPart faceAccessoryPart, string expression, out CharacterAnimation animation)

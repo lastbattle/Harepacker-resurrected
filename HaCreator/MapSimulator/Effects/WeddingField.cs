@@ -76,9 +76,12 @@ namespace HaCreator.MapSimulator.Effects
         private const int ParticipantLabelLineSpacing = 2;
         private const int PacketTypeUserEnterField = 179;
         private const int PacketTypeUserLeaveField = 180;
-        private const int PacketTypeUserMove = 210;
+        private const int PacketTypeWeddingProgress = 379;
+        private const int PacketTypeWeddingCeremonyEnd = 380;
+        private const int PacketTypeUserMoveOfficial = 181;
+        private const int PacketTypeUserMoveOrChairAlias = 210;
         private const int PacketTypeItemEffect = 215;
-        private const int PacketTypeSetActivePortableChair = 222;
+        private const int PacketTypeSetActivePortableChairLegacy = 222;
         private const int PacketTypeAvatarModified = 223;
         private const int PacketTypeTemporaryStatSet = 225;
         private const int PacketTypeTemporaryStatReset = 226;
@@ -304,15 +307,21 @@ namespace HaCreator.MapSimulator.Effects
             {
                 switch (packetType)
                 {
+                    case PacketTypeWeddingProgress:
+                        return TryApplyWeddingProgressPacket(payload, currentTimeMs, out errorMessage);
+                    case PacketTypeWeddingCeremonyEnd:
+                        return TryApplyWeddingCeremonyEndPacket(payload, currentTimeMs, out errorMessage);
                     case PacketTypeUserEnterField:
                         return TryApplyRemoteSpawnPacket(payload, out errorMessage);
                     case PacketTypeUserLeaveField:
                         return TryApplyRemoteLeavePacket(payload, out errorMessage);
-                    case PacketTypeUserMove:
+                    case PacketTypeUserMoveOfficial:
                         return TryApplyRemoteMovePacket(payload, currentTimeMs, out errorMessage);
+                    case PacketTypeUserMoveOrChairAlias:
+                        return TryApplyMoveOrChairAliasPacket(payload, currentTimeMs, out errorMessage);
                     case PacketTypeItemEffect:
                         return TryApplyRemoteItemEffectPacket(payload, out errorMessage);
-                    case PacketTypeSetActivePortableChair:
+                    case PacketTypeSetActivePortableChairLegacy:
                         return TryApplyRemoteChairPacket(payload, out errorMessage);
                     case PacketTypeAvatarModified:
                         return TryApplyRemoteAvatarModifiedPacket(payload, out errorMessage);
@@ -764,6 +773,40 @@ namespace HaCreator.MapSimulator.Effects
                 participant.AvatarModifiedState,
                 participant.AvatarModifiedRevision);
             return true;
+        }
+
+        private bool TryApplyWeddingProgressPacket(byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (payload == null || payload.Length < 9)
+            {
+                errorMessage = "Wedding progress packet expects 9 bytes: <step:1><groomId:4><brideId:4>.";
+                return false;
+            }
+
+            int step = payload[0];
+            int groomId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(1, sizeof(int)));
+            int brideId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(5, sizeof(int)));
+            OnWeddingProgress(step, groomId, brideId, currentTimeMs);
+            return true;
+        }
+
+        private bool TryApplyWeddingCeremonyEndPacket(byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            OnWeddingCeremonyEnd(currentTimeMs);
+            return true;
+        }
+
+        private bool TryApplyMoveOrChairAliasPacket(byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            if (payload != null
+                && (payload.Length == sizeof(int) * 2 || payload.Length == sizeof(int) * 3))
+            {
+                return TryApplyRemoteChairPacket(payload, out errorMessage);
+            }
+
+            return TryApplyRemoteMovePacket(payload, currentTimeMs, out errorMessage);
         }
 
         private bool TryGetAudienceActorById(int characterId, out WeddingRemoteParticipant participant)
@@ -1790,9 +1833,9 @@ namespace HaCreator.MapSimulator.Effects
             {
                 PacketTypeUserEnterField => "userenter (179)",
                 PacketTypeUserLeaveField => "userleave (180)",
-                PacketTypeUserMove => "usermove (210)",
+                PacketTypeUserMoveOrChairAlias => "usermove (210)",
                 PacketTypeItemEffect => "itemeffect (215)",
-                PacketTypeSetActivePortableChair => "chair (222)",
+                PacketTypeSetActivePortableChairLegacy => "chair (222)",
                 PacketTypeAvatarModified => "avatarmodified (223)",
                 PacketTypeTemporaryStatSet => "tempset (225)",
                 PacketTypeTemporaryStatReset => "tempreset (226)",

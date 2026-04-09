@@ -254,6 +254,7 @@ namespace HaCreator.MapSimulator
                     localPlayerId,
                     area.OwnerId,
                     IsAffectedAreaOwnerPartyMember(area.OwnerId),
+                    ownerIsSameTeamMember: false,
                     levelData))
             {
                 return true;
@@ -540,6 +541,7 @@ namespace HaCreator.MapSimulator
                         localPlayerId,
                         area.OwnerId,
                         IsAffectedAreaOwnerPartyMember(area.OwnerId),
+                        ownerIsSameTeamMember: false,
                         effectiveLevelData))
                 {
                     continue;

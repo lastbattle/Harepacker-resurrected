@@ -1469,8 +1469,8 @@ namespace HaCreator.MapSimulator.Pools
 
             int previousVisualState = data.VisualState;
             bool wasAnimationClockRunning = IsPacketAnimationClockRunning(data);
-            int currentX = reactor.ReactorInstance?.X ?? x;
-            int currentY = reactor.ReactorInstance?.Y ?? y;
+            int currentX = reactor.CurrentWorldX;
+            int currentY = reactor.CurrentWorldY;
             bool shouldRelMoveToStateTarget = reactor.TemplateMoveEnabled
                 && stateEndDelayTicks > 0
                 && (currentX != x || currentY != y);
@@ -1525,8 +1525,8 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            int currentX = reactor.ReactorInstance?.X ?? x;
-            int currentY = reactor.ReactorInstance?.Y ?? y;
+            int currentX = reactor.CurrentWorldX;
+            int currentY = reactor.CurrentWorldY;
             int moveEndTime = data.PacketStateEndTime > currentTick
                 ? data.PacketStateEndTime
                 : ResolvePacketStandaloneMoveEndTime(reactor.TemplateMoveEnabled, currentX, currentY, x, y, currentTick);
@@ -2099,8 +2099,8 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            data.PacketMoveStartX = reactor.ReactorInstance?.X ?? data.PacketMoveStartX;
-            data.PacketMoveStartY = reactor.ReactorInstance?.Y ?? data.PacketMoveStartY;
+            data.PacketMoveStartX = reactor.CurrentWorldX;
+            data.PacketMoveStartY = reactor.CurrentWorldY;
             data.PacketMoveStartTime = currentTick;
         }
 
@@ -2130,9 +2130,9 @@ namespace HaCreator.MapSimulator.Pools
                 data.PacketMoveUsesDefaultRelMove);
             int x = (int)Math.Round(MathHelper.Lerp(data.PacketMoveStartX, data.PacketMoveTargetX, progress));
             int y = (int)Math.Round(MathHelper.Lerp(data.PacketMoveStartY, data.PacketMoveTargetY, progress));
-            if (reactor.ReactorInstance?.X != x || reactor.ReactorInstance?.Y != y)
+            if (reactor.CurrentWorldX != x || reactor.CurrentWorldY != y)
             {
-                reactor.SetWorldPosition(x, y);
+                reactor.SetWorldPosition(x, y, persistInstance: false);
                 RefreshReactorLayerPlacement(reactor);
             }
         }
@@ -2149,8 +2149,8 @@ namespace HaCreator.MapSimulator.Pools
                 reactor.SetWorldPosition(data.PacketMoveTargetX, data.PacketMoveTargetY);
             }
 
-            int resolvedX = reactor?.ReactorInstance?.X ?? data.PacketMoveTargetX;
-            int resolvedY = reactor?.ReactorInstance?.Y ?? data.PacketMoveTargetY;
+            int resolvedX = reactor?.CurrentWorldX ?? data.PacketMoveTargetX;
+            int resolvedY = reactor?.CurrentWorldY ?? data.PacketMoveTargetY;
             data.PacketMoveStartTime = 0;
             data.PacketMoveEndTime = 0;
             data.PacketMoveStartX = resolvedX;
@@ -2178,8 +2178,8 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            int x = reactor.ReactorInstance.X;
-            int y = reactor.ReactorInstance.Y;
+            int x = reactor.CurrentWorldX;
+            int y = reactor.CurrentWorldY;
             ReactorFootholdPlacement placement = _reactorFootholdPlacementResolver?.Invoke(x, y)
                 ?? new ReactorFootholdPlacement(0, 0);
             reactor.RenderSortKey = ResolveReactorRenderSortKey(

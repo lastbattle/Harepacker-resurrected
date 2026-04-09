@@ -31,6 +31,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedScreenEffectYOffset = -40;
         private const int PacketOwnedRewardRouletteOffsetX = 400;
         private const int PacketOwnedRewardRouletteOffsetY = 260;
+        private const int PacketOwnedRewardRouletteClientAlpha = 255;
         private static readonly int[] PacketOwnedRewardRouletteLayerStringPoolIds =
         {
             0x11E0,
@@ -239,34 +240,48 @@ namespace HaCreator.MapSimulator
         {
             const string animationKey = "reward-roulette";
             ClearPacketOwnedUiAnimations(animationKey);
-            foreach (IReadOnlyList<(string CategoryName, string ImageName, string PropertyPath)> family in EnumeratePacketOwnedRewardRouletteAnimationCandidateFamilies(
+            foreach (IReadOnlyList<PacketOwnedRewardRouletteLayerCandidate> family in EnumeratePacketOwnedRewardRouletteAnimationCandidateFamilies(
                 rewardJobIndex,
                 rewardPartIndex,
                 rewardLevelIndex))
             {
-                bool shownAnyLayer = false;
-                foreach ((string categoryName, string imageName, string propertyPath) in family)
+                List<(List<IDXObject> Frames, PacketOwnedRewardRouletteLayerCandidate Candidate)> resolvedLayers = new();
+                foreach (PacketOwnedRewardRouletteLayerCandidate candidate in family)
                 {
-                    string cacheKey = $"reward-roulette:{categoryName}/{imageName}:{propertyPath}";
+                    string cacheKey = $"reward-roulette:{candidate.CategoryName}/{candidate.ImageName}:{candidate.PropertyPath}";
                     if (!TryGetOrCreatePacketOwnedAnimationFrames(
                         cacheKey,
                         () => LoadPacketOwnedAnimationFrames(
                             ResolvePacketOwnedPropertyPath(
-                                Program.FindImage(categoryName, imageName),
-                                propertyPath)),
+                                Program.FindImage(candidate.CategoryName, candidate.ImageName),
+                                candidate.PropertyPath)),
                         out List<IDXObject> frames))
                     {
-                        continue;
+                        resolvedLayers.Clear();
+                        break;
                     }
 
-                    EnqueuePacketOwnedUiAnimation(
-                        frames,
-                        ResolvePacketOwnedRewardRouletteRegistration(_renderParams.RenderWidth, Height, animationKey),
-                        currTickCount);
-                    shownAnyLayer = true;
+                    resolvedLayers.Add((frames, candidate));
                 }
 
-                if (shownAnyLayer)
+                if (resolvedLayers.Count != family.Count)
+                {
+                    continue;
+                }
+
+                foreach ((List<IDXObject> frames, PacketOwnedRewardRouletteLayerCandidate candidate) in resolvedLayers)
+                {
+                    EnqueuePacketOwnedUiAnimation(
+                        frames,
+                        ResolvePacketOwnedRewardRouletteRegistration(
+                            _renderParams.RenderWidth,
+                            Height,
+                            animationKey,
+                            candidate.LayerRole),
+                        currTickCount);
+                }
+
+                if (resolvedLayers.Count > 0)
                 {
                     ShowUtilityFeedbackMessage(
                         $"Packet-owned reward roulette: job={rewardJobIndex} part={rewardPartIndex} level={rewardLevelIndex}.");
@@ -885,135 +900,161 @@ namespace HaCreator.MapSimulator
             int rewardPartIndex,
             int rewardLevelIndex)
         {
-            foreach (IReadOnlyList<(string CategoryName, string ImageName, string PropertyPath)> family in EnumeratePacketOwnedRewardRouletteAnimationCandidateFamilies(
+            foreach (IReadOnlyList<PacketOwnedRewardRouletteLayerCandidate> family in EnumeratePacketOwnedRewardRouletteAnimationCandidateFamilies(
                 rewardJobIndex,
                 rewardPartIndex,
                 rewardLevelIndex))
             {
-                foreach ((string CategoryName, string ImageName, string PropertyPath) candidate in family)
+                foreach (PacketOwnedRewardRouletteLayerCandidate candidate in family)
                 {
-                    yield return candidate;
+                    yield return (candidate.CategoryName, candidate.ImageName, candidate.PropertyPath);
                 }
             }
         }
 
-        private static IEnumerable<IReadOnlyList<(string CategoryName, string ImageName, string PropertyPath)>> EnumeratePacketOwnedRewardRouletteAnimationCandidateFamilies(
+        private static IEnumerable<IReadOnlyList<PacketOwnedRewardRouletteLayerCandidate>> EnumeratePacketOwnedRewardRouletteAnimationCandidateFamilies(
             int rewardJobIndex,
             int rewardPartIndex,
             int rewardLevelIndex)
         {
-            (string CategoryName, string ImageName, string PropertyPath)[] mapFamily = EnumeratePacketOwnedRewardRouletteMapAnimationCandidates(
-                    rewardJobIndex,
-                    rewardPartIndex,
-                    rewardLevelIndex)
-                .ToArray();
-            if (mapFamily.Length > 0)
+            PacketOwnedRewardRouletteLayerCandidate[] directFamily = BuildPacketOwnedRewardRouletteDirectAnimationFamily(
+                rewardJobIndex,
+                rewardPartIndex,
+                rewardLevelIndex);
+            if (directFamily.Length > 0)
             {
-                yield return mapFamily;
+                yield return directFamily;
             }
 
-            (string CategoryName, string ImageName, string PropertyPath)[] fallbackFamily = EnumeratePacketOwnedRewardRouletteFallbackAnimationCandidates(
+            foreach (string suffix in new[] { "Default", "0" })
+            {
+                PacketOwnedRewardRouletteLayerCandidate[] mapFamily = BuildPacketOwnedRewardRouletteStringPoolAnimationFamily(
                     rewardJobIndex,
                     rewardPartIndex,
-                    rewardLevelIndex)
-                .ToArray();
-            if (fallbackFamily.Length > 0)
-            {
-                yield return fallbackFamily;
+                    rewardLevelIndex,
+                    suffix);
+                if (mapFamily.Length > 0)
+                {
+                    yield return mapFamily;
+                }
+
+                PacketOwnedRewardRouletteLayerCandidate[] fallbackFamily = BuildPacketOwnedRewardRouletteFallbackAnimationFamily(
+                    rewardJobIndex,
+                    rewardPartIndex,
+                    rewardLevelIndex,
+                    suffix);
+                if (fallbackFamily.Length > 0)
+                {
+                    yield return fallbackFamily;
+                }
             }
         }
 
-        private static IEnumerable<(string CategoryName, string ImageName, string PropertyPath)> EnumeratePacketOwnedRewardRouletteMapAnimationCandidates(
+        private static PacketOwnedRewardRouletteLayerCandidate[] BuildPacketOwnedRewardRouletteDirectAnimationFamily(
             int rewardJobIndex,
             int rewardPartIndex,
             int rewardLevelIndex)
         {
-            HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-            (int StringPoolId, int RequestedIndex)[] layerRequests =
+            PacketOwnedRewardRouletteLayerRequest[] layerRequests =
             {
-                (PacketOwnedRewardRouletteLayerStringPoolIds[0], rewardJobIndex),
-                (PacketOwnedRewardRouletteLayerStringPoolIds[1], rewardPartIndex),
-                (PacketOwnedRewardRouletteLayerStringPoolIds[2], rewardLevelIndex)
+                new(PacketOwnedRewardRouletteLayerRole.Job, PacketOwnedRewardRouletteLayerStringPoolIds[0], rewardJobIndex, PacketOwnedRewardRouletteFallbackFormats[0]),
+                new(PacketOwnedRewardRouletteLayerRole.Part, PacketOwnedRewardRouletteLayerStringPoolIds[1], rewardPartIndex, PacketOwnedRewardRouletteFallbackFormats[1]),
+                new(PacketOwnedRewardRouletteLayerRole.Level, PacketOwnedRewardRouletteLayerStringPoolIds[2], rewardLevelIndex, PacketOwnedRewardRouletteFallbackFormats[2])
             };
+            List<PacketOwnedRewardRouletteLayerCandidate> resolved = new(layerRequests.Length);
 
-            foreach ((int stringPoolId, int requestedIndex) in layerRequests)
+            foreach (PacketOwnedRewardRouletteLayerRequest request in layerRequests)
             {
-                if (requestedIndex < 0)
+                if (request.RequestedIndex < 0)
                 {
-                    continue;
+                    return Array.Empty<PacketOwnedRewardRouletteLayerCandidate>();
                 }
 
                 string directUol = FormatPacketOwnedEffectUol(
-                    stringPoolId,
+                    request.StringPoolId,
                     null,
-                    requestedIndex.ToString(CultureInfo.InvariantCulture));
-                if (TryParsePacketOwnedEffectUol(directUol, out (string CategoryName, string ImageName, string PropertyPath) directCandidate)
-                    && seen.Add($"{directCandidate.CategoryName}/{directCandidate.ImageName}:{directCandidate.PropertyPath}"))
+                    request.RequestedIndex.ToString(CultureInfo.InvariantCulture));
+                if (!TryParsePacketOwnedEffectUol(directUol, out (string CategoryName, string ImageName, string PropertyPath) candidate))
                 {
-                    yield return directCandidate;
+                    return Array.Empty<PacketOwnedRewardRouletteLayerCandidate>();
+                }
+
+                resolved.Add(new PacketOwnedRewardRouletteLayerCandidate(request.LayerRole, candidate.CategoryName, candidate.ImageName, candidate.PropertyPath));
+            }
+
+            return resolved.ToArray();
+        }
+
+        private static PacketOwnedRewardRouletteLayerCandidate[] BuildPacketOwnedRewardRouletteStringPoolAnimationFamily(
+            int rewardJobIndex,
+            int rewardPartIndex,
+            int rewardLevelIndex,
+            string suffix)
+        {
+            PacketOwnedRewardRouletteLayerRequest[] layerRequests =
+            {
+                new(PacketOwnedRewardRouletteLayerRole.Job, PacketOwnedRewardRouletteLayerStringPoolIds[0], rewardJobIndex, PacketOwnedRewardRouletteFallbackFormats[0]),
+                new(PacketOwnedRewardRouletteLayerRole.Part, PacketOwnedRewardRouletteLayerStringPoolIds[1], rewardPartIndex, PacketOwnedRewardRouletteFallbackFormats[1]),
+                new(PacketOwnedRewardRouletteLayerRole.Level, PacketOwnedRewardRouletteLayerStringPoolIds[2], rewardLevelIndex, PacketOwnedRewardRouletteFallbackFormats[2])
+            };
+            List<PacketOwnedRewardRouletteLayerCandidate> resolved = new(layerRequests.Length);
+
+            foreach (PacketOwnedRewardRouletteLayerRequest request in layerRequests)
+            {
+                if (request.RequestedIndex < 0)
+                {
+                    return Array.Empty<PacketOwnedRewardRouletteLayerCandidate>();
                 }
 
                 string joinedUol = FormatPacketOwnedRewardRouletteLayerPath(
-                    stringPoolId,
-                    requestedIndex,
-                    "Default");
-                if (TryParsePacketOwnedEffectUol(joinedUol, out (string CategoryName, string ImageName, string PropertyPath) joinedCandidate)
-                    && seen.Add($"{joinedCandidate.CategoryName}/{joinedCandidate.ImageName}:{joinedCandidate.PropertyPath}"))
+                    request.StringPoolId,
+                    request.RequestedIndex,
+                    suffix);
+                if (!TryParsePacketOwnedEffectUol(joinedUol, out (string CategoryName, string ImageName, string PropertyPath) candidate))
                 {
-                    yield return joinedCandidate;
+                    return Array.Empty<PacketOwnedRewardRouletteLayerCandidate>();
                 }
 
-                joinedUol = FormatPacketOwnedRewardRouletteLayerPath(
-                    stringPoolId,
-                    requestedIndex,
-                    "0");
-                if (TryParsePacketOwnedEffectUol(joinedUol, out joinedCandidate)
-                    && seen.Add($"{joinedCandidate.CategoryName}/{joinedCandidate.ImageName}:{joinedCandidate.PropertyPath}"))
-                {
-                    yield return joinedCandidate;
-                }
+                resolved.Add(new PacketOwnedRewardRouletteLayerCandidate(request.LayerRole, candidate.CategoryName, candidate.ImageName, candidate.PropertyPath));
             }
+
+            return resolved.ToArray();
         }
 
-        private static IEnumerable<(string CategoryName, string ImageName, string PropertyPath)> EnumeratePacketOwnedRewardRouletteFallbackAnimationCandidates(
+        private static PacketOwnedRewardRouletteLayerCandidate[] BuildPacketOwnedRewardRouletteFallbackAnimationFamily(
             int rewardJobIndex,
             int rewardPartIndex,
-            int rewardLevelIndex)
+            int rewardLevelIndex,
+            string suffix)
         {
-            HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-            foreach ((string format, int requestedIndex) in new[]
+            PacketOwnedRewardRouletteLayerRequest[] layerRequests =
             {
-                (PacketOwnedRewardRouletteFallbackFormats[0], rewardJobIndex),
-                (PacketOwnedRewardRouletteFallbackFormats[1], rewardPartIndex),
-                (PacketOwnedRewardRouletteFallbackFormats[2], rewardLevelIndex)
-            })
+                new(PacketOwnedRewardRouletteLayerRole.Job, PacketOwnedRewardRouletteLayerStringPoolIds[0], rewardJobIndex, PacketOwnedRewardRouletteFallbackFormats[0]),
+                new(PacketOwnedRewardRouletteLayerRole.Part, PacketOwnedRewardRouletteLayerStringPoolIds[1], rewardPartIndex, PacketOwnedRewardRouletteFallbackFormats[1]),
+                new(PacketOwnedRewardRouletteLayerRole.Level, PacketOwnedRewardRouletteLayerStringPoolIds[2], rewardLevelIndex, PacketOwnedRewardRouletteFallbackFormats[2])
+            };
+            List<PacketOwnedRewardRouletteLayerCandidate> resolved = new(layerRequests.Length);
+
+            foreach (PacketOwnedRewardRouletteLayerRequest request in layerRequests)
             {
-                if (requestedIndex < 0)
+                if (request.RequestedIndex < 0)
                 {
-                    continue;
+                    return Array.Empty<PacketOwnedRewardRouletteLayerCandidate>();
                 }
 
-                string fallbackUol = string.Format(CultureInfo.InvariantCulture, format, requestedIndex);
-                if (TryParsePacketOwnedEffectUol(fallbackUol, out (string CategoryName, string ImageName, string PropertyPath) fallbackCandidate)
-                    && seen.Add($"{fallbackCandidate.CategoryName}/{fallbackCandidate.ImageName}:{fallbackCandidate.PropertyPath}"))
-                {
-                    yield return fallbackCandidate;
-                }
+                string propertyPath = string.Equals(suffix, "0", StringComparison.Ordinal)
+                    ? $"{PacketOwnedRewardRouletteLayerPaths[(int)request.LayerRole]}/0"
+                    : string.Format(CultureInfo.InvariantCulture, request.FallbackFormat, request.RequestedIndex)
+                        .Replace('\\', '/')
+                        .Split(new[] { ".img/" }, StringSplitOptions.None)[^1];
+                resolved.Add(new PacketOwnedRewardRouletteLayerCandidate(
+                    request.LayerRole,
+                    "Effect",
+                    "BasicEff.img",
+                    propertyPath));
             }
 
-            foreach (string propertyPath in EnumeratePacketOwnedRewardRouletteLayerSourcePaths(
-                rewardJobIndex,
-                rewardPartIndex,
-                rewardLevelIndex))
-            {
-                string legacyKey = $"Effect/BasicEff.img:{propertyPath}";
-                if (!seen.Add(legacyKey))
-                {
-                    continue;
-                }
-
-                yield return ("Effect", "BasicEff.img", propertyPath);
-            }
+            return resolved.ToArray();
         }
 
         private static string FormatPacketOwnedRewardRouletteLayerPath(int layerStringPoolId, int requestedIndex, string suffix)
@@ -1052,12 +1093,21 @@ namespace HaCreator.MapSimulator
                 string.Empty);
         }
 
-        private static PacketOwnedUiRegistration ResolvePacketOwnedRewardRouletteRegistration(int renderWidth, int renderHeight, string key)
+        private static PacketOwnedUiRegistration ResolvePacketOwnedRewardRouletteRegistration(
+            int renderWidth,
+            int renderHeight,
+            string key,
+            PacketOwnedRewardRouletteLayerRole layerRole)
         {
+            bool isAnchoredToWindowOrigin = layerRole == PacketOwnedRewardRouletteLayerRole.Job;
             return new PacketOwnedUiRegistration(
                 PacketOwnedUiAnchorMode.WindowTopLeft,
-                ScalePacketOwnedUiOffset(PacketOwnedRewardRouletteOffsetX, renderWidth, PacketOwnedUiReferenceWidth),
-                ScalePacketOwnedUiOffset(PacketOwnedRewardRouletteOffsetY, renderHeight, PacketOwnedUiReferenceHeight),
+                isAnchoredToWindowOrigin
+                    ? 0
+                    : ScalePacketOwnedUiOffset(PacketOwnedRewardRouletteOffsetX, renderWidth, PacketOwnedUiReferenceWidth),
+                isAnchoredToWindowOrigin
+                    ? 0
+                    : ScalePacketOwnedUiOffset(PacketOwnedRewardRouletteOffsetY, renderHeight, PacketOwnedUiReferenceHeight),
                 key);
         }
 
@@ -1083,7 +1133,31 @@ namespace HaCreator.MapSimulator
             int renderWidth,
             int renderHeight)
         {
-            PacketOwnedUiRegistration registration = ResolvePacketOwnedRewardRouletteRegistration(renderWidth, renderHeight, "reward-roulette");
+            PacketOwnedUiRegistration registration = ResolvePacketOwnedRewardRouletteRegistration(
+                renderWidth,
+                renderHeight,
+                "reward-roulette",
+                PacketOwnedRewardRouletteLayerRole.Part);
+            return (registration.AnchorMode, registration.OffsetX, registration.OffsetY);
+        }
+
+        internal static (PacketOwnedUiAnchorMode AnchorMode, int OffsetX, int OffsetY) GetPacketOwnedRewardRouletteRegistrationForTest(
+            int renderWidth,
+            int renderHeight,
+            int layerIndex)
+        {
+            PacketOwnedRewardRouletteLayerRole layerRole = layerIndex switch
+            {
+                0 => PacketOwnedRewardRouletteLayerRole.Job,
+                1 => PacketOwnedRewardRouletteLayerRole.Part,
+                2 => PacketOwnedRewardRouletteLayerRole.Level,
+                _ => throw new ArgumentOutOfRangeException(nameof(layerIndex))
+            };
+            PacketOwnedUiRegistration registration = ResolvePacketOwnedRewardRouletteRegistration(
+                renderWidth,
+                renderHeight,
+                "reward-roulette",
+                layerRole);
             return (registration.AnchorMode, registration.OffsetX, registration.OffsetY);
         }
 
@@ -1327,6 +1401,25 @@ namespace HaCreator.MapSimulator
             int OffsetX,
             int OffsetY,
             string Key);
+
+        private enum PacketOwnedRewardRouletteLayerRole
+        {
+            Job = 0,
+            Part = 1,
+            Level = 2
+        }
+
+        private readonly record struct PacketOwnedRewardRouletteLayerRequest(
+            PacketOwnedRewardRouletteLayerRole LayerRole,
+            int StringPoolId,
+            int RequestedIndex,
+            string FallbackFormat);
+
+        private readonly record struct PacketOwnedRewardRouletteLayerCandidate(
+            PacketOwnedRewardRouletteLayerRole LayerRole,
+            string CategoryName,
+            string ImageName,
+            string PropertyPath);
 
         private sealed class PacketOwnedUiAnimation
         {

@@ -113,6 +113,16 @@ namespace HaCreator.MapSimulator.Character
             {
                 "comboJudgement"
             };
+        private static readonly IReadOnlySet<string> Additional193VehicleOneTimeActionNames =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "avenger",
+                "assaulter",
+                "firestrike",
+                "flamegear",
+                "tripleSwing",
+                "finalCharge"
+            };
         private static readonly IReadOnlySet<string> WildHunterJaguarExclusiveActionNames =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -406,6 +416,11 @@ namespace HaCreator.MapSimulator.Character
             if (EventVehicleType1ExclusiveActionNames.Contains(actionName))
             {
                 return EventVehicleType1ItemIds.Contains(VehicleItemId);
+            }
+
+            if (Additional193VehicleOneTimeActionNames.Contains(actionName))
+            {
+                return VehicleItemId / 10000 == 193;
             }
 
             if (WildHunterJaguarExclusiveActionNames.Contains(actionName))

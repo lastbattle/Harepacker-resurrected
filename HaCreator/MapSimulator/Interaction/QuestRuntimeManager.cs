@@ -121,6 +121,17 @@ namespace HaCreator.MapSimulator.Interaction
             public int ItemId { get; init; }
         }
 
+        private sealed class QuestRecordTextRequirement
+        {
+            public string Value { get; init; } = string.Empty;
+        }
+
+        private sealed class QuestRecordValueRequirement
+        {
+            public string Value { get; init; } = string.Empty;
+            public int Condition { get; init; }
+        }
+
         private readonly struct QuestPetRequirementContext
         {
             public QuestPetRequirementContext(
@@ -218,6 +229,7 @@ namespace HaCreator.MapSimulator.Interaction
             public List<QuestSkillReward> SkillRewards { get; } = new();
             public List<QuestSpReward> SpRewards { get; } = new();
             public List<string> Messages { get; } = new();
+            public IReadOnlyList<NpcInteractionPage> ConversationPages { get; set; } = Array.Empty<NpcInteractionPage>();
         }
 
         private sealed class QuestRewardResolution
@@ -277,6 +289,9 @@ namespace HaCreator.MapSimulator.Interaction
             public int? StartPetTamenessMinimum { get; init; }
             public int? StartPetTamenessMaximum { get; init; }
             public IReadOnlyList<QuestSkillRequirement> StartSkillRequirements { get; init; } = Array.Empty<QuestSkillRequirement>();
+            public int? StartInfoNumber { get; init; }
+            public IReadOnlyList<QuestRecordTextRequirement> StartInfoRequirements { get; init; } = Array.Empty<QuestRecordTextRequirement>();
+            public IReadOnlyList<QuestRecordValueRequirement> StartInfoExRequirements { get; init; } = Array.Empty<QuestRecordValueRequirement>();
             public IReadOnlyList<QuestStateRequirement> EndQuestRequirements { get; init; } = Array.Empty<QuestStateRequirement>();
             public IReadOnlyList<QuestMobRequirement> EndMobRequirements { get; init; } = Array.Empty<QuestMobRequirement>();
             public IReadOnlyList<QuestItemRequirement> EndItemRequirements { get; init; } = Array.Empty<QuestItemRequirement>();
@@ -284,6 +299,9 @@ namespace HaCreator.MapSimulator.Interaction
             public int? EndPetRecallLimit { get; init; }
             public int? EndPetTamenessMinimum { get; init; }
             public int? EndPetTamenessMaximum { get; init; }
+            public int? EndInfoNumber { get; init; }
+            public IReadOnlyList<QuestRecordTextRequirement> EndInfoRequirements { get; init; } = Array.Empty<QuestRecordTextRequirement>();
+            public IReadOnlyList<QuestRecordValueRequirement> EndInfoExRequirements { get; init; } = Array.Empty<QuestRecordValueRequirement>();
             public WzImageProperty StartSayProperty { get; init; }
             public WzImageProperty EndSayProperty { get; init; }
             public IReadOnlyList<NpcInteractionPage> StartSayPages { get; init; } = Array.Empty<NpcInteractionPage>();
@@ -5555,6 +5573,9 @@ namespace HaCreator.MapSimulator.Interaction
                 StartPetTamenessMinimum = ParsePositiveInt(startCheck?["pettamenessmin"]),
                 StartPetTamenessMaximum = ParsePositiveInt(startCheck?["pettamenessmax"]),
                 StartSkillRequirements = ParseSkillRequirements(startCheck?["skill"]),
+                StartInfoNumber = ParsePositiveInt(startCheck?["infoNumber"]),
+                StartInfoRequirements = ParseQuestRecordTextRequirements(startCheck?["info"]),
+                StartInfoExRequirements = ParseQuestRecordValueRequirements(startCheck?["infoex"]),
                 EndQuestRequirements = ParseQuestRequirements(endCheck?["quest"]),
                 EndMobRequirements = ParseMobRequirements(endCheck?["mob"]),
                 EndItemRequirements = ParseItemRequirements(endCheck?["item"]),
@@ -5563,6 +5584,9 @@ namespace HaCreator.MapSimulator.Interaction
                 EndPetRecallLimit = ParsePetActiveLimit(endCheck),
                 EndPetTamenessMinimum = ParsePositiveInt(endCheck?["pettamenessmin"]),
                 EndPetTamenessMaximum = ParsePositiveInt(endCheck?["pettamenessmax"]),
+                EndInfoNumber = ParsePositiveInt(endCheck?["infoNumber"]),
+                EndInfoRequirements = ParseQuestRecordTextRequirements(endCheck?["info"]),
+                EndInfoExRequirements = ParseQuestRecordValueRequirements(endCheck?["infoex"]),
                 StartSayProperty = startSay,
                 EndSayProperty = endSay,
                 StartSayPages = ParseConversationPages(startSay),
@@ -5664,6 +5688,60 @@ namespace HaCreator.MapSimulator.Interaction
                 WzLongProperty longProp => checked((int)longProp.Value),
                 _ => null
             };
+        }
+
+        private static IReadOnlyList<QuestRecordTextRequirement> ParseQuestRecordTextRequirements(WzImageProperty property)
+        {
+            if (property is not WzSubProperty infoProperty || infoProperty.WzProperties == null || infoProperty.WzProperties.Count == 0)
+            {
+                return Array.Empty<QuestRecordTextRequirement>();
+            }
+
+            List<QuestRecordTextRequirement> requirements = new();
+            foreach (WzImageProperty child in infoProperty.WzProperties)
+            {
+                string value = (child as WzStringProperty)?.Value?.Trim();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    requirements.Add(new QuestRecordTextRequirement
+                    {
+                        Value = value
+                    });
+                }
+            }
+
+            return requirements.Count == 0 ? Array.Empty<QuestRecordTextRequirement>() : requirements;
+        }
+
+        private static IReadOnlyList<QuestRecordValueRequirement> ParseQuestRecordValueRequirements(WzImageProperty property)
+        {
+            if (property is not WzSubProperty infoExProperty || infoExProperty.WzProperties == null || infoExProperty.WzProperties.Count == 0)
+            {
+                return Array.Empty<QuestRecordValueRequirement>();
+            }
+
+            List<QuestRecordValueRequirement> requirements = new();
+            foreach (WzImageProperty child in infoExProperty.WzProperties)
+            {
+                if (child is not WzSubProperty entry)
+                {
+                    continue;
+                }
+
+                string value = (entry["value"] as WzStringProperty)?.Value?.Trim();
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    continue;
+                }
+
+                requirements.Add(new QuestRecordValueRequirement
+                {
+                    Value = value,
+                    Condition = ParseInt(entry["cond"]).GetValueOrDefault()
+                });
+            }
+
+            return requirements.Count == 0 ? Array.Empty<QuestRecordValueRequirement>() : requirements;
         }
 
         private static int? ParsePositiveInt(WzImageProperty property)
@@ -6185,6 +6263,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
+            actions.ConversationPages = ParseConversationPages(property);
             return actions;
         }
 
@@ -6333,7 +6412,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return page != null ? new[] { page } : Array.Empty<NpcInteractionPage>();
             }
 
-            return ParseConversationPageSequence(numberedPages, property, property["stop"]);
+            return ParseConversationPageSequence(numberedPages, property, property["stop"], fallbackRootStopProperty: null);
         }
 
         internal static IReadOnlyList<NpcInteractionPage> ParseConversationVariantPages(
@@ -6360,15 +6439,9 @@ namespace HaCreator.MapSimulator.Interaction
                 ? ParseConversationPageSequence(
                     siblingPages,
                     rootChoiceProperty: selectedProperty,
-                    rootStopProperty: ResolveConversationVariantRootStopProperty(containerProperty, selectedProperty))
+                    rootStopProperty: selectedProperty?["stop"],
+                    fallbackRootStopProperty: containerProperty?["stop"])
                 : ParseConversationPages(selectedProperty);
-        }
-
-        private static WzImageProperty ResolveConversationVariantRootStopProperty(
-            WzImageProperty containerProperty,
-            WzImageProperty selectedProperty)
-        {
-            return selectedProperty?["stop"] ?? containerProperty?["stop"];
         }
 
         internal static IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> ParseConversationVariantStopPages(
@@ -6459,7 +6532,8 @@ namespace HaCreator.MapSimulator.Interaction
         private static IReadOnlyList<NpcInteractionPage> ParseConversationPageSequence(
             IReadOnlyList<WzImageProperty> numberedPages,
             WzImageProperty rootChoiceProperty,
-            WzImageProperty rootStopProperty)
+            WzImageProperty rootStopProperty,
+            WzImageProperty fallbackRootStopProperty)
         {
             if (numberedPages == null || numberedPages.Count == 0)
             {
@@ -6479,10 +6553,14 @@ namespace HaCreator.MapSimulator.Interaction
                 string rawText = ExtractConversationText(pageProperty);
                 string text = NpcDialogueTextFormatter.Format(rawText);
                 var choices = new List<NpcInteractionChoice>();
-                WzImageProperty pageStopProperty = ResolveConversationPageStopProperty(pageProperty, rootStopProperty, pageIndex);
+                IReadOnlyList<WzImageProperty> pageStopProperties = ResolveConversationPageStopProperties(
+                    pageProperty,
+                    rootStopProperty,
+                    fallbackRootStopProperty,
+                    pageIndex);
 
                 AppendConversationChoices(pageProperty, choices);
-                AppendInlineSelectionChoices(rawText, pageIndex, pageStopProperty, GetRemainingPages(pages, i + 1), choices);
+                AppendInlineSelectionChoices(rawText, pageIndex, pageStopProperties, GetRemainingPages(pages, i + 1), choices);
 
                 if (i == numberedPages.Count - 1 && rootChoiceProperty != null)
                 {
@@ -6503,13 +6581,27 @@ namespace HaCreator.MapSimulator.Interaction
             return pages.Where(page => page != null).ToArray();
         }
 
-        private static WzImageProperty ResolveConversationPageStopProperty(
+        private static IReadOnlyList<WzImageProperty> ResolveConversationPageStopProperties(
             WzImageProperty pageProperty,
             WzImageProperty rootStopProperty,
+            WzImageProperty fallbackRootStopProperty,
             int pageIndex)
         {
-            WzImageProperty indexedStopProperty = rootStopProperty?[pageIndex.ToString()];
-            return indexedStopProperty ?? pageProperty?["stop"];
+            var stopProperties = new List<WzImageProperty>(3);
+            AddDistinctStopProperty(stopProperties, rootStopProperty?[pageIndex.ToString()]);
+            AddDistinctStopProperty(stopProperties, fallbackRootStopProperty?[pageIndex.ToString()]);
+            AddDistinctStopProperty(stopProperties, pageProperty?["stop"]);
+            return stopProperties;
+        }
+
+        private static void AddDistinctStopProperty(ICollection<WzImageProperty> stopProperties, WzImageProperty stopProperty)
+        {
+            if (stopProperties == null || stopProperty == null || stopProperties.Contains(stopProperty))
+            {
+                return;
+            }
+
+            stopProperties.Add(stopProperty);
         }
 
         private static List<WzImageProperty> CollectConversationNumberedPages(WzImageProperty property)
@@ -6670,7 +6762,14 @@ namespace HaCreator.MapSimulator.Interaction
             string text = NpcDialogueTextFormatter.Format(rawText);
             var choices = new List<NpcInteractionChoice>();
             AppendConversationChoices(property, choices);
-            AppendInlineSelectionChoices(rawText, -1, property["stop"], Array.Empty<NpcInteractionPage>(), choices);
+            AppendInlineSelectionChoices(
+                rawText,
+                -1,
+                property["stop"] is WzImageProperty stopProperty
+                    ? new[] { stopProperty }
+                    : Array.Empty<WzImageProperty>(),
+                Array.Empty<NpcInteractionPage>(),
+                choices);
             if (string.IsNullOrWhiteSpace(text) && choices.Count == 0)
             {
                 return null;
@@ -6867,7 +6966,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static void AppendInlineSelectionChoices(
             string rawText,
             int pageIndex,
-            WzImageProperty stopProperty,
+            IReadOnlyList<WzImageProperty> stopProperties,
             IReadOnlyList<NpcInteractionPage> nextPages,
             ICollection<NpcInteractionChoice> choices)
         {
@@ -6877,14 +6976,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            WzImageProperty pageStopProperty = pageIndex >= 0 ? stopProperty?[pageIndex.ToString()] : null;
             for (int i = 0; i < inlineSelections.Length; i++)
             {
                 NpcInlineSelection selection = inlineSelections[i];
                 bool continueToNextPages = nextPages.Count > 0 &&
-                    ShouldContinueToNextPages(pageStopProperty, selection.SelectionId, i, inlineSelections.Length);
+                    ShouldContinueToNextPages(stopProperties, selection.SelectionId, i, inlineSelections.Length);
                 IReadOnlyList<NpcInteractionPage> selectionPages = ParseStopSelectionPages(
-                    pageStopProperty,
+                    stopProperties,
                     selection.SelectionId,
                     i,
                     allowPositionFallback: !continueToNextPages);
@@ -6907,17 +7005,12 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private static bool ShouldContinueToNextPages(
-            WzImageProperty stopProperty,
+            IReadOnlyList<WzImageProperty> stopProperties,
             int selectionId,
             int selectionIndex,
             int selectionCount)
         {
-            if (stopProperty == null)
-            {
-                return true;
-            }
-
-            WzImageProperty answerProperty = stopProperty["answer"];
+            WzImageProperty answerProperty = ResolveStopAnswerProperty(stopProperties);
             if (answerProperty == null)
             {
                 return true;
@@ -6933,41 +7026,69 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private static IReadOnlyList<NpcInteractionPage> ParseStopSelectionPages(
-            WzImageProperty stopProperty,
+            IReadOnlyList<WzImageProperty> stopProperties,
             int selectionId,
             int selectionIndex,
             bool allowPositionFallback)
         {
-            if (stopProperty == null)
+            if (stopProperties == null || stopProperties.Count == 0)
             {
                 return Array.Empty<NpcInteractionPage>();
             }
 
-            foreach (string candidateBranchName in EnumerateStopSelectionCandidateNames(selectionId, selectionIndex, allowPositionFallback))
+            for (int stopIndex = 0; stopIndex < stopProperties.Count; stopIndex++)
             {
-                WzImageProperty selectionBranchProperty = stopProperty[candidateBranchName];
-                IReadOnlyList<NpcInteractionPage> selectionPages = ParseStopSelectionBranchPages(
-                    selectionBranchProperty,
+                WzImageProperty stopProperty = stopProperties[stopIndex];
+                if (stopProperty == null)
+                {
+                    continue;
+                }
+
+                foreach (string candidateBranchName in EnumerateStopSelectionCandidateNames(selectionId, selectionIndex, allowPositionFallback))
+                {
+                    WzImageProperty selectionBranchProperty = stopProperty[candidateBranchName];
+                    IReadOnlyList<NpcInteractionPage> selectionPages = ParseStopSelectionBranchPages(
+                        selectionBranchProperty,
+                        selectionId,
+                        selectionIndex,
+                        allowPositionFallback);
+                    if (selectionPages.Count > 0)
+                    {
+                        return selectionPages;
+                    }
+                }
+
+                IReadOnlyList<NpcInteractionPage> nestedSelectionPages = ParseSelectionSpecificPagesFromSiblingStopBranches(
+                    stopProperty,
                     selectionId,
                     selectionIndex,
                     allowPositionFallback);
-                if (selectionPages.Count > 0)
+                if (nestedSelectionPages.Count > 0)
                 {
-                    return selectionPages;
+                    return nestedSelectionPages;
                 }
             }
 
-            IReadOnlyList<NpcInteractionPage> nestedSelectionPages = ParseSelectionSpecificPagesFromSiblingStopBranches(
-                stopProperty,
-                selectionId,
-                selectionIndex,
-                allowPositionFallback);
-            if (nestedSelectionPages.Count > 0)
+            return Array.Empty<NpcInteractionPage>();
+        }
+
+        private static WzImageProperty ResolveStopAnswerProperty(IReadOnlyList<WzImageProperty> stopProperties)
+        {
+            if (stopProperties == null)
             {
-                return nestedSelectionPages;
+                return null;
             }
 
-            return Array.Empty<NpcInteractionPage>();
+            for (int i = 0; i < stopProperties.Count; i++)
+            {
+                WzImageProperty answerProperty = stopProperties[i]?["answer"];
+                if (answerProperty != null)
+                {
+                    return answerProperty;
+                }
+            }
+
+            return null;
         }
 
         private static IReadOnlyList<NpcInteractionPage> ParseStopSelectionPages(
@@ -8600,7 +8721,17 @@ namespace HaCreator.MapSimulator.Interaction
                 return Array.Empty<NpcInteractionPage>();
             }
 
-            return textKind switch
+            QuestActionBundle actionBundle = textKind switch
+            {
+                PacketQuestResultTextKind.StartDescription => definition.StartActions,
+                PacketQuestResultTextKind.ProgressDescription => definition.EndActions,
+                PacketQuestResultTextKind.CompletionDescription => definition.EndActions,
+                PacketQuestResultTextKind.DemandSummary => definition.EndActions,
+                PacketQuestResultTextKind.RewardSummary => definition.EndActions,
+                _ => state == QuestStateType.Not_Started ? definition.StartActions : definition.EndActions
+            };
+
+            IReadOnlyList<NpcInteractionPage> fallbackPages = textKind switch
             {
                 PacketQuestResultTextKind.StartDescription => ResolveConversationPages(definition, QuestStateType.Not_Started, build, definition.StartNpcId ?? definition.EndNpcId ?? 0),
                 PacketQuestResultTextKind.ProgressDescription => ResolveConversationPages(definition, QuestStateType.Started, build, definition.EndNpcId ?? definition.StartNpcId ?? 0),
@@ -8615,6 +8746,26 @@ namespace HaCreator.MapSimulator.Interaction
                         ? definition.StartNpcId ?? definition.EndNpcId ?? 0
                         : definition.EndNpcId ?? definition.StartNpcId ?? 0)
             };
+
+            return GetPacketQuestResultConversationPages(actionBundle, fallbackPages);
+        }
+
+        internal static IReadOnlyList<NpcInteractionPage> GetPacketQuestResultConversationPages(
+            QuestActionBundle actions,
+            IReadOnlyList<NpcInteractionPage> fallbackPages)
+        {
+            if (actions?.ConversationPages != null)
+            {
+                for (int i = 0; i < actions.ConversationPages.Count; i++)
+                {
+                    if (ShouldDisplayConversationPage(actions.ConversationPages[i]))
+                    {
+                        return actions.ConversationPages;
+                    }
+                }
+            }
+
+            return fallbackPages ?? Array.Empty<NpcInteractionPage>();
         }
 
         private IReadOnlyList<NpcInteractionPage> ResolveConversationPages(

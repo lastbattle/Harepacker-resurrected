@@ -123,6 +123,20 @@ namespace HaCreator.MapSimulator.Character
             string ExitActionName,
             bool LocksMovement);
 
+        internal readonly record struct MorphAvatarTransformResolutionForTesting(
+            IReadOnlyList<string> StandActionNames,
+            IReadOnlyList<string> WalkActionNames,
+            IReadOnlyList<string> JumpActionNames,
+            IReadOnlyList<string> FlyActionNames,
+            IReadOnlyList<string> AirborneMoveActionNames,
+            IReadOnlyList<string> AirborneAttackActionNames,
+            IReadOnlyList<string> LadderActionNames,
+            IReadOnlyList<string> RopeActionNames,
+            IReadOnlyList<string> SwimActionNames,
+            IReadOnlyList<string> AttackActionNames,
+            IReadOnlyList<string> HitActionNames,
+            IReadOnlyList<string> DeadActionNames);
+
         private enum SkillAvatarEffectMode
         {
             Ground,
@@ -260,24 +274,18 @@ namespace HaCreator.MapSimulator.Character
         private readonly struct MirrorImageRenderableSourceLayer
         {
             public MirrorImageRenderableSourceLayer(
-                IReadOnlyList<AssembledPart> parts,
                 Texture2D preparedSnapshotTexture,
-                Rectangle preparedSnapshotBounds,
                 Rectangle positionBounds,
                 bool facingRight,
                 int transitionStartTime)
             {
-                Parts = parts;
                 PreparedSnapshotTexture = preparedSnapshotTexture;
-                PreparedSnapshotBounds = preparedSnapshotBounds;
                 PositionBounds = positionBounds;
                 FacingRight = facingRight;
                 TransitionStartTime = transitionStartTime;
             }
 
-            public IReadOnlyList<AssembledPart> Parts { get; }
             public Texture2D PreparedSnapshotTexture { get; }
-            public Rectangle PreparedSnapshotBounds { get; }
             public Rectangle PositionBounds { get; }
             public bool FacingRight { get; }
             public int TransitionStartTime { get; }
@@ -578,7 +586,7 @@ namespace HaCreator.MapSimulator.Character
             ResetLandingTracking();
         }
 
-        public void ApplyPacketOwnedPassiveMove(PassivePositionSnapshot snapshot, int currentTime)
+        public void ApplyPacketOwnedPassiveMove(PassivePositionSnapshot snapshot, int currentTime, FootholdLine foothold = null)
         {
             Physics.X = snapshot.X;
             Physics.Y = snapshot.Y;
@@ -587,6 +595,7 @@ namespace HaCreator.MapSimulator.Character
             Physics.CurrentAction = snapshot.Action;
             FacingRight = snapshot.FacingRight;
             Physics.FacingRight = snapshot.FacingRight;
+            ApplyPacketOwnedPassiveMoveFootholdState(snapshot, foothold);
             ResetLandingTracking();
             ClearForcedActionName();
             CurrentSkillAnimationSkillId = 0;
@@ -628,6 +637,25 @@ namespace HaCreator.MapSimulator.Character
             State = newState;
             CurrentAction = newAction;
             CurrentActionName = newActionName;
+        }
+
+        private void ApplyPacketOwnedPassiveMoveFootholdState(PassivePositionSnapshot snapshot, FootholdLine foothold)
+        {
+            if (foothold != null)
+            {
+                Physics.CurrentFoothold = foothold;
+                Physics.FallStartFoothold = null;
+                Physics.IsOnLadderOrRope = false;
+                return;
+            }
+
+            if (snapshot.FootholdId != 0)
+            {
+                return;
+            }
+
+            Physics.CurrentFoothold = null;
+            Physics.FallStartFoothold = null;
         }
 
         public void SetFootholdLookup(Func<float, float, float, FootholdLine> findFoothold)
@@ -2387,10 +2415,19 @@ namespace HaCreator.MapSimulator.Character
             }
 
             int animationTime = Math.Max(0, currentTime - _activeMeleeAfterImage.AnimationStartTime);
-            int frameIndex = Assembler?.GetFrameIndexAtTime(_activeMeleeAfterImage.ActionName, animationTime) ?? -1;
-            if (frameIndex >= 0)
+            if (MeleeAfterimagePlaybackResolver.TryCaptureFadeSnapshot(
+                    Assembler,
+                    _activeMeleeAfterImage.ActionName,
+                    _activeMeleeAfterImage.AfterImageAction,
+                    animationTime,
+                    out MeleeAfterimagePlaybackResolver.Snapshot snapshot))
             {
-                _activeMeleeAfterImage.LastFrameIndex = frameIndex;
+                _activeMeleeAfterImage.LastFrameIndex = snapshot.FrameIndex;
+                if (snapshot.Frame != null)
+                {
+                    _activeMeleeAfterImage.LastResolvedFrame = snapshot.Frame;
+                    _activeMeleeAfterImage.LastResolvedAlpha = snapshot.Alpha;
+                }
             }
 
             _activeMeleeAfterImage.FadeStartTime = currentTime;
@@ -4176,62 +4213,20 @@ namespace HaCreator.MapSimulator.Character
                 int adjustedY = screenY + layerOffset.Y - _activeMirrorImage.PreparedFeetOffset;
                 int adjustedX = screenX + layerOffset.X;
                 Color tint = MirrorImageTint * alpha;
-                IReadOnlyList<AssembledPart> parts = renderableLayer.Value.Parts;
-                if (parts == null)
+                if (renderableLayer.Value.PreparedSnapshotTexture == null)
                 {
                     continue;
                 }
 
-                if (renderableLayer.Value.PreparedSnapshotTexture != null)
-                {
-                    DrawMirrorImagePreparedSnapshot(
-                        spriteBatch,
-                        renderableLayer.Value.PreparedSnapshotTexture,
-                        renderableLayer.Value.PositionBounds,
-                        adjustedX,
-                        adjustedY,
-                        renderableLayer.Value.FacingRight,
-                        tint);
-                    continue;
-                }
-
-                Point preparedPartBaseOffset = ResolveMirrorImagePreparedFallbackPartBaseOffset(
-                    renderableLayer.Value.PreparedSnapshotBounds,
-                    renderableLayer.Value.PositionBounds);
-                for (int i = 0; i < parts.Count; i++)
-                {
-                    DrawMirrorImagePreparedPart(
-                        spriteBatch,
-                        skeletonRenderer,
-                        parts[i],
-                        adjustedX + preparedPartBaseOffset.X,
-                        adjustedY + preparedPartBaseOffset.Y,
-                        renderableLayer.Value.FacingRight,
-                        tint);
-                }
+                DrawMirrorImagePreparedSnapshot(
+                    spriteBatch,
+                    renderableLayer.Value.PreparedSnapshotTexture,
+                    renderableLayer.Value.PositionBounds,
+                    adjustedX,
+                    adjustedY,
+                    renderableLayer.Value.FacingRight,
+                    tint);
             }
-        }
-
-        private static void DrawMirrorImagePreparedPart(
-            SpriteBatch spriteBatch,
-            SkeletonMeshRenderer skeletonRenderer,
-            AssembledPart part,
-            int screenX,
-            int adjustedY,
-            bool flip,
-            Color mirrorTint)
-        {
-            if (part?.Texture == null || !part.IsVisible)
-            {
-                return;
-            }
-
-            int drawX = flip
-                ? screenX - part.OffsetX - part.Texture.Width
-                : screenX + part.OffsetX;
-            int drawY = adjustedY + part.OffsetY;
-            Color drawTint = ResolveMirrorImagePreparedPartTint(part.Tint, mirrorTint);
-            part.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, drawTint, flip, null);
         }
 
         private static void DrawMirrorImagePreparedSnapshot(
@@ -4392,10 +4387,10 @@ namespace HaCreator.MapSimulator.Character
                     out IReadOnlyList<AssembledPart> liveSourceParts))
             {
                 return new MirrorImageRenderableSourceLayer(
-                    liveSourceParts,
-                    preparedSnapshotTexture: null,
-                    preparedSnapshotBounds: Rectangle.Empty,
-                    positionBounds: CalculateMirrorImageSourceLayerBounds(liveSourceParts),
+                    preparedLayer.ComposedTexture,
+                    ResolveMirrorImageRenderablePositionBounds(
+                        preparedLayer.Bounds,
+                        CalculateMirrorImageSourceLayerBounds(liveSourceParts)),
                     FacingRight,
                     ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedCurrentTime));
             }
@@ -4410,9 +4405,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return new MirrorImageRenderableSourceLayer(
-                preparedLayer.Parts,
                 preparedLayer.ComposedTexture,
-                preparedLayer.Bounds,
                 ResolveMirrorImageRenderablePositionBounds(
                     preparedLayer.Bounds,
                     ResolveMirrorImageLiveRenderBounds(frame, preparedLayer.RenderLayer)),
@@ -4650,20 +4643,6 @@ namespace HaCreator.MapSimulator.Character
             return signature.ToHashCode();
         }
 
-        internal static Color ResolveMirrorImagePreparedPartTint(Color sourceTint, Color mirrorTint)
-        {
-            if (sourceTint == Color.White)
-            {
-                return mirrorTint;
-            }
-
-            return new Color(
-                (byte)((sourceTint.R * mirrorTint.R + 127) / 255),
-                (byte)((sourceTint.G * mirrorTint.G + 127) / 255),
-                (byte)((sourceTint.B * mirrorTint.B + 127) / 255),
-                (byte)((sourceTint.A * mirrorTint.A + 127) / 255));
-        }
-
         private static Rectangle CalculateMirrorImageSourceLayerBounds(IReadOnlyList<AssembledPart> sourceParts)
         {
             if (sourceParts == null || sourceParts.Count == 0)
@@ -4754,18 +4733,6 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return preparedBounds;
-        }
-
-        internal static Point ResolveMirrorImagePreparedFallbackPartBaseOffset(
-            Rectangle preparedBounds,
-            Rectangle positionBounds)
-        {
-            if (preparedBounds.IsEmpty || positionBounds.IsEmpty)
-            {
-                return Point.Zero;
-            }
-
-            return new Point(positionBounds.X - preparedBounds.X, positionBounds.Y - preparedBounds.Y);
         }
 
         private Texture2D CreateMirrorImageLayerTexture(IReadOnlyList<AssembledPart> sourceParts, Rectangle bounds)
@@ -6348,7 +6315,8 @@ namespace HaCreator.MapSimulator.Character
 
             if (_packetOwnedEmotionEndTime > 0 && currentTime >= _packetOwnedEmotionEndTime)
             {
-                ResetPacketOwnedEmotionState(clearVisualEffect: false);
+                // CAvatar::PrepareFaceLayer also gates Etc/EmotionEffect overlays on the resolved emotion lifetime.
+                ResetPacketOwnedEmotionState(clearVisualEffect: true);
                 return false;
             }
 
@@ -7147,8 +7115,7 @@ namespace HaCreator.MapSimulator.Character
 
         private bool ShouldUseSuperManMorphAirborneMove(SkillAvatarTransformState activeTransform)
         {
-            if (activeTransform?.AvatarPart?.IsSuperManMorph != true
-                || activeTransform.AirborneMoveActionNames == null
+            if (activeTransform?.AirborneMoveActionNames == null
                 || Physics == null
                 || !Physics.IsUserFlying()
                 || Physics.IsOnFoothold())
@@ -7168,8 +7135,7 @@ namespace HaCreator.MapSimulator.Character
         private bool ShouldUseSuperManMorphAirborneAttack(SkillAvatarTransformState activeTransform, PlayerState state)
         {
             return state == PlayerState.Attacking
-                   && activeTransform?.AvatarPart?.IsSuperManMorph == true
-                   && activeTransform.AirborneAttackActionNames != null
+                   && activeTransform?.AirborneAttackActionNames != null
                    && Physics != null
                    && Physics.IsUserFlying()
                    && !Physics.IsOnFoothold();
@@ -7632,10 +7598,43 @@ namespace HaCreator.MapSimulator.Character
             return true;
         }
 
+        internal static bool TryResolveMorphAvatarTransformForTesting(
+            CharacterPart morphPart,
+            string actionName,
+            out MorphAvatarTransformResolutionForTesting resolution)
+        {
+            resolution = default;
+            if (morphPart?.Type != CharacterPartType.Morph)
+            {
+                return false;
+            }
+
+            SkillAvatarTransformState transform = CreateMorphTransform(skillId: 0, morphPart, actionName);
+            resolution = new MorphAvatarTransformResolutionForTesting(
+                transform.StandActionNames ?? Array.Empty<string>(),
+                transform.WalkActionNames ?? Array.Empty<string>(),
+                transform.JumpActionNames ?? Array.Empty<string>(),
+                transform.FlyActionNames ?? Array.Empty<string>(),
+                transform.AirborneMoveActionNames ?? Array.Empty<string>(),
+                transform.AirborneAttackActionNames ?? Array.Empty<string>(),
+                transform.LadderActionNames ?? Array.Empty<string>(),
+                transform.RopeActionNames ?? Array.Empty<string>(),
+                transform.SwimActionNames ?? Array.Empty<string>(),
+                transform.AttackActionNames ?? Array.Empty<string>(),
+                transform.HitActionNames ?? Array.Empty<string>(),
+                transform.DeadActionNames ?? Array.Empty<string>());
+            return true;
+        }
+
         private static SkillAvatarTransformState CreateMorphTransform(int skillId, CharacterPart morphPart, string actionName)
         {
             string normalizedAction = actionName?.Trim();
             bool isSuperManMorph = morphPart?.IsSuperManMorph == true;
+            bool hasPublishedFly2Action = HasMorphPublishedAction(morphPart, "fly2");
+            bool hasPublishedAirborneMoveAction = HasMorphPublishedAction(morphPart, "fly2Move");
+            bool hasPublishedAirborneAttackAction = HasMorphPublishedAction(morphPart, "fly2Skill");
+            bool shouldUseSuperManLadderRopeActions = isSuperManMorph;
+            bool shouldUseFly2Family = isSuperManMorph || hasPublishedFly2Action;
             string normalizedJumpAction = MorphClientActionResolver.IsJumpActionName(normalizedAction)
                 ? normalizedAction
                 : null;
@@ -7650,19 +7649,19 @@ namespace HaCreator.MapSimulator.Character
                 SitActionNames = CreateMorphActionVariants(morphPart, "sit", "stand"),
                 ProneActionNames = CreateMorphActionVariants(morphPart, "prone", "stand"),
                 AttackActionNames = CreateMorphAttackActionVariants(morphPart, normalizedAction),
-                LadderActionNames = isSuperManMorph
+                LadderActionNames = shouldUseSuperManLadderRopeActions
                     ? CreateMorphActionVariants(morphPart, "ladder2", "ladder", "rope2", "rope", "stand")
                     : CreateMorphActionVariants(morphPart, "ladder", "rope", "stand"),
-                RopeActionNames = isSuperManMorph
+                RopeActionNames = shouldUseSuperManLadderRopeActions
                     ? CreateMorphActionVariants(morphPart, "rope2", "rope", "ladder2", "ladder", "stand")
                     : CreateMorphActionVariants(morphPart, "rope", "ladder", "stand"),
-                FlyActionNames = isSuperManMorph
+                FlyActionNames = shouldUseFly2Family
                     ? CreateMorphActionVariants(morphPart, "fly2", "fly", "jump", "stand")
                     : CreateMorphActionVariants(morphPart, "fly", "swim", "jump", "stand"),
-                AirborneMoveActionNames = isSuperManMorph
+                AirborneMoveActionNames = hasPublishedAirborneMoveAction
                     ? CreateMorphActionVariants(morphPart, "fly2Move", "fly2", "fly", "jump", "stand")
                     : null,
-                AirborneAttackActionNames = isSuperManMorph
+                AirborneAttackActionNames = hasPublishedAirborneAttackAction
                     ? CreateMorphActionVariants(morphPart, "fly2Skill", normalizedAction, "attack", "attack1", "fly2", "fly", "jump", "stand")
                     : null,
                 SwimActionNames = CreateMorphActionVariants(morphPart, "swim", "fly", "jump", "stand"),
@@ -7670,6 +7669,17 @@ namespace HaCreator.MapSimulator.Character
                 DeadActionNames = CreateMorphDeadActionVariants(morphPart),
                 ExitActionName = null
             };
+        }
+
+        private static bool HasMorphPublishedAction(CharacterPart morphPart, string actionName)
+        {
+            if (morphPart == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return morphPart.Animations?.ContainsKey(actionName) == true
+                   || morphPart.AvailableAnimations?.Contains(actionName) == true;
         }
 
         private static SkillAvatarTransformState CreateMechanicTransform(int skillId, string standActionName, string walkActionName, string attackActionName, string proneActionName, string exitActionName, bool locksMovement = false)

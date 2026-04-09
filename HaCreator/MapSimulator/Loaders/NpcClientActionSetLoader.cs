@@ -414,19 +414,21 @@ namespace HaCreator.MapSimulator.Loaders
                 return true;
             }
 
-            if (!string.Equals(property.Name, QuestConditionStatePropertyName, StringComparison.OrdinalIgnoreCase))
+            if (property is not WzStringProperty stringProperty)
             {
                 return false;
             }
 
-            if (property is WzStringProperty stringProperty &&
-                int.TryParse(stringProperty.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedState))
+            bool isExplicitStateProperty = string.Equals(property.Name, QuestConditionStatePropertyName, StringComparison.OrdinalIgnoreCase);
+            bool isDirectQuestStateProperty = IsQuestConditionProperty(property);
+            if ((!isExplicitStateProperty && !isDirectQuestStateProperty) ||
+                !int.TryParse(stringProperty.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedState))
             {
-                requiredState = parsedState;
-                return true;
+                return false;
             }
 
-            return false;
+            requiredState = parsedState;
+            return true;
         }
 
         private static bool TryGetQuestConditionRecordValue(WzImageProperty property, out string requiredRecordValue)
@@ -440,6 +442,13 @@ namespace HaCreator.MapSimulator.Loaders
             if (!string.IsNullOrEmpty(property.Name) &&
                 !string.Equals(property.Name, QuestConditionValuePropertyName, StringComparison.OrdinalIgnoreCase) &&
                 !int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            {
+                return false;
+            }
+
+            // Direct string quest rows such as `condition1/1234 = "1"` model the quest state, not a record value.
+            if (IsQuestConditionProperty(property) &&
+                int.TryParse(stringProperty.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
             {
                 return false;
             }

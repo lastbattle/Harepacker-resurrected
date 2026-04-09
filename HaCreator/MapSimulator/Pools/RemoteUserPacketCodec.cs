@@ -21,6 +21,8 @@ namespace HaCreator.MapSimulator.Pools
         UserMarriageRecordRemove = -1106,
         UserNewYearCardRecordAdd = -1107,
         UserNewYearCardRecordRemove = -1108,
+        UserCoupleChairRecordAdd = -1109,
+        UserCoupleChairRecordRemove = -1110,
         UserEnterField = 179,
         UserLeaveField = 180,
         UserMove = 181,
@@ -196,6 +198,8 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct RemoteUserMovePacket(int CharacterId, PlayerMovementSyncSnapshot Snapshot, byte MoveAction);
     public readonly record struct RemoteUserMoveActionPacket(int CharacterId, byte MoveAction);
     public readonly record struct RemoteUserPortableChairPacket(int CharacterId, int? ChairItemId, int? PairCharacterId);
+    public readonly record struct RemoteUserPortableChairRecordAddPacket(int CharacterId, int ChairItemId);
+    public readonly record struct RemoteUserPortableChairRecordRemovePacket(int CharacterId);
     public readonly record struct RemoteUserMountPacket(int CharacterId, int? TamingMobItemId);
     public readonly record struct RemoteUserActiveEffectItemPacket(int CharacterId, int? ItemId);
     public readonly record struct RemoteUserTemporaryStatSetPacket(int CharacterId, RemoteUserTemporaryStatSnapshot TemporaryStats, ushort Delay);
@@ -739,6 +743,79 @@ namespace HaCreator.MapSimulator.Pools
 
             packet = new RemoteUserPortableChairPacket(characterId, itemId, pairCharacterId);
             return true;
+        }
+
+        public static bool TryParsePortableChairRecordAdd(
+            ReadOnlySpan<byte> payload,
+            out RemoteUserPortableChairRecordAddPacket packet,
+            out string error)
+        {
+            packet = default;
+            error = null;
+            if (payload.Length != sizeof(int) * 2)
+            {
+                error = $"Remote user couple-chair record add packet expects 8 bytes but received {payload.Length}.";
+                return false;
+            }
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                int chairItemId = reader.ReadInt32();
+                if (characterId <= 0)
+                {
+                    error = $"Remote user couple-chair record add packet character ID {characterId} is invalid.";
+                    return false;
+                }
+
+                if (chairItemId <= 0)
+                {
+                    error = $"Remote user couple-chair record add packet chair item ID {chairItemId} is invalid.";
+                    return false;
+                }
+
+                packet = new RemoteUserPortableChairRecordAddPacket(characterId, chairItemId);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParsePortableChairRecordRemove(
+            ReadOnlySpan<byte> payload,
+            out RemoteUserPortableChairRecordRemovePacket packet,
+            out string error)
+        {
+            packet = default;
+            error = null;
+            if (payload.Length != sizeof(int))
+            {
+                error = $"Remote user couple-chair record remove packet expects 4 bytes but received {payload.Length}.";
+                return false;
+            }
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                if (characterId <= 0)
+                {
+                    error = $"Remote user couple-chair record remove packet character ID {characterId} is invalid.";
+                    return false;
+                }
+
+                packet = new RemoteUserPortableChairRecordRemovePacket(characterId);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
         }
 
         public static bool TryParseMount(ReadOnlySpan<byte> payload, out RemoteUserMountPacket packet, out string error)

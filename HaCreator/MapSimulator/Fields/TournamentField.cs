@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.Fields
         private string _lastPacketSummary;
         private string _lastPayloadHex;
         private string _lastDialogOwner;
+        private string _lastPacketOwner;
         private int[] _lastStringPoolIds = Array.Empty<int>();
         private int[] _lastPrizeItemIds = Array.Empty<int>();
         private TournamentLifecyclePhase _lifecyclePhase;
@@ -62,6 +63,7 @@ namespace HaCreator.MapSimulator.Fields
         public string CurrentStatusMessage => _statusMessage;
         public string LastPacketSummary => _lastPacketSummary;
         public string LastDialogOwner => _lastDialogOwner;
+        public string LastPacketOwner => _lastPacketOwner;
         public IReadOnlyList<int> LastStringPoolIds => _lastStringPoolIds;
         public IReadOnlyList<int> LastPrizeItemIds => _lastPrizeItemIds;
         public TournamentLifecyclePhase LifecyclePhase => _lifecyclePhase;
@@ -140,7 +142,16 @@ namespace HaCreator.MapSimulator.Fields
             string dialogText = string.IsNullOrWhiteSpace(_lastDialogOwner)
                 ? "dialog: none"
                 : $"dialog: {_lastDialogOwner}";
-            DrawShadowedText(spriteBatch, font, TrimForDisplay(dialogText, 52), new Vector2(panelX + 12, panelY + 100), Color.Silver, 0.85f);
+            string handlerText = string.IsNullOrWhiteSpace(_lastPacketOwner)
+                ? "handler: none"
+                : $"handler: {_lastPacketOwner}";
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                TrimForDisplay($"{handlerText} | {dialogText}", 52),
+                new Vector2(panelX + 12, panelY + 100),
+                Color.Silver,
+                0.85f);
 
             DrawShadowedText(
                 spriteBatch,
@@ -242,10 +253,11 @@ namespace HaCreator.MapSimulator.Fields
                 ? "none"
                 : string.Join("/", _lastStringPoolIds.Select(id => $"0x{id:X}"));
             string dialogText = string.IsNullOrWhiteSpace(_lastDialogOwner) ? "none" : _lastDialogOwner;
+            string handlerText = string.IsNullOrWhiteSpace(_lastPacketOwner) ? "none" : _lastPacketOwner;
             string summary = string.IsNullOrWhiteSpace(_lastPacketSummary) ? "No packet applied yet." : _lastPacketSummary;
             string matchTableText = _matchTableDialog.DescribeStatus();
             string phaseText = BuildLifecycleStatusText(Environment.TickCount);
-            return $"Tournament: active | map={_mapId} | phase={GetLifecyclePhaseLabel()} | contract={TournamentContractSummary} | last={packetText} | dialog={dialogText} | stringPool={stringPoolText} | summary={summary} | lifecycle={phaseText}{Environment.NewLine}{matchTableText}";
+            return $"Tournament: active | map={_mapId} | phase={GetLifecyclePhaseLabel()} | contract={TournamentContractSummary} | last={packetText} | handler={handlerText} | dialog={dialogText} | stringPool={stringPoolText} | summary={summary} | lifecycle={phaseText}{Environment.NewLine}{matchTableText}";
         }
 
         public string DescribeMatchTableDialog()
@@ -284,6 +296,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastPacketSummary = null;
             _lastPayloadHex = null;
             _lastDialogOwner = null;
+            _lastPacketOwner = null;
             _lastStringPoolIds = Array.Empty<int>();
             _lastPrizeItemIds = Array.Empty<int>();
             _lifecyclePhase = TournamentLifecyclePhase.Lobby;
@@ -448,6 +461,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastPacketSummary = packetSummary;
             _lastDialogOwner = dialogOwner;
             _lastStringPoolIds = stringPoolIds?.Where(id => id > 0).Distinct().ToArray() ?? Array.Empty<int>();
+            _lastPacketOwner = ResolvePacketOwner(_lastPacketType);
         }
 
         private void RecordIgnoredPacket(string packetSummary, int currentTimeMs)
@@ -534,6 +548,19 @@ namespace HaCreator.MapSimulator.Fields
                 377 => "uew (377)",
                 378 => "noop (378)",
                 _ => packetType.ToString(CultureInfo.InvariantCulture)
+            };
+        }
+
+        private static string ResolvePacketOwner(int packetType)
+        {
+            return packetType switch
+            {
+                374 => "CField_Tournament::OnTournament",
+                375 => "CField_Tournament::OnTournamentMatchTable",
+                376 => "CField_Tournament::OnTournamentSetPrize",
+                377 => "CField_Tournament::OnTournamentUEW",
+                378 => "CField_Tournament::OnPacket(no-op)",
+                _ => null
             };
         }
 
@@ -672,6 +699,7 @@ namespace HaCreator.MapSimulator.Fields
         public byte Stage { get; private set; }
         public int Scroll { get; private set; } = MaxScroll;
         public int PayloadLength { get; private set; }
+        public int RawTableLength => _rawTable.Length;
         public string Summary { get; private set; }
         public IReadOnlyList<string> SlotNames => _slotNames;
 
@@ -755,7 +783,22 @@ namespace HaCreator.MapSimulator.Fields
                 names = "none recovered";
             }
 
-            return $"Tournament match-table dialog: open | payload={PayloadLength} bytes (0x300-byte match buffer + state byte) | stage={Stage} | scroll={Scroll} | entrants={names}";
+            return $"Tournament match-table dialog: open | payload={PayloadLength} bytes (0x300-byte match buffer + state byte) | state-byte={Stage} | scroll={Scroll} | entrants={names}";
+        }
+
+        public int GetMatchValue(int slotIndex, int valueIndex)
+        {
+            if (slotIndex < 0 || slotIndex >= EntrantCount)
+            {
+                throw new ArgumentOutOfRangeException(nameof(slotIndex));
+            }
+
+            if (valueIndex < 0 || valueIndex >= EntryValueCount)
+            {
+                throw new ArgumentOutOfRangeException(nameof(valueIndex));
+            }
+
+            return _matchValues[slotIndex, valueIndex];
         }
 
         public bool HandleMouse(

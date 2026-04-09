@@ -152,6 +152,7 @@ namespace HaCreator.MapSimulator
             string followUpMessage = ShowPacketOwnedLogoutGiftCompletionDialog();
             _lastPacketOwnedLogoutGiftSummary =
                 $"Simulated CUILogoutGift::OnButtonClicked outpacket {PacketOwnedLogoutGiftSelectionOpcode} with slot index {index.ToString(CultureInfo.InvariantCulture)} (button {1000 + index}).{commoditySuffix} {DispatchPacketOwnedLogoutGiftSelectionRequest(index)} {followUpMessage}";
+            NotifyEventAlarmOwnerActivity("packet-owned logout gift");
             return _lastPacketOwnedLogoutGiftSummary;
         }
 
@@ -161,6 +162,7 @@ namespace HaCreator.MapSimulator
             string completionMessage = ShowPacketOwnedLogoutGiftCompletionDialog();
             _lastPacketOwnedLogoutGiftSummary =
                 $"Closed the packet-owned logout-gift owner. {completionMessage}";
+            NotifyEventAlarmOwnerActivity("packet-owned logout gift");
             return _lastPacketOwnedLogoutGiftSummary;
         }
 
@@ -195,6 +197,7 @@ namespace HaCreator.MapSimulator
             {
                 message = "CWvsContext::OnLogoutGift routed, but no logout-gift commodity cache is available from the current SetField state.";
                 _lastPacketOwnedLogoutGiftSummary = message;
+                NotifyEventAlarmOwnerActivity("packet-owned logout gift");
                 return false;
             }
 
@@ -210,6 +213,7 @@ namespace HaCreator.MapSimulator
                 message =
                     $"CWvsContext::OnLogoutGift arrived, but `CUILogoutGift::TryShowLogoutGiftDialog` would keep the owner closed because CWvsContext::m_bPredictQuit is false while the cached commodity SNs remain {FormatPacketOwnedLogoutGiftCommodityList()}.{preservedTrailingSuffix}{ignoredPayloadSuffix}";
                 _lastPacketOwnedLogoutGiftSummary = message;
+                NotifyEventAlarmOwnerActivity("packet-owned logout gift");
                 return true;
             }
 
@@ -217,6 +221,7 @@ namespace HaCreator.MapSimulator
             {
                 message = "CWvsContext::OnLogoutGift routed, but the simulator logout-gift owner is unavailable.";
                 _lastPacketOwnedLogoutGiftSummary = message;
+                NotifyEventAlarmOwnerActivity("packet-owned logout gift");
                 return false;
             }
 
@@ -228,6 +233,7 @@ namespace HaCreator.MapSimulator
                 message =
                     $"CWvsContext::OnLogoutGift refreshed the cached commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()}, but no active CUILogoutGift owner exists to update. The simulator keeps the cache staged for the next TryShowLogoutGiftDialog-owned launch instead of surfacing the owner directly from packet 432.{hiddenWindowPayloadSuffix}";
                 _lastPacketOwnedLogoutGiftSummary = message;
+                NotifyEventAlarmOwnerActivity("packet-owned logout gift");
                 return true;
             }
 
@@ -242,6 +248,7 @@ namespace HaCreator.MapSimulator
             message =
                 $"CWvsContext::OnLogoutGift refreshed the active logout-gift owner using cached commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()} after `CUILogoutGift::TryShowLogoutGiftDialog` had already surfaced it.{trailingSuffix}{payloadSuffix}";
             _lastPacketOwnedLogoutGiftSummary = message;
+            NotifyEventAlarmOwnerActivity("packet-owned logout gift");
             return true;
         }
 
@@ -282,6 +289,7 @@ namespace HaCreator.MapSimulator
                 ? $"CUILogoutGift::TryShowLogoutGiftDialog presented the dedicated owner from {_lastPacketOwnedLogoutGiftLaunchSource} using cached commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()}."
                 : $"CUILogoutGift::TryShowLogoutGiftDialog refreshed the already-visible owner from {_lastPacketOwnedLogoutGiftLaunchSource}.";
             _lastPacketOwnedLogoutGiftSummary = message;
+            NotifyEventAlarmOwnerActivity("packet-owned logout gift");
             return true;
         }
 
@@ -337,6 +345,7 @@ namespace HaCreator.MapSimulator
                 : _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
                     ? $"Decoded the trailing client 12-byte logout-gift cache after preserving {DescribePacketOwnedLogoutGiftLeadingTail()}, but all three commodity slots were zero."
                     : "Decoded the explicit logout-gift cache payload from SetField, but all three commodity slots were zero.";
+            NotifyEventAlarmOwnerActivity("packet-owned logout gift");
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LogoutGift) is LogoutGiftWindow window && window.IsVisible)
             {
@@ -395,6 +404,7 @@ namespace HaCreator.MapSimulator
             if (!string.IsNullOrWhiteSpace(summary))
             {
                 _lastPacketOwnedLogoutGiftSummary = summary;
+                NotifyEventAlarmOwnerActivity("packet-owned logout gift");
             }
         }
 
@@ -494,6 +504,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedLogoutGiftSummary = string.IsNullOrWhiteSpace(continuationSuffix)
                 ? $"Dismissed the logout-gift completion util dialog (StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)})."
                 : $"Dismissed the logout-gift completion util dialog (StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)}).{continuationSuffix}";
+            NotifyEventAlarmOwnerActivity("packet-owned logout gift");
 
             if (string.IsNullOrWhiteSpace(continuationSuffix))
             {

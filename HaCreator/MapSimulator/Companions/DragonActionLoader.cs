@@ -14,6 +14,18 @@ namespace HaCreator.MapSimulator.Companions
 {
     internal sealed class DragonActionLoader
     {
+        private sealed class ActionNodeResolution
+        {
+            public ActionNodeResolution(WzSubProperty metadataNode, WzSubProperty frameSourceNode)
+            {
+                MetadataNode = metadataNode;
+                FrameSourceNode = frameSourceNode;
+            }
+
+            public WzSubProperty MetadataNode { get; }
+            public WzSubProperty FrameSourceNode { get; }
+        }
+
         private const int FirstClientDragonActionCode = 147;
         // IDA: CDragon::PrepareActionLayer allocates 0x1D action slots, which
         // resolves to stand + move + raw-action codes 147..173.
@@ -144,13 +156,13 @@ namespace HaCreator.MapSimulator.Companions
         private SkillAnimation LoadAnimation(int dragonJob, string resolvedActionName)
         {
             WzImage image = FindDragonImage(dragonJob);
-            WzSubProperty actionNode = FindActionNode(image, resolvedActionName);
-            if (actionNode == null)
+            ActionNodeResolution resolution = ResolveActionNode(image, resolvedActionName);
+            if (resolution?.FrameSourceNode == null)
             {
                 return null;
             }
 
-            List<SkillFrame> frames = LoadFrames(actionNode);
+            List<SkillFrame> frames = LoadFrames(resolution.FrameSourceNode);
             if (frames.Count == 0)
             {
                 return null;
@@ -160,11 +172,11 @@ namespace HaCreator.MapSimulator.Companions
             {
                 Name = resolvedActionName,
                 Loop = IsLoopingAction(resolvedActionName),
-                PositionCode = GetIntValue(actionNode["pos"])
+                PositionCode = GetActionMetadataInt(resolution.FrameSourceNode, resolution.MetadataNode, "pos")
             };
 
             animation.Frames.AddRange(frames);
-            if (GetIntValue(actionNode["repeat"]) > 0)
+            if (GetActionMetadataInt(resolution.FrameSourceNode, resolution.MetadataNode, "repeat") > 0)
             {
                 for (int i = frames.Count - 1; i >= 0; i--)
                 {
@@ -214,6 +226,16 @@ namespace HaCreator.MapSimulator.Companions
 
         internal static WzSubProperty FindActionNode(WzImage image, string actionName)
         {
+            return ResolveActionNode(image, actionName)?.FrameSourceNode;
+        }
+
+        internal static WzSubProperty FindActionMetadataNode(WzImage image, string actionName)
+        {
+            return ResolveActionNode(image, actionName)?.MetadataNode;
+        }
+
+        private static ActionNodeResolution ResolveActionNode(WzImage image, string actionName)
+        {
             if (image == null || string.IsNullOrWhiteSpace(actionName))
             {
                 return null;
@@ -221,7 +243,7 @@ namespace HaCreator.MapSimulator.Companions
 
             if (image[actionName] is WzSubProperty directActionNode)
             {
-                return directActionNode;
+                return new ActionNodeResolution(directActionNode, directActionNode);
             }
 
             if (image["skill"] is not WzSubProperty skillRoot)
@@ -231,14 +253,9 @@ namespace HaCreator.MapSimulator.Companions
 
             foreach (WzSubProperty skillNode in skillRoot.WzProperties.OfType<WzSubProperty>())
             {
-                if (EnumerateSkillActionNames(skillNode).Any(candidate =>
-                        string.Equals(candidate, actionName, StringComparison.OrdinalIgnoreCase)))
+                if (TryResolveSkillActionNode(skillNode, actionName, out ActionNodeResolution resolution))
                 {
-                    WzSubProperty frameSourceNode = FindSkillActionFrameSource(skillNode);
-                    if (frameSourceNode != null)
-                    {
-                        return frameSourceNode;
-                    }
+                    return resolution;
                 }
             }
 
@@ -306,18 +323,118 @@ namespace HaCreator.MapSimulator.Companions
 
         private static IEnumerable<string> EnumerateSkillActionNames(WzSubProperty skillNode)
         {
-            if (skillNode?["action"] is not WzSubProperty actionNode)
+            if (skillNode == null)
             {
                 yield break;
             }
 
-            foreach (WzImageProperty property in actionNode.WzProperties)
+            foreach (string actionName in EnumerateActionNamesFromProperty(skillNode["action"]))
             {
-                if (TryGetStringValue(property, out string actionName)
-                    && !string.IsNullOrWhiteSpace(actionName))
+                yield return actionName;
+            }
+
+            foreach (WzSubProperty nestedNode in skillNode.WzProperties.OfType<WzSubProperty>())
+            {
+                if (string.Equals(nestedNode.Name, "action", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                foreach (string actionName in EnumerateActionNamesFromProperty(nestedNode["action"]))
                 {
                     yield return actionName;
                 }
+            }
+        }
+
+        internal static int? GetActionMetadataInt(WzSubProperty frameSourceNode, WzSubProperty metadataNode, string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            return GetIntValue(frameSourceNode?[propertyName])
+                   ?? GetIntValue(metadataNode?[propertyName]);
+        }
+
+        private static bool TryResolveSkillActionNode(WzSubProperty skillNode, string actionName, out ActionNodeResolution resolution)
+        {
+            resolution = null;
+            if (skillNode == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            foreach ((string candidateActionName, WzSubProperty metadataNode) in EnumerateSkillActionEntries(skillNode))
+            {
+                if (!string.Equals(candidateActionName, actionName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                WzSubProperty frameSourceNode = ReferenceEquals(metadataNode, skillNode)
+                    ? FindSkillActionFrameSource(skillNode)
+                    : FindSkillActionFrameSource(metadataNode);
+
+                if (frameSourceNode == null)
+                {
+                    return false;
+                }
+
+                resolution = new ActionNodeResolution(metadataNode, frameSourceNode);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<(string ActionName, WzSubProperty MetadataNode)> EnumerateSkillActionEntries(WzSubProperty skillNode)
+        {
+            foreach (string actionName in EnumerateActionNamesFromProperty(skillNode?["action"]))
+            {
+                yield return (actionName, skillNode);
+            }
+
+            if (skillNode == null)
+            {
+                yield break;
+            }
+
+            foreach (WzSubProperty nestedNode in skillNode.WzProperties.OfType<WzSubProperty>())
+            {
+                if (string.Equals(nestedNode.Name, "action", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                foreach (string actionName in EnumerateActionNamesFromProperty(nestedNode["action"]))
+                {
+                    yield return (actionName, nestedNode);
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateActionNamesFromProperty(WzImageProperty actionProperty)
+        {
+            if (actionProperty is WzSubProperty actionNode)
+            {
+                foreach (WzImageProperty property in actionNode.WzProperties)
+                {
+                    if (TryGetStringValue(property, out string actionName)
+                        && !string.IsNullOrWhiteSpace(actionName))
+                    {
+                        yield return actionName;
+                    }
+                }
+
+                yield break;
+            }
+
+            if (TryGetStringValue(actionProperty, out string singleActionName)
+                && !string.IsNullOrWhiteSpace(singleActionName))
+            {
+                yield return singleActionName;
             }
         }
 

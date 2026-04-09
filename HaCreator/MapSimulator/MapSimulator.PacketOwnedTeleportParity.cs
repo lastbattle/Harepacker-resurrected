@@ -403,7 +403,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (TryResolvePacketOwnedTeleportPortalIndexByName(_portalPool, target.TargetPortalName, out portalIndex))
+            if (TryResolvePacketOwnedTeleportPortalIndexByNameAndPosition(
+                _portalPool,
+                target.TargetPortalName,
+                target.FallbackX,
+                target.FallbackY,
+                out portalIndex))
             {
                 return true;
             }
@@ -411,7 +416,12 @@ namespace HaCreator.MapSimulator
             if (TryResolvePacketOwnedTeleportUniqueCandidatePortalName(
                 target.TargetPortalNameCandidates,
                 out string uniqueCandidatePortalName)
-                && TryResolvePacketOwnedTeleportPortalIndexByName(_portalPool, uniqueCandidatePortalName, out portalIndex))
+                && TryResolvePacketOwnedTeleportPortalIndexByNameAndPosition(
+                    _portalPool,
+                    uniqueCandidatePortalName,
+                    target.FallbackX,
+                    target.FallbackY,
+                    out portalIndex))
             {
                 return true;
             }
@@ -458,6 +468,33 @@ namespace HaCreator.MapSimulator
 
             portalIndex = portalPool.GetPortalIndexByName(portalName);
             return portalPool.GetPortal(portalIndex)?.PortalInstance != null;
+        }
+
+        internal static bool TryResolvePacketOwnedTeleportPortalIndexByNameAndPosition(
+            PortalPool portalPool,
+            string portalName,
+            float? targetX,
+            float? targetY,
+            out int portalIndex)
+        {
+            portalIndex = -1;
+            if (!TryResolvePacketOwnedTeleportPortalIndexByName(portalPool, portalName, out int resolvedPortalIndex))
+            {
+                return false;
+            }
+
+            if (!targetX.HasValue || !targetY.HasValue)
+            {
+                portalIndex = resolvedPortalIndex;
+                return true;
+            }
+
+            return TryResolvePacketOwnedTeleportPortalIndexByCandidatePosition(
+                portalPool,
+                new[] { resolvedPortalIndex },
+                targetX.Value,
+                targetY.Value,
+                out portalIndex);
         }
 
         internal static bool TryResolvePacketOwnedTeleportPortalIndexByCandidateNames(

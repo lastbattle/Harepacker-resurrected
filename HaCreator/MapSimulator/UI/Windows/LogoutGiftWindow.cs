@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator.UI
         private Func<int, Texture2D> _itemIconProvider;
         private LogoutGiftOwnerSnapshot _snapshot = new();
         private bool _hasAuthoredFrameTexture;
+        private int _pendingSelectionIndex;
 
         internal LogoutGiftWindow(GraphicsDevice device)
             : base(new DXObject(0, 0, CreateFrameTexture(device), 0))
@@ -59,6 +60,7 @@ namespace HaCreator.MapSimulator.UI
         {
             _snapshotProvider = snapshotProvider;
             _snapshot = snapshotProvider?.Invoke() ?? new LogoutGiftOwnerSnapshot();
+            _pendingSelectionIndex = ClampSelectionIndex(_snapshot.SelectedIndex);
         }
 
         internal void SetItemIconProvider(Func<int, Texture2D> itemIconProvider)
@@ -78,6 +80,7 @@ namespace HaCreator.MapSimulator.UI
             base.Update(gameTime);
 
             _snapshot = _snapshotProvider?.Invoke() ?? new LogoutGiftOwnerSnapshot();
+            _pendingSelectionIndex = ClampSelectionIndex(_pendingSelectionIndex);
             KeyboardState keyboardState = Keyboard.GetState();
             MouseState mouseState = Mouse.GetState();
 
@@ -97,7 +100,7 @@ namespace HaCreator.MapSimulator.UI
                 }
                 else if (Pressed(keyboardState, Keys.Enter))
                 {
-                    ActivateSelection(_snapshot.SelectedIndex);
+                    ActivateSelection(_pendingSelectionIndex);
                 }
             }
 
@@ -130,21 +133,31 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < _snapshot.Entries.Count; i++)
             {
                 Rectangle slotBounds = GetSlotBounds(i);
-                if (!slotBounds.Contains(mouseState.Position))
+                Rectangle buttonBounds = GetClientSelectButtonBounds(Position, i);
+                if (buttonBounds.Contains(mouseState.Position))
                 {
-                    continue;
-                }
+                    mouseCursor?.SetMouseCursorMovedToClickableItem();
+                    if (Released(mouseState))
+                    {
+                        ActivateSelection(i);
+                        _previousMouseState = mouseState;
+                        return true;
+                    }
 
-                mouseCursor?.SetMouseCursorMovedToClickableItem();
-                if (Released(mouseState))
-                {
-                    ActivateSelection(i);
                     _previousMouseState = mouseState;
                     return true;
                 }
 
-                _previousMouseState = mouseState;
-                return true;
+                if (slotBounds.Contains(mouseState.Position))
+                {
+                    if (Released(mouseState))
+                    {
+                        _pendingSelectionIndex = i;
+                    }
+
+                    _previousMouseState = mouseState;
+                    return true;
+                }
             }
 
             bool handled = base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
@@ -171,13 +184,9 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawWindowText(sprite, _snapshot.Title, new Vector2(Position.X + 16, Position.Y + 14), new Color(63, 40, 23), 0.48f);
-            DrawWindowText(sprite, _snapshot.Subtitle, new Vector2(Position.X + 16, Position.Y + 36), new Color(121, 94, 68), 0.33f);
-
-            float detailY = Position.Y + 58f;
-            foreach (string line in WrapText(_snapshot.Detail, 214f, 0.32f))
+            if (!_hasAuthoredFrameTexture)
             {
-                DrawWindowText(sprite, line, new Vector2(Position.X + 16, detailY), new Color(94, 72, 51), 0.32f);
-                detailY += 14f;
+                DrawMissingArtNotice(sprite);
             }
 
             for (int i = 0; i < _snapshot.Entries.Count; i++)
@@ -208,7 +217,7 @@ namespace HaCreator.MapSimulator.UI
             Rectangle slotBounds = GetSlotBounds(index);
             Rectangle iconBounds = GetClientIconBounds(Position, index);
             Rectangle buttonBounds = GetClientSelectButtonBounds(Position, index);
-            bool selected = index == _snapshot.SelectedIndex;
+            bool selected = index == _pendingSelectionIndex;
             Color fill = selected ? new Color(255, 241, 194) : new Color(238, 228, 207);
             Color border = selected ? new Color(198, 142, 76) : new Color(163, 134, 103);
 
@@ -245,7 +254,7 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_pixel, new Rectangle(buttonBounds.X, buttonBounds.Bottom - 1, buttonBounds.Width, 1), border);
             sprite.Draw(_pixel, new Rectangle(buttonBounds.X, buttonBounds.Y, 1, buttonBounds.Height), border);
             sprite.Draw(_pixel, new Rectangle(buttonBounds.Right - 1, buttonBounds.Y, 1, buttonBounds.Height), border);
-            DrawCenteredText(sprite, $"Gift {index + 1}", buttonBounds, new Color(70, 49, 31), 0.27f);
+            DrawCenteredText(sprite, "Select", buttonBounds, new Color(70, 49, 31), 0.27f);
         }
 
         private void DrawCenteredText(SpriteBatch sprite, string text, Rectangle bounds, Color color, float scale)
@@ -269,11 +278,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int nextIndex = Math.Clamp(_snapshot.SelectedIndex + delta, 0, _snapshot.Entries.Count - 1);
-            if (nextIndex != _snapshot.SelectedIndex)
-            {
-                ActivateSelection(nextIndex);
-            }
+            _pendingSelectionIndex = Math.Clamp(_pendingSelectionIndex + delta, 0, _snapshot.Entries.Count - 1);
         }
 
         private void ActivateSelection(int index)
@@ -336,6 +341,27 @@ namespace HaCreator.MapSimulator.UI
         {
             Rectangle bounds = GetWindowBounds();
             return new Rectangle(bounds.Right - 22, bounds.Y + 5, CloseButtonSize, CloseButtonSize);
+        }
+
+        private int ClampSelectionIndex(int selectionIndex)
+        {
+            return _snapshot.Entries.Count == 0
+                ? 0
+                : Math.Clamp(selectionIndex, 0, _snapshot.Entries.Count - 1);
+        }
+
+        private void DrawMissingArtNotice(SpriteBatch sprite)
+        {
+            const float noteScale = 0.31f;
+            Rectangle noteBounds = new(Position.X + 18, Position.Y + 96, DefaultWidth - 36, 62);
+            foreach (string line in WrapText("Authored LogoutGift art is not present in the current UI export.", noteBounds.Width, noteScale))
+            {
+                Vector2 textSize = MeasureWindowText(null, line, noteScale);
+                float x = noteBounds.X + Math.Max(0f, (noteBounds.Width - textSize.X) / 2f);
+                float y = noteBounds.Y + Math.Max(0f, (noteBounds.Height - textSize.Y) / 2f);
+                DrawWindowText(sprite, line, new Vector2(x, y), new Color(121, 94, 68), noteScale);
+                noteBounds.Y += 14;
+            }
         }
 
         private bool Pressed(KeyboardState keyboardState, Keys key)

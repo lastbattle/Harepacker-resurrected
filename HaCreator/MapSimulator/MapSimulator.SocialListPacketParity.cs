@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Managers;
 using System;
 using System.Linq;
@@ -21,9 +22,9 @@ namespace HaCreator.MapSimulator
         private int _nextSocialListOfficialSessionBridgeDiscoveryRefreshAt;
 
         private const string SocialListPacketPayloadUsage =
-            "Usage: /sociallist packet [status|session [status|discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n]|start <listenPort> <remoteHost> <remotePort> <opcode>|stop]|<friend|party|guild|alliance|blacklist> <payloadhex=..|payloadb64=..>|guildresult <payloadhex=..|payloadb64=..>|allianceresult <payloadhex=..|payloadb64=..>|owner <tab> <local|packet> [summary]|seed <tab>|clear <tab>|remove <tab> <name>|select <tab> <name>|summary <tab> <summary>|resolve <tab> <approve|reject> [level=n] [remain=m] [fund=mesos] [summary]|upsert <tab> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>|guildauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<admission>|<notice>>|allianceauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<notice>>|guildui <clear|payloadhex=..|payloadb64=..|<member>|<guildName>|<guildLevel>>|guilddialog <status|balance [mesos]|approve [summary]|reject [summary]>]";
+            "Usage: /sociallist packet [status|session [status|discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n]|start <listenPort> <remoteHost> <remotePort> <opcode>|stop]|<friend|party|guild|alliance|blacklist> <payloadhex=..|payloadb64=..>|guildresult <payloadhex=..|payloadb64=..>|guildskillresult <payloadhex=..|payloadb64=..>|allianceresult <payloadhex=..|payloadb64=..>|owner <tab> <local|packet> [summary]|seed <tab>|clear <tab>|remove <tab> <name>|select <tab> <name>|summary <tab> <summary>|resolve <tab> <approve|reject> [level=n] [remain=m] [fund=mesos] [summary]|upsert <tab> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>|guildauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<admission>|<notice>>|allianceauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<notice>>|guildui <clear|payloadhex=..|payloadb64=..|<member>|<guildName>|<guildLevel>>|guilddialog <status|balance [mesos]|approve [summary]|reject [summary]>]";
         private const string SocialListPacketRawUsage =
-            "Usage: /sociallist packetraw <friend|party|guild|alliance|blacklist|guildauth|allianceauth|guildui|guildresult|allianceresult> <hex>";
+            "Usage: /sociallist packetraw <friend|party|guild|alliance|blacklist|guildauth|allianceauth|guildui|guildresult|guildskillresult|allianceresult> <hex>";
 
         private ChatCommandHandler.CommandResult HandleSocialListPacketCommand(string[] args)
         {
@@ -85,6 +86,13 @@ namespace HaCreator.MapSimulator
                     $"CWvsContext::OnGuildResult: {_socialListRuntime.ApplyClientGuildResultPayload(guildResultPayload)}");
             }
 
+            if (string.Equals(packetAction, "guildskillresult", StringComparison.OrdinalIgnoreCase)
+                && TryParseSocialListPacketPayloadArgument(args, 1, out byte[] guildSkillResultPayload, out _))
+            {
+                return ChatCommandHandler.CommandResult.Ok(
+                    $"Guild skill result: {ApplyPacketOwnedGuildSkillResultPayload(guildSkillResultPayload)}");
+            }
+
             if (string.Equals(packetAction, "allianceresult", StringComparison.OrdinalIgnoreCase)
                 && TryParseSocialListPacketPayloadArgument(args, 1, out byte[] allianceResultPayload, out _))
             {
@@ -126,6 +134,11 @@ namespace HaCreator.MapSimulator
             if (string.Equals(target, "guildresult", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.ApplyClientGuildResultPayload(payload));
+            }
+
+            if (string.Equals(target, "guildskillresult", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Ok(ApplyPacketOwnedGuildSkillResultPayload(payload));
             }
 
             if (string.Equals(target, "allianceresult", StringComparison.OrdinalIgnoreCase))
@@ -310,6 +323,8 @@ namespace HaCreator.MapSimulator
                     && !detail.Contains("missing", StringComparison.OrdinalIgnoreCase);
                 _socialListOfficialSessionBridge.RecordDispatchResult(message.Source, applied, detail);
                 WireSocialListWindowData();
+                RefreshGuildSkillUiContext();
+                WireGuildSkillWindowData();
 
                 if (!string.IsNullOrWhiteSpace(detail))
                 {
@@ -323,6 +338,29 @@ namespace HaCreator.MapSimulator
                     }
                 }
             }
+        }
+
+        private string ApplyPacketOwnedGuildSkillResultPayload(byte[] payload)
+        {
+            if (payload == null)
+            {
+                return "Packet-owned guild-skill result payload is missing.";
+            }
+
+            if (!SocialListPacketCodec.TryParseGuildSkillResult(payload, out GuildSkillResultPacket packet, out string error))
+            {
+                return error ?? "Packet-owned guild-skill result payload could not be decoded.";
+            }
+
+            if (_guildSkillRuntime.BuildSnapshot().Entries.Count == 0)
+            {
+                _guildSkillRuntime.SetSkills(SkillDataLoader.LoadGuildSkills(_DxDeviceManager.GraphicsDevice));
+            }
+
+            string detail = _guildSkillRuntime.ApplyPacketOwnedResult(packet);
+            RefreshGuildSkillUiContext();
+            WireGuildSkillWindowData();
+            return detail;
         }
 
         private ChatCommandHandler.CommandResult HandleSocialListSessionCommand(string[] args)

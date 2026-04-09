@@ -787,6 +787,12 @@ namespace HaCreator.MapSimulator.Fields
             errorMessage = null;
             payload ??= Array.Empty<byte>();
 
+            if (!SupportsRawPacketTypeForCurrentMode(packetType))
+            {
+                errorMessage = DescribeUnsupportedRawPacket(packetType);
+                return false;
+            }
+
             switch (packetType)
             {
                 case ClientSessionValuePacketType:
@@ -860,7 +866,8 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (ownerHint is PacketFieldSpecificDataOwnerHint.None or PacketFieldSpecificDataOwnerHint.Field
+            if (SupportsOwnerHintForCurrentMode(PacketFieldSpecificDataOwnerHint.Field)
+                && ownerHint is PacketFieldSpecificDataOwnerHint.None or PacketFieldSpecificDataOwnerHint.Field
                 && TryApplyRecoveredFieldLiteral(key, value, currentTimeMs))
             {
                 appliedOwner = "field";
@@ -869,9 +876,9 @@ namespace HaCreator.MapSimulator.Fields
 
             bool applied = ownerHint switch
             {
-                PacketFieldSpecificDataOwnerHint.Field => TryApplyFieldOwnedPair(key, value),
-                PacketFieldSpecificDataOwnerHint.Party => TryApplyPartyOwnedPair(key, value),
-                PacketFieldSpecificDataOwnerHint.Session => TryApplySessionOwnedPair(key, value),
+                PacketFieldSpecificDataOwnerHint.Field => SupportsOwnerHintForCurrentMode(PacketFieldSpecificDataOwnerHint.Field) && TryApplyFieldOwnedPair(key, value),
+                PacketFieldSpecificDataOwnerHint.Party => SupportsOwnerHintForCurrentMode(PacketFieldSpecificDataOwnerHint.Party) && TryApplyPartyOwnedPair(key, value),
+                PacketFieldSpecificDataOwnerHint.Session => SupportsOwnerHintForCurrentMode(PacketFieldSpecificDataOwnerHint.Session) && TryApplySessionOwnedPair(key, value),
                 _ => TryApplyUnknownOwnedPair(key, value, out appliedOwner)
             };
 
@@ -906,9 +913,9 @@ namespace HaCreator.MapSimulator.Fields
 
             string updateEvidence = _mode switch
             {
-                PartyRaidFieldMode.Field => $"{ClientOwnerName}::Update",
-                PartyRaidFieldMode.Boss => $"{ClientBossOwnerName}::OnFieldSetVariable / {ClientBossOwnerName}::OnPartyValue, auxiliaryChargeOwner={DescribeBossChargeOwnership()}",
-                PartyRaidFieldMode.Result => $"{ClientResultOwnerName}::OnSessionValue",
+                PartyRaidFieldMode.Field => $"{ClientOwnerName}::Update, ctxRelay=field:vf[8]@CWvsContext::OnFieldSetVariable party:vf[10]@CWvsContext::OnPartyValue",
+                PartyRaidFieldMode.Boss => $"{ClientBossOwnerName}::OnFieldSetVariable / {ClientBossOwnerName}::OnPartyValue, ctxRelay=field:vf[8] party:vf[10], auxiliaryChargeOwner={DescribeBossChargeOwnership()}",
+                PartyRaidFieldMode.Result => $"{ClientResultOwnerName}::OnSessionValue, ctxRelay=session:vf[9]@CWvsContext::OnSessionValue",
                 _ => null
             };
             string wzEvidence = GetClientWrapperWzEvidence(_mode);
@@ -1922,25 +1929,66 @@ namespace HaCreator.MapSimulator.Fields
         private bool TryApplyUnknownOwnedPair(string key, string value, out string appliedOwner)
         {
             appliedOwner = null;
-            if (TryApplyFieldOwnedPair(key, value))
+            if (SupportsOwnerHintForCurrentMode(PacketFieldSpecificDataOwnerHint.Field)
+                && TryApplyFieldOwnedPair(key, value))
             {
                 appliedOwner = "field";
                 return true;
             }
 
-            if (TryApplyPartyOwnedPair(key, value))
+            if (SupportsOwnerHintForCurrentMode(PacketFieldSpecificDataOwnerHint.Party)
+                && TryApplyPartyOwnedPair(key, value))
             {
                 appliedOwner = "party";
                 return true;
             }
 
-            if (TryApplySessionOwnedPair(key, value))
+            if (SupportsOwnerHintForCurrentMode(PacketFieldSpecificDataOwnerHint.Session)
+                && TryApplySessionOwnedPair(key, value))
             {
                 appliedOwner = "session";
                 return true;
             }
 
             return false;
+        }
+
+        private bool SupportsRawPacketTypeForCurrentMode(int packetType) => _mode switch
+        {
+            PartyRaidFieldMode.Field => packetType is ClientPartyValuePacketType or ClientFieldSetVariablePacketType or 149,
+            PartyRaidFieldMode.Boss => packetType is ClientPartyValuePacketType or ClientFieldSetVariablePacketType or 149,
+            PartyRaidFieldMode.Result => packetType is ClientSessionValuePacketType or 149,
+            _ => packetType is ClientSessionValuePacketType or ClientPartyValuePacketType or ClientFieldSetVariablePacketType or 149
+        };
+
+        private bool SupportsOwnerHintForCurrentMode(PacketFieldSpecificDataOwnerHint ownerHint) => _mode switch
+        {
+            PartyRaidFieldMode.Field => ownerHint is PacketFieldSpecificDataOwnerHint.Field or PacketFieldSpecificDataOwnerHint.Party,
+            PartyRaidFieldMode.Boss => ownerHint is PacketFieldSpecificDataOwnerHint.Field or PacketFieldSpecificDataOwnerHint.Party,
+            PartyRaidFieldMode.Result => ownerHint == PacketFieldSpecificDataOwnerHint.Session,
+            _ => ownerHint is PacketFieldSpecificDataOwnerHint.Field or PacketFieldSpecificDataOwnerHint.Party or PacketFieldSpecificDataOwnerHint.Session
+        };
+
+        private string DescribeUnsupportedRawPacket(int packetType)
+        {
+            string ownerName = GetActiveRuntimeOwnerName();
+            string packetOwner = packetType switch
+            {
+                ClientSessionValuePacketType => "session",
+                ClientPartyValuePacketType => "party",
+                ClientFieldSetVariablePacketType => "field",
+                149 => "field-specific",
+                _ => "partyraid"
+            };
+            string relayEvidence = packetType switch
+            {
+                ClientSessionValuePacketType => "CWvsContext::OnSessionValue -> CField virtual slot vf[9]",
+                ClientPartyValuePacketType => "CWvsContext::OnPartyValue -> CField virtual slot vf[10]",
+                ClientFieldSetVariablePacketType => "CWvsContext::OnFieldSetVariable -> CField virtual slot vf[8]",
+                149 => "CField::OnFieldSpecificData -> active wrapper owner",
+                _ => "active wrapper owner"
+            };
+            return $"{ownerName} does not accept Party Raid {packetOwner} packet {packetType} while mode={_mode}. Client evidence: {relayEvidence}.";
         }
 
         private static bool TryInferModeFromScripts(string onUserEnter, string onFirstUserEnter, out PartyRaidFieldMode mode)

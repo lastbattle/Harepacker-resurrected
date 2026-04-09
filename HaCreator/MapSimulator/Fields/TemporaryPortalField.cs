@@ -524,18 +524,16 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             RemoteTownPortalVisualPhase phase = ResolveRemoteTownPortalCreatePhase(packet.State, existingState);
-            int phaseStartedAt = existingState.HasValue && existingState.Value.Phase == phase
-                ? existingState.Value.PhaseStartedAt
-                : currentTime;
+            byte resolvedState = ResolveRemoteTownPortalCreateState(packet.State, existingState);
             _remoteTownPortals[packet.OwnerCharacterId] = new RemoteTownPortalState(
                 packet.OwnerCharacterId,
-                packet.State,
+                resolvedState,
                 currentMapId,
                 packet.X,
                 packet.Y,
                 resolvedDestination,
                 phase,
-                phaseStartedAt,
+                currentTime,
                 null,
                 null);
             SyncRemoteTownPortalVisuals();
@@ -1318,14 +1316,29 @@ namespace HaCreator.MapSimulator.Fields
                     : RemoteTownPortalVisualPhase.Stable;
             }
 
-            if (packetState == 0)
+            if (existingState.Value.State == 0)
             {
-                // Once a remote owner is already active, follow-up state-0 sync packets should keep the
-                // door on the steady branch instead of replaying cDoor from the top again.
                 return RemoteTownPortalVisualPhase.Stable;
             }
 
-            return RemoteTownPortalVisualPhase.Stable;
+            return RemoteTownPortalVisualPhase.Opening;
+        }
+
+        private static byte ResolveRemoteTownPortalCreateState(
+            byte packetState,
+            RemoteTownPortalState? existingState)
+        {
+            if (!existingState.HasValue || existingState.Value.Phase == RemoteTownPortalVisualPhase.Removing)
+            {
+                return packetState;
+            }
+
+            if (existingState.Value.State == 0)
+            {
+                return RemoteTownPortalOverlayState;
+            }
+
+            return existingState.Value.State;
         }
 
         private static bool AreEquivalentRemoteTownPortalDestinations(
@@ -2210,6 +2223,28 @@ namespace HaCreator.MapSimulator.Fields
                     RemovalSnapshot: null)
                 : null;
             return ResolveRemoteTownPortalCreatePhase(packetState, existingState);
+        }
+
+        internal static byte ResolveRemoteTownPortalCreateStateForTesting(
+            byte packetState,
+            bool hasExistingState,
+            byte existingPacketState,
+            RemoteTownPortalVisualPhase existingPhase)
+        {
+            RemoteTownPortalState? existingState = hasExistingState
+                ? new RemoteTownPortalState(
+                    OwnerCharacterId: 1,
+                    State: existingPacketState,
+                    MapId: 100000000,
+                    X: 0,
+                    Y: 0,
+                    Destination: null,
+                    Phase: existingPhase,
+                    PhaseStartedAt: 0,
+                    RemovalState: null,
+                    RemovalSnapshot: null)
+                : null;
+            return ResolveRemoteTownPortalCreateState(packetState, existingState);
         }
 
         internal static RemoteTownPortalVisualPhase ResolveRemoteTownPortalCreatePhaseForTesting(

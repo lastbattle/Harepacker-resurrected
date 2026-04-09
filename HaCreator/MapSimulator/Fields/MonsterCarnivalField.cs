@@ -121,6 +121,7 @@ namespace HaCreator.MapSimulator.Fields
             SpawnPoint = spawnPoint;
             ReactorId = reactorId;
             Team = team;
+            ReactorRequiredHits = 1;
         }
 
         public MonsterCarnivalEntry Entry { get; }
@@ -128,6 +129,7 @@ namespace HaCreator.MapSimulator.Fields
         public int ReactorId { get; }
         public MonsterCarnivalTeam Team { get; }
         public int ReactorHitCount { get; set; }
+        public int ReactorRequiredHits { get; set; }
     }
 
     public sealed class MonsterCarnivalFieldDefinition
@@ -999,7 +1001,23 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
-        public bool TryApplyGuardianReactorHit(int slotIndex, bool destroyPlacement, int tickCount, out string message)
+        public bool TrySyncGuardianReactorProgress(int slotIndex, int hitCount, int requiredHits)
+        {
+            if (!_guardianPlacements.TryGetValue(slotIndex, out MonsterCarnivalGuardianPlacement placement) || placement?.Entry == null)
+            {
+                return false;
+            }
+
+            placement.ReactorRequiredHits = Math.Max(1, requiredHits);
+            if (hitCount > 0)
+            {
+                placement.ReactorHitCount = Math.Min(hitCount, placement.ReactorRequiredHits);
+            }
+
+            return true;
+        }
+
+        public bool TryApplyGuardianReactorHit(int slotIndex, int hitCount, int requiredHits, bool destroyPlacement, int tickCount, out string message)
         {
             message = null;
             if (!_isVisible)
@@ -1014,17 +1032,31 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            placement.ReactorHitCount++;
+            placement.ReactorRequiredHits = Math.Max(1, requiredHits);
+            if (hitCount > 0)
+            {
+                placement.ReactorHitCount = Math.Min(hitCount, placement.ReactorRequiredHits);
+            }
+            else if (destroyPlacement && placement.ReactorHitCount <= 0)
+            {
+                placement.ReactorHitCount = placement.ReactorRequiredHits;
+            }
+
             if (destroyPlacement)
             {
                 _guardianPlacements.Remove(slotIndex);
                 _occupiedGuardianSlots.Remove(slotIndex);
                 SetEntryCount(_guardianCounts, placement.Entry.Id, Math.Max(0, GetEntryCount(_guardianCounts, placement.Entry.Id) - 1));
-                message = $"{placement.Entry.Name} at slot {slotIndex + 1} was destroyed after reactor hit {placement.ReactorHitCount}.";
+                message = $"{placement.Entry.Name} at slot {slotIndex + 1} was destroyed after reactor hit {placement.ReactorHitCount}/{placement.ReactorRequiredHits}.";
             }
             else
             {
-                message = $"{placement.Entry.Name} at slot {slotIndex + 1} took reactor hit {placement.ReactorHitCount}.";
+                if (placement.ReactorHitCount <= 0)
+                {
+                    placement.ReactorHitCount = 1;
+                }
+
+                message = $"{placement.Entry.Name} at slot {slotIndex + 1} took reactor hit {placement.ReactorHitCount}/{placement.ReactorRequiredHits}.";
             }
 
             ShowStatus(message, tickCount);
@@ -2513,7 +2545,7 @@ namespace HaCreator.MapSimulator.Fields
 
             KeyValuePair<int, MonsterCarnivalGuardianPlacement> latestPlacement = _guardianPlacements.OrderBy(pair => pair.Key).Last();
             MonsterCarnivalGuardianPlacement placement = latestPlacement.Value;
-            return $"Guardian slot {latestPlacement.Key + 1}: {placement.Entry.Name} at ({placement.SpawnPoint.X}, {placement.SpawnPoint.Y}) reactor {placement.ReactorId} for {FormatTeam(placement.Team)} hits {placement.ReactorHitCount}.";
+            return $"Guardian slot {latestPlacement.Key + 1}: {placement.Entry.Name} at ({placement.SpawnPoint.X}, {placement.SpawnPoint.Y}) reactor {placement.ReactorId} for {FormatTeam(placement.Team)} hits {placement.ReactorHitCount}/{Math.Max(1, placement.ReactorRequiredHits)}.";
         }
 
         private void ShowStatus(string message, int tickCount)

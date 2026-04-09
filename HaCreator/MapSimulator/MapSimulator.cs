@@ -128,6 +128,7 @@ namespace HaCreator.MapSimulator
         private readonly HashSet<int> _triggeredDynamicObjectDirectionEventIndices = new();
         private readonly List<ScheduledDynamicObjectScriptPublication> _scheduledDynamicObjectScriptPublications = new();
         private readonly HashSet<int> _consumedFirstUserEnterMaps = new();
+        private readonly Dictionary<int, int> _portableChairCooldowns = new();
         private NpcItem[] _npcsArray;
         private readonly Dictionary<int, NpcItem> _npcsById = new();
         private MobItem[] _mobsArray;
@@ -338,6 +339,7 @@ namespace HaCreator.MapSimulator
         private readonly MessengerRuntime _messengerRuntime = new MessengerRuntime();
         private readonly GuildBbsRuntime _guildBbsRuntime = new GuildBbsRuntime();
         private readonly MapleTvRuntime _mapleTvRuntime = new MapleTvRuntime();
+        private bool _messengerInvitePromptOwnedDialogActive;
         private PendingRepairDurabilityRequest _pendingRepairDurabilityRequest;
         private readonly FieldMessageBoxRuntime _fieldMessageBoxRuntime = new FieldMessageBoxRuntime();
         private readonly PacketFieldStateRuntime _packetFieldStateRuntime = new PacketFieldStateRuntime();
@@ -1298,6 +1300,9 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            MapleLib.WzLib.WzStructure.MapInfo targetMapInfo = ResolveMapTransferDestinationMapInfo(entry.MapId);
+            string entryRestrictionMessage = GetMapTransferEntryRestrictionMessage(entry.MapId, targetMapInfo);
+
 
             if (_worldMapRequestMode == WorldMapRequestMode.MapTransferTargetSelection)
             {
@@ -1308,9 +1313,12 @@ namespace HaCreator.MapSimulator
                 {
                     MapId = entry.MapId,
                     DisplayName = $"[Target] {entry.DisplayName}",
-                    DetailText = !string.IsNullOrWhiteSpace(selectedSlotLabel)
-                        ? $"{entry.MapId} selected for {selectedSlotLabel}"
-                        : $"{entry.MapId} selected from world map",
+                    DetailText = BuildMapTransferDestinationDetailText(
+                        !string.IsNullOrWhiteSpace(selectedSlotLabel)
+                            ? $"{entry.MapId} selected for {selectedSlotLabel}"
+                            : $"{entry.MapId} selected from world map",
+                        entryRestrictionMessage),
+                    RestrictionMessage = entryRestrictionMessage,
                     CanDelete = false
                 };
 
@@ -1341,6 +1349,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (!string.IsNullOrWhiteSpace(entryRestrictionMessage))
+            {
+                ShowFieldRestrictionMessage(entryRestrictionMessage);
+                return;
+            }
+
 
             if (QueueMapTransfer(entry.MapId, null))
             {
@@ -1364,16 +1378,17 @@ namespace HaCreator.MapSimulator
             {
                 if (savedBySlot.TryGetValue(slotIndex, out MapTransferDestinationRecord saved))
                 {
+                    MapleLib.WzLib.WzStructure.MapInfo targetMapInfo = ResolveMapTransferDestinationMapInfo(saved.MapId);
                     string displayName = ResolveMapTransferDisplayName(saved.MapId, saved.DisplayName);
+                    string restrictionMessage = GetMapTransferEntryRestrictionMessage(saved.MapId, targetMapInfo);
                     seenKeys.Add($"saved:{saved.MapId}");
-                    destinations.Add(new MapTransferUI.DestinationEntry
-                    {
-                        MapId = saved.MapId,
-                        DisplayName = displayName,
-                        DetailText = $"Saved slot {slotIndex + 1}    {saved.MapId}",
-                        SavedSlotIndex = slotIndex,
-                        CanDelete = true
-                    });
+                    destinations.Add(CreateMapTransferDestinationEntry(
+                        saved.MapId,
+                        displayName,
+                        $"Saved slot {slotIndex + 1}    {saved.MapId}",
+                        savedSlotIndex: slotIndex,
+                        canDelete: true,
+                        restrictionMessage: restrictionMessage));
                     continue;
                 }
 
@@ -1420,14 +1435,14 @@ namespace HaCreator.MapSimulator
 
                     string displayName = ResolveMapTransferDisplayName(portal.tm);
                     string sourcePortal = string.IsNullOrWhiteSpace(portal.pn) ? "portal" : portal.pn;
-                    destinations.Add(new MapTransferUI.DestinationEntry
-                    {
-                        MapId = portal.tm,
-                        DisplayName = $"[Portal] {displayName}",
-                        DetailText = $"{portal.tm} via {sourcePortal}",
-                        TargetPortalName = portal.tn,
-                        CanDelete = false
-                    });
+                    MapleLib.WzLib.WzStructure.MapInfo targetMapInfo = ResolveMapTransferDestinationMapInfo(portal.tm);
+                    string restrictionMessage = GetMapTransferEntryRestrictionMessage(portal.tm, targetMapInfo);
+                    destinations.Add(CreateMapTransferDestinationEntry(
+                        portal.tm,
+                        $"[Portal] {displayName}",
+                        $"{portal.tm} via {sourcePortal}",
+                        targetPortalName: portal.tn,
+                        restrictionMessage: restrictionMessage));
                 }
             }
 
@@ -1458,13 +1473,13 @@ namespace HaCreator.MapSimulator
 
 
             string displayName = ResolveMapTransferDisplayName(mapId.Value);
-            destinations.Add(new MapTransferUI.DestinationEntry
-            {
-                MapId = mapId.Value,
-                DisplayName = $"[{label}] {displayName}",
-                DetailText = $"{mapId.Value}",
-                CanDelete = false
-            });
+            MapleLib.WzLib.WzStructure.MapInfo targetMapInfo = ResolveMapTransferDestinationMapInfo(mapId.Value);
+            string restrictionMessage = GetMapTransferEntryRestrictionMessage(mapId.Value, targetMapInfo);
+            destinations.Add(CreateMapTransferDestinationEntry(
+                mapId.Value,
+                $"[{label}] {displayName}",
+                $"{mapId.Value}",
+                restrictionMessage: restrictionMessage));
         }
 
 
@@ -1663,6 +1678,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (!string.IsNullOrWhiteSpace(destination.RestrictionMessage))
+            {
+                ShowFieldRestrictionMessage(destination.RestrictionMessage);
+                return;
+            }
+
 
             QueueMapTransfer(destination.MapId, destination.TargetPortalName);
 
@@ -1689,6 +1710,13 @@ namespace HaCreator.MapSimulator
             if (_loadMapCallback == null)
             {
                 _chat.AddMessage("Map transfer is unavailable without a map loader.", new Color(255, 228, 151), Environment.TickCount);
+                return;
+            }
+
+            string entryRestrictionMessage = GetMapTransferEntryRestrictionMessage(targetMapId);
+            if (!string.IsNullOrWhiteSpace(entryRestrictionMessage))
+            {
+                ShowFieldRestrictionMessage(entryRestrictionMessage);
                 return;
             }
 
@@ -1961,6 +1989,63 @@ namespace HaCreator.MapSimulator
             }
 
             return null;
+        }
+
+        private string GetMapTransferEntryRestrictionMessage(int targetMapId)
+        {
+            return GetMapTransferEntryRestrictionMessage(
+                targetMapId,
+                ResolveMapTransferDestinationMapInfo(targetMapId));
+        }
+
+        private string GetMapTransferEntryRestrictionMessage(
+            int targetMapId,
+            MapleLib.WzLib.WzStructure.MapInfo targetMapInfo)
+        {
+            if (targetMapId <= 0 || targetMapId == MapConstants.MaxMap)
+            {
+                return null;
+            }
+
+            return FieldInteractionRestrictionEvaluator.GetMapTransferEntryRestrictionMessage(
+                targetMapInfo,
+                BuildFieldEntryRestrictionContext());
+        }
+
+        private MapTransferUI.DestinationEntry CreateMapTransferDestinationEntry(
+            int mapId,
+            string displayName,
+            string detailText,
+            string targetPortalName = null,
+            int savedSlotIndex = -1,
+            bool canDelete = false,
+            string restrictionMessage = null)
+        {
+            return new MapTransferUI.DestinationEntry
+            {
+                MapId = mapId,
+                DisplayName = displayName,
+                DetailText = BuildMapTransferDestinationDetailText(detailText, restrictionMessage),
+                RestrictionMessage = restrictionMessage,
+                TargetPortalName = targetPortalName,
+                SavedSlotIndex = savedSlotIndex,
+                CanDelete = canDelete
+            };
+        }
+
+        private static string BuildMapTransferDestinationDetailText(string detailText, string restrictionMessage)
+        {
+            if (string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                return detailText ?? string.Empty;
+            }
+
+            if (string.IsNullOrWhiteSpace(detailText))
+            {
+                return $"Blocked: {restrictionMessage}";
+            }
+
+            return $"{detailText}    Blocked: {restrictionMessage}";
         }
 
 
@@ -2270,6 +2355,7 @@ namespace HaCreator.MapSimulator
                 memoMailboxWindow.InventoryDropRequested = HandleMemoDraftAttachmentInventoryDrop;
                 memoMailboxWindow.InventoryPickRequested = HandleMemoDraftAttachmentInventoryPick;
                 memoMailboxWindow.OnImeCandidateSelected = TrySelectMemoMailboxImeCandidate;
+                memoMailboxWindow.ResolveImeWindowHandle = () => Window?.Handle ?? IntPtr.Zero;
                 memoMailboxWindow.SetFont(_fontChat);
             }
 
@@ -3191,6 +3277,8 @@ namespace HaCreator.MapSimulator
 
             _messengerRuntime.UpdateLocalContext(playerName, locationSummary, 1);
             _messengerRuntime.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
+            _messengerRuntime.IsBlacklistedName = name => _socialListRuntime.IsBlacklisted(name);
+            _messengerRuntime.IncomingInvitePromptChanged = HandleMessengerIncomingInvitePromptChanged;
 
 
 
@@ -3380,6 +3468,7 @@ namespace HaCreator.MapSimulator
                 keyConfigWindow.SetBindingSource(() => _playerManager?.Input);
                 keyConfigWindow.SetCommitHandler(SavePacketOwnedFuncKeyConfigFromLiveInput);
                 keyConfigWindow.SetClientOwnerStateProvider(ResolvePacketOwnedKeyConfigClientOwnerState);
+                keyConfigWindow.SetShortcutVisualStateProvider(ResolvePacketOwnedKeyConfigShortcutVisualState);
             }
 
             uiWindowManager.SyncKeyBindingsFromPlayerInput(_playerManager?.Input);
@@ -3636,26 +3725,13 @@ namespace HaCreator.MapSimulator
             CharacterBuild resolvedBuild = actor?.Build ?? inspectionTarget.Build;
             int resolvedCharacterId = actor?.CharacterId ?? inspectionTarget.CharacterId;
             string resolvedName = !string.IsNullOrWhiteSpace(actor?.Name) ? actor.Name : inspectionTarget.Name;
-            string locationSummary = inspectionTarget.LocationSummary;
-            int channel = inspectionTarget.Channel;
-
-            if (_socialListRuntime.TryFindTrackedEntry(resolvedName, out SocialTrackedEntrySnapshot trackedEntry) && trackedEntry.IsOnline)
-            {
-                if (!string.IsNullOrWhiteSpace(trackedEntry.LocationSummary))
-                {
-                    locationSummary = trackedEntry.LocationSummary.Trim();
-                }
-
-                if (trackedEntry.Channel > 0)
-                {
-                    channel = trackedEntry.Channel;
-                }
-            }
-            else if (actor?.IsVisibleInWorld == true)
-            {
-                locationSummary = GetCurrentMapTransferDisplayName();
-                channel = Math.Max(1, _simulatorChannelIndex + 1);
-            }
+            TryResolveCharacterInfoPresence(
+                resolvedName,
+                actor,
+                inspectionTarget.LocationSummary,
+                inspectionTarget.Channel,
+                out string locationSummary,
+                out int channel);
 
             return new UserInfoUI.UserInfoInspectionTarget
             {
@@ -3911,32 +3987,21 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (_socialListRuntime.TryFindTrackedEntry(context.CharacterName, out SocialTrackedEntrySnapshot trackedEntry))
-            {
-                if (trackedEntry.IsOnline)
-                {
-                    if (!string.IsNullOrWhiteSpace(trackedEntry.LocationSummary))
-                    {
-                        locationSummary = trackedEntry.LocationSummary.Trim();
-                    }
-
-                    channel = trackedEntry.Channel > 0
-                        ? trackedEntry.Channel
-                        : Math.Max(channel, 1);
-                    return true;
-                }
-            }
-
             bool foundActor = (context.CharacterId > 0 && _remoteUserPool.TryGetActor(context.CharacterId, out RemoteUserActor actor))
                 || _remoteUserPool.TryGetActorByName(context.CharacterName, out actor);
-            if (foundActor && actor != null && actor.IsVisibleInWorld)
+
+            if (TryResolveCharacterInfoPresence(
+                    context.CharacterName,
+                    foundActor ? actor : null,
+                    locationSummary,
+                    channel,
+                    out locationSummary,
+                    out channel))
             {
-                locationSummary = GetCurrentMapTransferDisplayName();
-                channel = Math.Max(1, _simulatorChannelIndex + 1);
                 return true;
             }
 
-            unavailableMessage = $"{context.CharacterName} is not discoverable as online from shared-field or social-roster seams, so this request remains a local preview only.";
+            unavailableMessage = $"{context.CharacterName} is not discoverable as online from shared-field, social-roster, messenger, or family seams, so this request remains a local preview only.";
             return false;
         }
 
@@ -4105,25 +4170,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            string locationSummary = "Location unknown";
-            int channel = 0;
-            if (_socialListRuntime.TryFindTrackedEntry(actor.Name, out SocialTrackedEntrySnapshot trackedEntry))
-            {
-                if (!string.IsNullOrWhiteSpace(trackedEntry.LocationSummary))
-                {
-                    locationSummary = trackedEntry.LocationSummary;
-                }
-
-                if (trackedEntry.Channel > 0)
-                {
-                    channel = trackedEntry.Channel;
-                }
-            }
-            else if (actor.IsVisibleInWorld)
-            {
-                locationSummary = GetCurrentMapTransferDisplayName();
-                channel = Math.Max(1, _simulatorChannelIndex + 1);
-            }
+            TryResolveCharacterInfoPresence(
+                actor.Name,
+                actor,
+                "Location unknown",
+                0,
+                out string locationSummary,
+                out int channel);
 
             ShowCharacterInfoWindow(
                 inspectionTarget: new UserInfoUI.UserInfoInspectionTarget
@@ -4135,6 +4188,160 @@ namespace HaCreator.MapSimulator
                     Channel = channel,
                     IsLiveRemoteTarget = actor.IsVisibleInWorld
                 });
+            return true;
+        }
+
+        private bool TryResolveCharacterInfoPresence(
+            string characterName,
+            RemoteUserActor actor,
+            string fallbackLocationSummary,
+            int fallbackChannel,
+            out string locationSummary,
+            out int channel)
+        {
+            locationSummary = string.IsNullOrWhiteSpace(fallbackLocationSummary)
+                ? "Location unknown"
+                : fallbackLocationSummary.Trim();
+            channel = Math.Max(0, fallbackChannel);
+
+            if (_socialListRuntime.TryFindTrackedEntry(characterName, out SocialTrackedEntrySnapshot trackedEntry) && trackedEntry.IsOnline)
+            {
+                if (!string.IsNullOrWhiteSpace(trackedEntry.LocationSummary))
+                {
+                    locationSummary = trackedEntry.LocationSummary.Trim();
+                }
+
+                channel = trackedEntry.Channel > 0
+                    ? trackedEntry.Channel
+                    : Math.Max(channel, 1);
+                return true;
+            }
+
+            if (TryResolveCharacterInfoPresenceFromFallbackSnapshots(
+                    characterName,
+                    _messengerRuntime.GetRemoteParticipantSnapshots(),
+                    _familyChartRuntime.BuildTrackedMembersSnapshot(),
+                    _familyChartRuntime.TrackedMembersCount,
+                    out string fallbackLocation,
+                    out int fallbackResolvedChannel))
+            {
+                locationSummary = fallbackLocation;
+                channel = fallbackResolvedChannel > 0
+                    ? fallbackResolvedChannel
+                    : Math.Max(channel, 1);
+                return true;
+            }
+
+            if (actor?.IsVisibleInWorld == true)
+            {
+                locationSummary = GetCurrentMapTransferDisplayName();
+                channel = Math.Max(1, _simulatorChannelIndex + 1);
+                return true;
+            }
+
+            return false;
+        }
+
+        internal static bool TryResolveCharacterInfoPresenceFromFallbackSnapshots(
+            string characterName,
+            IReadOnlyList<MessengerRemoteParticipantSnapshot> messengerSnapshots,
+            IReadOnlyList<FamilyTrackedMemberSnapshot> familySnapshots,
+            int familySnapshotCount,
+            out string locationSummary,
+            out int channel)
+        {
+            locationSummary = null;
+            channel = 0;
+            if (string.IsNullOrWhiteSpace(characterName))
+            {
+                return false;
+            }
+
+            string resolvedCharacterName = characterName.Trim();
+            if (messengerSnapshots != null)
+            {
+                for (int i = 0; i < messengerSnapshots.Count; i++)
+                {
+                    MessengerRemoteParticipantSnapshot snapshot = messengerSnapshots[i];
+                    if (!snapshot.IsOnline
+                        || !string.Equals(snapshot.Name, resolvedCharacterName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    locationSummary = string.IsNullOrWhiteSpace(snapshot.LocationSummary)
+                        ? "Location unknown"
+                        : snapshot.LocationSummary.Trim();
+                    channel = Math.Max(1, snapshot.Channel);
+                    return true;
+                }
+            }
+
+            if (familySnapshots == null || familySnapshotCount <= 0)
+            {
+                return false;
+            }
+
+            int availableFamilySnapshots = Math.Min(familySnapshotCount, familySnapshots.Count);
+            for (int i = 0; i < availableFamilySnapshots; i++)
+            {
+                FamilyTrackedMemberSnapshot snapshot = familySnapshots[i];
+                if (snapshot == null
+                    || snapshot.IsLocalPlayer
+                    || !snapshot.IsOnline
+                    || !string.Equals(snapshot.Name, resolvedCharacterName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!TryParseCharacterInfoTrackedLocationSummary(snapshot.LocationSummary, out locationSummary, out channel))
+                {
+                    locationSummary = string.IsNullOrWhiteSpace(snapshot.LocationSummary)
+                        ? "Location unknown"
+                        : snapshot.LocationSummary.Trim();
+                    channel = 0;
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        internal static bool TryParseCharacterInfoTrackedLocationSummary(
+            string trackedLocationSummary,
+            out string locationSummary,
+            out int channel)
+        {
+            locationSummary = string.IsNullOrWhiteSpace(trackedLocationSummary)
+                ? "Location unknown"
+                : trackedLocationSummary.Trim();
+            channel = 0;
+
+            if (string.IsNullOrWhiteSpace(trackedLocationSummary))
+            {
+                return false;
+            }
+
+            string trimmed = trackedLocationSummary.Trim();
+            int channelSeparatorIndex = trimmed.LastIndexOf(" CH ", StringComparison.OrdinalIgnoreCase);
+            if (channelSeparatorIndex < 0)
+            {
+                return false;
+            }
+
+            string parsedLocation = trimmed[..channelSeparatorIndex].TrimEnd();
+            string parsedChannel = trimmed[(channelSeparatorIndex + 4)..].Trim();
+            if (!int.TryParse(parsedChannel, NumberStyles.Integer, CultureInfo.InvariantCulture, out int resolvedChannel)
+                || resolvedChannel <= 0)
+            {
+                return false;
+            }
+
+            locationSummary = string.IsNullOrWhiteSpace(parsedLocation)
+                ? "Location unknown"
+                : parsedLocation;
+            channel = resolvedChannel;
             return true;
         }
 
@@ -5023,6 +5230,7 @@ namespace HaCreator.MapSimulator
 
 
             RefreshRepairDurabilityWindow(npcTemplateId);
+            PublishDynamicObjectTagStatesForNpc(npcTemplateId, currTickCount);
             ShowWindow(MapSimulatorWindowNames.RepairDurability, repairWindow, trackDirectionModeOwner);
             return true;
         }
@@ -5624,16 +5832,16 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!RepairDurabilityClientParity.TryDecodeSyntheticResultPayload(payload, out bool success, out int? reasonCode, out string error))
+            if (!RepairDurabilityClientParity.TryDecodeSyntheticResultPayload(payload, out RepairDurabilityClientParity.ResultPayload result, out string error))
             {
                 message = error;
                 return false;
             }
 
             _pendingRepairDurabilityRequest = null;
-            message = success
+            message = result.Success
                 ? ApplyPendingRepairDurabilitySuccess(request)
-                : ApplyPendingRepairDurabilityFailure(request, reasonCode);
+                : ApplyPendingRepairDurabilityFailure(request, result.ReasonCode);
             return true;
         }
 
@@ -18440,9 +18648,7 @@ namespace HaCreator.MapSimulator
             _activeNpcInteractionNpcId = int.TryParse(npc.NpcInstance?.NpcInfo?.ID, out int npcId) ? npcId : 0;
 
 
-            PublishDynamicObjectTagStatesForScriptNames(
-                FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames(npc.NpcInstance),
-                currTickCount);
+            PublishDynamicObjectTagStatesForNpc(_activeNpcInteractionNpcId, currTickCount, npc);
             _npcInteractionOverlay.Open(_questRuntime.BuildInteractionState(npc, _playerManager?.Player?.Build, preferredQuestId));
         }
 
@@ -22838,6 +23044,12 @@ namespace HaCreator.MapSimulator
                     SocialRoomKind.MiniRoom,
                     occupant);
                 TryAssignTrackedUserPosition(state, participantName);
+                TryAssignSocialRoomTrackedUserPosition(
+                    state,
+                    SocialRoomKind.MiniRoom,
+                    runtime,
+                    occupant,
+                    player);
 
             }
 
@@ -22898,6 +23110,13 @@ namespace HaCreator.MapSimulator
                 state.IsTrader = true;
                 ApplyMinimapSocialRoomOccupantTooltip(state, kind, occupant);
                 TryAssignTrackedUserPosition(state, occupant.Name);
+                TryAssignSocialRoomTrackedUserPosition(
+                    state,
+                    kind,
+                    runtime,
+                    occupant,
+                    player,
+                    fieldActorSnapshot);
             }
         }
 
@@ -23001,6 +23220,195 @@ namespace HaCreator.MapSimulator
 
             }
 
+        }
+
+        private void TryAssignSocialRoomTrackedUserPosition(
+            MinimapTrackedUserState state,
+            SocialRoomKind kind,
+            SocialRoomRuntime runtime,
+            SocialRoomOccupant occupant,
+            PlayerCharacter player,
+            SocialRoomFieldActorSnapshot fieldActorSnapshot = null)
+        {
+            if (state == null
+                || state.HasPosition
+                || runtime == null
+                || occupant == null
+                || player == null)
+            {
+                return;
+            }
+
+            if (!TryResolveSocialRoomTrackedUserPosition(kind, runtime, occupant, player, fieldActorSnapshot, out Vector2 position))
+            {
+                return;
+            }
+
+            state.HasPosition = true;
+            state.Position = position;
+        }
+
+        private static bool TryResolveSocialRoomTrackedUserPosition(
+            SocialRoomKind kind,
+            SocialRoomRuntime runtime,
+            SocialRoomOccupant occupant,
+            PlayerCharacter player,
+            SocialRoomFieldActorSnapshot fieldActorSnapshot,
+            out Vector2 position)
+        {
+            position = Vector2.Zero;
+            if (runtime == null || occupant == null || player == null)
+            {
+                return false;
+            }
+
+            Vector2 anchor = ResolveSocialRoomTrackedUserAnchorPosition(player, fieldActorSnapshot);
+            Vector2 offset = kind switch
+            {
+                SocialRoomKind.MiniRoom => ResolveMiniRoomTrackedUserOffset(runtime, occupant),
+                SocialRoomKind.PersonalShop => ResolveTraderTrackedUserOffset(runtime, occupant, hasDedicatedFieldActorMarker: fieldActorSnapshot != null),
+                SocialRoomKind.EntrustedShop => ResolveTraderTrackedUserOffset(runtime, occupant, hasDedicatedFieldActorMarker: fieldActorSnapshot != null),
+                _ => Vector2.Zero
+            };
+
+            if (offset == Vector2.Zero
+                && kind is not SocialRoomKind.MiniRoom
+                && fieldActorSnapshot == null
+                && occupant.Role is SocialRoomOccupantRole.Owner or SocialRoomOccupantRole.Merchant)
+            {
+                return false;
+            }
+
+            position = anchor + offset;
+            return true;
+        }
+
+        private static Vector2 ResolveSocialRoomTrackedUserAnchorPosition(
+            PlayerCharacter player,
+            SocialRoomFieldActorSnapshot fieldActorSnapshot)
+        {
+            if (player == null)
+            {
+                return Vector2.Zero;
+            }
+
+            if (fieldActorSnapshot == null)
+            {
+                return player.Position;
+            }
+
+            if (fieldActorSnapshot.HasWorldPosition && !fieldActorSnapshot.UseOwnerAnchor)
+            {
+                return new Vector2(fieldActorSnapshot.WorldX, fieldActorSnapshot.WorldY);
+            }
+
+            int horizontalOffset = player.FacingRight ? fieldActorSnapshot.AnchorOffsetX : -fieldActorSnapshot.AnchorOffsetX;
+            return new Vector2(
+                (float)Math.Round(player.Position.X) + horizontalOffset,
+                (float)Math.Round(player.Position.Y) + fieldActorSnapshot.AnchorOffsetY);
+        }
+
+        private static Vector2 ResolveMiniRoomTrackedUserOffset(SocialRoomRuntime runtime, SocialRoomOccupant occupant)
+        {
+            int visitorOrdinal = GetSocialRoomOccupantRoleOrdinal(runtime, occupant, SocialRoomOccupantRole.Visitor);
+            int guestOrdinal = GetSocialRoomOccupantRoleOrdinal(runtime, occupant, SocialRoomOccupantRole.Guest);
+            return occupant.Role switch
+            {
+                SocialRoomOccupantRole.Owner => new Vector2(-90f, -18f),
+                SocialRoomOccupantRole.Guest => new Vector2(90f + (guestOrdinal * 22f), -18f),
+                SocialRoomOccupantRole.Visitor => ResolveAlternatingVisitorOffset(visitorOrdinal, verticalBias: 30f),
+                _ => ResolveDeterministicOccupantOffset(occupant.Name, radiusX: 72f, radiusY: 28f, verticalBias: 14f)
+            };
+        }
+
+        private static Vector2 ResolveTraderTrackedUserOffset(
+            SocialRoomRuntime runtime,
+            SocialRoomOccupant occupant,
+            bool hasDedicatedFieldActorMarker)
+        {
+            int buyerOrdinal = GetSocialRoomOccupantRoleOrdinal(runtime, occupant, SocialRoomOccupantRole.Buyer);
+            int visitorOrdinal = GetSocialRoomOccupantRoleOrdinal(runtime, occupant, SocialRoomOccupantRole.Visitor);
+            return occupant.Role switch
+            {
+                SocialRoomOccupantRole.Owner when !hasDedicatedFieldActorMarker => new Vector2(-30f, -8f),
+                SocialRoomOccupantRole.Merchant when !hasDedicatedFieldActorMarker => new Vector2(30f, -8f),
+                SocialRoomOccupantRole.Buyer => new Vector2(60f + (buyerOrdinal * 20f), -14f),
+                SocialRoomOccupantRole.Visitor => ResolveAlternatingVisitorOffset(visitorOrdinal, verticalBias: 18f),
+                _ => ResolveDeterministicOccupantOffset(occupant.Name, radiusX: 62f, radiusY: 22f, verticalBias: 12f)
+            };
+        }
+
+        private static Vector2 ResolveAlternatingVisitorOffset(int ordinal, float verticalBias)
+        {
+            int clampedOrdinal = Math.Max(0, ordinal);
+            int side = (clampedOrdinal % 2 == 0) ? -1 : 1;
+            int spreadStep = clampedOrdinal / 2;
+            return new Vector2(
+                side * (46f + (spreadStep * 24f)),
+                verticalBias + ((clampedOrdinal % 3) * 6f));
+        }
+
+        private static Vector2 ResolveDeterministicOccupantOffset(
+            string occupantName,
+            float radiusX,
+            float radiusY,
+            float verticalBias)
+        {
+            int hash = ComputeStableMinimapNameHash(occupantName);
+            float angle = MathHelper.ToRadians(-40f + (hash % 7) * 18f);
+            return new Vector2(
+                (float)Math.Cos(angle) * radiusX,
+                verticalBias + ((float)Math.Sin(angle) * radiusY));
+        }
+
+        private static int GetSocialRoomOccupantRoleOrdinal(
+            SocialRoomRuntime runtime,
+            SocialRoomOccupant occupant,
+            SocialRoomOccupantRole role)
+        {
+            if (runtime?.Occupants == null || occupant == null)
+            {
+                return 0;
+            }
+
+            int ordinal = 0;
+            foreach (SocialRoomOccupant candidate in runtime.Occupants)
+            {
+                if (candidate == null || candidate.Role != role)
+                {
+                    continue;
+                }
+
+                if (ReferenceEquals(candidate, occupant)
+                    || string.Equals(candidate.Name, occupant.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return ordinal;
+                }
+
+                ordinal++;
+            }
+
+            return ordinal;
+        }
+
+        private static int ComputeStableMinimapNameHash(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return 0;
+            }
+
+            unchecked
+            {
+                int hash = 17;
+                string normalized = value.Trim();
+                for (int i = 0; i < normalized.Length; i++)
+                {
+                    hash = (hash * 31) + normalized[i];
+                }
+
+                return Math.Abs(hash);
+            }
         }
 
 
@@ -25253,7 +25661,7 @@ namespace HaCreator.MapSimulator
                     return;
                 }
 
-                if (carnivalField.TryApplyGuardianReactorHit(slotIndex, destroyPlacement: false, Environment.TickCount, out _))
+                if (carnivalField.TryApplyGuardianReactorHit(slotIndex, hitCount: 1, requiredHits: 1, destroyPlacement: false, tickCount: Environment.TickCount, out _))
                 {
                     _chat?.AddMessage(carnivalField.CurrentStatusMessage, new Color(255, 228, 151), Environment.TickCount);
                 }
@@ -25279,7 +25687,7 @@ namespace HaCreator.MapSimulator
 
                 MonsterCarnivalField carnivalField = _specialFieldRuntime?.Minigames?.MonsterCarnival;
                 if (carnivalField?.IsVisible == true
-                    && carnivalField.TryApplyGuardianReactorHit(slotIndex, destroyPlacement: true, Environment.TickCount, out _))
+                    && carnivalField.TryApplyGuardianReactorHit(slotIndex, hitCount: 1, requiredHits: 1, destroyPlacement: true, tickCount: Environment.TickCount, out _))
                 {
                     _chat?.AddMessage(carnivalField.CurrentStatusMessage, new Color(255, 228, 151), Environment.TickCount);
                 }
@@ -25694,6 +26102,20 @@ namespace HaCreator.MapSimulator
                 QuestRuntimeManager.ParseScriptNames(portal.script),
                 currentTickCount);
 
+        }
+
+        private bool PublishDynamicObjectTagStatesForNpc(int npcTemplateId, int currentTickCount, NpcItem preferredNpc = null)
+        {
+            if (npcTemplateId <= 0 && preferredNpc == null)
+            {
+                return false;
+            }
+
+            NpcItem npc = preferredNpc ?? FindNpcById(npcTemplateId);
+            IReadOnlyList<string> publishedScriptNames = npc != null
+                ? FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames(npc.NpcInstance)
+                : FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames(npcTemplateId);
+            return PublishDynamicObjectTagStatesForScriptNames(publishedScriptNames, currentTickCount);
         }
 
 
@@ -27462,6 +27884,7 @@ namespace HaCreator.MapSimulator
         private void HandlePlayerSkillCast(SkillCastInfo castInfo)
 
         {
+            TryRegisterAnimationDisplayerSkillUse(castInfo);
 
             _fieldRuleRuntime?.RegisterSuccessfulSkillUse(castInfo?.SkillData);
 
@@ -28433,13 +28856,34 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-
-            if (!_playerManager.Player.TryActivatePortableChair(chair))
+            if (TryGetPortableChairCooldownMessage(itemId, out string cooldownMessage))
             {
-                message = "Portable chairs can only be activated while standing on a foothold.";
+                message = cooldownMessage;
                 return false;
             }
 
+            string activationRestrictionMessage = _playerManager.Player.GetPortableChairActivationRestrictionMessage(chair);
+            if (!string.IsNullOrWhiteSpace(activationRestrictionMessage))
+            {
+                message = activationRestrictionMessage;
+                return false;
+            }
+
+            if (!TryConsumePortableChairAuthoredRequirement(itemId, out string requirementMessage))
+            {
+                message = requirementMessage;
+                return false;
+            }
+
+            if (!_playerManager.Player.TryActivatePortableChair(chair))
+            {
+                message = string.IsNullOrWhiteSpace(activationRestrictionMessage)
+                    ? "Portable chairs can only be activated while standing on a foothold."
+                    : activationRestrictionMessage;
+                return false;
+            }
+
+            RegisterPortableChairCooldown(itemId);
             if (!chair.IsCoupleChair)
             {
                 _remoteUserPool?.ClearLocalPortableChairPairPreference();
@@ -28451,6 +28895,105 @@ namespace HaCreator.MapSimulator
                 : string.Empty;
             message = $"Activated chair {chair.Name} ({itemId}).{ridingChairNote}";
             return true;
+        }
+
+        private bool TryGetPortableChairCooldownMessage(int itemId, out string message)
+        {
+            message = null;
+
+            int cooldownSeconds = InventoryItemMetadataResolver.ResolveItemCooldownSeconds(itemId);
+            if (cooldownSeconds <= 0
+                || !_portableChairCooldowns.TryGetValue(itemId, out int nextAvailableAt))
+            {
+                return false;
+            }
+
+            int remainingMs = nextAvailableAt - currTickCount;
+            if (remainingMs <= 0)
+            {
+                _portableChairCooldowns.Remove(itemId);
+                return false;
+            }
+
+            int remainingSeconds = Math.Max(1, (int)Math.Ceiling(remainingMs / 1000d));
+            string chairLabel = ResolvePickupItemName(itemId);
+            message = string.IsNullOrWhiteSpace(chairLabel)
+                ? $"That chair is on cooldown for {remainingSeconds.ToString(CultureInfo.InvariantCulture)} seconds."
+                : $"{chairLabel} is on cooldown for {remainingSeconds.ToString(CultureInfo.InvariantCulture)} seconds.";
+            return true;
+        }
+
+        private void RegisterPortableChairCooldown(int itemId)
+        {
+            int cooldownSeconds = InventoryItemMetadataResolver.ResolveItemCooldownSeconds(itemId);
+            if (cooldownSeconds <= 0)
+            {
+                _portableChairCooldowns.Remove(itemId);
+                return;
+            }
+
+            _portableChairCooldowns[itemId] = currTickCount + (cooldownSeconds * 1000);
+        }
+
+        private bool TryConsumePortableChairAuthoredRequirement(int chairItemId, out string message)
+        {
+            message = null;
+
+            IReadOnlyList<ConsumeItemRequirementMetadata> requirements =
+                InventoryItemMetadataResolver.ResolveConsumeItemRequirements(chairItemId);
+            if (requirements.Count == 0)
+            {
+                return true;
+            }
+
+            if (uiWindowManager?.InventoryWindow is not UI.IInventoryRuntime inventoryWindow)
+            {
+                message = "Inventory runtime is not available.";
+                return false;
+            }
+
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                ConsumeItemRequirementMetadata requirement = requirements[i];
+                InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(requirement.ItemId);
+                if (inventoryType == InventoryType.NONE)
+                {
+                    continue;
+                }
+
+                if (inventoryWindow.GetItemCount(inventoryType, requirement.ItemId) < requirement.Count)
+                {
+                    continue;
+                }
+
+                if (!inventoryWindow.TryConsumeItem(inventoryType, requirement.ItemId, requirement.Count))
+                {
+                    continue;
+                }
+
+                return true;
+            }
+
+            List<string> requirementLabels = new();
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                ConsumeItemRequirementMetadata requirement = requirements[i];
+                string itemLabel = ResolvePickupItemName(requirement.ItemId);
+                if (string.IsNullOrWhiteSpace(itemLabel))
+                {
+                    itemLabel = requirement.ItemId.ToString(CultureInfo.InvariantCulture);
+                }
+
+                requirementLabels.Add(requirement.Count > 1
+                    ? $"{itemLabel} x{requirement.Count.ToString(CultureInfo.InvariantCulture)}"
+                    : itemLabel);
+            }
+
+            string requirementText = requirementLabels.Count > 0
+                ? string.Join(", ", requirementLabels)
+                : "the authored consume-item requirement";
+            message = $"That chair requires one of the following items before it can be used: {requirementText}.";
+            return false;
         }
 
 
@@ -32637,7 +33180,7 @@ namespace HaCreator.MapSimulator
 
         internal static bool ShouldTriggerPetSpecialistFeedbackForClientChatLogType(int chatLogType)
         {
-            return chatLogType is 2 or 3 or 4 or 5 or 6 or 14 or 16 or 26;
+            return chatLogType is 2 or 3 or 4 or 5 or 6 or 14 or 16 or 19 or 26;
         }
 
 

@@ -424,7 +424,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            status = $"Injected transport field-init opcode {TransportationFieldInitRequestCodec.OutboundFieldInitOpcode} for field {fieldId} shipKind {shipKind} into live session {_activePair?.RemoteEndpoint ?? "unknown-remote"}.";
+            status = $"Injected {TransportationFieldInitRequestCodec.DescribeFieldInitRequest(fieldId, shipKind)} into live session {_activePair?.RemoteEndpoint ?? "unknown-remote"}.";
             LastStatus = status;
             return true;
         }
@@ -443,7 +443,7 @@ namespace HaCreator.MapSimulator.Managers
             QueuedCount++;
             LastQueuedOpcode = TransportationFieldInitRequestCodec.OutboundFieldInitOpcode;
             LastQueuedRawPacket = rawPacket;
-            status = $"Queued transport field-init opcode {TransportationFieldInitRequestCodec.OutboundFieldInitOpcode} for field {fieldId} shipKind {shipKind} for deferred live-session injection.";
+            status = $"Queued {TransportationFieldInitRequestCodec.DescribeFieldInitRequest(fieldId, shipKind)} for deferred live-session injection.";
             LastStatus = status;
             return true;
         }

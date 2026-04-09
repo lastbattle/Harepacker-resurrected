@@ -71,8 +71,6 @@ namespace HaCreator.MapSimulator.Interaction
         public int EmployeeWorldY { get; set; }
         public bool EmployeeHasWorldPosition { get; set; }
         public bool? EmployeeFlip { get; set; }
-        public bool EmployeeHasPacketData { get; set; }
-        public int EmployeePreferredEmployerId { get; set; }
         public List<SocialRoomEmployeePoolEntrySnapshot> EmployeePoolEntries { get; set; } = new();
         public List<SocialRoomOccupantSnapshot> Occupants { get; set; } = new();
         public List<SocialRoomItemSnapshot> Items { get; set; } = new();
