@@ -21,6 +21,15 @@ namespace HaCreator.MapSimulator.Interaction
             InventoryType.CASH
         };
 
+        private static readonly ulong[] CharacterDataInventorySectionFlags =
+        {
+            0x4UL,
+            0x8UL,
+            0x10UL,
+            0x20UL,
+            0x40UL
+        };
+
         private int _boundMapId = int.MinValue;
         private string _stageStatus = "Packet-owned stage transition idle.";
         private string _mapLoadStatus = "Packet-owned map-load presentation idle.";
@@ -949,9 +958,9 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 snapshot = DecodeCharacterDataOwnedPreludeSections(reader, characterDataFlags, snapshot);
-                if (TryDecodeCharacterDataAvatarLook(reader, characterDataFlags, snapshot, out PacketCharacterDataSnapshot avatarDecoratedSnapshot))
+                if (TryDecodeCharacterDataInventorySections(reader, characterDataFlags, snapshot, out PacketCharacterDataSnapshot inventoryDecoratedSnapshot))
                 {
-                    snapshot = avatarDecoratedSnapshot;
+                    snapshot = inventoryDecoratedSnapshot;
                 }
 
                 head = new PacketCharacterDataTransferHead(snapshot.FieldId, snapshot.PortalIndex, snapshot.Hp);
@@ -1010,26 +1019,59 @@ namespace HaCreator.MapSimulator.Interaction
             return slotLimits;
         }
 
-        private static bool TryDecodeCharacterDataAvatarLook(
+        private static bool TryDecodeCharacterDataInventorySections(
             BinaryReader reader,
             ulong characterDataFlags,
             PacketCharacterDataSnapshot snapshot,
             out PacketCharacterDataSnapshot decoratedSnapshot)
         {
             decoratedSnapshot = snapshot;
-            if ((characterDataFlags & 0x4UL) == 0)
-            {
-                return false;
-            }
-
             long startPosition = reader.BaseStream.Position;
             try
             {
-                if ((characterDataFlags & 0x80UL) != 0)
+                for (int inventoryIndex = 0; inventoryIndex < CharacterDataInventoryOrder.Length; inventoryIndex++)
                 {
-                    _ = reader.ReadByte(); // equip inventory slot count
+                    if ((characterDataFlags & CharacterDataInventorySectionFlags[inventoryIndex]) == 0)
+                    {
+                        continue;
+                    }
+
+                    if (inventoryIndex == 0)
+                    {
+                        if (!TryDecodeCharacterDataEquipInventory(reader, decoratedSnapshot, out PacketCharacterDataSnapshot equipDecoratedSnapshot))
+                        {
+                            return false;
+                        }
+
+                        decoratedSnapshot = equipDecoratedSnapshot;
+                        continue;
+                    }
+
+                    if (!TrySkipCharacterDataInventoryEntries(reader))
+                    {
+                        return false;
+                    }
                 }
 
+                return true;
+            }
+            catch (Exception) when (reader.BaseStream.CanSeek)
+            {
+                reader.BaseStream.Position = startPosition;
+                decoratedSnapshot = snapshot;
+                return false;
+            }
+        }
+
+        private static bool TryDecodeCharacterDataEquipInventory(
+            BinaryReader reader,
+            PacketCharacterDataSnapshot snapshot,
+            out PacketCharacterDataSnapshot decoratedSnapshot)
+        {
+            decoratedSnapshot = snapshot;
+            long startPosition = reader.BaseStream.Position;
+            try
+            {
                 Dictionary<byte, int> equipped = new();
                 Dictionary<byte, int> cashEquipped = new();
                 while (true)
@@ -1120,6 +1162,32 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 reader.BaseStream.Position = startPosition;
                 decoratedSnapshot = snapshot;
+                return false;
+            }
+        }
+
+        private static bool TrySkipCharacterDataInventoryEntries(BinaryReader reader)
+        {
+            long startPosition = reader.BaseStream.Position;
+            try
+            {
+                while (true)
+                {
+                    short position = reader.ReadInt16();
+                    if (position == 0)
+                    {
+                        return true;
+                    }
+
+                    if (!TryDecodeCharacterDataItemSlot(reader, out _))
+                    {
+                        return false;
+                    }
+                }
+            }
+            catch (Exception) when (reader.BaseStream.CanSeek)
+            {
+                reader.BaseStream.Position = startPosition;
                 return false;
             }
         }

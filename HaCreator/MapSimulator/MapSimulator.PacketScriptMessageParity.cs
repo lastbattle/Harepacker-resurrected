@@ -23,16 +23,24 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyPacketOwnedScriptMessagePacket(byte[] payload, out string message)
         {
+            string clientOwnerStatus = null;
             if (!_packetScriptMessageRuntime.TryDecode(
                 payload,
                 FindNpcById,
                 _activeNpcInteractionNpc,
                 ResolvePacketScriptSelectablePet,
-                _ => { },
+                sync => clientOwnerStatus = SyncPacketScriptClientOwnerRuntime(sync),
                 out PacketScriptMessageRuntime.PacketScriptMessageOpenRequest request,
                 out message))
             {
                 return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(clientOwnerStatus))
+            {
+                message = string.IsNullOrWhiteSpace(message)
+                    ? clientOwnerStatus
+                    : $"{message} {clientOwnerStatus}";
             }
 
             string dispatchStatus = OpenPacketOwnedScriptInteraction(request);

@@ -313,6 +313,39 @@ namespace HaCreator.MapSimulator.Pools
             return Math.Clamp(absorbShieldRate, 0, 100);
         }
 
+        public static int ResolveDerivedProjectedOutgoingDamageRate(
+            SkillData skill,
+            SkillLevelData levelData,
+            IEnumerable<SkillData> supportSkills = null)
+        {
+            if (skill == null || levelData == null || levelData.X <= 0)
+            {
+                return 0;
+            }
+
+            string combinedText = BuildCombinedSupportText(skill, supportSkills);
+            if (string.IsNullOrWhiteSpace(combinedText))
+            {
+                return 0;
+            }
+
+            bool hasOutgoingDamageText =
+                ContainsToken(
+                    combinedText,
+                    "damage done",
+                    "damage dealt",
+                    "increase damage",
+                    "increases damage",
+                    "damage +",
+                    "final damage");
+            if (!hasOutgoingDamageText)
+            {
+                return 0;
+            }
+
+            return Math.Clamp(levelData.X, 0, 100);
+        }
+
         public static RemotePlayerAffectedAreaDisposition ResolveDisposition(SkillData skill, SkillLevelData levelData = null)
         {
             return ResolveDisposition(skill, supportSkills: null, levelData);

@@ -91,7 +91,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Dictionary<int, VegaModifierProfile> VegaModifierProfileCache = new Dictionary<int, VegaModifierProfile>();
         private static readonly Dictionary<int, VegaCompatibleScrollProfile> VegaCompatibleScrollProfileCache = new Dictionary<int, VegaCompatibleScrollProfile>();
         private static readonly Dictionary<int, IReadOnlyCollection<EquipSlot>> ScrollTargetSlotCache = new Dictionary<int, IReadOnlyCollection<EquipSlot>>();
-        private static readonly Regex PercentRateRegex = new Regex(@"Success\s*rate\s*:?\s*(\d+)\s*%", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex PercentRateRegex = new Regex(@"(?:Success\s*rate\s*:?\s*(\d+)\s*%|(\d+)\s*%\s*success\s*rate)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex VegaModifierRegex = new Regex(@"enables\s+a\s+(\d+)\s*%\s+success\s+rate\s+on\s+a\s+(\d+)\s*%\s+scroll", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex ScrollTargetRegex = new Regex(@"Scroll\s+for\s+(.+?)\s+for\s", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex PercentChanceRegex = new Regex(@"(\d+)\s*%\s+chance", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -113,7 +113,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Regex JumpBonusRegex = new Regex(@"Jump(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex HandsBonusRegex = new Regex(@"(?:Diligence|Hands|Craft)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex AllStatsBonusRegex = new Regex(@"All\s+stats?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex FourStatBonusRegex = new Regex(@"STR\s*\/\s*INT\s*\/\s*DEX\s*\/\s*LUK\s*(?:\+\s*(\d+)|by\s*(\d+))", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex FourStatBonusRegex = new Regex(@"(?:STR\s*\/\s*INT\s*\/\s*DEX\s*\/\s*LUK|STR\s*,\s*DEX\s*,\s*INT\s*,\s*(?:and\s+)?LUK)\s*(?:\+\s*(\d+)|by\s*(\d+))", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex WeaponMagicAttackBonusRegex = new Regex(@"(?:Weapon|Physical)\s*(?:\/|&|and)\s*(?:Magic|M\.?\s*)\s*(?:ATT|Attack)\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex WeaponMagicDefenseBonusRegex = new Regex(@"(?:Weapon|Physical|PDD)\s*(?:\/|&|and)\s*(?:Magic|Magical|M\.?\s*|MDD)\s*(?:DEF|Defense)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex AccuracyAvoidabilityBonusRegex = new Regex(@"Accuracy\s*(?:\/|&|and)\s*(?:Avoidability|Aviodability|Avoid)\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -2870,9 +2870,7 @@ namespace HaCreator.MapSimulator.UI
             int success = ResolveWzInfoIntValue(info, "success");
             if (success <= 0)
             {
-                Match match = PercentRateRegex.Match(description ?? string.Empty);
-                if (match.Success &&
-                    int.TryParse(match.Groups[1].Value, out int fallbackPercent))
+                if (TryParseSuccessRateText(description, out int fallbackPercent))
                 {
                     success = fallbackPercent;
                 }
@@ -3664,6 +3662,13 @@ namespace HaCreator.MapSimulator.UI
             return MathHelper.Clamp(ResolveDestroyChanceFromDescription(description) / 100f, 0f, 1.0f);
         }
 
+        internal static float ResolveSuccessRateFromDescriptionForTesting(string description)
+        {
+            return TryParseSuccessRateText(description, out int percent)
+                ? MathHelper.Clamp(percent / 100f, 0f, 1.0f)
+                : 0f;
+        }
+
         // For Vega-marked scrolls, the authored item name is the stronger target-family signal when it disagrees with the description text.
         private static HashSet<EquipSlot> ResolveTargetSlotsFromText(string text)
         {
@@ -3826,6 +3831,27 @@ namespace HaCreator.MapSimulator.UI
         private static bool AreRatesEquivalent(float left, float right)
         {
             return Math.Abs(left - right) < 0.0001f;
+        }
+
+        private static bool TryParseSuccessRateText(string description, out int percent)
+        {
+            percent = 0;
+            Match match = PercentRateRegex.Match(description ?? string.Empty);
+            if (!match.Success)
+            {
+                return false;
+            }
+
+            foreach (Group group in match.Groups.Cast<Group>().Skip(1))
+            {
+                if (group.Success && int.TryParse(group.Value, out percent))
+                {
+                    return true;
+                }
+            }
+
+            percent = 0;
+            return false;
         }
 
         private readonly struct VegaModifierProfile

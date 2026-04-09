@@ -176,6 +176,10 @@ namespace HaCreator.MapSimulator.UI
         private bool _packetOwnedHasAuthoritativeDisassemblyTargets;
         private bool _packetOwnedHasAuthoritativeHiddenRecipeList;
         private bool _packetOwnedServerOwnsCraftExecution;
+        private string _pendingPacketOwnedRecipeKey;
+        private int _pendingPacketOwnedRecipeOutputItemId;
+        private int _pendingPacketOwnedDisassemblySlotIndex = -1;
+        private int _pendingPacketOwnedDisassemblyItemId;
         private bool _isCrafting;
         private bool _isCategorySelectorExpanded;
         private bool _isItemSelectorExpanded;
@@ -213,7 +217,7 @@ namespace HaCreator.MapSimulator.UI
                 message = "Item Maker result is unavailable.";
                 return false;
             }
-            message = PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult);
+            message = BuildPacketOwnedResultStatusMessage(packetResult);
 
             if (TryCreatePacketOwnedCraftResult(packetResult, out ItemMakerCraftResult craftResult))
             {
@@ -402,6 +406,7 @@ namespace HaCreator.MapSimulator.UI
         {
             _isCrafting = false;
             _craftingRecipeIndex = -1;
+            ClearPendingPacketOwnedRequest();
 
             if (refreshSlotState)
             {
@@ -1095,6 +1100,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (HasPendingPacketOwnedRequest)
+            {
+                _statusMessage = "Waiting for the packet-owned maker result.";
+                return;
+            }
+
             if (_inventory == null)
             {
                 _statusMessage = "Inventory runtime is unavailable.";
@@ -1158,6 +1169,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (recipe.Mode == ItemMakerRecipeMode.Disassemble)
             {
+                StagePendingPacketOwnedRequest(recipe);
                 _craftingRecipeIndex = -1;
                 RebuildVisiblePages();
                 RefreshStatusMessage("Disassembly request staged. Apply an OnMakerResult(248) payload to resolve the server-authored result.");
@@ -1166,6 +1178,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (_packetOwnedServerOwnsCraftExecution)
             {
+                StagePendingPacketOwnedRequest(recipe);
                 _craftingRecipeIndex = -1;
                 RebuildVisiblePages();
                 RefreshStatusMessage("Craft request staged. Apply an OnMakerResult(248) payload to resolve the packet-owned profession result.");
@@ -1238,6 +1251,13 @@ namespace HaCreator.MapSimulator.UI
 
         private ItemMakerRecipe ResolvePacketOwnedResultRecipe(PacketOwnedItemMakerResult packetResult)
         {
+            ItemMakerRecipe pendingCraftRecipe = ResolvePendingPacketOwnedCraftRecipe();
+            if (CanResolvePacketOwnedCraftResult(pendingCraftRecipe)
+                && IsPacketOwnedResultMatch(pendingCraftRecipe, packetResult, allowPendingFallback: true))
+            {
+                return pendingCraftRecipe;
+            }
+
             ItemMakerRecipe activeCraftRecipe = ResolveIndexedRecipe(_craftingRecipeIndex);
             if (CanResolvePacketOwnedCraftResult(activeCraftRecipe) && IsPacketOwnedResultMatch(activeCraftRecipe, packetResult))
             {
@@ -1269,7 +1289,7 @@ namespace HaCreator.MapSimulator.UI
             return null;
         }
 
-        private static bool IsPacketOwnedResultMatch(ItemMakerRecipe recipe, PacketOwnedItemMakerResult packetResult)
+        private static bool IsPacketOwnedResultMatch(ItemMakerRecipe recipe, PacketOwnedItemMakerResult packetResult, bool allowPendingFallback = false)
         {
             if (recipe == null || packetResult == null)
             {
@@ -1286,7 +1306,32 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            return recipe.RandomRewards.Any(reward => reward.ItemId == packetResult.TargetItemId);
+            if (recipe.RandomRewards.Any(reward => reward.ItemId == packetResult.TargetItemId))
+            {
+                return true;
+            }
+
+            if (packetResult.RewardItems != null)
+            {
+                for (int i = 0; i < packetResult.RewardItems.Count; i++)
+                {
+                    PacketOwnedItemMakerResultItemEntry rewardEntry = packetResult.RewardItems[i];
+                    if (rewardEntry.ItemId <= 0)
+                    {
+                        continue;
+                    }
+
+                    if (rewardEntry.ItemId == recipe.OutputItemId
+                        || recipe.RandomRewards.Any(reward => reward.ItemId == rewardEntry.ItemId))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return allowPendingFallback
+                   && packetResult.ResultCode <= 1
+                   && packetResult.ResultType is 1 or 2;
         }
 
         private static int ResolvePacketOwnedCraftedItemId(PacketOwnedItemMakerResult packetResult, ItemMakerRecipe recipe)
@@ -1299,6 +1344,11 @@ namespace HaCreator.MapSimulator.UI
             if (packetResult.GeneratedItemId > 0)
             {
                 return packetResult.GeneratedItemId;
+            }
+
+            if (TryResolvePacketOwnedRewardMatch(packetResult, recipe, out PacketOwnedItemMakerResultItemEntry rewardMatch))
+            {
+                return rewardMatch.ItemId;
             }
 
             if (recipe.RandomRewards.Length > 0)
@@ -1319,6 +1369,12 @@ namespace HaCreator.MapSimulator.UI
             if (packetResult.GeneratedItemId > 0)
             {
                 return Math.Max(1, packetResult.GeneratedItemCount);
+            }
+
+            if (TryResolvePacketOwnedRewardMatch(packetResult, recipe, out PacketOwnedItemMakerResultItemEntry rewardMatch)
+                && rewardMatch.ItemId == craftedItemId)
+            {
+                return Math.Max(1, rewardMatch.Quantity);
             }
 
             ItemMakerReward matchingRandomReward = recipe.RandomRewards.FirstOrDefault(reward => reward.ItemId == craftedItemId);
@@ -1461,6 +1517,14 @@ namespace HaCreator.MapSimulator.UI
             if (_pages.Count == 0)
             {
                 _statusMessage = "No client crafting recipes are available for this build.";
+                return;
+            }
+
+            if (HasPendingPacketOwnedRequest)
+            {
+                _statusMessage = _pendingPacketOwnedDisassemblySlotIndex >= 0
+                    ? "Waiting for packet-owned disassembly result."
+                    : "Waiting for packet-owned profession result.";
                 return;
             }
 
@@ -1667,6 +1731,112 @@ namespace HaCreator.MapSimulator.UI
             _isCategorySelectorExpanded = false;
             _isItemSelectorExpanded = false;
             RefreshStatusMessage();
+        }
+
+        private bool HasPendingPacketOwnedRequest =>
+            !string.IsNullOrWhiteSpace(_pendingPacketOwnedRecipeKey)
+            || _pendingPacketOwnedRecipeOutputItemId > 0
+            || _pendingPacketOwnedDisassemblySlotIndex >= 0
+            || _pendingPacketOwnedDisassemblyItemId > 0;
+
+        private void StagePendingPacketOwnedRequest(ItemMakerRecipe recipe)
+        {
+            ClearPendingPacketOwnedRequest();
+            if (recipe == null)
+            {
+                return;
+            }
+
+            if (recipe.Mode == ItemMakerRecipeMode.Disassemble)
+            {
+                _pendingPacketOwnedDisassemblySlotIndex = recipe.SourceSlotIndex;
+                _pendingPacketOwnedDisassemblyItemId = recipe.OutputItemId;
+                return;
+            }
+
+            _pendingPacketOwnedRecipeKey = recipe.RecipeKey ?? string.Empty;
+            _pendingPacketOwnedRecipeOutputItemId = recipe.OutputItemId;
+        }
+
+        private void ClearPendingPacketOwnedRequest()
+        {
+            _pendingPacketOwnedRecipeKey = string.Empty;
+            _pendingPacketOwnedRecipeOutputItemId = 0;
+            _pendingPacketOwnedDisassemblySlotIndex = -1;
+            _pendingPacketOwnedDisassemblyItemId = 0;
+        }
+
+        private ItemMakerRecipe ResolvePendingPacketOwnedCraftRecipe()
+        {
+            if (!string.IsNullOrWhiteSpace(_pendingPacketOwnedRecipeKey))
+            {
+                ItemMakerRecipe recipe = _allRecipes.FirstOrDefault(candidate =>
+                    candidate.Mode == ItemMakerRecipeMode.Craft
+                    && string.Equals(candidate.RecipeKey, _pendingPacketOwnedRecipeKey, StringComparison.Ordinal));
+                if (recipe != null)
+                {
+                    return recipe;
+                }
+            }
+
+            return _pendingPacketOwnedRecipeOutputItemId > 0
+                ? _allRecipes.FirstOrDefault(candidate =>
+                    candidate.Mode == ItemMakerRecipeMode.Craft
+                    && candidate.OutputItemId == _pendingPacketOwnedRecipeOutputItemId)
+                : null;
+        }
+
+        private static bool TryResolvePacketOwnedRewardMatch(
+            PacketOwnedItemMakerResult packetResult,
+            ItemMakerRecipe recipe,
+            out PacketOwnedItemMakerResultItemEntry match)
+        {
+            match = default;
+            if (packetResult?.RewardItems == null || recipe == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < packetResult.RewardItems.Count; i++)
+            {
+                PacketOwnedItemMakerResultItemEntry rewardEntry = packetResult.RewardItems[i];
+                if (rewardEntry.ItemId <= 0)
+                {
+                    continue;
+                }
+
+                if (rewardEntry.ItemId == recipe.OutputItemId
+                    || recipe.RandomRewards.Any(reward => reward.ItemId == rewardEntry.ItemId))
+                {
+                    match = rewardEntry;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private string BuildPacketOwnedResultStatusMessage(PacketOwnedItemMakerResult packetResult)
+        {
+            if (packetResult == null)
+            {
+                return "Item Maker result is unavailable.";
+            }
+
+            if (packetResult.ResultCode <= 1)
+            {
+                return PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult);
+            }
+
+            if (_pendingPacketOwnedDisassemblySlotIndex >= 0)
+            {
+                return PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult);
+            }
+
+            ItemMakerRecipe pendingRecipe = ResolvePendingPacketOwnedCraftRecipe();
+            InventoryType outputInventoryType = pendingRecipe?.OutputInventoryType ?? InventoryType.NONE;
+            bool usesMonsterCrystalCategory = pendingRecipe?.CategoryKey == MonsterCrystalCategoryKey;
+            return PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult);
         }
 
         private void DrawSelector(SpriteBatch sprite, Rectangle rect, string label, bool expanded)

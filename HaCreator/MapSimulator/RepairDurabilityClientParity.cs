@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Buffers.Binary;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Loaders;
@@ -131,6 +132,53 @@ namespace HaCreator.MapSimulator
 
             encodedPosition = int.MinValue;
             return false;
+        }
+
+        internal static byte[] BuildRepairRequestPayload(short operationCode, int encodedPosition)
+        {
+            if (operationCode == 130)
+            {
+                return Array.Empty<byte>();
+            }
+
+            if (operationCode != 131)
+            {
+                throw new ArgumentOutOfRangeException(nameof(operationCode), operationCode, "Repair durability only supports opcodes 130 and 131.");
+            }
+
+            byte[] payload = new byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32LittleEndian(payload, encodedPosition);
+            return payload;
+        }
+
+        internal static bool TryDecodeSyntheticResultPayload(
+            byte[] payload,
+            out bool success,
+            out int? reasonCode,
+            out string error)
+        {
+            success = true;
+            reasonCode = null;
+            error = null;
+
+            if (payload == null || payload.Length == 0)
+            {
+                return true;
+            }
+
+            if (payload.Length != 1 && payload.Length != 1 + sizeof(int))
+            {
+                error = "Repair-result payload must be empty, 1 byte, or 5 bytes (result + optional reason code).";
+                return false;
+            }
+
+            success = payload[0] == 0;
+            if (payload.Length >= 1 + sizeof(int))
+            {
+                reasonCode = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(1, sizeof(int)));
+            }
+
+            return true;
         }
     }
 }

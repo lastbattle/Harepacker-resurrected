@@ -798,11 +798,25 @@ namespace HaCreator.MapSimulator
                         return false;
                     }
 
+                    Vector2? leavePosition = null;
+                    if (_remoteUserPool.TryGetActor(leavePacket.CharacterId, out RemoteUserActor leavingActor))
+                    {
+                        leavePosition = leavingActor.Position;
+                    }
+
                     bool removed = _remoteUserPool.TryRemove(leavePacket.CharacterId, out string leaveMessage);
                     if (removed)
                     {
                         _summonedPool.RemoveOwnerSummons(leavePacket.CharacterId, currentTime);
                         _animationEffects.RemoveUserState(leavePacket.CharacterId, currentTime);
+
+                        if (leavePosition.HasValue)
+                        {
+                            RememberRemoteTownPortalOwnerFieldObservation(
+                                (uint)leavePacket.CharacterId,
+                                leavePosition.Value,
+                                TemporaryPortalField.RemoteTownPortalObservationSource.MovementSnapshot);
+                        }
                     }
 
                     result = removed

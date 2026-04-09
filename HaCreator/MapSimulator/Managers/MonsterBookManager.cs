@@ -285,6 +285,13 @@ namespace HaCreator.MapSimulator.Managers
             MonsterBookRecord record = GetRecord(build, createIfMissing: true);
             record.RegisteredMobIds ??= new HashSet<int>();
 
+            if (registered
+                && (!record.CardCountsByMob.TryGetValue(mobId, out int ownedCopies)
+                    || ownedCopies <= 0))
+            {
+                return GetSnapshot(build);
+            }
+
             bool changed = false;
             if (registered)
             {
@@ -599,7 +606,7 @@ namespace HaCreator.MapSimulator.Managers
                     {
                         CardCountsByMob = normalizedCounts,
                         RegisteredMobIds = entry.Value.RegisteredMobIds?
-                            .Where(mobId => mobId > 0)
+                            .Where(mobId => mobId > 0 && normalizedCounts.TryGetValue(mobId, out int ownedCopies) && ownedCopies > 0)
                             .OrderBy(mobId => mobId)
                             .Take(1)
                             .ToHashSet()
@@ -831,7 +838,10 @@ namespace HaCreator.MapSimulator.Managers
         private static int ResolveRegisteredMobId(MonsterBookRecord record)
         {
             return record?.RegisteredMobIds?
-                .Where(mobId => mobId > 0)
+                .Where(mobId => mobId > 0
+                    && record.CardCountsByMob != null
+                    && record.CardCountsByMob.TryGetValue(mobId, out int ownedCopies)
+                    && ownedCopies > 0)
                 .OrderBy(mobId => mobId)
                 .FirstOrDefault() ?? 0;
         }

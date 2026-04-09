@@ -23,6 +23,7 @@ namespace HaCreator.MapSimulator
             return _guildMarkController.Open(
                 uiWindowManager,
                 _fontChat,
+                ResolveEffectiveGuildMarkSelection(),
                 _socialListRuntime.SubmitLocalGuildMarkSelection,
                 ShowUtilityFeedbackMessage,
                 () => ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.GuildMark));
@@ -59,6 +60,7 @@ namespace HaCreator.MapSimulator
             _guildMarkController.WireWindow(
                 uiWindowManager,
                 _fontChat,
+                ResolveEffectiveGuildMarkSelection(),
                 _socialListRuntime.SubmitLocalGuildMarkSelection,
                 ShowUtilityFeedbackMessage);
         }

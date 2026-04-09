@@ -262,10 +262,17 @@ namespace HaCreator.MapSimulator.Pools
         long? PairItemSerial,
         int? CharacterId,
         int? PairCharacterId);
+    public enum RemoteRelationshipRecordAddPayloadKind
+    {
+        ExpandedRecord = 0,
+        PairLookup = 1
+    }
     public readonly record struct RemoteUserRelationshipRecordPacket(
         RemoteRelationshipOverlayType RelationshipType,
         RemoteUserRelationshipRecord RelationshipRecord,
-        RemoteRelationshipRecordDispatchKey DispatchKey);
+        RemoteRelationshipRecordDispatchKey DispatchKey,
+        RemoteRelationshipRecordAddPayloadKind PayloadKind = RemoteRelationshipRecordAddPayloadKind.ExpandedRecord,
+        long? PairLookupSerial = null);
     public readonly record struct RemoteUserRelationshipRecordRemovePacket(
         RemoteRelationshipOverlayType RelationshipType,
         RemoteRelationshipRecordDispatchKey DispatchKey,
@@ -666,6 +673,14 @@ namespace HaCreator.MapSimulator.Pools
                     return false;
                 }
 
+                if (reader.RemainingLength != 0)
+                {
+                    snapshot = null;
+                    moveAction = 0;
+                    error = $"Passive-move packet has {reader.RemainingLength} unread bytes remaining.";
+                    return false;
+                }
+
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -976,6 +991,36 @@ namespace HaCreator.MapSimulator.Pools
                     case RemoteUserPacketType.UserCoupleRecordAdd:
                     case RemoteUserPacketType.UserFriendRecordAdd:
                     {
+                        if (payload.Length == sizeof(int) + sizeof(long) + sizeof(int)
+                            || payload.Length == sizeof(int) + sizeof(long) + sizeof(int) + sizeof(long))
+                        {
+                            int recordOwnerCharacterId = reader.ReadInt32();
+                            long pairLookupSerial = reader.ReadInt64();
+                            int relationshipItemId = reader.ReadInt32();
+                            long dispatchSerial = reader.RemainingLength >= sizeof(long)
+                                ? reader.ReadInt64()
+                                : pairLookupSerial;
+                            packet = new RemoteUserRelationshipRecordPacket(
+                                packetType == (int)RemoteUserPacketType.UserCoupleRecordAdd
+                                    ? RemoteRelationshipOverlayType.Couple
+                                    : RemoteRelationshipOverlayType.Friendship,
+                                new RemoteUserRelationshipRecord(
+                                    IsActive: true,
+                                    ItemId: relationshipItemId,
+                                    ItemSerial: null,
+                                    PairItemSerial: null,
+                                    CharacterId: recordOwnerCharacterId,
+                                    PairCharacterId: null),
+                                new RemoteRelationshipRecordDispatchKey(
+                                    RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial,
+                                    dispatchSerial,
+                                    CharacterId: null),
+                                PayloadKind: RemoteRelationshipRecordAddPayloadKind.PairLookup,
+                                PairLookupSerial: pairLookupSerial);
+                            EnsureRelationshipRecordAddConsumed(ref reader, packetType);
+                            return true;
+                        }
+
                         int ownerCharacterId = reader.ReadInt32();
                         int pairCharacterId = reader.ReadInt32();
                         int itemId = reader.ReadInt32();
@@ -995,7 +1040,9 @@ namespace HaCreator.MapSimulator.Pools
                             new RemoteRelationshipRecordDispatchKey(
                                 RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial,
                                 reader.RemainingLength >= sizeof(long) ? reader.ReadInt64() : pairItemSerial,
-                                CharacterId: null));
+                                CharacterId: null),
+                            PayloadKind: RemoteRelationshipRecordAddPayloadKind.ExpandedRecord,
+                            PairLookupSerial: null);
                         EnsureRelationshipRecordAddConsumed(ref reader, packetType);
                         return true;
                     }
@@ -1028,19 +1075,16 @@ namespace HaCreator.MapSimulator.Pools
                         int ownerCharacterId = reader.ReadInt32();
                         int pairCharacterId = reader.ReadInt32();
                         long itemSerial = (uint)reader.ReadInt32();
-                        int itemId = reader.RemainingLength >= sizeof(int)
-                            ? reader.ReadInt32()
-                            : 4300000;
-                        if (itemId <= 0)
+                        if (reader.RemainingLength >= sizeof(int))
                         {
-                            itemId = 4300000;
+                            _ = reader.ReadInt32();
                         }
 
                         packet = new RemoteUserRelationshipRecordPacket(
                             RemoteRelationshipOverlayType.NewYearCard,
                             new RemoteUserRelationshipRecord(
                                 IsActive: true,
-                                ItemId: itemId,
+                                ItemId: 4300000,
                                 ItemSerial: itemSerial,
                                 PairItemSerial: null,
                                 CharacterId: ownerCharacterId,
@@ -1875,14 +1919,12 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 if (!chargeSkillId.HasValue
-                    && weaponChargeMetadataOffset >= 0
-                    && weaponChargeMetadataOffset <= rawPayload.Length - sizeof(int)
-                    && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
+                    && TryResolveChargeSkillIdFromKnownTemporaryStatPayload(
                         rawPayload,
                         weaponChargeMetadataOffset,
-                        out int scopedChargeSkillId))
+                        out int recoveredChargeSkillId))
                 {
-                    chargeSkillId = scopedChargeSkillId;
+                    chargeSkillId = recoveredChargeSkillId;
                 }
 
                 if (reader.RemainingLength > 0)
@@ -1928,6 +1970,33 @@ namespace HaCreator.MapSimulator.Pools
                 && wordIndex >= 0
                 && wordIndex < maskWords.Length
                 && ((((uint)maskWords[wordIndex]) >> bitOffset) & 0x1u) != 0;
+        }
+
+        private static bool TryResolveChargeSkillIdFromKnownTemporaryStatPayload(
+            ReadOnlySpan<byte> rawPayload,
+            int weaponChargeMetadataOffset,
+            out int chargeSkillId)
+        {
+            chargeSkillId = 0;
+            if (rawPayload.Length < (sizeof(int) * 4) + sizeof(int))
+            {
+                return false;
+            }
+
+            if (weaponChargeMetadataOffset >= 0
+                && weaponChargeMetadataOffset <= rawPayload.Length - sizeof(int)
+                && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
+                    rawPayload,
+                    weaponChargeMetadataOffset,
+                    out chargeSkillId))
+            {
+                return true;
+            }
+
+            return AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
+                rawPayload,
+                sizeof(int) * 4,
+                out chargeSkillId);
         }
 
         internal static RemoteUserTemporaryStatSnapshot ApplyResetMask(

@@ -55,6 +55,7 @@ namespace HaCreator.MapSimulator.Interaction
         private ParcelDialogTab _activeTab = ParcelDialogTab.Receive;
         private ParcelDialogTabAvailability _availableTabs = ParcelDialogTabAvailability.All;
         private ParcelComposeMode _composeMode = ParcelComposeMode.Send;
+        private bool _awaitingItemSelection;
         private bool _showTaxInfo;
         private int _nextMemoId = 1;
         private string _lastActionSummary = "Parcel delivery ready.";
@@ -122,6 +123,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ActiveMode = _composeMode,
                 ActiveTab = _activeTab,
                 AttachmentKind = ResolveDraftAttachmentKind(),
+                AwaitingItemSelection = _awaitingItemSelection,
                 ShowTaxInfo = _showTaxInfo,
                 ModeSummary = BuildModeSummary(),
                 TaxSummary = BuildTaxSummary()
@@ -346,7 +348,26 @@ namespace HaCreator.MapSimulator.Interaction
         internal void ClearDraftAttachment()
         {
             _draft.Attachment = null;
+            _awaitingItemSelection = false;
             _lastActionSummary = "Parcel attachment cleared.";
+        }
+
+        internal void BeginDraftItemSelection()
+        {
+            _awaitingItemSelection = true;
+            _showTaxInfo = false;
+            _lastActionSummary = "Parcel item picker armed. Select an inventory slot to stage it into the send tab.";
+        }
+
+        internal void CancelDraftItemSelection()
+        {
+            if (!_awaitingItemSelection)
+            {
+                return;
+            }
+
+            _awaitingItemSelection = false;
+            _lastActionSummary = "Cancelled parcel item picker.";
         }
 
         internal void ResetDraftState()
@@ -545,6 +566,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ItemId = itemId,
                 Quantity = quantity
             };
+            _awaitingItemSelection = false;
 
             message = $"Draft attachment set to {BuildAttachmentSummary(_draft.Attachment)}.";
             _lastActionSummary = message;
@@ -738,6 +760,7 @@ namespace HaCreator.MapSimulator.Interaction
             _draft.Subject = DefaultDraftSubject;
             _draft.Body = DefaultDraftBody;
             _draft.Attachment = null;
+            _awaitingItemSelection = false;
         }
 
         private void ResetTabAvailability()
@@ -804,6 +827,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Kind = MemoAttachmentKind.Meso,
                 Meso = meso
             };
+            _awaitingItemSelection = false;
 
             message = $"Draft attachment set to {BuildAttachmentSummary(_draft.Attachment)}.";
             if (announce)
@@ -1042,6 +1066,7 @@ namespace HaCreator.MapSimulator.Interaction
             _composeMode = tab == ParcelDialogTab.QuickSend
                 ? ParcelComposeMode.QuickSend
                 : ParcelComposeMode.Send;
+            _awaitingItemSelection = false;
             _showTaxInfo = false;
             _lastActionSummary = actionSummary;
         }

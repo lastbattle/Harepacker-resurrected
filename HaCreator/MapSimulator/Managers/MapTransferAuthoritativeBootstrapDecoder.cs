@@ -15,6 +15,7 @@ namespace HaCreator.MapSimulator.Managers
         internal static bool TryFindBootstrapBooks(
             ReadOnlySpan<byte> payload,
             ulong characterDataFlags,
+            short characterJobId,
             Func<int, bool> isPlausibleMapId,
             out int[] regularFields,
             out int[] continentFields,
@@ -41,6 +42,7 @@ namespace HaCreator.MapSimulator.Managers
                 if (TryFindBootstrapBooksAtExactTail(
                         leadingPayload,
                         characterDataFlags,
+                        characterJobId,
                         isPlausibleMapId,
                         out regularFields,
                         out continentFields,
@@ -55,6 +57,7 @@ namespace HaCreator.MapSimulator.Managers
                 if (TryFindBootstrapBooksCore(
                         leadingPayload,
                         characterDataFlags,
+                        characterJobId,
                         isPlausibleMapId,
                         out regularFields,
                         out continentFields,
@@ -69,6 +72,7 @@ namespace HaCreator.MapSimulator.Managers
             if (TryFindBootstrapBooksAtExactTail(
                     payload,
                     characterDataFlags,
+                    characterJobId,
                     isPlausibleMapId,
                     out regularFields,
                     out continentFields,
@@ -82,6 +86,7 @@ namespace HaCreator.MapSimulator.Managers
             return TryFindBootstrapBooksCore(
                 payload,
                 characterDataFlags,
+                characterJobId,
                 isPlausibleMapId,
                 out regularFields,
                 out continentFields,
@@ -92,6 +97,7 @@ namespace HaCreator.MapSimulator.Managers
         private static bool TryFindBootstrapBooksAtExactTail(
             ReadOnlySpan<byte> payload,
             ulong characterDataFlags,
+            short characterJobId,
             Func<int, bool> isPlausibleMapId,
             out int[] regularFields,
             out int[] continentFields,
@@ -113,6 +119,7 @@ namespace HaCreator.MapSimulator.Managers
                 payload,
                 tailOffset,
                 characterDataFlags,
+                characterJobId,
                 isPlausibleMapId,
                 out regularFields,
                 out continentFields,
@@ -123,6 +130,7 @@ namespace HaCreator.MapSimulator.Managers
         private static bool TryFindBootstrapBooksCore(
             ReadOnlySpan<byte> payload,
             ulong characterDataFlags,
+            short characterJobId,
             Func<int, bool> isPlausibleMapId,
             out int[] regularFields,
             out int[] continentFields,
@@ -145,6 +153,7 @@ namespace HaCreator.MapSimulator.Managers
                         payload,
                         offset,
                         characterDataFlags,
+                        characterJobId,
                         isPlausibleMapId,
                         out regularFields,
                         out continentFields,
@@ -162,6 +171,7 @@ namespace HaCreator.MapSimulator.Managers
             ReadOnlySpan<byte> payload,
             int offset,
             ulong characterDataFlags,
+            short characterJobId,
             Func<int, bool> isPlausibleMapId,
             out int[] regularFields,
             out int[] continentFields,
@@ -214,6 +224,7 @@ namespace HaCreator.MapSimulator.Managers
             if (!TryValidatePostMapTransferTail(
                     payload[(offset + BootstrapBookByteLength)..],
                     characterDataFlags,
+                    characterJobId,
                     out bool matchedKnownTail))
             {
                 return false;
@@ -236,6 +247,7 @@ namespace HaCreator.MapSimulator.Managers
         private static bool TryValidatePostMapTransferTail(
             ReadOnlySpan<byte> payload,
             ulong characterDataFlags,
+            short characterJobId,
             out bool matchedKnownTail)
         {
             matchedKnownTail = false;
@@ -245,19 +257,29 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
-            const ulong unsupportedTailFlags =
-                0x40000UL | // New Year card records
-                0x200000UL; // Wild Hunter info
-            bool hasUnsupportedTailFlags = (characterDataFlags & unsupportedTailFlags) != 0;
-            if (hasUnsupportedTailFlags)
-            {
-                return true;
-            }
-
             try
             {
                 using MemoryStream stream = new(payload.ToArray(), writable: false);
                 using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+
+                if ((characterDataFlags & 0x40000UL) != 0)
+                {
+                    int newYearCardCount = reader.ReadUInt16();
+                    for (int i = 0; i < newYearCardCount; i++)
+                    {
+                        _ = reader.ReadInt32();
+                        _ = reader.ReadInt32();
+                        _ = ReadMapleString(reader);
+                        _ = reader.ReadByte();
+                        _ = reader.ReadInt64();
+                        _ = reader.ReadInt32();
+                        _ = ReadMapleString(reader);
+                        _ = reader.ReadByte();
+                        _ = reader.ReadByte();
+                        _ = reader.ReadInt64();
+                        _ = ReadMapleString(reader);
+                    }
+                }
 
                 if ((characterDataFlags & 0x80000UL) != 0)
                 {
@@ -266,6 +288,16 @@ namespace HaCreator.MapSimulator.Managers
                     {
                         _ = reader.ReadUInt16();
                         _ = ReadMapleString(reader);
+                    }
+                }
+
+                if ((characterDataFlags & 0x200000UL) != 0 &&
+                    characterJobId / 100 == 33)
+                {
+                    _ = reader.ReadByte();
+                    for (int i = 0; i < 5; i++)
+                    {
+                        _ = reader.ReadInt32();
                     }
                 }
 

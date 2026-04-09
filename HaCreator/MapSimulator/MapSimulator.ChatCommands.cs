@@ -2287,7 +2287,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "engage",
                 "Inspect or drive the dedicated engagement proposal dialog seam",
-                "/engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|inbox [status|start [port]|stop]|accept|withdraw|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]",
+                "/engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|decision <payloadhex=..|payloadb64=..>|inbox [status|start [port]|stop]|accept|withdraw|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]",
                 args =>
                 {
                     _engagementProposalController.UpdateLocalContext(_playerManager?.Player?.Build);
@@ -2375,6 +2375,24 @@ namespace HaCreator.MapSimulator
 
                             return ChatCommandHandler.CommandResult.Ok(incomingPayloadMessage);
 
+                        case "decision":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /engage decision <payloadhex=..|payloadb64=..>");
+                            }
+
+                            if (!EngagementProposalInboxManager.TryParsePayloadToken(args[1], out byte[] decisionPayload, out string decisionPayloadError))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(decisionPayloadError);
+                            }
+
+                            if (!_engagementProposalController.TryApplyDecisionPayload(decisionPayload, uiWindowManager, out string decisionMessage))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(decisionMessage);
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(decisionMessage);
+
                         case "inbox":
                             return HandleEngagementProposalInboxCommand(args.Skip(1).ToArray());
 
@@ -2454,28 +2472,39 @@ namespace HaCreator.MapSimulator
                                 wishListRole = parsedRole;
                             }
 
-                            if (!_engagementProposalController.TryOpenWeddingWishListFromAcceptedProposal(
-                                _weddingWishListController,
-                                uiWindowManager,
-                                _playerManager?.Player?.Build,
-                                uiWindowManager?.InventoryWindow as IInventoryRuntime,
-                                _fontChat,
-                                ShowUtilityFeedbackMessage,
-                                wishListMode,
-                                wishListRole,
-                                () => ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.WeddingWishList),
-                                out string wishListMessage))
+                            if (_weddingInvitationController.TryOpenWeddingWishListFromAcceptedInvitation(
+                                    _weddingWishListController,
+                                    uiWindowManager,
+                                    _playerManager?.Player?.Build,
+                                    uiWindowManager?.InventoryWindow as IInventoryRuntime,
+                                    _fontChat,
+                                    ShowUtilityFeedbackMessage,
+                                    wishListMode,
+                                    wishListRole,
+                                    () => ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.WeddingWishList),
+                                    out string wishListMessage)
+                                || _engagementProposalController.TryOpenWeddingWishListFromAcceptedProposal(
+                                    _weddingWishListController,
+                                    uiWindowManager,
+                                    _playerManager?.Player?.Build,
+                                    uiWindowManager?.InventoryWindow as IInventoryRuntime,
+                                    _fontChat,
+                                    ShowUtilityFeedbackMessage,
+                                    wishListMode,
+                                    wishListRole,
+                                    () => ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.WeddingWishList),
+                                    out wishListMessage))
                             {
-                                return ChatCommandHandler.CommandResult.Error(wishListMessage);
+                                return ChatCommandHandler.CommandResult.Ok(wishListMessage);
                             }
 
-                            return ChatCommandHandler.CommandResult.Ok(wishListMessage);
+                            return ChatCommandHandler.CommandResult.Error(wishListMessage);
 
                         case "clear":
                             return ChatCommandHandler.CommandResult.Ok(_engagementProposalController.Clear(uiWindowManager));
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|inbox [status|start [port]|stop]|accept|withdraw|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|decision <payloadhex=..|payloadb64=..>|inbox [status|start [port]|stop]|accept|withdraw|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]");
                     }
                 });
 
@@ -8112,7 +8141,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "expedition",
                 "Inspect or drive the dedicated expedition intermediary owner discovered in the client",
-                "/expedition [status|open|search|clear|start|register|get|modified|invite|response|notice|master|removed|payload|packetraw|inbox|bridge] ...",
+                        "/expedition [status|open|search|clear|start|register|get|modified|invite|response|notice|master|removed|payload|packetraw|inbox|bridge] ...",
                 HandleExpeditionIntermediaryCommand);
 
             _chat.CommandHandler.RegisterCommand(
@@ -9395,7 +9424,7 @@ namespace HaCreator.MapSimulator
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
                         return ChatCommandHandler.CommandResult.Info(
-                            $"{_packetScriptMessageRuntime.DescribeStatus()}{Environment.NewLine}{_packetScriptReplyTransport.LastStatus}{Environment.NewLine}{DescribePacketScriptOfficialSessionBridgeStatus()}");
+                            $"{_packetScriptMessageRuntime.DescribeStatus()}{Environment.NewLine}{_initialQuizTimerRuntime.DescribeStatus(currTickCount)}{Environment.NewLine}{_speedQuizOwnerRuntime.DescribeStatus(currTickCount)}{Environment.NewLine}{_packetScriptReplyTransport.LastStatus}{Environment.NewLine}{DescribePacketScriptOfficialSessionBridgeStatus()}");
                     }
 
 
@@ -9406,6 +9435,7 @@ namespace HaCreator.MapSimulator
                         case "clear":
 
                             _packetScriptMessageRuntime.Clear();
+                            ClearPacketScriptClientOwnerRuntimes();
                             _npcInteractionOverlay?.Close();
                             return ChatCommandHandler.CommandResult.Ok(_packetScriptMessageRuntime.DescribeStatus());
 
@@ -10668,7 +10698,7 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                        "Usage: /expedition [packet|local] [status|open|search|clear|start [title=Name]|register [title=Name]|get [title=Name] [master=n] [parties=party~name~role~level~map~channel~online~local;...]|modified [party=n] [members=name~role~level~map~channel~online~local;...] [master=n]|invite [name=Leader] [level=n] [job=n] [pq=n]|response [name=Leader] [result=accept|decline|busy|changed|blocked|unavailable|fail6|promptopen|n]|notice [kind=joined|left|removed] [name=Member]|master [party=n]|removed [kind=leave|disband|removed]|payload <payloadhex=..|payloadb64=..>|packetraw <hex> [opcode=n]|inbox [status|start [port]|stop]|bridge [status|start <listenPort> <remoteHost> <remotePort> <opcode>|discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n]|stop]]");
+                        "Usage: /expedition [packet|local] [status|open|search|clear|start [title=Name]|register [title=Name]|get [title=Name] [master=n] [parties=party~name~role~level~map~channel~online~local;...]|modified [party=n] [members=name~role~level~map~channel~online~local;...] [master=n]|invite [name=Leader] [level=n] [job=n] [pq=n]|response [name=Leader] [result=accept|decline|busy|changed|blocked|unavailable|fail6|promptopen|n]|notice [kind=joined|left|removed] [name=Member]|master [party=n]|removed [kind=leave|disband|removed]|payload <payloadhex=..|payloadb64=..>|packetraw <hex> [opcode=n]|inbox [status|start [port]|stop]|bridge [status|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|discoverstatus <remotePort> [process=selector] [localPort=n]|start <listenPort> <remoteHost> <remotePort> [opcode]|discover <remotePort> [opcode] [listenPort] [process=selector] [localPort=n]|stop]]");
             }
         }
 

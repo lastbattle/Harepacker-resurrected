@@ -389,7 +389,7 @@ namespace HaCreator.MapSimulator.UI
                     sprite.Draw(_todayTexture, new Vector2(cellBounds.X, cellBounds.Y), Color.White);
                 }
 
-                DrawCalendarDayNumber(sprite, day, cellBounds.Location, isSelected || isToday);
+                DrawCalendarDayNumber(sprite, day, cellBounds.Location, isSelected);
                 if (_calendarEntryCountBuffer.TryGetValue(date, out int entryCount) && entryCount > 0)
                 {
                     sprite.DrawString(_font, entryCount.ToString(), new Vector2(cellBounds.Right - 6, cellBounds.Y - 2), new Color(255, 228, 151));

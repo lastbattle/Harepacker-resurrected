@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.Managers
     {
         private const int MesoGiveSucceededStringPoolId = 0x32E;
         private const int MesoGiveFailedStringPoolId = 0x32F;
+        private const int UtilDlgDefaultSoundStringPoolId = 0x04F8;
         private const int RandomMesoBagDialogRank1StringPoolId = 0x17A9;
         private const int RandomMesoBagDialogRank2StringPoolId = 0x17AA;
         private const int RandomMesoBagDialogRank3StringPoolId = 0x17AB;
@@ -103,6 +104,13 @@ namespace HaCreator.MapSimulator.Managers
             return ResolvePlainText(
                 RandomMesoBagFailedStringPoolId,
                 "You have failed to use the Random Meso Sack.");
+        }
+
+        public static string GetUtilDlgNoticeSoundDescriptor()
+        {
+            return ResolvePlainText(
+                UtilDlgDefaultSoundStringPoolId,
+                "Sound/UI.img/DlgNotice");
         }
 
         public static PacketOwnedRandomMesoBagPresentation CreateRandomMesoBagPresentation(byte rank, int mesoAmount)

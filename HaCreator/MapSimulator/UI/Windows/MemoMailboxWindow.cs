@@ -89,6 +89,7 @@ namespace HaCreator.MapSimulator.UI
         private ComposeInputField _activeInputField;
 
         internal Func<InventoryType, int, InventorySlotData, bool> InventoryDropRequested { private get; set; }
+        internal Func<InventoryType, int, InventorySlotData, bool> InventoryPickRequested { private get; set; }
 
         private enum ComposeInputField
         {
@@ -195,6 +196,25 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return InventoryDropRequested?.Invoke(sourceInventoryType, sourceSlotIndex, draggedSlotData.Clone()) == true;
+        }
+
+        internal bool TryHandleInventoryPick(
+            InventoryType sourceInventoryType,
+            int sourceSlotIndex,
+            InventorySlotData pickedSlotData)
+        {
+            if (!IsVisible || pickedSlotData == null || pickedSlotData.IsDisabled)
+            {
+                return false;
+            }
+
+            MemoMailboxDraftSnapshot draftSnapshot = _currentDraftSnapshot ?? RefreshDraftSnapshot();
+            if (draftSnapshot.ActiveTab != ParcelDialogTab.Send || !draftSnapshot.AwaitingItemSelection)
+            {
+                return false;
+            }
+
+            return InventoryPickRequested?.Invoke(sourceInventoryType, sourceSlotIndex, pickedSlotData.Clone()) == true;
         }
 
         public override void SetFont(SpriteFont font)
@@ -682,6 +702,8 @@ namespace HaCreator.MapSimulator.UI
                     : new Color(124, 129, 136);
             string itemSummary = quickMode
                 ? "Quick Send does not allow item parcels."
+                : snapshot.AwaitingItemSelection
+                    ? "Select an inventory slot to stage it into the parcel."
                 : string.IsNullOrWhiteSpace(snapshot.ItemAttachmentSummary)
                     ? "Click the package lane to stage an inventory item."
                     : snapshot.ItemAttachmentSummary;
@@ -727,6 +749,8 @@ namespace HaCreator.MapSimulator.UI
                     ? snapshot.CanQuickSend
                         ? "Quick Send mirrors the client split: recipient, note, and meso edit live in the owner."
                         : "Quick Send is blocked until the staged parcel no longer carries an item attachment."
+                    : snapshot.AwaitingItemSelection
+                        ? "Parcel picker is waiting on an inventory click or drag-drop into the package lane."
                     : "Send now keeps editable recipient, note, and meso fields in the parcel owner.";
                 sprite.DrawString(_font, hint, new Vector2(bounds.X + 1, bounds.Bottom - 31), hintColor, 0f, Vector2.Zero, 0.36f, SpriteEffects.None, 0f);
             }

@@ -274,6 +274,11 @@ namespace HaCreator.MapSimulator.UI
             public string SelectedEntryKey { get; set; } = string.Empty;
         }
 
+        private readonly record struct SourceInventoryStackResolution(
+            int SlotIndex,
+            int StackQuantity,
+            int TotalOwnedQuantity);
+
         private sealed class WishlistCategoryLeafDefinition
         {
             public string Key { get; init; } = string.Empty;
@@ -2771,9 +2776,16 @@ namespace HaCreator.MapSimulator.UI
 
             if (RequiresInventorySource(entry) && _inventory != null)
             {
-                maxPromptQuantity = Math.Min(
-                    maxPromptQuantity,
-                    _inventory.GetItemCount(entry.SourceInventoryType, entry.SourceItemId) / Math.Max(1, entry.SourceItemQuantity));
+                if (TryResolveSourceInventoryStack(entry, out SourceInventoryStackResolution sourceResolution))
+                {
+                    maxPromptQuantity = Math.Min(
+                        maxPromptQuantity,
+                        sourceResolution.StackQuantity / Math.Max(1, entry.SourceItemQuantity));
+                }
+                else
+                {
+                    maxPromptQuantity = 1;
+                }
             }
 
             if (_inventory != null)
@@ -3853,7 +3865,7 @@ namespace HaCreator.MapSimulator.UI
                     return;
                 case AdminShopResponse.MissingSourceItem:
                     FinishRejectedRequest(entry, "Need item", string.IsNullOrWhiteSpace(entry.ResponseMessage)
-                        ? BuildMissingSourceItemMessage(entry, _pendingRequestQuantity)
+                        ? BuildMissingSourceItemMessage(entry, _pendingRequestQuantity, default)
                         : entry.ResponseMessage, refundAmount: entry.ConsumeOnSuccess ? totalPrice : 0L);
                     return;
                 default:
@@ -5395,9 +5407,10 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (_inventory.GetItemCount(entry.SourceInventoryType, entry.SourceItemId) < ComputeRequiredSourceQuantity(entry, requestQuantity))
+            if (!TryResolveSourceInventoryStack(entry, out SourceInventoryStackResolution sourceResolution)
+                || sourceResolution.StackQuantity < ComputeRequiredSourceQuantity(entry, requestQuantity))
             {
-                message = BuildMissingSourceItemMessage(entry, requestQuantity);
+                message = BuildMissingSourceItemMessage(entry, requestQuantity, sourceResolution);
                 return false;
             }
 
@@ -5413,29 +5426,40 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (_inventory != null
-                && _inventory.TryConsumeItem(entry.SourceInventoryType, entry.SourceItemId, ComputeRequiredSourceQuantity(entry, requestQuantity)))
+                && TryResolveSourceInventoryStack(entry, out SourceInventoryStackResolution sourceResolution)
+                && _inventory.TryConsumeItemAtSlot(
+                    entry.SourceInventoryType,
+                    sourceResolution.SlotIndex,
+                    entry.SourceItemId,
+                    ComputeRequiredSourceQuantity(entry, requestQuantity)))
             {
                 return true;
             }
 
-            message = BuildMissingSourceItemMessage(entry, requestQuantity);
+            message = BuildMissingSourceItemMessage(entry, requestQuantity, default);
             return false;
         }
 
         private string BuildSourceRequirementStatus(AdminShopEntry entry)
         {
-            int ownedQuantity = _inventory?.GetItemCount(entry.SourceInventoryType, entry.SourceItemId) ?? 0;
+            bool hasEligibleStack = TryResolveSourceInventoryStack(entry, out SourceInventoryStackResolution sourceResolution);
+            int ownedQuantity = sourceResolution.TotalOwnedQuantity;
             string sourceLabel = ResolveSourceItemLabel(entry);
-            int maxRequestCount = ResolveOwnedSourceRequestCount(entry, ownedQuantity);
-            return ownedQuantity >= Math.Max(1, entry.SourceItemQuantity)
-                ? $"Source: {sourceLabel} ready ({ownedQuantity} owned, request up to {maxRequestCount})."
-                : $"Source: need {sourceLabel} ({ownedQuantity} owned).";
+            int maxRequestCount = ResolveOwnedSourceRequestCount(entry, hasEligibleStack ? sourceResolution.StackQuantity : 0);
+            return hasEligibleStack && sourceResolution.StackQuantity >= Math.Max(1, entry.SourceItemQuantity)
+                ? $"Source: {sourceLabel} ready ({ownedQuantity} owned, first eligible stack {sourceResolution.StackQuantity}, request up to {maxRequestCount})."
+                : $"Source: need {sourceLabel} ({ownedQuantity} owned, no eligible stack large enough yet).";
         }
 
-        private string BuildMissingSourceItemMessage(AdminShopEntry entry, int requestQuantity)
+        private string BuildMissingSourceItemMessage(AdminShopEntry entry, int requestQuantity, SourceInventoryStackResolution sourceResolution)
         {
-            int ownedQuantity = _inventory?.GetItemCount(entry.SourceInventoryType, entry.SourceItemId) ?? 0;
-            return $"Need {ResolveSourceItemLabel(entry, ComputeRequiredSourceQuantity(entry, requestQuantity))} before {entry.Title} can be requested ({ownedQuantity} owned).";
+            int ownedQuantity = sourceResolution.TotalOwnedQuantity > 0
+                ? sourceResolution.TotalOwnedQuantity
+                : _inventory?.GetItemCount(entry.SourceInventoryType, entry.SourceItemId) ?? 0;
+            int firstStackQuantity = Math.Max(0, sourceResolution.StackQuantity);
+            return firstStackQuantity > 0
+                ? $"Need {ResolveSourceItemLabel(entry, ComputeRequiredSourceQuantity(entry, requestQuantity))} before {entry.Title} can be requested ({ownedQuantity} owned, first eligible stack only has {firstStackQuantity})."
+                : $"Need {ResolveSourceItemLabel(entry, ComputeRequiredSourceQuantity(entry, requestQuantity))} before {entry.Title} can be requested ({ownedQuantity} owned).";
         }
 
         private static string BuildTradeRestrictedSourceItemMessage(AdminShopEntry entry, bool isCashItem, bool isNotForSale, bool isQuestItem)
@@ -5492,8 +5516,8 @@ namespace HaCreator.MapSimulator.UI
 
             if (RequiresInventorySource(entry))
             {
-                int ownedQuantity = _inventory?.GetItemCount(entry.SourceInventoryType, entry.SourceItemId) ?? 0;
-                if (ownedQuantity >= Math.Max(1, entry.SourceItemQuantity) * 2)
+                if (TryResolveSourceInventoryStack(entry, out SourceInventoryStackResolution sourceResolution)
+                    && sourceResolution.StackQuantity >= Math.Max(1, entry.SourceItemQuantity) * 2)
                 {
                     return true;
                 }
@@ -5534,6 +5558,48 @@ namespace HaCreator.MapSimulator.UI
             int requestUnit = Math.Max(1, entry.SourceItemQuantity);
             int requestCount = ownedQuantity / requestUnit;
             return Math.Max(0, Math.Min(entry.MaxRequestCount, requestCount));
+        }
+
+        private bool TryResolveSourceInventoryStack(AdminShopEntry entry, out SourceInventoryStackResolution resolution)
+        {
+            resolution = default;
+            if (!RequiresInventorySource(entry) || _inventory == null)
+            {
+                return false;
+            }
+
+            IReadOnlyList<InventorySlotData> slots = _inventory.GetSlots(entry.SourceInventoryType);
+            if (slots == null || slots.Count == 0)
+            {
+                return false;
+            }
+
+            int resolvedSlotIndex = -1;
+            int resolvedStackQuantity = 0;
+            int totalOwnedQuantity = 0;
+            for (int i = 0; i < slots.Count; i++)
+            {
+                InventorySlotData slot = slots[i];
+                if (slot == null
+                    || slot.IsDisabled
+                    || slot.ItemId != entry.SourceItemId)
+                {
+                    continue;
+                }
+
+                int stackQuantity = Math.Max(1, slot.Quantity);
+                totalOwnedQuantity += stackQuantity;
+                if (resolvedSlotIndex >= 0)
+                {
+                    continue;
+                }
+
+                resolvedSlotIndex = i;
+                resolvedStackQuantity = stackQuantity;
+            }
+
+            resolution = new SourceInventoryStackResolution(resolvedSlotIndex, resolvedStackQuantity, totalOwnedQuantity);
+            return resolvedSlotIndex >= 0;
         }
 
         private string BuildRequestQuantitySummary(AdminShopEntry entry, int requestQuantity)

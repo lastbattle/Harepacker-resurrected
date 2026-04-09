@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
@@ -13,6 +14,9 @@ namespace HaCreator.MapSimulator.Companions
 {
     internal sealed class DragonActionLoader
     {
+        private const int FirstClientDragonActionCode = 147;
+        private const int LastClientDragonActionCode = 173;
+
         private static readonly Dictionary<string, string> ClientActionAliases = new(StringComparer.OrdinalIgnoreCase)
         {
             ["stand1"] = "stand",
@@ -24,6 +28,13 @@ namespace HaCreator.MapSimulator.Companions
             ["fly"] = "move",
             ["ladder"] = "move",
             ["rope"] = "move"
+        };
+        private static readonly string[] ClientActionTable = BuildClientActionTable();
+        private static readonly HashSet<string> ClientActionNames = new(ClientActionTable, StringComparer.OrdinalIgnoreCase);
+        private static readonly HashSet<string> ClientHeldActionNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "breathe_prepare",
+            "icebreathe_prepare"
         };
 
         private readonly GraphicsDevice _device;
@@ -41,8 +52,12 @@ namespace HaCreator.MapSimulator.Companions
                 return null;
             }
 
-            return ClientActionAliases.TryGetValue(requestedActionName, out string mappedActionName)
+            string resolvedActionName = ClientActionAliases.TryGetValue(requestedActionName, out string mappedActionName)
                 ? mappedActionName
+                : requestedActionName;
+
+            return ClientActionNames.Contains(resolvedActionName)
+                ? resolvedActionName
                 : requestedActionName;
         }
 
@@ -79,14 +94,52 @@ namespace HaCreator.MapSimulator.Companions
             WzImage image = global::HaCreator.Program.FindImage("Skill", $"Dragon/{dragonJob}.img");
             if (image == null)
             {
-                return Enumerable.Empty<string>();
+                return ClientActionTable;
             }
 
-            return image.WzProperties
-                .OfType<WzSubProperty>()
-                .Where(property => !string.Equals(property.Name, "info", StringComparison.OrdinalIgnoreCase))
-                .Select(property => property.Name)
+            return ClientActionTable
+                .Concat(image.WzProperties
+                    .OfType<WzSubProperty>()
+                    .Where(property => !string.Equals(property.Name, "info", StringComparison.OrdinalIgnoreCase))
+                    .Select(property => property.Name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+        }
+
+        internal static IEnumerable<string> EnumerateClientActionNames()
+        {
+            return ClientActionTable;
+        }
+
+        internal static bool IsClientHeldActionName(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                && ClientHeldActionNames.Contains(actionName);
+        }
+
+        internal static bool TryGetClientActionNameFromRawActionCode(int rawActionCode, out string actionName)
+        {
+            if (rawActionCode == 0)
+            {
+                actionName = "stand";
+                return true;
+            }
+
+            if (rawActionCode == 1)
+            {
+                actionName = "move";
+                return true;
+            }
+
+            if (rawActionCode >= FirstClientDragonActionCode
+                && rawActionCode <= LastClientDragonActionCode
+                && CharacterPart.TryGetActionStringFromCode(rawActionCode, out actionName))
+            {
+                return true;
+            }
+
+            actionName = null;
+            return false;
         }
 
         private SkillAnimation LoadAnimation(int dragonJob, string resolvedActionName)
@@ -203,6 +256,28 @@ namespace HaCreator.MapSimulator.Companions
         {
             return string.Equals(actionName, "stand", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "move", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string[] BuildClientActionTable()
+        {
+            var actions = new List<string>
+            {
+                "stand",
+                "move"
+            };
+
+            for (int rawActionCode = FirstClientDragonActionCode; rawActionCode <= LastClientDragonActionCode; rawActionCode++)
+            {
+                if (CharacterPart.TryGetActionStringFromCode(rawActionCode, out string actionName)
+                    && !string.IsNullOrWhiteSpace(actionName))
+                {
+                    actions.Add(actionName);
+                }
+            }
+
+            return actions
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
         }
 
         private static int ParseFrameIndex(string value)

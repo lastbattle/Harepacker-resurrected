@@ -186,6 +186,21 @@ namespace HaCreator.MapSimulator.Interaction
             return message;
         }
 
+        internal bool TryApplyDecisionPayload(
+            IReadOnlyList<byte> payload,
+            UIWindowManager windowManager,
+            out string message)
+        {
+            if (!_runtime.TryApplyIncomingDecisionPayload(payload, out message))
+            {
+                return false;
+            }
+
+            PublishObservedSocialMessages();
+            windowManager?.HideWindow(MapSimulatorWindowNames.EngagementProposal);
+            return true;
+        }
+
         internal string Dismiss(UIWindowManager windowManager)
         {
             string message = _runtime.Dismiss();

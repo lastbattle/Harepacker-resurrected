@@ -553,7 +553,7 @@ namespace HaCreator.MapSimulator.Interaction
             return stream.ToArray();
         }
 
-        private static byte[] BuildIncomingDecisionPayload(bool accepted, string requesterName, int ringItemId)
+        internal static byte[] BuildIncomingDecisionPayload(bool accepted, string requesterName, int ringItemId)
         {
             using MemoryStream stream = new();
             using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
@@ -563,6 +563,68 @@ namespace HaCreator.MapSimulator.Interaction
             writer.Write(ringItemId > 0 ? ringItemId : DefaultRingItemId);
             writer.Flush();
             return stream.ToArray();
+        }
+
+        internal bool TryApplyIncomingDecisionPayload(
+            IReadOnlyList<byte> payload,
+            out string message)
+        {
+            if (!_isOpen)
+            {
+                message = "No engagement proposal is active.";
+                return false;
+            }
+
+            if (_mode != EngagementProposalDialogMode.OutgoingRequest)
+            {
+                message = $"Only the requester-owned {ClientOwnerTypeName} wait dialog can apply the incoming decision payload.";
+                return false;
+            }
+
+            if (!TryDecodeIncomingDecisionPayload(
+                    payload,
+                    out bool accepted,
+                    out string requesterName,
+                    out int ringItemId,
+                    out message))
+            {
+                return false;
+            }
+
+            _proposerName = NormalizeName(requesterName, _proposerName);
+            _ringItemId = ringItemId > 0 ? ringItemId : _ringItemId;
+            _lastPrimaryActionSent = accepted;
+            _lastResponsePacketType = AcceptPacketType;
+            _lastResponsePayload = (payload as byte[] ?? payload.ToArray()).ToArray();
+            _isOpen = false;
+
+            ResolveItemMetadata();
+            if (accepted)
+            {
+                _acceptedProposal = new EngagementProposalAcceptedSnapshot
+                {
+                    LocalCharacterName = _localCharacterName,
+                    ProposerName = _proposerName,
+                    PartnerName = _partnerName,
+                    RingItemId = _ringItemId,
+                    RingItemName = _ringItemName,
+                    RingItemDescription = _ringItemDescription,
+                    SealItemId = _sealItemId,
+                    SealItemName = _sealItemName,
+                    SealItemDescription = _sealItemDescription,
+                    RequestMessage = _outgoingRequestMessage,
+                    CustomMessage = _customMessage
+                };
+                _statusMessage = $"{_partnerName} accepted the engagement request. {EngagementProposalDialogText.GetAcceptedText()} Decoded client packet {AcceptPacketType} [02 01] with requester {_proposerName} and ring {_ringItemId}, and primed the wedding handoff state for the requester-owned owner.";
+            }
+            else
+            {
+                _acceptedProposal = null;
+                _statusMessage = $"{_partnerName} declined the engagement request. {EngagementProposalDialogText.GetDeclinedRequestText()} Decoded client packet {AcceptPacketType} [02 00] with requester {_proposerName} and ring {_ringItemId}.";
+            }
+
+            message = _statusMessage;
+            return true;
         }
 
         internal static bool TryDecodeOutgoingRequestPayload(

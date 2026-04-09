@@ -19,7 +19,8 @@ namespace HaCreator.MapSimulator
         private int _expeditionIntermediaryOfficialSessionBridgeConfiguredRemotePort;
         private string _expeditionIntermediaryOfficialSessionBridgeConfiguredProcessSelector;
         private int? _expeditionIntermediaryOfficialSessionBridgeConfiguredLocalPort;
-        private ushort _expeditionIntermediaryOfficialSessionBridgeConfiguredOpcode;
+        // IDA v95: CWvsContext::OnPacket case 64 dispatches OnExpedtionResult.
+        private ushort _expeditionIntermediaryOfficialSessionBridgeConfiguredOpcode = ExpeditionIntermediaryOfficialSessionBridgeManager.DefaultInboundResultOpcode;
         private const int ExpeditionIntermediaryOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
         private int _nextExpeditionIntermediaryOfficialSessionBridgeDiscoveryRefreshAt;
 
@@ -165,9 +166,7 @@ namespace HaCreator.MapSimulator
         {
             string enabledText = _expeditionIntermediaryOfficialSessionBridgeEnabled ? "enabled" : "disabled";
             string modeText = _expeditionIntermediaryOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
-            string opcodeText = _expeditionIntermediaryOfficialSessionBridgeConfiguredOpcode > 0
-                ? _expeditionIntermediaryOfficialSessionBridgeConfiguredOpcode.ToString()
-                : "unset";
+            string opcodeText = _expeditionIntermediaryOfficialSessionBridgeConfiguredOpcode.ToString();
             string configuredTarget = _expeditionIntermediaryOfficialSessionBridgeUseDiscovery
                 ? _expeditionIntermediaryOfficialSessionBridgeConfiguredLocalPort.HasValue
                     ? $"discover remote port {_expeditionIntermediaryOfficialSessionBridgeConfiguredRemotePort} with local port {_expeditionIntermediaryOfficialSessionBridgeConfiguredLocalPort.Value}"
@@ -351,6 +350,21 @@ namespace HaCreator.MapSimulator
                 case "status":
                     return ChatCommandHandler.CommandResult.Info(DescribeExpeditionIntermediaryOfficialSessionBridgeStatus());
 
+                case "history":
+                    return HandleExpeditionBridgeHistoryCommand(args, actionIndex + 1);
+
+                case "clearhistory":
+                    return ChatCommandHandler.CommandResult.Ok(_expeditionIntermediaryOfficialSessionBridge.ClearRecentOutboundPackets());
+
+                case "replay":
+                    return HandleExpeditionBridgeReplayCommand(args, actionIndex + 1);
+
+                case "sendraw":
+                    return HandleExpeditionBridgeSendRawCommand(args, actionIndex + 1);
+
+                case "discoverstatus":
+                    return HandleExpeditionBridgeDiscoverStatusCommand(args, actionIndex + 1);
+
                 case "discover":
                     return HandleExpeditionBridgeDiscoverCommand(args, actionIndex + 1);
 
@@ -367,22 +381,95 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Ok(DescribeExpeditionIntermediaryOfficialSessionBridgeStatus());
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /expedition bridge [status|start <listenPort> <remoteHost> <remotePort> <opcode>|discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n]|stop]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /expedition bridge [status|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|discoverstatus <remotePort> [process=selector] [localPort=n]|start <listenPort> <remoteHost> <remotePort> [opcode]|discover <remotePort> [opcode] [listenPort] [process=selector] [localPort=n]|stop]");
             }
+        }
+
+        private ChatCommandHandler.CommandResult HandleExpeditionBridgeHistoryCommand(string[] args, int countIndex)
+        {
+            int historyCount = 10;
+            if (args.Length > countIndex
+                && (!int.TryParse(args[countIndex], out historyCount) || historyCount <= 0))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /expedition bridge history [count]");
+            }
+
+            return ChatCommandHandler.CommandResult.Info(_expeditionIntermediaryOfficialSessionBridge.DescribeRecentOutboundPackets(historyCount));
+        }
+
+        private ChatCommandHandler.CommandResult HandleExpeditionBridgeReplayCommand(string[] args, int historyIndex)
+        {
+            if (args.Length <= historyIndex
+                || !int.TryParse(args[historyIndex], out int replayIndex)
+                || replayIndex <= 0)
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /expedition bridge replay <historyIndex>");
+            }
+
+            return _expeditionIntermediaryOfficialSessionBridge.TryReplayRecentOutboundPacket(replayIndex, out string replayStatus)
+                ? ChatCommandHandler.CommandResult.Ok(replayStatus)
+                : ChatCommandHandler.CommandResult.Error(replayStatus);
+        }
+
+        private ChatCommandHandler.CommandResult HandleExpeditionBridgeSendRawCommand(string[] args, int payloadIndex)
+        {
+            if (args.Length <= payloadIndex || !TryDecodeHexBytes(string.Concat(args[payloadIndex..]), out byte[] rawPacket))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /expedition bridge sendraw <hex>");
+            }
+
+            return _expeditionIntermediaryOfficialSessionBridge.TrySendRawPacket(rawPacket, out string sendStatus)
+                ? ChatCommandHandler.CommandResult.Ok(sendStatus)
+                : ChatCommandHandler.CommandResult.Error(sendStatus);
+        }
+
+        private ChatCommandHandler.CommandResult HandleExpeditionBridgeDiscoverStatusCommand(string[] args, int startIndex)
+        {
+            if (args.Length <= startIndex
+                || !int.TryParse(args[startIndex], out int remotePort)
+                || remotePort <= 0
+                || remotePort > ushort.MaxValue)
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /expedition bridge discoverstatus <remotePort> [process=selector] [localPort=n]");
+            }
+
+            string processSelector = null;
+            int? localPort = null;
+            for (int i = startIndex + 1; i < args.Length; i++)
+            {
+                if (args[i].StartsWith("process=", StringComparison.OrdinalIgnoreCase))
+                {
+                    processSelector = args[i]["process=".Length..];
+                }
+                else if (args[i].StartsWith("localPort=", StringComparison.OrdinalIgnoreCase)
+                    && int.TryParse(args[i]["localPort=".Length..], out int parsedLocalPort))
+                {
+                    localPort = parsedLocalPort;
+                }
+            }
+
+            return ChatCommandHandler.CommandResult.Info(
+                _expeditionIntermediaryOfficialSessionBridge.DescribeDiscoveredSessions(remotePort, processSelector, localPort));
         }
 
         private ChatCommandHandler.CommandResult HandleExpeditionBridgeStartCommand(string[] args, int startIndex)
         {
-            if (args.Length <= startIndex + 3
+            if (args.Length <= startIndex + 2
                 || !int.TryParse(args[startIndex], out int listenPort)
                 || listenPort <= 0
                 || listenPort > ushort.MaxValue
                 || !int.TryParse(args[startIndex + 2], out int remotePort)
                 || remotePort <= 0
-                || remotePort > ushort.MaxValue
-                || !TryParseExpeditionOpcode(args[startIndex + 3], out ushort opcode))
+                || remotePort > ushort.MaxValue)
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /expedition bridge start <listenPort> <remoteHost> <remotePort> <opcode>");
+                return ChatCommandHandler.CommandResult.Error("Usage: /expedition bridge start <listenPort> <remoteHost> <remotePort> [opcode]");
+            }
+
+            ushort opcode = _expeditionIntermediaryOfficialSessionBridgeConfiguredOpcode;
+            if (args.Length > startIndex + 3
+                && !TryParseExpeditionOpcode(args[startIndex + 3], out opcode))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /expedition bridge start <listenPort> <remoteHost> <remotePort> [opcode]");
             }
 
             _expeditionIntermediaryOfficialSessionBridgeEnabled = true;
@@ -399,24 +486,33 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleExpeditionBridgeDiscoverCommand(string[] args, int startIndex)
         {
-            if (args.Length <= startIndex + 1
+            if (args.Length <= startIndex
                 || !int.TryParse(args[startIndex], out int remotePort)
                 || remotePort <= 0
-                || remotePort > ushort.MaxValue
-                || !TryParseExpeditionOpcode(args[startIndex + 1], out ushort opcode))
+                || remotePort > ushort.MaxValue)
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /expedition bridge discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n]");
+                return ChatCommandHandler.CommandResult.Error("Usage: /expedition bridge discover <remotePort> [opcode] [listenPort] [process=selector] [localPort=n]");
             }
 
+            ushort opcode = _expeditionIntermediaryOfficialSessionBridgeConfiguredOpcode;
             int listenPort = ExpeditionIntermediaryOfficialSessionBridgeManager.DefaultListenPort;
-            if (args.Length > startIndex + 2 && int.TryParse(args[startIndex + 2], out int parsedListenPort))
+            int optionIndex = startIndex + 1;
+            if (args.Length > optionIndex
+                && TryParseExpeditionOpcode(args[optionIndex], out ushort parsedOpcode))
+            {
+                opcode = parsedOpcode;
+                optionIndex++;
+            }
+
+            if (args.Length > optionIndex && int.TryParse(args[optionIndex], out int parsedListenPort))
             {
                 listenPort = parsedListenPort;
+                optionIndex++;
             }
 
             string processSelector = null;
             int? localPort = null;
-            for (int i = startIndex + 2; i < args.Length; i++)
+            for (int i = optionIndex; i < args.Length; i++)
             {
                 if (args[i].StartsWith("process=", StringComparison.OrdinalIgnoreCase))
                 {

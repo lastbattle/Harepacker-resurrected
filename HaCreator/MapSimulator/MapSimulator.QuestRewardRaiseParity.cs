@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using Microsoft.Xna.Framework;
 using System;
 using System.Linq;
 
@@ -9,7 +10,7 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private int _nextQuestRewardRaiseRequestId = 1;
-        private QuestRewardRaiseState _activeQuestRewardRaise;
+        private readonly QuestRewardRaiseManagerRuntime _questRewardRaiseManager = new();
 
         private void WireQuestRewardRaiseWindow()
         {
@@ -31,9 +32,10 @@ namespace HaCreator.MapSimulator
             raiseWindow.CancelRequested -= HandleQuestRewardRaiseCancelRequested;
             raiseWindow.CancelRequested += HandleQuestRewardRaiseCancelRequested;
 
-            if (_activeQuestRewardRaise != null && CanDisplayQuestRewardRaise(_activeQuestRewardRaise))
+            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
+            if (activeRaise != null && CanDisplayQuestRewardRaise(activeRaise))
             {
-                raiseWindow.Configure(_activeQuestRewardRaise);
+                raiseWindow.Configure(activeRaise);
             }
             else if (raiseWindow.IsVisible)
             {
@@ -50,16 +52,17 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _activeQuestRewardRaise = new QuestRewardRaiseState
+            Point defaultPosition = uiWindowManager?.GetWindow(MapSimulatorWindowNames.QuestRewardRaise)?.Position ?? Point.Zero;
+            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.Open(prompt, source, defaultPosition);
+            if (activeRaise == null)
             {
-                Source = source,
-                Prompt = prompt,
-                GroupIndex = 0,
-                OwnerItemId = Math.Max(0, prompt.OwnerContext?.OwnerItemId ?? 0),
-                QrData = prompt.OwnerContext?.InitialQrData ?? 0,
-                MaxDropCount = Math.Max(1, prompt.OwnerContext?.MaxDropCount ?? 1),
-                WindowMode = windowMode
-            };
+                return;
+            }
+
+            if (windowMode != QuestRewardRaiseWindowMode.PiecePlacement && hasSelectionGroups)
+            {
+                activeRaise.DisplayMode = QuestRewardRaiseWindowMode.Selection;
+            }
 
             if (source == QuestRewardRaiseSourceKind.NpcOverlay)
             {
@@ -71,13 +74,14 @@ namespace HaCreator.MapSimulator
 
         private void ShowActiveQuestRewardRaiseGroup()
         {
-            if (_activeQuestRewardRaise?.Prompt == null)
+            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
+            if (activeRaise?.Prompt == null)
             {
                 return;
             }
 
-            if (_activeQuestRewardRaise.WindowMode != QuestRewardRaiseWindowMode.PiecePlacement
-                && _activeQuestRewardRaise.GroupIndex >= _activeQuestRewardRaise.Prompt.Groups.Count)
+            if (activeRaise.DisplayMode != QuestRewardRaiseWindowMode.PiecePlacement
+                && activeRaise.GroupIndex >= activeRaise.Prompt.Groups.Count)
             {
                 ResolveQuestRewardRaise();
                 return;
@@ -88,21 +92,23 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            raiseWindow.Configure(_activeQuestRewardRaise);
+            raiseWindow.Configure(activeRaise);
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.QuestRewardRaise);
         }
 
         private void HandleQuestRewardRaiseSelectionConfirmed(int selectedItemId)
         {
-            if (_activeQuestRewardRaise?.Prompt?.Groups == null ||
-                _activeQuestRewardRaise.GroupIndex < 0 ||
-                _activeQuestRewardRaise.GroupIndex >= _activeQuestRewardRaise.Prompt.Groups.Count)
+            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
+            if (activeRaise?.Prompt?.Groups == null ||
+                activeRaise.DisplayMode != QuestRewardRaiseWindowMode.Selection ||
+                activeRaise.GroupIndex < 0 ||
+                activeRaise.GroupIndex >= activeRaise.Prompt.Groups.Count)
             {
                 DismissQuestRewardRaise(clearState: true, restorePlacedPieces: true);
                 return;
             }
 
-            QuestRewardChoiceGroup group = _activeQuestRewardRaise.Prompt.Groups[_activeQuestRewardRaise.GroupIndex];
+            QuestRewardChoiceGroup group = activeRaise.Prompt.Groups[activeRaise.GroupIndex];
             if (selectedItemId <= 0 || group.Options == null || !group.Options.Any(option => option.ItemId == selectedItemId))
             {
                 _chat?.AddSystemMessage("That quest reward choice is no longer available.", currTickCount);
@@ -110,8 +116,8 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _activeQuestRewardRaise.SelectedItemsByGroup[group.GroupKey] = selectedItemId;
-            _activeQuestRewardRaise.GroupIndex++;
+            activeRaise.SelectedItemsByGroup[group.GroupKey] = selectedItemId;
+            activeRaise.GroupIndex++;
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.QuestRewardRaise) is QuestRewardRaiseWindow raiseWindow)
             {
@@ -123,8 +129,17 @@ namespace HaCreator.MapSimulator
 
         private void HandleQuestRewardRaisePlacementConfirmed()
         {
-            if (_activeQuestRewardRaise == null || _activeQuestRewardRaise.WindowMode != QuestRewardRaiseWindowMode.PiecePlacement)
+            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
+            if (activeRaise == null || activeRaise.DisplayMode != QuestRewardRaiseWindowMode.PiecePlacement)
             {
+                return;
+            }
+
+            if (activeRaise.Prompt?.Groups?.Count > 0)
+            {
+                activeRaise.DisplayMode = QuestRewardRaiseWindowMode.Selection;
+                activeRaise.GroupIndex = 0;
+                RefreshQuestRewardRaiseWindow();
                 return;
             }
 
@@ -133,8 +148,9 @@ namespace HaCreator.MapSimulator
 
         private void HandleQuestRewardRaisePieceDropRequested(QuestRewardRaisePieceDropRequest request)
         {
-            if (_activeQuestRewardRaise == null
-                || _activeQuestRewardRaise.WindowMode != QuestRewardRaiseWindowMode.PiecePlacement
+            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
+            if (activeRaise == null
+                || activeRaise.DisplayMode != QuestRewardRaiseWindowMode.PiecePlacement
                 || request.SlotData == null
                 || request.SourceInventoryType == InventoryType.NONE
                 || request.SourceSlotIndex < 0)
@@ -142,13 +158,13 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if ((_activeQuestRewardRaise.PlacedPieces?.Count ?? 0) >= _activeQuestRewardRaise.MaxDropCount)
+            if ((activeRaise.PlacedPieces?.Count ?? 0) >= activeRaise.MaxDropCount)
             {
                 _chat?.AddSystemMessage("The raise window has no free piece slots.", currTickCount);
                 return;
             }
 
-            if (_activeQuestRewardRaise.PlacedPieces.Any(piece =>
+            if (activeRaise.PlacedPieces.Any(piece =>
                     piece.InventoryType == request.SourceInventoryType &&
                     piece.SlotIndex == request.SourceSlotIndex))
             {
@@ -168,7 +184,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _activeQuestRewardRaise.PlacedPieces.Add(new QuestRewardRaisePlacedPiece
+            activeRaise.PlacedPieces.Add(new QuestRewardRaisePlacedPiece
             {
                 RequestId = requestId,
                 InventoryType = request.SourceInventoryType,
@@ -188,12 +204,13 @@ namespace HaCreator.MapSimulator
 
         private void HandleQuestRewardRaisePieceRemovalRequested(int requestId)
         {
-            if (_activeQuestRewardRaise?.PlacedPieces == null || requestId <= 0)
+            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
+            if (activeRaise?.PlacedPieces == null || requestId <= 0)
             {
                 return;
             }
 
-            QuestRewardRaisePlacedPiece placedPiece = _activeQuestRewardRaise.PlacedPieces.FirstOrDefault(piece => piece.RequestId == requestId);
+            QuestRewardRaisePlacedPiece placedPiece = activeRaise.PlacedPieces.FirstOrDefault(piece => piece.RequestId == requestId);
             if (placedPiece == null)
             {
                 return;
@@ -204,7 +221,7 @@ namespace HaCreator.MapSimulator
                 inventoryWindow.TryClearPendingRequestState(requestId);
             }
 
-            _activeQuestRewardRaise.PlacedPieces.RemoveAll(piece => piece.RequestId == requestId);
+            activeRaise.PlacedPieces.RemoveAll(piece => piece.RequestId == requestId);
             _chat?.AddSystemMessage(
                 $"Released raise PutItem request #{requestId} for {ResolveQuestRewardRaiseItemName(placedPiece.ItemId)}.",
                 currTickCount);
@@ -213,9 +230,8 @@ namespace HaCreator.MapSimulator
 
         private void HandleQuestRewardRaiseCancelRequested()
         {
-            QuestRewardRaiseState activeRaise = _activeQuestRewardRaise;
+            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.DestroyActiveRaise();
             RestoreQuestRewardRaisePlacedPieces(activeRaise);
-            _activeQuestRewardRaise = null;
 
             if (activeRaise?.Source == QuestRewardRaiseSourceKind.NpcOverlay && _activeNpcInteractionNpc != null)
             {
@@ -225,8 +241,7 @@ namespace HaCreator.MapSimulator
 
         private void ResolveQuestRewardRaise()
         {
-            QuestRewardRaiseState activeRaise = _activeQuestRewardRaise;
-            _activeQuestRewardRaise = null;
+            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.DestroyActiveRaise();
             ClearQuestRewardRaiseWindow();
 
             if (activeRaise?.Prompt == null)
@@ -334,13 +349,13 @@ namespace HaCreator.MapSimulator
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.QuestRewardRaise) is QuestRewardRaiseWindow raiseWindow)
             {
-                raiseWindow.Configure(_activeQuestRewardRaise);
+                raiseWindow.Configure(_questRewardRaiseManager.ActiveRaise);
             }
         }
 
         private void DismissQuestRewardRaise(bool clearState, bool restorePlacedPieces)
         {
-            QuestRewardRaiseState activeRaise = _activeQuestRewardRaise;
+            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
             if (restorePlacedPieces)
             {
                 RestoreQuestRewardRaisePlacedPieces(activeRaise);
@@ -348,7 +363,7 @@ namespace HaCreator.MapSimulator
 
             if (clearState)
             {
-                _activeQuestRewardRaise = null;
+                _questRewardRaiseManager.DestroyActiveRaise();
             }
 
             ClearQuestRewardRaiseWindow();

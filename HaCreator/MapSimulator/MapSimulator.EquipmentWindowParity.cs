@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Companions;
 using HaCreator.MapSimulator.Fields;
+using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
@@ -11,14 +12,18 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private const int EquipmentChangeResponseDelayMs = 50;
+        private const int MechanicEquipmentPacketAuthorityTimeoutMs = 350;
         private int _nextEquipmentChangeRequestId = 1;
         private int _lastEquipmentExclusiveRequestSentTick = int.MinValue;
         private readonly Dictionary<int, PendingEquipmentChangeEnvelope> _pendingEquipmentChangeRequests = new();
+        private readonly Dictionary<int, EquipmentChangeResult> _pendingMechanicEquipmentPacketResults = new();
 
         private sealed class PendingEquipmentChangeEnvelope
         {
             public EquipmentChangeRequest Request { get; init; }
             public int ReadyAtTick { get; init; }
+            public bool AwaitingMechanicPacketAuthority { get; set; }
+            public int MechanicPacketAuthorityDeadlineAtTick { get; set; }
         }
 
         private EquipmentChangeSubmission SubmitEquipmentChangeRequest(EquipmentChangeRequest request)
@@ -46,11 +51,19 @@ namespace HaCreator.MapSimulator
             request.RequestId = GetNextEquipmentChangeRequestId();
             request.RequestedAtTick = currTickCount;
             _lastEquipmentExclusiveRequestSentTick = request.RequestedAtTick;
-            _pendingEquipmentChangeRequests[request.RequestId] = new PendingEquipmentChangeEnvelope
+            PendingEquipmentChangeEnvelope envelope = new()
             {
                 Request = request,
                 ReadyAtTick = currTickCount + EquipmentChangeResponseDelayMs
             };
+            if (IsMechanicEquipmentRequest(request)
+                && TryDispatchMechanicEquipmentAuthorityRequest(request, out _))
+            {
+                envelope.AwaitingMechanicPacketAuthority = true;
+                envelope.MechanicPacketAuthorityDeadlineAtTick = currTickCount + MechanicEquipmentPacketAuthorityTimeoutMs;
+            }
+
+            _pendingEquipmentChangeRequests[request.RequestId] = envelope;
 
             return EquipmentChangeSubmission.Accept(request.RequestId, request.RequestedAtTick);
         }
@@ -106,6 +119,19 @@ namespace HaCreator.MapSimulator
             if (resolutionQuery == null
                 || resolutionQuery.RequestId <= 0
                 || !_pendingEquipmentChangeRequests.TryGetValue(resolutionQuery.RequestId, out PendingEquipmentChangeEnvelope pendingEnvelope))
+            {
+                return null;
+            }
+
+            if (_pendingMechanicEquipmentPacketResults.TryGetValue(resolutionQuery.RequestId, out EquipmentChangeResult packetResult))
+            {
+                _pendingMechanicEquipmentPacketResults.Remove(resolutionQuery.RequestId);
+                _pendingEquipmentChangeRequests.Remove(resolutionQuery.RequestId);
+                return packetResult;
+            }
+
+            if (pendingEnvelope.AwaitingMechanicPacketAuthority
+                && unchecked(currTickCount - pendingEnvelope.MechanicPacketAuthorityDeadlineAtTick) < 0)
             {
                 return null;
             }
@@ -168,6 +194,84 @@ namespace HaCreator.MapSimulator
                 currTickCount,
                 build.ComputeEquipmentStateToken(),
                 resolvedCompanionStateToken);
+        }
+
+        private bool IsMechanicEquipmentRequest(EquipmentChangeRequest request)
+        {
+            return request != null
+                && (request.TargetCompanionKind == EquipmentChangeCompanionKind.Mechanic
+                    || request.SourceCompanionKind == EquipmentChangeCompanionKind.Mechanic);
+        }
+
+        private bool TryDispatchMechanicEquipmentAuthorityRequest(EquipmentChangeRequest request, out string status)
+        {
+            status = "Mechanic equipment authority dispatch is unavailable.";
+            if (!IsMechanicEquipmentRequest(request))
+            {
+                status = "Equipment request does not target the mechanic owner.";
+                return false;
+            }
+
+            byte[] payload = BuildMechanicEquipmentAuthorityRequestPayload(request);
+            return _localUtilityPacketOutbox.TrySendOutboundPacket(LocalUtilityPacketInboxManager.MechanicEquipStatePacketType, payload, out status);
+        }
+
+        private byte[] BuildMechanicEquipmentAuthorityRequestPayload(EquipmentChangeRequest request)
+        {
+            using System.IO.MemoryStream stream = new();
+            using System.IO.BinaryWriter writer = new(stream);
+            writer.Write((byte)PacketOwnedMechanicEquipPayloadMode.SlotMutation);
+            writer.Write(request.RequestId);
+            writer.Write(request.RequestedAtTick);
+            writer.Write((byte)request.Kind);
+            writer.Write((byte)request.OwnerKind);
+            writer.Write(request.OwnerSessionId);
+            writer.Write(request.ExpectedCharacterId);
+            writer.Write(request.ExpectedBuildStateToken);
+            writer.Write(request.ExpectedMechanicStateToken);
+            writer.Write(request.ItemId);
+            writer.Write((byte)request.SourceInventoryType);
+            writer.Write(request.SourceInventoryIndex);
+            writer.Write(request.TargetMechanicSlot.HasValue ? (byte)request.TargetMechanicSlot.Value : byte.MaxValue);
+            writer.Write(request.SourceMechanicSlot.HasValue ? (byte)request.SourceMechanicSlot.Value : byte.MaxValue);
+            return stream.ToArray();
+        }
+
+        private bool TryQueueMechanicEquipmentPacketResult(
+            int requestId,
+            int requestedAtTick,
+            EquipmentChangeResult result,
+            out string message)
+        {
+            message = null;
+            if (requestId <= 0
+                || !_pendingEquipmentChangeRequests.TryGetValue(requestId, out PendingEquipmentChangeEnvelope pendingEnvelope)
+                || pendingEnvelope?.Request == null)
+            {
+                message = $"Mechanic packet result did not match a pending request id ({requestId}).";
+                return false;
+            }
+
+            EquipmentChangeRequest request = pendingEnvelope.Request;
+            if (!IsMechanicEquipmentRequest(request))
+            {
+                message = $"Pending request {requestId} is not owned by the mechanic equipment tab.";
+                return false;
+            }
+
+            if (request.RequestedAtTick != requestedAtTick)
+            {
+                message = $"Mechanic packet result for request {requestId} did not match the pending request timestamp.";
+                return false;
+            }
+
+            _pendingMechanicEquipmentPacketResults[requestId] = result;
+            pendingEnvelope.AwaitingMechanicPacketAuthority = false;
+            pendingEnvelope.MechanicPacketAuthorityDeadlineAtTick = currTickCount;
+            message = result.Accepted
+                ? $"Queued packet-authored mechanic equipment result for request {requestId}."
+                : $"Queued packet-authored mechanic equipment rejection for request {requestId}.";
+            return true;
         }
 
         private EquipmentChangeResult HandleInventoryToCharacterChange(EquipmentChangeRequest request, CharacterBuild build)

@@ -1130,6 +1130,12 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
+            if (rawLength == 0)
+            {
+                bytesConsumed = sizeof(ushort) + CountTrailingNullBytes(payload.Slice(sizeof(ushort)));
+                return true;
+            }
+
             int asciiTotalLength = sizeof(ushort) + rawLength;
             if (rawLength > 0 && asciiTotalLength <= payload.Length)
             {

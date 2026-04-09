@@ -51,15 +51,27 @@ namespace HaCreator.MapSimulator.Interaction
         internal int ActiveMessageExpiresAt { get; private set; } = int.MinValue;
         internal int MessageSequenceId { get; private set; }
         internal string StatusMessage { get; private set; } = "Tutor runtime idle.";
-        internal IReadOnlyList<int> ClientTutorSkillIds => _clientTutorSkillIds;
-        internal bool HasClientTutorSkillSlots => _clientTutorSkillIds.Count > 0;
+        internal IReadOnlyList<int> ClientTutorSkillIds => SnapshotSharedClientTutorSkillSlots();
+        internal bool HasClientTutorSkillSlots => SharedClientTutorSkillSlotCount > 0;
         internal IReadOnlyList<int> RegisteredTutorSkillIds => _registeredTutorVariants.ConvertAll(snapshot => snapshot.SkillId);
         internal IReadOnlyList<TutorVariantSnapshot> RegisteredTutorVariants => _registeredTutorVariants;
         internal bool HasRegisteredTutorVariants => _registeredTutorVariants.Count > 0;
         internal int RegisteredTutorVariantCount => _registeredTutorVariants.Count;
 
-        private readonly List<int> _clientTutorSkillIds = new();
         private readonly List<TutorVariantSnapshot> _registeredTutorVariants = new();
+        private static readonly object SharedClientTutorSkillIdsSync = new();
+        private static readonly List<int> SharedClientTutorSkillIds = new();
+
+        internal static int SharedClientTutorSkillSlotCount
+        {
+            get
+            {
+                lock (SharedClientTutorSkillIdsSync)
+                {
+                    return SharedClientTutorSkillIds.Count;
+                }
+            }
+        }
 
         internal bool HasVisibleMessage(int currentTick)
         {
@@ -272,7 +284,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal IReadOnlyList<int> SnapshotClientTutorSkillSlots()
         {
-            return _clientTutorSkillIds.ToArray();
+            return SnapshotSharedClientTutorSkillSlots();
         }
 
         internal void ApplyIndexedMessage(int index, int durationMs, int currentTick)
@@ -342,15 +354,16 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string DescribeClientTutorSkillSlots()
         {
-            if (_clientTutorSkillIds.Count == 0)
+            IReadOnlyList<int> clientTutorSkillIds = SnapshotSharedClientTutorSkillSlots();
+            if (clientTutorSkillIds.Count == 0)
             {
                 return "none";
             }
 
-            List<string> slots = new(_clientTutorSkillIds.Count);
-            for (int i = 0; i < _clientTutorSkillIds.Count; i++)
+            List<string> slots = new(clientTutorSkillIds.Count);
+            for (int i = 0; i < clientTutorSkillIds.Count; i++)
             {
-                slots.Add($"[{i}]={_clientTutorSkillIds[i]}");
+                slots.Add($"[{i}]={clientTutorSkillIds[i]}");
             }
 
             return string.Join(", ", slots);
@@ -446,10 +459,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private IEnumerable<string> EnumerateRegisteredTutorVariantsInDisplayOrder()
         {
+            IReadOnlyList<int> clientTutorSkillIds = SnapshotSharedClientTutorSkillSlots();
             HashSet<int> emittedSkillIds = new();
-            for (int i = 0; i < _clientTutorSkillIds.Count; i++)
+            for (int i = 0; i < clientTutorSkillIds.Count; i++)
             {
-                int slotSkillId = _clientTutorSkillIds[i];
+                int slotSkillId = clientTutorSkillIds[i];
                 int variantIndex = FindRegisteredTutorVariantIndex(slotSkillId);
                 if (variantIndex < 0 || !emittedSkillIds.Add(slotSkillId))
                 {
@@ -471,12 +485,18 @@ namespace HaCreator.MapSimulator.Interaction
 
         private void InsertClientTutorSkillSlot(int skillId)
         {
-            if (skillId <= 0 || _clientTutorSkillIds.Contains(skillId))
+            if (skillId <= 0)
             {
                 return;
             }
 
-            _clientTutorSkillIds.Add(skillId);
+            lock (SharedClientTutorSkillIdsSync)
+            {
+                if (!SharedClientTutorSkillIds.Contains(skillId))
+                {
+                    SharedClientTutorSkillIds.Add(skillId);
+                }
+            }
         }
 
         private void RemoveClientTutorSkillSlot(int skillId)
@@ -486,7 +506,26 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            _clientTutorSkillIds.Remove(skillId);
+            lock (SharedClientTutorSkillIdsSync)
+            {
+                SharedClientTutorSkillIds.Remove(skillId);
+            }
+        }
+
+        internal static IReadOnlyList<int> SnapshotSharedClientTutorSkillSlots()
+        {
+            lock (SharedClientTutorSkillIdsSync)
+            {
+                return SharedClientTutorSkillIds.ToArray();
+            }
+        }
+
+        internal static void ResetSharedClientTutorSkillSlots()
+        {
+            lock (SharedClientTutorSkillIdsSync)
+            {
+                SharedClientTutorSkillIds.Clear();
+            }
         }
 
         private static int ResolveFallbackActorHeight(int skillId)

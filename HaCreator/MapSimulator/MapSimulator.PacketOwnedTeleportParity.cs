@@ -10,6 +10,7 @@ using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace HaCreator.MapSimulator
@@ -606,6 +607,134 @@ namespace HaCreator.MapSimulator
 
             sourcePortalName = resolvedSourcePortalName;
             return !string.IsNullOrWhiteSpace(sourcePortalName);
+        }
+
+        internal static bool TryResolvePacketOwnedSourcePortalNameByTargetMapOnly(
+            IEnumerable<PortalInstance> currentFieldPortals,
+            int targetMapId,
+            out string sourcePortalName)
+        {
+            sourcePortalName = null;
+            if (currentFieldPortals == null || targetMapId <= 0)
+            {
+                return false;
+            }
+
+            string resolvedSourcePortalName = null;
+            foreach (PortalInstance portal in currentFieldPortals)
+            {
+                if (portal == null
+                    || portal.tm != targetMapId
+                    || string.IsNullOrWhiteSpace(portal.pn))
+                {
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(resolvedSourcePortalName))
+                {
+                    resolvedSourcePortalName = portal.pn;
+                    continue;
+                }
+
+                if (!string.Equals(resolvedSourcePortalName, portal.pn, StringComparison.OrdinalIgnoreCase))
+                {
+                    sourcePortalName = null;
+                    return false;
+                }
+            }
+
+            sourcePortalName = resolvedSourcePortalName;
+            return !string.IsNullOrWhiteSpace(sourcePortalName);
+        }
+
+        private bool TryResolvePacketOwnedTemporarySourcePortal(
+            int targetMapId,
+            float sourceX,
+            float sourceY,
+            string targetPortalName,
+            IEnumerable<string> targetPortalNameCandidates,
+            out PortalInstance sourcePortal,
+            out string sourcePortalName)
+        {
+            sourcePortal = null;
+            sourcePortalName = null;
+
+            if (TryResolvePacketOwnedTeleportPortalByPosition(
+                sourceX,
+                sourceY,
+                out _,
+                out PortalInstance resolvedSourcePortal))
+            {
+                sourcePortal = resolvedSourcePortal;
+                sourcePortalName = resolvedSourcePortal.pn;
+            }
+
+            if (string.IsNullOrWhiteSpace(sourcePortalName)
+                && !string.IsNullOrWhiteSpace(targetPortalName)
+                && TryResolvePacketOwnedSourcePortalNameByTargetPortalName(
+                    _mapBoard?.BoardItems?.Portals,
+                    targetMapId,
+                    targetPortalName,
+                    out string inferredSourcePortalName))
+            {
+                sourcePortalName = inferredSourcePortalName;
+            }
+
+            if (string.IsNullOrWhiteSpace(sourcePortalName)
+                && TryResolvePacketOwnedSourcePortalNameByTargetPortalCandidates(
+                    _mapBoard?.BoardItems?.Portals,
+                    targetMapId,
+                    targetPortalNameCandidates,
+                    out string inferredSourceCandidatePortalName))
+            {
+                sourcePortalName = inferredSourceCandidatePortalName;
+            }
+
+            if (string.IsNullOrWhiteSpace(sourcePortalName)
+                && TryResolvePacketOwnedSourcePortalNameByTargetMapOnly(
+                    _mapBoard?.BoardItems?.Portals,
+                    targetMapId,
+                    out string inferredSourceMapOnlyPortalName))
+            {
+                sourcePortalName = inferredSourceMapOnlyPortalName;
+            }
+
+            if (sourcePortal == null && !string.IsNullOrWhiteSpace(sourcePortalName))
+            {
+                string requestedSourcePortalName = sourcePortalName;
+                sourcePortal = _mapBoard?.BoardItems?.Portals
+                    ?.FirstOrDefault(portal => string.Equals(portal?.pn, requestedSourcePortalName, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return sourcePortal != null || !string.IsNullOrWhiteSpace(sourcePortalName);
+        }
+
+        private bool TryResolvePacketOwnedTargetPortalNameFromSourcePortal(
+            PortalInstance sourcePortal,
+            int targetMapId,
+            out string targetPortalName)
+        {
+            targetPortalName = null;
+            if (sourcePortal == null
+                || sourcePortal.tm != targetMapId
+                || string.IsNullOrWhiteSpace(sourcePortal.tn))
+            {
+                return false;
+            }
+
+            IEnumerable<PortalInstance> targetPortals = targetMapId == (_mapBoard?.MapInfo?.id ?? -1)
+                ? _mapBoard?.BoardItems?.Portals
+                : _loadMapCallback?.Invoke(targetMapId)?.Item1?.BoardItems?.Portals;
+            if (!TryResolvePacketOwnedPortalRequestTargetFromBoardPortals(
+                targetPortals,
+                sourcePortal.tn,
+                out PortalInstance resolvedTargetPortal))
+            {
+                return false;
+            }
+
+            targetPortalName = resolvedTargetPortal.pn;
+            return true;
         }
 
         private bool TryResolvePacketOwnedPendingCrossMapPortalNames(

@@ -6,6 +6,81 @@ namespace HaCreator.MapSimulator.Character
     internal sealed class TamingMobActionFrameOwner
     {
         private const int MechanicTamingMobItemId = 1932016;
+        private static readonly IReadOnlySet<int> WildHunterJaguarTamingMobItemIds =
+            new HashSet<int>
+            {
+                1932015,
+                1932030,
+                1932031,
+                1932032,
+                1932033,
+                1932036
+            };
+        private static readonly IReadOnlySet<string> MechanicExclusiveActionNames =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "tank_pre",
+                "tank",
+                "tank_walk",
+                "tank_prone",
+                "tank_stand",
+                "tank_after",
+                "tank_laser",
+                "tank_siegepre",
+                "tank_siegeattack",
+                "tank_siegestand",
+                "tank_siegeafter",
+                "tank_msummon",
+                "tank_msummon2",
+                "tank_rbooster_pre",
+                "tank_rbooster_after",
+                "tank_mRush",
+                "siege_pre",
+                "siege",
+                "siege_stand",
+                "siege_after",
+                "rbooster_pre",
+                "rbooster",
+                "rbooster_after",
+                "gatlingshot",
+                "gatlingshot2",
+                "drillrush",
+                "mbooster",
+                "earthslug",
+                "rpunch",
+                "msummon",
+                "msummon2",
+                "ride2",
+                "getoff2",
+                "mRush",
+                "rope2",
+                "ladder2",
+                "flamethrower_pre",
+                "flamethrower",
+                "flamethrower_after",
+                "flamethrower_pre2",
+                "flamethrower2",
+                "flamethrower_after2",
+                "herbalism_mechanic",
+                "mining_mechanic"
+            };
+        private static readonly IReadOnlySet<string> WildHunterJaguarExclusiveActionNames =
+            CreateActionNameSet(
+                57,
+                142,
+                207,
+                208,
+                212,
+                214,
+                229,
+                247,
+                248,
+                249,
+                250,
+                251,
+                253,
+                255,
+                256);
 
         private static readonly IReadOnlyDictionary<string, string[]> ActionAliases =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
@@ -60,23 +135,25 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
-            if (_resolvedActionCache.TryGetValue(actionName, out string resolvedActionName))
+            bool preferTiredAction = ShouldPreferTiredAction(part, actionName);
+            string cacheKey = BuildCacheKey(actionName, preferTiredAction);
+            if (_resolvedActionCache.TryGetValue(cacheKey, out string resolvedActionName))
             {
                 return TryLoadNamedAnimation(part, resolvedActionName, out CharacterAnimation cachedAnimation)
                     ? cachedAnimation
                     : null;
             }
 
-            foreach (string candidate in EnumerateActionCandidates(actionName))
+            foreach (string candidate in EnumerateActionCandidates(part, actionName, preferTiredAction))
             {
                 if (TryLoadNamedAnimation(part, candidate, out CharacterAnimation animation))
                 {
-                    _resolvedActionCache[actionName] = candidate;
+                    _resolvedActionCache[cacheKey] = candidate;
                     return animation;
                 }
             }
 
-            _resolvedActionCache[actionName] = string.Empty;
+            _resolvedActionCache[cacheKey] = string.Empty;
             return null;
         }
 
@@ -85,13 +162,18 @@ namespace HaCreator.MapSimulator.Character
             return GetAnimation(part, actionName) != null;
         }
 
-        private IEnumerable<string> EnumerateActionCandidates(string actionName)
+        private IEnumerable<string> EnumerateActionCandidates(CharacterPart part, string actionName, bool preferTiredAction)
         {
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+            if (preferTiredAction && seen.Add("tired"))
+            {
+                yield return "tired";
+            }
+
             foreach (string candidate in EnumerateExactAndVehicleCandidates(actionName))
             {
-                if (seen.Add(candidate))
+                if (seen.Add(candidate) && IsActionAllowedForVehicle(candidate))
                 {
                     yield return candidate;
                 }
@@ -101,7 +183,9 @@ namespace HaCreator.MapSimulator.Character
             {
                 foreach (string alias in aliases)
                 {
-                    if (!string.IsNullOrWhiteSpace(alias) && seen.Add(alias))
+                    if (!string.IsNullOrWhiteSpace(alias)
+                        && seen.Add(alias)
+                        && IsActionAllowedForVehicle(alias))
                     {
                         yield return alias;
                     }
@@ -112,7 +196,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 foreach (string fallbackAction in new[] { "walk1", "walk2", "stand1", "move", "sit" })
                 {
-                    if (seen.Add(fallbackAction))
+                    if (seen.Add(fallbackAction) && IsActionAllowedForVehicle(fallbackAction))
                     {
                         yield return fallbackAction;
                     }
@@ -246,6 +330,60 @@ namespace HaCreator.MapSimulator.Character
                        || actionName.StartsWith("shoot", StringComparison.OrdinalIgnoreCase)
                        || actionName.StartsWith("attack", StringComparison.OrdinalIgnoreCase)
                        || string.Equals(actionName, "proneStab", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private bool IsActionAllowedForVehicle(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (MechanicExclusiveActionNames.Contains(actionName))
+            {
+                return VehicleItemId == MechanicTamingMobItemId;
+            }
+
+            if (WildHunterJaguarExclusiveActionNames.Contains(actionName))
+            {
+                return WildHunterJaguarTamingMobItemIds.Contains(VehicleItemId);
+            }
+
+            return true;
+        }
+
+        private static bool ShouldPreferTiredAction(CharacterPart part, string actionName)
+        {
+            return part?.Type == CharacterPartType.TamingMob
+                   && part.MaxDurability.GetValueOrDefault() > 0
+                   && part.Durability.GetValueOrDefault() <= 0
+                   && (string.Equals(actionName, "stand1", StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(actionName, "stand2", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string BuildCacheKey(string actionName, bool preferTiredAction)
+        {
+            return string.Concat(preferTiredAction ? "tired:" : "base:", actionName ?? string.Empty);
+        }
+
+        private static IReadOnlySet<string> CreateActionNameSet(params int[] actionCodes)
+        {
+            var actionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (actionCodes == null)
+            {
+                return actionNames;
+            }
+
+            foreach (int actionCode in actionCodes)
+            {
+                if (CharacterPart.TryGetActionStringFromCode(actionCode, out string actionName)
+                    && !string.IsNullOrWhiteSpace(actionName))
+                {
+                    actionNames.Add(actionName);
+                }
+            }
+
+            return actionNames;
         }
     }
 }

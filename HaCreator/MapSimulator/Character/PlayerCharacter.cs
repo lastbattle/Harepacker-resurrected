@@ -4130,7 +4130,7 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.Parts,
                 preparedLayer.ComposedTexture,
                 preparedLayer.Bounds,
-                preparedLayer.PreparedFacingRight,
+                ResolveMirrorImagePreparedFallbackFacing(preparedLayer.PreparedFacingRight, FacingRight),
                 ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedCurrentTime));
         }
 
@@ -4399,6 +4399,11 @@ namespace HaCreator.MapSimulator.Character
             IReadOnlyList<AssembledPart> preparedParts)
         {
             return hasPreparedSnapshot || (preparedParts != null && preparedParts.Count > 0);
+        }
+
+        internal static bool ResolveMirrorImagePreparedFallbackFacing(bool preparedFacingRight, bool currentFacingRight)
+        {
+            return currentFacingRight;
         }
 
         private Texture2D CreateMirrorImageLayerTexture(IReadOnlyList<AssembledPart> sourceParts, Rectangle bounds)
@@ -7066,10 +7071,10 @@ namespace HaCreator.MapSimulator.Character
                     transform = CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre2", "flamethrower2", "flamethrower_after2");
                     return true;
                 case 35121005:
-                    transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_pre", "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after");
+                    transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_pre", "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after", attackActionAliases: new[] { "tank_laser" });
                     return true;
                 case 35111004:
-                    transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "siege_pre", "siege_stand", "siege_stand", "siege", "siege_stand", "siege_after", locksMovement: true);
+                    transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "siege_pre", "siege_stand", "siege_stand", "siege", "siege_stand", "siege_after", locksMovement: true, attackActionAliases: new[] { "lasergun" });
                     return true;
                 case 35121013:
                     transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_siegepre", "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand", "tank_siegeafter", locksMovement: true);
@@ -7191,25 +7196,21 @@ namespace HaCreator.MapSimulator.Character
                 || string.Equals(normalizedAction, "tank_stand", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "tank_walk", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "tank", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_laser", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "tank_prone", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "tank_after", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_pre", "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after");
+                transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_pre", "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after", attackActionAliases: new[] { "tank_laser" });
                 return true;
             }
 
             if (string.Equals(normalizedAction, "siege_pre", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "siege_stand", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "siege", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "lasergun", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "siege_after", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "siege_pre", "siege_stand", "siege_stand", "siege", "siege_stand", "siege_after", locksMovement: true);
-                return true;
-            }
-
-            if (string.Equals(normalizedAction, "lasergun", StringComparison.OrdinalIgnoreCase))
-            {
-                transform = CreateMechanicTransform(skillId, "siege_stand", "siege_stand", "lasergun", "siege_stand", "siege_after", locksMovement: true);
+                transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "siege_pre", "siege_stand", "siege_stand", "siege", "siege_stand", "siege_after", locksMovement: true, attackActionAliases: new[] { "lasergun" });
                 return true;
             }
 
@@ -7422,7 +7423,8 @@ namespace HaCreator.MapSimulator.Character
             string attackActionName,
             string proneActionName,
             string exitActionName,
-            bool locksMovement = false)
+            bool locksMovement = false,
+            IReadOnlyList<string> attackActionAliases = null)
         {
             PreparedAvatarActionStage stage = ResolvePreparedActionStage(
                 currentActionName,
@@ -7439,14 +7441,38 @@ namespace HaCreator.MapSimulator.Character
                 return CreateSingleActionTransform(skillId, exitActionName, exitActionName: null);
             }
 
+            string resolvedAttackActionName = ResolveMechanicAttackActionName(
+                currentActionName,
+                attackActionName,
+                attackActionAliases);
+
             return CreateMechanicTransform(
                 skillId,
                 standActionName,
                 walkActionName,
-                attackActionName,
+                resolvedAttackActionName,
                 proneActionName,
                 exitActionName,
                 locksMovement);
+        }
+
+        private static string ResolveMechanicAttackActionName(
+            string currentActionName,
+            string defaultAttackActionName,
+            IReadOnlyList<string> attackActionAliases)
+        {
+            if (!string.IsNullOrWhiteSpace(currentActionName) && attackActionAliases != null)
+            {
+                foreach (string attackActionAlias in attackActionAliases)
+                {
+                    if (string.Equals(currentActionName, attackActionAlias, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return attackActionAlias;
+                    }
+                }
+            }
+
+            return defaultAttackActionName;
         }
 
         private static SkillAvatarTransformState CreateRocketBoosterTransform(int skillId, string actionName)

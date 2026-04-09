@@ -73,6 +73,11 @@ namespace HaCreator.MapSimulator.UI
                 lines.Add($"State: {stateLabel}");
             }
 
+            if (entry.InGuild)
+            {
+                lines.Add($"Guild points: {FormatMeso(entry.GuildPoints)}");
+            }
+
             if (entry.ActivationCost > 0)
             {
                 lines.Add($"Learn: {FormatMeso(entry.ActivationCost)}");

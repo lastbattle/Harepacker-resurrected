@@ -2839,7 +2839,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             UserInfoInspectionTarget resolved = InspectionTargetResolver?.Invoke(_inspectionTarget);
-            if (resolved?.Build == null)
+            if (resolved == null)
             {
                 return _inspectionTarget;
             }

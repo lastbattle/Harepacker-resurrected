@@ -63,27 +63,6 @@ namespace HaCreator.MapSimulator.Companions
         private readonly record struct PetAnimationCacheKey(int PetItemId, int PetWearItemId);
         private readonly record struct PetActionCacheKey(int PetItemId, int PetWearItemId, string ActionName);
 
-        private static readonly string[] ClientPreferredActions =
-        {
-            "stand0",
-            "stand1",
-            "move",
-            "jump",
-            "hang",
-            "fly",
-            "rest0",
-            "chat",
-            "angry",
-            "cry",
-            "alert",
-            "stretch",
-            "prone",
-            "hungry",
-            "poor",
-            "rise",
-            "dung"
-        };
-
         private static readonly string[] RandomIdleActionCandidates =
         {
             "chat",
@@ -658,7 +637,7 @@ namespace HaCreator.MapSimulator.Companions
         {
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (string action in ClientPreferredActions)
+            foreach (string action in PetActionAliases.EnumerateKnownActions())
             {
                 if (seen.Add(action))
                 {
@@ -984,14 +963,55 @@ namespace HaCreator.MapSimulator.Companions
 
         private static Rectangle ResolveCanvasBounds(WzCanvasProperty canvas, int width, int height)
         {
+            if (TryResolveCanvasBoundsFromVectors(canvas, width, height, out Rectangle authoredBounds))
+            {
+                return authoredBounds;
+            }
+
             Point canvasOrigin = ResolveCanvasOrigin(canvas);
             return new Rectangle(-canvasOrigin.X, -canvasOrigin.Y, width, height);
+        }
+
+        private static bool TryResolveCanvasBoundsFromVectors(WzCanvasProperty canvas, int width, int height, out Rectangle bounds)
+        {
+            bounds = default;
+            if (canvas == null || width <= 0 || height <= 0)
+            {
+                return false;
+            }
+
+            if (!TryResolveVector(canvas["lt"], out Point lt) || !TryResolveVector(canvas["rb"], out Point rb))
+            {
+                return false;
+            }
+
+            int resolvedWidth = rb.X - lt.X;
+            int resolvedHeight = rb.Y - lt.Y;
+            if (resolvedWidth <= 0 || resolvedHeight <= 0)
+            {
+                return false;
+            }
+
+            bounds = new Rectangle(lt.X, lt.Y, resolvedWidth, resolvedHeight);
+            return true;
         }
 
         private static Point ResolveCanvasOrigin(WzCanvasProperty canvas)
         {
             System.Drawing.PointF canvasOrigin = canvas?.GetCanvasOriginPosition() ?? default;
             return new Point((int)Math.Round(canvasOrigin.X), (int)Math.Round(canvasOrigin.Y));
+        }
+
+        private static bool TryResolveVector(WzImageProperty property, out Point vector)
+        {
+            vector = default;
+            if (property is not WzVectorProperty vectorProperty)
+            {
+                return false;
+            }
+
+            vector = new Point(vectorProperty.X.Value, vectorProperty.Y.Value);
+            return true;
         }
 
         private static bool TryGetBitmapDimensions(SD.Bitmap bitmap, out int width, out int height)

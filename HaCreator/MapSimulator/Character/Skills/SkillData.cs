@@ -456,6 +456,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool UsesEnergyChargeRuntime { get; set; }
         public bool HasChargingSkillMetadata { get; set; }
         public string FullChargeEffectName { get; set; }
+        public string EnergyChargeThresholdFormula { get; set; }
 
         // Level data
         public Dictionary<int, SkillLevelData> Levels { get; set; } = new();
@@ -489,13 +490,20 @@ namespace HaCreator.MapSimulator.Character.Skills
         public List<SkillAnimation> SummonTargetHitAnimations { get; set; } = new();
         public List<SummonImpactPresentation> SummonTargetHitPresentations { get; set; } = new();
         public Dictionary<string, SummonRangeMetadata> SummonNamedRangeMetadata { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, Point> SummonNamedAttackCenterOffsets { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, int> SummonNamedAttackRadii { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, SkillAnimation> SummonNamedAnimations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, SkillAnimation> SummonActionAnimations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, List<SkillAnimation>> SummonProjectileAnimationsByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, List<SummonImpactPresentation>> SummonTargetHitPresentationsByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, int> SummonAttackAfterMsByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, int> SummonAttackProjectileSpeedByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string SummonSpawnBranchName { get; set; }
         public string SummonIdleBranchName { get; set; }
         public string SummonPrepareBranchName { get; set; }
         public string SummonRemovalBranchName { get; set; }
         public string SummonAttackBranchName { get; set; }
+        public string SummonHitBranchName { get; set; }
         public SkillAnimation AvatarOverlayEffect { get; set; } // Avatar-bound looping overlay
         public SkillAnimation AvatarOverlaySecondaryEffect { get; set; } // Optional second overlay on the same avatar-owned plane
         public SkillAnimation AvatarUnderFaceEffect { get; set; } // Avatar-bound layer below face/hair
@@ -806,17 +814,81 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
-        public Point GetSummonAttackCircleCenterOffset(bool facingRight)
+        public Point GetSummonAttackCircleCenterOffset(bool facingRight, string branchName = null)
         {
-            if (!SummonAttackCenterOffset.HasValue)
+            Point? center = null;
+            if (!string.IsNullOrWhiteSpace(branchName)
+                && SummonNamedAttackCenterOffsets != null
+                && SummonNamedAttackCenterOffsets.TryGetValue(branchName, out Point branchCenter))
+            {
+                center = branchCenter;
+            }
+            else if (SummonAttackCenterOffset.HasValue)
+            {
+                center = SummonAttackCenterOffset.Value;
+            }
+
+            if (!center.HasValue)
             {
                 return Point.Zero;
             }
 
-            Point center = SummonAttackCenterOffset.Value;
+            Point resolvedCenter = center.Value;
             return facingRight
-                ? center
-                : new Point(-center.X, center.Y);
+                ? resolvedCenter
+                : new Point(-resolvedCenter.X, resolvedCenter.Y);
+        }
+
+        public int ResolveSummonAttackRadius(string branchName = null)
+        {
+            if (!string.IsNullOrWhiteSpace(branchName)
+                && SummonNamedAttackRadii != null
+                && SummonNamedAttackRadii.TryGetValue(branchName, out int branchRadius)
+                && branchRadius > 0)
+            {
+                return branchRadius;
+            }
+
+            return SummonAttackRadius;
+        }
+
+        public int ResolveSummonAttackAfterMs(string branchName = null)
+        {
+            if (!string.IsNullOrWhiteSpace(branchName)
+                && SummonAttackAfterMsByBranch != null
+                && SummonAttackAfterMsByBranch.TryGetValue(branchName, out int branchDelay)
+                && branchDelay > 0)
+            {
+                return branchDelay;
+            }
+
+            return SummonAttackIntervalMs;
+        }
+
+        public int ResolveSummonAttackProjectileSpeed(string branchName = null)
+        {
+            if (!string.IsNullOrWhiteSpace(branchName)
+                && SummonAttackProjectileSpeedByBranch != null
+                && SummonAttackProjectileSpeedByBranch.TryGetValue(branchName, out int branchSpeed)
+                && branchSpeed > 0)
+            {
+                return branchSpeed;
+            }
+
+            return SummonAttackProjectileSpeed;
+        }
+
+        public IReadOnlyList<SkillAnimation> GetSummonProjectileAnimations(string branchName = null)
+        {
+            if (!string.IsNullOrWhiteSpace(branchName)
+                && SummonProjectileAnimationsByBranch != null
+                && SummonProjectileAnimationsByBranch.TryGetValue(branchName, out List<SkillAnimation> branchAnimations)
+                && branchAnimations?.Count > 0)
+            {
+                return branchAnimations;
+            }
+
+            return SummonProjectileAnimations;
         }
 
         public int ResolveSummonAttackIntervalMs(int level)
@@ -881,6 +953,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             return TryEvaluateSkillFormula(SummonSelfDestructionFormula, level, out int damagePercent)
                 ? Math.Max(0, damagePercent)
                 : 0;
+        }
+
+        public int ResolveEnergyChargeThreshold(int level)
+        {
+            int resolvedLevel = level > 0 ? level : 1;
+            if (TryEvaluateSkillFormula(EnergyChargeThresholdFormula, resolvedLevel, out int threshold)
+                && threshold > 0)
+            {
+                return threshold;
+            }
+
+            SkillLevelData levelData = GetLevel(resolvedLevel);
+            if (levelData?.X > 0)
+            {
+                return levelData.X;
+            }
+
+            return 100;
         }
 
         private static bool TryEvaluateSkillFormula(string expression, int xValue, out int value)
@@ -1069,19 +1159,28 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
-        public SummonImpactPresentation GetSummonTargetHitPresentation(int targetOrder)
+        public SummonImpactPresentation GetSummonTargetHitPresentation(int targetOrder, string branchName = null)
         {
-            if (SummonTargetHitPresentations == null || SummonTargetHitPresentations.Count == 0)
+            IReadOnlyList<SummonImpactPresentation> presentations = SummonTargetHitPresentations;
+            if (!string.IsNullOrWhiteSpace(branchName)
+                && SummonTargetHitPresentationsByBranch != null
+                && SummonTargetHitPresentationsByBranch.TryGetValue(branchName, out List<SummonImpactPresentation> branchPresentations)
+                && branchPresentations?.Count > 0)
+            {
+                presentations = branchPresentations;
+            }
+
+            if (presentations == null || presentations.Count == 0)
             {
                 return null;
             }
 
-            return SummonTargetHitPresentations[Math.Abs(targetOrder) % SummonTargetHitPresentations.Count];
+            return presentations[Math.Abs(targetOrder) % presentations.Count];
         }
 
-        public SkillAnimation GetSummonTargetHitAnimation(int targetOrder)
+        public SkillAnimation GetSummonTargetHitAnimation(int targetOrder, string branchName = null)
         {
-            return GetSummonTargetHitPresentation(targetOrder)?.Animation;
+            return GetSummonTargetHitPresentation(targetOrder, branchName)?.Animation;
         }
     }
 

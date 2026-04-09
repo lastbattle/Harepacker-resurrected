@@ -13,6 +13,7 @@ namespace HaCreator.MapSimulator.Interaction
         public Func<int, string> ResolveItemCountText { get; init; }
         public Func<int, string> ResolveQuestStateText { get; init; }
         public Func<string> ResolveJobNameText { get; init; }
+        public Func<string> ResolveCurrentMapNameText { get; init; }
     }
 
     internal static class NpcDialogueTextFormatter
@@ -28,6 +29,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex QuestStateRegex = new(@"#u(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex SkillNameRegex = new(@"#s(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex MapNameRegex = new(@"#m(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex CurrentMapNameRegex = new(@"#m#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex JobNameRegex = new(@"#j#?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex SelectedMobRegex = new(@"#M(\d+):?#", RegexOptions.Compiled);
         private static readonly Regex QuestAmountRegex = new(@"#a(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -65,6 +67,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = QuestStateRegex.Replace(formatted, match => ResolveQuestStateText(match.Groups[1].Value, context));
             formatted = SkillNameRegex.Replace(formatted, static match => ResolveSkillName(match.Groups[1].Value));
             formatted = MapNameRegex.Replace(formatted, static match => ResolveMapName(match.Groups[1].Value));
+            formatted = CurrentMapNameRegex.Replace(formatted, match => ResolveCurrentMapNameText(context));
             formatted = JobNameRegex.Replace(formatted, match => ResolveJobNameText(context));
             formatted = SelectedMobRegex.Replace(formatted, static match => ResolveSelectedMobText(match.Groups[1].Value));
             formatted = QuestAmountRegex.Replace(formatted, static match => ResolveQuestAmountText(match.Groups[1].Value));
@@ -452,6 +455,20 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return "Not started";
+        }
+
+        private static string ResolveCurrentMapNameText(NpcDialogueFormattingContext context)
+        {
+            if (context?.ResolveCurrentMapNameText != null)
+            {
+                string resolvedText = context.ResolveCurrentMapNameText();
+                if (!string.IsNullOrWhiteSpace(resolvedText))
+                {
+                    return resolvedText;
+                }
+            }
+
+            return "this map";
         }
 
         private static string ResolveJobNameText(NpcDialogueFormattingContext context)

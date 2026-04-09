@@ -1207,9 +1207,10 @@ namespace HaCreator.MapSimulator.Animation
 
             while (_remainingUpdates > 0 && _nextUpdateAt <= currentTimeMs && _nextUpdateAt <= _expiresAt)
             {
+                int scheduledUpdateTime = _nextUpdateAt;
                 float x = _area.Left + random.Next(_effectiveWidth);
                 float y = _area.Top + random.Next(_effectiveHeight);
-                effects.AddOneTime(_frames, x, y, flip: false, currentTimeMs, zOrder: 1);
+                effects.AddOneTime(_frames, x, y, flip: false, scheduledUpdateTime, zOrder: 1);
                 _onSpawn?.Invoke();
                 _remainingUpdates--;
                 _nextUpdateAt += _updateIntervalMs;

@@ -29,6 +29,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int SpeakerPortraitTopMargin = 18;
         internal const int SpeakerPortraitBottomMargin = 64;
         internal const int SpeakerPortraitRightGap = 16;
+        internal const int SpeakerNameBarBottomMargin = 10;
         internal const int DefaultWindowHeight =
             DefaultTopHeight + (DefaultCenterHeight * DefaultCenterRepeatCount) + DefaultBottomHeight;
 
@@ -59,6 +60,25 @@ namespace HaCreator.MapSimulator.Interaction
             int width = Math.Max(0, bodyTextRect.X - x - SpeakerPortraitRightGap);
             int height = Math.Max(0, windowRect.Height - SpeakerPortraitTopMargin - SpeakerPortraitBottomMargin);
             return new Rectangle(x, y, width, height);
+        }
+
+        internal static Rectangle GetSpeakerNameBarBounds(
+            Rectangle portraitBounds,
+            int barWidth,
+            int barHeight)
+        {
+            if (portraitBounds.Width <= 0 ||
+                portraitBounds.Height <= 0 ||
+                barWidth <= 0 ||
+                barHeight <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            int width = Math.Min(barWidth, portraitBounds.Width);
+            int x = portraitBounds.X + Math.Max(0, (portraitBounds.Width - width) / 2);
+            int y = portraitBounds.Bottom - barHeight - SpeakerNameBarBottomMargin;
+            return new Rectangle(x, y, width, barHeight);
         }
 
         internal static string ResolveNextButtonText(bool hasNextPage)

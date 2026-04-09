@@ -149,7 +149,9 @@ namespace HaCreator.MapSimulator.UI
                 case 2:
                     return ResolveLinearKeyIndex(localX, 58, 9, 20);
                 case 3:
-                    return ResolveLinearKeyIndex(localX, 74, 8, 29);
+                    // `CUISoftKeyboard::GetKeyIndexFromPoint` only exposes seven
+                    // client-clickable keys on the final row (indices 29..35).
+                    return ResolveLinearKeyIndex(localX, 74, 7, 29);
                 default:
                     return -1;
             }
@@ -245,7 +247,7 @@ namespace HaCreator.MapSimulator.UI
                 yield break;
             }
 
-            for (int i = 0; i <= 36; i++)
+            for (int i = 0; i <= 35; i++)
             {
                 yield return i;
             }

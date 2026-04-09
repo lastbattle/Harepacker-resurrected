@@ -11,22 +11,36 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _isOpen;
         private int _elapsedMs;
         private GuildMarkSelection _selection = new(1000, 1, 2000, 1, 0);
+        private GuildMarkSelection? _currentSelection;
         private GuildMarkSelection? _committedSelection;
         private int _comboIndex;
         private string _statusMessage = "Guild mark dialog is idle.";
 
-        internal string Open()
+        internal void SyncCurrentSelection(GuildMarkSelection? selection)
         {
+            _currentSelection = NormalizeSelection(selection);
+            if (!_isOpen && _currentSelection.HasValue)
+            {
+                _selection = _currentSelection.Value;
+                _comboIndex = _selection.ComboIndex;
+            }
+        }
+
+        internal string Open(GuildMarkSelection? currentSelection)
+        {
+            SyncCurrentSelection(currentSelection);
             _isOpen = true;
             _elapsedMs = 0;
-            _selection = _committedSelection ?? new GuildMarkSelection(
-                _catalog.DefaultBackgroundId,
-                1,
-                _catalog.DefaultMarkId,
-                1,
-                _catalog.ResolveFamilyIndex(_catalog.DefaultMarkId));
+            _selection = _currentSelection
+                ?? _committedSelection
+                ?? new GuildMarkSelection(
+                    _catalog.DefaultBackgroundId,
+                    1,
+                    _catalog.DefaultMarkId,
+                    1,
+                    _catalog.ResolveFamilyIndex(_catalog.DefaultMarkId));
             _comboIndex = _selection.ComboIndex;
-            _statusMessage = "Opened the dedicated guild-mark dialog. Intro timing follows the WZ-backed animation plus the client-owned post-animation delay before controls unlock.";
+            _statusMessage = "Opened the dedicated guild-mark dialog. The initial emblem now mirrors the shared guild seam before the WZ-backed intro finishes and the client-owned post-animation delay unlocks controls.";
             return _statusMessage;
         }
 
@@ -127,7 +141,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             _isOpen = false;
             _committedSelection = _selection with { ComboIndex = _comboIndex };
-            _statusMessage = $"Accepted guild mark selection bg={_selection.MarkBackground}:{_selection.MarkBackgroundColor}, mark={_selection.Mark}:{_selection.MarkColor}. The dialog now reuses the committed emblem across the guild owners, but server-backed persistence and guild-cost commit still remain outside the simulator.";
+            _currentSelection = _committedSelection;
+            _statusMessage = $"Accepted guild mark selection bg={_selection.MarkBackground}:{_selection.MarkBackgroundColor}, mark={_selection.Mark}:{_selection.MarkColor}. The dialog now reuses the shared emblem seed across guild owners while the authoritative server echo still remains outside this runtime.";
             return _statusMessage;
         }
 
@@ -195,6 +210,23 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return value;
+        }
+
+        private GuildMarkSelection? NormalizeSelection(GuildMarkSelection? selection)
+        {
+            if (!selection.HasValue)
+            {
+                return null;
+            }
+
+            GuildMarkSelection resolved = selection.Value;
+            int comboIndex = _catalog.ResolveFamilyIndex(resolved.Mark);
+            return resolved with
+            {
+                MarkBackgroundColor = Math.Clamp(resolved.MarkBackgroundColor, 1, 16),
+                MarkColor = Math.Clamp(resolved.MarkColor, 1, 16),
+                ComboIndex = comboIndex
+            };
         }
     }
 

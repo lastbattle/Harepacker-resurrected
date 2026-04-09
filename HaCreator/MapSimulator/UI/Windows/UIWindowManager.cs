@@ -614,6 +614,11 @@ namespace HaCreator.MapSimulator.UI
             if (SoftKeyboardWindow?.IsVisible == true)
             {
                 bool handled = SoftKeyboardWindow.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+                if (handled && SoftKeyboardWindow.IsVisible)
+                {
+                    RestoreActiveSoftKeyboardOwnerFocus();
+                }
+
                 _previousMouseState = mouseState;
 
                 // Client soft-keyboard launch paths use CDialog::DoModal, so the keyboard
@@ -857,6 +862,11 @@ namespace HaCreator.MapSimulator.UI
             if (leftJustPressed)
             {
                 BringToFront(inventoryWindow);
+                if (TryHandleInventoryPickRequest(inventoryWindow, mouseState.X, mouseState.Y))
+                {
+                    return true;
+                }
+
                 inventoryWindow.OnInventoryMouseDown(mouseState.X, mouseState.Y);
                 if (inventoryWindow.IsDraggingItem)
                 {
@@ -867,6 +877,18 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return mouseState.LeftButton == ButtonState.Pressed;
+        }
+
+        private bool TryHandleInventoryPickRequest(InventoryUI inventoryWindow, int mouseX, int mouseY)
+        {
+            if (inventoryWindow == null
+                || !inventoryWindow.TryGetSlotAtPoint(mouseX, mouseY, out InventoryType inventoryType, out int slotIndex, out InventorySlotData slotData))
+            {
+                return false;
+            }
+
+            return GetWindow(MapSimulatorWindowNames.MemoMailbox) is MemoMailboxWindow memoMailboxWindow
+                && memoMailboxWindow.TryHandleInventoryPick(inventoryType, slotIndex, slotData);
         }
 
         private bool TryHandleInventoryDropToEquipment(InventoryUI inventoryWindow, int mouseX, int mouseY)
@@ -1287,6 +1309,20 @@ namespace HaCreator.MapSimulator.UI
         {
             _activeSoftKeyboardHost = null;
             RestoreSoftKeyboardModalFocus(ResolveSoftKeyboardOwnerWindow(dismissedHost));
+        }
+
+        private void RestoreActiveSoftKeyboardOwnerFocus()
+        {
+            UIWindowBase focusTarget =
+                ResolveSoftKeyboardOwnerWindow(_activeSoftKeyboardHost)?.IsVisible == true ? ResolveSoftKeyboardOwnerWindow(_activeSoftKeyboardHost)
+                : _softKeyboardModalOwner?.IsVisible == true ? _softKeyboardModalOwner
+                : _softKeyboardPreviousFocusedWindow?.IsVisible == true ? _softKeyboardPreviousFocusedWindow
+                : null;
+
+            if (focusTarget != null)
+            {
+                BringToFront(focusTarget);
+            }
         }
 
         private void RestoreSoftKeyboardModalFocus(UIWindowBase preferredOwner)

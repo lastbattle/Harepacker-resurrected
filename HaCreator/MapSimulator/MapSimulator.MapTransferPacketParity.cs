@@ -157,6 +157,7 @@ namespace HaCreator.MapSimulator
             if (!MapTransferAuthoritativeBootstrapDecoder.TryFindBootstrapBooks(
                     trailingPayload,
                     packet.CharacterDataFlags,
+                    (short)build.Job,
                     IsPlausibleAuthoritativeMapTransferMapId,
                     out int[] regularFields,
                     out int[] continentFields,

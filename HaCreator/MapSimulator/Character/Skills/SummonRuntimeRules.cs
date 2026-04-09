@@ -19,6 +19,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const byte PacketSkillActionSubsummon = 14;
         private const byte PacketSkillActionSkillBranchMin = 1;
         private const byte PacketSkillActionSkillBranchMax = 6;
+        private const int ClientDefaultSummonAttackActionBase = 4;
 
         public static int ResolveAuthoredDurationMs(SkillData skill, SkillLevelData levelData, int skillLevel)
         {
@@ -150,24 +151,41 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (normalizedAction == PacketSkillActionBeholderHeal)
             {
-                return ResolveNamedSummonBranch(skill, "skill1", "heal", "support");
+                return ResolvePacketSpecialBranch(
+                    skill,
+                    assistType,
+                    "skill1",
+                    "heal",
+                    "support");
             }
 
             if (normalizedAction >= PacketSkillActionBeholderBuffBase
                 && normalizedAction <= PacketSkillActionBeholderBuffMax)
             {
                 string branchName = $"skill{normalizedAction - PacketSkillActionBeholderBuffBase + 2}";
-                return ResolveNamedSummonBranch(skill, branchName, "support", "heal");
+                return ResolvePacketSpecialBranch(
+                    skill,
+                    assistType,
+                    branchName,
+                    "support",
+                    "heal");
             }
 
             if (normalizedAction == PacketSkillActionHealingRobotHeal)
             {
-                return ResolveNamedSummonBranch(skill, "heal", "support");
+                return ResolvePacketSpecialBranch(
+                    skill,
+                    assistType,
+                    "heal",
+                    "support");
             }
 
             if (normalizedAction == PacketSkillActionSubsummon)
             {
-                return ResolveNamedSummonBranch(skill, "subsummon");
+                return ResolvePacketSpecialBranch(
+                    skill,
+                    assistType,
+                    "subsummon");
             }
 
             if (assistType.HasValue)
@@ -196,6 +214,41 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return null;
+        }
+
+        public static string ResolvePacketAttackBranch(SkillData skill, byte packetAction)
+        {
+            if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)
+            {
+                return null;
+            }
+
+            int normalizedAction = packetAction & 0x7F;
+            if (normalizedAction < ClientDefaultSummonAttackActionBase)
+            {
+                return null;
+            }
+
+            string branchName = $"attack{normalizedAction - ClientDefaultSummonAttackActionBase + 1}";
+            return skill.SummonNamedAnimations.ContainsKey(branchName)
+                ? branchName
+                : null;
+        }
+
+        private static string ResolvePacketSpecialBranch(
+            SkillData skill,
+            SummonAssistType? assistType,
+            params string[] preferredBranchNames)
+        {
+            string branchName = ResolveNamedSummonBranch(skill, preferredBranchNames);
+            if (!string.IsNullOrWhiteSpace(branchName))
+            {
+                return branchName;
+            }
+
+            return assistType.HasValue
+                ? ResolveAssistOwnedPacketSkillBranch(skill, assistType.Value)
+                : null;
         }
 
         internal static string ResolveBeholderHealBranch(SkillData skill)

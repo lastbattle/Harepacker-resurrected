@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.UI.Controls;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Loaders;
+using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -104,7 +105,8 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Color TOOLTIP_BACKGROUND_COLOR = new Color(28, 28, 28, 228);
         private static readonly Color TOOLTIP_BORDER_COLOR = new Color(112, 112, 112, 235);
         private static readonly Color TOOLTIP_INLINE_HIGHLIGHT_COLOR = new Color(255, 214, 140);
-        private static readonly Color TOOLTIP_REQUIREMENT_ROW_BACKGROUND_COLOR = new Color(161, 6, 6, 161);
+        // `CUIToolTip::DrawReqSkill` fills each requirement row with `0xA0FFFFFF`.
+        private static readonly Color TOOLTIP_REQUIREMENT_ROW_BACKGROUND_COLOR = new Color(255, 255, 255, 160);
 
         // Hit testing
         private const int ICON_HIT_LEFT = 13;
@@ -178,6 +180,7 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _spUpMouseOver;
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
         private readonly Point[] _tooltipFrameOrigins = new Point[3];
+        private Texture2D[] _cooldownMaskTextures = Array.Empty<Texture2D>();
         private Texture2D _scrollPrevNormal;
         private Texture2D _scrollPrevPressed;
         private Texture2D _scrollNextNormal;
@@ -501,6 +504,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 _tooltipFrameOrigins[i] = tooltipOrigins[i];
             }
+        }
+
+        public void SetCooldownMasks(Texture2D[] cooldownMaskTextures)
+        {
+            _cooldownMaskTextures = cooldownMaskTextures ?? Array.Empty<Texture2D>();
         }
 
         public void SetTabLayout(Rectangle[] enabledRects, Rectangle[] disabledRects)
@@ -882,9 +890,9 @@ namespace HaCreator.MapSimulator.UI
                 Rectangle iconRect = new Rectangle(iconX, iconY, SKILL_ICON_SIZE, SKILL_ICON_SIZE);
                 sprite.Draw(icon, iconRect, Color.White);
 
-                if (TryGetCooldownVisualState(skill.SkillId, currentTime, out float remainingProgress, out string remainingText))
+                if (TryGetCooldownVisualState(skill.SkillId, currentTime, out int cooldownFrameIndex, out string remainingText))
                 {
-                    DrawCooldownOverlay(sprite, iconRect, remainingProgress);
+                    DrawCooldownMask(sprite, iconRect, cooldownFrameIndex);
 
                     if (_font != null && !string.IsNullOrWhiteSpace(remainingText))
                     {
@@ -1370,7 +1378,7 @@ namespace HaCreator.MapSimulator.UI
 
             DrawTooltipText(
                 sprite,
-                "Required Skill",
+                ResolveRequiredSkillHeaderText(),
                 new Vector2(tooltipX + CLIENT_TOOLTIP_REQUIREMENT_HEADER_X, sectionY + CLIENT_TOOLTIP_REQUIREMENT_HEADER_Y_OFFSET),
                 new Color(255, 204, 120));
 
@@ -1409,10 +1417,21 @@ namespace HaCreator.MapSimulator.UI
                     Color.White);
                 DrawTooltipText(
                     sprite,
-                    $"Lv. {Math.Max(1, requirement.RequiredLevel)}+",
+                    FormatRequiredSkillLevelText(requirement.RequiredLevel),
                     new Vector2(tooltipX + CLIENT_TOOLTIP_REQUIREMENT_LEVEL_X, rowY + CLIENT_TOOLTIP_REQUIREMENT_LEVEL_Y),
                     new Color(210, 210, 210));
             }
+        }
+
+        private static string ResolveRequiredSkillHeaderText()
+        {
+            return MapleStoryStringPool.GetOrFallback(0x801, "Required Skill");
+        }
+
+        private static string FormatRequiredSkillLevelText(int requiredLevel)
+        {
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(0x800, "Lv. {0}+", 1, out _);
+            return string.Format(format, Math.Max(1, requiredLevel));
         }
 
         private int ResolveHoveredTooltipWidth()
@@ -1674,9 +1693,9 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
         }
 
-        private bool TryGetCooldownVisualState(int skillId, int currentTime, out float remainingProgress, out string remainingText)
+        private bool TryGetCooldownVisualState(int skillId, int currentTime, out int frameIndex, out string remainingText)
         {
-            remainingProgress = 0f;
+            frameIndex = 15;
             remainingText = string.Empty;
 
             if (_skillManager == null
@@ -1698,9 +1717,14 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            remainingProgress = cooldownState.SuppressProgressOverlay
-                ? 0f
-                : Math.Clamp(cooldownState.Progress, 0f, 1f);
+            if (!cooldownState.SuppressProgressOverlay)
+            {
+                int totalSeconds = Math.Max(1, (int)Math.Ceiling(durationMs / 1000f));
+                int remainingSeconds = Math.Max(0, (int)Math.Ceiling(remainingMs / 1000f));
+                int elapsedSeconds = Math.Clamp(totalSeconds - remainingSeconds, 0, totalSeconds);
+                frameIndex = Math.Clamp((14 * elapsedSeconds) / totalSeconds, 0, 14);
+            }
+
             remainingText = cooldownState.SuppressCounterText
                 ? string.Empty
                 : string.IsNullOrWhiteSpace(cooldownState.CounterText)
@@ -1709,25 +1733,21 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
-        private void DrawCooldownOverlay(SpriteBatch sprite, Rectangle iconRect, float remainingProgress)
+        private void DrawCooldownMask(SpriteBatch sprite, Rectangle iconRect, int frameIndex)
         {
-            if (_debugPlaceholder == null)
+            if (_cooldownMaskTextures.Length <= 0)
             {
                 return;
             }
 
-            int overlayHeight = Math.Clamp((int)Math.Round(iconRect.Height * remainingProgress), 0, iconRect.Height);
-            if (overlayHeight <= 0)
+            int resolvedFrameIndex = Math.Clamp(frameIndex, 0, _cooldownMaskTextures.Length - 1);
+            Texture2D maskTexture = _cooldownMaskTextures[resolvedFrameIndex];
+            if (maskTexture == null)
             {
                 return;
             }
 
-            Rectangle overlayRect = new Rectangle(
-                iconRect.X,
-                iconRect.Bottom - overlayHeight,
-                iconRect.Width,
-                overlayHeight);
-            sprite.Draw(_debugPlaceholder, overlayRect, new Color(0, 0, 0, 150));
+            sprite.Draw(maskTexture, iconRect, Color.White);
         }
 
         private float MeasureLongestLine(string[] lines)

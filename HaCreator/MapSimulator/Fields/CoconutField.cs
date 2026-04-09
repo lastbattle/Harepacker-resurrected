@@ -47,7 +47,7 @@ namespace HaCreator.MapSimulator.Fields
     {
         public const int PacketTypeHit = 342;
         public const int PacketTypeScore = 343;
-        private const int LocalNormalAttackDelayMs = 120;
+        private const int DefaultLocalNormalAttackDelayMs = 120;
         private const int DefaultPreviewTreeHitCount = 1;
         private const int DefaultRoundDurationSecondsValue = 120;
         private const int DefaultMessageDurationMs = 3000;
@@ -494,12 +494,14 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             coconut.Hit(byTeam);
         }
-        public bool TryHandleNormalAttack(Rectangle attackBounds, int currentTick, int skillId = 0, bool allowLocalPreview = true)
+        public bool TryHandleNormalAttack(Rectangle attackBounds, int currentTick, int attackDelayMs = DefaultLocalNormalAttackDelayMs, int skillId = 0, bool allowLocalPreview = true)
         {
             if (!_gameActive || skillId != 0 || attackBounds.Width <= 0 || attackBounds.Height <= 0)
             {
                 return false;
             }
+
+            int resolvedAttackDelayMs = Math.Max(0, attackDelayMs);
             Coconut target = null;
             float bestDistance = float.MaxValue;
             Vector2 attackCenter = new Vector2(
@@ -529,11 +531,11 @@ namespace HaCreator.MapSimulator.Fields
             {
                 return false;
             }
-            QueueAttackPacketRequest(target.Id, LocalNormalAttackDelayMs, currentTick);
+            QueueAttackPacketRequest(target.Id, resolvedAttackDelayMs, currentTick);
             if (allowLocalPreview
                 && TryResolveLocalPreviewState(target, _localTeam, out CoconutState previewState))
             {
-                QueueHit(target.Id, previewState, currentTick + LocalNormalAttackDelayMs);
+                QueueHit(target.Id, previewState, currentTick + resolvedAttackDelayMs);
             }
             return true;
         }

@@ -333,6 +333,8 @@ namespace HaCreator.MapSimulator.Interaction
         private Func<int, bool> _applyQuestBuffItem;
         private Func<int> _currentMapIdProvider;
         private Func<int, string> _mapNameProvider;
+        private Func<int, IReadOnlyList<int>> _mobMapIdsProvider;
+        private Func<int, IReadOnlyList<int>> _npcMapIdsProvider;
         private bool _definitionsLoaded;
         private const long QuestAlarmRecentUpdateWindowMs = 8000;
         private const int QuestDeliveryAcceptCashItemId = 5660000;
@@ -424,11 +426,15 @@ namespace HaCreator.MapSimulator.Interaction
         public void ConfigureQuestActionRuntime(
             Func<int, bool> applyQuestBuffItem,
             Func<int> currentMapIdProvider,
-            Func<int, string> mapNameProvider)
+            Func<int, string> mapNameProvider,
+            Func<int, IReadOnlyList<int>> mobMapIdsProvider = null,
+            Func<int, IReadOnlyList<int>> npcMapIdsProvider = null)
         {
             _applyQuestBuffItem = applyQuestBuffItem;
             _currentMapIdProvider = currentMapIdProvider;
             _mapNameProvider = mapNameProvider;
+            _mobMapIdsProvider = mobMapIdsProvider;
+            _npcMapIdsProvider = npcMapIdsProvider;
         }
 
         public void SetPacketOwnedAutoStartQuestRegistration(int questId, bool registered)
@@ -609,13 +615,13 @@ namespace HaCreator.MapSimulator.Interaction
 
             string requirementText = state switch
             {
-                QuestStateType.Not_Started => NpcDialogueTextFormatter.Format(definition.DemandSummary, CreateDialogueFormattingContext()),
-                QuestStateType.Started => NpcDialogueTextFormatter.Format(definition.DemandSummary, CreateDialogueFormattingContext()),
+                QuestStateType.Not_Started => NpcDialogueTextFormatter.FormatPreservingQuestDetailMarkers(definition.DemandSummary, CreateDialogueFormattingContext()),
+                QuestStateType.Started => NpcDialogueTextFormatter.FormatPreservingQuestDetailMarkers(definition.DemandSummary, CreateDialogueFormattingContext()),
                 QuestStateType.Completed => string.Empty,
                 _ => string.Empty
             };
 
-            string rewardText = BuildRewardText(definition, build);
+            string rewardText = BuildRewardText(definition, build, preserveQuestDetailMarkers: true);
             string hintText = BuildHintText(definition, state, startIssues, completionIssues);
             string headerNoteText = BuildHeaderNoteText(definition, state, build);
             int remainingTimeSeconds = state == QuestStateType.Started && definition.TimeLimitSeconds > 0
@@ -640,7 +646,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Title = definition.Name,
                 HeaderNoteText = headerNoteText,
                 State = state,
-                SummaryText = NpcDialogueTextFormatter.Format(summaryText, CreateDialogueFormattingContext()),
+                SummaryText = NpcDialogueTextFormatter.FormatPreservingQuestDetailMarkers(summaryText, CreateDialogueFormattingContext()),
                 RequirementText = requirementText,
                 RewardText = rewardText,
                 HintText = hintText,
@@ -1109,11 +1115,13 @@ namespace HaCreator.MapSimulator.Interaction
                 .FirstOrDefault(requirement => GetCurrentMobCount(progress, requirement.MobId) < requirement.RequiredCount);
             if (incompleteMobRequirement != null)
             {
+                IReadOnlyList<int> mobMapIds = ResolveQuestMobMapIds(incompleteMobRequirement.MobId, currentMapId);
                 target = new QuestWorldMapTarget
                 {
                     Kind = QuestWorldMapTargetKind.Mob,
                     QuestId = questId,
-                    MapId = currentMapId,
+                    MapId = mobMapIds.Count > 0 ? mobMapIds[0] : currentMapId,
+                    MapIds = mobMapIds,
                     EntityId = incompleteMobRequirement.MobId,
                     Label = ResolveMobName(incompleteMobRequirement.MobId),
                     Description = "Quest target mob",
@@ -1127,11 +1135,13 @@ namespace HaCreator.MapSimulator.Interaction
                 preferVisibleRequirements: true);
             if (incompleteItemRequirement != null)
             {
+                IReadOnlyList<int> itemMapIds = ResolveQuestDemandItemMapIds(definition, currentMapId);
                 target = new QuestWorldMapTarget
                 {
                     Kind = QuestWorldMapTargetKind.Item,
                     QuestId = questId,
-                    MapId = currentMapId,
+                    MapId = itemMapIds.Count > 0 ? itemMapIds[0] : currentMapId,
+                    MapIds = itemMapIds,
                     EntityId = incompleteItemRequirement.ItemId,
                     Label = incompleteItemRequirement.IsSecret
                         ? "Hidden required item"
@@ -1182,9 +1192,10 @@ namespace HaCreator.MapSimulator.Interaction
                 if (!visibleItemIds.Contains(requirement.ItemId))
                 {
                     visibleItemIds.Add(requirement.ItemId);
-                    if (currentMapId > 0)
+                    IReadOnlyList<int> mapIds = ResolveQuestDemandItemMapIds(definition, currentMapId);
+                    if (mapIds.Count > 0)
                     {
-                        visibleItemMapIds[requirement.ItemId] = new[] { currentMapId };
+                        visibleItemMapIds[requirement.ItemId] = mapIds;
                     }
                 }
             }
@@ -1203,6 +1214,69 @@ namespace HaCreator.MapSimulator.Interaction
                 FallbackNpcName = ResolveNpcName(definition.EndNpcId ?? definition.StartNpcId ?? 0)
             };
             return true;
+        }
+
+        private IReadOnlyList<int> ResolveQuestDemandItemMapIds(QuestDefinition definition, int fallbackMapId)
+        {
+            if (definition == null)
+            {
+                return fallbackMapId > 0 ? new[] { fallbackMapId } : Array.Empty<int>();
+            }
+
+            var seen = new HashSet<int>();
+            var resolvedMapIds = new List<int>();
+
+            for (int i = 0; i < definition.EndMobRequirements.Count; i++)
+            {
+                QuestMobRequirement requirement = definition.EndMobRequirements[i];
+                if (requirement == null || requirement.MobId <= 0)
+                {
+                    continue;
+                }
+
+                AppendUniqueMapIds(resolvedMapIds, seen, _mobMapIdsProvider?.Invoke(requirement.MobId));
+            }
+
+            if (resolvedMapIds.Count == 0)
+            {
+                AppendUniqueMapIds(resolvedMapIds, seen, _npcMapIdsProvider?.Invoke(definition.EndNpcId ?? 0));
+                AppendUniqueMapIds(resolvedMapIds, seen, _npcMapIdsProvider?.Invoke(definition.StartNpcId ?? 0));
+            }
+
+            if (resolvedMapIds.Count == 0 && fallbackMapId > 0)
+            {
+                resolvedMapIds.Add(fallbackMapId);
+            }
+
+            return resolvedMapIds;
+        }
+
+        private IReadOnlyList<int> ResolveQuestMobMapIds(int mobId, int fallbackMapId)
+        {
+            IReadOnlyList<int> resolvedMapIds = _mobMapIdsProvider?.Invoke(mobId);
+            if (resolvedMapIds != null && resolvedMapIds.Count > 0)
+            {
+                return resolvedMapIds;
+            }
+
+            return fallbackMapId > 0 ? new[] { fallbackMapId } : Array.Empty<int>();
+        }
+
+        private static void AppendUniqueMapIds(List<int> destination, HashSet<int> seen, IReadOnlyList<int> mapIds)
+        {
+            if (destination == null || seen == null || mapIds == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < mapIds.Count; i++)
+            {
+                int mapId = mapIds[i];
+                if (mapId > 0 && seen.Add(mapId))
+                {
+                    destination.Add(mapId);
+                }
+            }
         }
 
         public QuestWindowActionResult TryAcceptFromQuestWindow(int questId, CharacterBuild build)
@@ -2553,6 +2627,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             AppendActionDetailLines(
                 state == QuestStateType.Not_Started ? definition.StartActions : definition.EndActions,
+                build,
                 details);
 
             if (issues != null && issues.Count > 0)
@@ -4136,55 +4211,19 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"Buff reward: {GetItemName(actions.BuffItemId)} (buff runtime unavailable)");
         }
 
-        private void AppendActionDetailLines(QuestActionBundle actions, ICollection<string> details)
+        private void AppendActionDetailLines(
+            QuestActionBundle actions,
+            CharacterBuild build,
+            ICollection<string> details)
         {
             if (actions == null)
             {
                 return;
             }
 
-            if (actions.BuffItemId > 0)
+            foreach (string line in BuildVisibleQuestActionLines(actions, build, includeSelectionTag: true))
             {
-                details.Add($"Buff: {GetBuffItemRewardText(actions)}");
-            }
-
-            if (actions.PetTamenessReward != 0)
-            {
-                details.Add(GetPetTamenessRewardText(actions.PetTamenessReward));
-            }
-
-            if (actions.PetSpeedReward != 0)
-            {
-                details.Add(GetPetSpeedRewardText(actions.PetSpeedReward));
-            }
-
-            if (actions.BuffItemId <= 0 && actions.BuffItemMapIds.Count > 0)
-            {
-                details.Add($"Maps: {FormatMapIdList(actions.BuffItemMapIds)}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(actions.NpcActionName))
-            {
-                details.Add(QuestNpcActionResolver.FormatActionDetail(actions.NpcActionName));
-            }
-
-            for (int i = 0; i < actions.QuestMutations.Count; i++)
-            {
-                QuestStateMutation mutation = actions.QuestMutations[i];
-                details.Add($"Quest state: {GetQuestName(mutation.QuestId)} -> {FormatQuestState(mutation.State)}");
-            }
-
-            if (actions.NextQuestId.HasValue && actions.NextQuestId.Value > 0)
-            {
-                details.Add($"Next quest: {GetQuestName(actions.NextQuestId.Value)}");
-            }
-
-            for (int i = 0; i < actions.Messages.Count; i++)
-            {
-                if (!string.IsNullOrWhiteSpace(actions.Messages[i]))
-                {
-                    details.Add(actions.Messages[i]);
-                }
+                details.Add(line);
             }
         }
 
@@ -8069,117 +8108,18 @@ namespace HaCreator.MapSimulator.Interaction
             return Math.Max(0, _mesoCountProvider?.Invoke() ?? 0L);
         }
 
-        private string BuildRewardText(QuestDefinition definition, CharacterBuild build = null)
+        private string BuildRewardText(QuestDefinition definition, CharacterBuild build = null, bool preserveQuestDetailMarkers = false)
         {
             var rewards = new List<string>();
             if (!string.IsNullOrWhiteSpace(definition.RewardSummary))
             {
-                rewards.Add(NpcDialogueTextFormatter.Format(definition.RewardSummary, CreateDialogueFormattingContext()));
+                rewards.Add(
+                    preserveQuestDetailMarkers
+                        ? NpcDialogueTextFormatter.FormatPreservingQuestDetailMarkers(definition.RewardSummary, CreateDialogueFormattingContext())
+                        : NpcDialogueTextFormatter.Format(definition.RewardSummary, CreateDialogueFormattingContext()));
             }
 
-            if (definition.EndActions.ExpReward > 0)
-            {
-                rewards.Add($"EXP +{definition.EndActions.ExpReward}");
-            }
-
-            if (definition.EndActions.MesoReward != 0)
-            {
-                rewards.Add($"Meso {definition.EndActions.MesoReward:+#;-#;0}");
-            }
-
-            if (definition.EndActions.FameReward != 0)
-            {
-                rewards.Add($"Fame {definition.EndActions.FameReward:+#;-#;0}");
-            }
-
-            if (definition.EndActions.BuffItemId > 0)
-            {
-                rewards.Add($"Buff {GetBuffItemRewardText(definition.EndActions)}");
-            }
-
-            if (definition.EndActions.PetTamenessReward != 0)
-            {
-                rewards.Add(GetPetTamenessRewardText(definition.EndActions.PetTamenessReward));
-            }
-
-            if (definition.EndActions.PetSpeedReward != 0)
-            {
-                rewards.Add(GetPetSpeedRewardText(definition.EndActions.PetSpeedReward));
-            }
-
-            if (definition.EndActions.BuffItemId <= 0 && definition.EndActions.BuffItemMapIds.Count > 0)
-            {
-                rewards.Add($"Maps: {FormatMapIdList(definition.EndActions.BuffItemMapIds)}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(definition.EndActions.NpcActionName))
-            {
-                rewards.Add(QuestNpcActionResolver.FormatActionDetail(definition.EndActions.NpcActionName));
-            }
-
-            for (int i = 0; i < definition.EndActions.TraitRewards.Count; i++)
-            {
-                QuestTraitReward reward = definition.EndActions.TraitRewards[i];
-                rewards.Add($"{FormatTraitName(reward.Trait)} {reward.Amount:+#;-#;0}");
-            }
-
-            for (int i = 0; i < definition.EndActions.RewardItems.Count; i++)
-            {
-                QuestRewardItem reward = definition.EndActions.RewardItems[i];
-                if (reward.Count <= 0 ||
-                    !MatchesRewardItemFilter(reward, build))
-                {
-                    continue;
-                }
-
-                rewards.Add(GetRewardItemDescription(reward, includeFilters: build == null));
-            }
-
-            for (int i = 0; i < definition.EndActions.SkillRewards.Count; i++)
-            {
-                QuestSkillReward reward = definition.EndActions.SkillRewards[i];
-                if (!MatchesAllowedJobs(build?.Job ?? 0, reward.AllowedJobs))
-                {
-                    continue;
-                }
-
-                rewards.Add(GetSkillRewardText(reward));
-            }
-
-            if (definition.EndActions.PetSkillRewardMask > 0)
-            {
-                rewards.Add(GetPetSkillRewardText(definition.EndActions.PetSkillRewardMask));
-            }
-
-            for (int i = 0; i < definition.EndActions.QuestMutations.Count; i++)
-            {
-                QuestStateMutation mutation = definition.EndActions.QuestMutations[i];
-                rewards.Add($"Quest state: {GetQuestName(mutation.QuestId)} -> {FormatQuestState(mutation.State)}");
-            }
-
-            for (int i = 0; i < definition.EndActions.SpRewards.Count; i++)
-            {
-                QuestSpReward reward = definition.EndActions.SpRewards[i];
-                if (!MatchesAllowedJobs(build?.Job ?? 0, reward.AllowedJobs))
-                {
-                    continue;
-                }
-
-                rewards.Add($"SP {GetSpRewardText(reward)}");
-            }
-
-            if (definition.EndActions.NextQuestId.HasValue && definition.EndActions.NextQuestId.Value > 0)
-            {
-                rewards.Add($"Next quest: {GetQuestName(definition.EndActions.NextQuestId.Value)}");
-            }
-
-            for (int i = 0; i < definition.EndActions.Messages.Count; i++)
-            {
-                if (!string.IsNullOrWhiteSpace(definition.EndActions.Messages[i]))
-                {
-                    rewards.Add(definition.EndActions.Messages[i]);
-                }
-            }
+            rewards.AddRange(BuildVisibleQuestActionLines(definition.EndActions, build, includeSelectionTag: true));
 
             return rewards.Count == 0
                 ? "No explicit rewards are registered for this quest in the loaded data."
@@ -8347,7 +8287,20 @@ namespace HaCreator.MapSimulator.Interaction
                 return Array.Empty<string>();
             }
 
+            return BuildVisibleQuestActionLines(actions, build, includeSelectionTag: false);
+        }
+
+        private List<string> BuildVisibleQuestActionLines(
+            QuestActionBundle actions,
+            CharacterBuild build,
+            bool includeSelectionTag)
+        {
             var lines = new List<string>();
+            if (actions == null)
+            {
+                return lines;
+            }
+
             if (actions.ExpReward > 0)
             {
                 lines.Add($"EXP +{actions.ExpReward}");
@@ -8397,26 +8350,15 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < actions.RewardItems.Count; i++)
             {
                 QuestRewardItem reward = actions.RewardItems[i];
-                if (reward?.Count <= 0)
-                {
-                    continue;
-                }
-
-                if (build != null &&
-                    !MatchesRewardItemFilterCore(
-                        build.Job,
-                        build.SubJob,
-                        build.Gender,
-                        reward.JobClassBitfield,
-                        reward.JobExBitfield,
-                        reward.Gender))
+                if (reward?.Count <= 0 ||
+                    !MatchesRewardItemFilter(reward, build))
                 {
                     continue;
                 }
 
                 lines.Add(GetRewardItemDescription(
                     reward,
-                    includeSelectionTag: false,
+                    includeSelectionTag,
                     includeFilters: build == null));
             }
 

@@ -7,11 +7,18 @@ using Microsoft.Xna.Framework.Input;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib.WzStructure.Data;
 using System;
+using System.Diagnostics;
+using System.IO;
+using System.Text;
 
 namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private const int ReviveOwnerSoulStoneSkillId = 22181003;
+        private const int ReviveOwnerTransferFieldRequestOpcode = 41;
+        private const byte ReviveOwnerSyntheticFieldKey = 0;
+
         private readonly ReviveOwnerRuntime _reviveOwnerRuntime = new();
         private ReviveOwnerTransferRequest? _pendingReviveOwnerTransferRequest;
         private int _pendingReviveOwnerTransferTick = int.MinValue;
@@ -59,7 +66,7 @@ namespace HaCreator.MapSimulator
             bool hasPremiumChoice = ReviveOwnerRuntime.HasPremiumChoiceForVariant(variant);
             string ownerLabel = ReviveOwnerRuntime.GetOwnerLabel(variant);
 
-            string normalDetail = $"Default branch returns to the simulator respawn seam at ({spawnPoint.X:0}, {spawnPoint.Y:0}).";
+            string normalDetail = BuildDefaultReviveDetail(spawnPoint);
             string premiumDetail = hasPremiumChoice
                 ? BuildPremiumReviveDetail(variant, ownerLabel, deathPoint)
                 : string.Empty;
@@ -162,19 +169,33 @@ namespace HaCreator.MapSimulator
             {
                 if (!TryConsumeReviveOwnerPremiumItem(request))
                 {
+                    Debug.WriteLine(DispatchReviveOwnerTransferFieldRequest(
+                        new ReviveOwnerTransferRequest(
+                            premium: false,
+                            timedOut: request.TimedOut,
+                            request.Variant,
+                            request.Summary)));
                     _playerManager?.Respawn();
                     return;
                 }
 
+                if (request.Variant == ReviveOwnerVariant.SoulStoneChoice)
+                {
+                    _playerManager?.Skills?.CancelActiveBuff(ReviveOwnerSoulStoneSkillId);
+                }
+
+                Debug.WriteLine(DispatchReviveOwnerTransferFieldRequest(request));
                 _playerManager.RespawnAt(_playerManager.Player.DeathX, _playerManager.Player.DeathY);
                 return;
             }
 
+            Debug.WriteLine(DispatchReviveOwnerTransferFieldRequest(request));
             _playerManager?.Respawn();
         }
 
         private ReviveOwnerVariant ResolveReviveOwnerVariant()
         {
+            bool hasSoulStone = _playerManager?.Skills?.HasBuff(ReviveOwnerSoulStoneSkillId) == true;
             int premiumSafetyCharmCount = GetInventoryWindowItemCount(5131000);
             int safetyCharmCount = GetInventoryWindowItemCount(5130000);
             int wheelOfFortuneCount = GetInventoryWindowItemCount(5510000);
@@ -183,9 +204,10 @@ namespace HaCreator.MapSimulator
             // - CUIRevive::OnCreate checks soul-stone state first.
             // - It then gates the upgrade-tomb branch on is_fieldtype_upgradetomb_usable plus Wheel of Fortune ownership.
             // - It falls through to the premium/default revive-owner branch otherwise.
-            // The simulator can currently back only the inventory-owned item cases directly.
+            // The simulator can back the Soul Stone branch from the active buff runtime and the
+            // other branches from the live inventory seam.
             return ReviveOwnerRuntime.ResolveClientVariant(
-                hasSoulStone: false,
+                hasSoulStone,
                 hasUpgradeTombChoice: wheelOfFortuneCount > 0 && IsUpgradeTombReviveUsable(),
                 hasPremiumSafetyCharm: premiumSafetyCharmCount > 0,
                 hasSafetyCharm: safetyCharmCount > 0);
@@ -217,14 +239,15 @@ namespace HaCreator.MapSimulator
                 && mapId / 1000000 != 390;
         }
 
+        private static string BuildDefaultReviveDetail(Vector2 spawnPoint)
+        {
+            return $"Default branch returns to the simulator respawn seam at ({spawnPoint.X:0}, {spawnPoint.Y:0}).";
+        }
+
         private static string BuildPremiumReviveDetail(ReviveOwnerVariant variant, string ownerLabel, Vector2 deathPoint)
         {
-            int consumableItemId = ReviveOwnerRuntime.GetConsumableCashItemId(variant);
-            string itemText = consumableItemId > 0
-                ? $"{ownerLabel} ({consumableItemId})"
-                : ownerLabel;
-
-            return $"{itemText} revives in the current field near the death point at ({deathPoint.X:0}, {deathPoint.Y:0}).";
+            string detailPrefix = ResolveReviveOwnerDetailPrefix(variant, ownerLabel);
+            return $"{detailPrefix} revives in the current field near the death point at ({deathPoint.X:0}, {deathPoint.Y:0}).";
         }
 
         private bool TryConsumeReviveOwnerPremiumItem(ReviveOwnerTransferRequest request)
@@ -247,6 +270,139 @@ namespace HaCreator.MapSimulator
 
             ShowUtilityFeedbackMessage($"{ReviveOwnerRuntime.GetOwnerLabel(request.Variant)} was no longer available, so the revive owner fell back to the default branch.");
             return false;
+        }
+
+        private static string ResolveReviveOwnerDetailPrefix(ReviveOwnerVariant variant, string ownerLabel)
+        {
+            if (variant == ReviveOwnerVariant.SoulStoneChoice)
+            {
+                // WZ evidence: String/Skill.img/22181003/h -> "revives with #x% HP"
+                return "Soul Stone buff branch";
+            }
+
+            int cashItemId = ReviveOwnerRuntime.GetConsumableCashItemId(variant);
+            if (cashItemId <= 0)
+            {
+                return ownerLabel;
+            }
+
+            bool hasName = InventoryItemMetadataResolver.TryResolveItemName(cashItemId, out string resolvedName)
+                && !string.IsNullOrWhiteSpace(resolvedName);
+            bool hasDescription = InventoryItemMetadataResolver.TryResolveItemDescription(cashItemId, out string resolvedDescription)
+                && !string.IsNullOrWhiteSpace(resolvedDescription);
+            string normalizedDescription = hasDescription
+                ? NormalizeReviveOwnerDescription(resolvedDescription)
+                : string.Empty;
+
+            if (hasName && !string.IsNullOrWhiteSpace(normalizedDescription))
+            {
+                return $"{resolvedName} ({cashItemId}): {normalizedDescription}";
+            }
+
+            if (hasName)
+            {
+                return $"{resolvedName} ({cashItemId})";
+            }
+
+            return $"{ownerLabel} ({cashItemId})";
+        }
+
+        private static string NormalizeReviveOwnerDescription(string description)
+        {
+            if (string.IsNullOrWhiteSpace(description))
+            {
+                return string.Empty;
+            }
+
+            string normalized = description
+                .Replace("#c", string.Empty, StringComparison.Ordinal)
+                .Replace("#", string.Empty, StringComparison.Ordinal)
+                .Replace("\r", " ", StringComparison.Ordinal)
+                .Replace("\n", " ", StringComparison.Ordinal)
+                .Trim();
+
+            int sentenceEnd = normalized.IndexOf('.');
+            if (sentenceEnd >= 0)
+            {
+                normalized = normalized[..(sentenceEnd + 1)];
+            }
+
+            return normalized.Trim();
+        }
+
+        private string DispatchReviveOwnerTransferFieldRequest(ReviveOwnerTransferRequest request)
+        {
+            if (!TryBuildReviveOwnerTransferFieldPayload(request.Premium, out byte[] payload))
+            {
+                return "Revive owner could not build the synthetic transfer-field request payload.";
+            }
+
+            string payloadHex = Convert.ToHexString(payload);
+            string summary = $"Mirrored CUIRevive::Revive as opcode {ReviveOwnerTransferFieldRequestOpcode} [{payloadHex}] with premium={(request.Premium ? 1 : 0)} and synthetic field key {ReviveOwnerSyntheticFieldKey}.";
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                ReviveOwnerTransferFieldRequestOpcode,
+                payload,
+                out string bridgeStatus))
+            {
+                return $"{summary} Dispatched it through the live official-session bridge. {bridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
+                ReviveOwnerTransferFieldRequestOpcode,
+                payload,
+                out string outboxStatus))
+            {
+                return $"{summary} Dispatched it through the generic packet outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+            }
+
+            if (_localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    ReviveOwnerTransferFieldRequestOpcode,
+                    payload,
+                    out string queuedBridgeStatus))
+            {
+                return $"{summary} Queued it for deferred official-session injection after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(
+                ReviveOwnerTransferFieldRequestOpcode,
+                payload,
+                out string queuedOutboxStatus))
+            {
+                return $"{summary} Queued it for deferred generic packet outbox delivery after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
+            }
+
+            return $"{summary} The request remained simulator-owned because neither the live bridge nor the packet outbox accepted opcode {ReviveOwnerTransferFieldRequestOpcode}. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+        }
+
+        private static bool TryBuildReviveOwnerTransferFieldPayload(bool premium, out byte[] payload)
+        {
+            try
+            {
+                using var stream = new MemoryStream();
+                using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+                writer.Write(ReviveOwnerSyntheticFieldKey);
+                writer.Write(0);
+                WriteReviveOwnerMapleString(writer, string.Empty);
+                writer.Write((byte)0);
+                writer.Write((byte)(premium ? 1 : 0));
+                writer.Write((byte)0);
+                writer.Flush();
+                payload = stream.ToArray();
+                return true;
+            }
+            catch
+            {
+                payload = Array.Empty<byte>();
+                return false;
+            }
+        }
+
+        private static void WriteReviveOwnerMapleString(BinaryWriter writer, string value)
+        {
+            byte[] bytes = Encoding.Default.GetBytes(value ?? string.Empty);
+            writer.Write((ushort)bytes.Length);
+            writer.Write(bytes);
         }
     }
 }

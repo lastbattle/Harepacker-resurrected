@@ -15,8 +15,9 @@ namespace HaCreator.MapSimulator.UI
     {
         // CUIMapleTV::Draw centers the broadcast art on a 240px-wide MapleTV surface and
         // draws the send-board item text at (39,70) with its one-pixel highlight at (40,71).
-        // The in-field layer keeps that same 240px media surface centered while the
-        // WZ-authored chat overlays are allowed to overhang from their own origins.
+        // The in-field layer is still top-edge owned, but the WZ chat and TV-on families
+        // overhang that 240px surface. Keep the entire WZ composite centered rather than
+        // pinning only the raw media frame to the screen center.
         private const int WorldOverlayTopMargin = 20;
         // UIWindow.img/MapleTV/backgrnd2 and backgrnd4 ship the same full note field.
         // Dedication mode only adds the receiver strip at y=65; it does not narrow the note box.
@@ -217,12 +218,14 @@ namespace HaCreator.MapSimulator.UI
                 _visualAssets.OnFrames.Count > 0 ? _visualAssets.OnFrames : _visualAssets.BasicFrames,
                 tickCount);
             MapleTvAnimationFrame chatFrame = SelectFrame(_visualAssets.GetChatFrames(snapshot.ResolvedMediaIndex), tickCount);
-            Point overlayOrigin = ResolveTopAnchoredSurfaceOrigin(
+            Point overlayOrigin = ResolveCompositeSurfaceOrigin(
                 renderWidth,
                 WorldOverlayTopMargin,
                 240,
                 180,
-                mediaFrame);
+                mediaFrame,
+                onFrame,
+                chatFrame);
             DrawAnimationFrame(sprite, mediaFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawAnimationFrame(sprite, onFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawAnimationFrame(sprite, chatFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
@@ -521,6 +524,51 @@ namespace HaCreator.MapSimulator.UI
             int desiredLeft = Math.Max(0, (renderWidth - surfaceWidth) / 2);
             int desiredTop = Math.Max(0, topMargin);
             return new Point(desiredLeft - anchorOffset.X, desiredTop - anchorOffset.Y);
+        }
+
+        internal static Point ResolveCompositeSurfaceOrigin(
+            int renderWidth,
+            int topMargin,
+            int fallbackWidth,
+            int fallbackHeight,
+            params MapleTvAnimationFrame[] frames)
+        {
+            Rectangle compositeBounds = ResolveCompositeBounds(fallbackWidth, fallbackHeight, frames);
+            int desiredLeft = Math.Max(0, (renderWidth - compositeBounds.Width) / 2);
+            int desiredTop = Math.Max(0, topMargin);
+            return new Point(desiredLeft - compositeBounds.Left, desiredTop - compositeBounds.Top);
+        }
+
+        private static Rectangle ResolveCompositeBounds(
+            int fallbackWidth,
+            int fallbackHeight,
+            IReadOnlyList<MapleTvAnimationFrame> frames)
+        {
+            Rectangle bounds = new(0, 0, Math.Max(1, fallbackWidth), Math.Max(1, fallbackHeight));
+            bool hasFrameBounds = false;
+            if (frames == null)
+            {
+                return bounds;
+            }
+
+            for (int i = 0; i < frames.Count; i++)
+            {
+                MapleTvAnimationFrame frame = frames[i];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                Rectangle frameBounds = new(
+                    frame.Offset.X,
+                    frame.Offset.Y,
+                    Math.Max(1, frame.Width),
+                    Math.Max(1, frame.Height));
+                bounds = hasFrameBounds ? Rectangle.Union(bounds, frameBounds) : frameBounds;
+                hasFrameBounds = true;
+            }
+
+            return bounds;
         }
 
         private void DrawChatText(

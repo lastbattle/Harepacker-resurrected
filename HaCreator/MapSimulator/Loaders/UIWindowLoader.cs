@@ -300,6 +300,29 @@ namespace HaCreator.MapSimulator.Loaders
 
         }
 
+        private static SelectorOverlayFrame LoadSelectorOverlayFrame(WzSubProperty property, GraphicsDevice device)
+        {
+            if (property == null || device == null)
+            {
+                return default;
+            }
+
+            WzCanvasProperty canvas = property["0"] as WzCanvasProperty
+                ?? property.WzProperties.OfType<WzCanvasProperty>().FirstOrDefault();
+            if (canvas == null)
+            {
+                return default;
+            }
+
+            Texture2D texture = LoadCanvasTexture(canvas, device);
+            if (texture == null)
+            {
+                return default;
+            }
+
+            return new SelectorOverlayFrame(texture, ResolveCanvasOffset(canvas, Point.Zero));
+        }
+
 
 
         private static IDXObject LoadWindowCanvasLayer(WzSubProperty parent, string name, GraphicsDevice device)
@@ -828,7 +851,7 @@ namespace HaCreator.MapSimulator.Loaders
             var avatarEnabledTexturesByRace = new Dictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>>();
             var avatarDisabledTexturesByRace = new Dictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>>();
             var racePreviewTexturesByRace = new Dictionary<LoginCreateCharacterRaceKind, Texture2D>();
-            var raceConfirmLabelTexturesByRace = new Dictionary<LoginCreateCharacterRaceKind, Texture2D>();
+            var raceConfirmLabelFramesByRace = new Dictionary<LoginCreateCharacterRaceKind, CharacterSelectWindow.AnimationFrame>();
             WzSubProperty raceSelectConfirmProperty = loginImage?["RaceSelect"]?["confirm"] as WzSubProperty;
 
             foreach (LoginCreateCharacterRaceKind race in LoginCreateCharacterFlowState.SupportedRaces)
@@ -849,7 +872,7 @@ namespace HaCreator.MapSimulator.Loaders
                 avatarDisabledTexturesByRace[race] = LoadIndexedCanvasTextureList(raceProperty?["avatarSel"] as WzSubProperty, "disabled", device);
                 racePreviewTexturesByRace[race] = LoadCanvasTexture(raceProperty, "charAlert", device);
                 int raceConfirmLabelIndex = Array.IndexOf(LoginCreateCharacterFlowState.SupportedRaces, race);
-                raceConfirmLabelTexturesByRace[race] = LoadCanvasTexture(
+                raceConfirmLabelFramesByRace[race] = LoadSingleAnimationFrame(
                     raceSelectConfirmProperty?["race"] as WzSubProperty,
                     raceConfirmLabelIndex switch
                     {
@@ -888,7 +911,7 @@ namespace HaCreator.MapSimulator.Loaders
                     raceConfirmBackgroundTexture,
                     raceConfirmOkTexture,
                     raceConfirmCancelTexture,
-                    raceConfirmLabelTexturesByRace,
+                    raceConfirmLabelFramesByRace,
                     LoadButton(newCharProperty, "BtYes", btClickSound, btOverSound, device),
                     LoadButton(newCharProperty, "BtNo", btClickSound, btOverSound, device),
                     LoadButton(newCharProperty, "BtCheck", btClickSound, btOverSound, device)),
@@ -905,7 +928,7 @@ namespace HaCreator.MapSimulator.Loaders
                     raceConfirmBackgroundTexture,
                     raceConfirmOkTexture,
                     raceConfirmCancelTexture,
-                    raceConfirmLabelTexturesByRace,
+                    raceConfirmLabelFramesByRace,
                     LoadButton(newCharProperty, "BtYes", btClickSound, btOverSound, device),
                     LoadButton(newCharProperty, "BtNo", btClickSound, btOverSound, device),
                     LoadButton(newCharProperty, "BtCheck", btClickSound, btOverSound, device)),
@@ -922,7 +945,7 @@ namespace HaCreator.MapSimulator.Loaders
                     raceConfirmBackgroundTexture,
                     raceConfirmOkTexture,
                     raceConfirmCancelTexture,
-                    raceConfirmLabelTexturesByRace,
+                    raceConfirmLabelFramesByRace,
                     LoadButton(newCharProperty, "BtYes", btClickSound, btOverSound, device),
                     LoadButton(newCharProperty, "BtNo", btClickSound, btOverSound, device),
                     LoadButton(newCharProperty, "BtCheck", btClickSound, btOverSound, device)),
@@ -939,7 +962,7 @@ namespace HaCreator.MapSimulator.Loaders
                     raceConfirmBackgroundTexture,
                     raceConfirmOkTexture,
                     raceConfirmCancelTexture,
-                    raceConfirmLabelTexturesByRace,
+                    raceConfirmLabelFramesByRace,
                     LoadButton(newCharProperty, "BtYes", btClickSound, btOverSound, device),
                     LoadButton(newCharProperty, "BtNo", btClickSound, btOverSound, device),
                     LoadButton(newCharProperty, "BtCheck", btClickSound, btOverSound, device))
@@ -999,7 +1022,9 @@ namespace HaCreator.MapSimulator.Loaders
                 [AvatarPreviewCarouselWindow.LoginJobDecorationStyle.Evan] = LoadPreviewCanvasFrame(charSelectProperty?["evan"]?["0"] as WzCanvasProperty, device),
                 [AvatarPreviewCarouselWindow.LoginJobDecorationStyle.Resistance] = LoadPreviewCanvasFrame(charSelectProperty?["resistance"]?["0"] as WzCanvasProperty, device)
             };
-            Texture2D emptySlotTexture = LoadCanvasTexture(charSelectProperty?["character"]?["1"] as WzSubProperty, "0", device);
+            AvatarPreviewCarouselWindow.PreviewCanvasFrame emptySlotFrame = LoadPreviewCanvasFrame(
+                charSelectProperty?["character"]?["1"]?["0"] as WzCanvasProperty,
+                device);
             List<AvatarPreviewCarouselWindow.PreviewCanvasFrame> buyCharacterFrames = new();
             WzSubProperty buyCharacterProperty = charSelectProperty?["buyCharacter"] as WzSubProperty;
             if (buyCharacterProperty != null)
@@ -1019,7 +1044,13 @@ namespace HaCreator.MapSimulator.Loaders
 
 
             List<UIObject> cardButtons = new List<UIObject>();
-            Texture2D hitTexture = CreateFilledTexture(device, 183, 151, Color.Transparent, Color.Transparent);
+            int cardHitWidth = Math.Max(
+                183,
+                Math.Max(cardNormalFrame.Texture?.Width ?? 0, cardSelectedFrame.Texture?.Width ?? 0));
+            int cardHitHeight = Math.Max(
+                151,
+                Math.Max(cardNormalFrame.Texture?.Height ?? 0, cardSelectedFrame.Texture?.Height ?? 0));
+            Texture2D hitTexture = CreateFilledTexture(device, cardHitWidth, cardHitHeight, Color.Transparent, Color.Transparent);
             for (int slot = 0; slot < 3; slot++)
             {
                 UIObject cardButton = CreateTextureButton(hitTexture, hitTexture);
@@ -1066,7 +1097,7 @@ namespace HaCreator.MapSimulator.Loaders
                 normalNameTagStyle,
                 selectedNameTagStyle,
                 jobDecorations,
-                new AvatarPreviewCarouselWindow.PreviewCanvasFrame(emptySlotTexture, Point.Zero),
+                emptySlotFrame,
                 buyCharacterFrames,
                 cardButtons,
                 prevPageButton,
@@ -2335,13 +2366,18 @@ namespace HaCreator.MapSimulator.Loaders
             List<(int worldId, UIObject button, Texture2D icon, SelectorOverlayFrame keyFocusedFrame)> worldButtons = new List<(int, UIObject, Texture2D, SelectorOverlayFrame)>();
             foreach (KeyValuePair<int, Texture2D> badge in worldBadges.OrderBy(pair => pair.Key))
             {
+                string worldButtonName = badge.Key.ToString(CultureInfo.InvariantCulture);
                 UIObject button = LoadButton(worldButtonProperty, badge.Key.ToString(CultureInfo.InvariantCulture), clickSound, overSound, device)
                     ?? CreateTextureButton(badge.Value, badge.Value);
                 if (button == null)
                 {
                     continue;
                 }
-                worldButtons.Add((badge.Key, button, badge.Value, default));
+
+                SelectorOverlayFrame keyFocusedFrame = LoadSelectorOverlayFrame(
+                    worldButtonProperty?[worldButtonName]?["keyFocused"] as WzSubProperty,
+                    device);
+                worldButtons.Add((badge.Key, button, badge.Value, keyFocusedFrame));
 
             }
 
@@ -2370,7 +2406,8 @@ namespace HaCreator.MapSimulator.Loaders
                 worldButtons,
                 emptyWorldButtons,
                 LoadButton(loginWorldSelectProperty, "BtViewChoice", clickSound, overSound, device),
-                LoadButton(loginWorldSelectProperty, "BtViewAll", clickSound, overSound, device));
+                LoadButton(loginWorldSelectProperty, "BtViewAll", clickSound, overSound, device),
+                LoadSelectorOverlayFrame(loginWorldSelectProperty?["BtViewAll"]?["keyFocused"] as WzSubProperty, device));
 
         }
 
@@ -3874,9 +3911,10 @@ namespace HaCreator.MapSimulator.Loaders
                     break;
                 case MapSimulatorWindowNames.CashShopOneADay:
                     window.SetContentBounds(new Rectangle(275, 95, 412, 430));
-                    AttachCanvasLayer(window, picturePlateImage?["PicturePlate"] as WzSubProperty, "NoItem", device, new Point(279, 152));
-                    AttachCanvasLayer(window, picturePlateImage?["PicturePlate"] as WzSubProperty, "NoItem0", device, new Point(279, 152));
-                    AttachCanvasLayer(window, picturePlateImage?["PicturePlate"] as WzSubProperty, "NoItem1", device, new Point(279, 152));
+                    AttachCanvasLayer(window, picturePlateImage?["PicturePlate"] as WzSubProperty, "NoItem", device, new Point(279, 152), useOneADayVisibility: true);
+                    AttachCanvasLayer(window, picturePlateImage?["PicturePlate"] as WzSubProperty, "NoItem0", device, new Point(279, 152), useOneADayVisibility: true);
+                    AttachCanvasLayer(window, picturePlateImage?["PicturePlate"] as WzSubProperty, "NoItem1", device, new Point(279, 152), useOneADayVisibility: true);
+                    AttachCanvasLayer(window, picturePlateImage?["PicturePlate"] as WzSubProperty, "ShortcutHelp", device, new Point(279, 152), useOneADayVisibility: true);
                     RegisterCashShopStageChildButton(window, (picturePlateImage?["PicturePlate"] as WzSubProperty), "BtJoin", clickSound, overSound, device, 560, 346, "CCSWnd_OneADay previewed the join button owner.");
                     RegisterCashShopStageChildButton(window, (picturePlateImage?["PicturePlate"] as WzSubProperty), "BtShortcut", clickSound, overSound, device, 516, 346, "CCSWnd_OneADay previewed the shortcut button owner.");
                     RegisterCashShopStageChildButton(window, (picturePlateImage?["PicturePlate"] as WzSubProperty), "BtClose", clickSound, overSound, device, 670, 104, "CCSWnd_OneADay previewed the close button owner.");
@@ -4147,7 +4185,8 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty sourceProperty,
             string canvasName,
             GraphicsDevice device,
-            Point baseOffset)
+            Point baseOffset,
+            bool useOneADayVisibility = false)
         {
             if (window == null || sourceProperty == null)
             {
@@ -4157,7 +4196,13 @@ namespace HaCreator.MapSimulator.Loaders
             IDXObject layer = LoadWindowCanvasLayerWithOffset(sourceProperty, canvasName, device, out Point offset);
             if (layer != null)
             {
-                window.AddLayer(layer, new Point(baseOffset.X + offset.X, baseOffset.Y + offset.Y));
+                Func<bool> visibilityEvaluator = null;
+                if (useOneADayVisibility)
+                {
+                    visibilityEvaluator = () => window.IsOneADayLayerVisible(canvasName);
+                }
+
+                window.AddLayer(layer, new Point(baseOffset.X + offset.X, baseOffset.Y + offset.Y), canvasName, visibilityEvaluator);
             }
         }
 
@@ -4588,6 +4633,20 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return frames;
+        }
+
+        private static CharacterSelectWindow.AnimationFrame LoadSingleAnimationFrame(
+            WzSubProperty parentProperty,
+            string frameName,
+            GraphicsDevice device)
+        {
+            if (parentProperty?[frameName] is not WzSubProperty frameProperty)
+            {
+                return default;
+            }
+
+            List<CharacterSelectWindow.AnimationFrame> frames = LoadCharacterSelectAnimationFrames(frameProperty, device);
+            return frames.Count > 0 ? frames[0] : default;
         }
 
 
@@ -7274,7 +7333,7 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
             Dictionary<int, Texture2D> mainKeyTextures = LoadIndexedCanvasTextures(sourceProperty["key"] as WzSubProperty, device);
-            List<Texture2D> paletteTextures = LoadIndexedCanvasTextureList(sourceProperty["icon"] as WzSubProperty, device).ToList();
+            Dictionary<int, Texture2D> paletteTextures = LoadIndexedCanvasTextures(sourceProperty["icon"] as WzSubProperty, device);
             Texture2D[] noticeTextures = LoadIndexedCanvasArray(sourceProperty["notice"] as WzSubProperty, 3, device);
             KeyConfigWindow window = new KeyConfigWindow(
                 new DXObject(0, 0, frameTexture, 0),

@@ -8,9 +8,9 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int DeleteNoticeStringPoolId = 0x106F;
         internal const int EmptyMaximizeNoticeStringPoolId = 0x18EC;
 
-        private const string TitleFormatFallback = "Quest Alarm ({0}/5)";
-        private const string DeleteNoticeFallback = "Quest Alarm removed '{0}'.";
-        private const string EmptyMaximizeNoticeFallback = "There are no active quests registered in Quest Alarm.";
+        private const string TitleFormatFallback = "Quest Helper ({0}/5)";
+        private const string DeleteNoticeFallback = "[{0}] It has been excluded from the auto alarm and it will not be automatically reigstered until you re log-on";
+        private const string EmptyMaximizeNoticeFallback = "There are no quests in the quest helper.";
 
         public static string FormatTitle(int count)
         {

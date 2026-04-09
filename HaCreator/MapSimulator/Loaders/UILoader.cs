@@ -645,7 +645,9 @@ namespace HaCreator.MapSimulator.Loaders
                     Vector2 chatInputPos = new Vector2(
                         chatTargetButtonPos.X + obj_Ui_chatTarget.CanvasSnapshotWidth + 4,
                         chatEnterPos.Y);
-                    Vector2 chatLogTextPos = new Vector2(ResolveCanvasPosition(chatFrameAnchorOrigin, chatSpace2Canvas).X + 4, -16);
+                    Vector2 chatLogTextPos = new Vector2(
+                        ResolveCanvasPosition(chatFrameAnchorOrigin, chatSpace2Canvas).X + StatusBarChatLayoutRules.ClientChatLogTextLeftInset,
+                        -16);
                     int chatLogRightEdge = Math.Min(
                         chatEnterBounds.Right > 0 ? chatEnterBounds.Right : int.MaxValue,
                         chatSpace2Bounds.Right > 0 ? chatSpace2Bounds.Right : int.MaxValue);
@@ -657,12 +659,6 @@ namespace HaCreator.MapSimulator.Loaders
                     int chatLogWidth = Math.Max(
                         1,
                         chatLogRightEdge - (int)MathF.Floor(chatLogTextPos.X) - 1);
-                    Rectangle chatInteractionBounds = ResolveChatInteractionBounds(
-                        chatLogTextPos,
-                        chatLogWidth,
-                        chatEnterBounds,
-                        chatSpace2Bounds,
-                        chatEnterTexture?.Height ?? 21);
                     chatUI.SetLayoutMetrics(
                         chatFrameAnchorOrigin,
                         chatTargetLabelPos,
@@ -670,7 +666,8 @@ namespace HaCreator.MapSimulator.Loaders
                         chatInputPos,
                         chatLogTextPos,
                         chatLogWidth,
-                        chatInteractionBounds);
+                        chatEnterBounds,
+                        chatSpace2Bounds);
                     chatUI.SetPointNotificationAnimations(
                         LoadPointNotificationAnimation(mainBarProperties?["ApNotify"] as WzSubProperty, device),
                         LoadPointNotificationAnimation(mainBarProperties?["SpNotify"] as WzSubProperty, device));
@@ -1325,49 +1322,6 @@ namespace HaCreator.MapSimulator.Loaders
             return new Rectangle(position.X, position.Y, width, height);
         }
 
-        private static Rectangle ResolveChatInteractionBounds(
-            Vector2 chatLogTextPos,
-            int chatLogWidth,
-            Rectangle chatEnterBounds,
-            Rectangle chatSpace2Bounds,
-            int chatEnterHeight)
-        {
-            const int ChatMaxVisibleLines = 8;
-            const int DefaultChatLogLineHeight = 14;
-            int left = Math.Min(
-                (int)MathF.Floor(chatLogTextPos.X) - 4,
-                chatSpace2Bounds.IsEmpty ? int.MaxValue : chatSpace2Bounds.Left);
-            if (left == int.MaxValue)
-            {
-                left = (int)MathF.Floor(chatLogTextPos.X) - 4;
-            }
-
-            int right = Math.Max(
-                (int)MathF.Ceiling(chatLogTextPos.X) + chatLogWidth + 4,
-                Math.Max(
-                    chatEnterBounds.IsEmpty ? int.MinValue : chatEnterBounds.Right,
-                    chatSpace2Bounds.IsEmpty ? int.MinValue : chatSpace2Bounds.Right));
-            if (right == int.MinValue)
-            {
-                right = left + chatLogWidth + 8;
-            }
-
-            int bottom = Math.Max(
-                chatEnterBounds.IsEmpty ? int.MinValue : chatEnterBounds.Bottom,
-                chatSpace2Bounds.IsEmpty ? int.MinValue : chatSpace2Bounds.Bottom);
-            if (bottom == int.MinValue)
-            {
-                bottom = (chatEnterBounds.IsEmpty ? 0 : chatEnterBounds.Y) + Math.Max(1, chatEnterHeight);
-            }
-
-            int top = (int)MathF.Floor(chatLogTextPos.Y) - (ChatMaxVisibleLines * DefaultChatLogLineHeight) - 2;
-            return new Rectangle(
-                left,
-                top,
-                Math.Max(1, right - left),
-                Math.Max(1, bottom - top));
-        }
-
         private static StatusBarWarningAnimation LoadStatusBarWarningAnimation(WzSubProperty warningProperty, GraphicsDevice device)
         {
             if (warningProperty == null || device == null)
@@ -1815,6 +1769,120 @@ namespace HaCreator.MapSimulator.Loaders
                 + Math.Max(0, rightInset);
         }
 
+        internal static int ResolveCollapsedMinimapTitleMaxTextWidthForTesting(
+            int maxBarWidth,
+            int reserveWidth,
+            int leftInset,
+            int iconWidth,
+            int iconGap,
+            int textLeftPadding,
+            int textRightPadding)
+        {
+            int availableWidth = Math.Max(0, maxBarWidth)
+                - Math.Max(0, reserveWidth)
+                - Math.Max(0, leftInset)
+                - Math.Max(0, iconWidth)
+                - Math.Max(0, iconGap)
+                - Math.Max(0, textLeftPadding)
+                - Math.Max(0, textRightPadding);
+            return Math.Max(1, availableWidth);
+        }
+
+        internal static int ResolveCollapsedMinimapContentWidthForTesting(
+            int measuredTextWidth,
+            int maxTextWidth,
+            int reserveWidth,
+            int leftInset,
+            int iconWidth,
+            int iconGap,
+            int textLeftPadding,
+            int textRightPadding)
+        {
+            int clippedTextWidth = Math.Min(Math.Max(0, measuredTextWidth), Math.Max(1, maxTextWidth));
+            return Math.Max(1, Math.Max(0, leftInset)
+                + Math.Max(0, iconWidth)
+                + Math.Max(0, iconGap)
+                + Math.Max(0, textLeftPadding)
+                + clippedTextWidth
+                + Math.Max(0, textRightPadding)
+                + Math.Max(0, reserveWidth));
+        }
+
+        private static System.Drawing.Bitmap RenderCollapsedMinimapTitleContent(
+            System.Drawing.Bitmap mapMark,
+            string title,
+            float userScreenScaleFactor,
+            System.Drawing.Color textColor,
+            int maxBarWidth,
+            int reserveWidth)
+        {
+            const int leftInset = 4;
+            const int iconGap = 2;
+            const int textLeftPadding = 2;
+            const int textRightPadding = 2;
+            const int fallbackBarHeight = 20;
+
+            string renderTitle = string.IsNullOrWhiteSpace(title) ? string.Empty : title;
+            int iconWidth = mapMark?.Width ?? 0;
+            int iconHeight = mapMark?.Height ?? 0;
+            int maxTextWidth = ResolveCollapsedMinimapTitleMaxTextWidthForTesting(
+                maxBarWidth,
+                reserveWidth,
+                leftInset,
+                iconWidth,
+                mapMark != null ? iconGap : 0,
+                textLeftPadding,
+                textRightPadding);
+
+            using System.Drawing.Font titleFont = new System.Drawing.Font(GLOBAL_FONT, MINIMAP_STREETNAME_TOOLTIP_FONTSIZE / userScreenScaleFactor);
+            using System.Drawing.Bitmap measureBitmap = new System.Drawing.Bitmap(1, 1);
+            using System.Drawing.Graphics measureGraphics = System.Drawing.Graphics.FromImage(measureBitmap);
+            using System.Drawing.StringFormat stringFormat = System.Drawing.StringFormat.GenericTypographic;
+            measureGraphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+            System.Drawing.SizeF textSize = measureGraphics.MeasureString(renderTitle, titleFont, int.MaxValue, stringFormat);
+            int measuredTextWidth = (int)Math.Ceiling(textSize.Width);
+            int measuredTextHeight = (int)Math.Ceiling(textSize.Height);
+            int contentWidth = ResolveCollapsedMinimapContentWidthForTesting(
+                measuredTextWidth,
+                maxTextWidth,
+                reserveWidth,
+                leftInset,
+                iconWidth,
+                mapMark != null ? iconGap : 0,
+                textLeftPadding,
+                textRightPadding);
+            int contentHeight = Math.Max(fallbackBarHeight, Math.Max(iconHeight, measuredTextHeight));
+
+            System.Drawing.Bitmap contentBitmap = new System.Drawing.Bitmap(contentWidth, contentHeight);
+            using System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(contentBitmap);
+            graphics.Clear(System.Drawing.Color.Transparent);
+            graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+
+            int currentX = leftInset;
+            if (mapMark != null)
+            {
+                int iconY = Math.Max(0, (contentHeight - iconHeight) / 2);
+                graphics.DrawImageUnscaled(mapMark, currentX, iconY);
+                currentX += iconWidth + iconGap;
+            }
+
+            currentX += textLeftPadding;
+            int textY = Math.Max(0, (contentHeight - measuredTextHeight) / 2);
+            System.Drawing.Rectangle textRect = new System.Drawing.Rectangle(
+                currentX,
+                textY,
+                maxTextWidth,
+                Math.Max(1, measuredTextHeight));
+
+            using System.Drawing.Brush textBrush = new System.Drawing.SolidBrush(textColor);
+            System.Drawing.Region previousClip = graphics.Clip;
+            graphics.SetClip(textRect);
+            graphics.DrawString(renderTitle, titleFont, textBrush, textRect.Location, stringFormat);
+            graphics.Clip = previousClip;
+
+            return contentBitmap;
+        }
+
         private static bool TryFindEmbeddedBitmapOffset(
             System.Drawing.Bitmap container,
             System.Drawing.Bitmap content,
@@ -2052,11 +2120,6 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 Margins = new HaUIMargin() { Top = MAPMARK_MAPNAME_TOP_MARGIN, Left = MAPMARK_MAPNAME_LEFT_MARGIN, Bottom = 0, Right = 0 },
             });
-            HaUIStackPanel collapsedMapNameStackPanel = new HaUIStackPanel(HaUIStackOrientation.Horizontal, new HaUIInfo()
-            {
-                Margins = new HaUIMargin() { Top = 1, Left = MAPMARK_MAPNAME_LEFT_MARGIN, Bottom = 0, Right = 0 },
-            });
-
             if (mapMark != null)
             {
                 // minimap map-mark image
@@ -2066,11 +2129,6 @@ namespace HaCreator.MapSimulator.Loaders
                 });
                 mapNameMarkStackPanel.AddRenderable(mapNameMarkImage);
 
-                collapsedMapNameStackPanel.AddRenderable(new HaUIImage(new HaUIInfo()
-                {
-                    Bitmap = mapMark,
-                    Margins = new HaUIMargin() { Right = 2 }
-                }));
             }
             // Minimap name, and street name
             string renderText = string.Format("{0}{1}{2}", StreetName, Environment.NewLine, MapName);
@@ -2079,13 +2137,8 @@ namespace HaCreator.MapSimulator.Loaders
             haUITextMapNameStreetName.GetInfo().Margins.Top = 3;
             haUITextMapNameStreetName.GetInfo().Margins.Left = MAP_IMAGE_TEXT_PADDING;
             haUITextMapNameStreetName.GetInfo().Margins.Right = MAP_IMAGE_TEXT_PADDING;
-            HaUIText collapsedTitleText = new HaUIText(collapsedRenderText, color_foreGround, GLOBAL_FONT, MINIMAP_STREETNAME_TOOLTIP_FONTSIZE, UserScreenScaleFactor);
-            collapsedTitleText.GetInfo().Margins.Top = 1;
-            collapsedTitleText.GetInfo().Margins.Left = MAP_IMAGE_TEXT_PADDING;
-            collapsedTitleText.GetInfo().Margins.Right = MAP_IMAGE_TEXT_PADDING;
 
             mapNameMarkStackPanel.AddRenderable(haUITextMapNameStreetName);
-            collapsedMapNameStackPanel.AddRenderable(collapsedTitleText);
             fullMiniMapStackPanel.AddRenderable(mapNameMarkStackPanel);
 
             WzSubProperty collapsedMapButtonProperty = minimapFrameProperty["BtMap"] as WzSubProperty;
@@ -2100,20 +2153,23 @@ namespace HaCreator.MapSimulator.Loaders
                 ResolveUiButtonSnapshotWidth(collapsedMaximizeButtonProperty),
                 ResolveUiButtonSnapshotWidth(collapsedMapButtonProperty),
                 rightInset: 6);
-            if (collapsedButtonReserveWidth > 0)
-            {
-                collapsedMapNameStackPanel.AddRenderable(new HaUIImage(new HaUIInfo()
-                {
-                    Bitmap = new System.Drawing.Bitmap(collapsedButtonReserveWidth, 1)
-                }));
-            }
-
             WzSubProperty collapsedBarProperty = minimapFrameProperty["Min"] as WzSubProperty;
             System.Drawing.Bitmap collapsedBarLeft = ((WzCanvasProperty)collapsedBarProperty?["w"])?.GetLinkedWzCanvasBitmap();
             System.Drawing.Bitmap collapsedBarCenter = ((WzCanvasProperty)collapsedBarProperty?["c"])?.GetLinkedWzCanvasBitmap();
             System.Drawing.Bitmap collapsedBarRight = ((WzCanvasProperty)collapsedBarProperty?["e"])?.GetLinkedWzCanvasBitmap();
+            int collapsedTitleMaxBarWidth = Math.Max(1, fullMiniMapStackPanel.GetSize().Width);
+            System.Drawing.Bitmap collapsedTitleContent = RenderCollapsedMinimapTitleContent(
+                mapMark,
+                collapsedRenderText,
+                UserScreenScaleFactor,
+                color_foreGround,
+                collapsedTitleMaxBarWidth,
+                collapsedButtonReserveWidth);
             HaUIStackPanel collapsedMiniMapStackPanel = new HaUIStackPanel(HaUIStackOrientation.Vertical);
-            collapsedMiniMapStackPanel.AddRenderable(collapsedMapNameStackPanel);
+            collapsedMiniMapStackPanel.AddRenderable(new HaUIImage(new HaUIInfo()
+            {
+                Bitmap = collapsedTitleContent
+            }));
             System.Drawing.Bitmap finalMininisedMinimapBitmap =
                 collapsedBarLeft != null && collapsedBarCenter != null && collapsedBarRight != null
                     ? HaUIHelper.RenderAndMergeMinimapCollapsedBar(collapsedMiniMapStackPanel, color_bgFill, collapsedBarLeft, collapsedBarCenter, collapsedBarRight)

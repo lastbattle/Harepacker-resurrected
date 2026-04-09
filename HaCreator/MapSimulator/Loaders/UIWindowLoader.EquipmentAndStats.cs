@@ -557,6 +557,8 @@ namespace HaCreator.MapSimulator.Loaders
                 skill.SetTooltipOrigins(tooltipOrigins);
             }
 
+            skill.SetCooldownMasks(UIWindowLoader.LoadCooldownMasks(skillProperty["CoolTime"] as WzSubProperty, device));
+
 
             return skill;
 

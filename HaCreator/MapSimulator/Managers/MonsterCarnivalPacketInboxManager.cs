@@ -136,6 +136,13 @@ namespace HaCreator.MapSimulator.Managers
             string typeToken = separatorIndex >= 0 ? trimmed[..separatorIndex] : trimmed;
             string payloadToken = separatorIndex >= 0 ? trimmed[(separatorIndex + 1)..].Trim() : string.Empty;
 
+            if (typeToken.Equals("packetraw", StringComparison.OrdinalIgnoreCase)
+                || typeToken.Equals("wrapped", StringComparison.OrdinalIgnoreCase)
+                || typeToken.Equals("opcode", StringComparison.OrdinalIgnoreCase))
+            {
+                return TryParseWrappedPacketLine(payloadToken, out packetType, out payload, out error);
+            }
+
             if (!TryParsePacketType(typeToken, out packetType))
             {
                 error = $"Unsupported Monster Carnival packet type: {typeToken}";
@@ -162,6 +169,44 @@ namespace HaCreator.MapSimulator.Managers
             catch (FormatException)
             {
                 error = $"Invalid Monster Carnival packet hex payload: {payloadToken}";
+                return false;
+            }
+        }
+
+        private static bool TryParseWrappedPacketLine(string payloadToken, out int packetType, out byte[] payload, out string error)
+        {
+            packetType = 0;
+            payload = Array.Empty<byte>();
+            error = null;
+
+            string compactHex = RemoveWhitespace(payloadToken);
+            if (string.IsNullOrWhiteSpace(compactHex))
+            {
+                error = "Monster Carnival packetraw requires an opcode-wrapped hex payload.";
+                return false;
+            }
+
+            if (compactHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                compactHex = compactHex[2..];
+            }
+
+            try
+            {
+                byte[] rawPacket = Convert.FromHexString(compactHex);
+                if (!MonsterCarnivalOfficialSessionBridgeManager.TryDecodeInboundCarnivalPacket(rawPacket, "mcarnival-inbox", out MonsterCarnivalPacketInboxMessage message))
+                {
+                    error = "Monster Carnival packetraw payload does not contain a supported opcode 346-353 packet.";
+                    return false;
+                }
+
+                packetType = message.PacketType;
+                payload = message.Payload;
+                return true;
+            }
+            catch (FormatException)
+            {
+                error = $"Invalid Monster Carnival packetraw hex payload: {payloadToken}";
                 return false;
             }
         }

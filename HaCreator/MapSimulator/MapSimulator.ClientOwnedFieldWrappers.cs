@@ -15,6 +15,115 @@ using MapleLib.WzLib.WzProperties;
 
 namespace HaCreator.MapSimulator
 {
+    internal enum TransportationWrapperKind
+    {
+        None,
+        Transit,
+        Balrog
+    }
+
+    internal readonly struct TransportationWrapperContract
+    {
+        public TransportationWrapperContract(
+            TransportationWrapperKind kind,
+            string sourceDescription,
+            int dockX,
+            int dockY,
+            int awayX,
+            int flip,
+            int moveDurationSeconds,
+            int shipKind,
+            string shipObjectPath)
+        {
+            Kind = kind;
+            SourceDescription = sourceDescription ?? string.Empty;
+            DockX = dockX;
+            DockY = dockY;
+            AwayX = awayX;
+            Flip = flip;
+            MoveDurationSeconds = moveDurationSeconds;
+            ShipKind = shipKind;
+            ShipObjectPath = shipObjectPath ?? string.Empty;
+        }
+
+        public TransportationWrapperKind Kind { get; }
+        public string SourceDescription { get; }
+        public int DockX { get; }
+        public int DockY { get; }
+        public int AwayX { get; }
+        public int Flip { get; }
+        public int MoveDurationSeconds { get; }
+        public int ShipKind { get; }
+        public string ShipObjectPath { get; }
+        public bool IsActive => Kind != TransportationWrapperKind.None;
+    }
+
+    internal static class TransportationFieldWrapperContractBuilder
+    {
+        public static bool TryCreate(MapInfo mapInfo, out TransportationWrapperContract contract)
+        {
+            contract = default;
+            if (mapInfo == null)
+            {
+                return false;
+            }
+
+            TransportationWrapperKind kind = mapInfo.fieldType == FieldType.FIELDTYPE_BALROG
+                ? TransportationWrapperKind.Balrog
+                : mapInfo.fieldType == FieldType.FIELDTYPE_CONTIMOVE
+                    ? TransportationWrapperKind.Transit
+                    : TransportationWrapperKind.None;
+
+            if (!TransportationFieldDefinitionLoader.TryCreate(mapInfo, out TransportationFieldDefinition definition))
+            {
+                if (kind == TransportationWrapperKind.None)
+                {
+                    return false;
+                }
+
+                string fallbackOwner = kind == TransportationWrapperKind.Balrog
+                    ? $"client owner CField_Balrog::GetFieldType = {(int)FieldType.FIELDTYPE_BALROG} ({FieldType.FIELDTYPE_BALROG})"
+                    : $"client owner CField_ContiMove via fieldType {(int)FieldType.FIELDTYPE_CONTIMOVE} ({FieldType.FIELDTYPE_CONTIMOVE})";
+                contract = new TransportationWrapperContract(
+                    kind,
+                    $"{fallbackOwner}, but no WZ shipObj payload is available on this map",
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    kind == TransportationWrapperKind.Balrog ? 1 : 0,
+                    string.Empty);
+                return true;
+            }
+
+            if (kind == TransportationWrapperKind.None)
+            {
+                kind = definition.ShipKind == 1
+                    ? TransportationWrapperKind.Balrog
+                    : TransportationWrapperKind.Transit;
+            }
+
+            string ownerDescription = kind == TransportationWrapperKind.Balrog
+                ? $"client owner CField_Balrog::GetFieldType = {(int)FieldType.FIELDTYPE_BALROG} ({FieldType.FIELDTYPE_BALROG})"
+                : $"client owner CField_ContiMove via fieldType {(int)FieldType.FIELDTYPE_CONTIMOVE} ({FieldType.FIELDTYPE_CONTIMOVE})";
+            string payloadDescription = string.IsNullOrWhiteSpace(definition.ShipObjectPath)
+                ? "WZ shipObj payload without an object path"
+                : $"WZ shipObj payload path {definition.ShipObjectPath}";
+            contract = new TransportationWrapperContract(
+                kind,
+                $"{ownerDescription}, {payloadDescription}",
+                definition.DockX,
+                definition.DockY,
+                definition.AwayX,
+                definition.Flip,
+                definition.MoveDurationSeconds,
+                definition.ShipKind,
+                definition.ShipObjectPath);
+            return true;
+        }
+    }
+
     public partial class MapSimulator
     {
         internal enum TutorialWrapperKind
@@ -35,6 +144,45 @@ namespace HaCreator.MapSimulator
             public TutorialWrapperKind Kind { get; }
             public string SourceDescription { get; }
             public bool IsActive => Kind != TutorialWrapperKind.None;
+        }
+
+        internal readonly struct TutorialAppearanceContract
+        {
+            public TutorialAppearanceContract(
+                TutorialWrapperKind kind,
+                string sourceDescription,
+                int capItemId,
+                int clothesItemId,
+                int capeItemId,
+                int shoesItemId,
+                int weaponItemId,
+                bool preserveActiveWeapon)
+            {
+                Kind = kind;
+                SourceDescription = sourceDescription ?? string.Empty;
+                CapItemId = Math.Max(0, capItemId);
+                ClothesItemId = Math.Max(0, clothesItemId);
+                CapeItemId = Math.Max(0, capeItemId);
+                ShoesItemId = Math.Max(0, shoesItemId);
+                WeaponItemId = Math.Max(0, weaponItemId);
+                PreserveActiveWeapon = preserveActiveWeapon;
+            }
+
+            public TutorialWrapperKind Kind { get; }
+            public string SourceDescription { get; }
+            public int CapItemId { get; }
+            public int ClothesItemId { get; }
+            public int CapeItemId { get; }
+            public int ShoesItemId { get; }
+            public int WeaponItemId { get; }
+            public bool PreserveActiveWeapon { get; }
+
+            public bool HasAnyAppearanceItem =>
+                CapItemId > 0
+                || ClothesItemId > 0
+                || CapeItemId > 0
+                || ShoesItemId > 0
+                || WeaponItemId > 0;
         }
 
         internal enum WeddingPhotoWrapperKind
@@ -452,9 +600,13 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            CharacterPart forcedCap = loader.LoadEquipment(TutorialForcedCapItemId);
-            CharacterPart forcedLongcoat = loader.LoadEquipment(TutorialForcedLongcoatItemId);
-            if (forcedCap == null || forcedLongcoat == null)
+            if (!TryBuildTutorialAppearanceContract(mapInfo, build.Gender, out TutorialAppearanceContract appearanceContract))
+            {
+                return;
+            }
+
+            List<CharacterPart> forcedParts = LoadTutorialAppearanceParts(loader, appearanceContract);
+            if (forcedParts.Count == 0)
             {
                 return;
             }
@@ -467,8 +619,14 @@ namespace HaCreator.MapSimulator
                 _tutorialAppearanceOverrideApplied = true;
             }
 
-            CharacterPart visibleWeapon = build.Equipment.TryGetValue(EquipSlot.Weapon, out CharacterPart weapon) ? weapon : null;
-            CharacterPart hiddenWeapon = build.HiddenEquipment.TryGetValue(EquipSlot.Weapon, out CharacterPart concealedWeapon) ? concealedWeapon : null;
+            CharacterPart visibleWeapon = appearanceContract.PreserveActiveWeapon
+                && build.Equipment.TryGetValue(EquipSlot.Weapon, out CharacterPart weapon)
+                ? weapon
+                : null;
+            CharacterPart hiddenWeapon = appearanceContract.PreserveActiveWeapon
+                && build.HiddenEquipment.TryGetValue(EquipSlot.Weapon, out CharacterPart concealedWeapon)
+                ? concealedWeapon
+                : null;
 
             build.Equipment.Clear();
             build.HiddenEquipment.Clear();
@@ -483,8 +641,10 @@ namespace HaCreator.MapSimulator
                 build.HiddenEquipment[EquipSlot.Weapon] = hiddenWeapon;
             }
 
-            build.Equip(forcedCap);
-            build.Equip(forcedLongcoat);
+            foreach (CharacterPart forcedPart in forcedParts)
+            {
+                build.Equip(forcedPart);
+            }
         }
 
         private void RestoreTutorialFieldAppearance(CharacterBuild build)
@@ -602,14 +762,37 @@ namespace HaCreator.MapSimulator
             {
                 if (tutorialContract.Kind == TutorialWrapperKind.AranTutorial)
                 {
+                    TutorialAppearanceContract appearanceContract = TryBuildTutorialAppearanceContract(
+                        mapInfo,
+                        _playerManager?.Player?.Build?.Gender ?? CharacterGender.Male,
+                        out TutorialAppearanceContract activeAppearanceContract)
+                        ? activeAppearanceContract
+                        : default;
                     activeWrappers.Add(
-                        $"aran-tutorial wrapper active ({tutorialContract.SourceDescription}, distinct from the generic kill-count wrapper, map {mapInfo.id}, onUserEnter {mapInfo.onUserEnter ?? "<none>"}, mapMark {mapInfo.mapMark ?? "<none>"}): forcing hat {TutorialForcedCapItemId} and longcoat {TutorialForcedLongcoatItemId}.");
+                        $"aran-tutorial wrapper active ({tutorialContract.SourceDescription}, distinct from the generic kill-count wrapper, map {mapInfo.id}, onUserEnter {mapInfo.onUserEnter ?? "<none>"}, mapMark {mapInfo.mapMark ?? "<none>"}): {DescribeTutorialAppearanceContract(appearanceContract)}.");
                 }
                 else
                 {
+                    TryBuildTutorialAppearanceContract(
+                        mapInfo,
+                        _playerManager?.Player?.Build?.Gender ?? CharacterGender.Male,
+                        out TutorialAppearanceContract appearanceContract);
                     activeWrappers.Add(
-                        $"tutorial wrapper active ({tutorialContract.SourceDescription}): forcing hat {TutorialForcedCapItemId} and longcoat {TutorialForcedLongcoatItemId}.");
+                        $"tutorial wrapper active ({tutorialContract.SourceDescription}): {DescribeTutorialAppearanceContract(appearanceContract)}.");
                 }
+            }
+
+            if (_transportField.HasRouteConfiguration
+                && TransportationFieldWrapperContractBuilder.TryCreate(mapInfo, out TransportationWrapperContract transportContract))
+            {
+                string ownerLabel = transportContract.Kind == TransportationWrapperKind.Balrog
+                    ? "balrog voyage wrapper active"
+                    : "transit/voyage wrapper active";
+                string shipPath = string.IsNullOrWhiteSpace(transportContract.ShipObjectPath)
+                    ? "<editor ShipObject fallback>"
+                    : transportContract.ShipObjectPath;
+                activeWrappers.Add(
+                    $"{ownerLabel} ({transportContract.SourceDescription}): dock ({transportContract.DockX}, {transportContract.DockY}), awayX {transportContract.AwayX}, flip {transportContract.Flip}, tMove {transportContract.MoveDurationSeconds}s, shipKind {transportContract.ShipKind}, shipPath {shipPath}, runtime {_transportField.State} at ({_transportField.ShipX:0.##}, {_transportField.ShipY:0.##}) alpha {_transportField.ShipAlpha:0.##}.");
             }
 
             if (IsLimitedViewWrapperMap(mapInfo))
@@ -650,7 +833,7 @@ namespace HaCreator.MapSimulator
             }
 
             return activeWrappers.Count == 0
-                ? "Client-owned wrappers: none of tutorial, limited-view, no-dragon, dynamic-foothold, or wedding-photo are active on this map."
+                ? "Client-owned wrappers: none of transport, tutorial, limited-view, no-dragon, dynamic-foothold, or wedding-photo are active on this map."
                 : "Client-owned wrappers: " + string.Join(" ", activeWrappers);
         }
 
@@ -758,6 +941,33 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        internal static bool TryBuildTutorialAppearanceContract(MapInfo mapInfo, CharacterGender gender, out TutorialAppearanceContract contract)
+        {
+            if (!TryBuildTutorialWrapperContract(mapInfo, out TutorialWrapperContract wrapperContract))
+            {
+                contract = default;
+                return false;
+            }
+
+            if (wrapperContract.Kind == TutorialWrapperKind.AranTutorial
+                && TryBuildAranTutorialAppearanceContract(mapInfo, gender, out TutorialAppearanceContract aranContract))
+            {
+                contract = aranContract;
+                return true;
+            }
+
+            contract = new TutorialAppearanceContract(
+                wrapperContract.Kind,
+                $"{wrapperContract.SourceDescription}, tutorial decode appearance pair from CField_Tutorial::DecodeFieldSpecificData",
+                TutorialForcedCapItemId,
+                TutorialForcedLongcoatItemId,
+                0,
+                0,
+                0,
+                preserveActiveWeapon: true);
+            return true;
+        }
+
         private static TutorialWrapperKind GetTutorialWrapperKind(MapInfo mapInfo)
         {
             return TryBuildTutorialWrapperContract(mapInfo, out TutorialWrapperContract contract)
@@ -790,6 +1000,37 @@ namespace HaCreator.MapSimulator
             }
 
             return inAranTutorialRange && (hasAranMapMark || hasAranOnUserEnter);
+        }
+
+        private static bool TryBuildAranTutorialAppearanceContract(MapInfo mapInfo, CharacterGender gender, out TutorialAppearanceContract contract)
+        {
+            contract = default;
+
+            WzImage mapImage = ResolveTutorialContractImage(mapInfo);
+            if (mapImage == null)
+            {
+                return false;
+            }
+
+            if (!mapImage.Parsed)
+            {
+                mapImage.ParseImage();
+            }
+
+            if (ResolveProperty(mapImage, "user") is not WzImageProperty userRoot)
+            {
+                return false;
+            }
+
+            foreach (WzImageProperty userEntry in userRoot.WzProperties)
+            {
+                if (TryBuildAranTutorialAppearanceContractFromEntry(mapInfo, userEntry, gender, out contract))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static bool TryBuildWeddingPhotoSceneContract(MapInfo mapInfo, out WeddingPhotoSceneContract contract)
@@ -851,6 +1092,133 @@ namespace HaCreator.MapSimulator
                 && mapInfo.id / 1000 == WeddingPhotoMapRegionPrefix
                 && string.Equals(mapInfo.mapMark, WeddingMapMark, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(mapInfo.onUserEnter, WeddingPhotoSceneOnUserEnter, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static WzImage ResolveTutorialContractImage(MapInfo mapInfo)
+        {
+            if (mapInfo?.Image != null)
+            {
+                return mapInfo.Image;
+            }
+
+            if (mapInfo?.id > 0 && Program.WzManager != null)
+            {
+                return WzInfoTools.FindMapImage(mapInfo.id.ToString(), Program.WzManager);
+            }
+
+            return null;
+        }
+
+        private static bool TryBuildAranTutorialAppearanceContractFromEntry(
+            MapInfo mapInfo,
+            WzImageProperty userEntry,
+            CharacterGender gender,
+            out TutorialAppearanceContract contract)
+        {
+            contract = default;
+            if (userEntry == null)
+            {
+                return false;
+            }
+
+            WzImageProperty cond = userEntry["cond"];
+            WzImageProperty look = userEntry["look"];
+            if (look == null)
+            {
+                return false;
+            }
+
+            int target = (cond?["target"] as WzIntProperty)?.GetInt() ?? 0;
+            int? configuredGender = (cond?["gender"] as WzIntProperty)?.GetInt();
+            if (target != 1)
+            {
+                return false;
+            }
+
+            if (configuredGender.HasValue && configuredGender.Value != (int)gender)
+            {
+                return false;
+            }
+
+            int capItemId = (look["cap"] as WzIntProperty)?.GetInt() ?? 0;
+            int clothesItemId = (look["clothes"] as WzIntProperty)?.GetInt() ?? 0;
+            int capeItemId = (look["cape"] as WzIntProperty)?.GetInt() ?? 0;
+            int shoesItemId = (look["shoes"] as WzIntProperty)?.GetInt() ?? 0;
+            int weaponItemId = (look["weapon"] as WzIntProperty)?.GetInt() ?? 0;
+            contract = new TutorialAppearanceContract(
+                TutorialWrapperKind.AranTutorial,
+                $"WZ user/{userEntry.Name}/look target={target}, gender={(configuredGender.HasValue ? configuredGender.Value.ToString() : "any")}, mapId={mapInfo?.id ?? 0}",
+                capItemId,
+                clothesItemId,
+                capeItemId,
+                shoesItemId,
+                weaponItemId,
+                preserveActiveWeapon: false);
+            return contract.HasAnyAppearanceItem;
+        }
+
+        private static List<CharacterPart> LoadTutorialAppearanceParts(CharacterLoader loader, TutorialAppearanceContract contract)
+        {
+            List<CharacterPart> parts = new();
+            TryAddTutorialAppearancePart(parts, loader, contract.CapItemId);
+            TryAddTutorialAppearancePart(parts, loader, contract.ClothesItemId);
+            TryAddTutorialAppearancePart(parts, loader, contract.CapeItemId);
+            TryAddTutorialAppearancePart(parts, loader, contract.ShoesItemId);
+            TryAddTutorialAppearancePart(parts, loader, contract.WeaponItemId);
+            return parts;
+        }
+
+        private static void TryAddTutorialAppearancePart(List<CharacterPart> parts, CharacterLoader loader, int itemId)
+        {
+            if (itemId <= 0 || loader == null)
+            {
+                return;
+            }
+
+            CharacterPart part = loader.LoadEquipment(itemId);
+            if (part != null)
+            {
+                parts.Add(part);
+            }
+        }
+
+        private static string DescribeTutorialAppearanceContract(TutorialAppearanceContract contract)
+        {
+            if (!contract.HasAnyAppearanceItem)
+            {
+                return "appearance override pending WZ contract";
+            }
+
+            List<string> items = new();
+            if (contract.CapItemId > 0)
+            {
+                items.Add($"cap {contract.CapItemId}");
+            }
+
+            if (contract.ClothesItemId > 0)
+            {
+                items.Add($"clothes {contract.ClothesItemId}");
+            }
+
+            if (contract.CapeItemId > 0)
+            {
+                items.Add($"cape {contract.CapeItemId}");
+            }
+
+            if (contract.ShoesItemId > 0)
+            {
+                items.Add($"shoes {contract.ShoesItemId}");
+            }
+
+            if (contract.WeaponItemId > 0)
+            {
+                items.Add($"weapon {contract.WeaponItemId}");
+            }
+
+            string behavior = contract.PreserveActiveWeapon
+                ? "preserving the active weapon slot"
+                : "replacing the local tutorial loadout from the WZ user/look contract";
+            return $"{behavior} with {string.Join(", ", items)} ({contract.SourceDescription})";
         }
 
         private static string DescribeWeddingPhotoWrapperSource(MapInfo mapInfo)

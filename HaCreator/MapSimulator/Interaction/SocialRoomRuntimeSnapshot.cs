@@ -20,6 +20,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string RoomState { get; set; }
         public string ModeName { get; set; }
         public string PacketOwnerSummary { get; set; }
+        public int LocalSeatIndex { get; set; }
         public int PersonalShopTotalSoldGross { get; set; }
         public int PersonalShopTotalReceivedNet { get; set; }
         public int MiniRoomModeIndex { get; set; }

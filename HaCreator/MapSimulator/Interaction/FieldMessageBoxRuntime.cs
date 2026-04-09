@@ -389,7 +389,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private void DrawBoardText(SpriteBatch spriteBatch, SpriteFont font, Rectangle boardBounds, IMessageBoxDrawableEntry entry, float alpha)
         {
-            MessageBoxTextLayout layout = entry.Visual?.TextLayout ?? MessageBoxTextLayout.Default;
+            MessageBoxTextLayout layout = entry.GetDisplayTextLayout();
             Rectangle textBounds = layout.GetContentBounds(boardBounds);
             int textRegionWidth = Math.Max(MinBoardWidth, textBounds.Width);
             string[] bodyLines = WrapText(font, entry.MessageText, textRegionWidth).Take(layout.MaxLineCount).ToArray();
@@ -1559,6 +1559,7 @@ namespace HaCreator.MapSimulator.Interaction
             bool ShouldDrawText { get; }
             Texture2D GetDisplayTexture();
             Point GetDisplayOrigin();
+            MessageBoxTextLayout GetDisplayTextLayout();
             float GetAlpha(int currentTick);
             int GetVerticalFloatOffset(int currentTick);
         }
@@ -1637,6 +1638,11 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 return Visual?.GetFrameOrigin(_frameIndex) ?? Point.Zero;
             }
+
+            public MessageBoxTextLayout GetDisplayTextLayout()
+            {
+                return Visual?.TextLayout ?? MessageBoxTextLayout.Default;
+            }
         }
 
         private sealed class LeavingMessageBoxEntry : IMessageBoxDrawableEntry
@@ -1710,6 +1716,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return _snapshotTexture != null
                     ? _snapshotOrigin
                     : _leaveOrigin;
+            }
+
+            public MessageBoxTextLayout GetDisplayTextLayout()
+            {
+                return Visual?.TextLayout ?? MessageBoxTextLayout.Default;
             }
 
             public float GetAlpha(int currentTick)

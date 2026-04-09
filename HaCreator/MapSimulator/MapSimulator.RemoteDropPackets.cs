@@ -263,6 +263,11 @@ namespace HaCreator.MapSimulator
                         }
                     }
 
+                    if (TryResolveRemotePetPickupPosition(actorId, _remoteUserPool, out Vector2 remotePetPosition))
+                    {
+                        return remotePetPosition;
+                    }
+
                     if (fallbackOwnerId > 0)
                     {
                         Vector2? ownerPosition = ResolveDropPickupActorPosition(DropPickupActorKind.Player, fallbackOwnerId, 0);

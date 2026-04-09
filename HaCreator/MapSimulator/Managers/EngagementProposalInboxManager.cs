@@ -30,6 +30,23 @@ namespace HaCreator.MapSimulator.Managers
             RawText = rawText ?? string.Empty;
         }
 
+        public EngagementProposalInboxMessage(
+            byte[] decisionPayload,
+            string source,
+            string rawText)
+        {
+            Kind = EngagementProposalInboxMessageKind.Decision;
+            ProposerName = string.Empty;
+            PartnerName = string.Empty;
+            SealItemId = EngagementProposalRuntime.DefaultSealItemId;
+            RequestPayload = decisionPayload != null ? (byte[])decisionPayload.Clone() : Array.Empty<byte>();
+            CustomMessage = string.Empty;
+            Source = string.IsNullOrWhiteSpace(source) ? "engagement-inbox" : source;
+            RawText = rawText ?? string.Empty;
+        }
+
+        public EngagementProposalInboxMessageKind Kind { get; }
+
         public string ProposerName { get; }
         public string PartnerName { get; }
         public int SealItemId { get; }
@@ -39,11 +56,18 @@ namespace HaCreator.MapSimulator.Managers
         public string RawText { get; }
     }
 
+    public enum EngagementProposalInboxMessageKind
+    {
+        Request,
+        Decision
+    }
+
     public sealed class EngagementProposalInboxManager : IDisposable
     {
         public const int DefaultPort = 18487;
         public const string DefaultHost = "127.0.0.1";
         private const string RequestCommand = "request";
+        private const string DecisionCommand = "decision";
 
         private readonly ConcurrentQueue<EngagementProposalInboxMessage> _pendingMessages = new();
         private readonly object _listenerLock = new();
@@ -95,7 +119,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             string source = message?.Source ?? "engagement-inbox";
             string summary = string.IsNullOrWhiteSpace(detail)
-                ? $"{message?.ProposerName ?? "unknown"} -> {message?.PartnerName ?? "local recipient"}"
+                ? DescribeMessage(message)
                 : detail;
             LastStatus = success
                 ? $"Applied engagement request from {source}: {summary}"
@@ -174,9 +198,35 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string[] tokens = trimmed.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length == 0)
+            {
+                error = "Engagement inbox line is empty.";
+                return false;
+            }
+
+            if (string.Equals(tokens[0], DecisionCommand, StringComparison.OrdinalIgnoreCase))
+            {
+                if (tokens.Length != 2)
+                {
+                    error = "Engagement inbox decision line must be: decision <payloadhex=..|payloadb64=..>";
+                    return false;
+                }
+
+                if (!TryParsePayloadToken(tokens[1], out byte[] decisionPayload, out error))
+                {
+                    return false;
+                }
+
+                message = new EngagementProposalInboxMessage(
+                    decisionPayload,
+                    "engagement-inbox",
+                    text);
+                return true;
+            }
+
             if (tokens.Length < 4 || !string.Equals(tokens[0], RequestCommand, StringComparison.OrdinalIgnoreCase))
             {
-                error = "Engagement inbox line must be: request <proposerName> <partnerName> <payloadhex=..|payloadb64=..> [sealItemId] [message...]";
+                error = "Engagement inbox line must be: request <proposerName> <partnerName> <payloadhex=..|payloadb64=..> [sealItemId] [message...] or decision <payloadhex=..|payloadb64=..>";
                 return false;
             }
 
@@ -188,7 +238,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (!TryParsePayload(tokens[3], out byte[] requestPayload, out error))
+            if (!TryParsePayloadToken(tokens[3], out byte[] requestPayload, out error))
             {
                 return false;
             }
@@ -261,16 +311,22 @@ namespace HaCreator.MapSimulator.Managers
                             continue;
                         }
 
-                        _pendingMessages.Enqueue(new EngagementProposalInboxMessage(
-                            message.ProposerName,
-                            message.PartnerName,
-                            message.SealItemId,
-                            message.RequestPayload,
-                            message.CustomMessage,
-                            remoteEndpoint,
-                            line));
+                        EngagementProposalInboxMessage queuedMessage = message.Kind == EngagementProposalInboxMessageKind.Decision
+                            ? new EngagementProposalInboxMessage(
+                                message.RequestPayload,
+                                remoteEndpoint,
+                                line)
+                            : new EngagementProposalInboxMessage(
+                                message.ProposerName,
+                                message.PartnerName,
+                                message.SealItemId,
+                                message.RequestPayload,
+                                message.CustomMessage,
+                                remoteEndpoint,
+                                line);
+                        _pendingMessages.Enqueue(queuedMessage);
                         ReceivedCount++;
-                        LastStatus = $"Queued engagement request from {message.ProposerName} for {message.PartnerName} from {remoteEndpoint}.";
+                        LastStatus = $"Queued {DescribeMessage(queuedMessage)} from {remoteEndpoint}.";
                     }
                 }
             }
@@ -289,7 +345,7 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private static bool TryParsePayload(string token, out byte[] payload, out string error)
+        internal static bool TryParsePayloadToken(string token, out byte[] payload, out string error)
         {
             payload = Array.Empty<byte>();
             error = null;
@@ -345,6 +401,18 @@ namespace HaCreator.MapSimulator.Managers
 
             error = "Engagement inbox payload must use payloadhex=.. or payloadb64=..";
             return false;
+        }
+
+        internal static string DescribeMessage(EngagementProposalInboxMessage message)
+        {
+            if (message == null)
+            {
+                return "engagement payload";
+            }
+
+            return message.Kind == EngagementProposalInboxMessageKind.Decision
+                ? "engagement decision payload"
+                : $"engagement request {message.ProposerName} -> {message.PartnerName}";
         }
 
         private void StopInternal()

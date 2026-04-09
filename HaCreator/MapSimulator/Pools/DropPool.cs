@@ -1161,7 +1161,7 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                if (drop.OwnerId > 0 && drop.OwnerId != ownerId && currentTime < drop.OwnerExpireTime)
+                if (!CanPetPickup(drop, ownerId, currentTime))
                 {
                     continue;
                 }

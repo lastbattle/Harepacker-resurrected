@@ -72,6 +72,7 @@ namespace HaCreator.MapSimulator.Fields
         private Texture2D _mainContinueTexture;
         private Texture2D _mainRetryTexture;
         private Texture2D _exitTexture;
+        private Func<bool> _hasUniqueModelessOwnerConflict;
         private Rectangle _mainButtonRect;
         private Rectangle _exitButtonRect;
         private uint _entryDialogValue;
@@ -111,6 +112,11 @@ namespace HaCreator.MapSimulator.Fields
         public void Initialize(GraphicsDevice graphicsDevice)
         {
             _graphicsDevice = graphicsDevice;
+        }
+
+        public void SetUniqueModelessOwnerConflictEvaluator(Func<bool> evaluator)
+        {
+            _hasUniqueModelessOwnerConflict = evaluator;
         }
 
         public void Update(int currentTick)
@@ -432,6 +438,62 @@ namespace HaCreator.MapSimulator.Fields
             return false;
         }
 
+        public bool TrySelectChoice(RockPaperScissorsChoice choice, out string message)
+        {
+            message = null;
+            if (!_isVisible)
+            {
+                message = $"{ClientDialogOwnerName} is not the active unique-modeless owner.";
+                return false;
+            }
+
+            if (!_choiceButtonsEnabled)
+            {
+                message = "RPS choice buttons are disabled until the next client-owned round start.";
+                return false;
+            }
+
+            if (choice is < RockPaperScissorsChoice.Rock or > RockPaperScissorsChoice.Scissor)
+            {
+                message = "RPS choice must be rock, paper, or scissor.";
+                return false;
+            }
+
+            _playerChoice = choice;
+            _requestSent = true;
+            _choiceButtonsEnabled = false;
+            CurrentStatusMessage = $"Queued local {DescribeChoice(_playerChoice)} selection and disabled the three RPS buttons until the next packet-owned result.";
+            LastPacketSummary = $"local selection -> {DescribeChoice(_playerChoice)}";
+            message = CurrentStatusMessage;
+            return true;
+        }
+
+        public bool TryActivateMainButton(int currentTimeMs, out string message)
+        {
+            message = null;
+            if (!_isVisible)
+            {
+                message = $"{ClientDialogOwnerName} is not the active unique-modeless owner.";
+                return false;
+            }
+
+            if (!_mainButtonEnabled)
+            {
+                message = "RPS main button is disabled until the next client-owned packet transition.";
+                return false;
+            }
+
+            int nextSubtype = _mainButtonType == RockPaperScissorsMainButtonType.Continue ? 12 : 9;
+            if (!TryApplyRawPacket(nextSubtype, Array.Empty<byte>(), currentTimeMs, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            message = $"Applied local main-button preview via RPS subtype {nextSubtype}.";
+            return true;
+        }
+
         public string DescribeStatus()
         {
             if (!_isVisible)
@@ -470,7 +532,7 @@ namespace HaCreator.MapSimulator.Fields
         private bool TryApplyOpenPacket(byte[] payload, int currentTimeMs, out string errorMessage)
         {
             errorMessage = null;
-            if (_isVisible)
+            if (_isVisible || _hasUniqueModelessOwnerConflict?.Invoke() == true)
             {
                 errorMessage = "Rock-Paper-Scissors dialog cannot open while another unique-modeless owner is already active.";
                 return false;

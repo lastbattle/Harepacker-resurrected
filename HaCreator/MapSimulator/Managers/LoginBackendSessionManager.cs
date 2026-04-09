@@ -53,7 +53,11 @@ namespace HaCreator.MapSimulator.Managers
         {
             if (!accountId.HasValue || accountId.Value <= 0)
             {
-                return false;
+                bool stateChanged = AuthenticatedAccountId.HasValue || CanHaveExtraCharacter || _lastExtraCharInfoResultProfile != null;
+                AuthenticatedAccountId = null;
+                _lastExtraCharInfoResultProfile = null;
+                ClearRosterProfiles();
+                return stateChanged;
             }
 
             if (AuthenticatedAccountId.HasValue && AuthenticatedAccountId.Value != accountId.Value)

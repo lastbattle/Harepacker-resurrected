@@ -2041,6 +2041,18 @@ namespace HaCreator.MapSimulator.Character
             return jobBranch is 52 or 57 || jobFamily == 65;
         }
 
+        private static bool IsCannoneerJob(int absoluteJobId)
+        {
+            return absoluteJobId / 10 == 53;
+        }
+
+        private static bool IsPolearmWarriorJob(int absoluteJobId)
+        {
+            int jobBranch = absoluteJobId / 10;
+            int jobFamily = absoluteJobId / 100;
+            return jobBranch == 13 || jobFamily == 21;
+        }
+
         private AutoAssignStrategy InferBeginnerPirateAutoAssignStrategy()
         {
             return GetWeaponCode(GetWeapon()?.ItemId ?? 0) switch
@@ -2342,6 +2354,11 @@ namespace HaCreator.MapSimulator.Character
             int weaponCode = GetWeaponCode(weapon?.ItemId ?? 0);
             int thiefSecondaryStat = GetThiefSecondaryDamageStat();
 
+            if (weaponCode <= 0)
+            {
+                return ResolveWeaponlessAttackFormulaProfile(thiefSecondaryStat);
+            }
+
             return weaponCode switch
             {
                 30 => new AttackFormulaProfile(false, 4.0f, TotalSTR, TotalDEX, 0.9f),
@@ -2372,10 +2389,40 @@ namespace HaCreator.MapSimulator.Character
                 58 => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
                 _ when UsesMagicFormulaByJob() => new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f),
                 _ when UsesDexDrivenPirateWeapon() => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
-                _ when ResolveJobArchetype() == JobArchetype.Bowman => new AttackFormulaProfile(false, 3.4f, TotalDEX, TotalSTR, 0.9f),
-                _ when ResolveJobArchetype() == JobArchetype.Thief => new AttackFormulaProfile(false, 3.6f, TotalLUK, thiefSecondaryStat, 0.9f),
+                _ => ResolveWeaponlessAttackFormulaProfile(thiefSecondaryStat)
+            };
+        }
+
+        private AttackFormulaProfile ResolveWeaponlessAttackFormulaProfile(int thiefSecondaryStat)
+        {
+            int absoluteJobId = Math.Abs(Job);
+            if (UsesMagicFormulaByJob())
+            {
+                return new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f);
+            }
+
+            return ResolveJobArchetype() switch
+            {
+                JobArchetype.Bowman => ResolveBowmanAutoAssignStrategy(absoluteJobId) == AutoAssignStrategy.BowmanBow
+                    ? new AttackFormulaProfile(false, 3.4f, TotalDEX, TotalSTR, 0.9f)
+                    : new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
+                JobArchetype.Pirate => ResolveWeaponlessPirateAttackFormulaProfile(absoluteJobId),
+                JobArchetype.Thief => new AttackFormulaProfile(false, 3.6f, TotalLUK, thiefSecondaryStat, 0.9f),
+                JobArchetype.Warrior when IsPolearmWarriorJob(absoluteJobId) => new AttackFormulaProfile(false, 5.0f, TotalSTR, TotalDEX, 0.9f),
                 _ => new AttackFormulaProfile(false, 4.0f, TotalSTR, TotalDEX, 0.9f)
             };
+        }
+
+        private AttackFormulaProfile ResolveWeaponlessPirateAttackFormulaProfile(int absoluteJobId)
+        {
+            if (IsCannoneerJob(absoluteJobId))
+            {
+                return new AttackFormulaProfile(false, 5.0f, TotalSTR, TotalDEX, 0.9f);
+            }
+
+            return ResolvePirateAutoAssignStrategy(absoluteJobId) == AutoAssignStrategy.PirateGunslingerLike
+                ? new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f)
+                : new AttackFormulaProfile(false, 4.8f, TotalSTR, TotalDEX, 0.9f);
         }
 
         private AttackFormulaProfile ResolveDaggerFormulaProfile()

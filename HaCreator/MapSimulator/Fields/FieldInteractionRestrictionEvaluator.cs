@@ -461,6 +461,11 @@ namespace HaCreator.MapSimulator.Fields
                 return true;
             }
 
+            if (InventoryItemMetadataResolver.IsPetFoodItem(itemId))
+            {
+                return true;
+            }
+
             return ContainsWholeWord(itemName, "pet") || ContainsWholeWord(itemDescription, "pet");
         }
 

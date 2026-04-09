@@ -1840,6 +1840,9 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.MechanicEquipStatePacketType:
                     return TryApplyPacketOwnedMechanicEquipPayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.RepairDurabilityResultPacketType:
+                    return TryApplyRepairDurabilityResultPayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.QuestGuideResultPacketType:
                     return TryApplyPacketOwnedQuestGuidePayload(payload, out message);
 
@@ -2070,10 +2073,46 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedRandomEmotionPayload(byte[] payload, out string message)
         {
             message = null;
-            PlayerCharacter player = _playerManager?.Player;
-            if (player == null)
+            int currentTick = Environment.TickCount;
+            if (!TryResolvePacketOwnedRandomEmotionRequest(
+                    payload,
+                    _packetOwnedLocalUtilityContext,
+                    currentTick,
+                    out PacketOwnedAvatarEmotionSelection selection,
+                    out PacketOwnedLocalUtilityOutboundRequest request,
+                    out message))
             {
-                message = "Packet-owned random emotion requires an initialized local player.";
+                return false;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+            if (request.Opcode < 0)
+            {
+                message = $"Resolved area-buff item {selection.AreaBuffItemId} to packet-owned emotion '{selection.EmotionName}' ({selection.EmotionId}) with roll {selection.RandomRoll}/{selection.TotalWeight}, but the simulated CWvsContext gate suppressed SendEmotionChange(56). {_packetOwnedLocalUtilityContext.DescribeEmotionContext(currentTick)}";
+                return true;
+            }
+
+            string payloadHex = Convert.ToHexString(request.Payload?.ToArray() ?? Array.Empty<byte>());
+            string dispatchSummary = DescribePacketOwnedEmotionOutboundDispatch(request, payloadHex, currentTick);
+            message = $"Resolved area-buff item {selection.AreaBuffItemId} to packet-owned emotion '{selection.EmotionName}' ({selection.EmotionId}) with roll {selection.RandomRoll}/{selection.TotalWeight} and mirrored CWvsContext::SendEmotionChange(56); the local avatar now waits for the inbound OnEmotion(232) echo before changing expression. {dispatchSummary}";
+            return true;
+        }
+
+        internal static bool TryResolvePacketOwnedRandomEmotionRequest(
+            byte[] payload,
+            PacketOwnedLocalUtilityContextState contextState,
+            int currentTick,
+            out PacketOwnedAvatarEmotionSelection selection,
+            out PacketOwnedLocalUtilityOutboundRequest request,
+            out string message)
+        {
+            selection = default;
+            request = new PacketOwnedLocalUtilityOutboundRequest(-1, 0, Array.Empty<byte>());
+            message = null;
+
+            if (contextState == null)
+            {
+                message = "Random-emotion routing requires a local-utility context state.";
                 return false;
             }
 
@@ -2088,39 +2127,27 @@ namespace HaCreator.MapSimulator
                 using MemoryStream stream = new(payload, writable: false);
                 using BinaryReader reader = new(stream);
                 int areaBuffItemId = reader.ReadInt32();
-                int currentTick = Environment.TickCount;
 
-                StampPacketOwnedUtilityRequestState();
                 if (!PacketOwnedAvatarEmotionResolver.TryResolveRandomEmotion(
                         areaBuffItemId,
                         currentTick,
-                        out PacketOwnedAvatarEmotionSelection selection,
+                        out selection,
                         out string error))
                 {
                     message = error ?? $"Area-buff item {areaBuffItemId} did not resolve a packet-owned random emotion.";
                     return false;
                 }
 
-                if (!_packetOwnedLocalUtilityContext.TryEmitEmotionChangeRequest(
+                if (!contextState.TryEmitEmotionChangeRequest(
                         currentTick,
                         selection.EmotionId,
                         byItemOption: false,
                         durationMs: -1,
-                        out PacketOwnedLocalUtilityOutboundRequest request))
+                        out request))
                 {
-                    message = $"Resolved area-buff item {areaBuffItemId} to packet-owned emotion '{selection.EmotionName}' ({selection.EmotionId}) with roll {selection.RandomRoll}/{selection.TotalWeight}, but the simulated CWvsContext gate suppressed SendEmotionChange(56). {_packetOwnedLocalUtilityContext.DescribeEmotionContext(currentTick)}";
-                    return true;
+                    request = new PacketOwnedLocalUtilityOutboundRequest(-1, 0, Array.Empty<byte>());
                 }
 
-                if (!player.TryApplyPacketOwnedEmotion(selection.EmotionId, durationMs: 0, byItemOption: false, currentTick, out string applyMessage))
-                {
-                    message = applyMessage;
-                    return false;
-                }
-
-                string payloadHex = Convert.ToHexString(request.Payload?.ToArray() ?? Array.Empty<byte>());
-                string dispatchSummary = DescribePacketOwnedEmotionOutboundDispatch(request, payloadHex, currentTick);
-                message = $"Resolved area-buff item {areaBuffItemId} to packet-owned emotion '{selection.EmotionName}' ({selection.EmotionId}) with roll {selection.RandomRoll}/{selection.TotalWeight}. {applyMessage} {dispatchSummary}";
                 return true;
             }
             catch (Exception ex)
@@ -2165,6 +2192,12 @@ namespace HaCreator.MapSimulator
 
         private void ShowPacketOwnedRewardResultNotice(string body)
         {
+            string noticeSoundDescriptor = PacketOwnedRewardResultRuntime.GetUtilDlgNoticeSoundDescriptor();
+            if (!string.IsNullOrWhiteSpace(noticeSoundDescriptor))
+            {
+                TryPlayPacketOwnedWzSound(noticeSoundDescriptor, "UI.img", out _, out _);
+            }
+
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.PacketOwnedRewardResultNotice) is PacketOwnedRewardNoticeWindow noticeWindow)
             {
                 noticeWindow.Configure(string.Empty, body);
@@ -3142,9 +3175,32 @@ namespace HaCreator.MapSimulator
             try
             {
                 _packetOwnedRadioAudio?.Dispose();
-                int normalizedTimeValue = Math.Max(0, timeValue);
-                int startOffsetMs = normalizedTimeValue * 1000;
+                if (!TryResolvePacketOwnedRadioPlaybackWindow(timeValue, out int normalizedTimeValue, out int startOffsetMs))
+                {
+                    const string invalidOffsetMessage = "Packet-owned radio schedule did not contain a usable playback offset.";
+                    _lastPacketOwnedRadioStatusMessage = invalidOffsetMessage;
+                    ShowUtilityFeedbackMessage(invalidOffsetMessage);
+                    return invalidOffsetMessage;
+                }
+
                 _packetOwnedRadioAudio = new MonoGameBgmPlayer(trackResolution.AudioProperty, looped: false, startOffsetMs);
+                int availableDurationMs = (int)Math.Clamp(
+                    Math.Round(_packetOwnedRadioAudio.Duration.TotalMilliseconds),
+                    0d,
+                    int.MaxValue);
+                if (!IsPacketOwnedRadioPlaybackOffsetUsable(startOffsetMs, availableDurationMs))
+                {
+                    _packetOwnedRadioAudio.Dispose();
+                    _packetOwnedRadioAudio = null;
+                    ResetPacketOwnedRadioCreateLayerSessionState();
+                    string rejectedMessage = availableDurationMs > 0
+                        ? $"Ignored packet-owned radio schedule for {trackResolution.DisplayName} because authored timeValue {normalizedTimeValue}s starts at {startOffsetMs} ms, past the {availableDurationMs} ms track length."
+                        : $"Ignored packet-owned radio schedule for {trackResolution.DisplayName} because the resolved track length is unavailable.";
+                    _lastPacketOwnedRadioStatusMessage = rejectedMessage;
+                    ShowUtilityFeedbackMessage(rejectedMessage);
+                    return rejectedMessage;
+                }
+
                 int startTick = Environment.TickCount;
                 _lastPacketOwnedRadioTrackDescriptor = normalizedTrackDescriptor;
                 _lastPacketOwnedRadioResolvedTrackDescriptor = trackResolution.ResolvedTrackDescriptor;
@@ -3152,10 +3208,7 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedRadioDisplayName = trackResolution.DisplayName;
                 _lastPacketOwnedRadioTimeValue = normalizedTimeValue;
                 _lastPacketOwnedRadioStartOffsetMs = startOffsetMs;
-                _lastPacketOwnedRadioAvailableDurationMs = (int)Math.Clamp(
-                    Math.Round(_packetOwnedRadioAudio.Duration.TotalMilliseconds),
-                    0d,
-                    int.MaxValue);
+                _lastPacketOwnedRadioAvailableDurationMs = availableDurationMs;
                 _lastPacketOwnedRadioStartTick = startTick;
                 CapturePacketOwnedRadioCreateLayerSessionState();
                 _lastPacketOwnedRadioExpectedStopTick = _lastPacketOwnedRadioAvailableDurationMs > 0
@@ -3190,6 +3243,26 @@ namespace HaCreator.MapSimulator
                 ShowUtilityFeedbackMessage(failedMessage);
                 return failedMessage;
             }
+        }
+
+        internal static bool TryResolvePacketOwnedRadioPlaybackWindow(int timeValue, out int normalizedTimeValue, out int startOffsetMs)
+        {
+            normalizedTimeValue = Math.Max(0, timeValue);
+            if (normalizedTimeValue > int.MaxValue / 1000)
+            {
+                startOffsetMs = int.MaxValue;
+                return false;
+            }
+
+            startOffsetMs = normalizedTimeValue * 1000;
+            return true;
+        }
+
+        internal static bool IsPacketOwnedRadioPlaybackOffsetUsable(int startOffsetMs, int availableDurationMs)
+        {
+            return startOffsetMs >= 0
+                && availableDurationMs > 0
+                && startOffsetMs < availableDurationMs;
         }
 
         private void UpdatePacketOwnedRadioSchedule(int currentTickCount)
@@ -3405,6 +3478,8 @@ namespace HaCreator.MapSimulator
             if (IsPacketOwnedRadioPlaying())
             {
                 EnsurePacketOwnedRadioCreateLayerSessionState();
+                bLeft = _packetOwnedRadioSessionCreateLayerLeft;
+                nMargin = bLeft ? PacketOwnedRadioCreateLayerLeftMargin : 0;
                 return
                     $"CreateLayer: bLeft={(_packetOwnedRadioSessionCreateLayerLeft ? 1 : 0)} via {_packetOwnedRadioSessionCreateLayerSource}, " +
                     $"nMargin={nMargin}, Origin_RT => x=-3-width-{nMargin}, y=+3 (live fallback now {liveSource}).";
@@ -3971,7 +4046,7 @@ namespace HaCreator.MapSimulator
                 out string errorMessage);
 
             int appliedHitPeriodMs = 0;
-            if (impactPercent > 0)
+            if (ShouldApplyPacketOwnedTimeBombImpactReaction(impactPercent))
             {
                 appliedHitPeriodMs = ResolvePacketOwnedTimeBombHitPeriodMs(PacketOwnedBaseTimeBombHitPeriodMs);
                 if (appliedHitPeriodMs > 0)
@@ -3992,8 +4067,8 @@ namespace HaCreator.MapSimulator
 
             string skillName = skill?.Name ?? $"Skill {normalizedSkillId}";
             string message = appliedPacketOwnedAttack
-                ? $"Applied packet-owned Time Bomb attack for {skillName} Lv.{level} (target {timeBombX}, {timeBombY}, hit {appliedHitPeriodMs} ms, impact {Math.Max(0, impactPercent)}%, damage {Math.Max(0, damage)})."
-                : $"Applied packet-owned Time Bomb reaction for {skillName} without a resolved melee-attack branch ({errorMessage}) (target {timeBombX}, {timeBombY}, hit {appliedHitPeriodMs} ms, impact {Math.Max(0, impactPercent)}%, damage {Math.Max(0, damage)}).";
+                ? $"Applied packet-owned Time Bomb attack for {skillName} Lv.{level} (target {timeBombX}, {timeBombY}, hit {appliedHitPeriodMs} ms, impact {impactPercent}%, damage {Math.Max(0, damage)})."
+                : $"Applied packet-owned Time Bomb reaction for {skillName} without a resolved melee-attack branch ({errorMessage}) (target {timeBombX}, {timeBombY}, hit {appliedHitPeriodMs} ms, impact {impactPercent}%, damage {Math.Max(0, damage)}).";
             ShowUtilityFeedbackMessage(message);
             return message;
         }
@@ -4549,7 +4624,10 @@ namespace HaCreator.MapSimulator
 
         private void EnsurePacketOwnedRadioCreateLayerSessionState()
         {
-            if (_packetOwnedRadioSessionCreateLayerMutationSequence != _packetOwnedLocalUtilityContext.RadioCreateLayerMutationSequence)
+            if (ShouldRefreshPacketOwnedRadioCreateLayerSessionState(
+                    IsPacketOwnedRadioPlaying(),
+                    _packetOwnedRadioSessionCreateLayerMutationSequence,
+                    _packetOwnedLocalUtilityContext.RadioCreateLayerMutationSequence))
             {
                 CapturePacketOwnedRadioCreateLayerSessionState();
             }
@@ -4608,6 +4686,14 @@ namespace HaCreator.MapSimulator
                 : minimapExpanded;
         }
 
+        internal static bool ShouldRefreshPacketOwnedRadioCreateLayerSessionState(
+            bool sessionActive,
+            int capturedMutationSequence,
+            int liveContextMutationSequence)
+        {
+            return !sessionActive && capturedMutationSequence != liveContextMutationSequence;
+        }
+
         private bool ResolvePacketOwnedRadioCreateLayerLeftContext()
         {
             SyncPacketOwnedRadioCreateLayerContextLifecycle();
@@ -4632,11 +4718,6 @@ namespace HaCreator.MapSimulator
                 source: "manual-radioctx",
                 currentTick: Environment.TickCount,
                 runtimeCharacterId);
-            if (IsPacketOwnedRadioPlaying())
-            {
-                CapturePacketOwnedRadioCreateLayerSessionState();
-            }
-
             return $"Set packet-owned local utility CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] (radio bLeft) to {(bLeft ? 1 : 0)}.";
         }
 
@@ -4647,11 +4728,6 @@ namespace HaCreator.MapSimulator
                 source: "manual-radioctx-clear",
                 currentTick: Environment.TickCount,
                 runtimeCharacterId);
-            if (IsPacketOwnedRadioPlaying())
-            {
-                CapturePacketOwnedRadioCreateLayerSessionState();
-            }
-
             return $"Cleared packet-owned local utility CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] (radio bLeft) override.";
         }
 
@@ -6388,6 +6464,11 @@ namespace HaCreator.MapSimulator
             return skillId == PacketOwnedLegacyVengeanceSkillId;
         }
 
+        internal static bool ShouldApplyPacketOwnedTimeBombImpactReaction(int impactPercent)
+        {
+            return impactPercent != 0;
+        }
+
         private static bool IsPacketOwnedVengeanceSkillId(int skillId)
         {
             return skillId > 0 && PacketOwnedVengeanceSkillIdCatalog.Value.Contains(skillId);
@@ -6521,7 +6602,11 @@ namespace HaCreator.MapSimulator
 
         private void TryPlayPacketOwnedNoticeSound()
         {
-            TryPlayPacketOwnedWzSound("UI/DlgNotice", "UI.img", out _, out _);
+            string noticeSoundDescriptor = PacketOwnedRewardResultRuntime.GetUtilDlgNoticeSoundDescriptor();
+            if (!string.IsNullOrWhiteSpace(noticeSoundDescriptor))
+            {
+                TryPlayPacketOwnedWzSound(noticeSoundDescriptor, "UI.img", out _, out _);
+            }
         }
 
         private bool TryApplyPacketOwnedOpenUiPayload(byte[] payload, out string message)

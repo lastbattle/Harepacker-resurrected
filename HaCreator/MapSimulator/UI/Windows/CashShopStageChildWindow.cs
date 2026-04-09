@@ -99,14 +99,18 @@ namespace HaCreator.MapSimulator.UI
 
         private readonly struct LayerInfo
         {
-            public LayerInfo(IDXObject layer, Point offset)
+            public LayerInfo(IDXObject layer, Point offset, string key, Func<bool> visibilityEvaluator)
             {
                 Layer = layer;
                 Offset = offset;
+                Key = key ?? string.Empty;
+                VisibilityEvaluator = visibilityEvaluator;
             }
 
             public IDXObject Layer { get; }
             public Point Offset { get; }
+            public string Key { get; }
+            public Func<bool> VisibilityEvaluator { get; }
         }
 
         private sealed class ButtonAction
@@ -169,11 +173,11 @@ namespace HaCreator.MapSimulator.UI
             _font = font;
         }
 
-        public void AddLayer(IDXObject layer, Point offset)
+        public void AddLayer(IDXObject layer, Point offset, string key = null, Func<bool> visibilityEvaluator = null)
         {
             if (layer != null)
             {
-                _layers.Add(new LayerInfo(layer, offset));
+                _layers.Add(new LayerInfo(layer, offset, key, visibilityEvaluator));
             }
         }
 
@@ -327,6 +331,11 @@ namespace HaCreator.MapSimulator.UI
         {
             foreach (LayerInfo layer in _layers)
             {
+                if (layer.VisibilityEvaluator != null && !layer.VisibilityEvaluator.Invoke())
+                {
+                    continue;
+                }
+
                 layer.Layer.DrawBackground(
                     sprite,
                     skeletonMeshRenderer,
@@ -1467,6 +1476,23 @@ namespace HaCreator.MapSimulator.UI
             return _oneADayPlateFocusIndex == 0
                 ? baseName
                 : $"{baseName}{_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        public bool IsOneADayLayerVisible(string layerKey)
+        {
+            if (!string.Equals(_windowName, MapSimulatorWindowNames.CashShopOneADay, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            OneADayOwnerState state = _oneADayStateProvider?.Invoke();
+            if (state == null || string.IsNullOrWhiteSpace(layerKey))
+            {
+                return true;
+            }
+
+            string expectedLayer = ResolveOneADayPlateName(state);
+            return string.Equals(layerKey, expectedLayer, StringComparison.Ordinal);
         }
 
         private bool IsKeyboardOwnerWindow()

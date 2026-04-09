@@ -338,10 +338,14 @@ namespace HaCreator.MapSimulator
         private readonly PacketFieldStateRuntime _packetFieldStateRuntime = new PacketFieldStateRuntime();
         private readonly PacketScriptMessageRuntime _packetScriptMessageRuntime = new PacketScriptMessageRuntime();
         private readonly InitialQuizTimerRuntime _initialQuizTimerRuntime = new InitialQuizTimerRuntime();
+        private readonly SpeedQuizOwnerRuntime _speedQuizOwnerRuntime = new SpeedQuizOwnerRuntime();
         private readonly PacketScriptReplyTransportManager _packetScriptReplyTransport = new PacketScriptReplyTransportManager();
         private readonly PacketScriptOfficialSessionBridgeManager _packetScriptOfficialSessionBridge = new PacketScriptOfficialSessionBridgeManager();
         private readonly Managers.LocalOverlayRuntime _localOverlayRuntime = new();
         private readonly Dictionary<int, int> _questGrantedSkillPointsByTab = new();
+        private readonly Dictionary<int, IReadOnlyList<int>> _questMobMapIdsByMobId = new();
+        private readonly Dictionary<int, IReadOnlyList<int>> _questNpcMapIdsByNpcId = new();
+        private bool _questWorldMapEntityIndexBuilt;
         private bool _questUiBindingsConfigured;
         private int _activeQuestDetailQuestId;
         private int _activeMemoAttachmentId = -1;
@@ -889,6 +893,114 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private IReadOnlyList<int> ResolveQuestMobMapIds(int mobId)
+        {
+            EnsureQuestWorldMapEntityIndex();
+            return mobId > 0 && _questMobMapIdsByMobId.TryGetValue(mobId, out IReadOnlyList<int> mapIds)
+                ? mapIds
+                : Array.Empty<int>();
+        }
+
+        private IReadOnlyList<int> ResolveQuestNpcMapIds(int npcId)
+        {
+            EnsureQuestWorldMapEntityIndex();
+            return npcId > 0 && _questNpcMapIdsByNpcId.TryGetValue(npcId, out IReadOnlyList<int> mapIds)
+                ? mapIds
+                : Array.Empty<int>();
+        }
+
+        private void EnsureQuestWorldMapEntityIndex()
+        {
+            if (_questWorldMapEntityIndexBuilt)
+            {
+                return;
+            }
+
+            _questMobMapIdsByMobId.Clear();
+            _questNpcMapIdsByNpcId.Clear();
+
+            if (Program.InfoManager?.MapsCache != null)
+            {
+                foreach ((string mapIdText, Tuple<WzImage, string, string, string, MapInfo> mapEntry) in Program.InfoManager.MapsCache)
+                {
+                    if (!int.TryParse(mapIdText, out int mapId) || mapId <= 0)
+                    {
+                        continue;
+                    }
+
+                    WzImage mapImage = mapEntry?.Item1;
+                    if (mapImage == null)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        if (!mapImage.Parsed)
+                        {
+                            mapImage.ParseImage();
+                        }
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    if (mapImage["life"] is not WzSubProperty lifeProperty)
+                    {
+                        continue;
+                    }
+
+                    foreach (WzImageProperty lifeNode in lifeProperty.WzProperties)
+                    {
+                        if (lifeNode is not WzSubProperty lifeEntry)
+                        {
+                            continue;
+                        }
+
+                        string type = lifeEntry["type"]?.GetString();
+                        int entityId = lifeEntry["id"]?.GetInt() ?? 0;
+                        if (entityId <= 0)
+                        {
+                            continue;
+                        }
+
+                        if (string.Equals(type, "m", StringComparison.OrdinalIgnoreCase))
+                        {
+                            AddQuestWorldMapEntityIndexEntry(_questMobMapIdsByMobId, entityId, mapId);
+                        }
+                        else if (string.Equals(type, "n", StringComparison.OrdinalIgnoreCase))
+                        {
+                            AddQuestWorldMapEntityIndexEntry(_questNpcMapIdsByNpcId, entityId, mapId);
+                        }
+                    }
+                }
+            }
+
+            _questWorldMapEntityIndexBuilt = true;
+        }
+
+        private static void AddQuestWorldMapEntityIndexEntry(Dictionary<int, IReadOnlyList<int>> index, int entityId, int mapId)
+        {
+            if (index == null || entityId <= 0 || mapId <= 0)
+            {
+                return;
+            }
+
+            if (index.TryGetValue(entityId, out IReadOnlyList<int> existing))
+            {
+                if (existing.Contains(mapId))
+                {
+                    return;
+                }
+
+                index[entityId] = existing.Concat(new[] { mapId }).OrderBy(id => id).ToArray();
+                return;
+            }
+
+            index[entityId] = new[] { mapId };
+        }
+
 
 
         private List<WorldMapUI.SearchResultEntry> BuildWorldMapSearchResults(int? focusedMapId)
@@ -1038,15 +1150,21 @@ namespace HaCreator.MapSimulator
 
                         break;
                     case QuestWorldMapTargetKind.Item:
-                        AddWorldMapQuestOverlay(
-                            overlays,
-                            seen,
-                            WorldMapUI.SearchResultKind.Item,
-                            fallbackMapId,
-                            activeTarget.Label,
-                            $"Active quest #{_activeQuestDetailQuestId} delivery item",
-                            ref overlayOrder,
-                            isPriorityTarget: true);
+                        IReadOnlyList<int> itemMapIds = activeTarget.MapIds != null && activeTarget.MapIds.Count > 0
+                            ? activeTarget.MapIds
+                            : new[] { activeTarget.MapId > 0 ? activeTarget.MapId : fallbackMapId };
+                        for (int i = 0; i < itemMapIds.Count; i++)
+                        {
+                            AddWorldMapQuestOverlay(
+                                overlays,
+                                seen,
+                                WorldMapUI.SearchResultKind.Item,
+                                itemMapIds[i],
+                                activeTarget.Label,
+                                $"Active quest #{_activeQuestDetailQuestId} delivery item",
+                                ref overlayOrder,
+                                isPriorityTarget: true);
+                        }
                         break;
                     default:
                         AddWorldMapQuestOverlay(
@@ -2135,6 +2253,7 @@ namespace HaCreator.MapSimulator
                     body => _memoMailbox.UpdateDraftBodyFromUi(body),
                     meso => _memoMailbox.UpdateDraftMesoFromUi(meso));
                 memoMailboxWindow.InventoryDropRequested = HandleMemoDraftAttachmentInventoryDrop;
+                memoMailboxWindow.InventoryPickRequested = HandleMemoDraftAttachmentInventoryPick;
                 memoMailboxWindow.SetFont(_fontChat);
             }
 
@@ -2235,59 +2354,30 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (TryStageMemoDraftAttachmentFromInventory(out string message))
+            if (TryResolveDraggedMemoDraftAttachmentSource(out InventoryType draggedInventoryType, out int draggedSlotIndex, out InventorySlotData draggedSlotData)
+                && TryStageMemoDraftAttachment(draggedInventoryType, draggedSlotIndex, draggedSlotData, out string draggedMessage))
             {
-                ShowUtilityFeedbackMessage(message);
+                ShowUtilityFeedbackMessage(draggedMessage);
                 return;
             }
 
-            ShowUtilityFeedbackMessage(message);
-        }
-
-        private bool TryStageMemoDraftAttachmentFromInventory(out string message)
-        {
-            message = "No inventory runtime is available for parcel item staging.";
-            if (uiWindowManager?.InventoryWindow is not IInventoryRuntime inventoryWindow)
+            MemoMailboxDraftSnapshot draftSnapshot = _memoMailbox.GetDraftSnapshot();
+            if (draftSnapshot.AwaitingItemSelection)
             {
-                return false;
+                _memoMailbox.CancelDraftItemSelection();
+                ShowUtilityFeedbackMessage("Cancelled parcel item picker.");
+                return;
             }
 
-            if (TryResolveDraggedMemoDraftAttachmentSource(out InventoryType draggedInventoryType, out int draggedSlotIndex, out InventorySlotData draggedSlotData)
-                && TryStageMemoDraftAttachment(draggedInventoryType, draggedSlotIndex, draggedSlotData, out message))
+            if (uiWindowManager?.InventoryWindow is not InventoryUI)
             {
-                return true;
+                ShowUtilityFeedbackMessage("No inventory runtime is available for parcel item staging.");
+                return;
             }
 
-            InventoryType[] scanOrder =
-            {
-                InventoryType.USE,
-                InventoryType.ETC,
-                InventoryType.SETUP,
-                InventoryType.CASH,
-                InventoryType.EQUIP
-            };
-
-            for (int orderIndex = 0; orderIndex < scanOrder.Length; orderIndex++)
-            {
-                InventoryType type = scanOrder[orderIndex];
-                IReadOnlyList<InventorySlotData> slots = inventoryWindow.GetSlots(type);
-                if (slots == null)
-                {
-                    continue;
-                }
-
-                for (int slotIndex = 0; slotIndex < slots.Count; slotIndex++)
-                {
-                    InventorySlotData slot = slots[slotIndex];
-                    if (TryStageMemoDraftAttachment(type, slotIndex, slot, out message))
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            message = "No inventory item is available to stage as a parcel package.";
-            return false;
+            _memoMailbox.BeginDraftItemSelection();
+            ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.Inventory);
+            ShowUtilityFeedbackMessage("Parcel item picker armed. Click an inventory slot or drag an item into the package lane.");
         }
 
         private bool HandleMemoDraftAttachmentInventoryDrop(InventoryType sourceInventoryType, int sourceSlotIndex, InventorySlotData draggedSlotData)
@@ -2317,6 +2407,29 @@ namespace HaCreator.MapSimulator
             if (!TryStageMemoDraftAttachment(sourceInventoryType, sourceSlotIndex, draggedSlotData, out string message))
             {
                 return false;
+            }
+
+            ShowUtilityFeedbackMessage(message);
+            return true;
+        }
+
+        private bool HandleMemoDraftAttachmentInventoryPick(InventoryType sourceInventoryType, int sourceSlotIndex, InventorySlotData pickedSlotData)
+        {
+            if (pickedSlotData == null)
+            {
+                return false;
+            }
+
+            MemoMailboxDraftSnapshot draftSnapshot = _memoMailbox.GetDraftSnapshot();
+            if (draftSnapshot.ActiveTab != ParcelDialogTab.Send || !draftSnapshot.AwaitingItemSelection)
+            {
+                return false;
+            }
+
+            if (!TryStageMemoDraftAttachment(sourceInventoryType, sourceSlotIndex, pickedSlotData, out string message))
+            {
+                ShowUtilityFeedbackMessage(message);
+                return true;
             }
 
             ShowUtilityFeedbackMessage(message);
@@ -3403,6 +3516,50 @@ namespace HaCreator.MapSimulator
             userInfoWindow.MarriedBadgeProvider = ResolveCharacterInfoMarriageBadgeState;
             userInfoWindow.LocalActionLocationSummaryProvider = GetCurrentMapTransferDisplayName;
             userInfoWindow.LocalActionChannelProvider = () => Math.Max(1, _simulatorChannelIndex + 1);
+            userInfoWindow.InspectionTargetResolver = ResolveCharacterInfoInspectionTarget;
+        }
+
+        private UserInfoUI.UserInfoInspectionTarget ResolveCharacterInfoInspectionTarget(UserInfoUI.UserInfoInspectionTarget inspectionTarget)
+        {
+            if (inspectionTarget == null)
+            {
+                return null;
+            }
+
+            bool foundActor = (inspectionTarget.CharacterId > 0 && _remoteUserPool.TryGetActor(inspectionTarget.CharacterId, out RemoteUserActor actor))
+                || _remoteUserPool.TryGetActorByName(inspectionTarget.Name, out actor);
+            CharacterBuild resolvedBuild = actor?.Build ?? inspectionTarget.Build;
+            int resolvedCharacterId = actor?.CharacterId ?? inspectionTarget.CharacterId;
+            string resolvedName = !string.IsNullOrWhiteSpace(actor?.Name) ? actor.Name : inspectionTarget.Name;
+            string locationSummary = inspectionTarget.LocationSummary;
+            int channel = inspectionTarget.Channel;
+
+            if (_socialListRuntime.TryFindTrackedEntry(resolvedName, out SocialTrackedEntrySnapshot trackedEntry) && trackedEntry.IsOnline)
+            {
+                if (!string.IsNullOrWhiteSpace(trackedEntry.LocationSummary))
+                {
+                    locationSummary = trackedEntry.LocationSummary.Trim();
+                }
+
+                if (trackedEntry.Channel > 0)
+                {
+                    channel = trackedEntry.Channel;
+                }
+            }
+            else if (actor?.IsVisibleInWorld == true)
+            {
+                locationSummary = GetCurrentMapTransferDisplayName();
+                channel = Math.Max(1, _simulatorChannelIndex + 1);
+            }
+
+            return new UserInfoUI.UserInfoInspectionTarget
+            {
+                Build = resolvedBuild,
+                CharacterId = resolvedCharacterId,
+                Name = resolvedName,
+                LocationSummary = locationSummary,
+                Channel = channel
+            };
         }
         private string HandleCharacterInfoPartyRequest(UserInfoUI.UserInfoActionContext context)
         {
@@ -4059,6 +4216,7 @@ namespace HaCreator.MapSimulator
             {
                 inventoryWindow.ItemUpgradeRequested = OpenItemUpgradeWindowForConsumable;
                 inventoryWindow.ItemUseRequested = TryUseInventoryItem;
+                inventoryWindow.ItemUseRequestedAtSlot = TryUseInventoryItemAtSlot;
                 inventoryWindow.CashShopRequested = ShowCashShopWindow;
                 inventoryWindow.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
             }
@@ -4170,6 +4328,62 @@ namespace HaCreator.MapSimulator
 
             return used;
 
+        }
+
+        private bool TryUseInventoryItemAtSlot(int itemId, InventoryType inventoryType, int slotIndex)
+        {
+            return TryUseInventoryItemAtSlot(itemId, inventoryType, slotIndex, currTickCount);
+        }
+
+        private bool TryUseInventoryItemAtSlot(int itemId, InventoryType inventoryType, int slotIndex, int currentTime)
+        {
+            if (itemId <= 0 ||
+                slotIndex < 0 ||
+                uiWindowManager?.InventoryWindow is not UI.IInventoryRuntime inventoryWindow)
+            {
+                return false;
+            }
+
+            IReadOnlyList<UI.InventorySlotData> slots = inventoryWindow.GetSlots(inventoryType);
+            if (slots == null || slotIndex >= slots.Count)
+            {
+                return false;
+            }
+
+            UI.InventorySlotData lockedSlot = slots[slotIndex];
+            if (lockedSlot == null ||
+                lockedSlot.IsDisabled ||
+                lockedSlot.ItemId != itemId ||
+                Math.Max(0, lockedSlot.Quantity) <= 0)
+            {
+                return false;
+            }
+
+            if (TryUsePetFoodInventoryItem(itemId, inventoryType, currentTime, slotIndex))
+            {
+                return true;
+            }
+
+            bool used = inventoryType switch
+            {
+                InventoryType.SETUP => TryUseSetupInventoryItem(itemId, currentTime),
+                InventoryType.USE => TryUseConsumableInventoryItem(itemId, inventoryType, currentTime, slotIndex),
+                InventoryType.CASH => TryUseCashInventoryItem(itemId)
+                                      || TryUseConsumableInventoryItem(itemId, inventoryType, currentTime, slotIndex),
+                _ => false
+            };
+
+            if (TryTriggerItemReactorFromInventoryUse(itemId, inventoryType, currentTime, used))
+            {
+                return true;
+            }
+
+            if (!used && TryShowUnhandledCashItemRestriction(itemId, inventoryType))
+            {
+                return false;
+            }
+
+            return used;
         }
 
 
@@ -4292,7 +4506,7 @@ namespace HaCreator.MapSimulator
         }
 
 
-        private bool TryUsePetFoodInventoryItem(int itemId, InventoryType inventoryType, int currentTime)
+        private bool TryUsePetFoodInventoryItem(int itemId, InventoryType inventoryType, int currentTime, int? slotIndex = null)
 
 
 
@@ -4421,7 +4635,7 @@ namespace HaCreator.MapSimulator
 
 
 
-            if (foodPlan.ConsumeItem && !inventoryWindow.TryConsumeItem(inventoryType, itemId, 1))
+            if (foodPlan.ConsumeItem && !TryConsumeInventoryUseItem(inventoryWindow, inventoryType, itemId, 1, slotIndex))
 
 
 
@@ -4461,7 +4675,7 @@ namespace HaCreator.MapSimulator
 
 
 
-            if (foodPlan.ConsumeItem && inventoryType == InventoryType.USE)
+            if (foodPlan.ConsumeItem)
 
 
 
@@ -4469,7 +4683,9 @@ namespace HaCreator.MapSimulator
 
 
 
-                _fieldRuleRuntime?.RegisterSuccessfulItemUse(InventoryType.USE, currentTime);
+                _fieldRuleRuntime?.RegisterSuccessfulItemUse(
+                    ShouldTrackFieldConsumeItemCooldown(inventoryType, effect, default),
+                    currentTime);
 
 
 
@@ -4529,10 +4745,12 @@ namespace HaCreator.MapSimulator
             public int EncodedSlotPosition { get; init; }
             public RepairDurabilityWindow.RepairEntry Entry { get; init; }
             public IReadOnlyList<RepairDurabilityWindow.RepairEntry> Entries { get; init; }
+            public int ResponseDelayMs { get; init; } = RepairDurabilityResponseDelayMs;
             public string RequestLabel { get; init; } = string.Empty;
         }
 
         private const int RepairDurabilityResponseDelayMs = 120;
+        private const int RepairDurabilityExternalResultFallbackDelayMs = 750;
         private const short RepairDurabilityAllOpcode = 130;
         private const short RepairDurabilitySingleOpcode = 131;
 
@@ -4861,7 +5079,11 @@ namespace HaCreator.MapSimulator
 
             int npcTemplateId = GetActiveRepairDurabilityNpcTemplateId();
             string npcName = ResolveNpcDisplayName(npcTemplateId);
-            string requestLabel = $"Sent repair request for {entry.ItemName} to {npcName}.";
+            string requestLabel = BuildRepairDurabilityOutboundRequestLabel(
+                RepairDurabilitySingleOpcode,
+                entry.EncodedSlotPosition,
+                $"Sent repair request for {entry.ItemName} to {npcName}.",
+                out int responseDelayMs);
             _pendingRepairDurabilityRequest = new PendingRepairDurabilityRequest
             {
                 SentTick = Environment.TickCount64,
@@ -4873,6 +5095,7 @@ namespace HaCreator.MapSimulator
                 EncodedSlotPosition = entry.EncodedSlotPosition,
                 Entry = entry,
                 Entries = new[] { entry },
+                ResponseDelayMs = responseDelayMs,
                 RequestLabel = requestLabel
             };
 
@@ -4924,7 +5147,11 @@ namespace HaCreator.MapSimulator
 
             int npcTemplateId = GetActiveRepairDurabilityNpcTemplateId();
             string npcName = ResolveNpcDisplayName(npcTemplateId);
-            string requestLabel = $"Sent repair-all request for {entries.Count} item(s) to {npcName}.";
+            string requestLabel = BuildRepairDurabilityOutboundRequestLabel(
+                RepairDurabilityAllOpcode,
+                int.MinValue,
+                $"Sent repair-all request for {entries.Count} item(s) to {npcName}.",
+                out int responseDelayMs);
             _pendingRepairDurabilityRequest = new PendingRepairDurabilityRequest
             {
                 SentTick = Environment.TickCount64,
@@ -4935,6 +5162,7 @@ namespace HaCreator.MapSimulator
                 Entries = entries
                     .Where(candidate => ResolveRepairDurabilityTargetPart(candidate) != null)
                     .ToArray(),
+                ResponseDelayMs = responseDelayMs,
                 RequestLabel = requestLabel
             };
 
@@ -4950,6 +5178,46 @@ namespace HaCreator.MapSimulator
             return uiWindowManager?.GetWindow(MapSimulatorWindowNames.RepairDurability) is RepairDurabilityWindow repairWindow
                 ? repairWindow.NpcTemplateId
                 : 0;
+        }
+
+        private string BuildRepairDurabilityOutboundRequestLabel(
+            short opcode,
+            int encodedSlotPosition,
+            string localMessage,
+            out int responseDelayMs)
+        {
+            responseDelayMs = RepairDurabilityResponseDelayMs;
+            byte[] payload = RepairDurabilityClientParity.BuildRepairRequestPayload(opcode, encodedSlotPosition);
+            string payloadHex = payload.Length > 0 ? Convert.ToHexString(payload) : "<empty>";
+            string dispatchStatus = "live bridge unavailable";
+            string outboxStatus = "packet outbox unavailable";
+
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(opcode, payload, out dispatchStatus))
+            {
+                responseDelayMs = RepairDurabilityExternalResultFallbackDelayMs;
+                return $"{localMessage} Mirrored opcode {opcode} [{payloadHex}] through the live local-utility bridge. {dispatchStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(opcode, payload, out outboxStatus))
+            {
+                responseDelayMs = RepairDurabilityExternalResultFallbackDelayMs;
+                return $"{localMessage} Mirrored opcode {opcode} [{payloadHex}] through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
+            }
+
+            if (_localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(opcode, payload, out string queuedBridgeStatus))
+            {
+                responseDelayMs = RepairDurabilityExternalResultFallbackDelayMs;
+                return $"{localMessage} Queued opcode {opcode} [{payloadHex}] for deferred official-session injection after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(opcode, payload, out string queuedOutboxStatus))
+            {
+                responseDelayMs = RepairDurabilityExternalResultFallbackDelayMs;
+                return $"{localMessage} Queued opcode {opcode} [{payloadHex}] for deferred generic local-utility outbox delivery after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
+            }
+
+            return $"{localMessage} The repair owner will fall back to its local delayed response because neither the live bridge nor the packet outbox accepted opcode {opcode}. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
         }
 
         private NpcItem CreateNpcPreview(int npcTemplateId, bool includeTooltips = false)
@@ -5039,25 +5307,55 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if ((Environment.TickCount64 - request.SentTick) < RepairDurabilityResponseDelayMs)
+            if ((Environment.TickCount64 - request.SentTick) < request.ResponseDelayMs)
             {
                 return;
             }
 
             _pendingRepairDurabilityRequest = null;
+            string message = ApplyPendingRepairDurabilitySuccess(request);
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                ShowUtilityFeedbackMessage(message);
+            }
+        }
 
+        private bool TryApplyRepairDurabilityResultPayload(byte[] payload, out string message)
+        {
+            message = null;
+            PendingRepairDurabilityRequest request = _pendingRepairDurabilityRequest;
+            if (request == null)
+            {
+                message = "Repair-result payload was ignored because no durability repair request is pending.";
+                return false;
+            }
+
+            if (!RepairDurabilityClientParity.TryDecodeSyntheticResultPayload(payload, out bool success, out int? reasonCode, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            _pendingRepairDurabilityRequest = null;
+            message = success
+                ? ApplyPendingRepairDurabilitySuccess(request)
+                : ApplyPendingRepairDurabilityFailure(request, reasonCode);
+            return true;
+        }
+
+        private string ApplyPendingRepairDurabilitySuccess(PendingRepairDurabilityRequest request)
+        {
             IInventoryRuntime inventory = uiWindowManager?.InventoryWindow as IInventoryRuntime;
             if (inventory == null)
             {
-                ShowUtilityFeedbackMessage("Durability repair response failed because the inventory runtime is not active.");
                 RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
-                return;
+                return "Durability repair response failed because the inventory runtime is not active.";
             }
 
             if (request.TotalCost <= 0)
             {
                 RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
-                return;
+                return string.Empty;
             }
 
             if (!request.RepairAll)
@@ -5066,39 +5364,34 @@ namespace HaCreator.MapSimulator
                 CharacterPart livePart = ResolveRepairDurabilityTargetPart(liveEntry);
                 if (livePart == null || liveEntry.MaxDurability <= 0)
                 {
-                    ShowUtilityFeedbackMessage("Durability repair response failed because the selected equipment is no longer available.");
                     RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
-                    return;
+                    return "Durability repair response failed because the selected equipment is no longer available.";
                 }
 
                 int liveRepairCost = Math.Max(0, liveEntry.RepairCost);
                 if (liveRepairCost <= 0)
                 {
-                    ShowUtilityFeedbackMessage($"{liveEntry.ItemName} no longer needs durability repair.");
                     RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
-                    return;
+                    return $"{liveEntry.ItemName} no longer needs durability repair.";
                 }
 
                 if (!inventory.TryConsumeMeso(liveRepairCost))
                 {
-                    ShowUtilityFeedbackMessage($"Repair response for {liveEntry.ItemName} failed because you no longer have enough meso.");
                     RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
-                    return;
+                    return $"Repair response for {liveEntry.ItemName} failed because you no longer have enough meso.";
                 }
 
                 livePart.Durability = liveEntry.MaxDurability;
-                ShowUtilityFeedbackMessage($"Repair response restored {liveEntry.ItemName} for {liveRepairCost.ToString("N0", CultureInfo.InvariantCulture)} meso.");
                 RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
-                return;
+                return $"Repair response restored {liveEntry.ItemName} for {liveRepairCost.ToString("N0", CultureInfo.InvariantCulture)} meso.";
             }
 
             int repairedCount = 0;
             IReadOnlyList<RepairDurabilityWindow.RepairEntry> requestedEntries = request.Entries ?? Array.Empty<RepairDurabilityWindow.RepairEntry>();
             if (requestedEntries.Count <= 0)
             {
-                ShowUtilityFeedbackMessage("Repair-all response failed because none of the requested equipment entries are still available.");
                 RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
-                return;
+                return "Repair-all response failed because none of the requested equipment entries are still available.";
             }
 
             List<RepairDurabilityWindow.RepairEntry> liveEntries = new();
@@ -5116,24 +5409,21 @@ namespace HaCreator.MapSimulator
 
             if (liveEntries.Count <= 0)
             {
-                ShowUtilityFeedbackMessage("Repair-all response failed because none of the requested equipment entries are still available.");
                 RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
-                return;
+                return "Repair-all response failed because none of the requested equipment entries are still available.";
             }
 
             int liveRepairAllCost = liveEntries.Sum(entry => Math.Max(0, entry?.RepairCost ?? 0));
             if (liveRepairAllCost <= 0)
             {
-                ShowUtilityFeedbackMessage("Repair-all response found no remaining damaged equipment.");
                 RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
-                return;
+                return "Repair-all response found no remaining damaged equipment.";
             }
 
             if (!inventory.TryConsumeMeso(liveRepairAllCost))
             {
-                ShowUtilityFeedbackMessage("Repair-all response failed because you no longer have enough meso.");
                 RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
-                return;
+                return "Repair-all response failed because you no longer have enough meso.";
             }
 
             for (int i = 0; i < liveEntries.Count; i++)
@@ -5149,8 +5439,19 @@ namespace HaCreator.MapSimulator
                 repairedCount++;
             }
 
-            ShowUtilityFeedbackMessage($"Repair-all response restored {repairedCount} item(s) for {liveRepairAllCost.ToString("N0", CultureInfo.InvariantCulture)} meso.");
             RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
+            return $"Repair-all response restored {repairedCount} item(s) for {liveRepairAllCost.ToString("N0", CultureInfo.InvariantCulture)} meso.";
+        }
+
+        private string ApplyPendingRepairDurabilityFailure(PendingRepairDurabilityRequest request, int? reasonCode)
+        {
+            RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
+            string requestTarget = request.RepairAll
+                ? "repair-all request"
+                : $"repair request for {request.Entry?.ItemName ?? "the selected equipment"}";
+            return reasonCode.HasValue
+                ? $"Repair-result payload rejected the pending {requestTarget} with reason {reasonCode.Value}."
+                : $"Repair-result payload rejected the pending {requestTarget}.";
         }
         private static string ResolveNpcDisplayName(int npcTemplateId)
         {
@@ -5179,6 +5480,23 @@ namespace HaCreator.MapSimulator
 
             return true;
 
+        }
+
+        internal static bool TryConsumeInventoryUseItem(
+            UI.IInventoryRuntime inventoryWindow,
+            InventoryType inventoryType,
+            int itemId,
+            int quantity,
+            int? slotIndex = null)
+        {
+            if (inventoryWindow == null || itemId <= 0 || quantity <= 0)
+            {
+                return false;
+            }
+
+            return slotIndex.HasValue
+                ? inventoryWindow.TryConsumeItemAtSlot(inventoryType, slotIndex.Value, itemId, quantity)
+                : inventoryWindow.TryConsumeItem(inventoryType, itemId, quantity);
         }
 
 
@@ -8580,7 +8898,8 @@ namespace HaCreator.MapSimulator
                     LoginUtilityDialogButtonLayout.YesNo,
                     LoginUtilityDialogAction.WebsiteHandoffDecision,
                     noticeTextIndex: noticeTextIndex,
-                    visualStyle: LoginUtilityDialogVisualStyle.SecurityYesNo);
+                    visualStyle: LoginUtilityDialogVisualStyle.SecurityYesNo,
+                    frameVariant: LoginUtilityDialogFrameVariant.LoginNotice);
                 return;
             }
 
@@ -8589,7 +8908,10 @@ namespace HaCreator.MapSimulator
                 message,
                 LoginUtilityDialogButtonLayout.Ok,
                 LoginUtilityDialogAction.DismissOnly,
-                noticeTextIndex: noticeTextIndex);
+                noticeTextIndex: noticeTextIndex,
+                frameVariant: noticeTextIndex.HasValue
+                    ? LoginUtilityDialogFrameVariant.LoginNotice
+                    : LoginUtilityDialogFrameVariant.Default);
         }
 
 
@@ -8903,7 +9225,8 @@ namespace HaCreator.MapSimulator
                 LoginUtilityDialogButtonLayout.YesNo,
                 LoginUtilityDialogAction.AcceptLicenseAgreement,
                 primaryLabel: "OK",
-                secondaryLabel: "Cancel");
+                secondaryLabel: "Cancel",
+                frameVariant: LoginUtilityDialogFrameVariant.LoginNotice);
         }
 
         private static string BuildLoginLicenseAgreementBody(string statusMessage)
@@ -9809,12 +10132,18 @@ namespace HaCreator.MapSimulator
 
         private static LoginUtilityDialogFrameVariant ResolveDeleteCharacterFailureFrameVariant(LoginAccountDialogPacketProfile packetProfile)
         {
-            return packetProfile?.ResultCode switch
+            byte? resultCode = packetProfile?.ResultCode;
+            if (resultCode is 6 or 9 or 20 or 22 or 24 or 29 or 35 or 36)
             {
-                6 or 9 or 20 or 22 or 24 or 29 or 35 or 36 => LoginUtilityDialogFrameVariant.LoginNoticeCog,
-                26 => LoginUtilityDialogFrameVariant.LoginNotice,
-                _ => LoginUtilityDialogFrameVariant.Default,
-            };
+                return LoginUtilityDialogFrameVariant.LoginNoticeCog;
+            }
+
+            if (resultCode == 26 || ResolveDeleteCharacterFailureNoticeTextIndex(packetProfile).HasValue)
+            {
+                return LoginUtilityDialogFrameVariant.LoginNotice;
+            }
+
+            return LoginUtilityDialogFrameVariant.Default;
         }
 
         private static int? ResolveDeleteCharacterFailureNoticeTextIndex(LoginAccountDialogPacketProfile packetProfile)
@@ -12709,7 +13038,8 @@ namespace HaCreator.MapSimulator
                         inputMasked: true,
                         inputMaxLength: 8,
                         softKeyboardType: SoftKeyboardKeyboardType.NumericOnly,
-                        inputBoundsOverride: CreateLoginUtilityInputBoundsOverride());
+                        inputBoundsOverride: CreateLoginUtilityInputBoundsOverride(),
+                        frameVariant: LoginUtilityDialogFrameVariant.LoginNotice);
                     break;
                 case LoginUtilityDialogAction.EulaDecision:
                     _loginAccountAcceptedEula = true;
@@ -12807,7 +13137,8 @@ namespace HaCreator.MapSimulator
                         inputMasked: true,
                         inputMaxLength: 16,
                         softKeyboardType: SoftKeyboardKeyboardType.AlphaNumeric,
-                        inputBoundsOverride: CreateLoginUtilityInputBoundsOverride());
+                        inputBoundsOverride: CreateLoginUtilityInputBoundsOverride(),
+                        frameVariant: LoginUtilityDialogFrameVariant.LoginNotice);
                     _loginTitleStatusMessage = "Opened secondary-password setup.";
                     break;
                 case LoginUtilityDialogAction.WebsiteHandoffDecision:
@@ -13204,12 +13535,14 @@ namespace HaCreator.MapSimulator
                     ButtonLayout = LoginUtilityDialogButtonLayout.YesNo,
                     PrimaryLabel = "Migrate",
                     SecondaryLabel = "Later",
+                    FrameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
                 },
                 LoginPacketType.ConfirmEulaResult => new LoginPacketDialogPromptConfiguration
                 {
                     Title = "Login Utility",
                     Body = CombineLoginDialogBody(packetText, "Review and accept the simulator EULA before continuing to world selection.", packetDetail),
                     ButtonLayout = LoginUtilityDialogButtonLayout.Accept,
+                    FrameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
                 },
                 LoginPacketType.CheckPinCodeResult => new LoginPacketDialogPromptConfiguration
                 {
@@ -13223,6 +13556,7 @@ namespace HaCreator.MapSimulator
                     InputMaxLength = ClientPicEditMaxLength,
                     SoftKeyboardType = SoftKeyboardKeyboardType.NumericOnlyAlt,
                     InputBoundsOverride = CreateLoginUtilityInputBoundsOverride(),
+                    FrameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
                 },
                 LoginPacketType.UpdatePinCodeResult => new LoginPacketDialogPromptConfiguration
                 {
@@ -13236,6 +13570,7 @@ namespace HaCreator.MapSimulator
                     InputMaxLength = ClientPicEditMaxLength,
                     SoftKeyboardType = SoftKeyboardKeyboardType.NumericOnlyAlt,
                     InputBoundsOverride = CreateLoginUtilityInputBoundsOverride(),
+                    FrameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
                 },
                 LoginPacketType.CheckDuplicatedIdResult => new LoginPacketDialogPromptConfiguration
                 {
@@ -13249,6 +13584,7 @@ namespace HaCreator.MapSimulator
                     Body = CombineLoginDialogBody(packetText, "Set up a secondary password now, or continue without one for this simulator account.", packetDetail),
                     ButtonLayout = LoginUtilityDialogButtonLayout.NowLater,
                     VisualStyle = LoginUtilityDialogVisualStyle.SecondaryPasswordChoice,
+                    FrameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
                 },
                 LoginPacketType.CheckSpwResult => new LoginPacketDialogPromptConfiguration
                 {
@@ -13261,6 +13597,7 @@ namespace HaCreator.MapSimulator
                     InputMasked = true,
                     InputMaxLength = 16,
                     InputBoundsOverride = CreateLoginUtilityInputBoundsOverride(),
+                    FrameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
                 },
                 LoginPacketType.CreateNewCharacterResult => new LoginPacketDialogPromptConfiguration
                 {
@@ -13468,6 +13805,7 @@ namespace HaCreator.MapSimulator
                     InputMaxLength = ClientPicEditMaxLength,
                     SoftKeyboardType = SoftKeyboardKeyboardType.NumericOnlyAlt,
                     InputBoundsOverride = CreateLoginUtilityInputBoundsOverride(),
+                    FrameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
                 },
                 2 or 4 => new LoginPacketDialogPromptConfiguration
                 {
@@ -13483,6 +13821,7 @@ namespace HaCreator.MapSimulator
                     InputMaxLength = ClientPicEditMaxLength,
                     SoftKeyboardType = SoftKeyboardKeyboardType.NumericOnlyAlt,
                     InputBoundsOverride = CreateLoginUtilityInputBoundsOverride(),
+                    FrameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
                 },
                 3 => BuildClientNoticePrompt(packetText, "PIC verification failed.", packetDetail, 15),
                 7 => BuildClientNoticePrompt(packetText, "PIC verification returned the client to the title step.", packetDetail, 17),
@@ -13625,6 +13964,7 @@ namespace HaCreator.MapSimulator
                 Body = CombineLoginDialogBody(packetText, "Try Again!", packetDetail),
                 ButtonLayout = LoginUtilityDialogButtonLayout.Ok,
                 Action = LoginUtilityDialogAction.DismissOnly,
+                FrameVariant = LoginUtilityDialogFrameVariant.LoginNotice,
             };
         }
 
@@ -18775,7 +19115,27 @@ namespace HaCreator.MapSimulator
         {
             return ((long)ownerCharacterId << 8) | (uint)(slotIndex + 1);
         }
-        private static Vector2 ResolveRemotePetPickupPosition(RemoteUserActor actor, int slotIndex)
+
+        internal static bool TryResolveRemotePetPickupPosition(
+            int actorId,
+            RemoteUserActorPool remoteUserPool,
+            out Vector2 position)
+        {
+            position = default;
+
+            if (remoteUserPool == null
+                || !TryDecodeRemotePetPickupActorId(actorId, out int ownerCharacterId, out int slotIndex)
+                || !remoteUserPool.TryGetActor(ownerCharacterId, out RemoteUserActor ownerActor)
+                || ownerActor == null)
+            {
+                return false;
+            }
+
+            position = ResolveRemotePetPickupPosition(ownerActor, slotIndex);
+            return true;
+        }
+
+        internal static Vector2 ResolveRemotePetPickupPosition(RemoteUserActor actor, int slotIndex)
         {
             float direction = actor.FacingRight ? -1f : 1f;
             float offsetX = direction * (28f + slotIndex * 18f);
@@ -19781,7 +20141,9 @@ namespace HaCreator.MapSimulator
 
             {
 
-                _fieldRuleRuntime?.RegisterSuccessfulItemUse(inventoryType, currentTime);
+                _fieldRuleRuntime?.RegisterSuccessfulItemUse(
+                    ShouldTrackFieldConsumeItemCooldown(inventoryType, default, effect),
+                    currentTime);
                 return true;
             }
 
@@ -19792,11 +20154,15 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
-                _fieldRuleRuntime?.RegisterSuccessfulItemUse(inventoryType, currentTime);
+                _fieldRuleRuntime?.RegisterSuccessfulItemUse(
+                    ShouldTrackFieldConsumeItemCooldown(inventoryType, default, effect),
+                    currentTime);
                 return true;
             }
 
-            _fieldRuleRuntime?.RegisterSuccessfulItemUse(inventoryType, currentTime);
+            _fieldRuleRuntime?.RegisterSuccessfulItemUse(
+                ShouldTrackFieldConsumeItemCooldown(inventoryType, default, effect),
+                currentTime);
             return true;
         }
 
@@ -19811,9 +20177,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            return slotIndex.HasValue
-                ? inventoryWindow.TryConsumeItemAtSlot(inventoryType, slotIndex.Value, itemId, 1)
-                : inventoryWindow.TryConsumeItem(inventoryType, itemId, 1);
+            return TryConsumeInventoryUseItem(inventoryWindow, inventoryType, itemId, 1, slotIndex);
         }
 
         private bool IsConsumableUseBlockedByMobStatus(ConsumableItemEffect effect)
@@ -22339,7 +22703,7 @@ namespace HaCreator.MapSimulator
 
                 bool allowLocalPreview = !_coconutPacketInbox.HasConnectedClients
                     && !_coconutOfficialSessionBridge.HasConnectedSession;
-                if (coconut.TryHandleNormalAttack(worldHitbox, currentTick, skillId, allowLocalPreview))
+                if (coconut.TryHandleNormalAttack(worldHitbox, currentTick, skillId: skillId, allowLocalPreview: allowLocalPreview))
                 {
                     FlushPendingCoconutAttackRequests();
                 }
@@ -23016,18 +23380,6 @@ namespace HaCreator.MapSimulator
             if (_temporaryPortalField != null
                 && _temporaryPortalField.TryUseLinkedPortal(_mapBoard.MapInfo.id, playerX, playerY, out var temporaryPortalDestination))
             {
-                PortalInstance temporarySourcePortal = null;
-                string temporarySourcePortalName = null;
-                if (TryResolvePacketOwnedTeleportPortalByPosition(
-                    temporaryPortalDestination.SourceX,
-                    temporaryPortalDestination.SourceY,
-                    out _,
-                    out PortalInstance resolvedTemporarySourcePortal))
-                {
-                    temporarySourcePortal = resolvedTemporarySourcePortal;
-                    temporarySourcePortalName = resolvedTemporarySourcePortal.pn;
-                }
-
                 string temporaryTargetPortalName = null;
                 string temporaryTargetResolutionSummary = "temporary portal destination coordinates";
                 string[] temporaryTargetPortalNameCandidates = Array.Empty<string>();
@@ -23048,7 +23400,7 @@ namespace HaCreator.MapSimulator
                     temporaryPortalDestination.X,
                     temporaryPortalDestination.Y,
                     _mapBoard.MapInfo.id,
-                    temporarySourcePortal?.pn,
+                    null,
                     out string resolvedTemporaryCrossMapTargetPortalName,
                     out string resolvedTemporaryCrossMapTargetSummary,
                     out string[] resolvedTemporaryCrossMapTargetCandidates))
@@ -23058,32 +23410,25 @@ namespace HaCreator.MapSimulator
                     temporaryTargetPortalNameCandidates = resolvedTemporaryCrossMapTargetCandidates;
                 }
 
-                if (string.IsNullOrWhiteSpace(temporarySourcePortalName)
-                    && !string.IsNullOrWhiteSpace(temporaryTargetPortalName)
-                    && TryResolvePacketOwnedSourcePortalNameByTargetPortalName(
-                        _mapBoard?.BoardItems?.Portals,
-                        temporaryPortalDestination.MapId,
-                        temporaryTargetPortalName,
-                        out string inferredTemporarySourcePortalName))
-                {
-                    temporarySourcePortalName = inferredTemporarySourcePortalName;
-                }
+                TryResolvePacketOwnedTemporarySourcePortal(
+                    temporaryPortalDestination.MapId,
+                    temporaryPortalDestination.SourceX,
+                    temporaryPortalDestination.SourceY,
+                    temporaryTargetPortalName,
+                    temporaryTargetPortalNameCandidates,
+                    out PortalInstance temporarySourcePortal,
+                    out string temporarySourcePortalName);
 
-                if (string.IsNullOrWhiteSpace(temporarySourcePortalName)
-                    && TryResolvePacketOwnedSourcePortalNameByTargetPortalCandidates(
-                        _mapBoard?.BoardItems?.Portals,
+                if (temporaryPortalDestination.MapId == _mapBoard.MapInfo.id
+                    && string.IsNullOrWhiteSpace(temporaryTargetPortalName)
+                    && TryResolvePacketOwnedTargetPortalNameFromSourcePortal(
+                        temporarySourcePortal,
                         temporaryPortalDestination.MapId,
-                        temporaryTargetPortalNameCandidates,
-                        out string inferredTemporarySourcePortalCandidateName))
+                        out string directTemporarySameMapTargetPortalName))
                 {
-                    temporarySourcePortalName = inferredTemporarySourcePortalCandidateName;
-                }
-
-                if (temporarySourcePortal == null
-                    && !string.IsNullOrWhiteSpace(temporarySourcePortalName))
-                {
-                    temporarySourcePortal = _mapBoard?.BoardItems?.Portals
-                        ?.FirstOrDefault(portal => string.Equals(portal?.pn, temporarySourcePortalName, StringComparison.OrdinalIgnoreCase));
+                    temporaryTargetPortalName = directTemporarySameMapTargetPortalName;
+                    temporaryTargetPortalNameCandidates = new[] { directTemporarySameMapTargetPortalName };
+                    temporaryTargetResolutionSummary = $"current-field portal '{directTemporarySameMapTargetPortalName}' from source portal '{temporarySourcePortal?.pn}'";
                 }
 
                 if (temporaryPortalDestination.MapId != _mapBoard.MapInfo.id
@@ -23101,6 +23446,18 @@ namespace HaCreator.MapSimulator
                     temporaryTargetPortalName = refreshedTemporaryTargetPortalName;
                     temporaryTargetResolutionSummary = refreshedTemporaryTargetSummary;
                     temporaryTargetPortalNameCandidates = refreshedTemporaryTargetCandidates;
+                }
+
+                if (temporaryPortalDestination.MapId != _mapBoard.MapInfo.id
+                    && string.IsNullOrWhiteSpace(temporaryTargetPortalName)
+                    && TryResolvePacketOwnedTargetPortalNameFromSourcePortal(
+                        temporarySourcePortal,
+                        temporaryPortalDestination.MapId,
+                        out string directTemporaryCrossMapTargetPortalName))
+                {
+                    temporaryTargetPortalName = directTemporaryCrossMapTargetPortalName;
+                    temporaryTargetPortalNameCandidates = new[] { directTemporaryCrossMapTargetPortalName };
+                    temporaryTargetResolutionSummary = $"target-map portal '{directTemporaryCrossMapTargetPortalName}' from source portal '{temporarySourcePortal?.pn}'";
                 }
 
                 RecordPacketOwnedTeleportPortalRequest(
@@ -25279,7 +25636,9 @@ namespace HaCreator.MapSimulator
             _questRuntime.ConfigureQuestActionRuntime(
                 TryApplyQuestBuffItemReward,
                 () => _mapBoard?.MapInfo?.id ?? 0,
-                mapId => ResolveMapTransferDisplayName(mapId, null));
+                mapId => ResolveMapTransferDisplayName(mapId, null),
+                ResolveQuestMobMapIds,
+                ResolveQuestNpcMapIds);
 
 
 
@@ -26872,6 +27231,7 @@ namespace HaCreator.MapSimulator
             InventoryItemMetadataResolver.TryResolveItemDescription(itemId, out string itemDescription);
 
             ConsumableItemEffect consumableEffect = ResolveConsumableItemEffect(itemId);
+            PetFoodItemEffect petFoodEffect = ResolvePetFoodItemEffect(itemId);
             string fieldLimitRestriction = FieldInteractionRestrictionEvaluator.GetItemUseRestrictionMessage(
                 _mapBoard?.MapInfo?.fieldLimit ?? 0,
                 inventoryType,
@@ -26891,8 +27251,36 @@ namespace HaCreator.MapSimulator
 
 
 
-            return _fieldRuleRuntime?.GetItemUseRestrictionMessage(inventoryType, itemId, currTickCount);
+            return _fieldRuleRuntime?.GetItemUseRestrictionMessage(
+                inventoryType,
+                itemId,
+                currTickCount,
+                ShouldTrackFieldConsumeItemCooldown(inventoryType, petFoodEffect, consumableEffect));
 
+        }
+
+        private static bool ShouldTrackFieldConsumeItemCooldown(
+            InventoryType inventoryType,
+            PetFoodItemEffect petFoodEffect,
+            ConsumableItemEffect consumableEffect)
+        {
+            if (inventoryType == InventoryType.USE)
+            {
+                return true;
+            }
+
+            if (inventoryType != InventoryType.CASH)
+            {
+                return false;
+            }
+
+            return petFoodEffect.IsPetFood
+                   || consumableEffect.HasSupportedRecovery
+                   || consumableEffect.HasSupportedMovement
+                   || consumableEffect.HasSupportedMorph
+                   || consumableEffect.HasSupportedTemporaryBuff
+                   || consumableEffect.HasSupportedCure
+                   || consumableEffect.HasSupportedFieldProtection;
         }
 
 

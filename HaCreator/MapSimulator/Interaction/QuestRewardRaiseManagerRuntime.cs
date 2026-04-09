@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator.Interaction
                 QrData = prompt.OwnerContext?.InitialQrData ?? 0,
                 MaxDropCount = Math.Max(1, prompt.OwnerContext?.MaxDropCount ?? 1),
                 WindowMode = windowMode,
+                DisplayMode = windowMode,
                 WindowPosition = windowPosition
             };
             return ActiveRaise;

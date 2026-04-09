@@ -154,6 +154,45 @@ namespace HaCreator.MapSimulator.Character
             return true;
         }
 
+        public static bool TryResolveItemEmotion(
+            int itemId,
+            int randomRoll,
+            out PacketOwnedAvatarEmotionSelection selection,
+            out bool byItemOption,
+            out string error)
+        {
+            selection = default;
+            byItemOption = false;
+            error = null;
+
+            if (itemId <= 0)
+            {
+                error = "Item id must be positive.";
+                return false;
+            }
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            if (itemProperty == null)
+            {
+                error = $"Item {itemId} could not be loaded from WZ.";
+                return false;
+            }
+
+            if (TryResolveFixedEmotion(itemId, itemProperty, out selection))
+            {
+                byItemOption = true;
+                return true;
+            }
+
+            if (itemProperty["emotion"] is WzSubProperty)
+            {
+                return TryResolveRandomEmotion(itemId, randomRoll, out selection, out error);
+            }
+
+            error = $"Item {itemId} does not publish a supported packet-owned emotion mapping.";
+            return false;
+        }
+
         public static bool TryLoadAreaBuffEmotionWeights(
             int areaBuffItemId,
             out IReadOnlyList<PacketOwnedAvatarEmotionWeight> weightedEmotions,
@@ -213,6 +252,33 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return idsByName;
+        }
+
+        private static bool TryResolveFixedEmotion(
+            int itemId,
+            WzSubProperty itemProperty,
+            out PacketOwnedAvatarEmotionSelection selection)
+        {
+            selection = default;
+            if (itemProperty?["info"] is not WzSubProperty infoProperty)
+            {
+                return false;
+            }
+
+            int emotionId = GetIntValue(infoProperty["emotion"]);
+            if (!TryResolveEmotionName(emotionId, out string emotionName))
+            {
+                return false;
+            }
+
+            selection = new PacketOwnedAvatarEmotionSelection(
+                itemId,
+                emotionId,
+                emotionName,
+                RandomRoll: 0,
+                TotalWeight: 1,
+                SelectedWeight: 1);
+            return true;
         }
 
         private static WzSubProperty LoadItemProperty(int itemId)

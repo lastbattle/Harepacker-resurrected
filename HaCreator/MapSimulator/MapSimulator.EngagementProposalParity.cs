@@ -85,23 +85,27 @@ namespace HaCreator.MapSimulator
             string partnerName = string.IsNullOrWhiteSpace(message.PartnerName)
                 ? _playerManager?.Player?.Build?.Name
                 : message.PartnerName;
-            if (!_engagementProposalController.TryOpenIncomingProposalFromRequestPayload(
-                    message.ProposerName,
-                    partnerName,
-                    message.SealItemId,
-                    message.RequestPayload,
-                    message.CustomMessage,
-                    uiWindowManager,
-                    _playerManager?.Player?.Build,
-                    _fontChat,
-                    ShowUtilityFeedbackMessage,
-                    () => ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.EngagementProposal),
-                    out detail))
+
+            if (message.Kind == EngagementProposalInboxMessageKind.Decision)
             {
-                return false;
+                return _engagementProposalController.TryApplyDecisionPayload(
+                    message.RequestPayload,
+                    uiWindowManager,
+                    out detail);
             }
 
-            return true;
+            return _engagementProposalController.TryOpenIncomingProposalFromRequestPayload(
+                message.ProposerName,
+                partnerName,
+                message.SealItemId,
+                message.RequestPayload,
+                message.CustomMessage,
+                uiWindowManager,
+                _playerManager?.Player?.Build,
+                _fontChat,
+                ShowUtilityFeedbackMessage,
+                () => ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.EngagementProposal),
+                out detail);
         }
 
         private string DescribeEngagementProposalInboxStatus()

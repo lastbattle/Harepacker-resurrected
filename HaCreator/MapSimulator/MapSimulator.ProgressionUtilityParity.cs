@@ -311,6 +311,25 @@ namespace HaCreator.MapSimulator
                 });
             }
 
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedLogoutGiftSummary)
+                && !string.Equals(_lastPacketOwnedLogoutGiftSummary, "Packet-owned logout gift idle.", StringComparison.OrdinalIgnoreCase))
+            {
+                bool logoutGiftVisible = uiWindowManager?.GetWindow(MapSimulatorWindowNames.LogoutGift)?.IsVisible == true;
+                int logoutGiftTick = _lastPacketOwnedLogoutGiftSelectionTick != int.MinValue
+                    ? _lastPacketOwnedLogoutGiftSelectionTick
+                    : _lastPacketOwnedLogoutGiftRefreshTick;
+                entries.Add(new EventEntrySnapshot
+                {
+                    Title = "Logout Gift Feed",
+                    Detail = _lastPacketOwnedLogoutGiftSummary,
+                    StatusText = logoutGiftVisible ? "Running" : "Clear",
+                    Status = logoutGiftVisible ? EventEntryStatus.InProgress : EventEntryStatus.Clear,
+                    ScheduledAt = DateTime.Today,
+                    SourceTick = logoutGiftTick,
+                    SortOrder = nextSortOrder++
+                });
+            }
+
             if (questSnapshot.Entries.Count > 0)
             {
                 int readyCount = questSnapshot.Entries.Count(entry => entry.IsReadyToComplete);
@@ -357,8 +376,8 @@ namespace HaCreator.MapSimulator
             return new EventWindowSnapshot
             {
                 Title = "Event",
-                Subtitle = "EventList row, slot, icon, and calendar art now surface simulator runtime entries plus the latest packet-owned alarm text, tutor, radio, and sound state through an event owner that auto-dismisses like CUIEventAlarm until the user interacts with its WZ-backed controls.",
-                StatusText = "BtEvent now exposes packet-owned utility, quest, overlay, tutor, radio, and sound activity through the client event owner, using the WZ-backed filter and calendar surfaces instead of text-only fallbacks. Official attendance, calendar packets, and live network event feeds still remain outside this window.",
+                Subtitle = "EventList row, slot, icon, and calendar art now surface simulator runtime entries plus the latest packet-owned alarm text, tutor, radio, logout-gift, and sound state through an event owner that auto-dismisses like CUIEventAlarm until the user interacts with its WZ-backed controls.",
+                StatusText = "BtEvent now exposes packet-owned utility, quest, overlay, tutor, radio, logout-gift, and sound activity through the client event owner, using the WZ-backed filter and calendar surfaces instead of text-only fallbacks. Official attendance, calendar packets, and live network event feeds still remain outside this window.",
                 AutoDismissDelayMs = 8000,
                 AlarmLines = BuildEventAlarmOwnerLines(currentTick),
                 Entries = entries
@@ -620,6 +639,15 @@ namespace HaCreator.MapSimulator
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedFollowFailureMessage))
             {
                 candidates.Add(($"Follow: {TruncatePacketOwnedUtilityText(_lastPacketOwnedFollowFailureMessage, 62)}", _lastPacketOwnedFollowFailureTick, false));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedLogoutGiftSummary)
+                && !string.Equals(_lastPacketOwnedLogoutGiftSummary, "Packet-owned logout gift idle.", StringComparison.OrdinalIgnoreCase))
+            {
+                int logoutGiftTick = _lastPacketOwnedLogoutGiftSelectionTick != int.MinValue
+                    ? _lastPacketOwnedLogoutGiftSelectionTick
+                    : _lastPacketOwnedLogoutGiftRefreshTick;
+                candidates.Add(($"Logout gift: {TruncatePacketOwnedUtilityText(_lastPacketOwnedLogoutGiftSummary, 56)}", logoutGiftTick, false));
             }
 
             if (candidates.Count == 0)

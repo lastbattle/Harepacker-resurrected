@@ -109,6 +109,11 @@ namespace HaCreator.MapSimulator.UI
             _selectedIndex = ResolveWindowMode() == QuestRewardRaiseWindowMode.PiecePlacement
                 ? Math.Clamp(_selectedIndex, 0, Math.Max(0, (_state?.PlacedPieces?.Count ?? 1) - 1))
                 : _group?.Options?.Count > 0 ? 0 : -1;
+            if (state != null && state.WindowPosition != Point.Zero)
+            {
+                Position = state.WindowPosition;
+            }
+
             UpdateButtonStates();
         }
 
@@ -131,6 +136,11 @@ namespace HaCreator.MapSimulator.UI
         public override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
+            if (_state != null)
+            {
+                _state.WindowPosition = Position;
+            }
+
             PositionButtons();
             UpdateButtonStates();
         }
@@ -667,7 +677,10 @@ namespace HaCreator.MapSimulator.UI
 
         private QuestRewardRaiseWindowMode ResolveWindowMode()
         {
-            return _state?.WindowMode ?? _prompt?.OwnerContext?.WindowMode ?? QuestRewardRaiseWindowMode.Selection;
+            return _state?.DisplayMode
+                ?? _state?.WindowMode
+                ?? _prompt?.OwnerContext?.WindowMode
+                ?? QuestRewardRaiseWindowMode.Selection;
         }
 
         private string BuildPiecePlacementSubtitle()

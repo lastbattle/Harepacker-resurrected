@@ -56,6 +56,25 @@ namespace HaCreator.MapSimulator.Interaction
             _questionNumber = 0;
         }
 
+        internal string ApplyClientOwnerState(
+            string title,
+            string problemText,
+            string hintText,
+            int answer,
+            int questionNumber,
+            int remainingSeconds,
+            int currentTickCount)
+        {
+            _title = title ?? string.Empty;
+            _problemText = problemText ?? string.Empty;
+            _hintText = hintText ?? string.Empty;
+            _answer = answer;
+            _questionNumber = Math.Max(0, questionNumber);
+            _expiresAtTick = currentTickCount + (Math.Max(0, remainingSeconds) * 1000);
+            return
+                $"Synced packet-authored initial quiz owner: question {_questionNumber}, {Math.Max(0, remainingSeconds)}s remaining, title={FormatQuotedValue(_title)}.";
+        }
+
         internal bool TryApplyPayload(byte[] payload, int currentTickCount, out string message)
         {
             payload ??= Array.Empty<byte>();
@@ -83,16 +102,15 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
-                _title = ReadMapleString(reader);
-                _problemText = ReadMapleString(reader);
-                _hintText = ReadMapleString(reader);
-                _answer = reader.ReadInt32();
-                _questionNumber = reader.ReadInt32();
-                int remainingSeconds = Math.Max(0, reader.ReadInt32());
-                _expiresAtTick = currentTickCount + (remainingSeconds * 1000);
-
-                message =
-                    $"Started packet-owned initial quiz timer: question {_questionNumber}, {remainingSeconds}s remaining, title={FormatQuotedValue(_title)}.";
+                message = ApplyClientOwnerState(
+                    ReadMapleString(reader),
+                    ReadMapleString(reader),
+                    ReadMapleString(reader),
+                    reader.ReadInt32(),
+                    reader.ReadInt32(),
+                    reader.ReadInt32(),
+                    currentTickCount)
+                    .Replace("Synced", "Started", StringComparison.Ordinal);
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)

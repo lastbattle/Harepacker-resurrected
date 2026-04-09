@@ -5,6 +5,7 @@ using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Pools;
@@ -49,6 +50,12 @@ namespace HaCreator.MapSimulator.Fields
         private const int PacketTypeUserEnterField = 179;
         private const int PacketTypeUserLeaveField = 180;
         private const int PacketTypeUserMove = 210;
+        private const int PacketTypeMeleeAttack1 = 211;
+        private const int PacketTypeMeleeAttack2 = 212;
+        private const int PacketTypeMeleeAttack3 = 213;
+        private const int PacketTypeMeleeAttack4 = 214;
+        private const int PacketTypeSkillPrepare = 215;
+        private const int PacketTypeSkillCancel = 217;
         private const int PacketTypeSetActiveEffectItem = 220;
         private const int PacketTypeSetActivePortableChair = 222;
         private const int PacketTypeAvatarModified = 223;
@@ -147,6 +154,15 @@ namespace HaCreator.MapSimulator.Fields
                         return TryApplyRemoteLeavePacket(payload, out errorMessage);
                     case PacketTypeUserMove:
                         return TryApplyRemoteMovePacket(payload, currentTimeMs, out errorMessage);
+                    case PacketTypeMeleeAttack1:
+                    case PacketTypeMeleeAttack2:
+                    case PacketTypeMeleeAttack3:
+                    case PacketTypeMeleeAttack4:
+                        return TryApplyRemoteMeleeAttackPacket(payload, currentTimeMs, out errorMessage);
+                    case PacketTypeSkillPrepare:
+                        return TryApplyRemotePreparedSkillPacket(payload, currentTimeMs, out errorMessage);
+                    case PacketTypeSkillCancel:
+                        return TryApplyRemotePreparedSkillClearPacket(payload, out errorMessage);
                     case PacketTypeSetActiveEffectItem:
                         return TryApplyRemoteActiveEffectItemPacket(payload, out errorMessage);
                     case PacketTypeSetActivePortableChair:
@@ -771,6 +787,99 @@ namespace HaCreator.MapSimulator.Fields
             return _remoteUserPool.TrySetPortableChair(chair.CharacterId, chair.ChairItemId, out errorMessage);
         }
 
+        private bool TryApplyRemoteMeleeAttackPacket(byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!RemoteUserPacketCodec.TryParseMeleeAttack(payload, out RemoteUserMeleeAttackPacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            if (!TryGetRemoteActor(packet.CharacterId, out _))
+            {
+                errorMessage = $"Remote Ariant actor id {packet.CharacterId} does not exist.";
+                return false;
+            }
+
+            return _remoteUserPool.TryRegisterMeleeAfterImage(
+                packet.CharacterId,
+                packet.SkillId,
+                packet.ActionName,
+                packet.ActionCode,
+                packet.MasteryPercent,
+                packet.ChargeSkillId,
+                packet.PreparedSkillReleaseFollowUpValue,
+                packet.FacingRight,
+                currentTimeMs,
+                out errorMessage);
+        }
+
+        private bool TryApplyRemotePreparedSkillPacket(byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!RemoteUserPacketCodec.TryParsePreparedSkill(payload, out RemoteUserPreparedSkillPacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            if (!TryGetRemoteActor(packet.CharacterId, out _))
+            {
+                errorMessage = $"Remote Ariant actor id {packet.CharacterId} does not exist.";
+                return false;
+            }
+
+            PreparedSkillHudRules.PreparedSkillHudProfile hudProfile = PreparedSkillHudRules.ResolveProfile(packet.SkillId);
+            bool resolvedIsKeydownSkill = PreparedSkillHudRules.ResolveKeyDownSkillState(
+                packet.SkillId,
+                packet.IsKeydownSkill);
+            PreparedSkillHudRules.ResolveRemotePreparedSkillPhases(
+                packet.SkillId,
+                resolvedIsKeydownSkill,
+                packet.IsHolding,
+                packet.DurationMs,
+                packet.MaxHoldDurationMs,
+                packet.AutoEnterHold,
+                out int activeDurationMs,
+                out int prepareDurationMs,
+                out bool autoEnterHold);
+            return _remoteUserPool.TrySetPreparedSkill(
+                packet.CharacterId,
+                packet.SkillId,
+                packet.SkillName,
+                activeDurationMs,
+                string.IsNullOrWhiteSpace(packet.SkinKey) ? hudProfile.SkinKey : packet.SkinKey,
+                resolvedIsKeydownSkill,
+                packet.IsHolding,
+                PreparedSkillHudRules.ResolvePreparedGaugeDuration(
+                    packet.SkillId,
+                    packet.GaugeDurationMs,
+                    packet.DurationMs),
+                Math.Max(0, packet.MaxHoldDurationMs),
+                PreparedSkillHudRules.ResolveTextVariant(packet.SkillId),
+                packet.ShowText && hudProfile.ShowText,
+                currentTimeMs,
+                out errorMessage,
+                prepareDurationMs: prepareDurationMs,
+                autoEnterHold: autoEnterHold);
+        }
+
+        private bool TryApplyRemotePreparedSkillClearPacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!RemoteUserPacketCodec.TryParsePreparedSkillClear(payload, out RemoteUserPreparedSkillClearPacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            if (!TryGetRemoteActor(packet.CharacterId, out _))
+            {
+                errorMessage = $"Remote Ariant actor id {packet.CharacterId} does not exist.";
+                return false;
+            }
+
+            return _remoteUserPool.TryClearPreparedSkill(packet.CharacterId, out errorMessage);
+        }
+
         private bool TryApplyRemoteActiveEffectItemPacket(byte[] payload, out string errorMessage)
         {
             errorMessage = null;
@@ -785,7 +894,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            return _remoteUserPool.TryApplyActiveEffectItem(packet, out errorMessage);
+            return _remoteUserPool.TryApplyActiveEffectItem(packet, Environment.TickCount, out errorMessage);
         }
 
         private bool TryApplyRemoteAvatarModifiedPacket(byte[] payload, int currentTimeMs, out string errorMessage)

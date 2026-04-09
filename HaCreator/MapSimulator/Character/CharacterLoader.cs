@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.UI;
@@ -718,6 +719,17 @@ namespace HaCreator.MapSimulator.Character
             return effect;
         }
 
+        public SkillAnimation LoadPacketOwnedEmotionEffectAnimation(string emotionName)
+        {
+            if (string.IsNullOrWhiteSpace(emotionName)
+                || string.Equals(emotionName, "default", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return LoadPacketOwnedEmotionEffectAnimationCore($"Etc/EmotionEffect.img/{emotionName}");
+        }
+
         private void LoadPortableChairLayers(WzSubProperty chairProperty, ICollection<PortableChairLayer> layers)
         {
             if (chairProperty == null || layers == null)
@@ -931,6 +943,92 @@ namespace HaCreator.MapSimulator.Character
         private PortableChairLayer LoadPortableChairLayer(WzSubProperty layerProperty)
         {
             return LoadPortableChairLayer(layerProperty, layerProperty?.Name, loop: true);
+        }
+
+        private SkillAnimation LoadPacketOwnedEmotionEffectAnimationCore(string effectUol)
+        {
+            if (!TryResolveEffectAssetUol(effectUol, out string category, out string imageName, out string propertyPath))
+            {
+                return null;
+            }
+
+            WzImage image = Program.FindImage(category, imageName);
+            if (image == null)
+            {
+                return null;
+            }
+
+            image.ParseImage();
+            WzImageProperty property = ResolveWzProperty(image, propertyPath);
+            if (property is not WzSubProperty subProperty)
+            {
+                return null;
+            }
+
+            SkillAnimation animation = CreatePacketOwnedEmotionEffectAnimation(subProperty);
+            if (animation == null || animation.Frames.Count == 0)
+            {
+                return null;
+            }
+
+            animation.Name = effectUol;
+            animation.Loop = false;
+            animation.CalculateDuration();
+            return animation;
+        }
+
+        private SkillAnimation CreatePacketOwnedEmotionEffectAnimation(WzSubProperty effectProperty)
+        {
+            if (effectProperty == null)
+            {
+                return null;
+            }
+
+            SkillAnimation animation = new SkillAnimation
+            {
+                Name = effectProperty.Name,
+                Loop = false
+            };
+
+            foreach (WzCanvasProperty canvas in effectProperty.WzProperties.OfType<WzCanvasProperty>().OrderBy(static frame => ParsePacketOwnedEmotionFrameIndex(frame.Name)))
+            {
+                try
+                {
+                    if (canvas.GetLinkedWzCanvasBitmap() is not { } bitmap)
+                    {
+                        continue;
+                    }
+
+                    Texture2D texture = bitmap.ToTexture2DAndDispose(_device);
+                    if (texture == null)
+                    {
+                        continue;
+                    }
+
+                    WzVectorProperty origin = canvas["origin"] as WzVectorProperty;
+                    int delay = Math.Max(1, GetPacketOwnedEmotionIntValue(canvas["delay"], defaultValue: 100));
+                    DXObject textureObject = new(0, 0, texture, delay)
+                    {
+                        Tag = canvas
+                    };
+
+                    animation.Frames.Add(new SkillFrame
+                    {
+                        Texture = textureObject,
+                        Origin = new Point(origin?.X.Value ?? 0, origin?.Y.Value ?? 0),
+                        Delay = delay,
+                        Bounds = new Rectangle(0, 0, texture.Width, texture.Height),
+                        AlphaStart = Math.Clamp(GetPacketOwnedEmotionIntValue(canvas["a0"], defaultValue: 255), 0, 255),
+                        AlphaEnd = Math.Clamp(GetPacketOwnedEmotionIntValue(canvas["a1"], defaultValue: 255), 0, 255)
+                    });
+                }
+                catch
+                {
+                    // Keep the render-safe subset when EmotionEffect frames are malformed.
+                }
+            }
+
+            return animation;
         }
 
         private PortableChairLayer LoadPortableChairLayer(WzImageProperty layerProperty, string layerName, bool loop)
@@ -2685,6 +2783,74 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return zLayer ?? fallback;
+        }
+
+        private static bool TryResolveEffectAssetUol(string uol, out string category, out string imageName, out string propertyPath)
+        {
+            category = "Etc";
+            imageName = null;
+            propertyPath = null;
+
+            if (string.IsNullOrWhiteSpace(uol))
+            {
+                return false;
+            }
+
+            string[] segments = uol.Replace('\\', '/').Trim('/').Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length < 3)
+            {
+                return false;
+            }
+
+            category = segments[0];
+            int imageSegmentIndex = Array.FindIndex(segments, segment => segment.EndsWith(".img", StringComparison.OrdinalIgnoreCase));
+            if (imageSegmentIndex < 1 || imageSegmentIndex >= segments.Length - 1)
+            {
+                return false;
+            }
+
+            imageName = string.Join("/", segments, 1, imageSegmentIndex);
+            propertyPath = string.Join("/", segments, imageSegmentIndex + 1, segments.Length - imageSegmentIndex - 1);
+            return !string.IsNullOrWhiteSpace(imageName) && !string.IsNullOrWhiteSpace(propertyPath);
+        }
+
+        private static WzImageProperty ResolveWzProperty(WzImage image, string propertyPath)
+        {
+            if (image == null || string.IsNullOrWhiteSpace(propertyPath))
+            {
+                return null;
+            }
+
+            string[] segments = propertyPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0)
+            {
+                return null;
+            }
+
+            WzImageProperty current = image[segments[0]];
+            for (int i = 1; i < segments.Length && current != null; i++)
+            {
+                current = current[segments[i]];
+            }
+
+            return current;
+        }
+
+        private static int ParsePacketOwnedEmotionFrameIndex(string frameName)
+        {
+            return int.TryParse(frameName, out int frameIndex) ? frameIndex : int.MaxValue;
+        }
+
+        private static int GetPacketOwnedEmotionIntValue(WzImageProperty property, int defaultValue)
+        {
+            return property switch
+            {
+                WzIntProperty intProperty => intProperty.Value,
+                WzShortProperty shortProperty => shortProperty.Value,
+                WzLongProperty longProperty => (int)Math.Clamp(longProperty.Value, int.MinValue, int.MaxValue),
+                WzStringProperty stringProperty when int.TryParse(stringProperty.Value, out int parsedValue) => parsedValue,
+                _ => defaultValue
+            };
         }
 
         #endregion

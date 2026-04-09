@@ -20,7 +20,8 @@ namespace HaCreator.MapSimulator.Interaction
         string GuildName,
         int GuildLevel,
         string GuildRoleLabel,
-        bool CanManageSkills);
+        bool CanManageSkills,
+        int GuildPoints);
 
     internal sealed class GuildSkillRuntime
     {
@@ -45,6 +46,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _availablePoints = DefaultAvailablePoints;
         private int _guildFundMeso = DefaultGuildFundMeso;
         private int _guildLevel = DefaultLocalGuildLevel;
+        private int _guildPoints;
         private string _guildName = "Maple GM";
         private string _guildRoleLabel = "Master";
         private bool _isInGuild = true;
@@ -78,6 +80,7 @@ namespace HaCreator.MapSimulator.Interaction
                 : null;
             _guildName = inGuild ? (context.GuildName?.Trim() ?? string.Empty) : "No Guild";
             _guildLevel = inGuild ? ResolveGuildLevel(context.GuildLevel, savedState?.GuildLevel ?? 0) : 0;
+            _guildPoints = inGuild ? Math.Max(0, context.GuildPoints) : 0;
             _guildRoleLabel = inGuild
                 ? NormalizeGuildRoleLabel(context.GuildRoleLabel)
                 : "No Guild";
@@ -111,7 +114,8 @@ namespace HaCreator.MapSimulator.Interaction
                 build?.GuildName,
                 hasGuildMembership ? ResolveLocalFallbackGuildLevel(GetSavedGuildState(NormalizeGuildStateKey(build?.GuildName))?.GuildLevel ?? 0) : 0,
                 guildRoleLabel,
-                canManageSkills));
+                canManageSkills,
+                0));
         }
 
         internal void SetSkills(IEnumerable<SkillDisplayData> skills)
@@ -160,6 +164,7 @@ namespace HaCreator.MapSimulator.Interaction
                 CanManageSkills = CanManageSkills(),
                 AvailablePoints = _availablePoints,
                 GuildFundMeso = _guildFundMeso,
+                GuildPoints = _guildPoints,
                 SelectedIndex = _selectedIndex,
                 RecommendedSkillId = _recommendedSkillId,
                 CanRenew = CanRenew(selectedSkill),
@@ -183,6 +188,7 @@ namespace HaCreator.MapSimulator.Interaction
                     RemainingDurationMinutes = GetRemainingDurationMinutes(skill),
                     GuildPriceUnit = Math.Max(1, skill.GuildPriceUnit),
                     GuildFundMeso = _guildFundMeso,
+                    GuildPoints = _guildPoints,
                     IconTexture = skill.IconTexture,
                     DisabledIconTexture = skill.IconDisabledTexture,
                     IsRecommended = _isInGuild && skill.SkillId == _recommendedSkillId,
@@ -390,7 +396,9 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     _isInGuild ? $"Guild: {_guildName}" : "Current: Join a guild to use guild skills.",
                     _isInGuild ? $"Role: {_guildRoleLabel}  |  Guild Lv. {_guildLevel}" : "Next: Guild skills unlock with real guild membership.",
-                    _isInGuild ? $"SP: {_availablePoints}  |  Fund: {FormatCompactMeso(_guildFundMeso)}" : "State: No guild"
+                    _isInGuild
+                        ? $"SP: {_availablePoints}  |  GP: {FormatCompactMeso(_guildPoints)}  |  Fund: {FormatCompactMeso(_guildFundMeso)}"
+                        : "State: No guild"
                 };
             }
 
@@ -512,6 +520,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (_isInGuild)
             {
+                parts.Add($"GP {FormatCompactMeso(_guildPoints)}");
                 parts.Add(CanManageSkills() ? $"SP {_availablePoints}" : "View only");
             }
             else
@@ -801,6 +810,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool CanManageSkills { get; init; }
         public int AvailablePoints { get; init; }
         public int GuildFundMeso { get; init; }
+        public int GuildPoints { get; init; }
         public int SelectedIndex { get; init; } = -1;
         public int RecommendedSkillId { get; init; }
         public bool CanRenew { get; init; }
@@ -827,6 +837,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int RemainingDurationMinutes { get; init; }
         public int GuildPriceUnit { get; init; } = 1;
         public int GuildFundMeso { get; init; }
+        public int GuildPoints { get; init; }
         public Microsoft.Xna.Framework.Graphics.Texture2D IconTexture { get; init; }
         public Microsoft.Xna.Framework.Graphics.Texture2D DisabledIconTexture { get; init; }
         public bool IsRecommended { get; init; }

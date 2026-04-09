@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.Interaction
         private Texture2D _packetQuestResultCenterTexture;
         private Texture2D _packetQuestResultBottomTexture;
         private Texture2D _packetQuestResultSeparatorTexture;
+        private Texture2D _packetQuestResultSpeakerBarTexture;
         private UtilDialogButtonTextures _packetQuestResultPrevButtonTextures;
         private UtilDialogButtonTextures _packetQuestResultNextButtonTextures;
         private UtilDialogButtonTextures _packetQuestResultOkButtonTextures;
@@ -57,6 +58,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _isNextButtonHovered;
         private bool _isPrevButtonPressed;
         private bool _isNextButtonPressed;
+        private bool _isPacketQuestResultPrevButtonFocused;
 
         private readonly struct PageContext
         {
@@ -146,6 +148,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             ClearTextTextureCache();
             ResetPacketQuestResultButtonInteractionState();
+            ResetPacketQuestResultKeyboardFocus();
             _npcName = string.IsNullOrWhiteSpace(state?.NpcName) ? "NPC" : state.NpcName;
             _presentationStyle = state?.PresentationStyle ?? NpcInteractionPresentationStyle.Default;
             EnsurePacketQuestResultVisualAssetsLoaded();
@@ -203,6 +206,7 @@ namespace HaCreator.MapSimulator.Interaction
             _inputValue = string.Empty;
             _compositionText = string.Empty;
             ResetPacketQuestResultButtonInteractionState();
+            ResetPacketQuestResultKeyboardFocus();
         }
 
         public bool ContainsPoint(int x, int y, int renderWidth, int renderHeight)
@@ -290,6 +294,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (GetPrevButtonRectangle(windowRect).Contains(mousePoint))
             {
+                FocusPacketQuestResultPrevButton();
                 if (_currentPage > 0)
                 {
                     _currentPage--;
@@ -306,6 +311,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (GetNextButtonRectangle(windowRect).Contains(mousePoint))
             {
+                FocusPacketQuestResultNextButton();
                 if (_currentPage < GetCurrentPages().Count - 1)
                 {
                     _currentPage++;
@@ -355,6 +361,15 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 Close();
                 return new NpcInteractionOverlayResult(true, null, closeKind: NpcInteractionOverlayCloseKind.Dismissed);
+            }
+
+            if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
+            {
+                NpcInteractionOverlayResult packetQuestResult = HandlePacketQuestResultKeyboard(keyboardState, previousKeyboardState);
+                if (packetQuestResult.Consumed)
+                {
+                    return packetQuestResult;
+                }
             }
 
             NpcInteractionInputRequest inputRequest = GetCurrentInputRequest();
@@ -507,7 +522,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ResolvePrevButtonTextures(),
                 _isPrevButtonHovered,
                 _isPrevButtonPressed,
-                false);
+                IsPacketQuestResultPrevButtonFocused());
             DrawNavigationButton(
                 spriteBatch,
                 nextRect,
@@ -516,7 +531,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ResolveNextButtonTextures(),
                 _isNextButtonHovered,
                 _isNextButtonPressed,
-                !ShouldDrawEntryList());
+                IsPacketQuestResultNextButtonFocused());
 
             string primaryButtonText = GetPrimaryButtonText();
             if (NpcInteractionPresentationProfile.ShouldDrawPrimaryButton(_presentationStyle, primaryButtonText))
@@ -532,6 +547,7 @@ namespace HaCreator.MapSimulator.Interaction
             _currentPage = 0;
             _inputValue = GetCurrentInputRequest()?.DefaultValue ?? string.Empty;
             _compositionText = string.Empty;
+            ResetPacketQuestResultKeyboardFocus();
         }
 
         private IReadOnlyList<NpcInteractionPage> GetCurrentPages()
@@ -625,6 +641,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ?? LoadCanvasTexture(ResolveProperty(uiWindow1Image, "UtilDlgEx/s") as WzCanvasProperty);
             _packetQuestResultSeparatorTexture = LoadCanvasTexture(ResolveProperty(uiWindow2Image, "UtilDlgEx/line") as WzCanvasProperty)
                 ?? LoadCanvasTexture(ResolveProperty(uiWindow1Image, "UtilDlgEx/line") as WzCanvasProperty);
+            _packetQuestResultSpeakerBarTexture = LoadCanvasTexture(ResolveProperty(uiWindow2Image, "UtilDlgEx/bar") as WzCanvasProperty)
+                ?? LoadCanvasTexture(ResolveProperty(uiWindow1Image, "UtilDlgEx/bar") as WzCanvasProperty);
             _packetQuestResultPrevButtonTextures = LoadButtonTextures(uiWindow2Image, uiWindow1Image, "BtPrev");
             _packetQuestResultNextButtonTextures = LoadButtonTextures(uiWindow2Image, uiWindow1Image, "BtNext");
             _packetQuestResultOkButtonTextures = LoadButtonTextures(uiWindow2Image, uiWindow1Image, "BtOK");
@@ -923,6 +941,17 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string speakerName = string.IsNullOrWhiteSpace(_npcName) ? "NPC" : _npcName;
+            Rectangle nameBarBounds = PacketQuestResultUtilDialogLayout.GetSpeakerNameBarBounds(
+                portraitBounds,
+                _packetQuestResultSpeakerBarTexture?.Width ?? 0,
+                _packetQuestResultSpeakerBarTexture?.Height ?? 0);
+            if (_packetQuestResultSpeakerBarTexture != null && !nameBarBounds.IsEmpty)
+            {
+                spriteBatch.Draw(_packetQuestResultSpeakerBarTexture, new Vector2(nameBarBounds.X, nameBarBounds.Y), Color.White);
+                DrawCenteredText(spriteBatch, speakerName, nameBarBounds, new Color(71, 48, 24));
+                return;
+            }
+
             Vector2 speakerPosition = new Vector2(portraitBounds.X + 2, portraitBounds.Bottom - 26);
             DrawText(spriteBatch, speakerName, speakerPosition, new Color(71, 48, 24));
         }
@@ -1414,6 +1443,88 @@ namespace HaCreator.MapSimulator.Interaction
             _isNextButtonHovered = false;
             _isPrevButtonPressed = false;
             _isNextButtonPressed = false;
+        }
+
+        private void ResetPacketQuestResultKeyboardFocus()
+        {
+            _isPacketQuestResultPrevButtonFocused = false;
+        }
+
+        private void FocusPacketQuestResultPrevButton()
+        {
+            if (_currentPage > 0 || _pageContextStack.Count > 0)
+            {
+                _isPacketQuestResultPrevButtonFocused = true;
+            }
+        }
+
+        private void FocusPacketQuestResultNextButton()
+        {
+            _isPacketQuestResultPrevButtonFocused = false;
+        }
+
+        private bool IsPacketQuestResultPrevButtonFocused()
+        {
+            return _presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog
+                && _isPacketQuestResultPrevButtonFocused
+                && (_currentPage > 0 || _pageContextStack.Count > 0);
+        }
+
+        private bool IsPacketQuestResultNextButtonFocused()
+        {
+            return _presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog
+                && !IsPacketQuestResultPrevButtonFocused();
+        }
+
+        private NpcInteractionOverlayResult HandlePacketQuestResultKeyboard(
+            KeyboardState keyboardState,
+            KeyboardState previousKeyboardState)
+        {
+            if (IsKeyReleased(Keys.Left, keyboardState, previousKeyboardState))
+            {
+                FocusPacketQuestResultPrevButton();
+                return new NpcInteractionOverlayResult(true, null);
+            }
+
+            if (IsKeyReleased(Keys.Right, keyboardState, previousKeyboardState) ||
+                IsKeyReleased(Keys.Tab, keyboardState, previousKeyboardState))
+            {
+                FocusPacketQuestResultNextButton();
+                return new NpcInteractionOverlayResult(true, null);
+            }
+
+            if (!IsKeyReleased(Keys.Enter, keyboardState, previousKeyboardState))
+            {
+                return default;
+            }
+
+            if (IsPacketQuestResultPrevButtonFocused())
+            {
+                if (_currentPage > 0)
+                {
+                    _currentPage--;
+                }
+                else if (_pageContextStack.Count > 0)
+                {
+                    PageContext context = _pageContextStack.Pop();
+                    _currentPages = context.Pages;
+                    _currentPage = context.PageIndex;
+                }
+
+                return new NpcInteractionOverlayResult(true, null);
+            }
+
+            if (_currentPage < GetCurrentPages().Count - 1)
+            {
+                _currentPage++;
+                return new NpcInteractionOverlayResult(true, null);
+            }
+
+            Close();
+            return new NpcInteractionOverlayResult(
+                true,
+                null,
+                closeKind: NpcInteractionOverlayCloseKind.Completed);
         }
 
         private void UpdatePacketQuestResultButtonInteractionState(

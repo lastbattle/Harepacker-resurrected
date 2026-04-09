@@ -571,7 +571,8 @@ namespace HaCreator.MapSimulator.UI
                 Type = CollectionBookRecordType.Rule,
                 Left = left,
                 Top = top,
-                Width = width
+                Width = width,
+                Height = 2
             };
         }
 

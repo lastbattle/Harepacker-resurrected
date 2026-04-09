@@ -348,7 +348,7 @@ namespace HaCreator.MapSimulator
                 resolvedType = NormalizePacketOwnedPetConsumeInventoryType(InventoryItemMetadataResolver.ResolveInventoryType(itemId));
             }
 
-            if (resolvedType == InventoryType.USE)
+            if (resolvedType != InventoryType.NONE)
             {
                 if (inventoryWindow == null || inventoryWindow.GetItemCount(resolvedType, itemId) > 0)
                 {
@@ -361,9 +361,12 @@ namespace HaCreator.MapSimulator
                 return InventoryType.USE;
             }
 
-            return resolvedType == InventoryType.USE
-                ? InventoryType.USE
-                : InventoryType.NONE;
+            if (inventoryWindow?.GetItemCount(InventoryType.CASH, itemId) > 0)
+            {
+                return InventoryType.CASH;
+            }
+
+            return resolvedType;
         }
 
         private static InventoryType TryParsePersistedPacketOwnedInventoryType(string persistedInventoryType)
@@ -375,7 +378,7 @@ namespace HaCreator.MapSimulator
 
         private static InventoryType NormalizePacketOwnedPetConsumeInventoryType(InventoryType inventoryType)
         {
-            return inventoryType == InventoryType.USE
+            return inventoryType is InventoryType.USE or InventoryType.CASH
                 ? inventoryType
                 : InventoryType.NONE;
         }
@@ -437,7 +440,7 @@ namespace HaCreator.MapSimulator
 
         private string BuildPacketOwnedStatusBarShortcutTooltip(int clientFunctionId, int stringPoolId, string fallbackFormat)
         {
-            if (!TryResolvePacketOwnedBindingKey(clientFunctionId, out Keys key) || key == Keys.None)
+            if (!TryResolvePacketOwnedStatusBarTooltipKey(clientFunctionId, out Keys key) || key == Keys.None)
             {
                 return string.Empty;
             }
@@ -454,6 +457,29 @@ namespace HaCreator.MapSimulator
                 maxPlaceholderCount: 1,
                 out _);
             return string.Format(CultureInfo.InvariantCulture, format, keyText);
+        }
+
+        private bool TryResolvePacketOwnedStatusBarTooltipKey(int clientFunctionId, out Keys key)
+        {
+            key = Keys.None;
+            if (clientFunctionId < 0)
+            {
+                return false;
+            }
+
+            for (int scanCode = 0; scanCode < PacketOwnedFuncKeyEntryCount; scanCode++)
+            {
+                PacketOwnedFuncKeyMappedEntry entry = _packetOwnedFuncKeyMapped[scanCode];
+                if (entry.Type != PacketOwnedFuncKeyFunctionType || entry.Id != clientFunctionId)
+                {
+                    continue;
+                }
+
+                key = ResolvePacketOwnedScanCodeKey(scanCode);
+                return key != Keys.None;
+            }
+
+            return false;
         }
 
         private static string FormatPacketOwnedStatusBarShortcutKey(Keys key)
@@ -901,7 +927,7 @@ namespace HaCreator.MapSimulator
 
         private static PacketOwnedKeyActionSlot[] BuildPacketOwnedBindableHotkeySlots()
         {
-            var slots = new List<PacketOwnedKeyActionSlot>(SkillManager.PRIMARY_SLOT_COUNT + SkillManager.FUNCTION_SLOT_COUNT);
+            var slots = new List<PacketOwnedKeyActionSlot>(SkillManager.TOTAL_SLOT_COUNT);
             for (int i = 0; i < SkillManager.PRIMARY_SLOT_COUNT; i++)
             {
                 slots.Add(new PacketOwnedKeyActionSlot(InputAction.Skill1 + i, i));
@@ -912,6 +938,13 @@ namespace HaCreator.MapSimulator
                 slots.Add(new PacketOwnedKeyActionSlot(
                     InputAction.FunctionSlot1 + i,
                     SkillManager.FUNCTION_SLOT_OFFSET + i));
+            }
+
+            for (int i = 0; i < SkillManager.CTRL_SLOT_COUNT; i++)
+            {
+                slots.Add(new PacketOwnedKeyActionSlot(
+                    InputAction.CtrlSlot1 + i,
+                    SkillManager.CTRL_SLOT_OFFSET + i));
             }
 
             return slots.ToArray();
@@ -947,6 +980,12 @@ namespace HaCreator.MapSimulator
             if (action >= InputAction.FunctionSlot1 && action <= InputAction.FunctionSlot12)
             {
                 slotIndex = SkillManager.FUNCTION_SLOT_OFFSET + (action - InputAction.FunctionSlot1);
+                return true;
+            }
+
+            if (action >= InputAction.CtrlSlot1 && action <= InputAction.CtrlSlot8)
+            {
+                slotIndex = SkillManager.CTRL_SLOT_OFFSET + (action - InputAction.CtrlSlot1);
                 return true;
             }
 

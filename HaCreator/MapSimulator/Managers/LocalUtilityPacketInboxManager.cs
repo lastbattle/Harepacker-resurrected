@@ -102,6 +102,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int RepeatSkillModeEndAckPacketType = PacketOwnedMechanicRepeatSkillRuntime.RepeatSkillModeEndAckPacketType;
         public const int Sg88ManualAttackConfirmPacketType = PacketOwnedMechanicRepeatSkillRuntime.Sg88ManualAttackConfirmPacketType;
         public const int MechanicEquipStatePacketType = 1023;
+        public const int RepairDurabilityResultPacketType = 1025;
 
         private readonly ConcurrentQueue<LocalUtilityPacketInboxMessage> _pendingMessages = new();
         private readonly object _listenerLock = new();
@@ -721,6 +722,14 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("repairresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("repairdurabilityresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("repairreply", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RepairDurabilityResultPacketType;
+                return true;
+            }
+
             if (token.Equals("skillcooltime", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("skillcooltimeset", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("cooltime", StringComparison.OrdinalIgnoreCase))
@@ -809,6 +818,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == ItemMakerHiddenRecipeUnlockPacketType
                 || packetType == ItemMakerSessionPacketType
                 || packetType == MechanicEquipStatePacketType
+                || packetType == RepairDurabilityResultPacketType
                 || packetType == DamageMeterPacketType
                 || packetType == TimeBombAttackPacketType
                 || packetType == VengeanceSkillApplyPacketType
@@ -1007,6 +1017,7 @@ namespace HaCreator.MapSimulator.Managers
                 RepeatSkillModeEndAckPacketType => "RepeatSkillModeEndAck(1020)",
                 Sg88ManualAttackConfirmPacketType => "Sg88ManualAttackConfirm(1021)",
                 MechanicEquipStatePacketType => "MechanicEquipState(1023)",
+                RepairDurabilityResultPacketType => "RepairDurabilityResult(1025)",
                 _ => $"packet {packetType}"
             };
         }

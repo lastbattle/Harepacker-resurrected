@@ -1049,6 +1049,24 @@ namespace HaCreator.MapSimulator.UI
                 && slotIndex >= 0;
         }
 
+        public bool TryGetSlotAtPoint(int mouseX, int mouseY, out InventoryType inventoryType, out int slotIndex, out InventorySlotData slotData)
+        {
+            inventoryType = InventoryType.NONE;
+            slotIndex = -1;
+            slotData = null;
+
+            if (!TryGetSlotAtPosition(mouseX, mouseY, out inventoryType, out slotIndex)
+                || !TryGetSlotsForType(inventoryType, out List<InventorySlotData> slots)
+                || slotIndex < 0
+                || slotIndex >= slots.Count)
+            {
+                return false;
+            }
+
+            slotData = slots[slotIndex]?.Clone();
+            return slotData != null;
+        }
+
         public void OnInventoryMouseDown(int mouseX, int mouseY)
         {
             _lastMousePosition = new Point(mouseX, mouseY);

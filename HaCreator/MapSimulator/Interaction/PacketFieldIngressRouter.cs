@@ -28,16 +28,22 @@ namespace HaCreator.MapSimulator.Interaction
             payload = Array.Empty<byte>();
             error = null;
 
-            if (!ReactorPoolPacketInboxManager.TryDecodeOpcodeFramedPacket(rawPacket, out packetType, out payload, out error))
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
             {
+                error = "Field-scoped client packet must include a 2-byte opcode.";
                 return false;
             }
 
+            packetType = BitConverter.ToUInt16(rawPacket, 0);
             if (!IsSupportedFieldScopedPacketType(packetType))
             {
                 error = $"Unsupported field-scoped client opcode {packetType}.";
                 return false;
             }
+
+            payload = rawPacket.Length == sizeof(ushort)
+                ? Array.Empty<byte>()
+                : rawPacket[sizeof(ushort)..];
 
             return true;
         }

@@ -4,6 +4,7 @@ using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Pools;
 using System;
 using System.Collections.Concurrent;
+using System.Buffers.Binary;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -35,6 +36,9 @@ namespace HaCreator.MapSimulator.Managers
             public int FollowUpDelayMs { get; init; }
             public int CaptureWindowEndAt { get; init; }
             public List<OutboundPacketTrace> ObservedPackets { get; } = new();
+            public OutboundPacketTrace? RequestPacket { get; set; }
+            public int RequestPacketScore { get; set; }
+            public string RequestPacketEvidence { get; set; }
             public string ResolutionSource { get; set; }
         }
 
@@ -63,6 +67,16 @@ namespace HaCreator.MapSimulator.Managers
             int ObservedAt,
             int? BoundSg88SummonObjectId,
             int? BoundSg88RequestedAt);
+        internal readonly record struct Sg88ManualAttackTraceBinding(
+            bool IsWithinCaptureWindow,
+            bool MatchedSummonObjectId,
+            bool MatchedPrimaryTargetMobId,
+            int MatchedTargetCount,
+            int Score,
+            string Evidence)
+        {
+            public bool HasSemanticEvidence => MatchedSummonObjectId || MatchedPrimaryTargetMobId || MatchedTargetCount > 0;
+        }
 
         private sealed class BridgePair
         {
@@ -187,7 +201,7 @@ namespace HaCreator.MapSimulator.Managers
                     + string.Join(
                         Environment.NewLine,
                         entries.Select(entry =>
-                            $"summon={entry.SummonObjectId} requestedAt={entry.RequestedAt} primaryTarget={entry.PrimaryTargetMobId} targetCount={entry.TargetMobIds.Length} baseDelay={entry.BaseDelayMs} followUpDelay={entry.FollowUpDelayMs} captureWindowEndAt={entry.CaptureWindowEndAt} resolution={entry.ResolutionSource ?? "pending"} observedPackets={FormatObservedPacketList(entry.ObservedPackets)}"));
+                            $"summon={entry.SummonObjectId} requestedAt={entry.RequestedAt} primaryTarget={entry.PrimaryTargetMobId} targetCount={entry.TargetMobIds.Length} baseDelay={entry.BaseDelayMs} followUpDelay={entry.FollowUpDelayMs} captureWindowEndAt={entry.CaptureWindowEndAt} resolution={entry.ResolutionSource ?? "pending"} requestPacket={FormatRequestPacket(entry)} observedPackets={FormatObservedPacketList(entry.ObservedPackets, entry.RequestPacket)}"));
             }
         }
 
@@ -828,20 +842,46 @@ namespace HaCreator.MapSimulator.Managers
 
         private OutboundPacketTrace TryBindSg88ManualAttackCapture(OutboundPacketTrace trace)
         {
+            Sg88ManualAttackCapture selectedCapture = null;
+            Sg88ManualAttackTraceBinding selectedBinding = default;
+            int selectedAgeMs = int.MaxValue;
             for (int i = _pendingSg88ManualAttackCaptures.Count - 1; i >= 0; i--)
             {
                 Sg88ManualAttackCapture capture = _pendingSg88ManualAttackCaptures[i];
-                if (trace.ObservedAt < capture.RequestedAt || trace.ObservedAt > capture.CaptureWindowEndAt)
+                Sg88ManualAttackTraceBinding binding = EvaluateSg88ManualAttackTraceBinding(
+                    trace,
+                    capture.SummonObjectId,
+                    capture.PrimaryTargetMobId,
+                    capture.TargetMobIds,
+                    capture.RequestedAt,
+                    capture.CaptureWindowEndAt);
+                if (!binding.IsWithinCaptureWindow)
                 {
                     continue;
                 }
 
+                int ageMs = Math.Max(0, unchecked(trace.ObservedAt - capture.RequestedAt));
+                if (selectedCapture != null
+                    && (binding.Score < selectedBinding.Score
+                        || (binding.Score == selectedBinding.Score && ageMs >= selectedAgeMs)))
+                {
+                    continue;
+                }
+
+                selectedCapture = capture;
+                selectedBinding = binding;
+                selectedAgeMs = ageMs;
+            }
+
+            if (selectedCapture != null)
+            {
                 OutboundPacketTrace boundTrace = trace with
                 {
-                    BoundSg88SummonObjectId = capture.SummonObjectId,
-                    BoundSg88RequestedAt = capture.RequestedAt
+                    BoundSg88SummonObjectId = selectedCapture.SummonObjectId,
+                    BoundSg88RequestedAt = selectedCapture.RequestedAt
                 };
-                capture.ObservedPackets.Add(boundTrace);
+                selectedCapture.ObservedPackets.Add(boundTrace);
+                TryAssignSg88ManualAttackRequestPacket(selectedCapture, boundTrace, selectedBinding);
                 return boundTrace;
             }
 
@@ -879,6 +919,51 @@ namespace HaCreator.MapSimulator.Managers
             _recentSg88ManualAttackCaptures.Enqueue(capture);
         }
 
+        internal static Sg88ManualAttackTraceBinding EvaluateSg88ManualAttackTraceBinding(
+            OutboundPacketTrace trace,
+            int summonObjectId,
+            int primaryTargetMobId,
+            IReadOnlyList<int> targetMobIds,
+            int requestedAt,
+            int captureWindowEndAt)
+        {
+            if (trace.ObservedAt < requestedAt || trace.ObservedAt > captureWindowEndAt)
+            {
+                return default;
+            }
+
+            byte[] payload = TryDecodeObservedPayloadHex(trace.PayloadHex);
+            bool matchedSummonObjectId = summonObjectId > 0 && PayloadContainsInt32(payload, summonObjectId);
+            bool matchedPrimaryTargetMobId = primaryTargetMobId > 0 && PayloadContainsInt32(payload, primaryTargetMobId);
+            int matchedTargetCount = targetMobIds?
+                .Where(static mobId => mobId > 0)
+                .Distinct()
+                .Count(mobId => PayloadContainsInt32(payload, mobId)) ?? 0;
+            int score = 1;
+            if (matchedSummonObjectId)
+            {
+                score += 8;
+            }
+
+            if (matchedPrimaryTargetMobId)
+            {
+                score += 4;
+            }
+
+            score += Math.Min(4, matchedTargetCount);
+            string evidence = BuildTraceBindingEvidence(
+                matchedSummonObjectId,
+                matchedPrimaryTargetMobId,
+                matchedTargetCount);
+            return new Sg88ManualAttackTraceBinding(
+                true,
+                matchedSummonObjectId,
+                matchedPrimaryTargetMobId,
+                matchedTargetCount,
+                score,
+                evidence);
+        }
+
         private static int CalculateCaptureWindowEndAt(int requestedAt, int baseDelayMs, int followUpDelayMs)
         {
             long totalDelay = (long)Math.Max(0, baseDelayMs) + Math.Max(0, followUpDelayMs) + Sg88ManualAttackCaptureGraceMs;
@@ -903,7 +988,7 @@ namespace HaCreator.MapSimulator.Managers
                 : string.Empty;
         }
 
-        private static string FormatObservedPacketList(IReadOnlyList<OutboundPacketTrace> observedPackets)
+        private static string FormatObservedPacketList(IReadOnlyList<OutboundPacketTrace> observedPackets, OutboundPacketTrace? requestPacket)
         {
             if (observedPackets == null || observedPackets.Count == 0)
             {
@@ -912,7 +997,119 @@ namespace HaCreator.MapSimulator.Managers
 
             return string.Join(
                 ",",
-                observedPackets.Select(packet => $"0x{packet.Opcode:X}@{packet.ObservedAt}[{packet.PayloadLength}]"));
+                observedPackets.Select(packet =>
+                {
+                    bool isRequestPacket = requestPacket.HasValue
+                        && packet.Opcode == requestPacket.Value.Opcode
+                        && packet.ObservedAt == requestPacket.Value.ObservedAt
+                        && string.Equals(packet.PayloadHex, requestPacket.Value.PayloadHex, StringComparison.Ordinal);
+                    return $"{(isRequestPacket ? "*" : string.Empty)}0x{packet.Opcode:X}@{packet.ObservedAt}[{packet.PayloadLength}]";
+                }));
+        }
+
+        private static string FormatRequestPacket(Sg88ManualAttackCapture capture)
+        {
+            if (capture?.RequestPacket is not OutboundPacketTrace requestPacket)
+            {
+                return "unresolved";
+            }
+
+            string evidence = string.IsNullOrWhiteSpace(capture.RequestPacketEvidence)
+                ? "window-only"
+                : capture.RequestPacketEvidence;
+            return $"0x{requestPacket.Opcode:X}@{requestPacket.ObservedAt}[{requestPacket.PayloadLength}] score={capture.RequestPacketScore} evidence={evidence}";
+        }
+
+        private static void TryAssignSg88ManualAttackRequestPacket(
+            Sg88ManualAttackCapture capture,
+            OutboundPacketTrace trace,
+            Sg88ManualAttackTraceBinding binding)
+        {
+            if (capture == null || !binding.HasSemanticEvidence)
+            {
+                return;
+            }
+
+            int candidateAgeMs = Math.Max(0, unchecked(trace.ObservedAt - capture.RequestedAt));
+            int existingAgeMs = capture.RequestPacket.HasValue
+                ? Math.Max(0, unchecked(capture.RequestPacket.Value.ObservedAt - capture.RequestedAt))
+                : int.MaxValue;
+            if (capture.RequestPacket.HasValue
+                && (binding.Score < capture.RequestPacketScore
+                    || (binding.Score == capture.RequestPacketScore && candidateAgeMs >= existingAgeMs)))
+            {
+                return;
+            }
+
+            capture.RequestPacket = trace;
+            capture.RequestPacketScore = binding.Score;
+            capture.RequestPacketEvidence = binding.Evidence;
+        }
+
+        private static string BuildTraceBindingEvidence(
+            bool matchedSummonObjectId,
+            bool matchedPrimaryTargetMobId,
+            int matchedTargetCount)
+        {
+            List<string> evidence = new();
+            if (matchedSummonObjectId)
+            {
+                evidence.Add("summon");
+            }
+
+            if (matchedPrimaryTargetMobId)
+            {
+                evidence.Add("primary");
+            }
+
+            if (matchedTargetCount > 0)
+            {
+                evidence.Add($"targets:{matchedTargetCount}");
+            }
+
+            return evidence.Count == 0
+                ? "window"
+                : string.Join("+", evidence);
+        }
+
+        private static byte[] TryDecodeObservedPayloadHex(string payloadHex)
+        {
+            if (string.IsNullOrWhiteSpace(payloadHex))
+            {
+                return Array.Empty<byte>();
+            }
+
+            try
+            {
+                return Convert.FromHexString(payloadHex);
+            }
+            catch (FormatException)
+            {
+                return Array.Empty<byte>();
+            }
+        }
+
+        private static bool PayloadContainsInt32(byte[] payload, int value)
+        {
+            if (payload == null || payload.Length < sizeof(int))
+            {
+                return false;
+            }
+
+            Span<byte> needle = stackalloc byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32LittleEndian(needle, value);
+            for (int offset = 0; offset <= payload.Length - needle.Length; offset++)
+            {
+                if (payload[offset] == needle[0]
+                    && payload[offset + 1] == needle[1]
+                    && payload[offset + 2] == needle[2]
+                    && payload[offset + 3] == needle[3])
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

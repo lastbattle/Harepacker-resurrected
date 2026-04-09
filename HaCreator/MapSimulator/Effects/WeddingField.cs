@@ -72,6 +72,7 @@ namespace HaCreator.MapSimulator.Effects
         private const int DialogMaxWidth = 560;
         private const int DialogPadding = 20;
         private const int DialogLineSpacing = 4;
+        private const int ParticipantLabelLineSpacing = 2;
         private const int PacketTypeUserEnterField = 179;
         private const int PacketTypeUserLeaveField = 180;
         private const int PacketTypeUserMove = 210;
@@ -870,12 +871,30 @@ namespace HaCreator.MapSimulator.Effects
                 out _)
                 && _participantActors.TryGetValue(characterId, out WeddingRemoteParticipant promotedParticipant))
             {
-                promotedParticipant.TemporaryStats = participant.TemporaryStats;
-                if (participant.AvatarModifiedState.HasValue)
-                {
-                    promotedParticipant.AvatarModifiedState = participant.AvatarModifiedState;
-                    promotedParticipant.AvatarModifiedRevision = participant.AvatarModifiedRevision;
-                }
+                CopyPromotedAudienceParticipantState(participant, promotedParticipant);
+            }
+        }
+
+        private static void CopyPromotedAudienceParticipantState(WeddingRemoteParticipant source, WeddingRemoteParticipant destination)
+        {
+            if (source == null || destination == null)
+            {
+                return;
+            }
+
+            destination.PortableChairItemId = source.PortableChairItemId;
+            destination.PortableChairPairCharacterId = source.PortableChairPairCharacterId;
+            destination.TemporaryStats = source.TemporaryStats;
+            destination.MovementSnapshot = source.MovementSnapshot;
+            destination.MovementDrivenActionSelection = source.MovementDrivenActionSelection;
+            destination.AvatarModifiedState = source.AvatarModifiedState;
+            destination.AvatarModifiedRevision = source.AvatarModifiedRevision;
+            destination.HasExplicitFacing = source.HasExplicitFacing;
+            destination.HasExplicitAction = source.HasExplicitAction;
+            destination.HasExplicitBuild = source.HasExplicitBuild;
+            if (!string.IsNullOrWhiteSpace(source.BaseActionName))
+            {
+                destination.BaseActionName = source.BaseActionName;
             }
         }
 
@@ -2838,19 +2857,82 @@ namespace HaCreator.MapSimulator.Effects
                 }
 
 
-                Vector2 textSize = font.MeasureString(participant.Name);
                 float topY = screenY - frame.FeetOffset + frame.Bounds.Top;
-                Vector2 textPosition = new Vector2(
-                    screenX - (textSize.X * 0.5f),
-                    topY - textSize.Y - 6f);
-                DrawOutlinedText(spriteBatch, font, participant.Name, textPosition, Color.Black, new Color(255, 242, 178));
+                DrawParticipantLabels(spriteBatch, font, participant, screenX, topY);
             }
         }
 
 
+        internal static IReadOnlyList<string> BuildParticipantLabelLines(WeddingRemoteParticipant participant)
+        {
+            List<string> lines = new();
+            if (participant == null)
+            {
+                return lines;
+            }
+
+            string guildName = participant.Build?.GuildName?.Trim();
+            if (!string.IsNullOrWhiteSpace(guildName))
+            {
+                lines.Add(guildName);
+            }
+
+            string name = participant.Name?.Trim();
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                lines.Add(name);
+            }
+
+            return lines;
+        }
+
+        private static void DrawParticipantLabels(
+            SpriteBatch spriteBatch,
+            SpriteFont font,
+            WeddingRemoteParticipant participant,
+            int screenX,
+            float topY)
+        {
+            IReadOnlyList<string> labelLines = BuildParticipantLabelLines(participant);
+            if (labelLines.Count == 0)
+            {
+                return;
+            }
+
+            float labelTopY = topY - ((labelLines.Count * font.LineSpacing) + ((labelLines.Count - 1) * ParticipantLabelLineSpacing)) - 6f;
+            for (int i = 0; i < labelLines.Count; i++)
+            {
+                string line = labelLines[i];
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                Vector2 textSize = font.MeasureString(line);
+                Vector2 textPosition = new(
+                    screenX - (textSize.X * 0.5f),
+                    labelTopY + (i * (font.LineSpacing + ParticipantLabelLineSpacing)));
+                Color textColor = i == labelLines.Count - 1
+                    ? new Color(255, 242, 178)
+                    : new Color(176, 226, 255);
+                DrawOutlinedText(spriteBatch, font, line, textPosition, Color.Black, textColor);
+            }
+        }
+
         private static void DrawOutlinedText(SpriteBatch spriteBatch, SpriteFont font, string text, Vector2 position, Color shadowColor, Color textColor)
         {
-            spriteBatch.DrawString(font, text, position + Vector2.One, shadowColor);
+            Vector2[] offsets =
+            {
+                new Vector2(-1f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(0f, -1f),
+                new Vector2(0f, 1f)
+            };
+            foreach (Vector2 offset in offsets)
+            {
+                spriteBatch.DrawString(font, text, position + offset, shadowColor);
+            }
+
             spriteBatch.DrawString(font, text, position, textColor);
         }
 

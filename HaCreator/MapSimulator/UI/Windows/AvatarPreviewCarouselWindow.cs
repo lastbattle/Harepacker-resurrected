@@ -15,13 +15,10 @@ namespace HaCreator.MapSimulator.UI
     public sealed class AvatarPreviewCarouselWindow : UIWindowBase
     {
         private const int EntriesPerPage = 3;
-        private const int CardWidth = 183;
-        private const int CardHeight = 151;
         private const int CardTopLeftX = 18;
         private const int CardTopLeftY = 46;
         private const int CardGapX = 14;
         private const int NameTagOffsetY = 63;
-        private const int NameTagBaselineOffsetY = 120;
         private const int DoubleClickThresholdMs = 400;
         private const int ClientNameTagMinimumWidth = 58;
         private const int ClientNameTagHorizontalPadding = 18;
@@ -52,6 +49,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly IReadOnlyList<PreviewCanvasFrame> _buyCharacterFrames;
         private readonly PreviewCanvasFrame _emptySlotFrame;
         private readonly ClientTextRasterizer _nameTagTextRasterizer;
+        private readonly int _cardWidth;
+        private readonly int _cardHeight;
 
         private SpriteFont _font;
         private int _selectedIndex = -1;
@@ -85,6 +84,22 @@ namespace HaCreator.MapSimulator.UI
             _buyCharacterFrames = buyCharacterFrames ?? Array.Empty<PreviewCanvasFrame>();
             _prevPageButton = prevPageButton;
             _nextPageButton = nextPageButton;
+            _cardWidth = Math.Max(
+                normalCardFrame.Texture?.Width ?? 0,
+                _selectedCardFrame.Texture?.Width ?? 0);
+            _cardHeight = Math.Max(
+                normalCardFrame.Texture?.Height ?? 0,
+                _selectedCardFrame.Texture?.Height ?? 0);
+            if (_cardWidth <= 0)
+            {
+                _cardWidth = 183;
+            }
+
+            if (_cardHeight <= 0)
+            {
+                _cardHeight = 151;
+            }
+
             GraphicsDevice graphicsDevice = frame?.Texture?.GraphicsDevice;
             if (graphicsDevice != null)
             {
@@ -246,20 +261,22 @@ namespace HaCreator.MapSimulator.UI
 
                 int avatarAnchorX = slotAnchor.X;
                 int avatarAnchorY = slotAnchor.Y;
-                DrawJobDecoration(sprite, build, avatarAnchorX, avatarAnchorY);
+                int absoluteAnchorX = Position.X + avatarAnchorX;
+                int absoluteAnchorY = Position.Y + avatarAnchorY;
+                DrawJobDecoration(sprite, build, absoluteAnchorX, absoluteAnchorY);
 
                 if (_previewAssemblers.TryGetValue(entry, out CharacterAssembler assembler))
                 {
                     AssembledFrame previewFrame = assembler.GetFrameAtTime("stand1", tickCount);
                     if (previewFrame != null)
                     {
-                        previewFrame.Draw(sprite, skeletonMeshRenderer, avatarAnchorX, avatarAnchorY, false, Color.White);
+                        previewFrame.Draw(sprite, skeletonMeshRenderer, absoluteAnchorX, absoluteAnchorY, false, Color.White);
                     }
                 }
 
                 if (_nameTagTextRasterizer != null || _font != null)
                 {
-                    DrawNameTag(sprite, build.Name, isSelected, avatarAnchorX, cardBounds.Y + NameTagBaselineOffsetY);
+                    DrawNameTag(sprite, build.Name, isSelected, absoluteAnchorX, absoluteAnchorY + NameTagOffsetY);
                 }
             }
         }
@@ -393,8 +410,8 @@ namespace HaCreator.MapSimulator.UI
             return new Rectangle(
                 Position.X + topLeft.X,
                 Position.Y + topLeft.Y,
-                CardWidth,
-                CardHeight);
+                _cardWidth,
+                _cardHeight);
         }
 
         private Point GetSlotAnchor(int visibleSlotIndex)
@@ -408,10 +425,10 @@ namespace HaCreator.MapSimulator.UI
                 topLeft.Y + frame.Origin.Y);
         }
 
-        private static Point GetCardTopLeft(int visibleSlotIndex)
+        private Point GetCardTopLeft(int visibleSlotIndex)
         {
             return new Point(
-                CardTopLeftX + (visibleSlotIndex * (CardWidth + CardGapX)),
+                CardTopLeftX + (visibleSlotIndex * (_cardWidth + CardGapX)),
                 CardTopLeftY);
         }
 

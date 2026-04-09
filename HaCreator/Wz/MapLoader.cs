@@ -114,6 +114,9 @@ namespace HaCreator.Wz
                     case "fishingZone":
                     case "remoteCharacterEffect":
                     case "publicTaggedObjectVisible":
+                    case "pulbicTaggedObjectVisible":
+                        copyPropNames.Add(prop.Name);
+                        continue;
                     case "MirrorFieldData":
                     case "defenseMob":
                     case "randomMobGen":

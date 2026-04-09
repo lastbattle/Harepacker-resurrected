@@ -213,7 +213,7 @@ namespace HaCreator.MapSimulator.Companions
 
             bool explicitActionSelected = false;
             string ownerActionName = owner.CurrentActionName;
-            string explicitActionName = ResolveExplicitActionName(ownerActionName, animationSet);
+            string explicitActionName = ResolveExplicitActionName(owner, ownerActionName, animationSet);
             if (!string.Equals(_observedOwnerActionName, ownerActionName, StringComparison.OrdinalIgnoreCase))
             {
                 _observedOwnerActionName = ownerActionName;
@@ -426,8 +426,16 @@ namespace HaCreator.MapSimulator.Companions
             return dragonJob != 0;
         }
 
-        private static string ResolveExplicitActionName(string ownerActionName, DragonAnimationSet animationSet)
+        private static string ResolveExplicitActionName(PlayerCharacter owner, string ownerActionName, DragonAnimationSet animationSet)
         {
+            if (owner?.TryGetCurrentClientRawActionCode(out int rawActionCode) == true
+                && DragonActionLoader.TryGetClientActionNameFromRawActionCode(rawActionCode, out string rawActionName)
+                && animationSet.TryGetAnimation(rawActionName, out _)
+                && IsExplicitDragonAction(rawActionName))
+            {
+                return rawActionName;
+            }
+
             if (string.IsNullOrWhiteSpace(ownerActionName))
             {
                 return null;
@@ -537,8 +545,7 @@ namespace HaCreator.MapSimulator.Companions
 
         private static bool ShouldLoopExplicitAction(string actionName)
         {
-            return !string.IsNullOrWhiteSpace(actionName)
-                   && actionName.EndsWith("_prepare", StringComparison.OrdinalIgnoreCase);
+            return DragonActionLoader.IsClientHeldActionName(actionName);
         }
 
         private bool ShouldSuppressForCurrentMap()
@@ -1467,10 +1474,50 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            return TryFormatQuestInfoEffectUol(rawFormat, questState, out effectUol);
+            if (TryFormatQuestInfoEffectUolExactClient(rawFormat, questState, out string directEffectUol)
+                && DoesWzEffectAssetExist(directEffectUol))
+            {
+                effectUol = directEffectUol;
+                return true;
+            }
+
+            return TryFormatQuestInfoEffectUolCompatibility(rawFormat, questState, out effectUol);
         }
 
-        internal static bool TryFormatQuestInfoEffectUol(string rawFormat, int questState, out string effectUol)
+        internal static bool TryFormatQuestInfoEffectUolExactClient(string rawFormat, int questState, out string effectUol)
+        {
+            effectUol = null;
+
+            if (questState is < 0 or > 2 || string.IsNullOrWhiteSpace(rawFormat))
+            {
+                return false;
+            }
+
+            string normalized = rawFormat.Trim().Replace('\\', '/');
+            string formatted = null;
+            if (normalized.Contains("{0}", StringComparison.Ordinal))
+            {
+                formatted = normalized.Replace("{0}", questState.ToString(), StringComparison.Ordinal);
+            }
+            else if (normalized.Contains("%d", StringComparison.Ordinal))
+            {
+                formatted = normalized.Replace("%d", questState.ToString(), StringComparison.Ordinal);
+            }
+            else if (normalized.Contains("%s", StringComparison.Ordinal))
+            {
+                formatted = normalized.Replace("%s", questState.ToString(), StringComparison.Ordinal);
+            }
+
+            if (!LooksLikeQuestInfoEffectUol(formatted))
+            {
+                return false;
+            }
+
+            effectUol = formatted;
+            return true;
+        }
+
+        internal static bool TryFormatQuestInfoEffectUolCompatibility(string rawFormat, int questState, out string effectUol)
         {
             effectUol = null;
 
@@ -1512,6 +1559,22 @@ namespace HaCreator.MapSimulator.Companions
 
             effectUol = formatted;
             return true;
+        }
+
+        private static bool DoesWzEffectAssetExist(string effectUol)
+        {
+            if (!TryResolveWzAssetUol(effectUol, defaultCategory: "Effect", out string category, out string imageName, out string propertyPath))
+            {
+                return false;
+            }
+
+            WzImage image = global::HaCreator.Program.FindImage(category, imageName);
+            if (image == null)
+            {
+                return false;
+            }
+
+            return image[propertyPath] is WzSubProperty;
         }
 
         private static bool LooksLikeQuestInfoEffectUol(string effectUol)

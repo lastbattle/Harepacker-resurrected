@@ -51,6 +51,14 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static readonly string[] SupplementalSummonAnimationBranches =
         {
+            "attack2",
+            "attack3",
+            "attack4",
+            "attack5",
+            "attack6",
+            "attack7",
+            "attack8",
+            "attackF",
             "heal",
             "support",
             "subsummon",
@@ -65,6 +73,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             "skill4",
             "skill5",
             "skill6"
+        };
+
+        private static readonly HashSet<string> NonActionSummonBranchNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "info",
+            "ball",
+            "mob"
         };
 
         private const int ClientSummonedFrameDelayFallbackMs = 120;
@@ -490,6 +505,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (commonNode != null)
             {
                 skill.MaxLevel = GetInt(commonNode, "maxLevel", 1);
+                skill.EnergyChargeThresholdFormula = GetString(commonNode, "x");
                 skill.SummonSubTimeFormula = GetString(commonNode, "subTime");
                 skill.SummonTimeFormula = GetString(commonNode, "time");
                 skill.SummonSelfDestructionFormula = GetString(commonNode, "selfDestruction");
@@ -2204,6 +2220,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             skill.SummonSpawnDistanceX = movementProfile.SpawnDistanceX;
 
             SkillAnimation directAnimation = GetOrLoadSummonActionAnimation(skill, summonNode, "summon");
+            RegisterSummonActionAnimation(skill, "summon", directAnimation);
 
             string spawnBranchName = SelectPreferredSummonSpawnBranch(branchNames);
             if (spawnBranchName != null)
@@ -2216,6 +2233,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     {
                         skill.SummonSpawnAnimation = spawnAnimation;
                         skill.SummonSpawnBranchName = spawnBranchName;
+                        RegisterSummonActionAnimation(skill, spawnBranchName, spawnAnimation);
                     }
                 }
             }
@@ -2273,6 +2291,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             skill.SummonAnimation = summonAnimation;
             skill.SummonIdleBranchName = preferredBranchName;
+            RegisterSummonActionAnimation(skill, preferredBranchName, summonAnimation);
             if (skill.SummonSpawnAnimation == null)
             {
                 skill.SummonSpawnAnimation = summonAnimation;
@@ -2293,6 +2312,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     skill.SummonAttackPrepareAnimation = prepareAnimation;
                     skill.SummonPrepareBranchName = "prepare";
+                    RegisterSummonActionAnimation(skill, "prepare", prepareAnimation);
                 }
             }
 
@@ -2319,12 +2339,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ? summonNode[removalBranchName]
                 : null;
 
-            PopulateSummonAttackMetadata(skill, attackBranch);
+            PopulateSummonAttackMetadata(skill, attackBranch, attackBranchName);
             if (skill.SelfDestructMinion
                 && removalBranch != null
                 && !string.Equals(removalBranchName, attackBranchName, StringComparison.OrdinalIgnoreCase))
             {
-                PopulateSummonAttackMetadata(skill, removalBranch);
+                PopulateSummonAttackMetadata(skill, removalBranch, removalBranchName);
             }
             skill.SummonAttackBranchName = attackBranchName;
 
@@ -2332,6 +2352,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (attackAnimation.Frames.Count > 0)
             {
                 skill.SummonAttackAnimation = attackAnimation;
+                RegisterSummonActionAnimation(skill, attackBranchName, attackAnimation);
             }
 
               if (removalBranch != null)
@@ -2341,18 +2362,26 @@ namespace HaCreator.MapSimulator.Character.Skills
                   {
                       skill.SummonRemovalAnimation = removalAnimation;
                       skill.SummonRemovalBranchName = removalBranchName;
+                      RegisterSummonActionAnimation(skill, removalBranchName, removalAnimation);
                   }
               }
 
               skill.SummonProjectileAnimations = LoadSummonIndexedAnimations(summonNode["ball"], "ball");
               skill.SummonTargetHitPresentations = LoadSummonImpactPresentations(summonNode["mob"], "mob");
 
-              AppendSummonIndexedAnimations(
+              List<SkillAnimation> attackBranchProjectileAnimations = BuildSummonBranchProjectileAnimations(
                   skill.SummonProjectileAnimations,
                   LoadSummonIndexedAnimations(attackBranch["info"]?["ball"], $"{attackBranchName}/info/ball"));
-              AppendSummonImpactPresentations(
+              List<SummonImpactPresentation> attackBranchImpactPresentations = BuildSummonBranchImpactPresentations(
                   skill.SummonTargetHitPresentations,
                   LoadSummonImpactPresentations(attackBranch["info"]?["mob"], $"{attackBranchName}/info/mob"));
+              skill.SummonProjectileAnimations = attackBranchProjectileAnimations;
+              skill.SummonTargetHitPresentations = attackBranchImpactPresentations;
+              RegisterSummonBranchImpactMetadata(
+                  skill,
+                  attackBranchName,
+                  attackBranchProjectileAnimations,
+                  attackBranchImpactPresentations);
               if (removalBranch != null)
               {
                   AppendSummonIndexedAnimations(
@@ -2367,10 +2396,12 @@ namespace HaCreator.MapSimulator.Character.Skills
               AppendSummonImpactPresentations(
                   skill.SummonTargetHitPresentations,
                   LoadSummonHitTargetAnimations(hitNode, "hit"));
-              SkillAnimation hitAnimation = LoadSummonHitAnimation(skill, hitNode);
+              SkillAnimation hitAnimation = LoadSummonHitAnimation(skill, hitNode, out string hitBranchName);
               if (hitAnimation?.Frames.Count > 0)
               {
                   skill.SummonHitAnimation = hitAnimation;
+                  skill.SummonHitBranchName = hitBranchName;
+                  RegisterSummonActionAnimation(skill, hitBranchName, hitAnimation);
               }
 
               skill.SummonTargetHitAnimations = skill.SummonTargetHitPresentations
@@ -2379,6 +2410,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                   .ToList();
 
               LoadSupplementalSummonAnimations(skill, summonNode, branchNames);
+              LoadRemainingSummonActionAnimations(skill, summonNode, branchNames);
               PopulateSummonHitTimingMetadata(skill, attackBranchName, hitNode);
           }
 
@@ -2401,7 +2433,39 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SkillAnimation animation = GetOrLoadSummonActionAnimation(skill, summonNode[branchName], branchName);
                 if (animation.Frames.Count > 0)
                 {
-                    skill.SummonNamedAnimations[branchName] = animation;
+                    RegisterSummonActionAnimation(skill, branchName, animation);
+                    RegisterSupplementalSummonAttackMetadata(skill, summonNode, branchName);
+                }
+            }
+        }
+
+        private void LoadRemainingSummonActionAnimations(SkillData skill, WzImageProperty summonNode, IEnumerable<string> branchNames)
+        {
+            if (skill == null || summonNode == null || branchNames == null)
+            {
+                return;
+            }
+
+            foreach (string branchName in branchNames)
+            {
+                if (string.IsNullOrWhiteSpace(branchName)
+                    || NonActionSummonBranchNames.Contains(branchName)
+                    || string.Equals(branchName, "hit", StringComparison.OrdinalIgnoreCase)
+                    || skill.SummonActionAnimations.ContainsKey(branchName))
+                {
+                    continue;
+                }
+
+                WzImageProperty branchNode = summonNode[branchName];
+                if (!IsSummonActionBranchProperty(branchNode))
+                {
+                    continue;
+                }
+
+                SkillAnimation animation = GetOrLoadSummonActionAnimation(skill, branchNode, branchName);
+                if (animation.Frames.Count > 0)
+                {
+                    RegisterSummonActionAnimation(skill, branchName, animation);
                 }
             }
         }
@@ -2489,6 +2553,26 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        private void RegisterSummonActionAnimation(SkillData skill, string actionKey, SkillAnimation animation)
+        {
+            if (skill == null || string.IsNullOrWhiteSpace(actionKey) || animation?.Frames.Count <= 0)
+            {
+                return;
+            }
+
+            CacheSummonActionAnimation(skill, actionKey, animation);
+            if (ShouldTrackSummonNamedActionKey(actionKey))
+            {
+                skill.SummonNamedAnimations[actionKey] = animation;
+            }
+        }
+
+        internal static bool ShouldTrackSummonNamedActionKey(string actionKey)
+        {
+            return !string.IsNullOrWhiteSpace(actionKey)
+                && actionKey.IndexOf('/') < 0;
+        }
+
         private static IEnumerable<int> EnumerateSummonActionCacheLevels(SkillData skill)
         {
             if (skill?.Levels?.Count > 0)
@@ -2519,7 +2603,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             return animation;
         }
 
-        private static void PopulateSummonAttackMetadata(SkillData skill, WzImageProperty attackBranch)
+        private static void PopulateSummonAttackMetadata(SkillData skill, WzImageProperty attackBranch, string branchName = null)
         {
             if (skill == null || attackBranch == null)
             {
@@ -2533,9 +2617,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int attackAfter = GetInt(infoNode, "attackAfter");
-            if (attackAfter > 0 && skill.SummonAttackIntervalMs <= 0)
+            if (attackAfter > 0)
             {
-                skill.SummonAttackIntervalMs = attackAfter;
+                if (skill.SummonAttackIntervalMs <= 0)
+                {
+                    skill.SummonAttackIntervalMs = attackAfter;
+                }
+
+                if (!string.IsNullOrWhiteSpace(branchName))
+                {
+                    skill.SummonAttackAfterMsByBranch[branchName] = attackAfter;
+                }
             }
 
             int attackCount = GetInt(infoNode, "attackCount");
@@ -2551,9 +2643,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int bulletSpeed = GetInt(infoNode, "bulletSpeed");
-            if (bulletSpeed > 0 && skill.SummonAttackProjectileSpeed <= 0)
+            if (bulletSpeed > 0)
             {
-                skill.SummonAttackProjectileSpeed = bulletSpeed;
+                if (skill.SummonAttackProjectileSpeed <= 0)
+                {
+                    skill.SummonAttackProjectileSpeed = bulletSpeed;
+                }
+
+                if (!string.IsNullOrWhiteSpace(branchName))
+                {
+                    skill.SummonAttackProjectileSpeedByBranch[branchName] = bulletSpeed;
+                }
             }
 
             WzImageProperty rangeNode = infoNode["range"];
@@ -2564,25 +2664,73 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             Point? lt = GetVector(rangeNode, "lt");
             Point? rb = GetVector(rangeNode, "rb");
-            if ((lt.HasValue || rb.HasValue)
-                && skill.SummonAttackRangeLeft <= 0
-                && skill.SummonAttackRangeRight <= 0
-                && skill.SummonAttackRangeTop == 0
-                && skill.SummonAttackRangeBottom == 0)
+            if (lt.HasValue || rb.HasValue)
             {
-                skill.SummonAttackRangeLeft = Math.Abs(lt?.X ?? 0);
-                skill.SummonAttackRangeRight = rb?.X ?? 0;
-                skill.SummonAttackRangeTop = lt?.Y ?? 0;
-                skill.SummonAttackRangeBottom = rb?.Y ?? 0;
+                if (skill.SummonAttackRangeLeft <= 0
+                    && skill.SummonAttackRangeRight <= 0
+                    && skill.SummonAttackRangeTop == 0
+                    && skill.SummonAttackRangeBottom == 0)
+                {
+                    skill.SummonAttackRangeLeft = Math.Abs(lt?.X ?? 0);
+                    skill.SummonAttackRangeRight = rb?.X ?? 0;
+                    skill.SummonAttackRangeTop = lt?.Y ?? 0;
+                    skill.SummonAttackRangeBottom = rb?.Y ?? 0;
+                }
+
+                if (!string.IsNullOrWhiteSpace(branchName))
+                {
+                    skill.SummonNamedRangeMetadata[branchName] = new SkillData.SummonRangeMetadata(
+                        Math.Abs(lt?.X ?? 0),
+                        rb?.X ?? 0,
+                        lt?.Y ?? 0,
+                        rb?.Y ?? 0);
+                }
             }
 
             Point? center = GetVector(rangeNode, "sp");
             int radius = GetInt(rangeNode, "r");
-            if (center.HasValue && radius > 0 && !skill.SummonAttackCenterOffset.HasValue && skill.SummonAttackRadius <= 0)
+            if (center.HasValue && radius > 0)
             {
-                skill.SummonAttackCenterOffset = center.Value;
-                skill.SummonAttackRadius = radius;
+                if (!skill.SummonAttackCenterOffset.HasValue && skill.SummonAttackRadius <= 0)
+                {
+                    skill.SummonAttackCenterOffset = center.Value;
+                    skill.SummonAttackRadius = radius;
+                }
+
+                if (!string.IsNullOrWhiteSpace(branchName))
+                {
+                    skill.SummonNamedAttackCenterOffsets[branchName] = center.Value;
+                    skill.SummonNamedAttackRadii[branchName] = radius;
+                }
             }
+        }
+
+        private void RegisterSupplementalSummonAttackMetadata(SkillData skill, WzImageProperty summonNode, string branchName)
+        {
+            if (skill == null
+                || summonNode == null
+                || string.IsNullOrWhiteSpace(branchName)
+                || !branchName.StartsWith("attack", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            WzImageProperty attackBranch = summonNode[branchName];
+            if (attackBranch == null)
+            {
+                return;
+            }
+
+            PopulateSummonAttackMetadata(skill, attackBranch, branchName);
+            RegisterSummonBranchImpactMetadata(
+                skill,
+                branchName,
+                BuildSummonBranchProjectileAnimations(
+                    skill.SummonProjectileAnimations,
+                    LoadSummonIndexedAnimations(attackBranch["info"]?["ball"], $"{branchName}/info/ball")),
+                BuildSummonBranchImpactPresentations(
+                    skill.SummonTargetHitPresentations,
+                    LoadSummonImpactPresentations(attackBranch["info"]?["mob"], $"{branchName}/info/mob")));
         }
 
         private static void PopulateSummonHitTimingMetadata(SkillData skill, string attackBranchName, WzImageProperty hitNode)
@@ -2614,8 +2762,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
-        private SkillAnimation LoadSummonHitAnimation(SkillData skill, WzImageProperty hitNode)
+        private SkillAnimation LoadSummonHitAnimation(SkillData skill, WzImageProperty hitNode, out string actionKey)
         {
+            actionKey = null;
             if (hitNode == null)
             {
                 return null;
@@ -2624,6 +2773,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (hitNode.WzProperties.OfType<WzCanvasProperty>().Any())
             {
                 SkillAnimation directAnimation = GetOrLoadSummonActionAnimation(skill, hitNode, "hit");
+                actionKey = directAnimation.Frames.Count > 0 ? "hit" : null;
                 return directAnimation.Frames.Count > 0 ? directAnimation : null;
             }
 
@@ -2645,6 +2795,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                             $"hit/{child.Name}");
                         if (indexedAnimation.Frames.Count > 0)
                         {
+                            actionKey = $"hit/{child.Name}";
                             return indexedAnimation;
                         }
                     }
@@ -2664,6 +2815,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                                 $"hit/{child.Name}/{nestedChild.Name}");
                             if (nestedAnimation.Frames.Count > 0)
                             {
+                                actionKey = $"hit/{child.Name}/{nestedChild.Name}";
                                 return nestedAnimation;
                             }
                         }
@@ -2858,6 +3010,48 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     destination.Add(presentation);
                 }
+            }
+        }
+
+        private static List<SkillAnimation> BuildSummonBranchProjectileAnimations(
+            IEnumerable<SkillAnimation> baseAnimations,
+            IEnumerable<SkillAnimation> overrideAnimations)
+        {
+            var resolved = new List<SkillAnimation>();
+            AppendSummonIndexedAnimations(resolved, baseAnimations);
+            AppendSummonIndexedAnimations(resolved, overrideAnimations);
+            return resolved;
+        }
+
+        private static List<SummonImpactPresentation> BuildSummonBranchImpactPresentations(
+            IEnumerable<SummonImpactPresentation> basePresentations,
+            IEnumerable<SummonImpactPresentation> overridePresentations)
+        {
+            var resolved = new List<SummonImpactPresentation>();
+            AppendSummonImpactPresentations(resolved, basePresentations);
+            AppendSummonImpactPresentations(resolved, overridePresentations);
+            return resolved;
+        }
+
+        private static void RegisterSummonBranchImpactMetadata(
+            SkillData skill,
+            string branchName,
+            List<SkillAnimation> projectileAnimations,
+            List<SummonImpactPresentation> impactPresentations)
+        {
+            if (skill == null || string.IsNullOrWhiteSpace(branchName))
+            {
+                return;
+            }
+
+            if (projectileAnimations?.Count > 0)
+            {
+                skill.SummonProjectileAnimationsByBranch[branchName] = projectileAnimations;
+            }
+
+            if (impactPresentations?.Count > 0)
+            {
+                skill.SummonTargetHitPresentationsByBranch[branchName] = impactPresentations;
             }
         }
 
@@ -3252,6 +3446,45 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return !string.IsNullOrWhiteSpace(actionKey)
                    && actionKey.StartsWith("repeat", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool IsSummonActionBranchProperty(WzImageProperty node)
+        {
+            if (node == null)
+            {
+                return false;
+            }
+
+            if (node is WzCanvasProperty || node is WzUOLProperty)
+            {
+                return true;
+            }
+
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                if (child == null)
+                {
+                    continue;
+                }
+
+                if (child is WzCanvasProperty || child is WzUOLProperty)
+                {
+                    return true;
+                }
+
+                if (!int.TryParse(child.Name, out _))
+                {
+                    continue;
+                }
+
+                if (child.WzProperties.OfType<WzCanvasProperty>().Any()
+                    || child.WzProperties.OfType<WzUOLProperty>().Any())
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool ShouldAppendReversedSummonFrames(WzImageProperty actionNode, string actionKey)

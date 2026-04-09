@@ -11,6 +11,10 @@ namespace HaCreator.MapSimulator.Character.Skills
     public static class PlayerSkillStateRestrictionEvaluator
     {
         private const double HighestJumpVelocityWindow = 80d;
+        private const int ArrowWeaponType = 45;
+        private const int CrossbowWeaponType = 46;
+        private const int ThrowingStarWeaponType = 47;
+        private const int BulletWeaponType = 49;
         private const int WindWalkSkillId = 11101005;
         private const int WildHunterJaguarJumpSkillId = 33001002;
         private const int NightLordFlashJumpSkillId = 4111006;
@@ -43,6 +47,15 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int SoaringCygnusSkillId = 10001047;
         private const int SoaringEvanSkillId = 20001047;
         private const int SoaringMechanicSkillId = 20011047;
+        private static readonly HashSet<int> WildHunterJaguarTamingMobItemIds = new()
+        {
+            1932030,
+            1932031,
+            1932032,
+            1932033,
+            1932036,
+            1932015
+        };
 
         public static bool CanUseSkill(PlayerCharacter player, SkillData skill)
         {
@@ -138,6 +151,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
+            if (ShouldBlockClientShootAttackOnLadderOrRope(
+                    skill,
+                    player.Build?.GetWeapon()?.ItemId ?? 0,
+                    player.Physics.IsOnLadderOrRope,
+                    player.ResolveMountedStateTamingMobPart()?.ItemId ?? 0))
+            {
+                return "This skill cannot be used while on a ladder or rope.";
+            }
+
             if (UsesLadderOrRopeCastGate(skill) && player.Physics.IsOnLadderOrRope)
             {
                 return "This skill cannot be used while on a ladder or rope.";
@@ -153,6 +175,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return null;
+        }
+
+        internal static bool ShouldBlockClientShootAttackOnLadderOrRope(
+            SkillData skill,
+            int equippedWeaponItemId,
+            bool isOnLadderOrRope,
+            int mountedTamingMobItemId)
+        {
+            if (!isOnLadderOrRope
+                || skill?.IsAttack != true
+                || skill.AttackType != SkillAttackType.Ranged
+                || IsShootSkillNotUsingShootingWeapon(skill.SkillId))
+            {
+                return false;
+            }
+
+            return IsShootingWeaponCode(GetWeaponCode(equippedWeaponItemId))
+                && !IsWildHunterJaguarMountItemId(mountedTamingMobItemId);
         }
 
         private static string GetMovementRestrictionMessage(PlayerCharacter player, SkillData skill)
@@ -258,6 +298,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || skillId == SoaringEvanSkillId
                    || skillId == SoaringMechanicSkillId
                    || UsesVehicleOwnershipOrMountSkill(skill);
+        }
+
+        private static bool IsShootSkillNotUsingShootingWeapon(int skillId)
+        {
+            return skillId is 11101004
+                or 4121003
+                or 4221003
+                or 5121002
+                or 15111006
+                or 15111007
+                or 21100004
+                or 21110004
+                or 21120006
+                or 33101007;
         }
 
         private static bool RequiresStableVehicleCastState(SkillData skill)
@@ -380,6 +434,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             return !string.IsNullOrWhiteSpace(actionName)
                    && !string.IsNullOrWhiteSpace(value)
                    && actionName.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsShootingWeaponCode(int weaponCode)
+        {
+            return weaponCode is ArrowWeaponType
+                or CrossbowWeaponType
+                or ThrowingStarWeaponType
+                or BulletWeaponType;
+        }
+
+        private static bool IsWildHunterJaguarMountItemId(int itemId)
+        {
+            return WildHunterJaguarTamingMobItemIds.Contains(itemId);
+        }
+
+        private static int GetWeaponCode(int itemId)
+        {
+            return itemId > 0 ? Math.Abs(itemId / 10000) % 100 : 0;
         }
 
         private static bool IsExplicitBoundJumpSkill(int skillId)

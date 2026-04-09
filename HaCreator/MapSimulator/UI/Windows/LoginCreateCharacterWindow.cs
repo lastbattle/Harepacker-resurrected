@@ -66,7 +66,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _raceConfirmBackgroundTexture;
         private readonly Texture2D _raceConfirmOkTexture;
         private readonly Texture2D _raceConfirmCancelTexture;
-        private readonly Dictionary<LoginCreateCharacterRaceKind, Texture2D> _raceConfirmLabelTexturesByRace;
+        private readonly Dictionary<LoginCreateCharacterRaceKind, AnimationFrame> _raceConfirmLabelFramesByRace;
         private readonly UIObject _confirmButton;
         private readonly UIObject _cancelButton;
         private readonly UIObject _checkButton;
@@ -108,7 +108,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D raceConfirmBackgroundTexture,
             Texture2D raceConfirmOkTexture,
             Texture2D raceConfirmCancelTexture,
-            IReadOnlyDictionary<LoginCreateCharacterRaceKind, Texture2D> raceConfirmLabelTexturesByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, AnimationFrame> raceConfirmLabelFramesByRace,
             UIObject confirmButton,
             UIObject cancelButton,
             UIObject checkButton)
@@ -133,8 +133,8 @@ namespace HaCreator.MapSimulator.UI
             _raceConfirmBackgroundTexture = raceConfirmBackgroundTexture;
             _raceConfirmOkTexture = raceConfirmOkTexture;
             _raceConfirmCancelTexture = raceConfirmCancelTexture;
-            _raceConfirmLabelTexturesByRace = raceConfirmLabelTexturesByRace?.ToDictionary(pair => pair.Key, pair => pair.Value)
-                ?? new Dictionary<LoginCreateCharacterRaceKind, Texture2D>();
+            _raceConfirmLabelFramesByRace = raceConfirmLabelFramesByRace?.ToDictionary(pair => pair.Key, pair => pair.Value)
+                ?? new Dictionary<LoginCreateCharacterRaceKind, AnimationFrame>();
             if (frame?.Texture?.GraphicsDevice != null)
             {
                 _pixelTexture = new Texture2D(frame.Texture.GraphicsDevice, 1, 1);
@@ -276,13 +276,17 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_isRaceConfirmationOpen)
             {
-                if (Pressed(keyboardState, Keys.Tab) ||
-                    Pressed(keyboardState, Keys.Left) ||
-                    Pressed(keyboardState, Keys.Right) ||
-                    Pressed(keyboardState, Keys.Up) ||
-                    Pressed(keyboardState, Keys.Down))
+                if (Pressed(keyboardState, Keys.Tab))
                 {
                     _isRaceConfirmAcceptFocused = !_isRaceConfirmAcceptFocused;
+                }
+                else if (Pressed(keyboardState, Keys.Left))
+                {
+                    _isRaceConfirmAcceptFocused = true;
+                }
+                else if (Pressed(keyboardState, Keys.Right))
+                {
+                    _isRaceConfirmAcceptFocused = false;
                 }
 
                 if (Pressed(keyboardState, Keys.Enter))
@@ -480,10 +484,19 @@ namespace HaCreator.MapSimulator.UI
                 return handled;
             }
 
+            Point localPoint = new(mouseState.X - Position.X, mouseState.Y - Position.Y);
+            if (_fixedStage == LoginCreateCharacterStage.RaceSelect && _isRaceConfirmationOpen)
+            {
+                bool hoveredConfirmButton = UpdateRaceConfirmFocus(localPoint, mouseCursor);
+                if (hoveredConfirmButton && mouseState.LeftButton != ButtonState.Pressed)
+                {
+                    return true;
+                }
+            }
+
             if (_fixedStage == LoginCreateCharacterStage.NameSelect && handled && mouseState.LeftButton == ButtonState.Pressed)
             {
-                Point handledLocalPoint = new(mouseState.X - Position.X, mouseState.Y - Position.Y);
-                if (!GetLocalNameInputBounds().Contains(handledLocalPoint))
+                if (!GetLocalNameInputBounds().Contains(localPoint))
                 {
                     _softKeyboardActive = false;
                 }
@@ -501,7 +514,6 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            Point localPoint = new(mouseState.X - Position.X, mouseState.Y - Position.Y);
             if (_fixedStage == LoginCreateCharacterStage.RaceSelect && _isRaceConfirmationOpen)
             {
                 return TryHandleRaceConfirmClick(localPoint, mouseCursor);
@@ -643,12 +655,12 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_pixelTexture, dialogBounds, new Color(34, 24, 10, 220));
             }
 
-            if (_raceConfirmLabelTexturesByRace.TryGetValue(_selectedRace, out Texture2D raceLabel) && raceLabel != null)
+            if (_raceConfirmLabelFramesByRace.TryGetValue(_selectedRace, out AnimationFrame raceLabelFrame) && raceLabelFrame.Texture != null)
             {
                 Vector2 labelPosition = new(
-                    dialogBounds.X + (dialogBounds.Width - raceLabel.Width) / 2f,
-                    dialogBounds.Y + 24f);
-                sprite.Draw(raceLabel, labelPosition, Color.White);
+                    dialogBounds.X + 107f + raceLabelFrame.Offset.X - raceLabelFrame.Texture.Width / 2f,
+                    dialogBounds.Y + 31f + raceLabelFrame.Offset.Y - raceLabelFrame.Texture.Height / 2f);
+                sprite.Draw(raceLabelFrame.Texture, labelPosition, Color.White);
             }
             else
             {
@@ -1431,6 +1443,28 @@ namespace HaCreator.MapSimulator.UI
             return dialogBounds.Contains(localPoint);
         }
 
+        private bool UpdateRaceConfirmFocus(Point localPoint, MouseCursorItem mouseCursor)
+        {
+            Rectangle dialogBounds = GetRaceConfirmDialogBounds();
+            Rectangle okBounds = OffsetRectangle(dialogBounds.Location, RaceConfirmOkBounds);
+            if (okBounds.Contains(localPoint))
+            {
+                _isRaceConfirmAcceptFocused = true;
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            Rectangle cancelBounds = OffsetRectangle(dialogBounds.Location, RaceConfirmCancelBounds);
+            if (cancelBounds.Contains(localPoint))
+            {
+                _isRaceConfirmAcceptFocused = false;
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            return dialogBounds.Contains(localPoint);
+        }
+
         private Rectangle GetRaceConfirmDialogBounds()
         {
             return new Rectangle(
@@ -1500,7 +1534,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D raceConfirmBackgroundTexture,
             Texture2D raceConfirmOkTexture,
             Texture2D raceConfirmCancelTexture,
-            IReadOnlyDictionary<LoginCreateCharacterRaceKind, Texture2D> raceConfirmLabelTexturesByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, AnimationFrame> raceConfirmLabelFramesByRace,
             UIObject confirmButton,
             UIObject cancelButton,
             UIObject checkButton)
@@ -1519,7 +1553,7 @@ namespace HaCreator.MapSimulator.UI
                 raceConfirmBackgroundTexture,
                 raceConfirmOkTexture,
                 raceConfirmCancelTexture,
-                raceConfirmLabelTexturesByRace,
+                raceConfirmLabelFramesByRace,
                 confirmButton,
                 cancelButton,
                 checkButton)
@@ -1542,7 +1576,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D raceConfirmBackgroundTexture,
             Texture2D raceConfirmOkTexture,
             Texture2D raceConfirmCancelTexture,
-            IReadOnlyDictionary<LoginCreateCharacterRaceKind, Texture2D> raceConfirmLabelTexturesByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, AnimationFrame> raceConfirmLabelFramesByRace,
             UIObject confirmButton,
             UIObject cancelButton,
             UIObject checkButton)
@@ -1561,7 +1595,7 @@ namespace HaCreator.MapSimulator.UI
                 raceConfirmBackgroundTexture,
                 raceConfirmOkTexture,
                 raceConfirmCancelTexture,
-                raceConfirmLabelTexturesByRace,
+                raceConfirmLabelFramesByRace,
                 confirmButton,
                 cancelButton,
                 checkButton)
@@ -1584,7 +1618,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D raceConfirmBackgroundTexture,
             Texture2D raceConfirmOkTexture,
             Texture2D raceConfirmCancelTexture,
-            IReadOnlyDictionary<LoginCreateCharacterRaceKind, Texture2D> raceConfirmLabelTexturesByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, AnimationFrame> raceConfirmLabelFramesByRace,
             UIObject confirmButton,
             UIObject cancelButton,
             UIObject checkButton)
@@ -1603,7 +1637,7 @@ namespace HaCreator.MapSimulator.UI
                 raceConfirmBackgroundTexture,
                 raceConfirmOkTexture,
                 raceConfirmCancelTexture,
-                raceConfirmLabelTexturesByRace,
+                raceConfirmLabelFramesByRace,
                 confirmButton,
                 cancelButton,
                 checkButton)
@@ -1626,7 +1660,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D raceConfirmBackgroundTexture,
             Texture2D raceConfirmOkTexture,
             Texture2D raceConfirmCancelTexture,
-            IReadOnlyDictionary<LoginCreateCharacterRaceKind, Texture2D> raceConfirmLabelTexturesByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, AnimationFrame> raceConfirmLabelFramesByRace,
             UIObject confirmButton,
             UIObject cancelButton,
             UIObject checkButton)
@@ -1645,7 +1679,7 @@ namespace HaCreator.MapSimulator.UI
                 raceConfirmBackgroundTexture,
                 raceConfirmOkTexture,
                 raceConfirmCancelTexture,
-                raceConfirmLabelTexturesByRace,
+                raceConfirmLabelFramesByRace,
                 confirmButton,
                 cancelButton,
                 checkButton)

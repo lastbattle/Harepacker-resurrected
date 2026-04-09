@@ -179,9 +179,16 @@ namespace HaCreator.MapSimulator.Fields
             return GetItemUseRestrictionMessage(InventoryType.NONE, itemId, 0) == null;
         }
 
-        public string GetItemUseRestrictionMessage(InventoryType inventoryType, int itemId, int currentTimeMs)
+        public string GetItemUseRestrictionMessage(
+            InventoryType inventoryType,
+            int itemId,
+            int currentTimeMs,
+            bool usesSharedConsumeItemCooldown = false)
         {
-            string consumeCooldownMessage = GetConsumeItemCooldownRestrictionMessage(inventoryType, currentTimeMs);
+            string consumeCooldownMessage = GetConsumeItemCooldownRestrictionMessage(
+                inventoryType,
+                currentTimeMs,
+                usesSharedConsumeItemCooldown);
             if (!string.IsNullOrWhiteSpace(consumeCooldownMessage))
             {
                 return consumeCooldownMessage;
@@ -195,9 +202,9 @@ namespace HaCreator.MapSimulator.Fields
             return $"Item {itemId} cannot be used in this field. Allowed item IDs: {FormatItemPreview(_allowedItems)}.";
         }
 
-        public void RegisterSuccessfulItemUse(InventoryType inventoryType, int currentTimeMs)
+        public void RegisterSuccessfulItemUse(bool usesSharedConsumeItemCooldown, int currentTimeMs)
         {
-            if (inventoryType != InventoryType.USE || _consumeItemCoolTimeSeconds <= 0)
+            if (!usesSharedConsumeItemCooldown || _consumeItemCoolTimeSeconds <= 0)
             {
                 return;
             }
@@ -475,9 +482,13 @@ namespace HaCreator.MapSimulator.Fields
                 : Math.Max(0, _resolveEnvironmentalDamageProtectionAmount(currentTimeMs));
         }
 
-        private string GetConsumeItemCooldownRestrictionMessage(InventoryType inventoryType, int currentTimeMs)
+        private string GetConsumeItemCooldownRestrictionMessage(
+            InventoryType inventoryType,
+            int currentTimeMs,
+            bool usesSharedConsumeItemCooldown)
         {
-            if (inventoryType != InventoryType.USE
+            if (!usesSharedConsumeItemCooldown
+                || inventoryType == InventoryType.NONE
                 || _consumeItemCoolTimeSeconds <= 0
                 || currentTimeMs >= _nextConsumableItemUseAt)
             {

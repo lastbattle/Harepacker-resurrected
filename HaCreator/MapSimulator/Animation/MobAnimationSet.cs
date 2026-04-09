@@ -91,10 +91,19 @@ namespace HaCreator.MapSimulator.Animation
 
             public bool ResolveHitAttach(int frameIndex)
             {
-                return frameIndex >= 0
-                       && FrameHitAttachOverrides.TryGetValue(frameIndex, out bool overrideValue)
-                    ? overrideValue
-                    : HitAttach;
+                if (frameIndex >= 0
+                    && FrameHitAttachOverrides.TryGetValue(frameIndex, out bool overrideValue))
+                {
+                    return overrideValue;
+                }
+
+                if (frameIndex >= 0
+                    && FrameFacingAttachOverrides.TryGetValue(frameIndex, out bool frameFacingAttach))
+                {
+                    return HitAttach || frameFacingAttach;
+                }
+
+                return HitAttach;
             }
 
             public bool ResolveFacingAttach(int frameIndex)

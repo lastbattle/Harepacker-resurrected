@@ -119,7 +119,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return default;
             }
 
-            if (unchecked(currentTick - _openedAtTick) < AutoResolveMs)
+            if (unchecked(currentTick - _openedAtTick) <= AutoResolveMs)
             {
                 return default;
             }

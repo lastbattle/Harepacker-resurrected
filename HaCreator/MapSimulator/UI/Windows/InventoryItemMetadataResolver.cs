@@ -246,6 +246,17 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
+        public static bool IsPetFoodItem(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            return IsPetFoodSpec(itemProperty?["spec"] as WzSubProperty);
+        }
+
         public static bool TryResolveItemInfoPath(int itemId, out string path)
         {
             path = null;
@@ -981,7 +992,7 @@ namespace HaCreator.MapSimulator.UI
         private static void AppendPetFoodEffectLine(List<string> effectLines, WzSubProperty specProperty)
         {
             int fullnessIncrease = GetIntValue(specProperty?["inc"]);
-            if (fullnessIncrease <= 0 || !HasNumericChildEntries(specProperty, "inc"))
+            if (fullnessIncrease <= 0 || !IsPetFoodSpec(specProperty))
             {
                 return;
             }
@@ -1188,6 +1199,8 @@ namespace HaCreator.MapSimulator.UI
             AppendItemPeriodMetadataLines(metadataLines, infoProperty);
             AppendCreateMetadataLines(metadataLines, infoProperty);
             AppendReplaceMetadataLines(metadataLines, infoProperty);
+            AppendRecoveryRateMetadataLines(metadataLines, infoProperty);
+            AppendRandomChairEffectMetadataLines(metadataLines, infoProperty);
             AppendAdditionalInfoFlagsMetadataLines(metadataLines, infoProperty, specProperty);
         }
 
@@ -1375,6 +1388,49 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static void AppendRecoveryRateMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            int recoveryRate = GetIntOrStringValue(infoProperty?["recoveryRate"]);
+            if (recoveryRate > 0)
+            {
+                metadataLines.Add($"Recovery Rate {FormatSignedValue(recoveryRate)}%");
+            }
+        }
+
+        private static void AppendRandomChairEffectMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty?["randEffect"] is not WzSubProperty randomEffectProperty
+                || randomEffectProperty.WzProperties == null)
+            {
+                return;
+            }
+
+            HashSet<string> seenLines = new(StringComparer.Ordinal);
+            foreach (WzImageProperty child in randomEffectProperty.WzProperties)
+            {
+                if (child is not WzSubProperty effectProperty)
+                {
+                    continue;
+                }
+
+                string expressionName = (effectProperty["face"] as WzStringProperty)?.Value;
+                if (string.IsNullOrWhiteSpace(expressionName))
+                {
+                    continue;
+                }
+
+                int probability = GetIntOrStringValue(effectProperty["prob"]);
+                string probabilitySuffix = probability > 0
+                    ? $" ({probability.ToString(CultureInfo.InvariantCulture)}%)"
+                    : string.Empty;
+                string line = $"Chair Expression: {FormatTooltipKeywordLabel(expressionName)}{probabilitySuffix}";
+                if (seenLines.Add(line))
+                {
+                    metadataLines.Add(line);
+                }
+            }
+        }
+
         private static void AppendAdditionalInfoFlagsMetadataLines(
             List<string> metadataLines,
             WzSubProperty infoProperty,
@@ -1507,6 +1563,12 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
+        private static bool IsPetFoodSpec(WzSubProperty specProperty)
+        {
+            return GetIntValue(specProperty?["inc"]) > 0
+                   && HasNumericChildEntries(specProperty, "inc");
+        }
+
         private static string ResolveMapName(int mapId)
         {
             if (global::HaCreator.Program.InfoManager?.MapsNameCache == null)
@@ -1583,6 +1645,17 @@ namespace HaCreator.MapSimulator.UI
             return string.IsNullOrWhiteSpace(mobName)
                 ? $"Mob #{mobId.ToString(CultureInfo.InvariantCulture)}"
                 : mobName;
+        }
+
+        private static string FormatTooltipKeywordLabel(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            string normalized = value.Trim().Replace('_', ' ').Replace('-', ' ');
+            return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(normalized);
         }
 
         private static string ResolveTooltipItemLabel(int itemId)

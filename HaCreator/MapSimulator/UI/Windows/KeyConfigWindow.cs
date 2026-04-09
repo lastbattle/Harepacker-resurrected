@@ -33,23 +33,26 @@ namespace HaCreator.MapSimulator.UI
 
         private readonly struct BindingRow
         {
-            public BindingRow(InputAction action, string label, Rectangle bounds)
+            public BindingRow(InputAction action, string label, Rectangle bounds, int paletteSlotId)
             {
                 Action = action;
                 Label = label;
                 Bounds = bounds;
+                PaletteSlotId = paletteSlotId;
             }
 
             public InputAction Action { get; }
             public string Label { get; }
             public Rectangle Bounds { get; }
+            public int PaletteSlotId { get; }
         }
 
         private readonly List<PageLayer> _mainLayers = new();
         private readonly List<PageLayer> _quickSlotLayers = new();
         private readonly List<BindingRow> _bindingRows = new();
         private readonly List<BindingRow> _quickSlotRows = new();
-        private readonly List<Texture2D> _paletteTextures = new();
+        private readonly Dictionary<int, Texture2D> _paletteTexturesBySlot = new();
+        private readonly List<int> _paletteSlotOrder = new();
         private readonly Texture2D _highlightTexture;
         private readonly Dictionary<int, Texture2D> _mainKeyTextures;
         private readonly Dictionary<int, Texture2D> _quickSlotKeyTextures;
@@ -58,6 +61,54 @@ namespace HaCreator.MapSimulator.UI
         private readonly IDXObject _mainFrame;
         private readonly Dictionary<InputAction, KeyBinding> _stagedBindings = new();
         private readonly Dictionary<InputAction, KeyBinding> _originalBindings = new();
+        private static readonly IReadOnlyDictionary<int, string> PaletteSlotLabels = new Dictionary<int, string>
+        {
+            [0] = "Equip Tab",
+            [1] = "Inventory",
+            [2] = "Char Stats",
+            [3] = "Skill Tab",
+            [4] = "Buddy Tab",
+            [5] = "World Map",
+            [6] = "Messenger",
+            [7] = "Mini Map",
+            [8] = "Quest Log",
+            [9] = "Key Config",
+            [10] = "To All",
+            [11] = "Whisper",
+            [12] = "To Party",
+            [13] = "To Friend",
+            [14] = "Main Menu",
+            [15] = "Toggle Quick Slot",
+            [16] = "Chat Window",
+            [17] = "Guild Tab",
+            [18] = "To Guild",
+            [19] = "Party Tab",
+            [20] = "Helper",
+            [21] = "To Spouse",
+            [22] = "Cash Shop",
+            [23] = "To Alliance",
+            [24] = "Party Search",
+            [25] = "Family Tab",
+            [26] = "Medals",
+            [27] = "Expedition Tab",
+            [28] = "To Exped",
+            [29] = "Profession",
+            [30] = "Item Pot",
+            [31] = "Event",
+            [32] = "Magic Wheel",
+            [50] = "Pick Up",
+            [51] = "Sit",
+            [52] = "Attack",
+            [53] = "Jump",
+            [54] = "NPC Chat / Harvest",
+            [100] = "Expression 1",
+            [101] = "Expression 2",
+            [102] = "Expression 3",
+            [103] = "Expression 4",
+            [104] = "Expression 5",
+            [105] = "Expression 6",
+            [106] = "Expression 7",
+        };
         private SpriteFont _font;
         private Func<PlayerInput> _bindingSource;
         private Action<PlayerInput> _commitHandler;
@@ -82,7 +133,7 @@ namespace HaCreator.MapSimulator.UI
             Dictionary<int, Texture2D> mainKeyTextures,
             Dictionary<int, Texture2D> quickSlotKeyTextures,
             Texture2D[] noticeTextures,
-            IEnumerable<Texture2D> paletteTextures = null)
+            IReadOnlyDictionary<int, Texture2D> paletteTexturesBySlot = null)
             : base(frame)
         {
             _mainFrame = frame;
@@ -91,14 +142,17 @@ namespace HaCreator.MapSimulator.UI
             _mainKeyTextures = mainKeyTextures ?? new Dictionary<int, Texture2D>();
             _quickSlotKeyTextures = quickSlotKeyTextures ?? _mainKeyTextures;
             _noticeTextures = noticeTextures ?? Array.Empty<Texture2D>();
-            if (paletteTextures != null)
+            if (paletteTexturesBySlot != null)
             {
-                foreach (Texture2D texture in paletteTextures)
+                foreach (KeyValuePair<int, Texture2D> entry in paletteTexturesBySlot.OrderBy(entry => entry.Key))
                 {
-                    if (texture != null)
+                    if (entry.Value == null)
                     {
-                        _paletteTextures.Add(texture);
+                        continue;
                     }
+
+                    _paletteTexturesBySlot[entry.Key] = entry.Value;
+                    _paletteSlotOrder.Add(entry.Key);
                 }
             }
             BuildRows();
@@ -512,8 +566,8 @@ namespace HaCreator.MapSimulator.UI
                 footerBounds.Y + padding,
                 footerBounds.Right - infoBounds.Right - (padding * 2),
                 footerBounds.Height - (padding * 2));
-            int selectedPaletteIndex = GetSelectedPaletteIndex();
-            Texture2D selectedPaletteTexture = GetSelectedPaletteTexture(selectedPaletteIndex);
+            int selectedPaletteSlotId = GetSelectedPaletteSlotId();
+            Texture2D selectedPaletteTexture = GetSelectedPaletteTexture(selectedPaletteSlotId);
 
             sprite.Draw(_highlightTexture, footerBounds, new Color(20, 25, 37, 225));
             sprite.Draw(_highlightTexture, infoBounds, new Color(36, 46, 62, 220));
@@ -544,9 +598,9 @@ namespace HaCreator.MapSimulator.UI
                     sprite.Draw(selectedPaletteTexture, previewPosition, null, Color.White, 0f, Vector2.Zero, 0.55f, SpriteEffects.None, 0f);
                 }
 
-                string paletteSlotText = selectedPaletteIndex >= 0
-                    ? $"Palette slot {selectedPaletteIndex}"
-                    : "No WZ slot mapped";
+                string paletteSlotText = selectedPaletteSlotId >= 0
+                    ? $"Palette slot {selectedPaletteSlotId}: {GetPaletteSlotLabel(selectedPaletteSlotId)}"
+                    : "No recovered palette slot for this staged row.";
                 sprite.DrawString(_font, paletteSlotText, new Vector2(previewBounds.Right + 8, previewBounds.Y + 4), new Color(220, 220, 220), 0f, Vector2.Zero, 0.34f, SpriteEffects.None, 0f);
 
                 Rectangle bindingBounds = new(infoBounds.X + 6, infoBounds.Bottom - 28, infoBounds.Width - 12, 22);
@@ -554,7 +608,7 @@ namespace HaCreator.MapSimulator.UI
                 DrawBindingValue(sprite, bindingBounds, GetBinding(_selectedAction.Value));
             }
 
-            if (_paletteTextures.Count == 0)
+            if (_paletteSlotOrder.Count == 0)
             {
                 return;
             }
@@ -563,10 +617,11 @@ namespace HaCreator.MapSimulator.UI
 
             int iconOriginY = paletteBounds.Y + 14;
             int iconOriginX = paletteBounds.X + 8;
-            int maxIcons = Math.Min(_paletteTextures.Count, iconColumns * iconRows);
+            int maxIcons = Math.Min(_paletteSlotOrder.Count, iconColumns * iconRows);
             for (int i = 0; i < maxIcons; i++)
             {
-                Texture2D texture = _paletteTextures[i];
+                int paletteSlotId = _paletteSlotOrder[i];
+                Texture2D texture = GetSelectedPaletteTexture(paletteSlotId);
                 if (texture == null)
                 {
                     continue;
@@ -579,7 +634,7 @@ namespace HaCreator.MapSimulator.UI
                     iconOriginY + (row * iconCell) - 1,
                     iconCell,
                     iconCell);
-                bool selectedIcon = i == selectedPaletteIndex;
+                bool selectedIcon = paletteSlotId == selectedPaletteSlotId;
                 sprite.Draw(
                     _highlightTexture,
                     cellBounds,
@@ -595,29 +650,29 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private int GetSelectedPaletteIndex()
+        private int GetSelectedPaletteSlotId()
         {
-            if (!_selectedAction.HasValue || _page != KeyConfigPage.Main)
+            if (_page != KeyConfigPage.Main || !_selectedAction.HasValue)
             {
                 return -1;
             }
 
-            for (int i = 0; i < _bindingRows.Count; i++)
-            {
-                if (_bindingRows[i].Action == _selectedAction.Value)
-                {
-                    return i;
-                }
-            }
-
-            return -1;
+            BindingRow? selectedRow = _bindingRows.FirstOrDefault(row => row.Action == _selectedAction.Value);
+            return selectedRow?.PaletteSlotId ?? -1;
         }
 
-        private Texture2D GetSelectedPaletteTexture(int paletteIndex)
+        private Texture2D GetSelectedPaletteTexture(int paletteSlotId)
         {
-            return paletteIndex >= 0 && paletteIndex < _paletteTextures.Count
-                ? _paletteTextures[paletteIndex]
+            return _paletteTexturesBySlot.TryGetValue(paletteSlotId, out Texture2D texture)
+                ? texture
                 : null;
+        }
+
+        private static string GetPaletteSlotLabel(int paletteSlotId)
+        {
+            return PaletteSlotLabels.TryGetValue(paletteSlotId, out string label)
+                ? label
+                : $"Icon {paletteSlotId}";
         }
 
         private Texture2D GetStatusNoticeTexture()
@@ -654,24 +709,24 @@ namespace HaCreator.MapSimulator.UI
             const int rowHeight = 24;
             const int rowGap = 28;
 
-            (InputAction action, string label)[] mainRows =
+            (InputAction action, string label, int paletteSlotId)[] mainRows =
             {
-                (InputAction.Jump, "Jump"),
-                (InputAction.Attack, "Attack"),
-                (InputAction.Pickup, "Pickup"),
-                (InputAction.Skill1, "Skill 1"),
-                (InputAction.Skill2, "Skill 2"),
-                (InputAction.Skill3, "Skill 3"),
-                (InputAction.Skill4, "Skill 4"),
-                (InputAction.ToggleInventory, "Inventory"),
-                (InputAction.ToggleEquip, "Equip"),
-                (InputAction.Skill5, "Skill 5"),
-                (InputAction.Skill6, "Skill 6"),
-                (InputAction.Skill7, "Skill 7"),
-                (InputAction.Skill8, "Skill 8"),
-                (InputAction.ToggleQuest, "Quest"),
-                (InputAction.ToggleStats, "Stats"),
-                (InputAction.ToggleMinimap, "Mini Map"),
+                (InputAction.Jump, "Jump", 53),
+                (InputAction.Attack, "Attack", 52),
+                (InputAction.Pickup, "Pickup", 50),
+                (InputAction.Skill1, "Skill 1", -1),
+                (InputAction.Skill2, "Skill 2", -1),
+                (InputAction.Skill3, "Skill 3", -1),
+                (InputAction.Skill4, "Skill 4", -1),
+                (InputAction.ToggleInventory, "Inventory", 1),
+                (InputAction.ToggleEquip, "Equip", 0),
+                (InputAction.Skill5, "Skill 5", -1),
+                (InputAction.Skill6, "Skill 6", -1),
+                (InputAction.Skill7, "Skill 7", -1),
+                (InputAction.Skill8, "Skill 8", -1),
+                (InputAction.ToggleQuest, "Quest", 8),
+                (InputAction.ToggleStats, "Stats", 2),
+                (InputAction.ToggleMinimap, "Mini Map", 7),
             };
 
             for (int i = 0; i < mainRows.Length; i++)
@@ -680,7 +735,7 @@ namespace HaCreator.MapSimulator.UI
                 int row = i % 8;
                 int x = column == 0 ? leftX : rightX;
                 int y = topY + (row * rowGap);
-                _bindingRows.Add(new BindingRow(mainRows[i].action, mainRows[i].label, new Rectangle(x, y, rowWidth, rowHeight)));
+                _bindingRows.Add(new BindingRow(mainRows[i].action, mainRows[i].label, new Rectangle(x, y, rowWidth, rowHeight), mainRows[i].paletteSlotId));
             }
 
             for (int i = 0; i < 8; i++)
@@ -689,7 +744,7 @@ namespace HaCreator.MapSimulator.UI
                 int row = i % 4;
                 int x = column == 0 ? leftX : rightX;
                 int y = topY + (row * 48);
-                _quickSlotRows.Add(new BindingRow(InputAction.QuickSlot1 + i, $"Quick Slot {i + 1}", new Rectangle(x, y, rowWidth, 32)));
+                _quickSlotRows.Add(new BindingRow(InputAction.QuickSlot1 + i, $"Quick Slot {i + 1}", new Rectangle(x, y, rowWidth, 32), -1));
             }
         }
 

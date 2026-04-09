@@ -8,6 +8,44 @@ namespace HaCreator.MapSimulator.Companions
 {
     internal static class PetActionAliases
     {
+        private static readonly string[] KnownActions =
+        {
+            "stand0",
+            "stand1",
+            "stand",
+            "move",
+            "walk",
+            "jump",
+            "hang",
+            "fly",
+            "rest0",
+            "rest1",
+            "rest",
+            "nap",
+            "sleep",
+            "chat",
+            "say",
+            "angry",
+            "no",
+            "tedious",
+            "cry",
+            "stunned",
+            "alert",
+            "hand",
+            "stretch",
+            "love",
+            "prone",
+            "hungry",
+            "poor",
+            "dung",
+            "rise",
+            "eat",
+            "play",
+            "sit",
+            "melong",
+            "sulk"
+        };
+
         private static readonly IReadOnlyDictionary<string, string[]> LookupCandidates =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
             {
@@ -19,9 +57,11 @@ namespace HaCreator.MapSimulator.Companions
                 ["jump"] = new[] { "jump", "fly" },
                 ["hang"] = new[] { "hang" },
                 ["fly"] = new[] { "fly", "jump" },
-                ["rest0"] = new[] { "rest0", "rest", "nap", "prone" },
-                ["rest"] = new[] { "rest", "rest0", "nap", "prone" },
-                ["nap"] = new[] { "nap", "prone", "rest0", "rest" },
+                ["rest0"] = new[] { "rest0", "rest1", "rest", "nap", "sleep", "prone" },
+                ["rest1"] = new[] { "rest1", "rest0", "rest", "nap", "sleep", "prone" },
+                ["rest"] = new[] { "rest", "rest0", "rest1", "nap", "sleep", "prone" },
+                ["nap"] = new[] { "nap", "sleep", "prone", "rest0", "rest1", "rest" },
+                ["sleep"] = new[] { "sleep", "nap", "prone", "rest0", "rest1", "rest" },
                 ["chat"] = new[] { "chat", "say" },
                 ["say"] = new[] { "say", "chat" },
                 ["angry"] = new[] { "angry", "no", "tedious" },
@@ -33,11 +73,16 @@ namespace HaCreator.MapSimulator.Companions
                 ["hand"] = new[] { "hand", "alert" },
                 ["stretch"] = new[] { "stretch", "love" },
                 ["love"] = new[] { "love", "stretch" },
-                ["prone"] = new[] { "prone", "nap", "rest0", "rest" },
+                ["prone"] = new[] { "prone", "nap", "sleep", "rest0", "rest1", "rest" },
                 ["hungry"] = new[] { "hungry" },
                 ["poor"] = new[] { "poor", "dung" },
                 ["dung"] = new[] { "dung", "poor" },
-                ["rise"] = new[] { "rise" }
+                ["rise"] = new[] { "rise" },
+                ["eat"] = new[] { "eat" },
+                ["play"] = new[] { "play", "love" },
+                ["sit"] = new[] { "sit", "rest0", "rest1", "rest", "prone" },
+                ["melong"] = new[] { "melong", "play", "love" },
+                ["sulk"] = new[] { "sulk", "angry", "no", "tedious" }
             };
 
         internal static IEnumerable<string> EnumerateCandidates(string actionName)
@@ -61,7 +106,7 @@ namespace HaCreator.MapSimulator.Companions
 
         internal static IEnumerable<string> EnumerateKnownActions()
         {
-            return LookupCandidates.Keys;
+            return KnownActions;
         }
     }
 

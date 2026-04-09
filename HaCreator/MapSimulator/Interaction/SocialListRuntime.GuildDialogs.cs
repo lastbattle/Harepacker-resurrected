@@ -70,7 +70,11 @@ namespace HaCreator.MapSimulator.Interaction
                 acceptance.GuildName.Trim(),
                 null,
                 DefaultGuildCreateCostMesos,
-                acceptance.AcceptedAtUtc));
+                acceptance.AcceptedAtUtc,
+                _packetGuildUiRevision,
+                _packetGuildMarkRevision,
+                _packetGuildPointsAndLevelRevision,
+                _packetGuildRosterRevision));
         }
 
         private string ApplyGuildCreateAgreementAcceptanceCore(string masterName, string guildName)

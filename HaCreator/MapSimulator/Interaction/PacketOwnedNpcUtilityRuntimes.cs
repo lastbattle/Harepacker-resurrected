@@ -1342,7 +1342,8 @@ namespace HaCreator.MapSimulator.Interaction
                     string metadataSuffix = string.IsNullOrWhiteSpace(item.MetadataSummary)
                         ? string.Empty
                         : $" | {item.MetadataSummary}";
-                    names.Add($"{item.ItemName}{quantitySuffix}{BuildDecodedItemMarker(item)}{BuildDecodedItemSerialMarker(item)}{metadataSuffix}");
+                    string bodySuffix = BuildDecodedItemBodySuffix(item);
+                    names.Add($"{item.ItemName}{quantitySuffix}{BuildDecodedItemMarker(item)}{BuildDecodedItemSerialMarker(item)}{metadataSuffix}{bodySuffix}");
                     if (names.Count >= 4)
                     {
                         break;
@@ -1404,6 +1405,69 @@ namespace HaCreator.MapSimulator.Interaction
             return item.CashSerialNumber > 0
                 ? $" (itemSN {item.ItemSerialNumber.ToString(CultureInfo.InvariantCulture)}, cashSN {item.CashSerialNumber.ToString(CultureInfo.InvariantCulture)})"
                 : $" (itemSN {item.ItemSerialNumber.ToString(CultureInfo.InvariantCulture)})";
+        }
+
+        private static string BuildDecodedItemBodySuffix(StoreBankItemEntry item)
+        {
+            List<string> parts = new();
+            if (!string.IsNullOrWhiteSpace(item.Title))
+            {
+                parts.Add($"Title '{item.Title}'");
+            }
+
+            if (item.EquipData != null)
+            {
+                if (item.EquipData.NonCashSerialNumber.HasValue && item.EquipData.NonCashSerialNumber.Value > 0)
+                {
+                    parts.Add($"EquipSN {item.EquipData.NonCashSerialNumber.Value.ToString(CultureInfo.InvariantCulture)}");
+                }
+
+                string expiration = FormatFileTime(item.EquipData.ExpirationTime);
+                if (!string.IsNullOrEmpty(expiration))
+                {
+                    parts.Add($"Expire {expiration}");
+                }
+
+                if (item.EquipData.IucOrExp > 0)
+                {
+                    parts.Add($"IUC/EXP {item.EquipData.IucOrExp.ToString(CultureInfo.InvariantCulture)}");
+                }
+            }
+
+            if (item.BundleData != null && item.BundleData.RechargeableSerialNumber > 0)
+            {
+                parts.Add($"RechargeSN {item.BundleData.RechargeableSerialNumber.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (item.PetData != null)
+            {
+                string expiration = FormatFileTime(item.PetData.ExpirationTime);
+                if (!string.IsNullOrEmpty(expiration))
+                {
+                    parts.Add($"Expire {expiration}");
+                }
+            }
+
+            return parts.Count > 0
+                ? $" | {string.Join(", ", parts)}"
+                : string.Empty;
+        }
+
+        private static string FormatFileTime(long value)
+        {
+            if (value <= 0)
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                return DateTime.FromFileTimeUtc(value).ToString("yyyy-MM-dd HH:mm:ss 'UTC'", CultureInfo.InvariantCulture);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return $"raw {value.ToString(CultureInfo.InvariantCulture)}";
+            }
         }
 
         private string DescribePacket()
@@ -1468,10 +1532,13 @@ namespace HaCreator.MapSimulator.Interaction
             int quantity = 1;
             string title = string.Empty;
             string metadataSummary = string.Empty;
+            StoreBankEquipData equipData = null;
+            StoreBankBundleData bundleData = null;
+            StoreBankPetData petData = null;
             switch (slotType)
             {
                 case 1:
-                    if (!TryReadEquipBody(reader, hasCashSerialNumber, out title, out metadataSummary))
+                    if (!TryReadEquipBody(reader, hasCashSerialNumber, out title, out metadataSummary, out equipData))
                     {
                         return false;
                     }
@@ -1479,7 +1546,7 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
 
                 case 2:
-                    if (!TryReadBundleBody(reader, itemId, out quantity, out title, out metadataSummary))
+                    if (!TryReadBundleBody(reader, itemId, out quantity, out title, out metadataSummary, out bundleData))
                     {
                         return false;
                     }
@@ -1487,7 +1554,7 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
 
                 case 3:
-                    if (!TryReadPetBody(reader, out title, out metadataSummary))
+                    if (!TryReadPetBody(reader, out title, out metadataSummary, out petData))
                     {
                         return false;
                     }
@@ -1521,15 +1588,19 @@ namespace HaCreator.MapSimulator.Interaction
                 ItemSerialNumber = itemSerialNumber,
                 CashSerialNumber = cashSerialNumber,
                 IsRechargeBundle = slotType == 2 && itemId / 10000 is 207 or 233,
-                MetadataSummary = metadataSummary
+                MetadataSummary = metadataSummary,
+                EquipData = equipData,
+                BundleData = bundleData,
+                PetData = petData
             };
             return true;
         }
 
-        private static bool TryReadEquipBody(BinaryReader reader, bool hasCashSerialNumber, out string title, out string metadataSummary)
+        private static bool TryReadEquipBody(BinaryReader reader, bool hasCashSerialNumber, out string title, out string metadataSummary, out StoreBankEquipData equipData)
         {
             title = string.Empty;
             metadataSummary = string.Empty;
+            equipData = null;
             Stream stream = reader.BaseStream;
             const int equipStatsByteLength = (sizeof(byte) * 2) + (sizeof(short) * 15);
             if (stream.Length - stream.Position < equipStatsByteLength)
@@ -1578,6 +1649,7 @@ namespace HaCreator.MapSimulator.Interaction
             short option3 = reader.ReadInt16();
             short socket1 = reader.ReadInt16();
             short socket2 = reader.ReadInt16();
+            long? nonCashSerialNumber = null;
             if (!hasCashSerialNumber)
             {
                 if (stream.Length - stream.Position < sizeof(long))
@@ -1585,10 +1657,11 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
-                stream.Position += sizeof(long);
+                nonCashSerialNumber = reader.ReadInt64();
             }
 
-            stream.Position += sizeof(long) + sizeof(int);
+            long expirationTime = reader.ReadInt64();
+            int iucOrExp = reader.ReadInt32();
             metadataSummary = BuildEquipMetadataSummary(
                 remainingUpgradeCount,
                 upgradeCount,
@@ -1620,14 +1693,51 @@ namespace HaCreator.MapSimulator.Interaction
                 option3,
                 socket1,
                 socket2);
+            equipData = new StoreBankEquipData
+            {
+                RemainingUpgradeCount = remainingUpgradeCount,
+                UpgradeCount = upgradeCount,
+                Strength = strength,
+                Dexterity = dexterity,
+                Intelligence = intelligence,
+                Luck = luck,
+                Hp = hp,
+                Mp = mp,
+                WeaponAttack = weaponAttack,
+                MagicAttack = magicAttack,
+                WeaponDefense = weaponDefense,
+                MagicDefense = magicDefense,
+                Accuracy = accuracy,
+                Avoidability = avoidability,
+                Hands = hands,
+                Speed = speed,
+                Jump = jump,
+                Attribute = attribute,
+                LevelUpType = levelUpType,
+                Level = level,
+                Experience = experience,
+                Durability = durability,
+                ItemUpgradeCount = itemUpgradeCount,
+                Grade = grade,
+                BonusUpgradeCount = bonusUpgradeCount,
+                Option1 = option1,
+                Option2 = option2,
+                Option3 = option3,
+                Socket1 = socket1,
+                Socket2 = socket2,
+                NonCashSerialNumber = nonCashSerialNumber,
+                ExpirationTime = expirationTime,
+                IucOrExp = iucOrExp
+            };
             return true;
         }
 
-        private static bool TryReadBundleBody(BinaryReader reader, int itemId, out int quantity, out string title, out string metadataSummary)
+        private static bool TryReadBundleBody(BinaryReader reader, int itemId, out int quantity, out string title, out string metadataSummary, out StoreBankBundleData bundleData)
         {
             quantity = 1;
             title = string.Empty;
             metadataSummary = string.Empty;
+            bundleData = null;
             Stream stream = reader.BaseStream;
             if (stream.Length - stream.Position < sizeof(ushort))
             {
@@ -1655,17 +1765,28 @@ namespace HaCreator.MapSimulator.Interaction
 
                 long rechargeableSerialNumber = reader.ReadInt64();
                 metadataSummary = BuildBundleMetadataSummary(attribute, rechargeableSerialNumber);
+                bundleData = new StoreBankBundleData
+                {
+                    Attribute = attribute,
+                    RechargeableSerialNumber = rechargeableSerialNumber
+                };
                 return true;
             }
 
             metadataSummary = BuildBundleMetadataSummary(attribute, rechargeableSerialNumber: 0);
+            bundleData = new StoreBankBundleData
+            {
+                Attribute = attribute,
+                RechargeableSerialNumber = 0
+            };
             return true;
         }
 
-        private static bool TryReadPetBody(BinaryReader reader, out string title, out string metadataSummary)
+        private static bool TryReadPetBody(BinaryReader reader, out string title, out string metadataSummary, out StoreBankPetData petData)
         {
             title = string.Empty;
             metadataSummary = string.Empty;
+            petData = null;
             Stream stream = reader.BaseStream;
             const int petNameLength = 13;
             const int petTailLength = sizeof(byte) + sizeof(short) + sizeof(byte) + sizeof(long) + sizeof(short) + sizeof(ushort) + sizeof(int) + sizeof(short);
@@ -1679,12 +1800,23 @@ namespace HaCreator.MapSimulator.Interaction
             byte level = reader.ReadByte();
             short closeness = reader.ReadInt16();
             byte fullness = reader.ReadByte();
-            _ = reader.ReadInt64();
+            long expirationTime = reader.ReadInt64();
             short attribute = reader.ReadInt16();
             ushort skill = reader.ReadUInt16();
             int remainingLife = reader.ReadInt32();
             short fatigue = reader.ReadInt16();
             metadataSummary = BuildPetMetadataSummary(level, closeness, fullness, attribute, skill, remainingLife, fatigue);
+            petData = new StoreBankPetData
+            {
+                Level = level,
+                Closeness = closeness,
+                Fullness = fullness,
+                ExpirationTime = expirationTime,
+                Attribute = attribute,
+                Skill = skill,
+                RemainingLife = remainingLife,
+                Fatigue = fatigue
+            };
             return true;
         }
 

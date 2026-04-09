@@ -27,6 +27,15 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0F9E] = "The message was successfully sent.",
             [0x0F9F] = "The waiting line is longer than an hour. \r\nPlease try using it at a later time.",
             [0x0FA0] = "You've entered the wrong user name.",
+            // Recovered from MapleStory.exe v95 `CUtilDlg::SetUtilDlg`. When callers do not
+            // pass an explicit sound name, the client resolves string-pool id 1272 before
+            // playing the notice-owner UI sound.
+            [0x04F8] = "Sound/UI.img/DlgNotice",
+            // Recovered from MapleStory.exe v95 `CReactorPool::LoadReactorLayer`. Reactor-hit
+            // layer rebuild formats the per-state hit sound through string-pool id 2121 before
+            // dispatching `play_reactor_sound`, so keep the template explicit here rather than
+            // relying on generated-table ordering.
+            [0x0849] = "Sound/Reactor.img/%s/%s",
             // Recovered from MapleStory.exe v95 StringPool::ms_aString via StringPool::GetString
             // using ms_aKey (0xB98830). These anti-macro ids are still null in the generated
             // table for this workspace, but `CWvsContext::OnAntiMacroResult` and
@@ -66,10 +75,11 @@ namespace HaCreator.MapSimulator.Interaction
             [0x15DA] = "Effect/BasicEff.img/dragonFury",
             // Recovered from MapleStory.exe v95 `CDragon::UpdateQuestInfo`. The generated table
             // resolves 0x19BC to an unrelated UI list frame in this workspace, but the client
-            // formats the dragon quest-info layer path from this string-pool slot before loading
-            // the layer. WZ confirms the three v95-owned targets are `QuestAlert`, `QuestAlert2`,
-            // and `QuestAlert3`, so keep the format explicit here.
-            [0x19BC] = "Effect/BasicEff.img/QuestAlert%s",
+            // formats the dragon quest-info layer path from this string-pool slot with the raw
+            // quest-state integer before loading the layer. `DragonCompanionRuntime` keeps the
+            // client-shaped direct format first, then falls back to the verified v95 WZ mapping
+            // (`QuestAlert`, `QuestAlert2`, `QuestAlert3`) when the formatted node is absent.
+            [0x19BC] = "Effect/BasicEff.img/QuestAlert%d",
             // Recovered from MapleStory.exe v95 `CUIWeddingInvitation::OnCreate` and `Draw`.
             // The client resolves the invitation button UOL, the dialog backgrounds, and the
             // basic-black face through these StringPool ids before wiring the owner. Keep them
@@ -84,7 +94,14 @@ namespace HaCreator.MapSimulator.Interaction
             // effect templates explicit so summon and screen-effect resolution
             // does not silently fall back to simulator-owned defaults.
             [0x0663] = "Effect/Summon.img/%d",
+            // Recovered from MapleStory.exe v95 `CAnimationDisplayer::Effect_RewardRullet`.
+            // The generated table in this workspace drifts for the reward-roulette
+            // owner strings, so pin the client-owned map-effect templates here.
+            [0x03DA] = "%s%s",
             [0x09ED] = "Effect/MapEff.img/%s",
+            [0x11E0] = "Map/Effect.img/miro/RR1/%d",
+            [0x11E1] = "Map/Effect.img/miro/RR2/%d",
+            [0x11E2] = "Map/Effect.img/miro/RR3/%d",
             // Recovered from MapleStory.exe v95 `CSetGuildMarkDlg::OnCreate`. The guild-mark
             // combo uses these client string ids rather than the raw WZ family node names.
             [0x0D14] = "Animal",

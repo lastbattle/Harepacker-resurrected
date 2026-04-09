@@ -114,6 +114,7 @@ namespace HaCreator.MapSimulator.Effects
         private const int GaugeDangerIconAnchorY = 63;
         private const int GaugeDangerAnchorX = -149;
         private const int GaugeDangerAnchorY = 85;
+        private const int GaugeDangerRightX = 130;
         private const int GaugeFillRightX = 140;
         private const int GaugeFillY = 71;
         private const int KeyAnimationX = 7;
@@ -826,7 +827,7 @@ namespace HaCreator.MapSimulator.Effects
             if (ShouldDrawDangerOverlay())
             {
                 DrawAnimation(spriteBatch, _dangerBackgroundFrames, Environment.TickCount, 0, centerTop + new Vector2(GaugeDangerBackgroundAnchorX, GaugeDangerBackgroundAnchorY), repeat: true);
-                DrawAnimation(spriteBatch, _dangerFrames, Environment.TickCount, 0, centerTop + new Vector2(GaugeDangerAnchorX, GaugeDangerAnchorY), repeat: true);
+                DrawDangerGauge(spriteBatch, Environment.TickCount, centerTop);
                 DrawAnimation(spriteBatch, _dangerTextFrames, Environment.TickCount, 0, centerTop + new Vector2(GaugeDangerTextAnchorX, GaugeDangerTextAnchorY), repeat: true);
                 DrawAnimation(spriteBatch, _dangerIconFrames, Environment.TickCount, 0, centerTop + new Vector2(GaugeDangerIconAnchorX, GaugeDangerIconAnchorY), repeat: true);
             }
@@ -1269,6 +1270,24 @@ namespace HaCreator.MapSimulator.Effects
             DrawFrame(spriteBatch, frame, anchor);
             return true;
         }
+        private bool DrawDangerGauge(SpriteBatch spriteBatch, int currentTimeMs, Vector2 centerTop)
+        {
+            if (_dangerFrames == null || _dangerFrames.Count == 0)
+            {
+                return false;
+            }
+
+            MassacreCanvasFrame frame = ResolveAnimationFrame(_dangerFrames, currentTimeMs, 0, repeat: true);
+            if (frame.Texture == null)
+            {
+                return false;
+            }
+
+            Vector2 anchor = GetDangerGaugeAnchor(centerTop.X, frame);
+            anchor.Y = centerTop.Y + GaugeDangerAnchorY;
+            DrawFrame(spriteBatch, frame, anchor);
+            return true;
+        }
         private static MassacreCanvasFrame ResolveAnimationFrame(IReadOnlyList<MassacreCanvasFrame> frames, int currentTimeMs, int startTick, bool repeat)
         {
             if (frames == null || frames.Count == 0)
@@ -1611,6 +1630,14 @@ namespace HaCreator.MapSimulator.Effects
         {
             int maskWidth = GetGaugeMaskWidth();
             return new Rectangle(viewportCenterX + GaugeFillRightX - maskWidth, GaugeFillY, maskWidth, GaugeFillHeight);
+        }
+        private Vector2 GetDangerGaugeAnchor(float viewportCenterX, MassacreCanvasFrame frame)
+        {
+            return new Vector2(GetDangerGaugeLeftX(viewportCenterX) + frame.Origin.X, GaugeDangerAnchorY);
+        }
+        private float GetDangerGaugeLeftX(float viewportCenterX)
+        {
+            return viewportCenterX + GaugeDangerRightX - GetGaugeMaskWidth();
         }
         private int GetGaugeMaskWidth()
         {

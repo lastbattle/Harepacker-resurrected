@@ -77,6 +77,17 @@ namespace HaCreator.MapSimulator.Pools
             public bool QueuedForceReplay { get; set; }
         }
 
+        public sealed class RemotePacketOwnedEmotionState
+        {
+            public int ItemId { get; init; }
+            public int EmotionId { get; init; }
+            public string EmotionName { get; init; }
+            public bool ByItemOption { get; init; }
+            public SkillAnimation EffectAnimation { get; init; }
+            public int AnimationStartTime { get; init; }
+            public int ExpireTime { get; init; }
+        }
+
         internal readonly record struct PortableChairPairParticipant(
             int CharacterId,
             PortableChair Chair,
@@ -843,7 +854,7 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
-        public bool TryApplyActiveEffectItem(RemoteUserActiveEffectItemPacket packet, out string message)
+        public bool TryApplyActiveEffectItem(RemoteUserActiveEffectItemPacket packet, int currentTime, out string message)
         {
             message = null;
             if (!_actorsById.TryGetValue(packet.CharacterId, out RemoteUserActor actor))
@@ -852,12 +863,28 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            actor.CarryItemEffectId = packet.ItemId.HasValue && packet.ItemId.Value > 0
-                ? packet.ItemId.Value
-                : null;
-            message = packet.ItemId.HasValue && packet.ItemId.Value > 0
-                ? $"Remote user {packet.CharacterId} active effect item {packet.ItemId.Value} applied."
-                : $"Remote user {packet.CharacterId} active effect item cleared.";
+            if (!packet.ItemId.HasValue || packet.ItemId.Value <= 0)
+            {
+                ClearPacketOwnedEmotionState(actor);
+                message = $"Remote user {packet.CharacterId} active effect item cleared.";
+                return true;
+            }
+
+            if (!PacketOwnedAvatarEmotionResolver.TryResolveItemEmotion(
+                    packet.ItemId.Value,
+                    currentTime,
+                    out PacketOwnedAvatarEmotionSelection selection,
+                    out bool byItemOption,
+                    out string error))
+            {
+                ClearPacketOwnedEmotionState(actor);
+                message = error ?? $"Remote user active effect item {packet.ItemId.Value} has no supported simulator presentation.";
+                return true;
+            }
+
+            ApplyPacketOwnedEmotionState(actor, packet.ItemId.Value, selection, byItemOption, currentTime);
+            string sourceText = byItemOption ? "item-option emotion" : "random-emotion item";
+            message = $"Remote user {packet.CharacterId} active effect item {packet.ItemId.Value} applied as {sourceText} '{selection.EmotionName}' ({selection.EmotionId}).";
             return true;
         }
 
@@ -1357,6 +1384,7 @@ namespace HaCreator.MapSimulator.Pools
                     actor.RelationshipOverlays.Remove(overlayEntry.Key);
                 }
 
+                UpdatePacketOwnedEmotionState(actor, currentTime);
                 actor.UpdateMeleeAfterImage(currentTime);
             }
         }
@@ -2052,6 +2080,13 @@ namespace HaCreator.MapSimulator.Pools
                     screenY,
                     tickCount,
                     drawFrontLayers: true);
+                DrawRemotePacketOwnedEmotionEffect(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    actor,
+                    screenX,
+                    screenY,
+                    tickCount);
 
                 if (font == null)
                 {
@@ -2755,6 +2790,67 @@ namespace HaCreator.MapSimulator.Pools
 
             return actor.HasMorphTemplate
                 || IsRelationshipOverlayGhostAction(actor.ActionName);
+        }
+
+        private void ApplyPacketOwnedEmotionState(
+            RemoteUserActor actor,
+            int itemId,
+            PacketOwnedAvatarEmotionSelection selection,
+            bool byItemOption,
+            int currentTime)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            SkillAnimation effectAnimation = _loader?.LoadPacketOwnedEmotionEffectAnimation(selection.EmotionName);
+            int expireTime = effectAnimation?.TotalDuration > 0
+                ? currentTime + effectAnimation.TotalDuration
+                : 0;
+            actor.PacketOwnedEmotion = new RemotePacketOwnedEmotionState
+            {
+                ItemId = itemId,
+                EmotionId = selection.EmotionId,
+                EmotionName = selection.EmotionName,
+                ByItemOption = byItemOption,
+                EffectAnimation = effectAnimation,
+                AnimationStartTime = currentTime,
+                ExpireTime = expireTime
+            };
+
+            if (actor.Assembler != null)
+            {
+                actor.Assembler.FaceExpressionName = selection.EmotionName;
+            }
+        }
+
+        private static void ClearPacketOwnedEmotionState(RemoteUserActor actor)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            actor.PacketOwnedEmotion = null;
+            if (actor.Assembler != null)
+            {
+                actor.Assembler.FaceExpressionName = "default";
+            }
+        }
+
+        private static void UpdatePacketOwnedEmotionState(RemoteUserActor actor, int currentTime)
+        {
+            if (actor?.PacketOwnedEmotion == null)
+            {
+                return;
+            }
+
+            if (actor.PacketOwnedEmotion.ExpireTime > 0
+                && currentTime >= actor.PacketOwnedEmotion.ExpireTime)
+            {
+                ClearPacketOwnedEmotionState(actor);
+            }
         }
 
         private bool IsRelationshipOverlayPartnerSuppressed(PlayerCharacter localPlayer, int partnerCharacterId, int ownerCharacterId)
@@ -4798,6 +4894,31 @@ namespace HaCreator.MapSimulator.Pools
             frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, Color.White, shouldFlip, null);
         }
 
+        private static void DrawRemotePacketOwnedEmotionEffect(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            RemoteUserActor actor,
+            int screenX,
+            int screenY,
+            int currentTime)
+        {
+            RemotePacketOwnedEmotionState state = actor?.PacketOwnedEmotion;
+            if (state?.EffectAnimation == null)
+            {
+                return;
+            }
+
+            int elapsedTime = Math.Max(0, currentTime - state.AnimationStartTime);
+            DrawRemoteTemporaryStatAvatarEffectAnimation(
+                spriteBatch,
+                skeletonRenderer,
+                actor,
+                state.EffectAnimation,
+                screenX,
+                screenY,
+                elapsedTime);
+        }
+
         private static void DrawRemoteActorFrame(
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonRenderer,
@@ -4972,7 +5093,8 @@ namespace HaCreator.MapSimulator.Pools
 
             actor.ShadowPartnerPresentation ??= new RemoteShadowPartnerPresentationState();
             RemoteShadowPartnerPresentationState presentation = actor.ShadowPartnerPresentation;
-            int? rawActionCode = ResolveRemoteShadowPartnerObservedRawActionCode(actor, state);
+            int? rawActionCode = ResolveRemoteShadowPartnerObservedRawActionCode(actor, state, observedPlayerActionName);
+            int playbackRawActionCode = ResolveRemoteShadowPartnerPlaybackRawActionCode(actor, rawActionCode);
             int actionTriggerTime = ResolveRemoteShadowPartnerObservedActionTriggerTime(actor, state);
             string fallbackActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
             string resolvedObservedAction = ResolveRemoteShadowPartnerActionName(
@@ -4986,7 +5108,7 @@ namespace HaCreator.MapSimulator.Pools
                 actor.TemporaryStatShadowPartnerSkill.ShadowPartnerActionAnimations,
                 resolvedObservedAction,
                 observedPlayerActionName,
-                actor.LastMoveActionRaw);
+                playbackRawActionCode);
 
             if (!presentation.IsActionInitialized)
             {
@@ -5011,7 +5133,7 @@ namespace HaCreator.MapSimulator.Pools
                             actor.TemporaryStatShadowPartnerSkill.ShadowPartnerActionAnimations,
                             createActionName,
                             observedPlayerActionName,
-                            actor.LastMoveActionRaw));
+                            playbackRawActionCode));
 
                     if (!string.IsNullOrWhiteSpace(resolvedObservedAction))
                     {
@@ -5138,7 +5260,7 @@ namespace HaCreator.MapSimulator.Pools
                         actor.TemporaryStatShadowPartnerSkill.ShadowPartnerActionAnimations,
                         resolvedFallbackAction,
                         fallbackAction,
-                        actor.LastMoveActionRaw));
+                        playbackRawActionCode));
             }
         }
 
@@ -5292,19 +5414,64 @@ namespace HaCreator.MapSimulator.Pools
                 RemoteShadowPartnerAttackDelayMs);
         }
 
-        private static int? ResolveRemoteShadowPartnerObservedRawActionCode(RemoteUserActor actor, PlayerState state)
+        internal static int? ResolveRemoteShadowPartnerObservedRawActionCode(
+            RemoteUserActor actor,
+            PlayerState state,
+            string observedPlayerActionName)
         {
             if (actor == null)
             {
                 return null;
             }
 
-            if (state == PlayerState.Attacking && actor.BaseActionRawCode.HasValue)
+            if (actor.BaseActionRawCode.HasValue
+                && (state == PlayerState.Attacking
+                    || ShouldPreferRemoteShadowPartnerBaseRawAction(actor, observedPlayerActionName)))
             {
                 return actor.BaseActionRawCode;
             }
 
             return actor.LastMoveActionRaw;
+        }
+
+        internal static int ResolveRemoteShadowPartnerPlaybackRawActionCode(RemoteUserActor actor, int? observedRawActionCode)
+        {
+            return observedRawActionCode ?? actor?.LastMoveActionRaw ?? 0;
+        }
+
+        private static bool ShouldPreferRemoteShadowPartnerBaseRawAction(
+            RemoteUserActor actor,
+            string observedPlayerActionName)
+        {
+            if (actor == null || !actor.BaseActionRawCode.HasValue)
+            {
+                return false;
+            }
+
+            if (!actor.MovementDrivenActionSelection)
+            {
+                return true;
+            }
+
+            string normalizedObservedActionName = NormalizeActionName(observedPlayerActionName, allowSitFallback: false);
+            if (string.IsNullOrWhiteSpace(normalizedObservedActionName))
+            {
+                return false;
+            }
+
+            string normalizedBaseActionName = NormalizeActionName(actor.BaseActionName, allowSitFallback: false);
+            if (string.Equals(normalizedBaseActionName, normalizedObservedActionName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (CharacterPart.TryGetActionStringFromCode(actor.BaseActionRawCode.Value, out string rawActionName))
+            {
+                string normalizedRawActionName = NormalizeActionName(rawActionName, allowSitFallback: false);
+                return string.Equals(normalizedRawActionName, normalizedObservedActionName, StringComparison.OrdinalIgnoreCase);
+            }
+
+            return false;
         }
 
         private static int ResolveRemoteShadowPartnerObservedActionTriggerTime(RemoteUserActor actor, PlayerState state)
@@ -5702,16 +5869,26 @@ namespace HaCreator.MapSimulator.Pools
                 return snapshot.KnownState.ChargeSkillId;
             }
 
-            if (!snapshot.HasWeaponCharge
-                || snapshot.RawPayload == null
-                || snapshot.WeaponChargePayloadOffset < 0)
+            if (snapshot.RawPayload == null
+                || snapshot.RawPayload.Length < (sizeof(int) * 4) + sizeof(int))
             {
                 return null;
             }
 
+            if (snapshot.WeaponChargePayloadOffset >= 0
+                && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int)
+                && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    snapshot.WeaponChargePayloadOffset,
+                    preferredSkillId,
+                    out int scopedChargeSkillId))
+            {
+                return scopedChargeSkillId;
+            }
+
             return AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
                 snapshot.RawPayload,
-                snapshot.WeaponChargePayloadOffset,
+                sizeof(int) * 4,
                 preferredSkillId,
                 out int payloadChargeSkillId)
                 ? payloadChargeSkillId
@@ -6080,6 +6257,7 @@ namespace HaCreator.MapSimulator.Pools
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatWeaponChargeEffect { get; set; }
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatBarrierEffect { get; set; }
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatBlessingArmorEffect { get; set; }
+        public RemoteUserActorPool.RemotePacketOwnedEmotionState PacketOwnedEmotion { get; set; }
         public int? CarryItemEffectId { get; set; }
         public int CompletedSetItemId { get; set; }
         public Dictionary<EquipSlot, CharacterPart> BattlefieldOriginalEquipment { get; set; }
@@ -6097,6 +6275,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 Assembler.OverrideAvatarPart = TemporaryStatAvatarOverridePart;
                 Assembler.OverrideTamingMobPart = TemporaryStatTamingMobOverridePart;
+                Assembler.FaceExpressionName = PacketOwnedEmotion?.EmotionName ?? "default";
             }
         }
 
@@ -6215,11 +6394,14 @@ namespace HaCreator.MapSimulator.Pools
                 : "none";
             string carryItemEffectText = CarryItemEffectId?.ToString() ?? "none";
             string setItemText = CompletedSetItemId > 0 ? CompletedSetItemId.ToString() : "none";
+            string activeEffectText = PacketOwnedEmotion != null
+                ? $"{PacketOwnedEmotion.ItemId}:{PacketOwnedEmotion.EmotionName}"
+                : "none";
             string ridingVehicleText = RidingVehicleId > 0 ? RidingVehicleId.ToString() : "none";
             string shadowPartnerText = TemporaryStatShadowPartnerSkillId?.ToString() ?? "none";
             string followDriverText = FollowDriverId > 0 ? FollowDriverId.ToString() : "none";
             string followPassengerText = FollowPassengerId > 0 ? FollowPassengerId.ToString() : "none";
-            return $"{CharacterId}:{Name}@({Position.X:0},{Position.Y:0}) action={ActionName} source={SourceTag} helper={helperText} team={teamText} prep={preparedText} chairPair={chairPairText} itemEffect={itemEffectText} carry={carryItemEffectText} setItem={setItemText} ridingVehicle={ridingVehicleText} shadowPartner={shadowPartnerText} followDriver={followDriverText} followPassenger={followPassengerText}";
+            return $"{CharacterId}:{Name}@({Position.X:0},{Position.Y:0}) action={ActionName} source={SourceTag} helper={helperText} team={teamText} prep={preparedText} chairPair={chairPairText} itemEffect={itemEffectText} activeEffect={activeEffectText} carry={carryItemEffectText} setItem={setItemText} ridingVehicle={ridingVehicleText} shadowPartner={shadowPartnerText} followDriver={followDriverText} followPassenger={followPassengerText}";
         }
     }
 

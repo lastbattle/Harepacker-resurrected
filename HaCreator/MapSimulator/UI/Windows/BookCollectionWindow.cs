@@ -78,6 +78,8 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Rectangle StatusBounds = new(16, 286, 184, 18);
         private static readonly Rectangle LeftCollectionPageBounds = new(20, 34, 196, 248);
         private static readonly Rectangle RightCollectionPageBounds = new(240, 34, 196, 248);
+        private static readonly Rectangle ClientLeftCollectionPageContentBounds = new(23, 34, 190, 248);
+        private static readonly Rectangle ClientRightCollectionPageContentBounds = new(243, 34, 190, 248);
         private static readonly Rectangle ClientLeftCollectionPageIndexBounds = new(23, 293, 190, 16);
         private static readonly Rectangle ClientRightCollectionPageIndexBounds = new(243, 293, 190, 16);
         private static readonly Color TitleColor = new(82, 59, 29);
@@ -1028,7 +1030,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 int collectionTotalPages = GetTotalPageCount();
                 int collectionSpreadStart = GetSpreadStartAbsolutePageIndex(GetAbsolutePageIndex());
-                DrawCenteredBookText(
+                DrawCollectionPageIndex(
                     sprite,
                     BuildPageIndexText(collectionSpreadStart, collectionTotalPages),
                     OffsetBounds(ClientLeftCollectionPageIndexBounds, Point.Zero),
@@ -1036,7 +1038,7 @@ namespace HaCreator.MapSimulator.UI
 
                 if (collectionSpreadStart + 1 < collectionTotalPages)
                 {
-                    DrawCenteredBookText(
+                    DrawCollectionPageIndex(
                         sprite,
                         BuildPageIndexText(collectionSpreadStart + 1, collectionTotalPages),
                         OffsetBounds(ClientRightCollectionPageIndexBounds, Point.Zero),
@@ -1121,19 +1123,27 @@ namespace HaCreator.MapSimulator.UI
         private void DrawCollectionSpread(SpriteBatch sprite)
         {
             int spreadStart = GetSpreadStartAbsolutePageIndex(GetAbsolutePageIndex());
-            DrawCollectionPage(sprite, spreadStart, OffsetBounds(LeftCollectionPageBounds, Point.Zero), false);
-            DrawCollectionPage(sprite, spreadStart + 1, OffsetBounds(RightCollectionPageBounds, Point.Zero), true);
+            DrawCollectionPage(
+                sprite,
+                spreadStart,
+                OffsetBounds(LeftCollectionPageBounds, Point.Zero),
+                OffsetBounds(ClientLeftCollectionPageContentBounds, Point.Zero));
+            DrawCollectionPage(
+                sprite,
+                spreadStart + 1,
+                OffsetBounds(RightCollectionPageBounds, Point.Zero),
+                OffsetBounds(ClientRightCollectionPageContentBounds, Point.Zero));
         }
 
-        private void DrawCollectionPage(SpriteBatch sprite, int pageIndex, Rectangle pageBounds, bool isRightPage)
+        private void DrawCollectionPage(SpriteBatch sprite, int pageIndex, Rectangle frameBounds, Rectangle contentBounds)
         {
             CollectionBookPageSnapshot page = GetCollectionPage(pageIndex);
-            DrawPageFrame(sprite, pageBounds);
+            DrawPageFrame(sprite, frameBounds);
 
             if (page == null)
             {
-                DrawTextLine(sprite, "No entry", new Vector2(pageBounds.X + 12, pageBounds.Y + 18), GetBookStyle(0), pageBounds.Width - 24, HorizontalAlignment.Center);
-                DrawTextLine(sprite, "No ledger rows", new Vector2(pageBounds.X + 12, pageBounds.Y + 42), GetBookStyle(10), pageBounds.Width - 24, HorizontalAlignment.Center);
+                DrawTextLine(sprite, "No entry", new Vector2(contentBounds.X + 12, contentBounds.Y + 18), GetBookStyle(0), contentBounds.Width - 24, HorizontalAlignment.Center);
+                DrawTextLine(sprite, "No ledger rows", new Vector2(contentBounds.X + 12, contentBounds.Y + 42), GetBookStyle(10), contentBounds.Width - 24, HorizontalAlignment.Center);
                 return;
             }
 
@@ -1142,24 +1152,24 @@ namespace HaCreator.MapSimulator.UI
             {
                 foreach (CollectionBookRecordSnapshot record in records)
                 {
-                    DrawCollectionRecord(sprite, pageBounds, isRightPage, record);
+                    DrawCollectionRecord(sprite, contentBounds, record);
                 }
 
                 return;
             }
 
-            DrawTextLine(sprite, page.Title, new Vector2(pageBounds.X + 16, pageBounds.Y + 14), GetBookStyle(0), pageBounds.Width - 32, HorizontalAlignment.Center);
-            DrawTextLine(sprite, page.Subtitle, new Vector2(pageBounds.X + 16, pageBounds.Y + 34), GetBookStyle(10), pageBounds.Width - 32, HorizontalAlignment.Center);
-            DrawRule(sprite, new Rectangle(pageBounds.X + 15, pageBounds.Y + 56, pageBounds.Width - 30, 1));
+            DrawTextLine(sprite, page.Title, new Vector2(contentBounds.X + 16, contentBounds.Y + 14), GetBookStyle(0), contentBounds.Width - 32, HorizontalAlignment.Center);
+            DrawTextLine(sprite, page.Subtitle, new Vector2(contentBounds.X + 16, contentBounds.Y + 34), GetBookStyle(10), contentBounds.Width - 32, HorizontalAlignment.Center);
+            DrawRule(sprite, new Rectangle(contentBounds.X + 15, contentBounds.Y + 56, contentBounds.Width - 30, 2));
 
             for (int row = 0; row < CollectionEntriesPerPage; row++)
             {
-                Rectangle rowBounds = new(pageBounds.X + 14, pageBounds.Y + 68 + (row * 28), pageBounds.Width - 28, 24);
+                Rectangle rowBounds = new(contentBounds.X + 14, contentBounds.Y + 68 + (row * 28), contentBounds.Width - 28, 24);
                 DrawCollectionEntry(sprite, rowBounds, row < (page.Entries?.Count ?? 0) ? page.Entries[row] : null);
             }
 
-            DrawRule(sprite, new Rectangle(pageBounds.X + 15, pageBounds.Bottom - 28, pageBounds.Width - 30, 1));
-            DrawTextLine(sprite, page.Footer, new Vector2(pageBounds.X + 16, pageBounds.Bottom - 21), GetBookStyle(11), pageBounds.Width - 32, HorizontalAlignment.Center);
+            DrawRule(sprite, new Rectangle(contentBounds.X + 15, contentBounds.Bottom - 28, contentBounds.Width - 30, 2));
+            DrawTextLine(sprite, page.Footer, new Vector2(contentBounds.X + 16, contentBounds.Bottom - 21), GetBookStyle(11), contentBounds.Width - 32, HorizontalAlignment.Center);
         }
 
         private void DrawCollectionEntry(SpriteBatch sprite, Rectangle bounds, CollectionBookEntrySnapshot entry)
@@ -1174,7 +1184,7 @@ namespace HaCreator.MapSimulator.UI
             DrawTextLine(sprite, entry.Detail, new Vector2(bounds.X + 8, bounds.Y + 12), GetBookStyle(10), bounds.Width - 10, HorizontalAlignment.Left);
         }
 
-        private void DrawCollectionRecord(SpriteBatch sprite, Rectangle pageBounds, bool isRightPage, CollectionBookRecordSnapshot record)
+        private void DrawCollectionRecord(SpriteBatch sprite, Rectangle pageBounds, CollectionBookRecordSnapshot record)
         {
             if (record == null)
             {
@@ -1702,6 +1712,25 @@ namespace HaCreator.MapSimulator.UI
 
             Vector2 size = MeasureRenderedText(trimmed, style);
             Vector2 position = new(bounds.X + ((bounds.Width - size.X) / 2f), bounds.Y + ((bounds.Height - size.Y) / 2f));
+            if (style.Shadow)
+            {
+                DrawRenderedString(sprite, trimmed, position + Vector2.One, style.ShadowColor, style);
+            }
+
+            DrawRenderedString(sprite, trimmed, position, style.Color, style);
+        }
+
+        private void DrawCollectionPageIndex(SpriteBatch sprite, string text, Rectangle bounds, BookTextStyle style)
+        {
+            if (string.IsNullOrEmpty(text))
+                return;
+
+            string trimmed = TrimToWidth(text, bounds.Width, style);
+            if (string.IsNullOrEmpty(trimmed))
+                return;
+
+            Vector2 size = MeasureRenderedText(trimmed, style);
+            Vector2 position = new(bounds.X + ((bounds.Width - size.X) / 2f), bounds.Y);
             if (style.Shadow)
             {
                 DrawRenderedString(sprite, trimmed, position + Vector2.One, style.ShadowColor, style);

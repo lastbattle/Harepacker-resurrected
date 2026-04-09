@@ -90,6 +90,34 @@ namespace HaCreator.MapSimulator.Character.Skills
             "rope2"
         };
 
+        private static readonly string[] ClientConfirmedMechanicVehicleVehicleIdOnlyActionNames =
+        {
+            "paralyze",
+            "shoot6",
+            "arrowRain",
+            "burster1",
+            "rush2",
+            "sanctuary",
+            "lasergun",
+            "tripleBlow",
+            "quadBlow",
+            "deathBlow",
+            "cyclone",
+            "cyclone_after",
+            "doubleJump",
+            "knockback",
+            "swallow_pre",
+            "swallow_loop",
+            "swallow",
+            "flashRain",
+            "blade",
+            "mine",
+            "ride",
+            "getoff",
+            "capture",
+            "clawCut"
+        };
+
         internal static bool LooksLikeClientOwnedRideDescriptionBuff(SkillData skill)
         {
             if (skill?.IsBuff != true)
@@ -299,6 +327,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool IsMechanicVehicleOwnedCurrentActionName(string actionName, bool includeTransformStates = false)
         {
             if (IsMechanicVehicleActionName(actionName, includeTransformStates))
+            {
+                return true;
+            }
+
+            if (ContainsActionName(ClientConfirmedMechanicVehicleVehicleIdOnlyActionNames, actionName))
             {
                 return true;
             }

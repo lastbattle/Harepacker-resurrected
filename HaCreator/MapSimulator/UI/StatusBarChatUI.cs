@@ -128,13 +128,14 @@ namespace HaCreator.MapSimulator.UI
         private Vector2 _chatInputBasePos = new Vector2(74, 5);
         private Vector2 _chatInputPos = new Vector2(74, 5);
         private Vector2 _chatWhisperPromptPos = new Vector2(74, -13);
-        private Vector2 _chatLogTextBasePos = new Vector2(4, -16);
-        private Vector2 _chatLogTextPos = new Vector2(4, -16);
+        private Vector2 _chatLogTextBasePos = new Vector2(StatusBarChatLayoutRules.ClientChatLogTextLeftInset, -16);
+        private Vector2 _chatLogTextPos = new Vector2(StatusBarChatLayoutRules.ClientChatLogTextLeftInset, -16);
         private int _chatLogWidth = 452;
         private int _chatInputWidth = 380;
         private int _chatLogLineHeight = DefaultChatLogLineHeight;
         private int _chatCursorHeight = DefaultChatCursorHeight;
-        private Rectangle? _chatInteractionBounds;
+        private Rectangle _chatEnterBounds;
+        private Rectangle _chatSpace2Bounds;
 
         public Action ToggleChatRequested { get; set; }
         public Action<int> CycleChatTargetRequested { get; set; }
@@ -282,7 +283,8 @@ namespace HaCreator.MapSimulator.UI
             Vector2 chatInputPos,
             Vector2 chatLogTextPos,
             int chatLogWidth,
-            Rectangle? chatInteractionBounds = null)
+            Rectangle chatEnterBounds,
+            Rectangle chatSpace2Bounds)
         {
             _pointNotificationAnchor = frameAnchor;
             _chatTargetLabelPos = chatTargetLabelPos;
@@ -290,7 +292,8 @@ namespace HaCreator.MapSimulator.UI
             _chatInputBasePos = chatInputPos;
             _chatLogTextBasePos = chatLogTextPos;
             _chatLogWidth = Math.Max(1, chatLogWidth);
-            _chatInteractionBounds = chatInteractionBounds;
+            _chatEnterBounds = chatEnterBounds;
+            _chatSpace2Bounds = chatSpace2Bounds;
             RefreshTextMetrics();
         }
 
@@ -734,7 +737,9 @@ namespace HaCreator.MapSimulator.UI
                     _whisperPickerSelectedTexture?.Height ?? 0,
                     _whisperPickerRowTexture?.Height ?? 0),
                 ResolveFontLineSpacing() + WhisperPickerRowPadding);
-            int popupWidth = Math.Max(96, (int)Math.Ceiling(maxCandidateWidth) + (WhisperPickerFramePadding * 2) + 8);
+            int popupWidth = Math.Max(
+                ResolveWhisperPickerMinimumRowWidth(),
+                (int)Math.Ceiling(maxCandidateWidth) + (WhisperPickerFramePadding * 2) + 8);
             int popupHeight = rowHeight * (visibleCount + 1);
             int popupX = (int)Math.Round(this.Position.X + _chatInputPos.X);
             int popupY = (int)Math.Round(this.Position.Y + _chatWhisperPromptPos.Y) - popupHeight - 4;
@@ -800,10 +805,10 @@ namespace HaCreator.MapSimulator.UI
                 WhisperPickerModalMinimumWidth - (WhisperPickerModalContentPadding * 2),
                 (int)Math.Ceiling(ResolveWhisperPickerMaxCandidateWidth(chatState, firstVisibleIndex, visibleCount)) + (WhisperPickerFramePadding * 2) + 24);
             int modalWidth = Math.Max(
-                WhisperPickerModalMinimumWidth,
+                ResolveWhisperPickerModalFrameWidth(),
                 Math.Max(
-                    _whisperPickerDialogTopTexture?.Width ?? 0,
-                    Math.Max(_whisperPickerDialogBottomTexture?.Width ?? 0, contentWidth + (WhisperPickerModalContentPadding * 2))));
+                    WhisperPickerModalMinimumWidth,
+                    contentWidth + (WhisperPickerModalContentPadding * 2)));
             int titleBarHeight = _whisperPickerDialogBarTexture?.Height ?? 0;
             int topHeight = _whisperPickerDialogTopTexture?.Height ?? 28;
             int bottomHeight = _whisperPickerDialogBottomTexture?.Height ?? 44;
@@ -925,6 +930,26 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return maxCandidateWidth;
+        }
+
+        private int ResolveWhisperPickerMinimumRowWidth()
+        {
+            return Math.Max(
+                96,
+                Math.Max(
+                    _whisperPickerSelectedTexture?.Width ?? 0,
+                    _whisperPickerRowTexture?.Width ?? 0));
+        }
+
+        private int ResolveWhisperPickerModalFrameWidth()
+        {
+            return Math.Max(
+                ResolveWhisperPickerMinimumRowWidth() + (WhisperPickerModalContentPadding * 2),
+                Math.Max(
+                    _whisperPickerDialogTopTexture?.Width ?? 0,
+                    Math.Max(
+                        _whisperPickerDialogCenterTexture?.Width ?? 0,
+                        _whisperPickerDialogBottomTexture?.Width ?? 0)));
         }
 
         private void DrawModalWhisperPickerFrame(SpriteBatch sprite, Rectangle bounds)
@@ -1538,21 +1563,19 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetChatInteractionBounds()
         {
-            if (_chatInteractionBounds.HasValue)
-            {
-                Rectangle bounds = _chatInteractionBounds.Value;
-                return new Rectangle(
-                    this.Position.X + bounds.X,
-                    this.Position.Y + bounds.Y,
-                    bounds.Width,
-                    bounds.Height);
-            }
-
+            Rectangle bounds = StatusBarChatLayoutRules.ResolveChatInteractionBounds(
+                _chatLogTextPos,
+                _chatLogWidth,
+                _chatEnterBounds,
+                _chatSpace2Bounds,
+                _chatEnterTexture?.Height ?? 21,
+                ChatMaxVisibleLines,
+                _chatLogLineHeight);
             return new Rectangle(
-                this.Position.X + (int)_chatLogTextPos.X - 4,
-                this.Position.Y + (int)_chatLogTextPos.Y - (ChatMaxVisibleLines * _chatLogLineHeight) + 2,
-                _chatLogWidth + 18,
-                (ChatMaxVisibleLines * _chatLogLineHeight) + 42);
+                this.Position.X + bounds.X,
+                this.Position.Y + bounds.Y,
+                bounds.Width,
+                bounds.Height);
         }
 
         private static string ResolveWhisperTargetCandidate(ChatMessage message)

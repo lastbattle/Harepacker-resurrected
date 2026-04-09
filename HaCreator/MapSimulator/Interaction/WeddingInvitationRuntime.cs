@@ -48,6 +48,7 @@ namespace HaCreator.MapSimulator.Interaction
         private WeddingInvitationStyle _style = WeddingInvitationStyle.Neat;
         private int? _clientDialogType;
         private byte[] _lastMarriageResultPacketPayload = Array.Empty<byte>();
+        private WeddingInvitationAcceptedHandoff _acceptedHandoff;
         private bool _isOpen;
         private bool _lastAccepted;
         private bool _lastOpenUsedMarriageResultPacket;
@@ -116,10 +117,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             _isOpen = false;
             _lastAccepted = true;
+            _acceptedHandoff = BuildAcceptedHandoff();
             string packetEvidence = _lastOpenUsedMarriageResultPacket && _lastMarriageResultPacketPayload.Length > 0
                 ? $" The dialog was opened from {ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} bytes [{FormatPayload(_lastMarriageResultPacketPayload)}]."
                 : string.Empty;
-            _statusMessage = $"Accepted wedding invitation for {_groomName} and {_brideName}. Client button focus remains modeled through StringPool 0x{AcceptButtonUolStringPoolId:X}; downstream NPC/script ceremony handoff is still not modeled.{packetEvidence}";
+            _statusMessage = $"Accepted wedding invitation for {_groomName} and {_brideName}. Client button focus remains modeled through StringPool 0x{AcceptButtonUolStringPoolId:X}; staged downstream wedding handoff as {_acceptedHandoff.LocalRole} for the existing wish-list seam while the external NPC/script and ceremony transition chain remains unmodeled.{packetEvidence}";
             return _statusMessage;
         }
 
@@ -132,7 +134,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             _isOpen = false;
             _lastAccepted = false;
-            _statusMessage = $"Dismissed wedding invitation for {_groomName} and {_brideName} without modeling the downstream client handoff.";
+            _acceptedHandoff = null;
+            _statusMessage = $"Dismissed wedding invitation for {_groomName} and {_brideName} without staging the downstream client handoff.";
             return _statusMessage;
         }
 
@@ -149,9 +152,28 @@ namespace HaCreator.MapSimulator.Interaction
             _basicBlackFontFaceName = WeddingInvitationDialogText.GetBasicBlackFontFaceName();
             _lastMarriageResultPacketPayload = Array.Empty<byte>();
             _lastOpenUsedMarriageResultPacket = false;
+            _acceptedHandoff = null;
             _sourceDescription = DefaultSourceDescription;
             _statusMessage = "Cleared wedding invitation state.";
             return _statusMessage;
+        }
+
+        internal bool TryBuildWeddingWishListHandoff(
+            CharacterBuild localBuild,
+            out WeddingInvitationAcceptedHandoff handoff,
+            out string message)
+        {
+            UpdateLocalContext(localBuild);
+            if (_acceptedHandoff == null)
+            {
+                handoff = null;
+                message = "Accept a wedding invitation before opening the downstream wedding wish-list owner.";
+                return false;
+            }
+
+            handoff = BuildAcceptedHandoff();
+            message = $"Prepared downstream wedding wish-list handoff for {handoff.GroomName} and {handoff.BrideName} as {handoff.LocalRole} from the accepted invitation owner.";
+            return true;
         }
 
         internal WeddingInvitationSnapshot BuildSnapshot()
@@ -205,7 +227,10 @@ namespace HaCreator.MapSimulator.Interaction
             string packetPath = snapshot.LastOpenUsedMarriageResultPacket
                 ? $" packet=[{FormatPayload(snapshot.LastMarriageResultPacketPayload)}];"
                 : string.Empty;
-            return $"Wedding invitation {state} ({snapshot.Style}): {snapshot.GroomName} + {snapshot.BrideName}. Source={snapshot.SourceDescription}; asset={snapshot.InvitationAssetPath}; dialogUOL={snapshot.DialogUolText}; acceptUOL={snapshot.AcceptButtonUolText};{packetPath} {snapshot.StatusMessage}";
+            string downstreamState = _acceptedHandoff != null
+                ? $" downstream={_acceptedHandoff.LocalRole};"
+                : string.Empty;
+            return $"Wedding invitation {state} ({snapshot.Style}): {snapshot.GroomName} + {snapshot.BrideName}. Source={snapshot.SourceDescription}; asset={snapshot.InvitationAssetPath}; dialogUOL={snapshot.DialogUolText}; acceptUOL={snapshot.AcceptButtonUolText};{packetPath}{downstreamState} {snapshot.StatusMessage}";
         }
 
         internal static byte[] BuildMarriageResultOpenPayload(string groomName, string brideName, int clientDialogType)
@@ -335,6 +360,38 @@ namespace HaCreator.MapSimulator.Interaction
 
             return builder.ToString();
         }
+
+        private WeddingInvitationAcceptedHandoff BuildAcceptedHandoff()
+        {
+            string localName = NormalizeName(_localCharacterName, DefaultGroomName);
+            WeddingWishListRole localRole = ResolveLocalRole(localName, _groomName, _brideName);
+            return new WeddingInvitationAcceptedHandoff
+            {
+                GroomName = _groomName,
+                BrideName = _brideName,
+                LocalRole = localRole,
+                SourceDescription = _sourceDescription,
+                Style = _style,
+                ClientDialogType = NormalizeClientDialogType(_clientDialogType),
+                LastOpenUsedMarriageResultPacket = _lastOpenUsedMarriageResultPacket,
+                LastMarriageResultPacketPayload = Array.AsReadOnly((byte[])_lastMarriageResultPacketPayload.Clone())
+            };
+        }
+
+        private static WeddingWishListRole ResolveLocalRole(string localName, string groomName, string brideName)
+        {
+            if (string.Equals(localName, brideName, StringComparison.OrdinalIgnoreCase))
+            {
+                return WeddingWishListRole.Bride;
+            }
+
+            if (string.Equals(localName, groomName, StringComparison.OrdinalIgnoreCase))
+            {
+                return WeddingWishListRole.Groom;
+            }
+
+            return WeddingWishListRole.Groom;
+        }
     }
 
     internal enum WeddingInvitationStyle
@@ -382,5 +439,17 @@ namespace HaCreator.MapSimulator.Interaction
         public (int X, int Y) GroomNamePosition { get; init; }
         public (int X, int Y) BrideNamePosition { get; init; }
         public (int X, int Y) AcceptButtonPosition { get; init; }
+    }
+
+    internal sealed class WeddingInvitationAcceptedHandoff
+    {
+        public string GroomName { get; init; } = string.Empty;
+        public string BrideName { get; init; } = string.Empty;
+        public string SourceDescription { get; init; } = string.Empty;
+        public IReadOnlyList<byte> LastMarriageResultPacketPayload { get; init; } = Array.Empty<byte>();
+        public bool LastOpenUsedMarriageResultPacket { get; init; }
+        public WeddingInvitationStyle Style { get; init; }
+        public WeddingWishListRole LocalRole { get; init; }
+        public int ClientDialogType { get; init; } = WeddingInvitationRuntime.DefaultClientDialogType;
     }
 }

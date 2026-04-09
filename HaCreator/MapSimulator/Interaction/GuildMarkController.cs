@@ -21,12 +21,13 @@ namespace HaCreator.MapSimulator.Interaction
         internal string Open(
             UIWindowManager windowManager,
             SpriteFont font,
+            GuildMarkSelection? currentSelection,
             Func<GuildMarkSelection, string> commitHandler,
             Action<string> feedbackHandler,
             Action showWindow)
         {
-            string message = _runtime.Open();
-            WireWindow(windowManager, font, commitHandler, feedbackHandler);
+            string message = _runtime.Open(currentSelection);
+            WireWindow(windowManager, font, currentSelection, commitHandler, feedbackHandler);
             showWindow?.Invoke();
             return message;
         }
@@ -34,6 +35,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal void WireWindow(
             UIWindowManager windowManager,
             SpriteFont font,
+            GuildMarkSelection? currentSelection,
             Func<GuildMarkSelection, string> commitHandler,
             Action<string> feedbackHandler)
         {
@@ -42,6 +44,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
+            _runtime.SyncCurrentSelection(currentSelection);
             window.SetSnapshotProvider(_runtime.BuildSnapshot);
             window.SetActionHandlers(
                 elapsedMs => _runtime.Advance(elapsedMs),

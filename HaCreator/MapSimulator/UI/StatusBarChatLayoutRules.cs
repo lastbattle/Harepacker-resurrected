@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator.UI
 {
     internal static class StatusBarChatLayoutRules
     {
+        internal const int ClientChatLogTextLeftInset = 9;
         private const int ChatWrapIndentSpaces = 5;
         private const int ChatSpecialFirstLineWidthReduction = 38;
 
@@ -49,6 +51,51 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return lines;
+        }
+
+        public static Rectangle ResolveChatInteractionBounds(
+            Vector2 chatLogTextPos,
+            int chatLogWidth,
+            Rectangle chatEnterBounds,
+            Rectangle chatSpace2Bounds,
+            int chatEnterHeight,
+            int visibleLineCount,
+            int chatLogLineHeight)
+        {
+            int left = Math.Min(
+                (int)MathF.Floor(chatLogTextPos.X) - 4,
+                chatSpace2Bounds.IsEmpty ? int.MaxValue : chatSpace2Bounds.Left);
+            if (left == int.MaxValue)
+            {
+                left = (int)MathF.Floor(chatLogTextPos.X) - 4;
+            }
+
+            int right = Math.Max(
+                (int)MathF.Ceiling(chatLogTextPos.X) + chatLogWidth + 4,
+                Math.Max(
+                    chatEnterBounds.IsEmpty ? int.MinValue : chatEnterBounds.Right,
+                    chatSpace2Bounds.IsEmpty ? int.MinValue : chatSpace2Bounds.Right));
+            if (right == int.MinValue)
+            {
+                right = left + chatLogWidth + 8;
+            }
+
+            int bottom = Math.Max(
+                chatEnterBounds.IsEmpty ? int.MinValue : chatEnterBounds.Bottom,
+                chatSpace2Bounds.IsEmpty ? int.MinValue : chatSpace2Bounds.Bottom);
+            if (bottom == int.MinValue)
+            {
+                bottom = (chatEnterBounds.IsEmpty ? 0 : chatEnterBounds.Y) + Math.Max(1, chatEnterHeight);
+            }
+
+            int safeVisibleLineCount = Math.Max(1, visibleLineCount);
+            int safeChatLogLineHeight = Math.Max(1, chatLogLineHeight);
+            int top = (int)MathF.Floor(chatLogTextPos.Y) - (safeVisibleLineCount * safeChatLogLineHeight) - 2;
+            return new Rectangle(
+                left,
+                top,
+                Math.Max(1, right - left),
+                Math.Max(1, bottom - top));
         }
 
         private static int ResolveLongestFittingPrefixLength(

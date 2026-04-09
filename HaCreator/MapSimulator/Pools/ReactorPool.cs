@@ -777,6 +777,7 @@ namespace HaCreator.MapSimulator.Pools
             if (TryResolveNextVisualState(reactor, data, request, out int nextVisualState, out int selectedAuthoredOrder))
             {
                 data.VisualState = nextVisualState;
+                SyncReactorVisualState(reactor, data, currentTick);
                 UpdatePreferredAuthoredOrder(data, activationType, selectedAuthoredOrder);
             }
             else
@@ -841,6 +842,7 @@ namespace HaCreator.MapSimulator.Pools
                         data.ActivationType = ReactorActivationType.Hit;
                         data.ActivationValue = 0;
                         data.VisualState = nextVisualState;
+                        SyncReactorVisualState(reactor, data, currentTick);
                         data.State = ReactorState.Activated;
                         data.StateStartTime = currentTick;
                         data.StateFrame = 0;
@@ -913,6 +915,7 @@ namespace HaCreator.MapSimulator.Pools
             data.StateStartTime = currentTick;
             data.StateFrame = 0;
             data.VisualState = reactor?.GetInitialState() ?? 0;
+            SyncReactorVisualState(reactor, data, currentTick);
             data.HitCount = 0;
             data.Alpha = 1f;
             data.ActivationType = data.PrimaryActivationType;
@@ -1862,6 +1865,17 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketPendingVisualState = -1;
         }
 
+        private static void SyncReactorVisualState(ReactorItem reactor, ReactorRuntimeData data, int currentTick)
+        {
+            if (reactor == null || data == null)
+            {
+                return;
+            }
+
+            reactor.SetAnimationState(data.VisualState, currentTick);
+            data.StateFrame = reactor.GetCurrentFrameIndex(currentTick);
+        }
+
         private void SyncPacketScriptPublication(ReactorItem reactor, ReactorRuntimeData data, int currentTick)
         {
             if (reactor == null || data == null)
@@ -2028,6 +2042,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             data.VisualState = nextVisualState;
+            SyncReactorVisualState(reactor, data, currentTick);
             data.State = ReactorState.Activated;
             data.StateStartTime = currentTick;
             data.StateFrame = 0;
@@ -2051,6 +2066,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             data.VisualState = nextVisualState;
+            SyncReactorVisualState(reactor, data, currentTick);
             data.ActivationType = ReactorActivationType.Time;
             data.ActivationValue = 0;
             data.State = ReactorState.Activated;
@@ -2078,6 +2094,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             data.VisualState = nextVisualState;
+            SyncReactorVisualState(reactor, data, currentTick);
             data.State = ReactorState.Activated;
             data.StateStartTime = currentTick;
             data.StateFrame = 0;

@@ -245,6 +245,7 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCanvasTexture(mainProperty, "tip2", device)
             };
             skill.SetTooltipTextures(tooltipFrames);
+            skill.SetCooldownMasks(LoadCooldownMasks(mainProperty?["CoolTime"] as WzSubProperty, device));
             Point[] tooltipOrigins =
             {
                 ResolveTooltipOrigin(mainProperty["tip0"] as WzCanvasProperty),
@@ -2087,14 +2088,7 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty coolTimeProperty = mainProperty?["CoolTime"] as WzSubProperty;
             if (coolTimeProperty != null)
             {
-                Texture2D[] cooldownMasks = new Texture2D[16];
-                for (int i = 0; i < cooldownMasks.Length; i++)
-                {
-                    cooldownMasks[i] = LoadCanvasTexture(coolTimeProperty, i.ToString(), device);
-                }
-
-
-                quickSlot.SetCooldownMasks(cooldownMasks);
+                quickSlot.SetCooldownMasks(LoadCooldownMasks(coolTimeProperty, device));
 
             }
 
@@ -2133,6 +2127,22 @@ namespace HaCreator.MapSimulator.Loaders
 
             return quickSlot;
 
+        }
+
+        private static Texture2D[] LoadCooldownMasks(WzSubProperty coolTimeProperty, GraphicsDevice device)
+        {
+            Texture2D[] cooldownMasks = new Texture2D[16];
+            if (coolTimeProperty == null)
+            {
+                return cooldownMasks;
+            }
+
+            for (int i = 0; i < cooldownMasks.Length; i++)
+            {
+                cooldownMasks[i] = LoadCanvasTexture(coolTimeProperty, i.ToString(), device);
+            }
+
+            return cooldownMasks;
         }
 
 

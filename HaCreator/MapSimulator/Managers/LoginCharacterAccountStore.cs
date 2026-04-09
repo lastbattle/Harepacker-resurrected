@@ -162,20 +162,27 @@ namespace HaCreator.MapSimulator.Managers
             int maxCharacterId = entries.Count == 0 ? 0 : entries.Max(entry => entry.CharacterId);
             int nextCharacterId = Math.Max(Math.Max(1, persisted.NextCharacterId), maxCharacterId + 1);
 
+            LoginExtraCharInfoResultProfile normalizedExtraCharInfoResult =
+                NormalizeExtraCharInfoResultProfile(persisted.ExtraCharInfoResult, persisted.AccountId);
+            int normalizedBuyCharacterCount = NormalizeBuyCharacterCount(
+                persisted.BuyCharacterCount,
+                normalizedExtraCharInfoResult,
+                persisted.AccountId);
+
             return new LoginCharacterAccountState
             {
                 AccountName = string.IsNullOrWhiteSpace(persisted.AccountName) ? accountName : persisted.AccountName,
                 AccountId = persisted.AccountId,
                 WorldId = Math.Max(0, persisted.WorldId),
                 SlotCount = Math.Max(0, persisted.SlotCount),
-                BuyCharacterCount = Math.Max(0, persisted.BuyCharacterCount),
+                BuyCharacterCount = normalizedBuyCharacterCount,
                 NextCharacterId = nextCharacterId,
                 CashShopNxCredit = NormalizeCashShopNxCredit(persisted.CashShopNxCredit),
                 PicCode = NormalizeSecret(persisted.PicCode),
                 BirthDate = NormalizeBirthDate(persisted.BirthDate),
                 IsSecondaryPasswordEnabled = persisted.IsSecondaryPasswordEnabled,
                 SecondaryPassword = NormalizeSecret(persisted.SecondaryPassword),
-                ExtraCharInfoResult = CloneExtraCharInfoResultProfile(persisted.ExtraCharInfoResult),
+                ExtraCharInfoResult = normalizedExtraCharInfoResult,
                 StorageExpansionHistory = CloneStorageExpansionHistory(persisted.StorageExpansionHistory),
                 Entries = entries
             };
@@ -227,6 +234,10 @@ namespace HaCreator.MapSimulator.Managers
                 ?? new List<LoginCharacterAccountEntryState>();
             LoginExtraCharInfoResultProfile normalizedExtraCharInfoResult =
                 NormalizeExtraCharInfoResultProfile(extraCharInfoResult, accountId);
+            int normalizedBuyCharacterCount = NormalizeBuyCharacterCount(
+                buyCharacterCount,
+                normalizedExtraCharInfoResult,
+                accountId);
 
             int maxCharacterId = normalizedEntries.Count == 0 ? 0 : normalizedEntries.Max(entry => entry.CharacterId);
             int normalizedNextCharacterId = Math.Max(Math.Max(1, nextCharacterId), maxCharacterId + 1);
@@ -237,7 +248,7 @@ namespace HaCreator.MapSimulator.Managers
                 AccountId = accountId.HasValue && accountId.Value > 0 ? accountId.Value : null,
                 WorldId = Math.Max(0, worldId),
                 SlotCount = Math.Max(0, slotCount),
-                BuyCharacterCount = Math.Max(0, buyCharacterCount),
+                BuyCharacterCount = normalizedBuyCharacterCount,
                 NextCharacterId = normalizedNextCharacterId,
                 CashShopNxCredit = NormalizeCashShopNxCredit(cashShopNxCredit),
                 PicCode = NormalizeSecret(picCode),
@@ -276,6 +287,10 @@ namespace HaCreator.MapSimulator.Managers
             reboundState.AccountId = accountId;
             reboundState.ExtraCharInfoResult =
                 NormalizeExtraCharInfoResultProfile(reboundState.ExtraCharInfoResult, accountId);
+            reboundState.BuyCharacterCount = NormalizeBuyCharacterCount(
+                reboundState.BuyCharacterCount,
+                reboundState.ExtraCharInfoResult,
+                accountId);
             _accountsByKey[ResolveAccountKey(accountName, worldId, accountId)] = reboundState;
             _accountsByKey[accountNameKey] = ClonePersistedState(reboundState);
             SaveToDisk();
@@ -324,6 +339,10 @@ namespace HaCreator.MapSimulator.Managers
                 reboundState.AccountName = normalizedAccountName;
                 reboundState.ExtraCharInfoResult =
                     NormalizeExtraCharInfoResultProfile(reboundState.ExtraCharInfoResult, accountId);
+                reboundState.BuyCharacterCount = NormalizeBuyCharacterCount(
+                    reboundState.BuyCharacterCount,
+                    reboundState.ExtraCharInfoResult,
+                    accountId);
                 _accountsByKey[ResolveAccountKey(normalizedAccountName, worldId, accountId)] = reboundState;
                 _accountsByKey[ResolveAccountKey(normalizedAccountName, worldId)] = ClonePersistedState(reboundState);
             }
@@ -429,20 +448,27 @@ namespace HaCreator.MapSimulator.Managers
             int maxCharacterId = entries.Count == 0 ? 0 : entries.Max(entry => entry.CharacterId);
             int nextCharacterId = Math.Max(Math.Max(1, persisted.NextCharacterId), maxCharacterId + 1);
 
+            LoginExtraCharInfoResultProfile normalizedExtraCharInfoResult =
+                NormalizeExtraCharInfoResultProfile(persisted.ExtraCharInfoResult, persisted.AccountId);
+            int normalizedBuyCharacterCount = NormalizeBuyCharacterCount(
+                persisted.BuyCharacterCount,
+                normalizedExtraCharInfoResult,
+                persisted.AccountId);
+
             return new LoginCharacterAccountState
             {
                 AccountName = string.IsNullOrWhiteSpace(persisted.AccountName) ? fallbackAccountName : persisted.AccountName,
                 AccountId = persisted.AccountId,
                 WorldId = Math.Max(0, persisted.WorldId),
                 SlotCount = Math.Max(0, persisted.SlotCount),
-                BuyCharacterCount = Math.Max(0, persisted.BuyCharacterCount),
+                BuyCharacterCount = normalizedBuyCharacterCount,
                 NextCharacterId = nextCharacterId,
                 CashShopNxCredit = NormalizeCashShopNxCredit(persisted.CashShopNxCredit),
                 PicCode = NormalizeSecret(persisted.PicCode),
                 BirthDate = NormalizeBirthDate(persisted.BirthDate),
                 IsSecondaryPasswordEnabled = persisted.IsSecondaryPasswordEnabled,
                 SecondaryPassword = NormalizeSecret(persisted.SecondaryPassword),
-                ExtraCharInfoResult = CloneExtraCharInfoResultProfile(persisted.ExtraCharInfoResult),
+                ExtraCharInfoResult = normalizedExtraCharInfoResult,
                 StorageExpansionHistory = CloneStorageExpansionHistory(persisted.StorageExpansionHistory),
                 Entries = entries
             };
@@ -647,6 +673,36 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return clonedProfile;
+        }
+
+        private static int NormalizeBuyCharacterCount(
+            int buyCharacterCount,
+            LoginExtraCharInfoResultProfile extraCharInfoResult,
+            int? accountId)
+        {
+            int normalizedBuyCharacterCount = Math.Max(0, buyCharacterCount);
+            if (!accountId.HasValue || accountId.Value <= 0)
+            {
+                return normalizedBuyCharacterCount;
+            }
+
+            if (!CanHaveExtraCharacter(extraCharInfoResult, accountId.Value))
+            {
+                return 0;
+            }
+
+            return Math.Clamp(normalizedBuyCharacterCount, 0, 1);
+        }
+
+        private static bool CanHaveExtraCharacter(
+            LoginExtraCharInfoResultProfile extraCharInfoResult,
+            int accountId)
+        {
+            return extraCharInfoResult != null &&
+                   accountId > 0 &&
+                   extraCharInfoResult.AccountId == accountId &&
+                   extraCharInfoResult.ResultFlag == 0 &&
+                   extraCharInfoResult.CanHaveExtraCharacter;
         }
     }
 }

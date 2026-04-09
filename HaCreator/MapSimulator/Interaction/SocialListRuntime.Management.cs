@@ -320,6 +320,11 @@ namespace HaCreator.MapSimulator.Interaction
                 _guildRankTitles.Add(string.IsNullOrWhiteSpace(rankTitles[i]) ? $"Rank {i + 1}" : rankTitles[i].Trim());
             }
 
+            foreach (string rankTitle in _guildRankTitles)
+            {
+                NotifySocialTextEditCommitted(rankTitle);
+            }
+
             _guildManageSelectedRankIndex = Math.Clamp(_guildManageSelectedRankIndex, 0, Math.Max(0, _guildRankTitles.Count - 1));
             _lastPacketSyncSummaryByTab[SocialListTab.Guild] =
                 $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.RankTitles}) refreshed {_guildRankTitles.Count} guild rank titles"
@@ -330,6 +335,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal string SetPacketGuildNoticeText(string notice, int guildId)
         {
             _guildNoticeText = string.IsNullOrWhiteSpace(notice) ? string.Empty : notice.Trim();
+            NotifySocialTextEditCommitted(_guildNoticeText);
             _lastPacketSyncSummaryByTab[SocialListTab.Guild] =
                 $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.Notice}) refreshed guild notice text"
                 + (guildId > 0 ? $" for guild {guildId}." : ".");
@@ -351,6 +357,11 @@ namespace HaCreator.MapSimulator.Interaction
                 _allianceRankTitles.Add(string.IsNullOrWhiteSpace(rankTitles[i]) ? $"Rank {i + 1}" : rankTitles[i].Trim());
             }
 
+            foreach (string rankTitle in _allianceRankTitles)
+            {
+                NotifySocialTextEditCommitted(rankTitle);
+            }
+
             _allianceSelectedRankIndex = Math.Clamp(_allianceSelectedRankIndex, 0, Math.Max(0, _allianceRankTitles.Count - 1));
             _lastPacketSyncSummaryByTab[SocialListTab.Alliance] =
                 $"Client OnAllianceResult({(byte)SocialListClientAllianceResultKind.RankTitles}) refreshed {_allianceRankTitles.Count} alliance rank titles"
@@ -361,6 +372,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal string SetPacketAllianceNoticeText(string notice, int allianceId)
         {
             _allianceNoticeText = string.IsNullOrWhiteSpace(notice) ? string.Empty : notice.Trim();
+            NotifySocialTextEditCommitted(_allianceNoticeText);
             _lastPacketSyncSummaryByTab[SocialListTab.Alliance] =
                 $"Client OnAllianceResult({(byte)SocialListClientAllianceResultKind.Notice}) refreshed alliance notice text"
                 + (allianceId > 0 ? $" for alliance {allianceId}." : ".");

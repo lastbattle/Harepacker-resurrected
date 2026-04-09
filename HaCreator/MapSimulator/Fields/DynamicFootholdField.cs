@@ -279,24 +279,52 @@ namespace HaCreator.MapSimulator.Fields
         private static bool TryGetLinkedMapId(WzImage mapImage, out int linkedMapId)
         {
             linkedMapId = 0;
-            if (mapImage?["info"]?["link"] is not WzStringProperty linkProperty)
+            if (mapImage?["info"]?["link"] is not WzImageProperty linkProperty)
             {
                 return false;
             }
 
-            return int.TryParse(linkProperty.Value, out linkedMapId) && linkedMapId > 0;
+            return TryReadLinkedMapId(linkProperty, out linkedMapId) && linkedMapId > 0;
         }
 
         private static bool TryReadDynamicFlag(WzImageProperty dynamicProperty, out int dynamicFlag)
         {
             dynamicFlag = 0;
-            if (dynamicProperty is WzIntProperty intProperty)
+            switch (dynamicProperty)
             {
-                dynamicFlag = intProperty.Value;
-                return true;
+                case WzIntProperty intProperty:
+                    dynamicFlag = intProperty.Value;
+                    return true;
+                case WzShortProperty shortProperty:
+                    dynamicFlag = shortProperty.Value;
+                    return true;
+                case WzLongProperty longProperty when longProperty.Value >= int.MinValue && longProperty.Value <= int.MaxValue:
+                    dynamicFlag = (int)longProperty.Value;
+                    return true;
+                default:
+                    return false;
             }
+        }
 
-            return false;
+        private static bool TryReadLinkedMapId(WzImageProperty linkProperty, out int linkedMapId)
+        {
+            linkedMapId = 0;
+            switch (linkProperty)
+            {
+                case WzStringProperty stringProperty when !string.IsNullOrWhiteSpace(stringProperty.Value):
+                    return int.TryParse(stringProperty.Value, out linkedMapId);
+                case WzIntProperty intProperty:
+                    linkedMapId = intProperty.Value;
+                    return true;
+                case WzShortProperty shortProperty:
+                    linkedMapId = shortProperty.Value;
+                    return true;
+                case WzLongProperty longProperty when longProperty.Value >= int.MinValue && longProperty.Value <= int.MaxValue:
+                    linkedMapId = (int)longProperty.Value;
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private void RegisterAuthoredDynamicObjectName(string name, int platformId)

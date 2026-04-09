@@ -14,6 +14,10 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly List<GuildRankingSeedEntry> _packetGuildRankingEntries = [];
         private GuildDialogPendingRequest? _pendingGuildDialogRequest;
         private int _guildDialogMesoBalance = 10_000_000;
+        private int _packetGuildUiRevision;
+        private int _packetGuildMarkRevision;
+        private int _packetGuildPointsAndLevelRevision;
+        private int _packetGuildRosterRevision;
 
         private const int DefaultGuildCreateCostMesos = 1_500_000;
         private const int DefaultGuildMarkCostMesos = 5_000_000;
@@ -53,7 +57,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             GuildDialogPendingRequest request = _pendingGuildDialogRequest.Value;
-            return $"Guild dialog request pending: kind={request.RequestLabel}, guild={request.GuildName}, cost={request.RequiredMesos}, mesos={_guildDialogMesoBalance}, authority={(IsPacketOwned(SocialListTab.Guild) ? "packet" : "local")}.";
+            return $"Guild dialog request pending: kind={request.RequestLabel}, guild={request.GuildName}, cost={request.RequiredMesos}, mesos={_guildDialogMesoBalance}, authority={(IsPacketOwned(SocialListTab.Guild) ? "packet" : "local")}, awaiting={DescribePendingGuildDialogAwaiting(request)}.";
         }
 
         internal string SetGuildDialogMesoBalance(int mesos)
@@ -295,6 +299,7 @@ namespace HaCreator.MapSimulator.Interaction
                 hasGuildMembership && GuildSkillRuntime.HasGuildMembership(normalizedGuildName),
                 normalizedGuildName,
                 Math.Max(0, guildLevel));
+            _packetGuildUiRevision = AdvanceGuildDialogRevision(_packetGuildUiRevision);
             TryFinalizePendingGuildDialogRequestFromPacket();
             return _packetGuildUiState.Value.HasGuildMembership
                 ? $"Guild UI now follows packet-owned membership for {normalizedGuildName} (Guild Lv. {_packetGuildUiState.Value.GuildLevel})."
@@ -405,6 +410,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal string SetPacketGuildMarkSelection(GuildMarkSelection selection, int guildId)
         {
             _packetGuildMarkSelection = selection with { ComboIndex = ResolveGuildMarkComboIndex(selection.Mark) };
+            _packetGuildMarkRevision = AdvanceGuildDialogRevision(_packetGuildMarkRevision);
             _lastPacketSyncSummaryByTab[SocialListTab.Guild] =
                 $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.Mark}) refreshed emblem bg={selection.MarkBackground}:{selection.MarkBackgroundColor}, mark={selection.Mark}:{selection.MarkColor}.";
             TryFinalizePendingGuildDialogRequestFromPacket();
@@ -414,6 +420,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal string SetPacketGuildPointsAndLevel(int guildPoints, int guildLevel, int guildId)
         {
             _packetGuildPoints = Math.Max(0, guildPoints);
+            _packetGuildPointsAndLevelRevision = AdvanceGuildDialogRevision(_packetGuildPointsAndLevelRevision);
             if (_packetGuildUiState.HasValue)
             {
                 PacketGuildUiState guildUi = _packetGuildUiState.Value;
@@ -422,6 +429,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _lastPacketSyncSummaryByTab[SocialListTab.Guild] =
                 $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.PointsAndLevel}) refreshed guild points={_packetGuildPoints}, level={Math.Max(0, guildLevel)}.";
+            TryFinalizePendingGuildDialogRequestFromPacket();
             return $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.PointsAndLevel}) refreshed guild {guildId} to Lv. {Math.Max(0, guildLevel)} with {_packetGuildPoints} point(s).";
         }
 
@@ -434,7 +442,11 @@ namespace HaCreator.MapSimulator.Interaction
                 ResolveEffectiveGuildName(null, ResolveEffectiveGuildMembership(null)),
                 selection with { ComboIndex = ResolveGuildMarkComboIndex(selection.Mark) },
                 DefaultGuildMarkCostMesos,
-                DateTimeOffset.UtcNow));
+                DateTimeOffset.UtcNow,
+                _packetGuildUiRevision,
+                _packetGuildMarkRevision,
+                _packetGuildPointsAndLevelRevision,
+                _packetGuildRosterRevision));
         }
 
         private string ApplyLocalGuildMarkSelectionCore(GuildMarkSelection selection)
@@ -520,12 +532,8 @@ namespace HaCreator.MapSimulator.Interaction
             GuildDialogPendingRequest request = _pendingGuildDialogRequest.Value;
             bool shouldFinalize = request.Kind switch
             {
-                GuildDialogPendingRequestKind.CreateGuild => _packetGuildUiState.HasValue
-                    && _packetGuildUiState.Value.HasGuildMembership
-                    && string.Equals(_packetGuildUiState.Value.GuildName, request.GuildName, StringComparison.OrdinalIgnoreCase),
-                GuildDialogPendingRequestKind.SetMark => request.MarkSelection.HasValue
-                    && _packetGuildMarkSelection.HasValue
-                    && _packetGuildMarkSelection.Value == request.MarkSelection.Value,
+                GuildDialogPendingRequestKind.CreateGuild => HasAuthoritativeGuildCreateConfirmation(request),
+                GuildDialogPendingRequestKind.SetMark => HasAuthoritativeGuildMarkConfirmation(request),
                 _ => false
             };
 
@@ -554,7 +562,11 @@ namespace HaCreator.MapSimulator.Interaction
             string GuildName,
             GuildMarkSelection? MarkSelection,
             int RequiredMesos,
-            DateTimeOffset RequestedAtUtc);
+            DateTimeOffset RequestedAtUtc,
+            int GuildUiRevisionAtSubmit,
+            int GuildMarkRevisionAtSubmit,
+            int GuildPointsAndLevelRevisionAtSubmit,
+            int GuildRosterRevisionAtSubmit);
 
         private IReadOnlyList<GuildRankingSeedEntry> GetPacketGuildRankingEntries(string localGuildName)
         {
@@ -609,6 +621,11 @@ namespace HaCreator.MapSimulator.Interaction
                    _packetGuildAuthority?.CanEditNotice == true;
         }
 
+        internal int GetEffectiveGuildPoints()
+        {
+            return Math.Max(0, _packetGuildPoints);
+        }
+
         private void SyncPacketGuildUiStateFromRoster(SocialListTab tab)
         {
             if (tab != SocialListTab.Guild || !IsPacketOwned(tab))
@@ -631,6 +648,70 @@ namespace HaCreator.MapSimulator.Interaction
                 hasGuildMembership,
                 hasGuildMembership ? guildName : "No Guild",
                 _packetGuildUiState?.GuildLevel ?? 0);
+            _packetGuildRosterRevision = AdvanceGuildDialogRevision(_packetGuildRosterRevision);
+            TryFinalizePendingGuildDialogRequestFromPacket();
+        }
+
+        private string DescribePendingGuildDialogAwaiting(GuildDialogPendingRequest request)
+        {
+            return request.Kind switch
+            {
+                GuildDialogPendingRequestKind.CreateGuild => "new guild UI echo plus either OnGuildResult(75) or a packet-owned local master row",
+                GuildDialogPendingRequestKind.SetMark => "a newer OnGuildResult(69) emblem echo matching the submitted mark",
+                _ => "authoritative packet confirmation"
+            };
+        }
+
+        private bool HasAuthoritativeGuildCreateConfirmation(GuildDialogPendingRequest request)
+        {
+            if (!_packetGuildUiState.HasValue
+                || _packetGuildUiRevision <= request.GuildUiRevisionAtSubmit)
+            {
+                return false;
+            }
+
+            PacketGuildUiState guildUi = _packetGuildUiState.Value;
+            if (!guildUi.HasGuildMembership
+                || !string.Equals(guildUi.GuildName, request.GuildName, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            bool hasPointsAndLevelEcho = _packetGuildPointsAndLevelRevision > request.GuildPointsAndLevelRevisionAtSubmit
+                && guildUi.GuildLevel > 0;
+            bool hasRosterEcho = _packetGuildRosterRevision > request.GuildRosterRevisionAtSubmit
+                && TryGetPacketOwnedLocalGuildEntry(out SocialEntryState localGuildEntry)
+                && string.Equals(localGuildEntry.SecondaryText, request.GuildName, StringComparison.OrdinalIgnoreCase)
+                && (localGuildEntry.IsLeader || string.Equals(localGuildEntry.PrimaryText, "Master", StringComparison.OrdinalIgnoreCase));
+            bool hasStandaloneGuildUiEcho = _packetGuildRosterRevision == request.GuildRosterRevisionAtSubmit
+                && _packetGuildPointsAndLevelRevision == request.GuildPointsAndLevelRevisionAtSubmit
+                && guildUi.GuildLevel > 0;
+            return hasPointsAndLevelEcho || hasRosterEcho || hasStandaloneGuildUiEcho;
+        }
+
+        private bool HasAuthoritativeGuildMarkConfirmation(GuildDialogPendingRequest request)
+        {
+            return request.MarkSelection.HasValue
+                   && _packetGuildMarkRevision > request.GuildMarkRevisionAtSubmit
+                   && _packetGuildMarkSelection.HasValue
+                   && _packetGuildMarkSelection.Value == request.MarkSelection.Value;
+        }
+
+        private bool TryGetPacketOwnedLocalGuildEntry(out SocialEntryState localGuildEntry)
+        {
+            localGuildEntry = null;
+            if (!IsPacketOwned(SocialListTab.Guild))
+            {
+                return false;
+            }
+
+            localGuildEntry = _entriesByTab[SocialListTab.Guild].FirstOrDefault(entry => entry.IsLocalPlayer);
+            return localGuildEntry != null;
+        }
+
+        private static int AdvanceGuildDialogRevision(int revision)
+        {
+            return revision == int.MaxValue ? 1 : revision + 1;
         }
 
         private bool HasGuildAdministrativeAuthority()

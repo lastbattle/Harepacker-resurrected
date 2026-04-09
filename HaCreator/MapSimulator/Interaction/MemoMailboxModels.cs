@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.Interaction
         public ParcelComposeMode ActiveMode { get; init; }
         public ParcelDialogTab ActiveTab { get; init; }
         public MemoDraftAttachmentKind AttachmentKind { get; init; }
+        public bool AwaitingItemSelection { get; init; }
         public bool ShowTaxInfo { get; init; }
         public string ModeSummary { get; init; } = string.Empty;
         public string TaxSummary { get; init; } = string.Empty;
