@@ -8,11 +8,9 @@ namespace HaCreator.MapSimulator.Effects
         private int _fadeInMs;
         private int _holdMs;
         private int _fadeOutMs;
-        private int _totalDurationMs;
         private int _startingAlpha;
         private int _layerZ;
         private int _startedAt;
-        private bool _fadeOutStarted;
         private bool _active;
 
         public bool IsActive => _active;
@@ -22,21 +20,18 @@ namespace HaCreator.MapSimulator.Effects
         public int HoldMs => _holdMs;
         public int FadeOutMs => _fadeOutMs;
         public int StartedAt => _startedAt;
-        public bool HasStartedFadeOut => _fadeOutStarted;
         public int FadeOutStartsAt => _active ? _startedAt + _fadeInMs + _holdMs : int.MinValue;
-        public int ExpiresAt => _active ? _startedAt + _totalDurationMs : int.MinValue;
+        public int ExpiresAt => _active ? _startedAt + _fadeInMs + _holdMs + _fadeOutMs : int.MinValue;
 
         public void Start(int fadeInMs, int holdMs, int fadeOutMs, int startingAlpha, int layerZ, int currentTickCount)
         {
             _fadeInMs = Math.Max(0, fadeInMs);
             _holdMs = Math.Max(0, holdMs);
             _fadeOutMs = Math.Max(0, fadeOutMs);
-            _totalDurationMs = _fadeInMs + _holdMs + _fadeOutMs;
             _startingAlpha = Math.Clamp(startingAlpha, 0, byte.MaxValue);
             _layerZ = layerZ;
             _startedAt = currentTickCount;
-            _fadeOutStarted = false;
-            _active = _totalDurationMs > 0;
+            _active = _fadeInMs + _holdMs + _fadeOutMs > 0;
         }
 
         public void Clear()
@@ -45,11 +40,9 @@ namespace HaCreator.MapSimulator.Effects
             _fadeInMs = 0;
             _holdMs = 0;
             _fadeOutMs = 0;
-            _totalDurationMs = 0;
             _startingAlpha = 0;
             _layerZ = 0;
             _startedAt = 0;
-            _fadeOutStarted = false;
         }
 
         public void Update(int currentTickCount)
@@ -57,11 +50,6 @@ namespace HaCreator.MapSimulator.Effects
             if (!_active)
             {
                 return;
-            }
-
-            if (!_fadeOutStarted && unchecked(currentTickCount - FadeOutStartsAt) >= 0)
-            {
-                _fadeOutStarted = true;
             }
 
             if (unchecked(currentTickCount - ExpiresAt) >= 0)

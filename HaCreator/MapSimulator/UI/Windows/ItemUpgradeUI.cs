@@ -88,6 +88,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Dictionary<int, IReadOnlyCollection<int>> ConsumableRequirementCache = new Dictionary<int, IReadOnlyCollection<int>>();
         private static readonly Dictionary<int, string> ConsumableOwnerPathCache = new Dictionary<int, string>();
         private static readonly Dictionary<int, EnhancementConsumableDefinition> DynamicConsumableDefinitionCache = new Dictionary<int, EnhancementConsumableDefinition>();
+        private static readonly Dictionary<int, int> EquipUpgradeSlotCountCache = new Dictionary<int, int>();
         private static readonly Dictionary<int, VegaModifierProfile> VegaModifierProfileCache = new Dictionary<int, VegaModifierProfile>();
         private static readonly Dictionary<int, VegaCompatibleScrollProfile> VegaCompatibleScrollProfileCache = new Dictionary<int, VegaCompatibleScrollProfile>();
         private static readonly Dictionary<int, IReadOnlyCollection<EquipSlot>> ScrollTargetSlotCache = new Dictionary<int, IReadOnlyCollection<EquipSlot>>();
@@ -113,7 +114,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Regex JumpBonusRegex = new Regex(@"Jump(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex HandsBonusRegex = new Regex(@"(?:Diligence|Hands|Craft)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex AllStatsBonusRegex = new Regex(@"All\s+stats?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex FourStatBonusRegex = new Regex(@"(?:STR\s*\/\s*INT\s*\/\s*DEX\s*\/\s*LUK|STR\s*,\s*DEX\s*,\s*INT\s*,\s*(?:and\s+)?LUK)\s*(?:\+\s*(\d+)|by\s*(\d+))", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex FourStatBonusRegex = new Regex(@"(?:(?:STR|DEX|INT|LUK)\s*(?:\/\s*(?:STR|DEX|INT|LUK)){3}\s*(?:\+\s*(\d+)|by\s*(\d+))|(?:STR|DEX|INT|LUK)\s*,\s*(?:STR|DEX|INT|LUK)\s*,\s*(?:STR|DEX|INT|LUK)\s*,\s*(?:and\s+)?(?:STR|DEX|INT|LUK)\s*(?:\+\s*(\d+)|by\s*(\d+)))", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex WeaponMagicAttackBonusRegex = new Regex(@"(?:Weapon|Physical)\s*(?:\/|&|and)\s*(?:Magic|M\.?\s*)\s*(?:ATT|Attack)\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex WeaponMagicDefenseBonusRegex = new Regex(@"(?:Weapon|Physical|PDD)\s*(?:\/|&|and)\s*(?:Magic|Magical|M\.?\s*|MDD)\s*(?:DEF|Defense)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex AccuracyAvoidabilityBonusRegex = new Regex(@"Accuracy\s*(?:\/|&|and)\s*(?:Avoidability|Aviodability|Avoid)\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -2235,6 +2236,12 @@ namespace HaCreator.MapSimulator.UI
                 return 0;
             }
 
+            int? authoredSlotCount = ResolveAuthoredUpgradeSlotCount(part);
+            if (authoredSlotCount.HasValue && authoredSlotCount.Value > 0)
+            {
+                return authoredSlotCount.Value;
+            }
+
             return slot switch
             {
                 EquipSlot.Weapon => 7,
@@ -2258,6 +2265,40 @@ namespace HaCreator.MapSimulator.UI
                 EquipSlot.Ring4 => 2,
                 _ => 4
             };
+        }
+
+        private static int? ResolveAuthoredUpgradeSlotCount(CharacterPart part)
+        {
+            if (part?.ItemId <= 0)
+            {
+                return null;
+            }
+
+            if (EquipUpgradeSlotCountCache.TryGetValue(part.ItemId, out int cachedCount))
+            {
+                return cachedCount > 0 ? cachedCount : null;
+            }
+
+            int resolvedCount = 0;
+            if (InventoryItemMetadataResolver.TryResolveImageSource(part.ItemId, out string category, out string imagePath))
+            {
+                WzImage image = HaCreator.Program.FindImage(category, imagePath);
+                if (image != null)
+                {
+                    image.ParseImage();
+                    string itemNodeName = string.Equals(category, "Character", StringComparison.Ordinal)
+                        ? part.ItemId.ToString("D8")
+                        : part.ItemId.ToString("D7");
+                    if (image[itemNodeName] is WzSubProperty itemProperty &&
+                        itemProperty["info"] is WzSubProperty infoProperty)
+                    {
+                        resolvedCount = Math.Max(0, ResolveWzInfoIntValue(infoProperty, "tuc"));
+                    }
+                }
+            }
+
+            EquipUpgradeSlotCountCache[part.ItemId] = resolvedCount;
+            return resolvedCount > 0 ? resolvedCount : null;
         }
 
         private static string ResolveItemName(CharacterPart part)
@@ -3741,6 +3782,10 @@ namespace HaCreator.MapSimulator.UI
                 targetSlots.Add(EquipSlot.Pendant);
                 targetSlots.Add(EquipSlot.Pendant2);
                 targetSlots.Add(EquipSlot.Belt);
+                targetSlots.Add(EquipSlot.Shoulder);
+                targetSlots.Add(EquipSlot.Pocket);
+                targetSlots.Add(EquipSlot.Badge);
+                targetSlots.Add(EquipSlot.Medal);
             }
 
             if (normalized.IndexOf("ring", StringComparison.OrdinalIgnoreCase) >= 0)

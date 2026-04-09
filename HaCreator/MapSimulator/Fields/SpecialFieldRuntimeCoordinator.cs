@@ -108,9 +108,10 @@ namespace HaCreator.MapSimulator.Fields
             Action<string> requestBgmOverride = null,
             Action clearBgmOverride = null,
             Func<LoginAvatarLook, string, CharacterBuild> weddingRemoteBuildFactory = null,
-            Func<LoginAvatarLook, string, CharacterBuild> ariantArenaRemoteBuildFactory = null)
+            Func<LoginAvatarLook, string, CharacterBuild> ariantArenaRemoteBuildFactory = null,
+            CharacterLoader weddingCharacterLoader = null)
         {
-            _specialEffects.Initialize(graphicsDevice, requestBgmOverride, clearBgmOverride, weddingRemoteBuildFactory);
+            _specialEffects.Initialize(graphicsDevice, requestBgmOverride, clearBgmOverride, weddingRemoteBuildFactory, weddingCharacterLoader);
             _minigames.Initialize(graphicsDevice, soundManager, ariantArenaRemoteBuildFactory);
             _partyRaid.Initialize(graphicsDevice);
         }

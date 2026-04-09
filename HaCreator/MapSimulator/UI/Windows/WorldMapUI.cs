@@ -10,7 +10,7 @@ using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
-    public sealed class WorldMapUI : UIWindowBase
+    public sealed class WorldMapUI : UIWindowBase, ISoftKeyboardHost
     {
         public enum SearchResultKind
         {
@@ -169,6 +169,7 @@ namespace HaCreator.MapSimulator.UI
         private SpriteFont _font;
         private bool _showAnotherWorld;
         private bool _searchMode;
+        private bool _softKeyboardActive;
         private string _selectedRegionCode = string.Empty;
         private string _searchQuery = string.Empty;
         private int _searchCursorPosition;
@@ -421,6 +422,11 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => MapSimulatorWindowNames.WorldMap;
         public override bool CapturesKeyboardInput => IsVisible && _searchMode;
+        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _searchMode && _softKeyboardActive;
+        SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => SoftKeyboardKeyboardType.AlphaNumeric;
+        int ISoftKeyboardHost.SoftKeyboardTextLength => _searchQuery?.Length ?? 0;
+        int ISoftKeyboardHost.SoftKeyboardMaxLength => MaxSearchQueryLength;
+        bool ISoftKeyboardHost.CanSubmitSoftKeyboard => _searchMode && GetFilteredSearchResults().Count > 0;
 
         public event Action<MapEntry> MapRequested;
 
@@ -1430,6 +1436,7 @@ namespace HaCreator.MapSimulator.UI
         private void ExitSearchMode()
         {
             _searchMode = false;
+            _softKeyboardActive = false;
             _searchFilterMode = SearchFilterMode.All;
             _hoveredSearchResultKey = string.Empty;
             ClearCompositionText();
@@ -3065,10 +3072,96 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            _softKeyboardActive = true;
             _caretBlinkTick = Environment.TickCount;
             ClearCompositionText();
             _searchCursorPosition = ResolveSearchCursorFromMouse(mouseState.X);
             ResetSearchKeyRepeat();
+        }
+
+        Rectangle ISoftKeyboardHost.GetSoftKeyboardAnchorBounds() => GetSearchInputBounds();
+
+        bool ISoftKeyboardHost.TryInsertSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!_searchMode
+                || char.IsControl(character)
+                || !SoftKeyboardUI.CanAcceptCharacter(SoftKeyboardKeyboardType.AlphaNumeric, _searchQuery.Length, MaxSearchQueryLength, character))
+            {
+                errorMessage = "The world-map search field cannot accept that character.";
+                return false;
+            }
+
+            string previousQuery = _searchQuery;
+            HandleCommittedText(character.ToString());
+            if (string.Equals(previousQuery, _searchQuery, StringComparison.Ordinal))
+            {
+                errorMessage = "The world-map search field cannot accept that character.";
+                return false;
+            }
+
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            if (!((ISoftKeyboardHost)this).TryBackspaceSoftKeyboard(out errorMessage))
+            {
+                return false;
+            }
+
+            return ((ISoftKeyboardHost)this).TryInsertSoftKeyboardCharacter(character, out errorMessage);
+        }
+
+        bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!_searchMode)
+            {
+                errorMessage = "World-map search is not active.";
+                return false;
+            }
+
+            if (!SkillMacroNameRules.TryRemoveTextElementBeforeCaret(_searchQuery, _searchCursorPosition, out string updatedText, out int updatedCaretIndex))
+            {
+                errorMessage = "The world-map search field is already empty.";
+                return false;
+            }
+
+            ClearCompositionText();
+            _searchQuery = updatedText;
+            _searchCursorPosition = updatedCaretIndex;
+            OnSearchQueryChanged();
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TrySubmitSoftKeyboard(out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!_searchMode)
+            {
+                errorMessage = "World-map search is not active.";
+                return false;
+            }
+
+            if (GetFilteredSearchResults().Count <= 0)
+            {
+                errorMessage = "No world-map search results are available.";
+                return false;
+            }
+
+            ActivateSearchRow(GetSelectedSearchRowIndex());
+            return true;
+        }
+
+        void ISoftKeyboardHost.SetSoftKeyboardCompositionText(string text)
+        {
+            HandleCompositionText(text);
+        }
+
+        void ISoftKeyboardHost.OnSoftKeyboardClosed()
+        {
+            _softKeyboardActive = false;
         }
 
         private void UpdateHoveredSearchResult(MouseState mouseState)

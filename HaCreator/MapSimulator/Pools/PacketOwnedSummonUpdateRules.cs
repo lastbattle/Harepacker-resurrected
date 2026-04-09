@@ -10,6 +10,7 @@ namespace HaCreator.MapSimulator.Pools
     {
         private const int ClientConfirmedPhoenixLegacySkillId = 3121006;
         private const int ClientConfirmedPhoenixCurrentSkillId = 3120010;
+        private const int ClientConfirmedSilverHawkLegacySkillId = 3111005;
         private const int ClientConfirmedFrostpreyLegacySkillId = 3221005;
         private const int ClientConfirmedFrostpreyCurrentSkillId = 3211005;
         private const int ClientConfirmedShadowMesoReactiveSkillId = 4111007;
@@ -191,6 +192,7 @@ namespace HaCreator.MapSimulator.Pools
 
             return summon.SkillId == ClientConfirmedPhoenixLegacySkillId
                    || summon.SkillId == ClientConfirmedPhoenixCurrentSkillId
+                   || summon.SkillId == ClientConfirmedSilverHawkLegacySkillId
                    || summon.SkillId == ClientConfirmedFrostpreyLegacySkillId
                    || summon.SkillId == ClientConfirmedFrostpreyCurrentSkillId;
         }

@@ -9,6 +9,20 @@ namespace HaCreator.MapSimulator.Interaction
             return _packetOwnedRosterByTab.TryGetValue(tab, out bool packetOwned) && packetOwned;
         }
 
+        internal bool UsesPacketOwnedGuildSkillAuthority()
+        {
+            return IsPacketOwned(SocialListTab.Guild)
+                   || _packetGuildUiState.HasValue
+                   || _packetGuildAuthority.HasValue;
+        }
+
+        internal bool HasPendingPacketOwnedRequest(SocialListTab tab)
+        {
+            return tab == SocialListTab.Guild
+                ? _pendingGuildDialogRequest.HasValue
+                : _lastPendingRequestByTab.TryGetValue(tab, out string pendingRequest) && !string.IsNullOrWhiteSpace(pendingRequest);
+        }
+
         private SocialEntryState MergePacketOwnedLocalEntry(SocialEntryState existingEntry, SocialEntryState localEntry)
         {
             if (localEntry == null)

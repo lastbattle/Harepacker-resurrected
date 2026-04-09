@@ -135,6 +135,18 @@ namespace HaCreator.MapSimulator.UI
         Rule = 1,
     }
 
+    public enum CollectionBookRecordRole
+    {
+        GenericText = 0,
+        Title = 1,
+        Subtitle = 2,
+        Label = 3,
+        Value = 4,
+        Detail = 5,
+        Footer = 6,
+        Rule = 7,
+    }
+
     public enum CollectionBookTextAlignment
     {
         Left = 0,
@@ -145,6 +157,7 @@ namespace HaCreator.MapSimulator.UI
     public sealed class CollectionBookRecordSnapshot
     {
         public CollectionBookRecordType Type { get; init; }
+        public CollectionBookRecordRole Role { get; init; }
         public string Text { get; init; } = string.Empty;
         public int Left { get; init; }
         public int Top { get; init; }
@@ -469,8 +482,8 @@ namespace HaCreator.MapSimulator.UI
 
             List<CollectionBookRecordSnapshot> records = new()
             {
-                CreateTextRecord(page?.Title, 16, 14, 164, 0, CollectionBookTextAlignment.Center),
-                CreateTextRecord(page?.Subtitle, 16, 34, 164, 10, CollectionBookTextAlignment.Center),
+                CreateTextRecord(page?.Title, 16, 14, 164, 0, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Title),
+                CreateTextRecord(page?.Subtitle, 16, 34, 164, 10, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Subtitle),
                 CreateRuleRecord(15, 56, 166),
             };
 
@@ -481,9 +494,9 @@ namespace HaCreator.MapSimulator.UI
                 CollectionBookEntrySnapshot entry = row < entries.Count ? entries[row] : null;
                 if (entry != null)
                 {
-                    records.Add(CreateTextRecord(entry.Label, 16, rowTop, 96, 2, CollectionBookTextAlignment.Left));
-                    records.Add(CreateTextRecord(entry.Value, 104, rowTop, 78, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Right));
-                    records.Add(CreateTextRecord(entry.Detail, 22, rowTop + 10, 156, 10, CollectionBookTextAlignment.Left));
+                    records.Add(CreateTextRecord(entry.Label, 16, rowTop, 96, 2, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
+                    records.Add(CreateTextRecord(entry.Value, 104, rowTop, 78, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Right, CollectionBookRecordRole.Value));
+                    records.Add(CreateTextRecord(entry.Detail, 22, rowTop + 10, 156, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail));
                 }
 
                 if (row < EntriesPerPage - 1)
@@ -493,7 +506,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             records.Add(CreateRuleRecord(15, 221, 166));
-            records.Add(CreateTextRecord(page?.Footer, 16, 227, 164, 11, CollectionBookTextAlignment.Center));
+            records.Add(CreateTextRecord(page?.Footer, 16, 227, 164, 11, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Footer));
             return records;
         }
 
@@ -501,8 +514,8 @@ namespace HaCreator.MapSimulator.UI
         {
             List<CollectionBookRecordSnapshot> records = new()
             {
-                CreateTextRecord(page?.Title, 16, 14, 164, 0, CollectionBookTextAlignment.Center),
-                CreateTextRecord(page?.Subtitle, 16, 34, 164, 10, CollectionBookTextAlignment.Center),
+                CreateTextRecord(page?.Title, 16, 14, 164, 0, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Title),
+                CreateTextRecord(page?.Subtitle, 16, 34, 164, 10, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Subtitle),
                 CreateRuleRecord(15, 56, 166),
             };
 
@@ -520,7 +533,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             records.Add(CreateRuleRecord(15, 221, 166));
-            records.Add(CreateTextRecord(page?.Footer, 16, 227, 164, 11, CollectionBookTextAlignment.Center));
+            records.Add(CreateTextRecord(page?.Footer, 16, 227, 164, 11, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Footer));
             return records;
         }
 
@@ -531,9 +544,9 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            records.Add(CreateTextRecord(entry.Label, 16, top, 44, 2, CollectionBookTextAlignment.Left));
-            records.Add(CreateTextRecord(entry.Value, 60, top, 120, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Left));
-            records.Add(CreateTextRecord(entry.Detail, 22, top + 10, 158, 10, CollectionBookTextAlignment.Left));
+            records.Add(CreateTextRecord(entry.Label, 16, top, 44, 2, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
+            records.Add(CreateTextRecord(entry.Value, 60, top, 120, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Left, CollectionBookRecordRole.Value));
+            records.Add(CreateTextRecord(entry.Detail, 22, top + 10, 158, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail));
             records.Add(CreateRuleRecord(15, top + 23, 166));
         }
 
@@ -544,17 +557,18 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            records.Add(CreateTextRecord(entry.Label, 16, top, 98, 2, CollectionBookTextAlignment.Left));
-            records.Add(CreateTextRecord(entry.Value, 106, top, 76, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Right));
-            records.Add(CreateTextRecord(entry.Detail, 22, top + 9, 160, 10, CollectionBookTextAlignment.Left));
+            records.Add(CreateTextRecord(entry.Label, 16, top, 98, 2, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
+            records.Add(CreateTextRecord(entry.Value, 106, top, 76, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Right, CollectionBookRecordRole.Value));
+            records.Add(CreateTextRecord(entry.Detail, 22, top + 9, 160, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail));
             records.Add(CreateRuleRecord(15, top + 16, 166));
         }
 
-        private static CollectionBookRecordSnapshot CreateTextRecord(string text, int left, int top, int width, int styleIndex, CollectionBookTextAlignment alignment)
+        private static CollectionBookRecordSnapshot CreateTextRecord(string text, int left, int top, int width, int styleIndex, CollectionBookTextAlignment alignment, CollectionBookRecordRole role = CollectionBookRecordRole.GenericText)
         {
             return new CollectionBookRecordSnapshot
             {
                 Type = CollectionBookRecordType.Text,
+                Role = role,
                 Text = text ?? string.Empty,
                 Left = left,
                 Top = top,
@@ -569,6 +583,7 @@ namespace HaCreator.MapSimulator.UI
             return new CollectionBookRecordSnapshot
             {
                 Type = CollectionBookRecordType.Rule,
+                Role = CollectionBookRecordRole.Rule,
                 Left = left,
                 Top = top,
                 Width = width,

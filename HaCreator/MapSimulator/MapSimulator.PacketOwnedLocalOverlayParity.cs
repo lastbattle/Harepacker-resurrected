@@ -98,11 +98,8 @@ namespace HaCreator.MapSimulator
 
         private readonly PacketFieldFadeOverlay _packetOwnedFieldFadeOverlay = new();
         private readonly LocalOverlayBalloonState _packetOwnedBalloonState = new();
-        private readonly LocalOverlayPacketInboxManager _localOverlayPacketInbox = new();
         private FieldHazardPetAutoConsumeRequest? _pendingFieldHazardPetAutoConsumeRequest;
         private LocalOverlayBalloonSkin _packetOwnedBalloonSkin;
-        private bool _localOverlayPacketInboxEnabled = EnablePacketConnectionsByDefault;
-        private int _localOverlayPacketInboxConfiguredPort = LocalOverlayPacketInboxManager.DefaultPort;
         private int _fieldHazardSharedPetConsumeItemId;
         private InventoryType _fieldHazardSharedPetConsumeInventoryType = InventoryType.NONE;
         private FieldHazardSharedPetConsumeSource _fieldHazardSharedPetConsumeSource = FieldHazardSharedPetConsumeSource.None;
@@ -114,6 +111,10 @@ namespace HaCreator.MapSimulator
         private const int FieldHazardPetAutoConsumeSyntheticResultDelayMs = 90;
         private const int FieldHazardPetAutoConsumeRemoteObservationWindowMs = 1500;
         private const int FieldHazardPetAutoConsumeDeferredDispatchObservationWindowMs = 1500;
+        private const int FieldHazardPetAutoConsumeDeferredDispatchSyntheticAckDelayMs =
+            FieldHazardPetAutoConsumeDeferredDispatchObservationWindowMs;
+        private const int FieldHazardPetAutoConsumeDeferredDispatchRemoteObservationWindowMs =
+            FieldHazardPetAutoConsumeDeferredDispatchObservationWindowMs + FieldHazardPetAutoConsumeRemoteObservationWindowMs;
         private const int FieldHazardPetAutoConsumeDefaultRequestIndex = 0;
         private const int FieldHazardPetAutoConsumeForceRequestIndex = 1;
         private const int FieldHazardPetAutoConsumeBuffSkillRequestIndex = 2;
@@ -1551,7 +1552,7 @@ namespace HaCreator.MapSimulator
 
         private int ResolvePacketOwnedFieldFadeLayer(int currentTickCount)
         {
-            int avatarLayerZ = _playerManager?.Player?.GetCurrentUnderFaceLayerZ(currentTickCount) ?? 0;
+            int avatarLayerZ = _playerManager?.Player?.GetCurrentLayerZ(currentTickCount) ?? 0;
             return avatarLayerZ - 2;
         }
 
@@ -1764,6 +1765,7 @@ namespace HaCreator.MapSimulator
                     out string payloadHex,
                     out string transportDisposition,
                     out FieldHazardPetConsumeResolutionMode resolutionMode,
+                    out FieldHazardPetConsumeDispatchState dispatchState,
                     out bool outboundExclusivePending))
             {
                 FieldHazardFollowUpKind followUpKind = outboundExclusivePending
@@ -1802,19 +1804,24 @@ namespace HaCreator.MapSimulator
                 InventoryClientSlotIndex: inventoryClientSlotIndex,
                 InitialSlotQuantity: initialSlotQuantity,
                 RequestedAt: currentTickCount,
-                AckAt: currentTickCount + FieldHazardPetAutoConsumeSyntheticAckDelayMs,
-                ResultAt: currentTickCount + FieldHazardPetAutoConsumeSyntheticAckDelayMs + FieldHazardPetAutoConsumeSyntheticResultDelayMs,
-                RemoteResultDeadlineAt: currentTickCount + FieldHazardPetAutoConsumeRemoteObservationWindowMs,
+                AckAt: currentTickCount + ResolveFieldHazardSyntheticAckDelayMs(dispatchState, resolutionMode),
+                ResultAt: currentTickCount
+                    + ResolveFieldHazardSyntheticAckDelayMs(dispatchState, resolutionMode)
+                    + FieldHazardPetAutoConsumeSyntheticResultDelayMs,
+                RemoteResultDeadlineAt: currentTickCount + ResolveFieldHazardRemoteObservationWindowMs(dispatchState, resolutionMode),
                 Acknowledged: false,
                 ResolutionMode: resolutionMode,
-                DispatchState: FieldHazardPetConsumeDispatchState.SimulatorOwned,
+                DispatchState: dispatchState,
                 RawPacketHex: payloadHex,
                 PayloadHex: payloadHex,
                 TransportDisposition: transportDisposition);
             _lastFieldHazardPetAutoConsumeRequestTick = currentTickCount;
             _petHpPotionFailureSpeechCount = 0;
 
-            string requestDetail = $"{petLabel} {requestMode} sent {requestVariant} #{requestId} for {target.Candidate.ItemName} on {target.Candidate.InventoryType} slot {inventoryClientSlotIndex}.";
+            string requestVerb = dispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued
+                ? "queued"
+                : "sent";
+            string requestDetail = $"{petLabel} {requestMode} {requestVerb} {requestVariant} #{requestId} for {target.Candidate.ItemName} on {target.Candidate.InventoryType} slot {inventoryClientSlotIndex}.";
             if (!string.IsNullOrWhiteSpace(transportDisposition))
             {
                 requestDetail = $"{requestDetail} {transportDisposition}";
@@ -1891,10 +1898,23 @@ namespace HaCreator.MapSimulator
 
             if (!request.Acknowledged)
             {
-                string ackDetail = request.ResolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved
-                    ? $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} and is awaiting remote packet/result ownership."
-                    : $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
-                _localOverlayRuntime.SetFieldHazardFollowUp(ackDetail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
+                string ackDetail;
+                FieldHazardFollowUpKind followUpKind;
+                if (request.ResolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved
+                    && request.DispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued)
+                {
+                    ackDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} is still queued for deferred packet-owned delivery on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} and remains under remote observation.";
+                    followUpKind = FieldHazardFollowUpKind.Pending;
+                }
+                else
+                {
+                    ackDetail = request.ResolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved
+                        ? $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} and is awaiting remote packet/result ownership."
+                        : $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
+                    followUpKind = FieldHazardFollowUpKind.Acknowledged;
+                }
+
+                _localOverlayRuntime.SetFieldHazardFollowUp(ackDetail, followUpKind, currentTickCount);
                 request = request with { Acknowledged = true };
                 _pendingFieldHazardPetAutoConsumeRequest = request;
                 if (unchecked(currentTickCount - request.ResultAt) < 0)
@@ -1907,15 +1927,22 @@ namespace HaCreator.MapSimulator
             {
                 if (unchecked(currentTickCount - request.RemoteResultDeadlineAt) < 0)
                 {
-                    string pendingRemoteDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} is still awaiting remote packet/result ownership for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
-                    _localOverlayRuntime.SetFieldHazardFollowUp(pendingRemoteDetail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
+                    string pendingRemoteDetail = request.DispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued
+                        ? $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} is still queued or in-flight for deferred packet-owned delivery for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}."
+                        : $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} is still awaiting remote packet/result ownership for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
+                    FieldHazardFollowUpKind pendingKind = request.DispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued
+                        ? FieldHazardFollowUpKind.Pending
+                        : FieldHazardFollowUpKind.Acknowledged;
+                    _localOverlayRuntime.SetFieldHazardFollowUp(pendingRemoteDetail, pendingKind, currentTickCount);
                     return;
                 }
 
                 ClearFieldHazardPendingInventoryRequest();
                 _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
                 _pendingFieldHazardPetAutoConsumeRequest = null;
-                string remoteUnresolvedDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} remained externally owned after the simulator observation window; waiting for a real server/inventory result for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
+                string remoteUnresolvedDetail = request.DispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued
+                    ? $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} remained deferred/external after the simulator observation window; waiting for a real server/inventory result for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}."
+                    : $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} remained externally owned after the simulator observation window; waiting for a real server/inventory result for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(remoteUnresolvedDetail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
                 return;
             }
@@ -2145,6 +2172,7 @@ namespace HaCreator.MapSimulator
             out string payloadHex,
             out string transportDisposition,
             out FieldHazardPetConsumeResolutionMode resolutionMode,
+            out FieldHazardPetConsumeDispatchState dispatchState,
             out bool exclusivePending)
         {
             petSerial = ResolveFieldHazardPetAutoConsumeSerial(requestPet);
@@ -2152,6 +2180,7 @@ namespace HaCreator.MapSimulator
             payloadHex = string.Empty;
             transportDisposition = string.Empty;
             resolutionMode = FieldHazardPetConsumeResolutionMode.SimulatorOwned;
+            dispatchState = FieldHazardPetConsumeDispatchState.SimulatorOwned;
             exclusivePending = false;
 
             if (!_packetOwnedLocalUtilityContext.TryEmitPetItemUseRequest(
@@ -2171,7 +2200,12 @@ namespace HaCreator.MapSimulator
             }
 
             payloadHex = Convert.ToHexString(request.Payload.ToArray());
-            transportDisposition = DescribeFieldHazardPetConsumeOutboundDispatch(request, payloadHex, currentTickCount, out resolutionMode);
+            transportDisposition = DescribeFieldHazardPetConsumeOutboundDispatch(
+                request,
+                payloadHex,
+                currentTickCount,
+                out resolutionMode,
+                out dispatchState);
             return true;
         }
 
@@ -2179,13 +2213,16 @@ namespace HaCreator.MapSimulator
             PacketOwnedLocalUtilityOutboundRequest request,
             string payloadHex,
             int currentTickCount,
-            out FieldHazardPetConsumeResolutionMode resolutionMode)
+            out FieldHazardPetConsumeResolutionMode resolutionMode,
+            out FieldHazardPetConsumeDispatchState dispatchState)
         {
             resolutionMode = FieldHazardPetConsumeResolutionMode.SimulatorOwned;
+            dispatchState = FieldHazardPetConsumeDispatchState.SimulatorOwned;
             string dispatchStatus;
             if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(request.Opcode, request.Payload, out dispatchStatus))
             {
                 resolutionMode = FieldHazardPetConsumeResolutionMode.ExternalObserved;
+                dispatchState = FieldHazardPetConsumeDispatchState.Dispatched;
                 return $"Outpacket {request.Opcode} [{payloadHex}] dispatched through the live local-utility bridge. {dispatchStatus}";
             }
 
@@ -2193,6 +2230,7 @@ namespace HaCreator.MapSimulator
             if (_localUtilityPacketOutbox.TrySendOutboundPacket(request.Opcode, request.Payload, out outboxStatus))
             {
                 resolutionMode = FieldHazardPetConsumeResolutionMode.ExternalObserved;
+                dispatchState = FieldHazardPetConsumeDispatchState.Dispatched;
                 return $"Outpacket {request.Opcode} [{payloadHex}] dispatched through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
             }
 
@@ -2201,6 +2239,7 @@ namespace HaCreator.MapSimulator
                 && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(request.Opcode, request.Payload, out bridgeDeferredStatus))
             {
                 resolutionMode = FieldHazardPetConsumeResolutionMode.ExternalObserved;
+                dispatchState = FieldHazardPetConsumeDispatchState.DeferredQueued;
                 return $"Outpacket {request.Opcode} [{payloadHex}] queued for deferred live official-session injection after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus}";
             }
 
@@ -2208,6 +2247,7 @@ namespace HaCreator.MapSimulator
             if (_localUtilityPacketOutbox.TryQueueOutboundPacket(request.Opcode, request.Payload, out queuedStatus))
             {
                 resolutionMode = FieldHazardPetConsumeResolutionMode.ExternalObserved;
+                dispatchState = FieldHazardPetConsumeDispatchState.DeferredQueued;
                 return $"Outpacket {request.Opcode} [{payloadHex}] queued for deferred generic local-utility outbox delivery after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus} Deferred outbox: {queuedStatus}";
             }
 
@@ -2421,7 +2461,7 @@ namespace HaCreator.MapSimulator
             int remoteRemainingMs = Math.Max(0, request.RemoteResultDeadlineAt - currentTickCount);
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "Field hazard pet transport: {0}, requester={1}, requestId={2}, pending={3} [{4}] slot={5} runtimeSlot={6} state={7} ownership={8} ackIn={9}ms resultIn={10}ms observeIn={11}ms qty0={12} force={13} buffSkill={14} requestIndex={15} petSerial={16} payload={17} dispatch=\"{18}\". {19}",
+                "Field hazard pet transport: {0}, requester={1}, requestId={2}, pending={3} [{4}] slot={5} runtimeSlot={6} state={7} ownership={8} dispatchState={9} ackIn={10}ms resultIn={11}ms observeIn={12}ms qty0={13} force={14} buffSkill={15} requestIndex={16} petSerial={17} payload={18} dispatch=\"{19}\". {20}",
                 sharedItemStatus,
                 DescribeFieldHazardAutoConsumePet(request.PetSlotIndex, request.PetName),
                 request.RequestId,
@@ -2429,8 +2469,13 @@ namespace HaCreator.MapSimulator
                 request.Candidate.InventoryType,
                 request.InventoryClientSlotIndex,
                 request.InventoryRuntimeSlotIndex,
-                request.Acknowledged ? "acknowledged" : "queued",
+                request.DispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued
+                    ? (request.Acknowledged ? "deferred-observing" : "deferred")
+                    : request.Acknowledged
+                        ? "acknowledged"
+                        : "queued",
                 DescribeFieldHazardPetConsumeResolutionMode(request.ResolutionMode),
+                DescribeFieldHazardPetConsumeDispatchState(request.DispatchState),
                 remainingMs,
                 resultRemainingMs,
                 remoteRemainingMs,
@@ -2577,6 +2622,42 @@ namespace HaCreator.MapSimulator
             };
         }
 
+        private static string DescribeFieldHazardPetConsumeDispatchState(FieldHazardPetConsumeDispatchState state)
+        {
+            return state switch
+            {
+                FieldHazardPetConsumeDispatchState.Dispatched => "dispatched",
+                FieldHazardPetConsumeDispatchState.DeferredQueued => "deferred",
+                _ => "simulator"
+            };
+        }
+
+        private static int ResolveFieldHazardSyntheticAckDelayMs(
+            FieldHazardPetConsumeDispatchState dispatchState,
+            FieldHazardPetConsumeResolutionMode resolutionMode)
+        {
+            if (resolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved
+                && dispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued)
+            {
+                return FieldHazardPetAutoConsumeDeferredDispatchSyntheticAckDelayMs;
+            }
+
+            return FieldHazardPetAutoConsumeSyntheticAckDelayMs;
+        }
+
+        private static int ResolveFieldHazardRemoteObservationWindowMs(
+            FieldHazardPetConsumeDispatchState dispatchState,
+            FieldHazardPetConsumeResolutionMode resolutionMode)
+        {
+            if (resolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved
+                && dispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued)
+            {
+                return FieldHazardPetAutoConsumeDeferredDispatchRemoteObservationWindowMs;
+            }
+
+            return FieldHazardPetAutoConsumeRemoteObservationWindowMs;
+        }
+
         private bool TryCreateFieldHazardHpPotionCandidate(
             int itemId,
             InventoryType inventoryType,
@@ -2624,7 +2705,6 @@ namespace HaCreator.MapSimulator
                     Math.Max(0, _packetOwnedFieldFadeOverlay.ExpiresAt - currentTickCount),
                     DescribePacketOwnedFadeAlpha(_packetOwnedFieldFadeOverlay.StartingAlpha),
                     _packetOwnedFieldFadeOverlay.RequestedLayerZ)
-                    + (_packetOwnedFieldFadeOverlay.HasStartedFadeOut ? " Fade-out start armed." : string.Empty)
                 : "Fade inactive.";
 
             LocalOverlayBalloonMessage avatarMessage = _packetOwnedBalloonState.GetAvatarMessage(currentTickCount);
@@ -2660,7 +2740,6 @@ namespace HaCreator.MapSimulator
 
             return string.Join(
                 Environment.NewLine,
-                DescribeLocalOverlayPacketInboxStatus(),
                 fadeStatus,
                 balloonStatus,
                 _localOverlayRuntime.DescribeDamageMeterStatus(currentTickCount),
@@ -2750,18 +2829,9 @@ namespace HaCreator.MapSimulator
                 case "hpdecclear":
                     return ChatCommandHandler.CommandResult.Ok(ClearFieldHazardNotice());
 
-                case "packet":
-                    return HandlePacketOwnedLocalOverlayPacketCommand(args, rawHex: false);
-
-                case "packetraw":
-                    return HandlePacketOwnedLocalOverlayPacketCommand(args, rawHex: true);
-
-                case "inbox":
-                    return HandlePacketOwnedLocalOverlayInboxCommand(args);
-
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                        "Usage: /localoverlay [status|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [force] [buffskill] [message]|hazardclear|packet <fade|balloon|damagemeter|hpdec> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon|damagemeter|hpdec> <hex>|inbox [status|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]]");
+                        "Usage: /localoverlay [status|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [force] [buffskill] [message]|hazardclear]");
             }
         }
 
@@ -2877,62 +2947,6 @@ namespace HaCreator.MapSimulator
                     durationMs: null,
                     forceRequest,
                     buffSkillRequest));
-        }
-
-        private ChatCommandHandler.CommandResult HandlePacketOwnedLocalOverlayPacketCommand(string[] args, bool rawHex)
-        {
-            if (args.Length < 3)
-            {
-                return ChatCommandHandler.CommandResult.Error(
-                    rawHex
-                        ? "Usage: /localoverlay packetraw <fade|balloon|damagemeter|hpdec> <hex>"
-                        : "Usage: /localoverlay packet <fade|balloon|damagemeter|hpdec> [payloadhex=..|payloadb64=..]");
-            }
-
-            byte[] payload;
-            if (rawHex)
-            {
-                if (!TryDecodeHexBytes(string.Join(string.Empty, args.Skip(2)), out payload))
-                {
-                    return ChatCommandHandler.CommandResult.Error("Usage: /localoverlay packetraw <fade|balloon|damagemeter|hpdec> <hex>");
-                }
-            }
-            else if (!TryParseBinaryPayloadArgument(args[2], out payload, out string payloadError))
-            {
-                return ChatCommandHandler.CommandResult.Error(payloadError ?? "Usage: /localoverlay packet <fade|balloon|damagemeter|hpdec> [payloadhex=..|payloadb64=..]");
-            }
-
-            string message;
-            bool applied;
-            if (args[1].Equals("fade", StringComparison.OrdinalIgnoreCase))
-            {
-                applied = TryApplyPacketOwnedFieldFadePayload(payload, out message);
-            }
-            else if (args[1].Equals("balloon", StringComparison.OrdinalIgnoreCase))
-            {
-                applied = TryApplyPacketOwnedBalloonPayload(payload, out message);
-            }
-            else if (args[1].Equals("damagemeter", StringComparison.OrdinalIgnoreCase)
-                || args[1].Equals("damage", StringComparison.OrdinalIgnoreCase))
-            {
-                applied = TryApplyPacketOwnedDamageMeterPayload(payload, out message);
-            }
-            else if (args[1].Equals("hpdec", StringComparison.OrdinalIgnoreCase)
-                || args[1].Equals("hazard", StringComparison.OrdinalIgnoreCase))
-            {
-                applied = TryApplyPacketOwnedFieldHazardPayload(payload, out message);
-            }
-            else
-            {
-                return ChatCommandHandler.CommandResult.Error(
-                    rawHex
-                        ? "Usage: /localoverlay packetraw <fade|balloon|damagemeter|hpdec> <hex>"
-                        : "Usage: /localoverlay packet <fade|balloon|damagemeter|hpdec> [payloadhex=..|payloadb64=..]");
-            }
-
-            return applied
-                ? ChatCommandHandler.CommandResult.Ok(message)
-                : ChatCommandHandler.CommandResult.Error(message);
         }
 
         private bool TryApplyPacketOwnedFieldFadePayload(byte[] payload, out string message)
@@ -3053,162 +3067,6 @@ namespace HaCreator.MapSimulator
             }
 
             return Encoding.Default.GetString(bytes);
-        }
-
-        private void EnsureLocalOverlayPacketInboxState(bool shouldRun)
-        {
-            if (!shouldRun || !_localOverlayPacketInboxEnabled)
-            {
-                if (_localOverlayPacketInbox.IsRunning)
-                {
-                    _localOverlayPacketInbox.Stop();
-                }
-
-                return;
-            }
-
-            if (_localOverlayPacketInbox.IsRunning && _localOverlayPacketInbox.Port == _localOverlayPacketInboxConfiguredPort)
-            {
-                return;
-            }
-
-            if (_localOverlayPacketInbox.IsRunning)
-            {
-                _localOverlayPacketInbox.Stop();
-            }
-
-            try
-            {
-                _localOverlayPacketInbox.Start(_localOverlayPacketInboxConfiguredPort);
-            }
-            catch (Exception ex)
-            {
-                _localOverlayPacketInbox.Stop();
-                _chat?.AddErrorMessage($"Local overlay packet inbox failed to start: {ex.Message}", currTickCount);
-            }
-        }
-
-        private void DrainLocalOverlayPacketInbox()
-        {
-            while (_localOverlayPacketInbox.TryDequeue(out LocalOverlayPacketInboxMessage message))
-            {
-                if (message == null)
-                {
-                    continue;
-                }
-
-                bool applied = TryApplyPacketOwnedLocalOverlayPacket(message.PacketType, message.Payload, out string detail);
-                _localOverlayPacketInbox.RecordDispatchResult(message, applied, detail);
-                if (!string.IsNullOrWhiteSpace(detail))
-                {
-                    if (applied)
-                    {
-                        _chat?.AddSystemMessage(detail, currTickCount);
-                    }
-                    else
-                    {
-                        _chat?.AddErrorMessage(detail, currTickCount);
-                    }
-                }
-            }
-        }
-
-        private string DescribeLocalOverlayPacketInboxStatus()
-        {
-            string enabledText = _localOverlayPacketInboxEnabled ? "enabled" : "disabled";
-            string listeningText = _localOverlayPacketInbox.IsRunning
-                ? $"listening on 127.0.0.1:{_localOverlayPacketInbox.Port}"
-                : $"configured for 127.0.0.1:{_localOverlayPacketInboxConfiguredPort}";
-            return $"Local overlay packet inbox {enabledText}, {listeningText}, received {_localOverlayPacketInbox.ReceivedCount} packet(s).";
-        }
-
-        private bool TryApplyPacketOwnedLocalOverlayPacket(int packetType, byte[] payload, out string message)
-        {
-            switch (packetType)
-            {
-                case LocalOverlayPacketInboxManager.FieldFadeInOutPacketType:
-                    return TryApplyPacketOwnedFieldFadePayload(payload, out message);
-
-                case LocalOverlayPacketInboxManager.BalloonMsgPacketType:
-                    return TryApplyPacketOwnedBalloonPayload(payload, out message);
-
-                default:
-                    message = $"Unsupported local overlay packet type {packetType}.";
-                    return false;
-            }
-        }
-
-        private ChatCommandHandler.CommandResult HandlePacketOwnedLocalOverlayInboxCommand(string[] args)
-        {
-            int offset = args.Length > 0 && string.Equals(args[0], "inbox", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
-            string usagePrefix = offset == 0 ? "/localoverlaypacket" : "/localoverlay inbox";
-            if (args.Length <= offset || string.Equals(args[offset], "status", StringComparison.OrdinalIgnoreCase))
-            {
-                return ChatCommandHandler.CommandResult.Info($"{DescribeLocalOverlayPacketInboxStatus()} {_localOverlayPacketInbox.LastStatus}");
-            }
-
-            if (string.Equals(args[offset], "start", StringComparison.OrdinalIgnoreCase))
-            {
-                int port = LocalOverlayPacketInboxManager.DefaultPort;
-                if (args.Length > offset + 1 && (!int.TryParse(args[offset + 1], out port) || port <= 0 || port > ushort.MaxValue))
-                {
-                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]");
-                }
-
-                _localOverlayPacketInboxConfiguredPort = port;
-                _localOverlayPacketInboxEnabled = true;
-                EnsureLocalOverlayPacketInboxState(shouldRun: true);
-                return ChatCommandHandler.CommandResult.Ok($"{DescribeLocalOverlayPacketInboxStatus()} {_localOverlayPacketInbox.LastStatus}");
-            }
-
-            if (string.Equals(args[offset], "stop", StringComparison.OrdinalIgnoreCase))
-            {
-                _localOverlayPacketInboxEnabled = false;
-                EnsureLocalOverlayPacketInboxState(shouldRun: false);
-                return ChatCommandHandler.CommandResult.Ok($"{DescribeLocalOverlayPacketInboxStatus()} {_localOverlayPacketInbox.LastStatus}");
-            }
-
-            if (string.Equals(args[offset], "packet", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(args[offset], "packetraw", StringComparison.OrdinalIgnoreCase))
-            {
-                bool rawHex = string.Equals(args[offset], "packetraw", StringComparison.OrdinalIgnoreCase);
-                if (args.Length <= offset + 1)
-                {
-                    return ChatCommandHandler.CommandResult.Error(
-                        rawHex
-                            ? $"Usage: {usagePrefix} packetraw <fade|balloon> <hex>"
-                            : $"Usage: {usagePrefix} packet <fade|balloon> [payloadhex=..|payloadb64=..]");
-                }
-
-                if (!LocalOverlayPacketInboxManager.TryParsePacketType(args[offset + 1], out int packetType))
-                {
-                    return ChatCommandHandler.CommandResult.Error("Only fade and balloon inbox packet types are supported.");
-                }
-
-                byte[] payload = Array.Empty<byte>();
-                if (rawHex)
-                {
-                    if (args.Length <= offset + 2 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(offset + 2)), out payload))
-                    {
-                        return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} packetraw <fade|balloon> <hex>");
-                    }
-                }
-                else if (args.Length > offset + 2 && !TryParseBinaryPayloadArgument(args[offset + 2], out payload, out string payloadError))
-                {
-                    return ChatCommandHandler.CommandResult.Error(payloadError ?? $"Usage: {usagePrefix} packet <fade|balloon> [payloadhex=..|payloadb64=..]");
-                }
-
-                _localOverlayPacketInbox.EnqueueLocal(packetType, payload, "localoverlay-command");
-                return ChatCommandHandler.CommandResult.Ok($"Queued {args[offset + 1]} through the local overlay packet inbox.");
-            }
-
-            return ChatCommandHandler.CommandResult.Error(
-                $"Usage: {usagePrefix} [status|start [port]|stop|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]");
-        }
-
-        private ChatCommandHandler.CommandResult HandlePacketOwnedLocalOverlayPacketAliasCommand(string[] args)
-        {
-            return HandlePacketOwnedLocalOverlayInboxCommand(args);
         }
 
         private static bool TryParsePacketOwnedFadeAlpha(string value, out int alpha, out string error)

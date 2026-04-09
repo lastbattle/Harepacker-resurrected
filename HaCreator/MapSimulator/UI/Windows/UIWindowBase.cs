@@ -281,6 +281,13 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_isVisible == visible)
             {
+                if (visible && invokeBeforeShow)
+                {
+                    // Some scripted owners refresh an already-visible registered window
+                    // to replace dialog content while keeping the same host alive.
+                    // Those refreshes still need the pre-show seam to fire.
+                    BeforeShow?.Invoke(this);
+                }
                 return;
             }
 

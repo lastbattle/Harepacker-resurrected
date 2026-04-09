@@ -421,19 +421,18 @@ namespace HaCreator.MapSimulator.UI
                     return true;
                 }
 
-                if (clicked)
+                if (pressedThisFrame)
                 {
-                    int row = (mouseState.Y - rowArea.Y) / RowPitch;
-                    int index = _scrollOffset + row;
-                    if (index >= 0 && index < _entries.Count)
-                    {
-                        _selectedIndex = index;
-                        EnsureSelectionVisible();
-                        UpdateButtonStates();
-                        _previousMouseState = mouseState;
-                        mouseCursor?.SetMouseCursorMovedToClickableItem();
-                        return true;
-                    }
+                    _selectedIndex = ResolveClientItemIndexFromRelativePoint(
+                        _entries.Count,
+                        _scrollOffset,
+                        mouseState.X - rowArea.X,
+                        mouseState.Y - rowArea.Y);
+                    EnsureSelectionVisible();
+                    UpdateButtonStates();
+                    _previousMouseState = mouseState;
+                    mouseCursor?.SetMouseCursorMovedToClickableItem();
+                    return true;
                 }
             }
 
@@ -1573,14 +1572,34 @@ namespace HaCreator.MapSimulator.UI
                 return -1;
             }
 
-            int row = (mousePosition.Y - rowArea.Y) / RowPitch;
-            if (row < 0 || row >= VisibleRowCount)
+            return ResolveClientItemIndexFromRelativePoint(
+                _entries.Count,
+                _scrollOffset,
+                mousePosition.X - rowArea.X,
+                mousePosition.Y - rowArea.Y);
+        }
+
+        internal static int ResolveClientItemIndexFromRelativePoint(int itemCount, int scrollOffset, int relativeX, int relativeY)
+        {
+            if (itemCount <= 0)
             {
                 return -1;
             }
 
-            int index = _scrollOffset + row;
-            return index >= 0 && index < _entries.Count ? index : -1;
+            int visibleCount = Math.Min(itemCount, VisibleRowCount);
+            for (int row = 0, rowTop = 0; row < visibleCount; row++, rowTop += RowPitch)
+            {
+                Rectangle bounds = new(RowLeft - RowLeft, rowTop, 210 - RowLeft, RowHeight);
+                if (!bounds.Contains(relativeX, relativeY))
+                {
+                    continue;
+                }
+
+                int index = scrollOffset + row;
+                return index >= 0 && index < itemCount ? index : -1;
+            }
+
+            return -1;
         }
 
         private int ResolveSelectionIndex(CharacterPart previousPart, InventorySlotData previousInventorySlot, int previousEncodedSlotPosition, bool previousIsInventorySlot, int preferredItemId)

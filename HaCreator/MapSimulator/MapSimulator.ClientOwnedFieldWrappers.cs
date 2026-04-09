@@ -1007,7 +1007,8 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            bool hasAranFieldType = (int)mapInfo.fieldType == ClientOwnedAranTutorialFieldType;
+            bool hasAranFieldType = mapInfo.fieldType.HasValue
+                && (int)mapInfo.fieldType.Value == ClientOwnedAranTutorialFieldType;
             bool hasAranOnUserEnter = !string.IsNullOrWhiteSpace(mapInfo.onUserEnter)
                 && mapInfo.onUserEnter.StartsWith(AranTutorialOnUserEnterPrefix, StringComparison.OrdinalIgnoreCase);
             bool inAranTutorialRange = mapInfo.id >= AranTutorialMapIdMin

@@ -93,10 +93,11 @@ namespace HaCreator.MapSimulator.Effects
             GraphicsDevice device,
             Action<string> requestBgmOverride = null,
             Action clearBgmOverride = null,
-            Func<LoginAvatarLook, string, CharacterBuild> weddingRemoteBuildFactory = null)
+            Func<LoginAvatarLook, string, CharacterBuild> weddingRemoteBuildFactory = null,
+            CharacterLoader weddingCharacterLoader = null)
         {
 
-            _wedding.Initialize(device, requestBgmOverride, clearBgmOverride, weddingRemoteBuildFactory);
+            _wedding.Initialize(device, requestBgmOverride, clearBgmOverride, weddingRemoteBuildFactory, weddingCharacterLoader);
             _witchtower.Initialize(device);
             _battlefield.Initialize(device);
             _guildBoss.Initialize(device);

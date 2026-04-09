@@ -671,6 +671,7 @@ namespace HaCreator.MapSimulator.Pools
             ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
             state.Summon.LastAttackAnimationStartTime = currentTime;
             state.Summon.CurrentAnimationBranchName = ResolvePacketOwnedSkillBranch(state);
+            ArmPacketOwnedOneTimeAction(state, currentTime, state.LastSkillAction, isSkillAction: true);
             ArmPacketOwnedSupportSuspend(state, currentTime);
             bool hasPrepareAnimation = SummonRuntimeRules.ResolveSummonActionPrepareDurationMs(
                 state.Summon.SkillData,
@@ -688,7 +689,9 @@ namespace HaCreator.MapSimulator.Pools
             foreach (PacketOwnedSummonState teslaState in EnumerateOwnerSummonStates(state.OwnerCharacterId)
                          .Where(static candidate => candidate?.Summon?.SkillId == TeslaCoilSkillId && !candidate.Summon.IsPendingRemoval))
             {
+                teslaState.Summon.CurrentAnimationBranchName = state.Summon.CurrentAnimationBranchName;
                 teslaState.Summon.LastAttackAnimationStartTime = currentTime;
+                ArmPacketOwnedOneTimeAction(teslaState, currentTime, state.LastSkillAction, isSkillAction: true);
                 teslaState.Summon.ActorState = hasPrepareAnimation
                     ? SummonActorState.Prepare
                     : SummonActorState.Attack;
@@ -730,6 +733,7 @@ namespace HaCreator.MapSimulator.Pools
             state.Summon.CurrentAnimationBranchName = SummonRuntimeRules.ResolvePacketAttackBranch(
                 state.Summon.SkillData,
                 state.LastAttackAction);
+            ArmPacketOwnedOneTimeAction(state, currentTime, state.LastAttackAction, isSkillAction: false);
             int prepareDuration = GetSkillAnimationDuration(state.Summon.SkillData?.SummonAttackPrepareAnimation) ?? 0;
             if (state.Summon.LastAttackAnimationStartTime == int.MinValue
                 || prepareDuration <= 0
@@ -740,6 +744,79 @@ namespace HaCreator.MapSimulator.Pools
 
             state.Summon.ActorState = SummonActorState.Attack;
             state.Summon.LastStateChangeTime = currentTime;
+        }
+
+        private static void ArmPacketOwnedOneTimeAction(
+            PacketOwnedSummonState state,
+            int currentTime,
+            byte rawAction,
+            bool isSkillAction)
+        {
+            if (state?.Summon?.SkillData == null)
+            {
+                return;
+            }
+
+            byte normalizedAction = (byte)(rawAction & 0x7F);
+            SkillAnimation actionAnimation = ResolvePacketOwnedOneTimeActionAnimation(state, normalizedAction, isSkillAction);
+            if (actionAnimation?.Frames.Count <= 0)
+            {
+                return;
+            }
+
+            int duration = GetSkillAnimationDuration(actionAnimation) ?? 0;
+            if (duration <= 0)
+            {
+                return;
+            }
+
+            state.OneTimeAction = normalizedAction;
+            state.OneTimeActionEndTime = currentTime + duration;
+            state.Summon.OneTimeActionFallbackAnimation = actionAnimation;
+            state.Summon.OneTimeActionFallbackStartTime = currentTime;
+            state.Summon.OneTimeActionFallbackAnimationTime = 0;
+            state.Summon.OneTimeActionFallbackEndTime = currentTime + duration;
+        }
+
+        private static SkillAnimation ResolvePacketOwnedOneTimeActionAnimation(
+            PacketOwnedSummonState state,
+            byte normalizedAction,
+            bool isSkillAction)
+        {
+            SkillData skill = state?.Summon?.SkillData;
+            if (skill == null)
+            {
+                return null;
+            }
+
+            string branchName = isSkillAction
+                ? SummonRuntimeRules.ResolvePacketSkillBranch(skill, normalizedAction, state.Summon.AssistType)
+                : SummonRuntimeRules.ResolvePacketAttackBranch(skill, normalizedAction);
+            if (string.IsNullOrWhiteSpace(branchName))
+            {
+                branchName = state.Summon.CurrentAnimationBranchName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(branchName))
+            {
+                if (skill.SummonActionAnimations != null
+                    && skill.SummonActionAnimations.TryGetValue(branchName, out SkillAnimation actionAnimation)
+                    && actionAnimation?.Frames.Count > 0)
+                {
+                    return actionAnimation;
+                }
+
+                if (skill.SummonNamedAnimations != null
+                    && skill.SummonNamedAnimations.TryGetValue(branchName, out SkillAnimation namedAnimation)
+                    && namedAnimation?.Frames.Count > 0)
+                {
+                    return namedAnimation;
+                }
+            }
+
+            return isSkillAction
+                ? ResolvePacketPendingRemovalActionAnimation(state.Summon)
+                : ResolveAttackAnimation(state.Summon);
         }
 
         private static void ClearPacketOwnedOneTimeAction(PacketOwnedSummonState state)
@@ -2830,7 +2907,7 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            List<MobItem> targets = ResolveLocalExpirySelfDestructTargets(state.Summon, currentTime);
+            List<MobItem> targets = ResolveLocalExpirySelfDestructTargets(state, currentTime);
             if (targets.Count == 0)
             {
                 return false;
@@ -2851,8 +2928,9 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
-        private List<MobItem> ResolveLocalExpirySelfDestructTargets(ActiveSummon summon, int currentTime)
+        private List<MobItem> ResolveLocalExpirySelfDestructTargets(PacketOwnedSummonState state, int currentTime)
         {
+            ActiveSummon summon = state?.Summon;
             if (_mobPool?.ActiveMobs == null || summon?.SkillData == null)
             {
                 return new List<MobItem>();
@@ -2873,7 +2951,8 @@ namespace HaCreator.MapSimulator.Pools
                 candidatesById.Values.Select(mob => new PacketOwnedExpiryTargetCandidate(
                     mob.PoolId,
                     GetMobHitbox(mob, currentTime))),
-                maxTargets);
+                maxTargets,
+                ResolvePacketOwnedExpiryPreferredTargetMobIds(state));
 
             return orderedTargetIds
                 .Where(candidatesById.ContainsKey)
@@ -2884,7 +2963,8 @@ namespace HaCreator.MapSimulator.Pools
         internal static int[] ResolvePacketOwnedExpiryTargetOrder(
             ActiveSummon summon,
             IEnumerable<PacketOwnedExpiryTargetCandidate> candidates,
-            int maxTargets)
+            int maxTargets,
+            IReadOnlyList<int> preferredTargetMobIds = null)
         {
             if (summon?.SkillData == null || candidates == null || maxTargets <= 0)
             {
@@ -2893,6 +2973,7 @@ namespace HaCreator.MapSimulator.Pools
 
             Vector2 summonPosition = new(summon.PositionX, summon.PositionY);
             Rectangle summonBounds = GetPacketOwnedSummonAttackBounds(summon);
+            Dictionary<int, int> preferredTargetRanks = BuildPacketOwnedExpiryPreferredTargetRanks(preferredTargetMobIds);
 
             return candidates
                 .Where(candidate => candidate.MobObjectId > 0
@@ -2904,9 +2985,13 @@ namespace HaCreator.MapSimulator.Pools
                     float centerY = candidate.Hitbox.Top + (candidate.Hitbox.Height * 0.5f);
                     float deltaX = centerX - summonPosition.X;
                     float deltaY = centerY - summonPosition.Y;
+                    int preferredRank = preferredTargetRanks.TryGetValue(candidate.MobObjectId, out int rank)
+                        ? rank
+                        : int.MaxValue;
                     return new
                     {
                         candidate.MobObjectId,
+                        PreferredRank = preferredRank,
                         DistanceSq = (deltaX * deltaX) + (deltaY * deltaY),
                         ForwardPenalty = summon.FacingRight
                             ? (deltaX < 0f ? 1 : 0)
@@ -2914,13 +2999,44 @@ namespace HaCreator.MapSimulator.Pools
                         VerticalDistance = MathF.Abs(deltaY)
                     };
                 })
-                .OrderBy(entry => entry.DistanceSq)
+                .OrderBy(entry => entry.PreferredRank)
+                .ThenBy(entry => entry.DistanceSq)
                 .ThenBy(entry => entry.ForwardPenalty)
                 .ThenBy(entry => entry.VerticalDistance)
                 .ThenBy(entry => entry.MobObjectId)
                 .Take(maxTargets)
                 .Select(entry => entry.MobObjectId)
                 .ToArray();
+        }
+
+        private static IReadOnlyList<int> ResolvePacketOwnedExpiryPreferredTargetMobIds(PacketOwnedSummonState state)
+        {
+            return state?.LastAttackTargets?
+                .Where(static target => target.MobObjectId > 0)
+                .Select(static target => target.MobObjectId)
+                .Distinct()
+                .ToArray()
+                ?? Array.Empty<int>();
+        }
+
+        private static Dictionary<int, int> BuildPacketOwnedExpiryPreferredTargetRanks(IReadOnlyList<int> preferredTargetMobIds)
+        {
+            Dictionary<int, int> preferredRanks = new();
+            if (preferredTargetMobIds == null)
+            {
+                return preferredRanks;
+            }
+
+            for (int i = 0; i < preferredTargetMobIds.Count; i++)
+            {
+                int targetMobId = preferredTargetMobIds[i];
+                if (targetMobId > 0 && !preferredRanks.ContainsKey(targetMobId))
+                {
+                    preferredRanks[targetMobId] = i;
+                }
+            }
+
+            return preferredRanks;
         }
 
         internal static Rectangle GetPacketOwnedSummonAttackBounds(ActiveSummon summon)

@@ -112,21 +112,7 @@ namespace HaCreator.MapSimulator.Loaders
                     continue;
                 }
 
-                if (MatchesLocalPlayerGender(actionSet, localPlayerGender) && !actionSet.HasQuestConditions)
-                {
-                    return actionSet.Index;
-                }
-            }
-
-            foreach (NpcClientActionSetDefinition actionSet in actionSets)
-            {
-                if (actionSet.IsRootSet)
-                {
-                    continue;
-                }
-
-                if (MatchesLocalPlayerGender(actionSet, localPlayerGender)
-                    && MatchesQuestConditions(actionSet, questStateProvider, questRecordValueProvider))
+                if (MatchesAutomaticClientActionSet(actionSet, localPlayerGender, questStateProvider, questRecordValueProvider))
                 {
                     return actionSet.Index;
                 }
@@ -141,6 +127,21 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return actionSets[0].Index;
+        }
+
+        private static bool MatchesAutomaticClientActionSet(
+            NpcClientActionSetDefinition actionSet,
+            CharacterGender? localPlayerGender,
+            Func<int, QuestStateType> questStateProvider,
+            Func<int, string> questRecordValueProvider)
+        {
+            if (!MatchesLocalPlayerGender(actionSet, localPlayerGender))
+            {
+                return false;
+            }
+
+            return !actionSet.HasQuestConditions
+                   || MatchesQuestConditions(actionSet, questStateProvider, questRecordValueProvider);
         }
 
         internal static void AppendReversedInteriorFrames(List<IDXObject> frames)

@@ -18,6 +18,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Point _overlayOffset;
         private readonly IDXObject _headerLayer;
         private readonly Point _headerOffset;
+        private readonly Texture2D _tooltipBackgroundTexture;
         private readonly Texture2D _row0Texture;
         private readonly Texture2D _row1Texture;
         private readonly Texture2D _recommendTexture;
@@ -71,16 +72,17 @@ namespace HaCreator.MapSimulator.UI
         private const int TooltipIconSize = 32;
         private const int TooltipIconGap = 8;
         private const int TooltipBodyX = TooltipPadding + TooltipIconSize + TooltipIconGap;
+        private const int TooltipShellSlice = 6;
         private const int SummaryStripX = 15;
         private const int SummaryStripY = 329;
         private const int SummaryStripStepY = 16;
         private const int SummaryTextPaddingX = 6;
         private const int SummaryTextPaddingY = 3;
         private const float SummaryTextScale = 0.3f;
-        private static readonly Color TooltipBackgroundColor = new(28, 28, 28, 228);
-        private static readonly Color TooltipBorderColor = new(112, 112, 112, 235);
         private static readonly Color TooltipTitleColor = new(255, 220, 120);
-        private static readonly Color TooltipBodyColor = new(224, 229, 236);
+        private static readonly Color TooltipBodyColor = new(74, 84, 98);
+        private static readonly Color TooltipFallbackBackgroundColor = new(28, 28, 28, 228);
+        private static readonly Color TooltipFallbackBorderColor = new(112, 112, 112, 235);
 
         private readonly record struct TooltipRenderLine(string Text, bool IsTitle)
         {
@@ -93,6 +95,7 @@ namespace HaCreator.MapSimulator.UI
             Point overlayOffset,
             IDXObject headerLayer,
             Point headerOffset,
+            Texture2D tooltipBackgroundTexture,
             Texture2D row0Texture,
             Texture2D row1Texture,
             Texture2D recommendTexture,
@@ -106,6 +109,7 @@ namespace HaCreator.MapSimulator.UI
             _overlayOffset = overlayOffset;
             _headerLayer = headerLayer;
             _headerOffset = headerOffset;
+            _tooltipBackgroundTexture = tooltipBackgroundTexture;
             _row0Texture = row0Texture;
             _row1Texture = row1Texture;
             _recommendTexture = recommendTexture;
@@ -735,11 +739,7 @@ namespace HaCreator.MapSimulator.UI
             int tooltipY = Math.Clamp(rowBounds.Y, TooltipPadding, maxTooltipY);
             Rectangle tooltipBounds = new Rectangle(tooltipX, tooltipY, TooltipWidth, contentHeight);
 
-            sprite.Draw(_pixel, tooltipBounds, TooltipBackgroundColor);
-            sprite.Draw(_pixel, new Rectangle(tooltipBounds.X - 1, tooltipBounds.Y - 1, tooltipBounds.Width + 2, 1), TooltipBorderColor);
-            sprite.Draw(_pixel, new Rectangle(tooltipBounds.X - 1, tooltipBounds.Bottom, tooltipBounds.Width + 2, 1), TooltipBorderColor);
-            sprite.Draw(_pixel, new Rectangle(tooltipBounds.X - 1, tooltipBounds.Y, 1, tooltipBounds.Height), TooltipBorderColor);
-            sprite.Draw(_pixel, new Rectangle(tooltipBounds.Right, tooltipBounds.Y, 1, tooltipBounds.Height), TooltipBorderColor);
+            DrawTooltipBackground(sprite, tooltipBounds);
 
             int y = tooltipBounds.Y + TooltipTopPadding;
             for (int i = 0; i < titleLines.Count; i++)
@@ -787,6 +787,65 @@ namespace HaCreator.MapSimulator.UI
                     _font);
                 bodyY += Math.Max(lineSpacing, (int)Math.Ceiling(_font.LineSpacing * bodyScale));
             }
+        }
+
+        private void DrawTooltipBackground(SpriteBatch sprite, Rectangle bounds)
+        {
+            if (_tooltipBackgroundTexture == null ||
+                _tooltipBackgroundTexture.Width <= TooltipShellSlice * 2 ||
+                _tooltipBackgroundTexture.Height <= TooltipShellSlice * 2)
+            {
+                sprite.Draw(_pixel, bounds, TooltipFallbackBackgroundColor);
+                sprite.Draw(_pixel, new Rectangle(bounds.X - 1, bounds.Y - 1, bounds.Width + 2, 1), TooltipFallbackBorderColor);
+                sprite.Draw(_pixel, new Rectangle(bounds.X - 1, bounds.Bottom, bounds.Width + 2, 1), TooltipFallbackBorderColor);
+                sprite.Draw(_pixel, new Rectangle(bounds.X - 1, bounds.Y, 1, bounds.Height), TooltipFallbackBorderColor);
+                sprite.Draw(_pixel, new Rectangle(bounds.Right, bounds.Y, 1, bounds.Height), TooltipFallbackBorderColor);
+                return;
+            }
+
+            int sourceLeft = TooltipShellSlice;
+            int sourceTop = TooltipShellSlice;
+            int sourceRight = TooltipShellSlice;
+            int sourceBottom = TooltipShellSlice;
+            int centerSourceWidth = Math.Max(1, _tooltipBackgroundTexture.Width - sourceLeft - sourceRight);
+            int centerSourceHeight = Math.Max(1, _tooltipBackgroundTexture.Height - sourceTop - sourceBottom);
+
+            int destLeft = Math.Min(sourceLeft, Math.Max(1, bounds.Width / 2));
+            int destRight = Math.Min(sourceRight, Math.Max(1, bounds.Width - destLeft));
+            int destTopHeight = Math.Min(sourceTop, Math.Max(1, bounds.Height / 2));
+            int destBottomHeight = Math.Min(sourceBottom, Math.Max(1, bounds.Height - destTopHeight));
+            int centerDestWidth = Math.Max(1, bounds.Width - destLeft - destRight);
+            int centerDestHeight = Math.Max(1, bounds.Height - destTopHeight - destBottomHeight);
+
+            Rectangle srcTopLeft = new Rectangle(0, 0, sourceLeft, sourceTop);
+            Rectangle srcTop = new Rectangle(sourceLeft, 0, centerSourceWidth, sourceTop);
+            Rectangle srcTopRight = new Rectangle(_tooltipBackgroundTexture.Width - sourceRight, 0, sourceRight, sourceTop);
+            Rectangle srcLeft = new Rectangle(0, sourceTop, sourceLeft, centerSourceHeight);
+            Rectangle srcCenter = new Rectangle(sourceLeft, sourceTop, centerSourceWidth, centerSourceHeight);
+            Rectangle srcRight = new Rectangle(_tooltipBackgroundTexture.Width - sourceRight, sourceTop, sourceRight, centerSourceHeight);
+            Rectangle srcBottomLeft = new Rectangle(0, _tooltipBackgroundTexture.Height - sourceBottom, sourceLeft, sourceBottom);
+            Rectangle srcBottom = new Rectangle(sourceLeft, _tooltipBackgroundTexture.Height - sourceBottom, centerSourceWidth, sourceBottom);
+            Rectangle srcBottomRight = new Rectangle(_tooltipBackgroundTexture.Width - sourceRight, _tooltipBackgroundTexture.Height - sourceBottom, sourceRight, sourceBottom);
+
+            Rectangle destTopLeft = new Rectangle(bounds.X, bounds.Y, destLeft, destTopHeight);
+            Rectangle destTop = new Rectangle(bounds.X + destLeft, bounds.Y, centerDestWidth, destTopHeight);
+            Rectangle destTopRight = new Rectangle(bounds.Right - destRight, bounds.Y, destRight, destTopHeight);
+            Rectangle destLeftRect = new Rectangle(bounds.X, bounds.Y + destTopHeight, destLeft, centerDestHeight);
+            Rectangle destCenter = new Rectangle(bounds.X + destLeft, bounds.Y + destTopHeight, centerDestWidth, centerDestHeight);
+            Rectangle destRightRect = new Rectangle(bounds.Right - destRight, bounds.Y + destTopHeight, destRight, centerDestHeight);
+            Rectangle destBottomLeft = new Rectangle(bounds.X, bounds.Bottom - destBottomHeight, destLeft, destBottomHeight);
+            Rectangle destBottom = new Rectangle(bounds.X + destLeft, bounds.Bottom - destBottomHeight, centerDestWidth, destBottomHeight);
+            Rectangle destBottomRight = new Rectangle(bounds.Right - destRight, bounds.Bottom - destBottomHeight, destRight, destBottomHeight);
+
+            sprite.Draw(_tooltipBackgroundTexture, destTopLeft, srcTopLeft, Color.White);
+            sprite.Draw(_tooltipBackgroundTexture, destTop, srcTop, Color.White);
+            sprite.Draw(_tooltipBackgroundTexture, destTopRight, srcTopRight, Color.White);
+            sprite.Draw(_tooltipBackgroundTexture, destLeftRect, srcLeft, Color.White);
+            sprite.Draw(_tooltipBackgroundTexture, destCenter, srcCenter, Color.White);
+            sprite.Draw(_tooltipBackgroundTexture, destRightRect, srcRight, Color.White);
+            sprite.Draw(_tooltipBackgroundTexture, destBottomLeft, srcBottomLeft, Color.White);
+            sprite.Draw(_tooltipBackgroundTexture, destBottom, srcBottom, Color.White);
+            sprite.Draw(_tooltipBackgroundTexture, destBottomRight, srcBottomRight, Color.White);
         }
 
         private List<TooltipRenderLine> BuildTooltipLines(GuildSkillEntrySnapshot entry, bool titleOnly)

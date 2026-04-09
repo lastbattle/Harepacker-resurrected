@@ -399,7 +399,8 @@ namespace HaCreator.MapSimulator.Interaction
                 IsOpen = true;
                 LastSubtype = 24;
                 _deliveryCount++;
-                StatusMessage = $"CParcelDlg packet 24 applied mailbox payload ownership for parcel '{subject.Trim()}'.";
+                string resolvedSubject = string.IsNullOrWhiteSpace(subject) ? body?.Trim() ?? string.Empty : subject.Trim();
+                StatusMessage = $"CParcelDlg packet 24 applied mailbox payload ownership for parcel '{resolvedSubject}'.";
                 message = StatusMessage;
             }
 
@@ -527,13 +528,22 @@ namespace HaCreator.MapSimulator.Interaction
                 return string.Empty;
             }
 
-            string sender = arrivalEntries[0]?.Sender;
+            PacketOwnedParcelDecodedEntry firstEntry = arrivalEntries[0];
+            string sender = firstEntry?.Sender;
             if (string.IsNullOrWhiteSpace(sender))
             {
                 return $", plus {arrivalEntries.Count.ToString(CultureInfo.InvariantCulture)} arrival notice(s)";
             }
 
-            return $", plus {arrivalEntries.Count.ToString(CultureInfo.InvariantCulture)} arrival notice(s) led by {sender}";
+            string detail = firstEntry switch
+            {
+                { AttachmentItemId: > 0, AttachmentMeso: > 0 } => $" carrying {firstEntry.AttachmentMeso.ToString("N0", CultureInfo.InvariantCulture)} meso and item {firstEntry.AttachmentItemId}",
+                { AttachmentItemId: > 0 } => $" carrying item {firstEntry.AttachmentItemId}",
+                { HasMesoAttachment: true, AttachmentMeso: > 0 } => $" carrying {firstEntry.AttachmentMeso.ToString("N0", CultureInfo.InvariantCulture)} meso",
+                { IsQuickDelivery: true } => " on the quick-delivery branch",
+                _ => string.Empty
+            };
+            return $", plus {arrivalEntries.Count.ToString(CultureInfo.InvariantCulture)} arrival notice(s) led by {sender}{detail}";
         }
 
         private static bool TryReadPacketString(BinaryReader reader, out string value)

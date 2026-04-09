@@ -178,6 +178,7 @@ namespace HaCreator.MapSimulator.UI
         private UserInfoPage _currentPage = UserInfoPage.Character;
         private string _statusMessage = "Character actions are available from this profile window.";
         private UIObject _partyButton;
+        private UIObject _followButton;
         private UIObject _tradeButton;
         private UIObject _itemButton;
         private UIObject _wishButton;
@@ -256,6 +257,7 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.CharacterInfo;
         public Action MiniRoomRequested { get; set; }
         public Func<UserInfoActionContext, string> PartyRequested { get; set; }
+        public Func<UserInfoActionContext, string> FollowRequested { get; set; }
         public Func<UserInfoActionContext, string> TradingRoomRequested { get; set; }
         public Func<UserInfoActionContext, string> FamilyRequested { get; set; }
         public Func<UserInfoActionContext, PopularityChangeDirection, string> PopularityRequested { get; set; }
@@ -346,15 +348,33 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        public void InitializePrimaryButtons(UIObject partyButton, UIObject tradeButton, UIObject itemButton, UIObject wishButton, UIObject familyButton)
+        public void InitializePrimaryButtons(
+            UIObject partyButton,
+            UIObject tradeButton,
+            UIObject itemButton,
+            UIObject wishButton,
+            UIObject familyButton,
+            UIObject followButton = null)
         {
             _partyButton = partyButton;
+            _followButton = followButton;
             _tradeButton = tradeButton;
             _itemButton = itemButton;
             _wishButton = wishButton;
             _familyButton = familyButton;
 
+            if (_followButton != null)
+            {
+                UIObject anchorButton = _itemButton ?? _wishButton;
+                if (anchorButton != null)
+                {
+                    _followButton.X = anchorButton.X + Math.Max(0, (anchorButton.CanvasSnapshotWidth - _followButton.CanvasSnapshotWidth) / 2);
+                    _followButton.Y = anchorButton.Y + Math.Max(0, (anchorButton.CanvasSnapshotHeight - _followButton.CanvasSnapshotHeight) / 2);
+                }
+            }
+
             BindActionButton(partyButton, "Party list opened from the profile window.", RequestPartyAction, true);
+            BindActionButton(followButton, "Follow request prepared from the remote profile seam.", RequestFollowAction, true);
             BindActionButton(tradeButton, "Trading-room shell opened.", RequestTradeAction, true);
             BindActionButton(itemButton, "Item list opened.", ToggleItemPopup, true);
             BindActionButton(wishButton, "Wish list opened.", ToggleWishPopup, true);
@@ -637,7 +657,7 @@ namespace HaCreator.MapSimulator.UI
             _inspectionTarget = inspectionTarget;
             _statusMessage = inspectionTarget?.Build == null
                 ? "Character actions are available from this profile window."
-                : $"Inspecting {inspectionTarget.Name}. Remote party, trade, family, and popularity requests now route through the simulator seams.";
+                : $"Inspecting {inspectionTarget.Name}. Remote follow, party, trade, family, and popularity requests now route through the simulator seams.";
             _exceptionPopupOpen = false;
             _activePopup = AuxiliaryPopupKind.None;
             if (!IsPageAvailable(_currentPage))
@@ -1485,6 +1505,12 @@ namespace HaCreator.MapSimulator.UI
                 _partyButton.SetEnabled(characterPage && !_exceptionPopupOpen);
             }
 
+            if (_followButton != null)
+            {
+                _followButton.ButtonVisible = characterPage && remoteInspection;
+                _followButton.SetEnabled(characterPage && remoteInspection && !_exceptionPopupOpen);
+            }
+
             if (_tradeButton != null)
             {
                 _tradeButton.ButtonVisible = characterPage;
@@ -1860,6 +1886,16 @@ namespace HaCreator.MapSimulator.UI
         {
             UserInfoActionContext context = BuildCurrentActionContext();
             string message = PartyRequested?.Invoke(context);
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _statusMessage = message;
+            }
+        }
+
+        private void RequestFollowAction()
+        {
+            UserInfoActionContext context = BuildCurrentActionContext();
+            string message = FollowRequested?.Invoke(context);
             if (!string.IsNullOrWhiteSpace(message))
             {
                 _statusMessage = message;

@@ -385,14 +385,6 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (window.IsVisible)
-            {
-                // Registered scripted owners can be "reopened" through the manager
-                // while already visible, and those requests still need to refresh
-                // delayed direction-mode ownership before the original owner times out.
-                HandleBeforeShowWindow(window);
-            }
-
             window.Show();
             BringToFront(window);
         }

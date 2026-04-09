@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator.Effects
         private int _trembleStartTime = 0;
         private int _trembleEndTime = 0;
         private Random _random = new Random();
+        private bool _trembleEnabled = true;
 
         // Current tremble offset applied to rendering
         private float _trembleOffsetX = 0;
@@ -42,6 +43,20 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         public float TrembleOffsetY => _trembleOffsetY;
 
+        internal double TrembleReduction => _trembleReduction;
+        internal int TrembleStartTime => _trembleStartTime;
+        internal int TrembleEndTime => _trembleEndTime;
+
+        /// <summary>
+        /// Whether tremble effects are enabled unless explicitly enforced.
+        /// Mirrors the client CConfig gate used by CAnimationDisplayer::Effect_Tremble.
+        /// </summary>
+        public bool TrembleEnabled
+        {
+            get => _trembleEnabled;
+            set => _trembleEnabled = value;
+        }
+
         /// <summary>
         /// Trigger a screen tremble effect.
         /// Based on CAnimationDisplayer::Effect_Tremble from the client.
@@ -56,8 +71,8 @@ namespace HaCreator.MapSimulator.Effects
         public void TriggerTremble(double trembleForce, bool heavyAndShort, int delayMs,
             int additionalTimeMs, bool enforce, int currentTimeMs)
         {
-            // In the real client, there's a config check: TSingleton<CConfig>::ms_pInstance + 36
-            // We'll always allow it for the simulator, or you can add a config option
+            if (!_trembleEnabled && !enforce)
+                return;
 
             _trembleForce = trembleForce;
             _trembleStartTime = currentTimeMs + delayMs;
@@ -130,15 +145,6 @@ namespace HaCreator.MapSimulator.Effects
             // Apply reduction over time
             // Each frame reduces the force multiplicatively
             double currentForce = _trembleForce * Math.Pow(_trembleReduction, elapsedMs / 16.67);
-
-            // Minimum threshold
-            if (currentForce < 0.5)
-            {
-                _trembleActive = false;
-                _trembleOffsetX = 0;
-                _trembleOffsetY = 0;
-                return;
-            }
 
             // Generate random offset within force range
             _trembleOffsetX = (float)((_random.NextDouble() * 2 - 1) * currentForce);

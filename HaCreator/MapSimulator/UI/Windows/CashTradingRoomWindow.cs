@@ -10,7 +10,7 @@ using System.Globalization;
 
 namespace HaCreator.MapSimulator.UI
 {
-    public sealed class CashTradingRoomWindow : UIWindowBase
+    public sealed class CashTradingRoomWindow : UIWindowBase, ISoftKeyboardHost
     {
         private enum TradeSessionStage
         {
@@ -116,6 +116,7 @@ namespace HaCreator.MapSimulator.UI
         private int _remoteProgressTick;
         private RemoteTradeProgressState _remoteProgressState = RemoteTradeProgressState.Reviewing;
         private TradeOwnerFocusTarget _focusedControl = TradeOwnerFocusTarget.ChatEdit;
+        private bool _softKeyboardActive;
         private string _statusMessage = "CCashTradingRoomDlg ready: chat entry, scrollbar, and money fonts are staged.";
 
         public CashTradingRoomWindow(IDXObject frame, GraphicsDevice graphicsDevice)
@@ -133,6 +134,11 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => MapSimulatorWindowNames.CashTradingRoom;
         public override bool CapturesKeyboardInput => IsVisible;
+        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _chatEditControl.HasFocus && _softKeyboardActive;
+        SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => SoftKeyboardKeyboardType.AlphaNumeric;
+        int ISoftKeyboardHost.SoftKeyboardTextLength => _chatEditControl.Text?.Length ?? 0;
+        int ISoftKeyboardHost.SoftKeyboardMaxLength => ChatMaxLength;
+        bool ISoftKeyboardHost.CanSubmitSoftKeyboard => _chatEditControl.HasFocus && !string.IsNullOrWhiteSpace(_chatEditControl.Text);
 
         public override void Show()
         {
@@ -144,6 +150,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _chatEditControl.ActivateByOwner();
+            _softKeyboardActive = false;
             _focusedControl = TradeOwnerFocusTarget.ChatEdit;
             _previousKeyboardState = Keyboard.GetState();
             _previousMouseState = Mouse.GetState();
@@ -152,6 +159,7 @@ namespace HaCreator.MapSimulator.UI
         public override void Hide()
         {
             base.Hide();
+            _softKeyboardActive = false;
             _chatEditControl.SetFocus(false);
         }
 
@@ -389,6 +397,7 @@ namespace HaCreator.MapSimulator.UI
                 if (inputBounds.Contains(mouseState.Position))
                 {
                     _chatEditControl.FocusAtMouseX(mouseState.X, ownerBounds);
+                    _softKeyboardActive = true;
                     _focusedControl = TradeOwnerFocusTarget.ChatEdit;
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
                     handledByOwner = true;
@@ -412,6 +421,7 @@ namespace HaCreator.MapSimulator.UI
                 }
                 else if (!ContainsPoint(mouseState.X, mouseState.Y))
                 {
+                    _softKeyboardActive = false;
                     _chatEditControl.SetFocus(false);
                 }
             }
@@ -774,6 +784,10 @@ namespace HaCreator.MapSimulator.UI
             int nextIndex = (currentIndex + FocusCycleOrder.Length + delta) % FocusCycleOrder.Length;
             _focusedControl = FocusCycleOrder[nextIndex];
             _chatEditControl.SetFocus(_focusedControl == TradeOwnerFocusTarget.ChatEdit);
+            if (_focusedControl != TradeOwnerFocusTarget.ChatEdit)
+            {
+                _softKeyboardActive = false;
+            }
             _statusMessage = $"CCashTradingRoomDlg moved owner focus to {DescribeFocusedControl()}.";
         }
 
@@ -786,6 +800,7 @@ namespace HaCreator.MapSimulator.UI
                     break;
                 case TradeOwnerFocusTarget.ChatEdit:
                     _chatEditControl.ActivateByOwner();
+                    _softKeyboardActive = true;
                     _statusMessage = "CCashTradingRoomDlg focused the dedicated chat-entry control.";
                     break;
                 case TradeOwnerFocusTarget.TradeButton:
@@ -809,8 +824,88 @@ namespace HaCreator.MapSimulator.UI
         private void FocusAndActivateButton(TradeOwnerFocusTarget focusTarget)
         {
             _focusedControl = focusTarget;
+            _softKeyboardActive = false;
             _chatEditControl.SetFocus(false);
             ActivateFocusedControl();
+        }
+
+        Rectangle ISoftKeyboardHost.GetSoftKeyboardAnchorBounds() => _chatEditControl.GetBounds(GetWindowBounds());
+
+        bool ISoftKeyboardHost.TryInsertSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            if (!_chatEditControl.HasFocus || char.IsControl(character))
+            {
+                errorMessage = "The trade chat field is not focused.";
+                return false;
+            }
+
+            if (!_chatEditControl.TryInsertCharacter(character))
+            {
+                errorMessage = "The trade chat field cannot accept that character.";
+                return false;
+            }
+
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            if (!_chatEditControl.HasFocus || char.IsControl(character))
+            {
+                errorMessage = "The trade chat field is not focused.";
+                return false;
+            }
+
+            if (!_chatEditControl.TryReplaceCharacterBeforeCaret(character))
+            {
+                errorMessage = "Nothing in the trade chat field can be replaced.";
+                return false;
+            }
+
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
+        {
+            if (!_chatEditControl.HasFocus)
+            {
+                errorMessage = "The trade chat field is not focused.";
+                return false;
+            }
+
+            if (!_chatEditControl.TryBackspace())
+            {
+                errorMessage = "The trade chat field is already empty.";
+                return false;
+            }
+
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TrySubmitSoftKeyboard(out string errorMessage)
+        {
+            if (!_chatEditControl.HasFocus || string.IsNullOrWhiteSpace(_chatEditControl.Text))
+            {
+                errorMessage = "Type a trade chat line before submitting.";
+                return false;
+            }
+
+            SubmitChatEntry();
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        void ISoftKeyboardHost.SetSoftKeyboardCompositionText(string text)
+        {
+            _chatEditControl.HandleCompositionText(text, IsVisible && _chatEditControl.HasFocus);
+        }
+
+        void ISoftKeyboardHost.OnSoftKeyboardClosed()
+        {
+            _softKeyboardActive = false;
         }
 
         private string DescribeFocusedControl()

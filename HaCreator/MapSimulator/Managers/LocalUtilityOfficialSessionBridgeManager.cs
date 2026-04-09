@@ -101,7 +101,7 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=193,253,254,269,270; outbound opcodes=45,113,117,134,135.{lastOutbound}{lastQueued} {LastStatus}";
+            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=193,253,254,269,270,1023; outbound opcodes=45,113,117,134,135,1023.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)
@@ -564,7 +564,8 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == LocalUtilityPacketInboxManager.SetDirectionModeClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.SetStandAloneModeClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.PassiveMoveClientPacketType
-                || packetType == LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType;
+                || packetType == LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.MechanicEquipStatePacketType;
         }
 
         private static string DescribePacketType(int packetType)
@@ -576,6 +577,7 @@ namespace HaCreator.MapSimulator.Managers
                 LocalUtilityPacketInboxManager.SetStandAloneModeClientPacketType => "SetStandAloneMode(254)",
                 LocalUtilityPacketInboxManager.PassiveMoveClientPacketType => "PassiveMove(269)",
                 LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType => "FollowCharacterFailed(270)",
+                LocalUtilityPacketInboxManager.MechanicEquipStatePacketType => "MechanicEquipState(1023)",
                 _ => $"packet {packetType}"
             };
         }

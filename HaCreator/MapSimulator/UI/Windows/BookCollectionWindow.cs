@@ -15,7 +15,7 @@ using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
-    public sealed class BookCollectionWindow : UIWindowBase
+    public sealed class BookCollectionWindow : UIWindowBase, ISoftKeyboardHost
     {
         private readonly struct SearchMatch
         {
@@ -140,6 +140,7 @@ namespace HaCreator.MapSimulator.UI
         private int _contextMenuMobId;
         private MonsterBookDetailTab _detailTab;
         private bool _searchMode;
+        private bool _softKeyboardActive;
         private bool _contextMenuVisible;
         private string _searchQuery = string.Empty;
         private string _compositionText = string.Empty;
@@ -165,6 +166,11 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => MapSimulatorWindowNames.BookCollection;
         public override bool CapturesKeyboardInput => IsVisible && _searchMode;
+        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _searchMode && _softKeyboardActive;
+        SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => SoftKeyboardKeyboardType.AlphaNumeric;
+        int ISoftKeyboardHost.SoftKeyboardTextLength => _searchQuery?.Length ?? 0;
+        int ISoftKeyboardHost.SoftKeyboardMaxLength => MaxSearchLength;
+        bool ISoftKeyboardHost.CanSubmitSoftKeyboard => _searchMatches.Count > 0;
         public Action ClientCloseRequested { get; set; }
         public Action OpenRequested { get; set; }
         public Action ClosingRequested { get; set; }
@@ -562,6 +568,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _searchMode = true;
+            _softKeyboardActive = false;
             _searchCursorPosition = _searchQuery.Length;
             ClearSearchSelection();
             _caretBlinkTick = Environment.TickCount;
@@ -572,6 +579,7 @@ namespace HaCreator.MapSimulator.UI
         private void ExitSearchMode()
         {
             _searchMode = false;
+            _softKeyboardActive = false;
             _searchCursorPosition = Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length);
             ClearSearchSelection();
             ClearCompositionText();
@@ -735,6 +743,7 @@ namespace HaCreator.MapSimulator.UI
             if (leftPressed && !UsesCollectionLayout && searchBounds.Contains(point))
             {
                 EnterSearchMode();
+                _softKeyboardActive = true;
                 BeginSearchSelectionDrag(point.X, keyboard);
                 ClearCompositionText();
                 _previousMouseState = mouse;
@@ -792,6 +801,92 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _previousMouseState = mouse;
+        }
+
+        Rectangle ISoftKeyboardHost.GetSoftKeyboardAnchorBounds() => OffsetBounds(SearchBoxBounds, InfoPageOrigin);
+
+        bool ISoftKeyboardHost.TryInsertSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!_searchMode
+                || char.IsControl(character)
+                || !SoftKeyboardUI.CanAcceptCharacter(SoftKeyboardKeyboardType.AlphaNumeric, _searchQuery.Length, MaxSearchLength, character))
+            {
+                errorMessage = "The Monster Book search field cannot accept that character.";
+                return false;
+            }
+
+            string previousQuery = _searchQuery;
+            HandleCommittedText(character.ToString());
+            if (string.Equals(previousQuery, _searchQuery, StringComparison.Ordinal))
+            {
+                errorMessage = "The Monster Book search field cannot accept that character.";
+                return false;
+            }
+
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            if (!((ISoftKeyboardHost)this).TryBackspaceSoftKeyboard(out errorMessage))
+            {
+                return false;
+            }
+
+            return ((ISoftKeyboardHost)this).TryInsertSoftKeyboardCharacter(character, out errorMessage);
+        }
+
+        bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!_searchMode)
+            {
+                errorMessage = "Monster Book search is not active.";
+                return false;
+            }
+
+            if (HasSearchSelection)
+            {
+                DeleteSearchSelectionIfAny();
+                OnSearchQueryChanged();
+                return true;
+            }
+
+            if (!SkillMacroNameRules.TryRemoveTextElementBeforeCaret(_searchQuery, _searchCursorPosition, out string updatedText, out int updatedCaretIndex))
+            {
+                errorMessage = "The Monster Book search field is already empty.";
+                return false;
+            }
+
+            ClearCompositionText();
+            _searchQuery = updatedText;
+            _searchCursorPosition = updatedCaretIndex;
+            OnSearchQueryChanged();
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TrySubmitSoftKeyboard(out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (_searchMatches.Count <= 0)
+            {
+                errorMessage = "No Monster Book search matches are available.";
+                return false;
+            }
+
+            ApplySearchMatch((_selectedSearchMatchIndex + 1 + _searchMatches.Count) % _searchMatches.Count);
+            return true;
+        }
+
+        void ISoftKeyboardHost.SetSoftKeyboardCompositionText(string text)
+        {
+            HandleCompositionText(text);
+        }
+
+        void ISoftKeyboardHost.OnSoftKeyboardClosed()
+        {
+            _softKeyboardActive = false;
         }
 
         private void BeginSearchSelectionDrag(int mouseX, KeyboardState keyboard)
@@ -1261,7 +1356,8 @@ namespace HaCreator.MapSimulator.UI
                         CollectionBookTextAlignment.Right => HorizontalAlignment.Right,
                         _ => HorizontalAlignment.Left
                     };
-                    float anchorX = pageBounds.X + record.Left;
+                    Vector2 clientOffset = ResolveCollectionRecordTextOffset(record, alignment);
+                    float anchorX = pageBounds.X + record.Left + clientOffset.X;
                     if (alignment == HorizontalAlignment.Right)
                     {
                         anchorX += record.Width;
@@ -1270,12 +1366,32 @@ namespace HaCreator.MapSimulator.UI
                     DrawTextLine(
                         sprite,
                         record.Text,
-                        new Vector2(anchorX, pageBounds.Y + record.Top),
+                        new Vector2(anchorX, pageBounds.Y + record.Top + clientOffset.Y),
                         GetBookStyle(record.StyleIndex),
                         record.Width,
                         alignment);
                     break;
             }
+        }
+
+        private static Vector2 ResolveCollectionRecordTextOffset(CollectionBookRecordSnapshot record, HorizontalAlignment alignment)
+        {
+            if (record == null)
+            {
+                return Vector2.Zero;
+            }
+
+            return record.Role switch
+            {
+                CollectionBookRecordRole.Title => new Vector2(0f, -1f),
+                CollectionBookRecordRole.Subtitle => new Vector2(0f, -1f),
+                CollectionBookRecordRole.Label => new Vector2(0f, -1f),
+                CollectionBookRecordRole.Value when alignment == HorizontalAlignment.Right => new Vector2(1f, -1f),
+                CollectionBookRecordRole.Value => new Vector2(0f, -1f),
+                CollectionBookRecordRole.Detail => new Vector2(0f, 1f),
+                CollectionBookRecordRole.Footer => new Vector2(0f, 1f),
+                _ => Vector2.Zero
+            };
         }
 
         private void DrawRule(SpriteBatch sprite, Rectangle bounds)

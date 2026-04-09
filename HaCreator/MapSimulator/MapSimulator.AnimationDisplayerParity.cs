@@ -22,6 +22,11 @@ namespace HaCreator.MapSimulator
         private const int AnimationDisplayerNewYearSoundStringPoolId = 0x125C;
         private static readonly string[] AnimationDisplayerNewYearWeatherAliases = { "newyear", "happyNewyear" };
         private const int AnimationDisplayerUserStateOffsetY = -70;
+        private const int AnimationDisplayerFollowRadius = 18;
+        private const int AnimationDisplayerFollowPointCount = 8;
+        private const int AnimationDisplayerFollowThetaDegrees = 20;
+        private const int AnimationDisplayerFollowUpdateIntervalMs = 100;
+        private const int AnimationDisplayerFollowDurationMs = 10000;
         private const int AnimationDisplayerTransientLayerWidth = 800;
         private const int AnimationDisplayerTransientLayerHeight = 600;
         private const int AnimationDisplayerTransientLayerDurationMs = 30000;
@@ -40,6 +45,7 @@ namespace HaCreator.MapSimulator
         };
 
         private readonly Dictionary<string, List<IDXObject>> _animationDisplayerEffectCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<int, int> _animationDisplayerFollowAnimationIds = new();
         private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
         private int _animationDisplayerLocalQuestDeliveryItemId;
 
@@ -55,7 +61,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "socialanim",
                 "Exercise the shared social or event animation-displayer runtime",
-                "/socialanim <status|clear|newyear|firecracker|userstate|questdelivery> [...]",
+                "/socialanim <status|clear|newyear|firecracker|userstate|follow|questdelivery> [...]",
                 HandleAnimationDisplayerChatCommand);
         }
 
@@ -117,6 +123,35 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Error("Usage: /socialanim userstate <local|characterId> <on|off>");
             }
 
+            if (string.Equals(args[0], "follow", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 3)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /socialanim follow <local|characterId> <on|off>");
+                }
+
+                if (!TryResolveAnimationDisplayerOwner(args[1], out int ownerCharacterId, out Func<Vector2> getPosition, out string ownerName))
+                {
+                    return ChatCommandHandler.CommandResult.Error($"Could not resolve animation owner {args[1]}.");
+                }
+
+                if (string.Equals(args[2], "on", StringComparison.OrdinalIgnoreCase))
+                {
+                    bool registered = TryRegisterAnimationDisplayerFollow(ownerCharacterId, getPosition);
+                    return registered
+                        ? ChatCommandHandler.CommandResult.Ok($"Registered animation-displayer follow layer for {ownerName}.")
+                        : ChatCommandHandler.CommandResult.Error($"Follow animation frames could not be loaded from {AnimationDisplayerGenericUserStateEffectUol}.");
+                }
+
+                if (string.Equals(args[2], "off", StringComparison.OrdinalIgnoreCase))
+                {
+                    ClearAnimationDisplayerFollow(ownerCharacterId);
+                    return ChatCommandHandler.CommandResult.Ok($"Cleared animation-displayer follow layer for {ownerName}.");
+                }
+
+                return ChatCommandHandler.CommandResult.Error("Usage: /socialanim follow <local|characterId> <on|off>");
+            }
+
             if (string.Equals(args[0], "questdelivery", StringComparison.OrdinalIgnoreCase))
             {
                 if (args.Length < 2)
@@ -141,7 +176,7 @@ namespace HaCreator.MapSimulator
                     : ChatCommandHandler.CommandResult.Error($"Quest-delivery animation frames could not be loaded for item {itemId}.");
             }
 
-            return ChatCommandHandler.CommandResult.Error("Usage: /socialanim <status|clear|newyear|firecracker|userstate|questdelivery> [...]");
+            return ChatCommandHandler.CommandResult.Error("Usage: /socialanim <status|clear|newyear|firecracker|userstate|follow|questdelivery> [...]");
         }
 
         private string DescribeAnimationDisplayerStatus()
@@ -151,13 +186,14 @@ namespace HaCreator.MapSimulator
             string localQuestDelivery = _animationDisplayerLocalQuestDeliveryItemId > 0
                 ? _animationDisplayerLocalQuestDeliveryItemId.ToString(CultureInfo.InvariantCulture)
                 : "idle";
-            return $"Animation displayer parity: userStates={_animationEffects.UserStateCount}, areaAnimations={_animationEffects.AreaAnimationCount}, localUserState={(localUserStateActive ? "active" : "idle")}, localQuestDelivery={localQuestDelivery}, localFade={(_packetOwnedFieldFadeOverlay.IsActive ? "active" : "idle")}.";
+            return $"Animation displayer parity: userStates={_animationEffects.UserStateCount}, followAnimations={_animationEffects.FollowAnimationCount}, areaAnimations={_animationEffects.AreaAnimationCount}, localUserState={(localUserStateActive ? "active" : "idle")}, localQuestDelivery={localQuestDelivery}, localFade={(_packetOwnedFieldFadeOverlay.IsActive ? "active" : "idle")}.";
         }
 
         private void ClearAnimationDisplayerState()
         {
             _animationEffects.ClearUserStates();
             _animationEffects.ClearAreaAnimations();
+            ClearAnimationDisplayerFollowAnimations();
             _packetOwnedAnimationDisplayerAreaAnimationIds.Clear();
             _animationDisplayerLocalQuestDeliveryItemId = 0;
             ResetAnimationDisplayerLocalFadeLayer();
@@ -269,6 +305,45 @@ namespace HaCreator.MapSimulator
                        offsetX: 0f,
                        offsetY: AnimationDisplayerUserStateOffsetY,
                        currTickCount) >= 0;
+        }
+
+        private bool TryRegisterAnimationDisplayerFollow(int ownerCharacterId, Func<Vector2> getPosition)
+        {
+            if (ownerCharacterId <= 0 || getPosition == null)
+            {
+                return false;
+            }
+
+            if (!TryGetAnimationDisplayerFrames("follow:generic", AnimationDisplayerGenericUserStateEffectUol, out List<IDXObject> frames))
+            {
+                return false;
+            }
+
+            ClearAnimationDisplayerFollow(ownerCharacterId);
+            int followId = _animationEffects.AddFollow(
+                frames,
+                getPosition,
+                offsetX: 0f,
+                offsetY: AnimationDisplayerUserStateOffsetY,
+                durationMs: AnimationDisplayerFollowDurationMs,
+                currentTimeMs: currTickCount,
+                options: new Animation.AnimationEffects.FollowAnimationOptions
+                {
+                    GenerationPoints = BuildAnimationDisplayerFollowGenerationPoints(
+                        AnimationDisplayerFollowRadius,
+                        AnimationDisplayerFollowPointCount),
+                    ThetaDegrees = AnimationDisplayerFollowThetaDegrees,
+                    Radius = AnimationDisplayerFollowRadius,
+                    RandomizeStartupAngle = true,
+                    UpdateIntervalMs = AnimationDisplayerFollowUpdateIntervalMs
+                });
+            if (followId < 0)
+            {
+                return false;
+            }
+
+            _animationDisplayerFollowAnimationIds[ownerCharacterId] = followId;
+            return true;
         }
 
         private bool TryRegisterAnimationDisplayerQuestDeliveryLocalUserState(int itemId)
@@ -597,6 +672,20 @@ namespace HaCreator.MapSimulator
             return ownerCharacterId > 0
                 ? unchecked(int.MinValue | ownerCharacterId)
                 : 0;
+        }
+
+        internal static IReadOnlyList<Vector2> BuildAnimationDisplayerFollowGenerationPoints(int radius, int pointCount)
+        {
+            int resolvedPointCount = Math.Max(1, pointCount);
+            float resolvedRadius = Math.Max(0f, radius);
+            var points = new List<Vector2>(resolvedPointCount);
+            for (int i = 0; i < resolvedPointCount; i++)
+            {
+                int angleDegrees = (int)Math.Round((360d / resolvedPointCount) * i);
+                points.Add(Animation.AnimationEffects.ResolvePolarFollowOffset(resolvedRadius, angleDegrees));
+            }
+
+            return points;
         }
 
         internal static string[] EnumerateAnimationDisplayerQuestDeliveryEffectUols(int itemId)
@@ -1068,6 +1157,30 @@ namespace HaCreator.MapSimulator
             }
 
             candidates.Add(normalized);
+        }
+
+        private void ClearAnimationDisplayerFollowAnimations()
+        {
+            foreach (KeyValuePair<int, int> entry in _animationDisplayerFollowAnimationIds)
+            {
+                _animationEffects.RemoveFollow(entry.Value);
+            }
+
+            _animationDisplayerFollowAnimationIds.Clear();
+        }
+
+        private void ClearAnimationDisplayerFollow(int ownerCharacterId)
+        {
+            if (ownerCharacterId <= 0)
+            {
+                return;
+            }
+
+            if (_animationDisplayerFollowAnimationIds.TryGetValue(ownerCharacterId, out int followId))
+            {
+                _animationEffects.RemoveFollow(followId);
+                _animationDisplayerFollowAnimationIds.Remove(ownerCharacterId);
+            }
         }
 
         private void ClearAnimationDisplayerLocalQuestDeliveryOwner()

@@ -514,6 +514,56 @@ namespace HaCreator.MapSimulator.Pools
             return false;
         }
 
+        internal static bool HasHostileMobGameplay(IEnumerable<(SkillData Skill, SkillLevelData LevelData)> skillEntries)
+        {
+            if (skillEntries == null)
+            {
+                return false;
+            }
+
+            foreach ((SkillData skill, SkillLevelData levelData) in skillEntries)
+            {
+                if (HasHostileMobGameplayCore(skill, levelData))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static IReadOnlyList<(SkillData Skill, SkillLevelData LevelData)> FilterHostileSkillEntries(
+            IEnumerable<(SkillData Skill, SkillLevelData LevelData)> skillEntries)
+        {
+            List<(SkillData Skill, SkillLevelData LevelData)> hostileEntries = new();
+            if (skillEntries == null)
+            {
+                return hostileEntries;
+            }
+
+            HashSet<int> visitedSkillIds = new();
+            foreach ((SkillData skill, SkillLevelData levelData) in skillEntries)
+            {
+                if (skill == null || levelData == null)
+                {
+                    continue;
+                }
+
+                int skillId = skill.SkillId;
+                if (skillId > 0 && !visitedSkillIds.Add(skillId))
+                {
+                    continue;
+                }
+
+                if (HasHostileMobGameplayCore(skill, levelData))
+                {
+                    hostileEntries.Add((skill, levelData));
+                }
+            }
+
+            return hostileEntries;
+        }
+
         private static bool HasHostileMobGameplayCore(SkillData skill, SkillLevelData levelData)
         {
             if (skill == null)

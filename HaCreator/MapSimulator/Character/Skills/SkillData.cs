@@ -476,6 +476,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation RepeatSecondaryEffect { get; set; } // Secondary repeated hold-loop branch (e.g. repeat0)
         public SkillAnimation KeydownEndEffect { get; set; } // Exit effect when keydown skill ends
         public SkillAnimation KeydownEndSecondaryEffect { get; set; } // Secondary exit branch (e.g. keydownend0)
+        public SkillAnimation StopEffect { get; set; }       // Dedicated transient cleanup branch (e.g. stopEffect)
+        public SkillAnimation StopSecondaryEffect { get; set; } // Secondary transient cleanup branch (e.g. stopEffect0)
         public SkillAnimation HitEffect { get; set; }        // Effect on target
         public SkillAnimation AffectedEffect { get; set; }   // Effect while buff active
         public SkillAnimation AffectedSecondaryEffect { get; set; } // Secondary buff/affected branch (e.g. affected0)

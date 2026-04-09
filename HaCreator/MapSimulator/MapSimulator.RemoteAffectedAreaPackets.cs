@@ -13,6 +13,10 @@ namespace HaCreator.MapSimulator
     {
         private const int RemoteAffectedAreaFallbackTickMs = 1000;
 
+        private readonly record struct RemoteAffectedAreaSkillRuntime(
+            SkillData Skill,
+            SkillLevelData LevelData);
+
         private ChatCommandHandler.CommandResult ApplyRemoteAffectedAreaPacketCommand(int packetType, byte[] payload)
         {
             if (_affectedAreaPool == null || _mapBoard?.MapInfo == null)
@@ -180,7 +184,9 @@ namespace HaCreator.MapSimulator
                 currentTime,
                 activeProjectedSupportAreaIds);
 
-            if (!RemoteAffectedAreaSupportResolver.HasHostileMobGameplay(skill, supportSkills, effectiveLevelData))
+            RemoteAffectedAreaSkillRuntime[] hostileSkillRuntimes =
+                ResolveRemoteAffectedAreaHostileSkillRuntimes(skill, levelData, area.SkillLevel, supportSkills);
+            if (hostileSkillRuntimes.Length == 0)
             {
                 return;
             }
@@ -201,7 +207,6 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            int fallbackDamage = ResolveRemoteAffectedAreaFallbackDamage(skill, effectiveLevelData);
             foreach (MobItem mob in _mobPool.ActiveMobs)
             {
                 if (mob?.AI == null || mob.AI.IsDead || !area.Contains(mob.CurrentX, mob.CurrentY))
@@ -209,7 +214,17 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                skillManager.ApplyInferredMobStatusesFromSkill(skill, effectiveLevelData, mob.AI, currentTime, fallbackDamage);
+                for (int i = 0; i < hostileSkillRuntimes.Length; i++)
+                {
+                    RemoteAffectedAreaSkillRuntime hostileRuntime = hostileSkillRuntimes[i];
+                    int fallbackDamage = ResolveRemoteAffectedAreaFallbackDamage(hostileRuntime.Skill, hostileRuntime.LevelData);
+                    skillManager.ApplyInferredMobStatusesFromSkill(
+                        hostileRuntime.Skill,
+                        hostileRuntime.LevelData,
+                        mob.AI,
+                        currentTime,
+                        fallbackDamage);
+                }
             }
         }
 
@@ -402,6 +417,52 @@ namespace HaCreator.MapSimulator
             SkillLevelData derivedProjection = projectedLevelData.ShallowClone();
             derivedProjection.DamageReductionRate = derivedDamageReductionRate;
             return derivedProjection;
+        }
+
+        private static RemoteAffectedAreaSkillRuntime[] ResolveRemoteAffectedAreaHostileSkillRuntimes(
+            SkillData primarySkill,
+            SkillLevelData primaryLevelData,
+            int skillLevel,
+            params SkillData[] supportSkills)
+        {
+            var skillEntries = new System.Collections.Generic.List<(SkillData Skill, SkillLevelData LevelData)>();
+            if (primarySkill != null && primaryLevelData != null)
+            {
+                skillEntries.Add((primarySkill, primaryLevelData));
+            }
+
+            if (supportSkills != null)
+            {
+                for (int i = 0; i < supportSkills.Length; i++)
+                {
+                    SkillData supportSkill = supportSkills[i];
+                    if (supportSkill == null || ReferenceEquals(supportSkill, primarySkill))
+                    {
+                        continue;
+                    }
+
+                    SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSkillLevel(supportSkill, skillLevel);
+                    if (supportLevelData != null)
+                    {
+                        skillEntries.Add((supportSkill, supportLevelData));
+                    }
+                }
+            }
+
+            var hostileEntries = RemoteAffectedAreaSupportResolver.FilterHostileSkillEntries(skillEntries);
+            if (hostileEntries.Count == 0)
+            {
+                return Array.Empty<RemoteAffectedAreaSkillRuntime>();
+            }
+
+            var hostileRuntimes = new RemoteAffectedAreaSkillRuntime[hostileEntries.Count];
+            for (int i = 0; i < hostileEntries.Count; i++)
+            {
+                (SkillData runtimeSkill, SkillLevelData runtimeLevelData) = hostileEntries[i];
+                hostileRuntimes[i] = new RemoteAffectedAreaSkillRuntime(runtimeSkill, runtimeLevelData);
+            }
+
+            return hostileRuntimes;
         }
 
         private static SkillLevelData ResolveRemoteAffectedAreaSkillLevel(SkillData skill, int level)

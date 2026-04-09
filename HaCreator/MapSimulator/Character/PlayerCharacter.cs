@@ -115,6 +115,14 @@ namespace HaCreator.MapSimulator.Character
             public bool LocksMovement { get; init; }
         }
 
+        internal readonly record struct SkillAvatarTransformResolutionForTesting(
+            IReadOnlyList<string> StandActionNames,
+            IReadOnlyList<string> WalkActionNames,
+            IReadOnlyList<string> AttackActionNames,
+            IReadOnlyList<string> ProneActionNames,
+            string ExitActionName,
+            bool LocksMovement);
+
         private enum SkillAvatarEffectMode
         {
             Ground,
@@ -163,9 +171,18 @@ namespace HaCreator.MapSimulator.Character
             public int SkillId { get; init; }
             public SkillAnimation Animation { get; init; }
             public SkillAnimation SecondaryAnimation { get; init; }
+            public SkillAnimation FinishAnimation { get; init; }
+            public SkillAnimation FinishSecondaryAnimation { get; init; }
             public int AnimationStartTime { get; set; }
             public SkillAvatarEffectPlane Plane { get; init; }
             public SkillAvatarEffectPlane SecondaryPlane { get; init; }
+            public SkillAvatarEffectPlane FinishPlane { get; init; }
+            public SkillAvatarEffectPlane FinishSecondaryPlane { get; init; }
+            public bool IsFinishing { get; set; }
+
+            public bool HasFinishAnimation =>
+                FinishAnimation != null
+                || FinishSecondaryAnimation != null;
         }
 
         private sealed class MeleeAfterImageState
@@ -180,6 +197,7 @@ namespace HaCreator.MapSimulator.Character
             public int FadeDuration { get; init; }
             public int FadeStartTime { get; set; } = -1;
             public int LastFrameIndex { get; set; } = -1;
+            public SkillFrame LastResolvedFrame { get; set; }
         }
 
         private sealed class ShadowPartnerState
@@ -351,6 +369,9 @@ namespace HaCreator.MapSimulator.Character
         public bool CanAttack => State != PlayerState.Dead && State != PlayerState.Hit &&
                                   State != PlayerState.Ladder && State != PlayerState.Rope &&
                                   State != PlayerState.Swimming; // Can't attack while swimming (official behavior)
+        public bool IsPlayingClientOwnedOneTimeAction => State == PlayerState.Attacking
+                                                         && !_sustainedSkillAnimation
+                                                         && CurrentSkillAnimationStartTime != int.MinValue;
         public bool IsRecordingMovementPath => Physics?.IsRecordingPath == true;
         public bool IsMovementLockedBySkillTransform => GetActiveAvatarTransform()?.LocksMovement == true;
         public bool HasActiveMorphTransform => GetActiveAvatarTransform()?.AvatarPart?.Type == CharacterPartType.Morph;
@@ -1942,18 +1963,18 @@ namespace HaCreator.MapSimulator.Character
             }
 
             SkillAnimation emotionEffectAnimation = LoadPacketOwnedEmotionEffectAnimation(emotionName);
-            int resolvedDurationMs = Math.Max(0, durationMs);
-            bool usedFaceLookDurationFallback = false;
-            if (resolvedDurationMs <= 0 && emotionEffectAnimation?.TotalDuration > 0)
+            int faceLookDuration = 0;
+            if (Assembler?.TryGetFaceLookDuration(emotionName, out int resolvedFaceLookDuration) == true)
             {
-                resolvedDurationMs = emotionEffectAnimation.TotalDuration;
+                faceLookDuration = resolvedFaceLookDuration;
             }
-            else if (resolvedDurationMs <= 0
-                     && Assembler?.TryGetFaceLookDuration(emotionName, out int faceLookDuration) == true)
-            {
-                resolvedDurationMs = faceLookDuration;
-                usedFaceLookDurationFallback = true;
-            }
+
+            int resolvedDurationMs = ResolvePacketOwnedEmotionDuration(
+                durationMs,
+                byItemOption,
+                emotionEffectAnimation?.TotalDuration ?? 0,
+                faceLookDuration,
+                out bool usedFaceLookDurationFallback);
 
             if (string.Equals(emotionName, "default", StringComparison.OrdinalIgnoreCase))
             {
@@ -1993,6 +2014,42 @@ namespace HaCreator.MapSimulator.Character
             string sourceText = byItemOption ? "item-option" : "packet";
             message = $"Applied packet-owned avatar emotion '{emotionName}' ({emotionId}) for {durationText} via {sourceText}.";
             return true;
+        }
+
+        internal static int ResolvePacketOwnedEmotionDuration(
+            int durationMs,
+            bool byItemOption,
+            int emotionEffectDurationMs,
+            int faceLookDurationMs,
+            out bool usedFaceLookDurationFallback)
+        {
+            usedFaceLookDurationFallback = false;
+
+            int resolvedDurationMs = Math.Max(0, durationMs);
+            if (resolvedDurationMs > 0)
+            {
+                return resolvedDurationMs;
+            }
+
+            // Item-option authored emotions are owned by the separate active-effect-item seam,
+            // so they should persist until an explicit clear when the packet does not carry a duration.
+            if (byItemOption)
+            {
+                return 0;
+            }
+
+            if (emotionEffectDurationMs > 0)
+            {
+                return emotionEffectDurationMs;
+            }
+
+            if (faceLookDurationMs > 0)
+            {
+                usedFaceLookDurationFallback = true;
+                return faceLookDurationMs;
+            }
+
+            return 0;
         }
 
         internal bool TryGetPacketOwnedEmotionState(int currentTime, out PacketOwnedEmotionState state)
@@ -2476,7 +2533,13 @@ namespace HaCreator.MapSimulator.Character
             return _activeSkillAvatarEffects.Exists(effectState => effectState.SkillId == skillId);
         }
 
-        public bool ApplyTransientSkillAvatarEffect(int skillId, SkillAnimation animation, SkillAnimation secondaryAnimation, int currentTime)
+        public bool ApplyTransientSkillAvatarEffect(
+            int skillId,
+            SkillAnimation animation,
+            SkillAnimation secondaryAnimation,
+            int currentTime,
+            SkillAnimation finishAnimation = null,
+            SkillAnimation finishSecondaryAnimation = null)
         {
             bool hasPrimaryAnimation = animation?.Frames != null && animation.Frames.Count > 0;
             bool hasSecondaryAnimation = secondaryAnimation?.Frames != null && secondaryAnimation.Frames.Count > 0;
@@ -2491,9 +2554,13 @@ namespace HaCreator.MapSimulator.Character
                 SkillId = skillId,
                 Animation = animation,
                 SecondaryAnimation = secondaryAnimation,
+                FinishAnimation = finishAnimation,
+                FinishSecondaryAnimation = finishSecondaryAnimation,
                 AnimationStartTime = currentTime,
                 Plane = ResolveTransientSkillAvatarEffectPlane(animation),
-                SecondaryPlane = ResolveTransientSkillAvatarEffectPlane(secondaryAnimation)
+                SecondaryPlane = ResolveTransientSkillAvatarEffectPlane(secondaryAnimation),
+                FinishPlane = ResolveTransientSkillAvatarEffectPlane(finishAnimation),
+                FinishSecondaryPlane = ResolveTransientSkillAvatarEffectPlane(finishSecondaryAnimation)
             });
             return true;
         }
@@ -2584,10 +2651,23 @@ namespace HaCreator.MapSimulator.Character
                 }
 
                 int elapsedTime = Math.Max(0, currentTime - transientEffect.AnimationStartTime);
-                bool primaryComplete = transientEffect.Animation == null || transientEffect.Animation.IsComplete(elapsedTime);
-                bool secondaryComplete = transientEffect.SecondaryAnimation == null || transientEffect.SecondaryAnimation.IsComplete(elapsedTime);
+                SkillAnimation primaryAnimation = transientEffect.IsFinishing
+                    ? transientEffect.FinishAnimation
+                    : transientEffect.Animation;
+                SkillAnimation secondaryAnimation = transientEffect.IsFinishing
+                    ? transientEffect.FinishSecondaryAnimation
+                    : transientEffect.SecondaryAnimation;
+                bool primaryComplete = primaryAnimation == null || primaryAnimation.IsComplete(elapsedTime);
+                bool secondaryComplete = secondaryAnimation == null || secondaryAnimation.IsComplete(elapsedTime);
                 if (primaryComplete && secondaryComplete)
                 {
+                    if (!transientEffect.IsFinishing && transientEffect.HasFinishAnimation)
+                    {
+                        transientEffect.IsFinishing = true;
+                        transientEffect.AnimationStartTime = currentTime;
+                        continue;
+                    }
+
                     _transientSkillAvatarEffects.RemoveAt(i);
                 }
             }
@@ -3697,14 +3777,23 @@ namespace HaCreator.MapSimulator.Character
             }
 
             int frameIndex = _activeMeleeAfterImage.LastFrameIndex;
+            SkillFrame frame = _activeMeleeAfterImage.LastResolvedFrame;
             float alpha = 1f;
             if (activeAction)
             {
                 int animationTime = Math.Max(0, currentTime - _activeMeleeAfterImage.AnimationStartTime);
-                frameIndex = Assembler?.GetFrameIndexAtTime(_activeMeleeAfterImage.ActionName, animationTime) ?? -1;
-                if (frameIndex >= 0)
+                if (Assembler?.TryGetFrameTimingAtTime(_activeMeleeAfterImage.ActionName, animationTime, out int resolvedFrameIndex, out int frameElapsedMs) == true)
                 {
+                    frameIndex = resolvedFrameIndex;
                     _activeMeleeAfterImage.LastFrameIndex = frameIndex;
+                    frame = MeleeAfterimagePlaybackResolver.ResolveFrame(
+                        _activeMeleeAfterImage.AfterImageAction,
+                        frameIndex,
+                        frameElapsedMs);
+                    if (frame != null)
+                    {
+                        _activeMeleeAfterImage.LastResolvedFrame = frame;
+                    }
                 }
             }
             else if (_activeMeleeAfterImage.FadeStartTime >= 0)
@@ -3719,28 +3808,18 @@ namespace HaCreator.MapSimulator.Character
                 alpha = 1f - (fadeElapsed / (float)Math.Max(1, _activeMeleeAfterImage.FadeDuration));
             }
 
-            if (frameIndex < 0
-                || !_activeMeleeAfterImage.AfterImageAction.FrameSets.TryGetValue(frameIndex, out MeleeAfterImageFrameSet frameSet)
-                || frameSet?.Frames == null)
+            if (frame?.Texture == null)
             {
                 return;
             }
 
             Color frameTint = tint * MathHelper.Clamp(alpha, 0f, 1f);
-            foreach (SkillFrame frame in frameSet.Frames)
-            {
-                if (frame?.Texture == null)
-                {
-                    continue;
-                }
-
-                bool shouldFlip = _activeMeleeAfterImage.FacingRight ^ frame.Flip;
-                int drawX = shouldFlip
-                    ? screenX - (frame.Texture.Width - frame.Origin.X)
-                    : screenX - frame.Origin.X;
-                int drawY = screenY - frame.Origin.Y;
-                frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, frameTint, shouldFlip, null);
-            }
+            bool shouldFlip = _activeMeleeAfterImage.FacingRight ^ frame.Flip;
+            int drawX = shouldFlip
+                ? screenX - (frame.Texture.Width - frame.Origin.X)
+                : screenX - frame.Origin.X;
+            int drawY = screenY - frame.Origin.Y;
+            frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, frameTint, shouldFlip, null);
         }
 
         private static void DrawAssembledPart(
@@ -4249,6 +4328,9 @@ namespace HaCreator.MapSimulator.Character
                 facingRight))
             {
                 preparedLayer.RenderLayer = renderLayer;
+                preparedLayer.SourceSignature = sourceSignature;
+                preparedLayer.PreparedCurrentTime = currentTime;
+                preparedLayer.PreparedFacingRight = facingRight;
                 preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
                 return preparedLayer;
             }
@@ -4306,8 +4388,7 @@ namespace HaCreator.MapSimulator.Character
             bool facingRight)
         {
             return existingSourceSignature == incomingSourceSignature
-                   && existingPartCount > 0
-                   && existingFacingRight == facingRight;
+                   && existingPartCount > 0;
         }
 
         internal static bool CanUseLiveMirrorImageSourceLayer(
@@ -4320,11 +4401,8 @@ namespace HaCreator.MapSimulator.Character
             int preparedSourceSignature,
             IReadOnlyList<AssembledPart> liveSourceParts)
         {
-            if (string.IsNullOrWhiteSpace(preparedActionName)
-                || !string.Equals(preparedActionName, currentActionName, StringComparison.OrdinalIgnoreCase)
-                || preparedFrameIndex < 0
-                || preparedFrameIndex != currentFrameIndex
-                || preparedFacingRight != currentFacingRight
+            if (string.IsNullOrWhiteSpace(currentActionName)
+                || currentFrameIndex < 0
                 || liveSourceParts == null
                 || liveSourceParts.Count == 0)
             {
@@ -4791,8 +4869,21 @@ namespace HaCreator.MapSimulator.Character
                 }
 
                 elapsedTime = Math.Max(0, currentTime - effectState.AnimationStartTime);
-                AddAvatarEffectRenderable(renderables, effectState.Animation, effectState.Plane, elapsedTime);
-                AddAvatarEffectRenderable(renderables, effectState.SecondaryAnimation, effectState.SecondaryPlane, elapsedTime);
+                SkillAnimation primaryAnimation = effectState.IsFinishing
+                    ? effectState.FinishAnimation
+                    : effectState.Animation;
+                SkillAnimation secondaryAnimation = effectState.IsFinishing
+                    ? effectState.FinishSecondaryAnimation
+                    : effectState.SecondaryAnimation;
+                SkillAvatarEffectPlane primaryPlane = effectState.IsFinishing
+                    ? effectState.FinishPlane
+                    : effectState.Plane;
+                SkillAvatarEffectPlane secondaryPlane = effectState.IsFinishing
+                    ? effectState.FinishSecondaryPlane
+                    : effectState.SecondaryPlane;
+
+                AddAvatarEffectRenderable(renderables, primaryAnimation, primaryPlane, elapsedTime);
+                AddAvatarEffectRenderable(renderables, secondaryAnimation, secondaryPlane, elapsedTime);
             }
 
             return renderables;
@@ -5118,52 +5209,7 @@ namespace HaCreator.MapSimulator.Character
 
         private string ResolveShadowPartnerCreateActionName(IReadOnlyDictionary<string, SkillAnimation> actionAnimations)
         {
-            if (actionAnimations == null || actionAnimations.Count == 0)
-            {
-                return null;
-            }
-
-            foreach (string candidate in EnumerateShadowPartnerCreateCandidates())
-            {
-                if (actionAnimations.ContainsKey(candidate))
-                {
-                    return candidate;
-                }
-            }
-
-            return null;
-        }
-
-        private IEnumerable<string> EnumerateShadowPartnerCreateCandidates()
-        {
-            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            bool airborne = State is PlayerState.Jumping or PlayerState.Falling or PlayerState.Swimming or PlayerState.Flying;
-            bool stationary = State is PlayerState.Standing or PlayerState.Walking or PlayerState.Sitting or PlayerState.Prone;
-
-            foreach (string candidate in new[] { "create2", "create3", "create4" })
-            {
-                string stateVariant = airborne
-                    ? candidate + "_f"
-                    : stationary
-                        ? candidate + "_s"
-                        : null;
-
-                if (!string.IsNullOrWhiteSpace(stateVariant) && yielded.Add(stateVariant))
-                {
-                    yield return stateVariant;
-                }
-
-                if (yielded.Add(candidate))
-                {
-                    yield return candidate;
-                }
-
-                string alternateVariant = airborne ? candidate + "_s" : candidate + "_f";
-                if (yielded.Add(alternateVariant))
-                {
-                    yield return alternateVariant;
-                }
-            }
+            return ShadowPartnerClientActionResolver.ResolveCreateActionName(actionAnimations, State);
         }
 
         private IEnumerable<string> EnumerateShadowPartnerActionCandidates(string playerActionName, string fallbackActionName)
@@ -6542,6 +6588,23 @@ namespace HaCreator.MapSimulator.Character
             return layerZ;
         }
 
+        public int GetCurrentLayerZ(int currentTime)
+        {
+            AssembledFrame frame = TryGetCurrentFrame(currentTime);
+            if (frame?.Parts == null || frame.Parts.Count == 0)
+            {
+                return 0;
+            }
+
+            int layerZ = 0;
+            for (int i = 0; i < frame.Parts.Count; i++)
+            {
+                layerZ = Math.Max(layerZ, frame.Parts[i].ZIndex);
+            }
+
+            return layerZ;
+        }
+
         private void ClearForcedActionName()
         {
             _sustainedSkillAnimation = false;
@@ -7171,6 +7234,19 @@ namespace HaCreator.MapSimulator.Character
                         ? CreateSingleActionTransform(skillId, "tank_mRush", exitActionName: null)
                         : CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre2", "flamethrower2", "flamethrower_after2");
                     return true;
+                case 35121003:
+                    transform = CreateSingleActionTransform(
+                        skillId,
+                        ResolveMechanicSummonTransformActionName(normalizedAction, "msummon2", "tank_msummon2"),
+                        exitActionName: null);
+                    return true;
+                case 35121009:
+                case 35121010:
+                    transform = CreateSingleActionTransform(
+                        skillId,
+                        ResolveMechanicSummonTransformActionName(normalizedAction, "msummon", "tank_msummon"),
+                        exitActionName: null);
+                    return true;
                 case 35121005:
                     transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_pre", "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after", attackActionAliases: new[] { "tank_laser" });
                     return true;
@@ -7296,6 +7372,26 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
+            if (string.Equals(normalizedAction, "msummon", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_msummon", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(
+                    skillId,
+                    ResolveMechanicSummonTransformActionName(normalizedAction, "msummon", "tank_msummon"),
+                    exitActionName: null);
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "msummon2", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_msummon2", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(
+                    skillId,
+                    ResolveMechanicSummonTransformActionName(normalizedAction, "msummon2", "tank_msummon2"),
+                    exitActionName: null);
+                return true;
+            }
+
             if (string.Equals(normalizedAction, "tank_pre", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "tank_stand", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "tank_walk", StringComparison.OrdinalIgnoreCase)
@@ -7338,6 +7434,27 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return false;
+        }
+
+        internal static bool TryResolveBuiltInSkillAvatarTransformForTesting(
+            int skillId,
+            string actionName,
+            out SkillAvatarTransformResolutionForTesting resolution)
+        {
+            resolution = default;
+            if (!TryCreateBuiltInSkillAvatarTransform(skillId, actionName, out SkillAvatarTransformState transform))
+            {
+                return false;
+            }
+
+            resolution = new SkillAvatarTransformResolutionForTesting(
+                transform.StandActionNames ?? Array.Empty<string>(),
+                transform.WalkActionNames ?? Array.Empty<string>(),
+                transform.AttackActionNames ?? Array.Empty<string>(),
+                transform.ProneActionNames ?? Array.Empty<string>(),
+                transform.ExitActionName,
+                transform.LocksMovement);
+            return true;
         }
 
         private static SkillAvatarTransformState CreateMorphTransform(int skillId, CharacterPart morphPart, string actionName)
@@ -7516,6 +7633,16 @@ namespace HaCreator.MapSimulator.Character
                 activeActionName,
                 activeActionName,
                 stage == PreparedAvatarActionStage.Prepare ? null : exitActionName);
+        }
+
+        private static string ResolveMechanicSummonTransformActionName(
+            string currentActionName,
+            string baseActionName,
+            string tankActionName)
+        {
+            return string.Equals(currentActionName, tankActionName, StringComparison.OrdinalIgnoreCase)
+                ? tankActionName
+                : baseActionName;
         }
 
         private static SkillAvatarTransformState CreatePreparedMechanicStateTransform(

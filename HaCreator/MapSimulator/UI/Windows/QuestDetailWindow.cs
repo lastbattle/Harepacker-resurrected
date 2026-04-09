@@ -38,6 +38,10 @@ namespace HaCreator.MapSimulator.UI
         private const float ConditionValueGap = 8f;
         private const float ConditionRowGap = 4f;
         private const int ConditionIconSize = 18;
+        private const float ClientTitleScale = 0.74f;
+        private const float ClientHeaderScale = 0.58f;
+        private const float ClientDetailScale = 0.58f;
+        private const float ClientNavigationScale = 0.52f;
 
         private readonly string _windowName;
         private readonly List<ButtonLabel> _buttonLabels = new();
@@ -460,19 +464,34 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.DrawString(_font, _state.Title, new Vector2(Position.X + ClientTitleX, Position.Y + ClientTitleY), Color.White);
+            DrawTextLine(
+                sprite,
+                _state.Title,
+                new Vector2(Position.X + ClientTitleX, Position.Y + ClientTitleY),
+                Color.White,
+                ClientTitleScale);
 
             if (!string.IsNullOrWhiteSpace(_state.HeaderNoteText))
             {
                 float headerNoteY = _state.QuestId == QuestWindowDetailState.MateNameHeaderQuestId
                     ? ClientMateHeaderNoteY
                     : ClientHeaderNoteY;
-                sprite.DrawString(_font, _state.HeaderNoteText, new Vector2(Position.X + ClientHeaderNoteX, Position.Y + headerNoteY), new Color(244, 232, 192));
+                DrawTextLine(
+                    sprite,
+                    _state.HeaderNoteText,
+                    new Vector2(Position.X + ClientHeaderNoteX, Position.Y + headerNoteY),
+                    new Color(244, 232, 192),
+                    ClientHeaderScale);
             }
 
             if (!string.IsNullOrWhiteSpace(_state.NpcText))
             {
-                sprite.DrawString(_font, _state.NpcText, new Vector2(Position.X + ClientNpcX, Position.Y + ClientNpcY), new Color(214, 214, 171));
+                DrawTextLine(
+                    sprite,
+                    _state.NpcText,
+                    new Vector2(Position.X + ClientNpcX, Position.Y + ClientNpcY),
+                    new Color(214, 214, 171),
+                    ClientHeaderScale);
             }
 
             DrawDetailInset(sprite, TickCount);
@@ -535,7 +554,12 @@ namespace HaCreator.MapSimulator.UI
             if (_navigationCount > 1)
             {
                 string navigationText = $"{_navigationIndex + 1}/{_navigationCount}";
-                sprite.DrawString(_font, navigationText, new Vector2(Position.X + 126, Position.Y + Math.Max(16, (CurrentFrame?.Height ?? 396) - 27)), new Color(220, 220, 220));
+                DrawTextLine(
+                    sprite,
+                    navigationText,
+                    new Vector2(Position.X + 126, Position.Y + Math.Max(16, (CurrentFrame?.Height ?? 396) - 27)),
+                    new Color(220, 220, 220),
+                    ClientNavigationScale);
             }
 
             DrawHoveredItemTooltip(sprite);
@@ -550,7 +574,14 @@ namespace HaCreator.MapSimulator.UI
 
             if (!string.IsNullOrWhiteSpace(_state.HintText))
             {
-                DrawWrappedTextClipped(sprite, _state.HintText, new Vector2(Position.X + ClientContentX, y), ClientContentWidth, new Color(243, 227, 168), clipRect);
+                DrawWrappedTextClipped(
+                    sprite,
+                    _state.HintText,
+                    new Vector2(Position.X + ClientContentX, y),
+                    ClientContentWidth,
+                    new Color(243, 227, 168),
+                    clipRect,
+                    ClientDetailScale);
             }
         }
 
@@ -563,8 +594,8 @@ namespace HaCreator.MapSimulator.UI
 
             Rectangle clipRect = GetSummaryClipRectangle();
             float y = Position.Y + ClientSummaryY - _summaryScrollOffset;
-            DrawSectionHeaderClipped(sprite, clipRect, _summaryHeaderTexture, "Summary", Position.X + ClientContentX, ref y);
-            y = DrawWrappedTextClipped(sprite, _state.SummaryText, new Vector2(Position.X + ClientContentX, y), ClientContentWidth, new Color(228, 228, 228), clipRect);
+            DrawSectionHeaderClipped(sprite, clipRect, _summaryHeaderTexture, "Summary", Position.X + ClientContentX, ref y, ClientDetailScale);
+            y = DrawWrappedTextClipped(sprite, _state.SummaryText, new Vector2(Position.X + ClientContentX, y), ClientContentWidth, new Color(228, 228, 228), clipRect, ClientDetailScale);
             y += 8;
             DrawProgressClipped(sprite, clipRect, Position.X + ClientContentX, ref y);
         }
@@ -595,7 +626,7 @@ namespace HaCreator.MapSimulator.UI
 
             string timerText = FormatRemainingTime(_state.RemainingTimeSeconds);
             Vector2 timerPosition = new(insetBounds.X + Math.Max(10, iconInset), insetBounds.Y + 7);
-            sprite.DrawString(_font, timerText, timerPosition, new Color(255, 244, 199));
+            DrawTextLine(sprite, timerText, timerPosition, new Color(255, 244, 199), ClientDetailScale);
 
             DrawTimeLimitGauge(sprite, insetBounds);
         }
@@ -607,14 +638,14 @@ namespace HaCreator.MapSimulator.UI
                 return y;
             }
 
-            DrawSectionHeaderClipped(sprite, clipRect, _requirementHeaderTexture, "Requirements", x, ref y);
+            DrawSectionHeaderClipped(sprite, clipRect, _requirementHeaderTexture, "Requirements", x, ref y, ClientDetailScale);
             if (_state.RequirementLines != null && _state.RequirementLines.Count > 0)
             {
                 y = DrawConditionLines(sprite, clipRect, _state.RequirementLines, x, y, maxWidth, false);
             }
             else
             {
-                y = DrawWrappedTextClipped(sprite, _state.RequirementText, new Vector2(x, y), maxWidth, new Color(215, 228, 215), clipRect);
+                y = DrawWrappedTextClipped(sprite, _state.RequirementText, new Vector2(x, y), maxWidth, new Color(215, 228, 215), clipRect, ClientDetailScale);
             }
 
             return y + 8f;
@@ -627,14 +658,14 @@ namespace HaCreator.MapSimulator.UI
                 return y;
             }
 
-            DrawSectionHeaderClipped(sprite, clipRect, _rewardHeaderTexture, "Rewards", x, ref y);
+            DrawSectionHeaderClipped(sprite, clipRect, _rewardHeaderTexture, "Rewards", x, ref y, ClientDetailScale);
             if (_state.RewardLines != null && _state.RewardLines.Count > 0)
             {
                 y = DrawConditionLines(sprite, clipRect, _state.RewardLines, x, y, maxWidth, true);
             }
             else
             {
-                y = DrawWrappedTextClipped(sprite, _state.RewardText, new Vector2(x, y), maxWidth, new Color(232, 220, 176), clipRect);
+                y = DrawWrappedTextClipped(sprite, _state.RewardText, new Vector2(x, y), maxWidth, new Color(232, 220, 176), clipRect, ClientDetailScale);
             }
 
             return y + 8f;
@@ -657,7 +688,7 @@ namespace HaCreator.MapSimulator.UI
             return !string.IsNullOrWhiteSpace(_state?.SummaryText) || _state?.TotalProgress > 0;
         }
 
-        private void DrawSectionHeaderClipped(SpriteBatch sprite, Rectangle clipRect, Texture2D texture, string fallbackText, float x, ref float y)
+        private void DrawSectionHeaderClipped(SpriteBatch sprite, Rectangle clipRect, Texture2D texture, string fallbackText, float x, ref float y, float scale)
         {
             if (texture != null)
             {
@@ -666,8 +697,8 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            DrawTextLineClipped(sprite, fallbackText, new Vector2(x, y), new Color(255, 232, 166), clipRect);
-            y += _font.LineSpacing;
+            DrawTextLineClipped(sprite, fallbackText, new Vector2(x, y), new Color(255, 232, 166), clipRect, scale);
+            y += GetLineHeight(scale);
         }
 
         private void DrawProgressClipped(SpriteBatch sprite, Rectangle clipRect, float x, ref float y)
@@ -678,8 +709,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string progressText = $"Progress: {Math.Min(_state.CurrentProgress, _state.TotalProgress)}/{_state.TotalProgress}";
-            DrawTextLineClipped(sprite, progressText, new Vector2(x, y), new Color(196, 218, 255), clipRect);
-            y += _font.LineSpacing + 3;
+            DrawTextLineClipped(sprite, progressText, new Vector2(x, y), new Color(196, 218, 255), clipRect, ClientDetailScale);
+            y += GetLineHeight(ClientDetailScale) + 3;
 
             if (_progressFrameTexture == null || _progressGaugeTexture == null)
             {
@@ -747,16 +778,16 @@ namespace HaCreator.MapSimulator.UI
                     ? new Color(244, 234, 198)
                     : (line.IsComplete ? new Color(219, 239, 219) : new Color(255, 218, 189));
 
-                DrawTextLineClipped(sprite, line.Label ?? string.Empty, layout.LabelPosition, labelColor, clipRect);
+                DrawTextLineClipped(sprite, line.Label ?? string.Empty, layout.LabelPosition, labelColor, clipRect, ClientDetailScale);
                 if (layout.IconTexture != null)
                 {
                     DrawTextureClipped(sprite, layout.IconTexture, layout.IconBounds, clipRect, Color.White);
                 }
 
-                y = DrawWrappedTextClipped(sprite, line.Text, layout.BodyPosition, layout.BodyMaxWidth, textColor, clipRect);
+                y = DrawWrappedTextClipped(sprite, line.Text, layout.BodyPosition, layout.BodyMaxWidth, textColor, clipRect, ClientDetailScale);
                 if (!string.IsNullOrWhiteSpace(line.ValueText))
                 {
-                    DrawTextLineClipped(sprite, line.ValueText, layout.ValuePosition, textColor, clipRect);
+                    DrawTextLineClipped(sprite, line.ValueText, layout.ValuePosition, textColor, clipRect, ClientDetailScale);
                 }
 
                 y = layout.NextY;
@@ -765,19 +796,19 @@ namespace HaCreator.MapSimulator.UI
             return y;
         }
 
-        private float DrawWrappedTextClipped(SpriteBatch sprite, string text, Vector2 position, float maxWidth, Color color, Rectangle clipRect)
+        private float DrawWrappedTextClipped(SpriteBatch sprite, string text, Vector2 position, float maxWidth, Color color, Rectangle clipRect, float scale)
         {
             float y = position.Y;
-            foreach (string line in WrapText(text, maxWidth))
+            foreach (string line in WrapText(text, maxWidth, scale))
             {
-                DrawTextLineClipped(sprite, line, new Vector2(position.X, y), color, clipRect);
-                y += _font.LineSpacing;
+                DrawTextLineClipped(sprite, line, new Vector2(position.X, y), color, clipRect, scale);
+                y += GetLineHeight(scale);
             }
 
             return y;
         }
 
-        private IEnumerable<string> WrapText(string text, float maxWidth)
+        private IEnumerable<string> WrapText(string text, float maxWidth, float scale)
         {
             if (_font == null || string.IsNullOrWhiteSpace(text))
             {
@@ -797,7 +828,7 @@ namespace HaCreator.MapSimulator.UI
                 for (int i = 0; i < words.Length; i++)
                 {
                     string candidate = string.IsNullOrEmpty(currentLine) ? words[i] : $"{currentLine} {words[i]}";
-                    if (!string.IsNullOrEmpty(currentLine) && _font.MeasureString(candidate).X > maxWidth)
+                    if (!string.IsNullOrEmpty(currentLine) && MeasureText(candidate, scale).X > maxWidth)
                     {
                         yield return currentLine;
                         currentLine = words[i];
@@ -901,17 +932,17 @@ namespace HaCreator.MapSimulator.UI
 
             float valueWidth = string.IsNullOrWhiteSpace(line.ValueText)
                 ? 0f
-                : _font.MeasureString(line.ValueText).X;
+                : MeasureText(line.ValueText, ClientDetailScale).X;
             float textRight = detailX + stripWidth - (rowTexture != null ? ConditionTextInset : 0f);
             float bodyMaxWidth = Math.Max(36f, textRight - textLeft - (valueWidth > 0f ? valueWidth + ConditionValueGap : 0f));
-            int lineCount = Math.Max(1, WrapText(line.Text, bodyMaxWidth).Count());
-            float bodyHeight = lineCount * _font.LineSpacing;
+            int lineCount = Math.Max(1, WrapText(line.Text, bodyMaxWidth, ClientDetailScale).Count());
+            float bodyHeight = lineCount * GetLineHeight(ClientDetailScale);
             float rowHeight = Math.Max(Math.Max(bodyHeight, stripHeight), iconWidth);
             float textureY = y + Math.Max(0f, (rowHeight - stripHeight) / 2f);
-            float labelY = y + Math.Max(0f, (rowHeight - _font.LineSpacing) / 2f);
+            float labelY = y + Math.Max(0f, (rowHeight - GetLineHeight(ClientDetailScale)) / 2f);
             float iconY = y + Math.Max(0f, (rowHeight - ConditionIconSize) / 2f);
             float bodyY = y + Math.Max(0f, (rowHeight - bodyHeight) / 2f);
-            float valueY = y + Math.Max(0f, (rowHeight - _font.LineSpacing) / 2f);
+            float valueY = y + Math.Max(0f, (rowHeight - GetLineHeight(ClientDetailScale)) / 2f);
 
             return new ConditionRowLayout(
                 rowTexture,
@@ -927,13 +958,13 @@ namespace HaCreator.MapSimulator.UI
 
         private float AdvanceSectionHeader(Texture2D texture, float y)
         {
-            return y + ((texture?.Height ?? _font.LineSpacing) + 4f);
+            return y + ((texture?.Height ?? GetLineHeight(ClientDetailScale)) + 4f);
         }
 
         private float AdvanceWrappedText(string text, float maxWidth, float y)
         {
-            int lineCount = Math.Max(1, WrapText(text, maxWidth).Count());
-            return y + (lineCount * _font.LineSpacing);
+            int lineCount = Math.Max(1, WrapText(text, maxWidth, ClientDetailScale).Count());
+            return y + (lineCount * GetLineHeight(ClientDetailScale));
         }
 
         private void HandleMouseWheel(Microsoft.Xna.Framework.Input.MouseState mouseState, int wheelDelta)
@@ -1181,20 +1212,50 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(texture, intersected, sourceRect, color);
         }
 
-        private void DrawTextLineClipped(SpriteBatch sprite, string text, Vector2 position, Color color, Rectangle clipRect)
+        private void DrawTextLineClipped(SpriteBatch sprite, string text, Vector2 position, Color color, Rectangle clipRect, float scale)
         {
             if (string.IsNullOrEmpty(text))
             {
                 return;
             }
 
-            Rectangle lineRect = new((int)position.X, (int)position.Y, Math.Max(1, (int)Math.Ceiling(_font.MeasureString(text).X)), _font.LineSpacing);
+            Vector2 textSize = MeasureText(text, scale);
+            Rectangle lineRect = new(
+                (int)position.X,
+                (int)position.Y,
+                Math.Max(1, (int)Math.Ceiling(textSize.X)),
+                Math.Max(1, (int)Math.Ceiling(GetLineHeight(scale))));
             if (!lineRect.Intersects(clipRect))
             {
                 return;
             }
 
-            sprite.DrawString(_font, text, position, color);
+            DrawTextLine(sprite, text, position, color, scale);
+        }
+
+        private void DrawTextLine(SpriteBatch sprite, string text, Vector2 position, Color color, float scale)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        }
+
+        private Vector2 MeasureText(string text, float scale)
+        {
+            if (_font == null || string.IsNullOrEmpty(text))
+            {
+                return Vector2.Zero;
+            }
+
+            return _font.MeasureString(text) * scale;
+        }
+
+        private float GetLineHeight(float scale)
+        {
+            return _font.LineSpacing * scale;
         }
 
         private HoveredQuestItemInfo CreateHoveredQuestItem(int itemId, string lineText)
@@ -1419,7 +1480,7 @@ namespace HaCreator.MapSimulator.UI
                 return Array.Empty<string>();
             }
 
-            return WrapText(text, maxWidth).ToArray();
+            return WrapText(text, (int)Math.Ceiling(maxWidth), 1f).ToArray();
         }
 
         private void DrawCenteredButtonLabel(SpriteBatch sprite, UIObject button, string text)

@@ -89,6 +89,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (player.State == PlayerState.Prone)
                 return "Skills cannot be used while lying down.";
 
+            string oneTimeActionRestrictionMessage = GetClientOwnedOneTimeActionRestrictionMessage(player?.IsPlayingClientOwnedOneTimeAction == true);
+            if (!string.IsNullOrWhiteSpace(oneTimeActionRestrictionMessage))
+                return oneTimeActionRestrictionMessage;
+
             string statusRestrictionMessage = player.GetSkillBlockingRestrictionMessage(currentTime);
             if (!string.IsNullOrWhiteSpace(statusRestrictionMessage))
                 return statusRestrictionMessage;
@@ -250,6 +254,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return null;
+        }
+
+        internal static string GetClientOwnedOneTimeActionRestrictionMessage(bool isPlayingClientOwnedOneTimeAction)
+        {
+            return isPlayingClientOwnedOneTimeAction
+                ? "Skills cannot be used while a one-time action is playing."
+                : null;
         }
 
         private static bool IsSwallowSkill(SkillData skill)

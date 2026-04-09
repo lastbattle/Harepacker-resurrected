@@ -446,18 +446,25 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool IsNpcSummonItem(int itemId, string itemName, string itemDescription)
         {
-            if (itemId is NpcSummonScriptItemId or NpcSummonQuestItemId)
-            {
-                return true;
-            }
+            bool hasNpcReference = InventoryItemMetadataResolver.TryResolveNpcReference(itemId, out int npcId) && npcId > 0;
+            bool hasSummonScript = InventoryItemMetadataResolver.TryResolveSpecScript(itemId, out string scriptName)
+                                   && string.Equals(scriptName, SummonEventNpcScriptName, StringComparison.OrdinalIgnoreCase);
+            return IsNpcSummonItem(
+                itemId is NpcSummonScriptItemId or NpcSummonQuestItemId,
+                hasNpcReference,
+                hasSummonScript,
+                itemName,
+                itemDescription);
+        }
 
-            if (InventoryItemMetadataResolver.TryResolveSpecNpc(itemId, out int npcId) && npcId > 0)
-            {
-                return true;
-            }
-
-            if (InventoryItemMetadataResolver.TryResolveSpecScript(itemId, out string scriptName)
-                && string.Equals(scriptName, SummonEventNpcScriptName, StringComparison.OrdinalIgnoreCase))
+        internal static bool IsNpcSummonItem(
+            bool isKnownNpcSummonItem,
+            bool hasNpcReference,
+            bool hasSummonEventNpcScript,
+            string itemName,
+            string itemDescription)
+        {
+            if (isKnownNpcSummonItem || hasNpcReference || hasSummonEventNpcScript)
             {
                 return true;
             }

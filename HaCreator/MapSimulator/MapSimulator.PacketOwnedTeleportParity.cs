@@ -839,13 +839,31 @@ namespace HaCreator.MapSimulator
             Tuple<Board, string> targetMap = _loadMapCallback(targetMapId);
             IEnumerable<PortalInstance> targetPortals = targetMap?.Item1?.BoardItems?.Portals;
             var candidateNames = new List<string>();
-            if (TryResolvePacketOwnedTeleportPortalByPosition(targetPortals, targetX, targetY, out PortalInstance exactPortal))
+            if (TryCollectPacketOwnedTeleportPortalNamesByPosition(
+                targetPortals,
+                targetX,
+                targetY,
+                out string[] coordinateCandidatePortalNames,
+                out bool usedExactCoordinateMatch))
             {
-                AddPacketOwnedTeleportCandidateName(candidateNames, exactPortal.pn);
-                targetPortalName = exactPortal.pn;
-                resolutionSummary = $"target-map portal '{targetPortalName}' in map {targetMapId}";
-                candidatePortalNames = candidateNames.ToArray();
-                return true;
+                foreach (string coordinateCandidatePortalName in coordinateCandidatePortalNames)
+                {
+                    AddPacketOwnedTeleportCandidateName(candidateNames, coordinateCandidatePortalName);
+                }
+
+                if (TryResolvePacketOwnedTeleportUniqueCandidatePortalName(
+                    coordinateCandidatePortalNames,
+                    out string uniqueCoordinatePortalName))
+                {
+                    targetPortalName = uniqueCoordinatePortalName;
+                    resolutionSummary = $"target-map portal '{targetPortalName}' in map {targetMapId}";
+                    candidatePortalNames = candidateNames.ToArray();
+                    return true;
+                }
+
+                resolutionSummary = usedExactCoordinateMatch
+                    ? $"target-map portals at exact coordinates in map {targetMapId}"
+                    : $"target-map portal candidates near destination coordinates in map {targetMapId}";
             }
 
             if (TryCollectPacketOwnedPortalRequestTargetNamesByReciprocalLink(
@@ -987,6 +1005,93 @@ namespace HaCreator.MapSimulator
             }
 
             return null;
+        }
+
+        internal static bool TryCollectPacketOwnedTeleportPortalNamesByPositionForTesting(
+            IEnumerable<PortalInstance> portals,
+            float targetX,
+            float targetY,
+            out string[] portalNames,
+            out bool usedExactCoordinateMatch)
+        {
+            return TryCollectPacketOwnedTeleportPortalNamesByPosition(
+                portals,
+                targetX,
+                targetY,
+                out portalNames,
+                out usedExactCoordinateMatch);
+        }
+
+        private static bool TryCollectPacketOwnedTeleportPortalNamesByPosition(
+            IEnumerable<PortalInstance> portals,
+            float targetX,
+            float targetY,
+            out string[] portalNames,
+            out bool usedExactCoordinateMatch)
+        {
+            usedExactCoordinateMatch = false;
+            portalNames = Array.Empty<string>();
+            if (portals == null)
+            {
+                return false;
+            }
+
+            var exactNames = new List<string>();
+            foreach (PortalInstance portal in portals)
+            {
+                if (portal == null)
+                {
+                    continue;
+                }
+
+                if (Math.Abs(portal.X - targetX) > PacketOwnedTeleportPortalExactTolerance
+                    || Math.Abs(portal.Y - targetY) > PacketOwnedTeleportPortalExactTolerance)
+                {
+                    continue;
+                }
+
+                AddPacketOwnedTeleportCandidateName(exactNames, portal.pn);
+            }
+
+            if (exactNames.Count > 0)
+            {
+                usedExactCoordinateMatch = true;
+                portalNames = exactNames.ToArray();
+                return true;
+            }
+
+            float bestDistanceSquared = float.MaxValue;
+            var nearestNames = new List<string>();
+            foreach (PortalInstance portal in portals)
+            {
+                if (portal == null)
+                {
+                    continue;
+                }
+
+                float dx = portal.X - targetX;
+                float dy = portal.Y - targetY;
+                if (Math.Abs(dx) > PacketOwnedTeleportPortalNearestTolerance
+                    || Math.Abs(dy) > PacketOwnedTeleportPortalNearestTolerance)
+                {
+                    continue;
+                }
+
+                float distanceSquared = dx * dx + dy * dy;
+                if (distanceSquared + 0.01f < bestDistanceSquared)
+                {
+                    bestDistanceSquared = distanceSquared;
+                    nearestNames.Clear();
+                    AddPacketOwnedTeleportCandidateName(nearestNames, portal.pn);
+                }
+                else if (Math.Abs(distanceSquared - bestDistanceSquared) <= 0.01f)
+                {
+                    AddPacketOwnedTeleportCandidateName(nearestNames, portal.pn);
+                }
+            }
+
+            portalNames = nearestNames.ToArray();
+            return portalNames.Length > 0;
         }
 
         private static bool TryResolvePacketOwnedTeleportPortalByPosition(
@@ -1308,15 +1413,27 @@ namespace HaCreator.MapSimulator
             int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
             if (string.IsNullOrWhiteSpace(targetPortalName)
                 && targetMapId == currentMapId
-                && TryResolvePacketOwnedTeleportPortalByPosition(
+                && TryCollectPacketOwnedTeleportPortalNamesByPosition(
+                    _mapBoard?.BoardItems?.Portals,
                     targetX,
                     targetY,
-                    out _,
-                    out PortalInstance currentFieldTargetPortal))
+                    out string[] currentFieldTargetPortalNames,
+                    out bool usedExactCurrentFieldCoordinateMatch))
             {
-                targetPortalName = currentFieldTargetPortal.pn;
-                resolvedTargetPortalNameCandidates = new[] { currentFieldTargetPortal.pn };
-                targetResolutionSummary = $"current-field portal '{currentFieldTargetPortal.pn}'";
+                resolvedTargetPortalNameCandidates = currentFieldTargetPortalNames;
+                if (TryResolvePacketOwnedTeleportUniqueCandidatePortalName(
+                    currentFieldTargetPortalNames,
+                    out string uniqueCurrentFieldTargetPortalName))
+                {
+                    targetPortalName = uniqueCurrentFieldTargetPortalName;
+                    targetResolutionSummary = $"current-field portal '{targetPortalName}'";
+                }
+                else
+                {
+                    targetResolutionSummary = usedExactCurrentFieldCoordinateMatch
+                        ? "current-field portals at exact destination coordinates"
+                        : "current-field portal candidates near destination coordinates";
+                }
             }
             else if ((resolvedTargetPortalNameCandidates.Length == 0 || string.IsNullOrWhiteSpace(targetPortalName))
                 && targetMapId > 0

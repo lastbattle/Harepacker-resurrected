@@ -215,6 +215,7 @@ namespace HaCreator.MapSimulator.Character
         public Dictionary<string, Point> Map { get; set; } = new(); // Map points (navel, hand, etc.)
         public bool Flip { get; set; }
         public Rectangle Bounds { get; set; }
+        public string FrameUol { get; set; }
 
         /// <summary>
         /// Sub-parts for body frames (body, arm, lHand, rHand)
@@ -236,6 +237,22 @@ namespace HaCreator.MapSimulator.Character
         /// Check if this frame has sub-parts that should be rendered separately
         /// </summary>
         public bool HasSubParts => SubParts != null && SubParts.Count > 0;
+
+        public CharacterFrame Clone()
+        {
+            return new CharacterFrame
+            {
+                Texture = Texture,
+                Origin = Origin,
+                Delay = Delay,
+                Z = Z,
+                Map = new Dictionary<string, Point>(Map, StringComparer.OrdinalIgnoreCase),
+                Flip = Flip,
+                Bounds = Bounds,
+                FrameUol = FrameUol,
+                SubParts = new List<CharacterSubPart>(SubParts ?? Enumerable.Empty<CharacterSubPart>())
+            };
+        }
     }
 
     /// <summary>
@@ -746,7 +763,9 @@ namespace HaCreator.MapSimulator.Character
         public Dictionary<string, CharacterAnimation> Animations { get; set; } = new();
         public HashSet<string> AvailableAnimations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         internal Func<string, CharacterAnimation> AnimationResolver { get; set; }
+        internal Func<int, string, CharacterAnimation> TamingMobActionOverlayResolver { get; set; }
         internal TamingMobActionFrameOwner TamingMobActionFrameOwner { get; set; }
+        internal MorphActionFrameOwner MorphActionFrameOwner { get; set; }
 
         // For equipment with visible slots
         public string VSlot { get; set; }           // Visible slot conflicts
@@ -883,7 +902,9 @@ namespace HaCreator.MapSimulator.Character
                 Icon = Icon,
                 IconRaw = IconRaw,
                 AnimationResolver = AnimationResolver,
-                TamingMobActionFrameOwner = TamingMobActionFrameOwner
+                TamingMobActionOverlayResolver = TamingMobActionOverlayResolver,
+                TamingMobActionFrameOwner = TamingMobActionFrameOwner,
+                MorphActionFrameOwner = MorphActionFrameOwner
             };
         }
 
@@ -1180,14 +1201,14 @@ namespace HaCreator.MapSimulator.Character
 
     public class FacePart : CharacterPart
     {
-        private readonly record struct FaceLookCacheKey(
-            SkinColor SkinColor,
-            string ExpressionName,
-            int FaceAccessoryItemId);
-
-        private readonly Dictionary<FaceLookCacheKey, FaceLookEntry> _lookCache = new();
+        private readonly FaceLookLoader _lookLoader;
 
         public Dictionary<string, CharacterAnimation> Expressions { get; set; } = new();
+
+        public FacePart()
+        {
+            _lookLoader = new FaceLookLoader(this);
+        }
 
         public CharacterAnimation GetExpression(string expression)
         {
@@ -1204,118 +1225,12 @@ namespace HaCreator.MapSimulator.Character
 
         public FaceLookEntry GetLook(string expression, SkinColor skinColor, CharacterPart faceAccessoryPart)
         {
-            string normalizedExpression = string.IsNullOrWhiteSpace(expression) ? "default" : expression.Trim();
-            int faceAccessoryItemId = faceAccessoryPart?.ItemId ?? 0;
-            FaceLookCacheKey cacheKey = new(skinColor, normalizedExpression, faceAccessoryItemId);
-            if (_lookCache.TryGetValue(cacheKey, out FaceLookEntry cachedLook))
-            {
-                return cachedLook;
-            }
-
-            CharacterAnimation faceAnimation = GetExpression(normalizedExpression);
-            CharacterAnimation accessoryAnimation = ResolveAccessoryExpression(faceAccessoryPart, normalizedExpression);
-            int faceFrameCount = faceAnimation?.Frames?.Count ?? 0;
-            int accessoryFrameCount = accessoryAnimation?.Frames?.Count ?? 0;
-            int frameCount = Math.Max(faceFrameCount, accessoryFrameCount);
-            if (frameCount == 0)
-            {
-                return null;
-            }
-
-            FaceLookEntry faceLook = new()
-            {
-                ExpressionName = normalizedExpression,
-                SkinColor = skinColor,
-                FaceItemId = ItemId,
-                FaceAccessoryItemId = faceAccessoryItemId
-            };
-
-            for (int frameIndex = 0; frameIndex < frameCount; frameIndex++)
-            {
-                CharacterFrame faceFrame = GetAnimationFrame(faceAnimation, frameIndex);
-                CharacterFrame accessoryFrame = GetAnimationFrame(accessoryAnimation, frameIndex);
-                int delay = ResolveFaceLookDelay(faceFrame, accessoryFrame);
-
-                faceLook.Frames.Add(new FaceLookFrame
-                {
-                    FaceFrame = faceFrame,
-                    AccessoryFrame = accessoryFrame,
-                    Delay = delay
-                });
-
-                faceLook.TotalDuration += delay;
-            }
-
-            _lookCache[cacheKey] = faceLook;
-            return faceLook;
+            return _lookLoader.GetLook(expression, skinColor, faceAccessoryPart);
         }
 
         public bool TryGetLookDuration(string expression, SkinColor skinColor, CharacterPart faceAccessoryPart, out int durationMs)
         {
-            durationMs = 0;
-            FaceLookEntry faceLook = GetLook(expression, skinColor, faceAccessoryPart);
-            if (faceLook == null || faceLook.TotalDuration <= 0)
-            {
-                return false;
-            }
-
-            durationMs = faceLook.TotalDuration;
-            return true;
-        }
-
-        private static CharacterAnimation ResolveAccessoryExpression(CharacterPart faceAccessoryPart, string expression)
-        {
-            if (faceAccessoryPart?.Animations == null || faceAccessoryPart.Animations.Count == 0)
-            {
-                return null;
-            }
-
-            if (faceAccessoryPart.Animations.TryGetValue(expression, out CharacterAnimation animation))
-            {
-                return animation;
-            }
-
-            if (faceAccessoryPart.Animations.TryGetValue("default", out animation))
-            {
-                return animation;
-            }
-
-            if (faceAccessoryPart.Animations.TryGetValue("blink", out animation))
-            {
-                return animation;
-            }
-
-            foreach ((_, CharacterAnimation fallbackAnimation) in faceAccessoryPart.Animations)
-            {
-                return fallbackAnimation;
-            }
-
-            return null;
-        }
-
-        private static CharacterFrame GetAnimationFrame(CharacterAnimation animation, int frameIndex)
-        {
-            if (animation?.Frames == null || animation.Frames.Count == 0)
-            {
-                return null;
-            }
-
-            return animation.Frames[frameIndex % animation.Frames.Count];
-        }
-
-        private static int ResolveFaceLookDelay(CharacterFrame faceFrame, CharacterFrame accessoryFrame)
-        {
-            if (faceFrame?.Delay > 0)
-            {
-                return faceFrame.Delay;
-            }
-
-            if (accessoryFrame?.Delay > 0)
-            {
-                return accessoryFrame.Delay;
-            }
-
-            return 100;
+            return _lookLoader.TryGetLookDuration(expression, skinColor, faceAccessoryPart, out durationMs);
         }
     }
 

@@ -22,6 +22,11 @@ namespace HaCreator.MapSimulator.UI
                 lines.Add(entry.Description);
             }
 
+            if (!string.IsNullOrWhiteSpace(entry.PendingActionLabel))
+            {
+                lines.Add($"Pending: {entry.PendingActionLabel} approval.");
+            }
+
             if (!string.IsNullOrWhiteSpace(entry.CurrentEffectDescription))
             {
                 lines.Add($"Current: {entry.CurrentEffectDescription}");

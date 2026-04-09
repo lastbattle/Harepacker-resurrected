@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Loaders;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -147,7 +149,10 @@ namespace HaCreator.MapSimulator.Effects
     {
         #region Constants
         private const int MAX_ACTIVE_NUMBERS = 100;
+        private const int DamageNumberFormatStringPoolId = 0x1A15;
         #endregion
+
+        internal readonly record struct DigitLayoutEntry(int Digit, bool UseLargeDigitSet, int RelativeX);
 
         #region State
         private readonly List<WzDamageNumber> _activeNumbers = new List<WzDamageNumber>();
@@ -209,8 +214,7 @@ namespace HaCreator.MapSimulator.Effects
             // Get from pool or create new
             var dmgNumber = _pool.Count > 0 ? _pool.Dequeue() : new WzDamageNumber();
 
-            // Determine size based on critical
-            DamageNumberSize size = isCritical ? DamageNumberSize.Large : DamageNumberSize.Small;
+            bool useCriticalPresentation = UsesCriticalPresentation(colorType, isCritical);
 
             // Apply stacking offset for multi-hit
             float stackedY = y - (comboIndex * DamageNumberConstants.MULTI_HIT_STACK_OFFSET_Y);
@@ -220,10 +224,10 @@ namespace HaCreator.MapSimulator.Effects
             dmgNumber.X = x;
             dmgNumber.BaseY = stackedY;
             dmgNumber.SpawnTime = currentTime;
-            dmgNumber.IsCritical = isCritical;
+            dmgNumber.IsCritical = useCriticalPresentation;
             dmgNumber.IsMiss = isMiss;
             dmgNumber.ColorType = colorType;
-            dmgNumber.Size = size;
+            dmgNumber.Size = useCriticalPresentation ? DamageNumberSize.Large : DamageNumberSize.Small;
             dmgNumber.ComboIndex = comboIndex;
             dmgNumber.ElapsedMs = 0f; // Reset for pooled objects
 
@@ -330,40 +334,21 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         private void DrawWzDamageNumber(SpriteBatch spriteBatch, WzDamageNumber dmgNumber, int screenX, int screenY)
         {
-            // Get the appropriate digit set
-            DamageNumberDigitSet digitSet = DamageNumberLoader.GetDigitSet(
-                dmgNumber.ColorType,
-                dmgNumber.Size,
-                dmgNumber.IsCritical);
+            DamageNumberDigitSet largeDigitSet = ResolveLargeDigitSet(dmgNumber.ColorType, dmgNumber.IsCritical);
+            DamageNumberDigitSet smallDigitSet = ResolveSmallDigitSet(dmgNumber.ColorType, dmgNumber.IsCritical);
+            if (largeDigitSet == null || smallDigitSet == null)
+                return;
 
-            if (digitSet == null || !digitSet.IsLoaded)
-            {
-                // Fall back to non-critical if critical set not available
-                if (dmgNumber.IsCritical)
-                {
-                    digitSet = DamageNumberLoader.GetDigitSet(dmgNumber.ColorType, dmgNumber.Size, false);
-                }
-
-                // Still null? Try any available set
-                if (digitSet == null || !digitSet.IsLoaded)
-                {
-                    digitSet = DamageNumberLoader.GetDigitSetByName("NoRed0");
-                }
-
-                if (digitSet == null || !digitSet.IsLoaded)
-                    return;
-            }
-
-            string damageString = dmgNumber.GetDamageString();
+            string damageString = dmgNumber.IsMiss ? "Miss" : FormatDamageValue(dmgNumber.Damage);
             float alpha = dmgNumber.Alpha;
             Color color = Color.White * alpha;
 
             // Handle miss text
             if (dmgNumber.IsMiss)
             {
-                if (digitSet.SpecialTextures.TryGetValue("Miss", out var missTexture))
+                if (smallDigitSet.SpecialTextures.TryGetValue("Miss", out var missTexture))
                 {
-                    Point origin = digitSet.SpecialOrigins.TryGetValue("Miss", out var o) ? o : Point.Zero;
+                    Point origin = smallDigitSet.SpecialOrigins.TryGetValue("Miss", out var o) ? o : Point.Zero;
                     int drawX = screenX - origin.X;
                     int drawY = screenY - origin.Y;
                     spriteBatch.Draw(missTexture, new Vector2(drawX, drawY), color);
@@ -372,79 +357,141 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             // Draw critical effect behind digits
-            if (dmgNumber.ShouldShowCriticalEffect && digitSet.CriticalEffectTexture != null)
+            if (dmgNumber.ShouldShowCriticalEffect && largeDigitSet.CriticalEffectTexture != null)
             {
-                int effectX = screenX - digitSet.CriticalEffectOrigin.X;
-                int effectY = screenY + DamageNumberConstants.CRITICAL_EFFECT_OFFSET_Y - digitSet.CriticalEffectOrigin.Y;
-                spriteBatch.Draw(digitSet.CriticalEffectTexture, new Vector2(effectX, effectY), color);
+                int effectX = screenX - largeDigitSet.CriticalEffectOrigin.X;
+                int effectY = screenY + DamageNumberConstants.CRITICAL_EFFECT_OFFSET_Y - largeDigitSet.CriticalEffectOrigin.Y;
+                spriteBatch.Draw(largeDigitSet.CriticalEffectTexture, new Vector2(effectX, effectY), color);
             }
 
-            // Pre-calculate digit X positions using MapleStory's spacing algorithm
-            // Binary offset: 0x445176 - 0x44519a in CAnimationDisplayer::Effect_HP
-            // The algorithm calculates overlap for each digit to make them closer together
-            int[] digitXPositions = new int[damageString.Length];
-            int digitCount = 0;
-            int accumulatedX = 0;  // v15 in the binary
-            int previousOverlap = 0;  // lY in the binary (overlap from previous digit)
-
-            // First pass: calculate positions for each digit
-            foreach (char c in damageString)
-            {
-                if (!char.IsDigit(c))
-                    continue;
-
-                int digit = c - '0';
-                int width = digitSet.Widths[digit];
-                int originX = digitSet.Origins[digit].X;
-
-                // Position for this digit: accumulatedX + width - previousOverlap
-                // Binary: v35 = v15 + lWidth - lY; lEffX[i] = v35;
-                digitXPositions[digitCount] = accumulatedX + width - previousOverlap;
-
-                // Update accumulated position: accumulatedX = accumulatedX - previousOverlap + originX
-                // Binary: v15 = v15 - lY + idx; (where idx is origin.x)
-                accumulatedX = accumulatedX - previousOverlap + originX;
-
-                // Calculate overlap for next digit: lY = 3 * (origin.x - width) / 5
-                // Binary: lY = 3 * v34 / 5; where v34 = idx - lWidth = origin.x - width
-                previousOverlap = 3 * (originX - width) / 5;
-
-                digitCount++;
-            }
-
-            // Total width is the final accumulated position
-            // Binary: lWidth = v15; (line 305)
-            int totalWidth = accumulatedX;
+            (DigitLayoutEntry[] layoutEntries, int totalWidth) = BuildDigitLayout(
+                damageString,
+                largeDigitSet,
+                smallDigitSet,
+                dmgNumber.IsCritical);
 
             // Center the number: startX = screenX - totalWidth / 2
             // Binary: idx = lCenterLeft - lWidth / 2; (line 627)
             int startX = screenX - totalWidth / 2;
 
-            // Second pass: draw each digit at the calculated position
-            digitCount = 0;
+            foreach (DigitLayoutEntry entry in layoutEntries)
+            {
+                DamageNumberDigitSet digitSet = entry.UseLargeDigitSet ? largeDigitSet : smallDigitSet;
+                Texture2D digitTexture = digitSet.Digits[entry.Digit];
+                if (digitTexture == null)
+                    continue;
+
+                Point origin = digitSet.Origins[entry.Digit];
+
+                // The X position from lEffX is relative to the canvas origin
+                // Binary draws at: lEffX[idx] - origin.x (line 598)
+                int drawX = startX + entry.RelativeX - origin.X;
+                int drawY = screenY - origin.Y;
+
+                spriteBatch.Draw(digitTexture, new Vector2(drawX, drawY), color);
+            }
+        }
+
+        internal static bool UsesCriticalPresentation(DamageColorType colorType, bool isCritical)
+        {
+            return colorType == DamageColorType.Red && isCritical;
+        }
+
+        internal static string FormatDamageValue(int damage)
+        {
+            string compositeFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                DamageNumberFormatStringPoolId,
+                "{0}",
+                1,
+                out _);
+
+            try
+            {
+                return string.Format(CultureInfo.InvariantCulture, compositeFormat, damage);
+            }
+            catch (FormatException)
+            {
+                return damage.ToString(CultureInfo.InvariantCulture);
+            }
+        }
+
+        internal static (DigitLayoutEntry[] Entries, int TotalWidth) BuildDigitLayout(
+            string damageString,
+            DamageNumberDigitSet largeDigitSet,
+            DamageNumberDigitSet smallDigitSet,
+            bool addCriticalSpacing)
+        {
+            if (string.IsNullOrEmpty(damageString))
+                return (Array.Empty<DigitLayoutEntry>(), 0);
+
+            List<DigitLayoutEntry> entries = new(damageString.Length);
+            int accumulatedX = addCriticalSpacing ? 30 : 0;
+            int previousOverlap = 0;
+            bool useLargeDigitSet = true;
+
             foreach (char c in damageString)
             {
                 if (!char.IsDigit(c))
                     continue;
 
                 int digit = c - '0';
-                Texture2D digitTexture = digitSet.Digits[digit];
-                if (digitTexture == null)
-                {
-                    digitCount++;
-                    continue;
-                }
+                DamageNumberDigitSet digitSet = useLargeDigitSet ? largeDigitSet : smallDigitSet;
+                int width = digitSet.Widths[digit];
+                int originX = digitSet.Origins[digit].X;
+                int relativeX = accumulatedX + width - previousOverlap;
 
-                Point origin = digitSet.Origins[digit];
+                entries.Add(new DigitLayoutEntry(digit, useLargeDigitSet, relativeX));
 
-                // The X position from lEffX is relative to the canvas origin
-                // Binary draws at: lEffX[idx] - origin.x (line 598)
-                int drawX = startX + digitXPositions[digitCount] - origin.X;
-                int drawY = screenY - origin.Y;
-
-                spriteBatch.Draw(digitTexture, new Vector2(drawX, drawY), color);
-                digitCount++;
+                accumulatedX = accumulatedX - previousOverlap + originX;
+                previousOverlap = 3 * (originX - width) / 5;
+                useLargeDigitSet = false;
             }
+
+            return (entries.ToArray(), accumulatedX);
+        }
+
+        private static DamageNumberDigitSet ResolveAnyLoadedDigitSet(string primarySetName, string fallbackSetName)
+        {
+            DamageNumberDigitSet digitSet = DamageNumberLoader.GetDigitSetByName(primarySetName);
+            if (digitSet?.IsLoaded == true)
+                return digitSet;
+
+            digitSet = DamageNumberLoader.GetDigitSetByName(fallbackSetName);
+            if (digitSet?.IsLoaded == true)
+                return digitSet;
+
+            digitSet = DamageNumberLoader.GetDigitSetByName("NoRed0");
+            return digitSet?.IsLoaded == true ? digitSet : null;
+        }
+
+        private static DamageNumberDigitSet ResolveLargeDigitSet(DamageColorType colorType, bool isCritical)
+        {
+            if (isCritical)
+                return ResolveAnyLoadedDigitSet("NoCri1", "NoRed1");
+
+            string setName = colorType switch
+            {
+                DamageColorType.Blue => "NoBlue1",
+                DamageColorType.Violet => "NoViolet1",
+                _ => "NoRed1"
+            };
+
+            return ResolveAnyLoadedDigitSet(setName, "NoRed1");
+        }
+
+        private static DamageNumberDigitSet ResolveSmallDigitSet(DamageColorType colorType, bool isCritical)
+        {
+            if (isCritical)
+                return ResolveAnyLoadedDigitSet("NoCri0", "NoRed0");
+
+            string setName = colorType switch
+            {
+                DamageColorType.Blue => "NoBlue0",
+                DamageColorType.Violet => "NoViolet0",
+                _ => "NoRed0"
+            };
+
+            return ResolveAnyLoadedDigitSet(setName, "NoRed0");
         }
 
         /// <summary>

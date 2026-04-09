@@ -492,6 +492,58 @@ namespace HaCreator.MapSimulator.Character
             return defaultDelayMs;
         }
 
+        internal static string ResolveCreateActionName(
+            IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
+            PlayerState state)
+        {
+            if (actionAnimations == null || actionAnimations.Count == 0)
+            {
+                return null;
+            }
+
+            foreach (string candidate in EnumerateCreateActionCandidates(state))
+            {
+                if (actionAnimations.ContainsKey(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+
+        internal static IEnumerable<string> EnumerateCreateActionCandidates(PlayerState state)
+        {
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            bool airborne = state is PlayerState.Jumping or PlayerState.Falling or PlayerState.Swimming or PlayerState.Flying;
+            bool stationary = state is PlayerState.Standing or PlayerState.Walking or PlayerState.Sitting or PlayerState.Prone;
+
+            foreach (string candidate in new[] { "create2", "create3", "create4" })
+            {
+                string stateVariant = airborne
+                    ? candidate + "_f"
+                    : stationary
+                        ? candidate + "_s"
+                        : null;
+
+                if (!string.IsNullOrWhiteSpace(stateVariant) && yielded.Add(stateVariant))
+                {
+                    yield return stateVariant;
+                }
+
+                if (yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
+
+                string alternateVariant = airborne ? candidate + "_s" : candidate + "_f";
+                if (yielded.Add(alternateVariant))
+                {
+                    yield return alternateVariant;
+                }
+            }
+        }
+
         public static bool IsBlockingAction(string actionName)
         {
             return !string.IsNullOrWhiteSpace(actionName)

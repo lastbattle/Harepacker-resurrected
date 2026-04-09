@@ -608,7 +608,8 @@ namespace HaCreator.MapSimulator
                 RequestSpecialFieldBgmOverride,
                 ClearSpecialFieldBgmOverride,
                 BuildAriantArenaRemoteCharacter,
-                BuildAriantArenaRemoteCharacter);
+                BuildAriantArenaRemoteCharacter,
+                _playerManager?.Loader);
 
             ///////////////////////////////////////////////
             ////// Default positioning for character //////

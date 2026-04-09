@@ -103,24 +103,16 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            string explicitTag = ReadString(property["tag"])
-                                 ?? ReadString(property["name"])
-                                 ?? ReadString(property["tags"]);
             bool? resolvedState = ReadExplicitState(property) ?? inheritedState;
+            tags = ReadExplicitTags(property);
 
-            if (!string.IsNullOrWhiteSpace(explicitTag))
+            if (tags.Count > 0)
             {
-                tags = ParseTags(explicitTag);
-                if (tags.Count == 0)
-                {
-                    return false;
-                }
-
                 state = resolvedState ?? true;
                 return true;
             }
 
-            if (!IsUsableTagName(property.Name))
+            if (IsIndexLikePropertyName(property.Name))
             {
                 string indexedTag = ReadString(property);
                 if (!string.IsNullOrWhiteSpace(indexedTag))
@@ -135,6 +127,11 @@ namespace HaCreator.MapSimulator.Fields
                     return true;
                 }
 
+                return false;
+            }
+
+            if (!IsUsableTagName(property.Name))
+            {
                 return false;
             }
 
@@ -158,6 +155,48 @@ namespace HaCreator.MapSimulator.Fields
 
             return tags
                 .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        }
+
+        private static IReadOnlyList<string> ReadExplicitTags(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            var tags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            CollectTagValues(property["tag"], tags);
+            CollectTagValues(property["name"], tags);
+            CollectTagValues(property["tags"], tags);
+            return tags.Count == 0 ? Array.Empty<string>() : new List<string>(tags);
+        }
+
+        private static void CollectTagValues(WzImageProperty property, ISet<string> tags)
+        {
+            if (property == null || tags == null)
+            {
+                return;
+            }
+
+            string rawValue = ReadString(property);
+            if (!string.IsNullOrWhiteSpace(rawValue))
+            {
+                string[] parsedTags = ParseTags(rawValue);
+                for (int i = 0; i < parsedTags.Length; i++)
+                {
+                    tags.Add(parsedTags[i]);
+                }
+            }
+
+            if (property.WzProperties == null || property.WzProperties.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                CollectTagValues(property.WzProperties[i], tags);
+            }
         }
 
         private static bool? ReadExplicitState(WzImageProperty property)
@@ -284,6 +323,16 @@ namespace HaCreator.MapSimulator.Fields
                 default:
                     return true;
             }
+        }
+
+        private static bool IsIndexLikePropertyName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            return int.TryParse(name, NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
         }
     }
 }

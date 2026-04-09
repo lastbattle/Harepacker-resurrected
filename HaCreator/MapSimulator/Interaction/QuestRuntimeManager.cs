@@ -81,7 +81,7 @@ namespace HaCreator.MapSimulator.Interaction
             public QuestStateType State { get; init; }
         }
 
-        private enum QuestTraitType
+        internal enum QuestTraitType
         {
             Charisma,
             Insight,
@@ -97,7 +97,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int MinimumValue { get; init; }
         }
 
-        private sealed class QuestTraitReward
+        internal sealed class QuestTraitReward
         {
             public QuestTraitType Trait { get; init; }
             public int Amount { get; init; }
@@ -155,13 +155,13 @@ namespace HaCreator.MapSimulator.Interaction
             public bool MustBeAcquired { get; init; }
         }
 
-        private sealed class QuestStateMutation
+        internal sealed class QuestStateMutation
         {
             public int QuestId { get; init; }
             public QuestStateType State { get; init; }
         }
 
-        private sealed class QuestRewardItem
+        internal sealed class QuestRewardItem
         {
             public int ItemId { get; init; }
             public int Count { get; init; }
@@ -177,7 +177,7 @@ namespace HaCreator.MapSimulator.Interaction
             public CharacterGenderType Gender { get; init; } = CharacterGenderType.Both;
         }
 
-        private sealed class QuestSkillReward
+        internal sealed class QuestSkillReward
         {
             public int SkillId { get; init; }
             public int SkillLevel { get; init; }
@@ -187,20 +187,20 @@ namespace HaCreator.MapSimulator.Interaction
             public IReadOnlyList<int> AllowedJobs { get; init; } = Array.Empty<int>();
         }
 
-        private enum QuestRewardSelectionType
+        internal enum QuestRewardSelectionType
         {
             Guaranteed,
             WeightedRandom,
             PlayerSelection
         }
 
-        private sealed class QuestSpReward
+        internal sealed class QuestSpReward
         {
             public int Amount { get; init; }
             public IReadOnlyList<int> AllowedJobs { get; init; } = Array.Empty<int>();
         }
 
-        private sealed class QuestActionBundle
+        internal sealed class QuestActionBundle
         {
             public int ExpReward { get; set; }
             public int MesoReward { get; set; }
@@ -349,7 +349,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ResolveItemCountText = itemId => GetResolvedItemCount(itemId).ToString(CultureInfo.InvariantCulture),
                 ResolveQuestStateText = questId => FormatQuestStateForDialogue(GetQuestState(questId)),
                 ResolveJobNameText = () => ResolveCurrentJobNameForDialogue(build),
-                ResolveCurrentMapNameText = ResolveCurrentMapNameForDialogue
+                ResolveCurrentMapNameText = ResolveCurrentMapNameForDialogue,
+                ResolveQuestRecordText = ResolveQuestRecordTextForDialogue
             };
         }
 
@@ -390,6 +391,14 @@ namespace HaCreator.MapSimulator.Interaction
             return string.IsNullOrWhiteSpace(resolvedMapName)
                 ? $"Map {currentMapId}"
                 : resolvedMapName;
+        }
+
+        private string ResolveQuestRecordTextForDialogue(int questId)
+        {
+            return TryGetQuestRecordValue(questId, out string recordValue) &&
+                   !string.IsNullOrWhiteSpace(recordValue)
+                ? recordValue
+                : "0";
         }
 
         public void ConfigureMesoRuntime(Func<long> mesoCountProvider, Func<long, bool> consumeMeso, Action<long> addMeso)
@@ -2036,7 +2045,11 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
-        public NpcInteractionState BuildQuestDeliveryInteractionState(int questId, CharacterBuild build, int itemId)
+        public NpcInteractionState BuildQuestDeliveryInteractionState(
+            int questId,
+            CharacterBuild build,
+            int itemId,
+            bool? completionPhaseOverride = null)
         {
             EnsureDefinitionsLoaded();
             if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
@@ -2070,7 +2083,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             QuestStateType state = GetQuestState(questId);
-            bool completionPhase = state == QuestStateType.Started;
+            bool completionPhase = completionPhaseOverride ?? state == QuestStateType.Started;
             int targetNpcId = completionPhase
                 ? definition.EndNpcId ?? definition.StartNpcId ?? 0
                 : definition.StartNpcId ?? definition.EndNpcId ?? 0;
@@ -8345,13 +8358,32 @@ namespace HaCreator.MapSimulator.Interaction
             QuestActionBundle actions = state == QuestStateType.Not_Started
                 ? definition.StartActions
                 : definition.EndActions;
-            string summaryText = BuildClientPacketQuestResultItemCategorySummary(actions, build);
-            if (actions != null && actions.MesoReward < 0)
+            return BuildClientPacketQuestResultActionNoticeText(actions, build);
+        }
+
+        internal string BuildClientPacketQuestResultActionNoticeText(QuestActionBundle actions, CharacterBuild build)
+        {
+            if (actions == null)
             {
-                summaryText = QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(summaryText);
+                return string.Empty;
             }
 
-            return summaryText;
+            var lines = new List<string>();
+            string summaryText = BuildClientPacketQuestResultItemCategorySummary(actions, build);
+            if (!string.IsNullOrWhiteSpace(summaryText))
+            {
+                lines.Add(summaryText);
+            }
+
+            lines.AddRange(BuildClientPacketQuestResultSupplementalLines(actions, build));
+
+            string noticeText = string.Join("\n", lines.Where(static line => !string.IsNullOrWhiteSpace(line)));
+            if (actions.MesoReward < 0)
+            {
+                noticeText = QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(noticeText);
+            }
+
+            return noticeText;
         }
 
         private static string ResolvePacketQuestResultPrimaryText(
@@ -8583,6 +8615,11 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
+                if (reward.SelectionType == QuestRewardSelectionType.PlayerSelection)
+                {
+                    continue;
+                }
+
                 if (build != null &&
                     !MatchesRewardItemFilterCore(
                         build.Job,
@@ -8598,7 +8635,126 @@ namespace HaCreator.MapSimulator.Interaction
                 itemIds.Add(reward.ItemId);
             }
 
+            foreach ((int _, List<QuestRewardItem> groupRewards) in GetFilteredChoiceRewardGroups(actions.RewardItems, build))
+            {
+                if (groupRewards.Count == 1)
+                {
+                    itemIds.Add(groupRewards[0].ItemId);
+                }
+            }
+
             return QuestClientPacketResultNoticeText.FormatRewardInventoryNotice(itemIds);
+        }
+
+        private IReadOnlyList<string> BuildClientPacketQuestResultSupplementalLines(QuestActionBundle actions, CharacterBuild build)
+        {
+            var lines = new List<string>();
+            if (actions == null)
+            {
+                return lines;
+            }
+
+            foreach ((int _, List<QuestRewardItem> groupRewards) in GetFilteredChoiceRewardGroups(actions.RewardItems, build))
+            {
+                if (groupRewards.Count > 1)
+                {
+                    lines.Add(BuildChoiceRewardDisplayText(groupRewards, build, includeSelectionTag: false));
+                }
+            }
+
+            if (actions.ExpReward > 0)
+            {
+                lines.Add($"EXP +{actions.ExpReward}");
+            }
+
+            if (actions.MesoReward != 0)
+            {
+                lines.Add($"Meso {actions.MesoReward:+#;-#;0}");
+            }
+
+            if (actions.FameReward != 0)
+            {
+                lines.Add($"Fame {actions.FameReward:+#;-#;0}");
+            }
+
+            if (actions.BuffItemId > 0)
+            {
+                lines.Add($"Buff {GetBuffItemRewardText(actions)}");
+            }
+
+            if (actions.PetTamenessReward != 0)
+            {
+                lines.Add(GetPetTamenessRewardText(actions.PetTamenessReward));
+            }
+
+            if (actions.PetSpeedReward != 0)
+            {
+                lines.Add(GetPetSpeedRewardText(actions.PetSpeedReward));
+            }
+
+            if (actions.BuffItemId <= 0 && actions.BuffItemMapIds.Count > 0)
+            {
+                lines.Add($"Maps: {FormatMapIdList(actions.BuffItemMapIds)}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(actions.NpcActionName))
+            {
+                lines.Add(QuestNpcActionResolver.FormatActionDetail(actions.NpcActionName));
+            }
+
+            for (int i = 0; i < actions.TraitRewards.Count; i++)
+            {
+                QuestTraitReward reward = actions.TraitRewards[i];
+                lines.Add($"{FormatTraitName(reward.Trait)} {reward.Amount:+#;-#;0}");
+            }
+
+            for (int i = 0; i < actions.SkillRewards.Count; i++)
+            {
+                QuestSkillReward reward = actions.SkillRewards[i];
+                if (build != null && !MatchesAllowedJobs(build.Job, reward.AllowedJobs))
+                {
+                    continue;
+                }
+
+                lines.Add(GetSkillRewardText(reward));
+            }
+
+            if (actions.PetSkillRewardMask > 0)
+            {
+                lines.Add(GetPetSkillRewardText(actions.PetSkillRewardMask));
+            }
+
+            for (int i = 0; i < actions.QuestMutations.Count; i++)
+            {
+                QuestStateMutation mutation = actions.QuestMutations[i];
+                lines.Add($"Quest state: {GetQuestName(mutation.QuestId)} -> {FormatQuestState(mutation.State)}");
+            }
+
+            for (int i = 0; i < actions.SpRewards.Count; i++)
+            {
+                QuestSpReward reward = actions.SpRewards[i];
+                if (build != null && !MatchesAllowedJobs(build.Job, reward.AllowedJobs))
+                {
+                    continue;
+                }
+
+                lines.Add($"SP {GetSpRewardText(reward)}");
+            }
+
+            if (actions.NextQuestId.HasValue && actions.NextQuestId.Value > 0)
+            {
+                lines.Add($"Next quest: {GetQuestName(actions.NextQuestId.Value)}");
+            }
+
+            for (int i = 0; i < actions.Messages.Count; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(actions.Messages[i]))
+                {
+                    lines.Add(actions.Messages[i]);
+                }
+            }
+
+            return lines;
         }
 
         private List<string> RemoveGiveUpItems(QuestActionBundle actions)

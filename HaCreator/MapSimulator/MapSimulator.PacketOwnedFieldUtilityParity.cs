@@ -504,6 +504,7 @@ namespace HaCreator.MapSimulator
             }
 
             int snapshotCount = Math.Max(runtimePlatformCount, authoredObjectCount);
+            bool hasLiveRuntimePlatforms = runtimePlatformCount > 0;
             List<PacketFieldUtilityFootholdEntry> entries = new(snapshotCount);
             for (int i = 0; i < snapshotCount; i++)
             {
@@ -513,7 +514,8 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                if (TryBuildPacketOwnedCachedFootholdSnapshotEntry(i, out PacketFieldUtilityFootholdEntry cachedEntry))
+                if (!hasLiveRuntimePlatforms
+                    && TryBuildPacketOwnedCachedFootholdSnapshotEntry(i, out PacketFieldUtilityFootholdEntry cachedEntry))
                 {
                     entries.Add(cachedEntry);
                     continue;

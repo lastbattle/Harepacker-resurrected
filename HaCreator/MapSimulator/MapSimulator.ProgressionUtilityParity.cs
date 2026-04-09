@@ -85,7 +85,7 @@ namespace HaCreator.MapSimulator
             ShowWindowWithInheritedDirectionModeOwner(windowName);
         }
 
-        private void ShowUtilityQuitDialog()
+        private void ShowUtilityQuitDialog(string source = null)
         {
             string body = MapleStoryStringPool.GetOrFallback(3304, "Are you sure you want to quit?");
             ShowLoginUtilityDialog(
@@ -93,6 +93,7 @@ namespace HaCreator.MapSimulator
                 body,
                 LoginUtilityDialogButtonLayout.YesNo,
                 LoginUtilityDialogAction.ConfirmUtilityQuit,
+                inputPlaceholder: string.IsNullOrWhiteSpace(source) ? null : $"Launch source: {source}.",
                 frameVariant: LoginUtilityDialogFrameVariant.InGameFadeYesNo);
         }
 
@@ -222,7 +223,7 @@ namespace HaCreator.MapSimulator
                 entries.Add(new EventEntrySnapshot
                 {
                     Title = "Owner Lifecycle",
-                    Detail = $"{lifecycleDetail} The client-observed 8 second auto-dismiss remains armed until the user touches the filter or calendar controls.",
+                    Detail = $"{lifecycleDetail} The client-observed 8 second auto-dismiss remains armed until the user touches the filter or calendar controls, the close control stays on the recovered `MakeUOLByUIType` seam from `CUIEventAlarm::OnCreate`, and the top alarm strip keeps the recovered 198 px clip region blank until packet/runtime text actually populates it.",
                     StatusText = "Running",
                     Status = EventEntryStatus.InProgress,
                     ScheduledAt = DateTime.Today,
@@ -369,7 +370,7 @@ namespace HaCreator.MapSimulator
                 entries.Add(new EventEntrySnapshot
                 {
                     Title = "Live Network Event Lists",
-                    Detail = "UIWindow2.img/EventList art is active, but attendance packets and the official event-feed model are still pending deeper client dispatch work.",
+                    Detail = "UIWindow2.img/EventList art is active, the owner now leaves the recovered top text strip empty when no packet/runtime text is available instead of filling it with a simulator-only placeholder, but attendance packets and the official event-feed model are still pending deeper client dispatch work.",
                     StatusText = "Will",
                     Status = EventEntryStatus.Upcoming,
                     ScheduledAt = DateTime.Today.AddDays(1),
@@ -380,8 +381,8 @@ namespace HaCreator.MapSimulator
             return new EventWindowSnapshot
             {
                 Title = "Event",
-                Subtitle = "EventList row, slot, icon, and calendar art now surface simulator runtime entries plus the latest packet-owned alarm text, tutor, radio, logout-gift, and sound state through an event owner that auto-dismisses like CUIEventAlarm until the user interacts with its WZ-backed controls.",
-                StatusText = "BtEvent now exposes packet-owned utility, quest, overlay, tutor, radio, logout-gift, and sound activity through the client event owner, using the WZ-backed filter and calendar surfaces instead of text-only fallbacks. Official attendance, calendar packets, and live network event feeds still remain outside this window.",
+                Subtitle = "EventList row, slot, icon, and calendar art now surface simulator runtime entries plus the latest packet-owned alarm text, tutor, radio, logout-gift, and sound state through an event owner that auto-dismisses like CUIEventAlarm until the user interacts with its WZ-backed controls. The recovered 198 px alarm strip now stays blank when no packet/runtime text is active instead of rendering a simulator-only placeholder sentence.",
+                StatusText = "BtEvent now exposes packet-owned utility, quest, overlay, tutor, radio, logout-gift, and sound activity through the client event owner, keeps the recovered top text strip empty until real alarm text arrives, and uses the WZ-backed filter and calendar surfaces instead of text-only fallbacks. Official attendance, calendar packets, and live network event feeds still remain outside this window.",
                 AutoDismissDelayMs = 8000,
                 AlarmLines = BuildEventAlarmOwnerLines(currentTick),
                 Entries = entries
@@ -656,10 +657,7 @@ namespace HaCreator.MapSimulator
 
             if (candidates.Count == 0)
             {
-                return new[]
-                {
-                    CreateEventAlarmLine("No packet-authored event alarm text is active.", 0)
-                };
+                return Array.Empty<EventAlarmLineSnapshot>();
             }
 
             List<EventAlarmLineSnapshot> lines = candidates

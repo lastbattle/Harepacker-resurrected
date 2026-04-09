@@ -130,6 +130,7 @@ namespace HaCreator.MapSimulator.Effects
         private readonly HashSet<int> _officialRemoteLifecycleActorIds = new();
         private int _externalRemoteActorLoadWindowEndTimeMs;
         private int _externalRemoteActorLoadCooltimeEndTimeMs;
+        private CharacterLoader _characterLoader;
 
 
         // Wedding step (from OnWeddingProgress)
@@ -212,13 +213,15 @@ namespace HaCreator.MapSimulator.Effects
             GraphicsDevice device,
             Action<string> requestBgmOverride = null,
             Action clearBgmOverride = null,
-            Func<LoginAvatarLook, string, CharacterBuild> remoteBuildFactory = null)
+            Func<LoginAvatarLook, string, CharacterBuild> remoteBuildFactory = null,
+            CharacterLoader characterLoader = null)
         {
 
             _requestBgmOverride = requestBgmOverride;
 
             _clearBgmOverride = clearBgmOverride;
             _remoteBuildFactory = remoteBuildFactory;
+            _characterLoader = characterLoader;
             _blessFrames = LoadBlessFrames(device);
             LoadCeremonyOverlay(device);
             LoadCeremonyCelebrationAssets(device);
@@ -372,6 +375,8 @@ namespace HaCreator.MapSimulator.Effects
                     participant.PortableChairItemId,
                     participant.PortableChairPairCharacterId,
                     participant.TemporaryStats,
+                    participant.PacketOwnedItemEffectItemId,
+                    participant.PacketOwnedItemEffectRevision,
                     participant.AvatarModifiedState,
                     participant.AvatarModifiedRevision);
                 return true;
@@ -400,6 +405,8 @@ namespace HaCreator.MapSimulator.Effects
                     participant.PortableChairItemId,
                     participant.PortableChairPairCharacterId,
                     participant.TemporaryStats,
+                    participant.PacketOwnedItemEffectItemId,
+                    participant.PacketOwnedItemEffectRevision,
                     participant.AvatarModifiedState,
                     participant.AvatarModifiedRevision));
             }
@@ -429,6 +436,8 @@ namespace HaCreator.MapSimulator.Effects
                     participant.PortableChairItemId,
                     participant.PortableChairPairCharacterId,
                     participant.TemporaryStats,
+                    participant.PacketOwnedItemEffectItemId,
+                    participant.PacketOwnedItemEffectRevision,
                     participant.AvatarModifiedState,
                     participant.AvatarModifiedRevision));
             }
@@ -749,6 +758,8 @@ namespace HaCreator.MapSimulator.Effects
                 participant.PortableChairItemId,
                 participant.PortableChairPairCharacterId,
                 participant.TemporaryStats,
+                participant.PacketOwnedItemEffectItemId,
+                participant.PacketOwnedItemEffectRevision,
                 participant.AvatarModifiedState,
                 participant.AvatarModifiedRevision);
             return true;
@@ -887,6 +898,9 @@ namespace HaCreator.MapSimulator.Effects
             destination.TemporaryStats = source.TemporaryStats;
             destination.MovementSnapshot = source.MovementSnapshot;
             destination.MovementDrivenActionSelection = source.MovementDrivenActionSelection;
+            destination.PacketOwnedItemEffect = source.PacketOwnedItemEffect;
+            destination.PacketOwnedItemEffectItemId = source.PacketOwnedItemEffectItemId;
+            destination.PacketOwnedItemEffectRevision = source.PacketOwnedItemEffectRevision;
             destination.AvatarModifiedState = source.AvatarModifiedState;
             destination.AvatarModifiedRevision = source.AvatarModifiedRevision;
             destination.HasExplicitFacing = source.HasExplicitFacing;
@@ -1217,26 +1231,26 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
-            RemoteUserAvatarModifiedPacket state = participant.AvatarModifiedState
-                ?? CreateDefaultAvatarModifiedState(packet.CharacterId);
             if (packet.RelationshipType == RemoteRelationshipOverlayType.Generic)
             {
-                state = state with
-                {
-                    CarryItemEffect = packet.ItemId
-                };
+                return TryApplyParticipantGenericItemEffect(
+                    participant,
+                    packet.ItemId,
+                    Environment.TickCount,
+                    out errorMessage,
+                    _characterLoader);
             }
-            else
-            {
-                RemoteUserRelationshipRecord relationshipRecord = new(
-                    IsActive: packet.ItemId.HasValue && packet.ItemId.Value > 0,
-                    ItemId: packet.ItemId ?? 0,
-                    ItemSerial: null,
-                    PairItemSerial: null,
-                    CharacterId: packet.CharacterId,
-                    PairCharacterId: packet.PairCharacterId);
-                state = ApplyRelationshipRecordToAvatarModifiedState(state, packet.RelationshipType, relationshipRecord);
-            }
+
+            RemoteUserAvatarModifiedPacket state = participant.AvatarModifiedState
+                ?? CreateDefaultAvatarModifiedState(packet.CharacterId);
+            RemoteUserRelationshipRecord relationshipRecord = new(
+                IsActive: packet.ItemId.HasValue && packet.ItemId.Value > 0,
+                ItemId: packet.ItemId ?? 0,
+                ItemSerial: null,
+                PairItemSerial: null,
+                CharacterId: packet.CharacterId,
+                PairCharacterId: packet.PairCharacterId);
+            state = ApplyRelationshipRecordToAvatarModifiedState(state, packet.RelationshipType, relationshipRecord);
 
             StoreAvatarModifiedState(participant, state);
             ApplyAvatarModifiedStateToBuild(participant.Build, state);
@@ -1604,6 +1618,50 @@ namespace HaCreator.MapSimulator.Effects
 
             participant.AvatarModifiedState = packet;
             participant.AvatarModifiedRevision++;
+        }
+
+        internal static bool TryApplyParticipantGenericItemEffect(
+            WeddingRemoteParticipant participant,
+            int? itemId,
+            int currentTime,
+            out string message,
+            CharacterLoader characterLoader = null)
+        {
+            message = null;
+            if (participant == null)
+            {
+                message = "Wedding participant is required.";
+                return false;
+            }
+
+            if (!itemId.HasValue || itemId.Value <= 0)
+            {
+                participant.PacketOwnedItemEffect = null;
+                participant.PacketOwnedItemEffectItemId = null;
+                participant.PacketOwnedItemEffectRevision++;
+                message = $"Wedding remote actor {participant.CharacterId} generic item effect cleared.";
+                return true;
+            }
+
+            ItemEffectAnimationSet effect = characterLoader?.LoadItemEffectAnimationSet(itemId.Value);
+            if (characterLoader != null && effect == null)
+            {
+                message = $"Wedding remote actor {participant.CharacterId} item effect {itemId.Value} could not be loaded from Effect/ItemEff.img.";
+                return false;
+            }
+
+            participant.PacketOwnedItemEffect = new WeddingPacketOwnedItemEffectState
+            {
+                ItemId = itemId.Value,
+                Effect = effect,
+                StartTime = currentTime
+            };
+            participant.PacketOwnedItemEffectItemId = itemId.Value;
+            participant.PacketOwnedItemEffectRevision++;
+            message = characterLoader == null
+                ? $"Wedding remote actor {participant.CharacterId} generic item effect {itemId.Value} tracked for shared remote rendering."
+                : $"Wedding remote actor {participant.CharacterId} generic item effect {itemId.Value} applied.";
+            return true;
         }
 
         private static bool TryCreatePacketReader(byte[] payload, int packetType, out PacketReader reader, out string errorMessage)
@@ -2847,7 +2905,23 @@ namespace HaCreator.MapSimulator.Effects
                 int screenX = (int)MathF.Round(participant.Position.X) - mapShiftX + centerX;
                 int screenY = (int)MathF.Round(participant.Position.Y) - mapShiftY + centerY;
 
+                DrawParticipantPacketOwnedItemEffect(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    participant,
+                    screenX,
+                    screenY,
+                    tickCount,
+                    drawFrontLayers: false);
                 frame.Draw(spriteBatch, skeletonMeshRenderer, screenX, screenY, participant.FacingRight, Color.White);
+                DrawParticipantPacketOwnedItemEffect(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    participant,
+                    screenX,
+                    screenY,
+                    tickCount,
+                    drawFrontLayers: true);
 
 
 
@@ -2916,6 +2990,40 @@ namespace HaCreator.MapSimulator.Effects
                     ? new Color(255, 242, 178)
                     : new Color(176, 226, 255);
                 DrawOutlinedText(spriteBatch, font, line, textPosition, Color.Black, textColor);
+            }
+        }
+
+        private static void DrawParticipantPacketOwnedItemEffect(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            WeddingRemoteParticipant participant,
+            int screenX,
+            int screenY,
+            int currentTime,
+            bool drawFrontLayers)
+        {
+            ItemEffectAnimationSet effect = participant?.PacketOwnedItemEffect?.Effect;
+            if (effect?.OwnerLayers == null || effect.OwnerLayers.Count == 0)
+            {
+                return;
+            }
+
+            int elapsedTime = Math.Max(0, currentTime - participant.PacketOwnedItemEffect.StartTime);
+            foreach (PortableChairLayer layer in effect.OwnerLayers)
+            {
+                if ((layer.RelativeZ > 0) != drawFrontLayers)
+                {
+                    continue;
+                }
+
+                CharacterFrame frame = PlayerCharacter.GetPortableChairLayerFrameAtTime(layer, elapsedTime);
+                PlayerCharacter.DrawPortableChairLayerFrame(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    frame,
+                    screenX,
+                    screenY,
+                    participant.FacingRight);
             }
         }
 
@@ -3263,6 +3371,8 @@ namespace HaCreator.MapSimulator.Effects
         int? PortableChairItemId,
         int? PortableChairPairCharacterId,
         RemoteUserTemporaryStatSnapshot TemporaryStats,
+        int? PacketOwnedItemEffectItemId,
+        int PacketOwnedItemEffectRevision,
         RemoteUserAvatarModifiedPacket? AvatarModifiedState,
         int AvatarModifiedRevision);
 
@@ -3285,6 +3395,13 @@ namespace HaCreator.MapSimulator.Effects
         PlayerMovementSyncSnapshot MovementSnapshot);
 
     internal readonly record struct WeddingRemoteChairPacket(int CharacterId, int PortableChairItemId, int? PairCharacterId);
+
+    public sealed class WeddingPacketOwnedItemEffectState
+    {
+        public int ItemId { get; init; }
+        public ItemEffectAnimationSet Effect { get; init; }
+        public int StartTime { get; init; }
+    }
 
     public sealed class WeddingRemoteParticipant
     {
@@ -3314,6 +3431,9 @@ namespace HaCreator.MapSimulator.Effects
         public int? PortableChairItemId { get; set; }
         public int? PortableChairPairCharacterId { get; set; }
         public RemoteUserTemporaryStatSnapshot TemporaryStats { get; set; }
+        public WeddingPacketOwnedItemEffectState PacketOwnedItemEffect { get; set; }
+        public int? PacketOwnedItemEffectItemId { get; set; }
+        public int PacketOwnedItemEffectRevision { get; set; }
         public RemoteUserAvatarModifiedPacket? AvatarModifiedState { get; set; }
         public int AvatarModifiedRevision { get; set; }
         public bool MovementDrivenActionSelection { get; set; }

@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.Interaction
             public string Body { get; init; } = string.Empty;
             public DateTimeOffset DeliveredAt { get; init; }
             public bool HasClientTimestamp { get; init; }
+            public DateTimeOffset? ExpirationTimestampUtc { get; init; }
             public bool IsRead { get; set; }
             public bool IsKept { get; set; }
             public bool IsQuickDelivery { get; init; }
@@ -234,7 +235,7 @@ namespace HaCreator.MapSimulator.Interaction
                         entry.Sender,
                         ResolvePacketOwnedParcelSubject(entry),
                         ResolvePacketOwnedParcelBody(entry),
-                        ResolvePacketOwnedDeliveredAt(entry, displayTime),
+                        displayTime,
                         isRead: entry.IsRead,
                         isKept: entry.IsKept,
                         isQuickDelivery: entry.IsQuickDelivery,
@@ -242,6 +243,7 @@ namespace HaCreator.MapSimulator.Interaction
                         attachmentQuantity: entry.AttachmentQuantity,
                         attachmentMeso: ResolvePacketOwnedAttachmentMeso(entry),
                         isAttachmentClaimed: entry.IsAttachmentClaimed,
+                        expirationTimestampUtc: entry.ExpirationTimestampUtc,
                         notifySocialText: false);
                     displayTime = displayTime.AddSeconds(-1);
                 }
@@ -278,7 +280,8 @@ namespace HaCreator.MapSimulator.Interaction
                 attachmentQuantity: entry.AttachmentQuantity,
                 attachmentMeso: ResolvePacketOwnedAttachmentMeso(entry),
                 memoId: entry.ParcelSerial > 0 ? entry.ParcelSerial : null,
-                deliveredAt: ResolvePacketOwnedDeliveredAt(entry, DateTimeOffset.Now),
+                deliveredAt: DateTimeOffset.Now,
+                expirationTimestampUtc: entry.ExpirationTimestampUtc,
                 out message);
             if (delivered && entry.IsQuickDelivery)
             {
@@ -302,6 +305,7 @@ namespace HaCreator.MapSimulator.Interaction
             int attachmentMeso,
             bool isQuickDelivery,
             bool isAttachmentClaimed,
+            DateTimeOffset? expirationTimestampUtc = null,
             bool notifySocialText = false)
         {
             if (string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(body))
@@ -323,6 +327,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Body = body.Trim(),
                 DeliveredAt = deliveredAt ?? DateTimeOffset.Now,
                 HasClientTimestamp = deliveredAt.HasValue,
+                ExpirationTimestampUtc = expirationTimestampUtc,
                 IsRead = isRead,
                 IsKept = isKept,
                 IsQuickDelivery = isQuickDelivery,
@@ -510,6 +515,7 @@ namespace HaCreator.MapSimulator.Interaction
                 attachmentMeso,
                 memoId: null,
                 deliveredAt: DateTimeOffset.Now,
+                expirationTimestampUtc: null,
                 out message);
         }
 
@@ -526,6 +532,7 @@ namespace HaCreator.MapSimulator.Interaction
             int attachmentMeso,
             int? memoId,
             DateTimeOffset deliveredAt,
+            DateTimeOffset? expirationTimestampUtc,
             out string message)
         {
             if (string.IsNullOrWhiteSpace(sender) || string.IsNullOrWhiteSpace(body))
@@ -551,6 +558,7 @@ namespace HaCreator.MapSimulator.Interaction
                 attachmentMeso: attachmentMeso,
                 isQuickDelivery: isQuickDelivery,
                 isAttachmentClaimed: isClaimed,
+                expirationTimestampUtc: expirationTimestampUtc,
                 notifySocialText: true);
             message = $"Queued packet-owned parcel '{resolvedSubject}' from {sender.Trim()}.";
             _lastActionSummary = message;
@@ -954,6 +962,19 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 memoText += $"\n\nAttachment summary: {ResolveItemName(entry.AttachmentItemId)} x{Math.Max(1, entry.AttachmentQuantity)}, {entry.AttachmentMeso:N0} meso.";
             }
+            else if (entry.AttachmentItemId > 0)
+            {
+                memoText += $"\n\nAttachment summary: {ResolveItemName(entry.AttachmentItemId)} x{Math.Max(1, entry.AttachmentQuantity)}.";
+            }
+            else if (entry.HasMesoAttachment && entry.AttachmentMeso > 0)
+            {
+                memoText += $"\n\nAttachment summary: {entry.AttachmentMeso:N0} meso.";
+            }
+
+            if (entry.ExpirationTimestampUtc.HasValue)
+            {
+                memoText += $"\n\nClaim deadline: {entry.ExpirationTimestampUtc.Value.ToLocalTime():yyyy.MM.dd HH:mm}.";
+            }
 
             return memoText;
         }
@@ -968,11 +989,6 @@ namespace HaCreator.MapSimulator.Interaction
             return entry.AttachmentItemId > 0 && entry.AttachmentMeso > 0
                 ? 0
                 : Math.Max(0, entry.AttachmentMeso);
-        }
-
-        private static DateTimeOffset ResolvePacketOwnedDeliveredAt(PacketOwnedParcelDecodedEntry entry, DateTimeOffset fallback)
-        {
-            return entry?.ExpirationTimestampUtc?.ToLocalTime() ?? fallback;
         }
 
         private int ResolveMemoId(int? requestedMemoId)
@@ -1016,6 +1032,12 @@ namespace HaCreator.MapSimulator.Interaction
             if (memo.Attachment?.IsClaimed == true)
             {
                 return memo.IsQuickDelivery ? "Quick claimed" : "Claimed";
+            }
+
+            if (memo.ExpirationTimestampUtc.HasValue
+                && memo.ExpirationTimestampUtc.Value.ToLocalTime() <= DateTimeOffset.Now)
+            {
+                return "Expired";
             }
 
             if (memo.Attachment != null)

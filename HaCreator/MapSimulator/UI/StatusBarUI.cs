@@ -84,6 +84,7 @@ namespace HaCreator.MapSimulator.UI {
         public Texture2D IconTexture { get; set; }
         public int RemainingMs { get; set; }
         public int DurationMs { get; set; }
+        public int MaskFrameIndex { get; set; } = 15;
         public string CounterText { get; set; }
         public string TooltipStateText { get; set; }
         public bool SuppressProgressOverlay { get; set; }
@@ -950,7 +951,7 @@ namespace HaCreator.MapSimulator.UI {
                 }
 
                 string remainingText = Math.Max(1, (int)Math.Ceiling(buffEntry.RemainingMs / 1000f)).ToString();
-                Vector2 textSize = _font.MeasureString(remainingText) * 0.5f;
+                Vector2 textSize = MeasureStatusBarText(remainingText, 0.5f);
                 Vector2 textPosition = new Vector2(
                     iconRect.Right - textSize.X - 2,
                     iconRect.Bottom - textSize.Y - 1);
@@ -1179,7 +1180,7 @@ namespace HaCreator.MapSimulator.UI {
 
                     if (!cooldownEntry.SuppressProgressOverlay)
                     {
-                        DrawCooldownMask(sprite, iconRect, cooldownEntry.RemainingMs, cooldownEntry.DurationMs);
+                        DrawCooldownMask(sprite, iconRect, cooldownEntry.MaskFrameIndex);
                     }
 
                     if (_font == null || cooldownEntry.RemainingMs <= 0 || cooldownEntry.SuppressCounterText)
@@ -1191,7 +1192,7 @@ namespace HaCreator.MapSimulator.UI {
                     string remainingText = string.IsNullOrWhiteSpace(cooldownEntry.CounterText)
                         ? Math.Max(1, (int)Math.Ceiling(cooldownEntry.RemainingMs / 1000f)).ToString()
                         : cooldownEntry.CounterText;
-                    Vector2 textSize = _font.MeasureString(remainingText) * textScale;
+                    Vector2 textSize = MeasureStatusBarText(remainingText, textScale);
                     Vector2 textPosition = new Vector2(
                         iconRect.Right - textSize.X - 2,
                         iconRect.Bottom - textSize.Y - 1);
@@ -1222,9 +1223,8 @@ namespace HaCreator.MapSimulator.UI {
                 cooldownEntry.IconTexture);
         }
 
-        private void DrawCooldownMask(SpriteBatch sprite, Rectangle iconRect, int remainingMs, int durationMs)
+        private void DrawCooldownMask(SpriteBatch sprite, Rectangle iconRect, int frameIndex)
         {
-            int frameIndex = ResolveCooldownMaskFrameIndex(remainingMs, durationMs);
             if (_cooldownMaskTextures.Length > 0)
             {
                 int resolvedFrameIndex = Math.Clamp(frameIndex, 0, _cooldownMaskTextures.Length - 1);
@@ -1259,16 +1259,6 @@ namespace HaCreator.MapSimulator.UI {
                 iconRect.Width,
                 overlayHeight);
             sprite.Draw(_pixelTexture, overlayRect, new Color(0, 0, 0, 150));
-        }
-
-        private static int ResolveCooldownMaskFrameIndex(int remainingMs, int durationMs)
-        {
-            int clampedRemainingMs = Math.Max(0, remainingMs);
-            int resolvedDurationMs = Math.Max(clampedRemainingMs, durationMs);
-            int totalSeconds = Math.Max(1, (int)Math.Ceiling(resolvedDurationMs / 1000f));
-            int remainingSeconds = Math.Max(0, (int)Math.Ceiling(clampedRemainingMs / 1000f));
-            int elapsedSeconds = Math.Clamp(totalSeconds - remainingSeconds, 0, totalSeconds);
-            return Math.Clamp((14 * elapsedSeconds) / totalSeconds, 0, 14);
         }
 
         private void DrawPreparedSkillBar(SpriteBatch sprite, Vector2 basePosGauge, int currentTime)
@@ -1354,10 +1344,11 @@ namespace HaCreator.MapSimulator.UI {
             string title = SanitizeTooltipText(preparedSkill.SkillName);
             if (!string.IsNullOrWhiteSpace(title))
             {
-                Vector2 titleSize = _font.MeasureString(title);
+                Vector2 titleSize = MeasureStatusBarText(title, 1.0f);
+                int lineSpacing = ResolveStatusBarLineSpacing();
                 Vector2 titlePos = new Vector2(
                     barRect.X + Math.Max(0f, (barRect.Width - titleSize.X) * 0.5f),
-                    barRect.Y - _font.LineSpacing - PREPARED_SKILL_LABEL_GAP);
+                    barRect.Y - lineSpacing - PREPARED_SKILL_LABEL_GAP);
                 DrawTooltipText(sprite, title, titlePos, new Color(255, 238, 155));
             }
 
@@ -1367,10 +1358,11 @@ namespace HaCreator.MapSimulator.UI {
                 return;
             }
 
-            Vector2 statusSize = _font.MeasureString(statusText);
+            Vector2 statusSize = MeasureStatusBarText(statusText, 1.0f);
+            int statusLineSpacing = ResolveStatusBarLineSpacing();
             Vector2 statusPos = new Vector2(
                 barRect.Right - statusSize.X,
-                barRect.Y - _font.LineSpacing - PREPARED_SKILL_LABEL_GAP);
+                barRect.Y - statusLineSpacing - PREPARED_SKILL_LABEL_GAP);
             DrawTooltipText(sprite, statusText, statusPos, Color.White);
         }
 
@@ -1556,7 +1548,7 @@ namespace HaCreator.MapSimulator.UI {
                     continue;
                 }
 
-                DrawTooltipText(sprite, lines[i], new Vector2(x, y + (i * _font.LineSpacing)), color);
+                DrawTooltipText(sprite, lines[i], new Vector2(x, y + (i * ResolveStatusBarLineSpacing())), color);
             }
         }
 
@@ -1602,7 +1594,7 @@ namespace HaCreator.MapSimulator.UI {
                 }
             }
 
-            return nonEmptyLines > 0 ? nonEmptyLines * _font.LineSpacing : 0f;
+            return nonEmptyLines > 0 ? nonEmptyLines * ResolveStatusBarLineSpacing() : 0f;
         }
 
         private string[] WrapTooltipText(string text, float maxWidth)
@@ -1952,6 +1944,16 @@ namespace HaCreator.MapSimulator.UI {
             }
 
             return ClientTextDrawing.Measure((GraphicsDevice)null, text, scale, _font);
+        }
+
+        private int ResolveStatusBarLineSpacing()
+        {
+            if (_clientTextRasterizer != null)
+            {
+                return Math.Max(1, (int)Math.Ceiling(_clientTextRasterizer.MeasureString("Ag").Y));
+            }
+
+            return _font?.LineSpacing ?? 0;
         }
 
         private void DrawStatusBarText(

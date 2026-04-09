@@ -5,6 +5,7 @@ using System.Linq;
 using System.IO;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using MapleLib.WzLib;
@@ -28,10 +29,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             "fly",
             "move",
             "walk",
-            "repeat",
-            "attack1",
-            "attack",
-            "die"
+            "repeat"
         };
 
         private static readonly string[] PreferredSummonSpawnBranches =
@@ -83,6 +81,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         };
 
         private const int ClientSummonedFrameDelayFallbackMs = 120;
+        private const int ClientSummonReversePlaybackStringPoolId = 0x049F;
+        private const string ClientSummonReversePlaybackFallbackName = "zigzag";
 
         private static readonly string[] PersistentAvatarEffectBranches =
         {
@@ -927,6 +927,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             skill.EffectSecondary = LoadOptionalSkillAnimation(skillNode, "effect0", loop: false);
+            skill.StopEffect = LoadOptionalSkillAnimation(skillNode, "stopEffect", loop: false);
+            skill.StopSecondaryEffect = LoadOptionalSkillAnimation(skillNode, "stopEffect0", loop: false);
 
             // Load hit effect
             var hitNode = skillNode["hit"];
@@ -1935,9 +1937,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
+            IReadOnlyDictionary<string, string> storagePlan = BuildShadowPartnerActionStoragePlan(
+                specialNode.WzProperties.Select(static child => child?.Name));
+
             foreach (WzImageProperty child in specialNode.WzProperties)
             {
                 if (child == null || string.IsNullOrWhiteSpace(child.Name))
+                {
+                    continue;
+                }
+
+                string actionKey = ResolveShadowPartnerActionStorageKey(child.Name);
+                if (string.IsNullOrWhiteSpace(actionKey)
+                    || !storagePlan.TryGetValue(actionKey, out string preferredSourceKey)
+                    || !string.Equals(preferredSourceKey, child.Name, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -1948,11 +1961,72 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                animation.Loop = ShouldLoopShadowPartnerAction(child.Name);
-                skill.ShadowPartnerActionAnimations[child.Name] = animation;
+                animation.Name = actionKey;
+                animation.Loop = ShouldLoopShadowPartnerAction(actionKey);
+                skill.ShadowPartnerActionAnimations[actionKey] = animation;
             }
 
             skill.ShadowPartnerHorizontalOffsetPx = ResolveShadowPartnerHorizontalOffsetPx(skill.ShadowPartnerActionAnimations);
+        }
+
+        internal static IReadOnlyDictionary<string, string> BuildShadowPartnerActionStoragePlan(IEnumerable<string> sourceActionKeys)
+        {
+            var storagePlan = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (sourceActionKeys == null)
+            {
+                return storagePlan;
+            }
+
+            foreach (string sourceActionKey in sourceActionKeys)
+            {
+                string storageKey = ResolveShadowPartnerActionStorageKey(sourceActionKey);
+                if (string.IsNullOrWhiteSpace(storageKey))
+                {
+                    continue;
+                }
+
+                if (!storagePlan.TryGetValue(storageKey, out string existingSourceKey)
+                    || ShouldReplaceShadowPartnerActionSource(existingSourceKey, sourceActionKey))
+                {
+                    storagePlan[storageKey] = sourceActionKey;
+                }
+            }
+
+            return storagePlan;
+        }
+
+        internal static string ResolveShadowPartnerActionStorageKey(string sourceActionKey)
+        {
+            if (string.IsNullOrWhiteSpace(sourceActionKey))
+            {
+                return null;
+            }
+
+            if (!sourceActionKey.All(char.IsDigit))
+            {
+                return sourceActionKey;
+            }
+
+            if (int.TryParse(sourceActionKey, out int rawActionCode)
+                && CharacterPart.TryGetActionStringFromCode(rawActionCode, out string resolvedActionName)
+                && !string.IsNullOrWhiteSpace(resolvedActionName))
+            {
+                return resolvedActionName;
+            }
+
+            return sourceActionKey;
+        }
+
+        internal static bool ShouldReplaceShadowPartnerActionSource(string existingSourceKey, string incomingSourceKey)
+        {
+            if (string.IsNullOrWhiteSpace(incomingSourceKey))
+            {
+                return false;
+            }
+
+            bool existingIsNumeric = !string.IsNullOrWhiteSpace(existingSourceKey) && existingSourceKey.All(char.IsDigit);
+            bool incomingIsNumeric = incomingSourceKey.All(char.IsDigit);
+            return existingIsNumeric && !incomingIsNumeric;
         }
 
         private static int ResolveShadowPartnerHorizontalOffsetPx(IReadOnlyDictionary<string, SkillAnimation> actionAnimations)
@@ -2239,6 +2313,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             string preferredBranchName = SelectPreferredSummonIdleBranch(branchNames);
+            if (preferredBranchName == null && directAnimation.Frames.Count == 0)
+            {
+                preferredBranchName = SelectFallbackSummonIdleBranch(summonNode, branchNames);
+            }
+
             if (preferredBranchName == null)
             {
                 if (directAnimation.Frames.Count > 0)
@@ -3121,17 +3200,17 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public static string SelectPreferredSummonSpawnBranch(IEnumerable<string> branchNames)
         {
-            return SelectPreferredSummonBranch(branchNames, PreferredSummonSpawnBranches);
+            return SelectExactSummonBranch(branchNames, PreferredSummonSpawnBranches);
         }
 
         public static string SelectPreferredSummonIdleBranch(IEnumerable<string> branchNames)
         {
-            return SelectPreferredSummonBranch(branchNames, PreferredSummonAnimationBranches);
+            return SelectExactSummonBranch(branchNames, PreferredSummonAnimationBranches);
         }
 
         public static string SelectPreferredSummonSupportBranch(IEnumerable<string> branchNames)
         {
-            return SelectPreferredSummonBranch(branchNames, new[] { "heal", "support", "stand" });
+            return SelectExactSummonBranch(branchNames, new[] { "heal", "support", "stand" });
         }
 
         private static int[] ParseDummySkillParents(string dummyOf)
@@ -3259,6 +3338,60 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return availableBranches.Keys.FirstOrDefault();
+        }
+
+        private static string SelectExactSummonBranch(IEnumerable<string> branchNames, IEnumerable<string> preferredBranches)
+        {
+            if (branchNames == null)
+            {
+                return null;
+            }
+
+            var availableBranches = branchNames
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToDictionary(name => name, name => name, StringComparer.OrdinalIgnoreCase);
+
+            foreach (string preferredBranch in preferredBranches)
+            {
+                if (availableBranches.TryGetValue(preferredBranch, out string actualBranchName))
+                {
+                    return actualBranchName;
+                }
+            }
+
+            return null;
+        }
+
+        private static string SelectFallbackSummonIdleBranch(WzImageProperty summonNode, IEnumerable<string> branchNames)
+        {
+            string preferredFallback = SelectPreferredSummonBranch(branchNames, new[] { "attack1", "attack", "die" });
+            if (!string.IsNullOrWhiteSpace(preferredFallback))
+            {
+                return preferredFallback;
+            }
+
+            if (summonNode == null)
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty child in summonNode.WzProperties)
+            {
+                if (child == null
+                    || string.IsNullOrWhiteSpace(child.Name)
+                    || NonActionSummonBranchNames.Contains(child.Name)
+                    || string.Equals(child.Name, "hit", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (IsSummonActionBranchProperty(child))
+                {
+                    return child.Name;
+                }
+            }
+
+            return null;
         }
 
         private SkillFrame LoadSkillFrame(WzImageProperty frameNode)
@@ -3487,16 +3620,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
-        private static bool ShouldAppendReversedSummonFrames(WzImageProperty actionNode, string actionKey)
+        internal static bool ShouldAppendReversedSummonFrames(WzImageProperty actionNode, string actionKey)
         {
+            if (actionNode == null)
+            {
+                return IsRepeatStyleSummonBranchName(actionKey);
+            }
+
+            string reverseFlagName = MapleStoryStringPool.GetOrFallback(
+                ClientSummonReversePlaybackStringPoolId,
+                ClientSummonReversePlaybackFallbackName);
+            if (HasProperty(actionNode, reverseFlagName))
+            {
+                return GetInt(actionNode, reverseFlagName) != 0;
+            }
+
             if (IsRepeatStyleSummonBranchName(actionKey))
             {
                 return true;
-            }
-
-            if (actionNode == null)
-            {
-                return false;
             }
 
             return GetInt(actionNode, "reverse") != 0

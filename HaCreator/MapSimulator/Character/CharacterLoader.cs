@@ -1809,6 +1809,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 // Load info
                 LoadEquipInfo(part, imgNode as WzImage);
+                AttachTamingMobOverlayResolver(part);
                 AttachTamingMobActionFrameOwner(part);
                 _equipCache[itemId] = part;
             }
@@ -2180,6 +2181,49 @@ namespace HaCreator.MapSimulator.Character
             part.TamingMobActionFrameOwner ??= new TamingMobActionFrameOwner(part.ItemId);
         }
 
+        private void AttachTamingMobOverlayResolver(CharacterPart part)
+        {
+            if (part?.ItemId / 10000 != 191)
+            {
+                return;
+            }
+
+            part.TamingMobActionOverlayResolver ??= (baseVehicleId, actionName) =>
+                LoadTamingMobActionSourceAnimation(baseVehicleId, part.ItemId, actionName);
+        }
+
+        private CharacterAnimation LoadTamingMobActionSourceAnimation(int baseVehicleId, int sourceItemId, string actionName)
+        {
+            if (baseVehicleId <= 0 || sourceItemId <= 0 || string.IsNullOrWhiteSpace(actionName))
+            {
+                return null;
+            }
+
+            string imageName = sourceItemId.ToString("D8") + ".img";
+            WzImage image = GetCharacterImage($"TamingMob/{imageName}");
+            if (image == null)
+            {
+                return null;
+            }
+
+            WzImageProperty actionNode = sourceItemId == baseVehicleId
+                ? image[actionName]
+                : image[baseVehicleId.ToString(CultureInfo.InvariantCulture)]?[actionName];
+            if (actionNode == null)
+            {
+                return null;
+            }
+
+            CharacterAnimation animation = LoadAnimation(actionNode);
+            if (animation?.Frames?.Count > 0)
+            {
+                animation.ActionName = actionName;
+                animation.Action = CharacterPart.ParseActionString(actionName);
+            }
+
+            return animation;
+        }
+
         private static void ApplyGrowthInfo(WzImageProperty info, CharacterPart part)
         {
             if (info?["level"] is not WzSubProperty levelProperty
@@ -2270,6 +2314,7 @@ namespace HaCreator.MapSimulator.Character
                 170 => EquipSlot.Weapon,
                 >= 130 and < 170 => EquipSlot.Weapon,
                 180 => EquipSlot.TamingMob,
+                191 => EquipSlot.Saddle,
                 >= 190 and < 200 => EquipSlot.TamingMob,
                 _ => EquipSlot.None
             };
@@ -3689,6 +3734,12 @@ namespace HaCreator.MapSimulator.Character
             }
 
             equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart filteredTamingMobPart);
+            filteredTamingMobPart = PrepareTamingMobActionMergePart(filteredTamingMobPart, equipment);
+            if (filteredTamingMobPart != null)
+            {
+                equipment[EquipSlot.TamingMob] = filteredTamingMobPart;
+            }
+
             return new CharacterActionMergeInput
             {
                 ActionName = resolvedActionName,
@@ -3705,10 +3756,233 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
+            equipment.Remove(EquipSlot.FaceAccessory);
             equipment.Remove(EquipSlot.Ring1);
             equipment.Remove(EquipSlot.Ring2);
             equipment.Remove(EquipSlot.Ring3);
             equipment.Remove(EquipSlot.Ring4);
+        }
+
+        internal static CharacterPart PrepareTamingMobActionMergePart(
+            CharacterPart activeTamingMobPart,
+            IDictionary<EquipSlot, CharacterPart> equipment)
+        {
+            if (activeTamingMobPart?.Slot != EquipSlot.TamingMob
+                || activeTamingMobPart.ItemId / 10000 != 190
+                || equipment == null
+                || !equipment.TryGetValue(EquipSlot.Saddle, out CharacterPart saddlePart)
+                || saddlePart?.TamingMobActionOverlayResolver == null)
+            {
+                return activeTamingMobPart;
+            }
+
+            CharacterPart mergedMountPart = MergeTamingMobActionOverlayParts(
+                activeTamingMobPart,
+                new[] { saddlePart });
+            equipment.Remove(EquipSlot.Saddle);
+            return mergedMountPart;
+        }
+
+        internal static CharacterPart MergeTamingMobActionOverlayParts(
+            CharacterPart activeTamingMobPart,
+            IEnumerable<CharacterPart> overlayParts)
+        {
+            if (activeTamingMobPart?.Slot != EquipSlot.TamingMob || overlayParts == null)
+            {
+                return activeTamingMobPart;
+            }
+
+            Func<int, string, CharacterAnimation>[] overlayResolvers = overlayParts
+                .Select(static part => part?.TamingMobActionOverlayResolver)
+                .Where(static resolver => resolver != null)
+                .ToArray();
+            if (overlayResolvers.Length == 0)
+            {
+                return activeTamingMobPart;
+            }
+
+            CharacterPart mergedMountPart = activeTamingMobPart.Clone();
+            int baseVehicleId = activeTamingMobPart.ItemId;
+
+            foreach (KeyValuePair<string, CharacterAnimation> entry in activeTamingMobPart.Animations)
+            {
+                CharacterAnimation mergedAnimation = MergeTamingMobActionAnimations(
+                    entry.Value,
+                    overlayResolvers.Select(resolver => resolver(baseVehicleId, entry.Key)));
+                if (mergedAnimation?.Frames?.Count > 0)
+                {
+                    mergedMountPart.Animations[entry.Key] = mergedAnimation;
+                }
+            }
+
+            mergedMountPart.AnimationResolver = actionName =>
+            {
+                CharacterAnimation baseAnimation = ResolveExactAnimation(activeTamingMobPart, actionName);
+                if (baseAnimation?.Frames?.Count <= 0)
+                {
+                    return null;
+                }
+
+                return MergeTamingMobActionAnimations(
+                    baseAnimation,
+                    overlayResolvers.Select(resolver => resolver(baseVehicleId, actionName)));
+            };
+
+            return mergedMountPart;
+        }
+
+        internal static CharacterAnimation MergeTamingMobActionAnimations(
+            CharacterAnimation baseAnimation,
+            IEnumerable<CharacterAnimation> overlayAnimations)
+        {
+            if (baseAnimation?.Frames?.Count <= 0)
+            {
+                return null;
+            }
+
+            CharacterAnimation mergedAnimation = CloneAnimation(baseAnimation);
+            if (overlayAnimations == null)
+            {
+                return mergedAnimation;
+            }
+
+            foreach (CharacterAnimation overlayAnimation in overlayAnimations)
+            {
+                if (overlayAnimation?.Frames?.Count <= 0)
+                {
+                    continue;
+                }
+
+                int frameCount = Math.Min(mergedAnimation.Frames.Count, overlayAnimation.Frames.Count);
+                for (int frameIndex = 0; frameIndex < frameCount; frameIndex++)
+                {
+                    mergedAnimation.Frames[frameIndex] = MergeTamingMobFrames(
+                        mergedAnimation.Frames[frameIndex],
+                        overlayAnimation.Frames[frameIndex]);
+                }
+            }
+
+            mergedAnimation.CalculateTotalDuration();
+            return mergedAnimation;
+        }
+
+        private static CharacterAnimation ResolveExactAnimation(CharacterPart part, string actionName)
+        {
+            if (part == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return null;
+            }
+
+            if (part.Animations.TryGetValue(actionName, out CharacterAnimation animation)
+                && animation?.Frames?.Count > 0)
+            {
+                return animation;
+            }
+
+            animation = part.AnimationResolver?.Invoke(actionName);
+            if (animation?.Frames?.Count > 0)
+            {
+                part.Animations[actionName] = animation;
+                return animation;
+            }
+
+            return null;
+        }
+
+        private static CharacterAnimation CloneAnimation(CharacterAnimation source)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            CharacterAnimation clone = new()
+            {
+                Action = source.Action,
+                ActionName = source.ActionName,
+                Loop = source.Loop,
+                Frames = source.Frames?.Select(static frame => frame?.Clone()).ToList() ?? new List<CharacterFrame>()
+            };
+            clone.CalculateTotalDuration();
+            return clone;
+        }
+
+        private static CharacterFrame MergeTamingMobFrames(CharacterFrame baseFrame, CharacterFrame overlayFrame)
+        {
+            if (baseFrame == null)
+            {
+                return overlayFrame?.Clone();
+            }
+
+            if (overlayFrame == null)
+            {
+                return baseFrame.Clone();
+            }
+
+            CharacterFrame mergedFrame = baseFrame.Clone();
+            List<CharacterSubPart> mergedSubParts = ExtractTamingMobFrameSubParts(baseFrame);
+            mergedSubParts.AddRange(ExtractTamingMobFrameSubParts(overlayFrame));
+            if (mergedSubParts.Count > 0)
+            {
+                mergedFrame.Texture = null;
+                mergedFrame.Z = null;
+                mergedFrame.SubParts = mergedSubParts;
+            }
+
+            return mergedFrame;
+        }
+
+        private static List<CharacterSubPart> ExtractTamingMobFrameSubParts(CharacterFrame frame)
+        {
+            if (frame == null)
+            {
+                return new List<CharacterSubPart>();
+            }
+
+            if (frame.HasSubParts)
+            {
+                return frame.SubParts?
+                    .Select(CloneCharacterSubPart)
+                    .Where(static subPart => subPart != null)
+                    .ToList()
+                    ?? new List<CharacterSubPart>();
+            }
+
+            if (frame.Texture == null)
+            {
+                return new List<CharacterSubPart>();
+            }
+
+            return new List<CharacterSubPart>
+            {
+                new()
+                {
+                    Name = string.Empty,
+                    Texture = frame.Texture,
+                    Origin = frame.Origin,
+                    Z = frame.Z,
+                    Map = new Dictionary<string, Point>(frame.Map ?? new Dictionary<string, Point>(), StringComparer.OrdinalIgnoreCase),
+                    NavelOffset = Point.Zero
+                }
+            };
+        }
+
+        private static CharacterSubPart CloneCharacterSubPart(CharacterSubPart source)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            return new CharacterSubPart
+            {
+                Name = source.Name,
+                Texture = source.Texture,
+                Origin = source.Origin,
+                Z = source.Z,
+                Map = new Dictionary<string, Point>(source.Map ?? new Dictionary<string, Point>(), StringComparer.OrdinalIgnoreCase),
+                NavelOffset = source.NavelOffset
+            };
         }
 
         private static void RetainOnlyArrowEruptionLanes(IDictionary<EquipSlot, CharacterPart> equipment)
@@ -3718,6 +3992,11 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
+            // CActionMan::LoadCharacterAction(action 47 / arrowEruption) preserves only
+            // avatar array indices 0, 1, 3, and 4. The simulator's equipment dictionary
+            // owns only the equip-backed subset of that array, so hair/index 0 is already
+            // handled outside this table and the retained lanes are cap, eye accessory,
+            // and earrings only.
             HashSet<EquipSlot> allowedSlots = new()
             {
                 EquipSlot.Cap,

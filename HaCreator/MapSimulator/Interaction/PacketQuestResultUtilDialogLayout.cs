@@ -12,6 +12,20 @@ namespace HaCreator.MapSimulator.Interaction
         KeyFocused = 4
     }
 
+    internal enum PacketQuestResultUtilDialogFocusedButton
+    {
+        Prev = 0,
+        NextOrOk = 1
+    }
+
+    internal enum PacketQuestResultUtilDialogModalResult
+    {
+        None = 0,
+        Prev = 0x2000,
+        NextOrOk = 0x2001,
+        Close = -1
+    }
+
     internal static class PacketQuestResultUtilDialogLayout
     {
         // UIWindow2.img/UtilDlgEx exposes the v95-era quest-result util dialog shell
@@ -149,6 +163,24 @@ namespace HaCreator.MapSimulator.Interaction
             return isKeyFocused
                 ? PacketQuestResultUtilDialogButtonVisualState.KeyFocused
                 : PacketQuestResultUtilDialogButtonVisualState.Normal;
+        }
+
+        internal static PacketQuestResultUtilDialogFocusedButton ResolveFocusedButtonAfterKeyboardNavigation(
+            bool moveBackward,
+            bool hasPrevPage)
+        {
+            return moveBackward && hasPrevPage
+                ? PacketQuestResultUtilDialogFocusedButton.Prev
+                : PacketQuestResultUtilDialogFocusedButton.NextOrOk;
+        }
+
+        internal static PacketQuestResultUtilDialogModalResult ResolveModalResultForFocusedButton(
+            PacketQuestResultUtilDialogFocusedButton focusedButton,
+            bool hasPrevPage)
+        {
+            return focusedButton == PacketQuestResultUtilDialogFocusedButton.Prev && hasPrevPage
+                ? PacketQuestResultUtilDialogModalResult.Prev
+                : PacketQuestResultUtilDialogModalResult.NextOrOk;
         }
     }
 }

@@ -36,6 +36,13 @@ namespace HaCreator.MapSimulator.UI
         private const int IconX = 375;
         private const int IconY = 296;
         private const int IconSize = 32;
+        private const int ConfirmWidth = 226;
+        private const int ConfirmHeight = 78;
+        private const int ConfirmButtonWidth = 74;
+        private const int ConfirmButtonHeight = 20;
+        private const int ConfirmButtonY = 46;
+        private const int ConfirmOkButtonX = 36;
+        private const int ConfirmCancelButtonX = 116;
 
         private readonly Texture2D _backgroundTexture;
         private readonly Texture2D _iconPlaceholderTexture;
@@ -53,6 +60,9 @@ namespace HaCreator.MapSimulator.UI
         private MouseState _previousMouseState;
         private int _selectedIndex;
         private int _pageIndex;
+        private bool _isRegisterConfirmationOpen;
+        private bool _confirmAcceptFocused = true;
+        private string _statusMessage = string.Empty;
 
         public AdminShopWishListSearchResultUI(
             IDXObject frame,
@@ -126,8 +136,11 @@ namespace HaCreator.MapSimulator.UI
         {
             _owner = owner;
             _results = results ?? Array.Empty<AdminShopDialogUI.WishlistSearchResult>();
-            _selectedIndex = 0;
+            _selectedIndex = -1;
             _pageIndex = 0;
+            _isRegisterConfirmationOpen = false;
+            _confirmAcceptFocused = true;
+            _statusMessage = owner?.GetStatusMessage() ?? string.Empty;
             PositionRelativeToOwner(owner);
         }
 
@@ -154,6 +167,11 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Hide();
             _results = Array.Empty<AdminShopDialogUI.WishlistSearchResult>();
+            _selectedIndex = -1;
+            _pageIndex = 0;
+            _isRegisterConfirmationOpen = false;
+            _confirmAcceptFocused = true;
+            _statusMessage = string.Empty;
             UpdateButtons();
         }
 
@@ -179,11 +197,24 @@ namespace HaCreator.MapSimulator.UI
             KeyboardState keyboardState = Keyboard.GetState();
             MouseState mouseState = Mouse.GetState();
             HandleKeyboardInput(keyboardState);
+            if (!IsVisible)
+            {
+                _previousKeyboardState = keyboardState;
+                _previousMouseState = mouseState;
+                return;
+            }
 
             int wheelDelta = mouseState.ScrollWheelValue - _previousMouseState.ScrollWheelValue;
-            if (wheelDelta != 0 && GetWindowBounds().Contains(mouseState.Position))
+            if (!_isRegisterConfirmationOpen && wheelDelta != 0 && GetWindowBounds().Contains(mouseState.Position))
             {
-                SelectIndex(_selectedIndex + (wheelDelta > 0 ? -1 : 1));
+                if (_selectedIndex < 0)
+                {
+                    SelectIndex(wheelDelta > 0 ? 0 : GetPageStartIndex());
+                }
+                else
+                {
+                    SelectIndex(_selectedIndex + (wheelDelta > 0 ? -1 : 1));
+                }
             }
 
             _previousKeyboardState = keyboardState;
@@ -195,6 +226,18 @@ namespace HaCreator.MapSimulator.UI
             if (!IsVisible)
             {
                 return false;
+            }
+
+            if (_isRegisterConfirmationOpen)
+            {
+                Rectangle confirmBounds = GetConfirmationBounds();
+                if (confirmBounds.Contains(mouseState.Position)
+                    || GetConfirmationButtonBounds(confirm: true).Contains(mouseState.Position)
+                    || GetConfirmationButtonBounds(confirm: false).Contains(mouseState.Position))
+                {
+                    mouseCursor?.SetMouseCursorMovedToClickableItem();
+                    return true;
+                }
             }
 
             foreach (UIObject button in uiButtons)
@@ -295,9 +338,21 @@ namespace HaCreator.MapSimulator.UI
                     : "BtRegist focuses the selected row in the admin-shop dialog.";
                 DrawDetailBlock(sprite, bounds, 10, footer, new Color(255, 233, 160));
             }
+            else if (_results.Count > 0)
+            {
+                DrawDetailBlock(sprite, bounds, 0, "Select a staged result to review or register it.", Color.White);
+                DrawDetailBlock(sprite, bounds, 2, "CUIAdminShopWishListSearchResult starts with no row selected.", new Color(255, 233, 160));
+            }
 
-            string status = _owner?.GetStatusMessage() ?? string.Empty;
+            string status = string.IsNullOrWhiteSpace(_statusMessage)
+                ? _owner?.GetStatusMessage() ?? string.Empty
+                : _statusMessage;
             sprite.DrawString(_font, TrimToWidth(status, 404f), new Vector2(bounds.X + HeaderX, bounds.Y + FooterY), new Color(255, 233, 160));
+
+            if (_isRegisterConfirmationOpen)
+            {
+                DrawRegisterConfirmation(sprite, bounds);
+            }
         }
 
         protected override IEnumerable<Rectangle> GetAdditionalInteractiveBounds()
@@ -308,6 +363,12 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleKeyboardInput(KeyboardState keyboardState)
         {
+            if (_isRegisterConfirmationOpen)
+            {
+                HandleConfirmationKeyboardInput(keyboardState);
+                return;
+            }
+
             if (WasPressed(keyboardState, Keys.Escape))
             {
                 HideForOwner("Wish-list results closed.");
@@ -322,11 +383,11 @@ namespace HaCreator.MapSimulator.UI
 
             if (WasPressed(keyboardState, Keys.Up))
             {
-                SelectIndex(_selectedIndex - 1);
+                SelectIndex(_selectedIndex < 0 ? GetPageStartIndex() : _selectedIndex - 1);
             }
             else if (WasPressed(keyboardState, Keys.Down))
             {
-                SelectIndex(_selectedIndex + 1);
+                SelectIndex(_selectedIndex < 0 ? GetPageStartIndex() : _selectedIndex + 1);
             }
             else if (WasPressed(keyboardState, Keys.PageUp))
             {
@@ -338,11 +399,11 @@ namespace HaCreator.MapSimulator.UI
             }
             else if (WasPressed(keyboardState, Keys.Home))
             {
-                SelectIndex(0);
+                SelectIndex(GetPageStartIndex());
             }
             else if (WasPressed(keyboardState, Keys.End))
             {
-                SelectIndex(_results.Count - 1);
+                SelectIndex(GetPageEndIndex());
             }
             else if (WasPressed(keyboardState, Keys.Left))
             {
@@ -363,12 +424,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _pageIndex = Math.Clamp(_pageIndex + delta, 0, pageCount - 1);
-            int pageStart = _pageIndex * ResultsPerPage;
-            if (_selectedIndex < pageStart || _selectedIndex >= pageStart + ResultsPerPage)
-            {
-                _selectedIndex = pageStart;
-            }
-
+            _selectedIndex = -1;
+            _statusMessage = $"SearchItemName moved to result page {_pageIndex + 1} / {pageCount}.";
             UpdateButtons();
         }
 
@@ -386,6 +443,9 @@ namespace HaCreator.MapSimulator.UI
 
             _selectedIndex = Math.Clamp(index, 0, _results.Count - 1);
             _pageIndex = _selectedIndex / ResultsPerPage;
+            _isRegisterConfirmationOpen = false;
+            _confirmAcceptFocused = true;
+            _statusMessage = $"Wish-list result selected: {_results[_selectedIndex].Title}.";
             UpdateButtons();
         }
 
@@ -393,7 +453,24 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_owner == null || _results.Count == 0 || _selectedIndex < 0 || _selectedIndex >= _results.Count)
             {
-                HideForOwner("Wish-list result selection is unavailable.");
+                _statusMessage = "Select a wish-list result before using BtRegist.";
+                return;
+            }
+
+            AdminShopDialogUI.WishlistSearchResult result = _results[_selectedIndex];
+            _isRegisterConfirmationOpen = true;
+            _confirmAcceptFocused = true;
+            _statusMessage = $"BtRegist opened the registration confirmation for {result.Title}.";
+            UpdateButtons();
+        }
+
+        private void ConfirmSelectedResult()
+        {
+            if (_owner == null || _results.Count == 0 || _selectedIndex < 0 || _selectedIndex >= _results.Count)
+            {
+                _isRegisterConfirmationOpen = false;
+                _statusMessage = "Wish-list result selection is unavailable.";
+                UpdateButtons();
                 return;
             }
 
@@ -405,7 +482,21 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            _isRegisterConfirmationOpen = false;
+            _confirmAcceptFocused = true;
+            _statusMessage = message;
             _owner.OnSearchResultAddOnClosed(message);
+            UpdateButtons();
+        }
+
+        private void CancelSelectedResultConfirmation()
+        {
+            _isRegisterConfirmationOpen = false;
+            _confirmAcceptFocused = true;
+            _statusMessage = _selectedIndex >= 0 && _selectedIndex < _results.Count
+                ? $"BtRegist confirmation cancelled for {_results[_selectedIndex].Title}."
+                : "Wish-list registration confirmation cancelled.";
+            UpdateButtons();
         }
 
         private void UpdateButtons()
@@ -414,28 +505,28 @@ namespace HaCreator.MapSimulator.UI
             int visibleCount = Math.Max(0, Math.Min(ResultsPerPage, _results.Count - pageStart));
             for (int i = 0; i < _rowButtons.Count; i++)
             {
-                bool active = IsVisible && i < visibleCount;
+                bool active = IsVisible && !_isRegisterConfirmationOpen && i < visibleCount;
                 _rowButtons[i].SetVisible(active);
                 _rowButtons[i].SetEnabled(active);
             }
 
             if (_previousButton != null)
             {
-                bool canMove = IsVisible && _pageIndex > 0;
+                bool canMove = IsVisible && !_isRegisterConfirmationOpen && _pageIndex > 0;
                 _previousButton.SetVisible(IsVisible);
                 _previousButton.SetEnabled(canMove);
             }
 
             if (_nextButton != null)
             {
-                bool canMove = IsVisible && _pageIndex + 1 < GetPageCount();
+                bool canMove = IsVisible && !_isRegisterConfirmationOpen && _pageIndex + 1 < GetPageCount();
                 _nextButton.SetVisible(IsVisible);
                 _nextButton.SetEnabled(canMove);
             }
 
             if (_registerButton != null)
             {
-                bool canRegister = IsVisible && _results.Count > 0;
+                bool canRegister = IsVisible && !_isRegisterConfirmationOpen && _selectedIndex >= 0 && _selectedIndex < _results.Count;
                 _registerButton.SetVisible(IsVisible);
                 _registerButton.SetEnabled(canRegister);
             }
@@ -458,9 +549,41 @@ namespace HaCreator.MapSimulator.UI
             return new Rectangle(bounds.X + ListX, bounds.Y + ListY + (visibleRow * RowHeight), ListWidth, RowHeight - 2);
         }
 
+        private Rectangle GetConfirmationBounds()
+        {
+            Rectangle bounds = GetWindowBounds();
+            return new Rectangle(
+                bounds.X + (bounds.Width - ConfirmWidth) / 2,
+                bounds.Y + (bounds.Height - ConfirmHeight) / 2,
+                ConfirmWidth,
+                ConfirmHeight);
+        }
+
+        private Rectangle GetConfirmationButtonBounds(bool confirm)
+        {
+            Rectangle confirmBounds = GetConfirmationBounds();
+            int buttonX = confirm ? ConfirmOkButtonX : ConfirmCancelButtonX;
+            return new Rectangle(confirmBounds.X + buttonX, confirmBounds.Y + ConfirmButtonY, ConfirmButtonWidth, ConfirmButtonHeight);
+        }
+
         private int GetPageCount()
         {
             return _results.Count == 0 ? 0 : (int)Math.Ceiling(_results.Count / (float)ResultsPerPage);
+        }
+
+        private int GetPageStartIndex()
+        {
+            return Math.Clamp(_pageIndex * ResultsPerPage, 0, Math.Max(0, _results.Count - 1));
+        }
+
+        private int GetPageEndIndex()
+        {
+            if (_results.Count == 0)
+            {
+                return -1;
+            }
+
+            return Math.Min(_results.Count - 1, GetPageStartIndex() + ResultsPerPage - 1);
         }
 
         private void PositionRelativeToOwner(AdminShopWishListUI owner)
@@ -489,6 +612,55 @@ namespace HaCreator.MapSimulator.UI
             }
 
             sprite.DrawString(_font, TrimToWidth(text, DetailWidth), new Vector2(bounds.X + DetailX, bounds.Y + DetailY + (lineIndex * DetailLineHeight)), color);
+        }
+
+        private void DrawRegisterConfirmation(SpriteBatch sprite, Rectangle bounds)
+        {
+            Rectangle confirmBounds = GetConfirmationBounds();
+            sprite.Draw(_pixelTexture, confirmBounds, new Color(30, 43, 66, 236));
+
+            Rectangle confirmButtonBounds = GetConfirmationButtonBounds(confirm: true);
+            Rectangle cancelButtonBounds = GetConfirmationButtonBounds(confirm: false);
+            sprite.Draw(_pixelTexture, confirmButtonBounds, _confirmAcceptFocused ? new Color(255, 233, 160) : new Color(214, 223, 236));
+            sprite.Draw(_pixelTexture, cancelButtonBounds, !_confirmAcceptFocused ? new Color(255, 233, 160) : new Color(214, 223, 236));
+
+            string title = _selectedIndex >= 0 && _selectedIndex < _results.Count
+                ? _results[_selectedIndex].Title
+                : "this result";
+            sprite.DrawString(_font, TrimToWidth($"Register {title} to the wish list?", 206f), new Vector2(confirmBounds.X + 10, confirmBounds.Y + 10), Color.White);
+            sprite.DrawString(_font, "Enter = Yes / Esc = No", new Vector2(confirmBounds.X + 44, confirmBounds.Y + 28), new Color(255, 233, 160));
+            sprite.DrawString(_font, "Yes", new Vector2(confirmButtonBounds.X + 25, confirmButtonBounds.Y + 3), new Color(40, 55, 96));
+            sprite.DrawString(_font, "No", new Vector2(cancelButtonBounds.X + 28, cancelButtonBounds.Y + 3), new Color(40, 55, 96));
+        }
+
+        private void HandleConfirmationKeyboardInput(KeyboardState keyboardState)
+        {
+            if (WasPressed(keyboardState, Keys.Escape))
+            {
+                CancelSelectedResultConfirmation();
+                return;
+            }
+
+            if (WasPressed(keyboardState, Keys.Enter))
+            {
+                if (_confirmAcceptFocused)
+                {
+                    ConfirmSelectedResult();
+                }
+                else
+                {
+                    CancelSelectedResultConfirmation();
+                }
+
+                return;
+            }
+
+            if (WasPressed(keyboardState, Keys.Left)
+                || WasPressed(keyboardState, Keys.Right)
+                || WasPressed(keyboardState, Keys.Tab))
+            {
+                _confirmAcceptFocused = !_confirmAcceptFocused;
+            }
         }
 
         private bool WasPressed(KeyboardState keyboardState, Keys key)

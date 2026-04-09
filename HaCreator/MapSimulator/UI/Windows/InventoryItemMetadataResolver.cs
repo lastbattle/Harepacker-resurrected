@@ -246,6 +246,18 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
+        public static bool IsNotConsumedOnUse(int itemId)
+        {
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            return IsNotConsumedOnUse(itemProperty?["info"] as WzSubProperty);
+        }
+
+        internal static bool IsNotConsumedOnUse(WzSubProperty infoProperty)
+        {
+            return GetIntValue(infoProperty?["noExpend"]) == 1
+                   || GetIntValue(infoProperty?["notConsume"]) == 1;
+        }
+
         public static bool IsPetFoodItem(int itemId)
         {
             if (itemId <= 0)
@@ -726,6 +738,7 @@ namespace HaCreator.MapSimulator.UI
             AppendCrossContinentEffectLine(effectLines, specProperty["ignoreContinent"]);
             AppendReturnMapRecordEffectLine(effectLines, specProperty["returnMapQR"]);
             AppendRandomMoveInFieldSetEffectLine(effectLines, specProperty["randomMoveInFieldSet"]);
+            AppendExperienceEffectLines(effectLines, specProperty);
             AppendMobEffectLines(effectLines, specProperty["mob"] as WzSubProperty);
 
             int? durationMs = TryGetPositiveInt(specProperty["time"]);
@@ -1023,6 +1036,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 effectLines.Add($"Uses script: {scriptName}");
             }
+
+            if (GetIntValue(specProperty["runOnPickup"]) == 1)
+            {
+                effectLines.Add("Runs immediately on pickup");
+            }
         }
 
         private static void AppendBuffItemEffectLines(List<string> effectLines, WzSubProperty buffProperty)
@@ -1216,6 +1234,25 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static void AppendExperienceEffectLines(List<string> effectLines, WzSubProperty specProperty)
+        {
+            if (specProperty == null)
+            {
+                return;
+            }
+
+            int experienceAmount = GetIntOrStringValue(specProperty["expinc"]);
+            if (experienceAmount <= 0)
+            {
+                experienceAmount = GetIntOrStringValue(specProperty["exp"]);
+            }
+
+            if (experienceAmount > 0)
+            {
+                effectLines.Add($"EXP +{experienceAmount.ToString("N0", CultureInfo.InvariantCulture)}");
+            }
+        }
+
         private static void AppendInfoMetadataLines(
             List<string> metadataLines,
             int itemId,
@@ -1247,6 +1284,7 @@ namespace HaCreator.MapSimulator.UI
             AppendReplaceMetadataLines(metadataLines, infoProperty);
             AppendRecoveryRateMetadataLines(metadataLines, infoProperty);
             AppendRandomChairEffectMetadataLines(metadataLines, infoProperty);
+            AppendAdditionalExperienceMetadataLines(metadataLines, infoProperty);
             AppendCashAvailabilityMetadataLines(metadataLines, infoProperty);
             AppendAdditionalInfoFlagsMetadataLines(metadataLines, infoProperty, specProperty);
         }
@@ -1478,6 +1516,47 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static void AppendAdditionalExperienceMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            if (infoProperty["exp"] is WzSubProperty expProperty)
+            {
+                int minLevel = GetIntOrStringValue(expProperty["minLev"]);
+                int maximumLevel = GetIntOrStringValue(expProperty["maxLev"]);
+                if (minLevel > 0 && maximumLevel > 0)
+                {
+                    metadataLines.Add($"Level Range: Lv. {minLevel.ToString(CultureInfo.InvariantCulture)}-{maximumLevel.ToString(CultureInfo.InvariantCulture)}");
+                }
+                else if (minLevel > 0)
+                {
+                    metadataLines.Add($"Minimum Level: {minLevel.ToString(CultureInfo.InvariantCulture)}");
+                }
+                else if (maximumLevel > 0)
+                {
+                    metadataLines.Add($"Maximum Level: {maximumLevel.ToString(CultureInfo.InvariantCulture)}");
+                }
+            }
+
+            int maxLevelValue = GetIntOrStringValue(infoProperty["maxLevel"]);
+            if (maxLevelValue > 0)
+            {
+                metadataLines.Add($"Max Level: {maxLevelValue.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (infoProperty["cantAccountSharable"] is WzSubProperty cantAccountSharableProperty)
+            {
+                string tooltip = NormalizeTooltipText((cantAccountSharableProperty["tooltip"] as WzStringProperty)?.Value);
+                if (!string.IsNullOrWhiteSpace(tooltip))
+                {
+                    metadataLines.Add(tooltip);
+                }
+            }
+        }
+
         private static void AppendCashAvailabilityMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
         {
             if (infoProperty == null)
@@ -1529,6 +1608,11 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add("Time-limited item");
             }
 
+            if (GetIntValue(infoProperty["expireOnLogout"]) == 1)
+            {
+                metadataLines.Add("Expires on logout");
+            }
+
             if (GetIntValue(infoProperty["buffchair"]) == 1)
             {
                 metadataLines.Add("Buff Chair");
@@ -1548,6 +1632,11 @@ namespace HaCreator.MapSimulator.UI
             if (GetIntValue(infoProperty["noMoveToLocker"]) == 1)
             {
                 metadataLines.Add("Cannot be moved to locker");
+            }
+
+            if (IsNotConsumedOnUse(infoProperty))
+            {
+                metadataLines.Add("Not consumed on use");
             }
 
             int expRate = GetIntOrStringValue(infoProperty["expRate"]);
@@ -1727,6 +1816,20 @@ namespace HaCreator.MapSimulator.UI
 
             string normalized = value.Trim().Replace('_', ' ').Replace('-', ' ');
             return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(normalized);
+        }
+
+        private static string NormalizeTooltipText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            return text.Replace("\\r", " ")
+                       .Replace("\\n", " ")
+                       .Replace('\r', ' ')
+                       .Replace('\n', ' ')
+                       .Trim();
         }
 
         private static string ResolveTooltipItemLabel(int itemId)

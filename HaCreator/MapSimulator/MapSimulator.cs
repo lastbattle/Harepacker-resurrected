@@ -278,6 +278,8 @@ namespace HaCreator.MapSimulator
 
 
         // Audio
+        private const float UtilityAudioDefaultVolume = 0.5f;
+        private const int PacketOwnedRadioAudioFadeDurationMs = 500;
         private MonoGameBgmPlayer _audio;
         private SoundManager _soundManager; // Manages sound effects with concurrent playback support
         private string _mapBgmName = null;
@@ -287,6 +289,9 @@ namespace HaCreator.MapSimulator
         private bool _utilityBgmMuted = false;
         private bool _utilityEffectsMuted = false;
         private bool _pauseAudioOnFocusLoss = true;
+        private float _appliedUtilityBgmVolume = UtilityAudioDefaultVolume;
+        private float _appliedPacketOwnedRadioVolume = 0f;
+        private int _utilityAudioMixLastTick = int.MinValue;
         // Etc
         private Board _mapBoard; // Not readonly - can be replaced during seamless map transitions
         // Map type flags moved to _gameState (IsLoginMap, IsCashShopMap, IsBigBangUpdate, IsBigBang2Update) 
@@ -2877,8 +2882,8 @@ namespace HaCreator.MapSimulator
             guildSkillWindow.SetSnapshotProvider(_guildSkillRuntime.BuildSnapshot);
             guildSkillWindow.SetHandlers(
                 visibleIndex => _guildSkillRuntime.SelectEntry(visibleIndex),
-                () => _guildSkillRuntime.TryRenewSelectedSkill(),
-                () => _guildSkillRuntime.TryLevelSelectedSkill(),
+                () => _guildSkillRuntime.TryRenewSelectedSkill(_socialListRuntime.UsesPacketOwnedGuildSkillAuthority()),
+                () => _guildSkillRuntime.TryLevelSelectedSkill(_socialListRuntime.UsesPacketOwnedGuildSkillAuthority()),
                 ShowUtilityFeedbackMessage);
             guildSkillWindow.SetFont(_fontChat);
         }
@@ -3372,13 +3377,14 @@ namespace HaCreator.MapSimulator
             ApplyUtilityAudioSettings();
         }
 
-        private void ShowUtilityOptionWindow(OptionMenuMode mode)
+        private void ShowUtilityOptionWindow(OptionMenuMode mode, string source = null)
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.OptionMenu) is not OptionMenuWindow optionMenuWindow)
             {
                 return;
             }
 
+            optionMenuWindow.SetLaunchSource(source);
             optionMenuWindow.SetMode(mode);
             ShowWindow(
                 MapSimulatorWindowNames.OptionMenu,
@@ -3386,9 +3392,15 @@ namespace HaCreator.MapSimulator
                 trackDirectionModeOwner: ShouldTrackInheritedDirectionModeOwner());
         }
 
-        private void ShowUtilityWindow(string windowName)
+        private void ShowUtilityWindow(string windowName, string source = null)
         {
-            ShowRecordedUtilityWindow(windowName, "status-bar popup");
+            if (string.Equals(windowName, MapSimulatorWindowNames.KeyConfig, StringComparison.Ordinal)
+                && uiWindowManager?.GetWindow(MapSimulatorWindowNames.KeyConfig) is KeyConfigWindow keyConfigWindow)
+            {
+                keyConfigWindow.SetLaunchSource(source);
+            }
+
+            ShowRecordedUtilityWindow(windowName, source ?? "status-bar popup");
         }
 
         private void SetUtilityBgmMuted(bool muted)
@@ -3411,19 +3423,11 @@ namespace HaCreator.MapSimulator
 
         private void ApplyUtilityAudioSettings()
         {
-            if (_audio != null)
-            {
-                _audio.Volume = (_utilityBgmMuted || IsPacketOwnedRadioPlaying()) ? 0f : 0.5f;
-            }
-
-            if (_packetOwnedRadioAudio != null)
-            {
-                _packetOwnedRadioAudio.Volume = _utilityBgmMuted ? 0f : 0.5f;
-            }
+            UpdateUtilityAudioMix(Environment.TickCount);
 
             if (_soundManager != null)
             {
-                _soundManager.Volume = _utilityEffectsMuted ? 0f : 0.5f;
+                _soundManager.Volume = _utilityEffectsMuted ? 0f : UtilityAudioDefaultVolume;
                 _soundManager.SetFocusActive(!_pauseAudioOnFocusLoss || IsActive);
             }
 
@@ -3448,6 +3452,65 @@ namespace HaCreator.MapSimulator
             {
                 _audio.Play();
             }
+        }
+
+        private void UpdateUtilityAudioMix(int currentTickCount)
+        {
+            float targetBgmVolume = ResolveUtilityBgmTargetVolume();
+            float targetRadioVolume = ResolvePacketOwnedRadioTargetVolume();
+            int elapsedMs = _utilityAudioMixLastTick == int.MinValue
+                ? PacketOwnedRadioAudioFadeDurationMs
+                : Math.Max(0, unchecked(currentTickCount - _utilityAudioMixLastTick));
+
+            _appliedUtilityBgmVolume = AdvanceUtilityAudioFadeVolume(
+                _appliedUtilityBgmVolume,
+                targetBgmVolume,
+                elapsedMs,
+                PacketOwnedRadioAudioFadeDurationMs);
+            _appliedPacketOwnedRadioVolume = AdvanceUtilityAudioFadeVolume(
+                _appliedPacketOwnedRadioVolume,
+                targetRadioVolume,
+                elapsedMs,
+                PacketOwnedRadioAudioFadeDurationMs);
+            _utilityAudioMixLastTick = currentTickCount;
+
+            if (_audio != null)
+            {
+                _audio.Volume = _appliedUtilityBgmVolume;
+            }
+
+            if (_packetOwnedRadioAudio != null)
+            {
+                _packetOwnedRadioAudio.Volume = _appliedPacketOwnedRadioVolume;
+            }
+        }
+
+        private float ResolveUtilityBgmTargetVolume()
+        {
+            return (_utilityBgmMuted || IsPacketOwnedRadioPlaying()) ? 0f : UtilityAudioDefaultVolume;
+        }
+
+        private float ResolvePacketOwnedRadioTargetVolume()
+        {
+            return _utilityBgmMuted ? 0f : UtilityAudioDefaultVolume;
+        }
+
+        internal static float AdvanceUtilityAudioFadeVolume(float currentVolume, float targetVolume, int elapsedMs, int fadeDurationMs)
+        {
+            float clampedCurrent = Math.Clamp(currentVolume, 0f, 1f);
+            float clampedTarget = Math.Clamp(targetVolume, 0f, 1f);
+            if (fadeDurationMs <= 0 || elapsedMs <= 0)
+            {
+                return elapsedMs <= 0 ? clampedCurrent : clampedTarget;
+            }
+
+            if (Math.Abs(clampedTarget - clampedCurrent) <= float.Epsilon)
+            {
+                return clampedTarget;
+            }
+
+            float progress = Math.Clamp((float)elapsedMs / fadeDurationMs, 0f, 1f);
+            return MathHelper.Lerp(clampedCurrent, clampedTarget, progress);
         }
 
         private void WireSocialRoomWindowData()
@@ -3499,6 +3562,7 @@ namespace HaCreator.MapSimulator
 
 
             userInfoWindow.PartyRequested = HandleCharacterInfoPartyRequest;
+            userInfoWindow.FollowRequested = HandleCharacterInfoFollowRequest;
 
 
 
@@ -3598,6 +3662,54 @@ namespace HaCreator.MapSimulator
                 channel);
             ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialList);
             return message;
+        }
+
+        private string HandleCharacterInfoFollowRequest(UserInfoUI.UserInfoActionContext context)
+        {
+            if (!context.IsRemoteTarget)
+            {
+                return "Follow requests are only available while inspecting a remote character.";
+            }
+
+            if (!TryResolvePacketOwnedLocalFollowSnapshot(out LocalFollowUserSnapshot localUser))
+            {
+                return "Follow request could not be issued because the local player is not fully initialized.";
+            }
+
+            bool foundActor = (context.CharacterId > 0 && _remoteUserPool.TryGetActor(context.CharacterId, out RemoteUserActor actor))
+                || _remoteUserPool.TryGetActorByName(context.CharacterName, out actor);
+            if (!foundActor
+                || actor == null
+                || !actor.IsVisibleInWorld
+                || !TryResolvePacketOwnedRemoteCharacterSnapshot(actor.CharacterId, out LocalFollowUserSnapshot driver))
+            {
+                return $"{context.CharacterName} is not available in the shared field, so the follow request cannot be issued from the existing follow seam.";
+            }
+
+            StampPacketOwnedUtilityRequestState();
+            if (!_localFollowRuntime.TrySendOutgoingRequest(
+                    localUser,
+                    driver,
+                    currTickCount,
+                    autoRequest: false,
+                    keyInput: false,
+                    out string requestMessage))
+            {
+                return requestMessage;
+            }
+
+            if (!TryMirrorPacketOwnedFollowRequestToOfficialSession(
+                    driver.CharacterId,
+                    autoRequest: false,
+                    keyInput: false,
+                    out string bridgeStatus))
+            {
+                return $"{requestMessage} {bridgeStatus}".Trim();
+            }
+
+            return string.IsNullOrWhiteSpace(bridgeStatus)
+                ? requestMessage
+                : $"{requestMessage} {bridgeStatus}".Trim();
         }
 
         private string HandleCharacterInfoTradingRoomRequest(UserInfoUI.UserInfoActionContext context)
@@ -4369,7 +4481,7 @@ namespace HaCreator.MapSimulator
 
             bool used = inventoryType switch
             {
-                InventoryType.SETUP => TryUseSetupInventoryItem(itemId, currentTime),
+                InventoryType.SETUP => TryUseSetupInventoryItem(itemId, currentTime, slotIndex),
                 InventoryType.USE => TryUseConsumableInventoryItem(itemId, inventoryType, currentTime, slotIndex),
                 InventoryType.CASH => TryUseCashInventoryItem(itemId)
                                       || TryUseConsumableInventoryItem(itemId, inventoryType, currentTime, slotIndex),
@@ -4712,6 +4824,51 @@ namespace HaCreator.MapSimulator
         }
 
 
+
+        private bool TryUseItemAuthoredNpcInteractionInventoryItem(
+            int itemId,
+            InventoryType inventoryType,
+            int currentTime,
+            int? slotIndex = null)
+        {
+            if (itemId <= 0 ||
+                uiWindowManager?.InventoryWindow is not UI.IInventoryRuntime inventoryWindow)
+            {
+                return false;
+            }
+
+            bool hasNpcReference = InventoryItemMetadataResolver.TryResolveNpcReference(itemId, out int npcId)
+                                   && npcId > 0;
+            bool hasScript = InventoryItemMetadataResolver.TryResolveSpecScript(itemId, out _);
+            if (!hasNpcReference && !hasScript)
+            {
+                return false;
+            }
+
+            if (inventoryWindow.GetItemCount(inventoryType, itemId) <= 0)
+            {
+                return false;
+            }
+
+            NpcItem npcPreview = CreateNpcPreview(npcId, includeTooltips: false);
+            if (npcPreview == null)
+            {
+                return false;
+            }
+
+            bool consumeOnUse = !InventoryItemMetadataResolver.IsNotConsumedOnUse(itemId);
+            if (consumeOnUse &&
+                !TryConsumeInventoryUseItem(inventoryWindow, inventoryType, itemId, 1, slotIndex))
+            {
+                return false;
+            }
+
+            OpenNpcInteraction(npcPreview);
+            _fieldRuleRuntime?.RegisterSuccessfulItemUse(
+                ShouldTrackFieldConsumeItemCooldown(inventoryType, default, default),
+                currentTime);
+            return true;
+        }
 
         private void ShowCashShopWindow()
         {
@@ -5657,8 +5814,8 @@ namespace HaCreator.MapSimulator
                 menuWindow.BindEntryAction("BtQuest", () => uiWindowManager?.ShowWindow(MapSimulatorWindowNames.Quest));
                 menuWindow.BindEntryAction("BtCommunity", () => ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialList));
                 menuWindow.BindEntryAction("BtMSN", ShowMessengerWindow);
-                menuWindow.BindEntryAction("BtRank", () => ShowUtilityWindow(MapSimulatorWindowNames.Ranking));
-                menuWindow.BindEntryAction("BtEvent", () => ShowUtilityWindow(MapSimulatorWindowNames.Event));
+                menuWindow.BindEntryAction("BtRank", () => ShowUtilityWindow(MapSimulatorWindowNames.Ranking, "StatusBar2.img/mainBar/Menu/BtRank"));
+                menuWindow.BindEntryAction("BtEvent", () => ShowUtilityWindow(MapSimulatorWindowNames.Event, "StatusBar2.img/mainBar/Menu/BtEvent"));
             }
 
 
@@ -5669,12 +5826,12 @@ namespace HaCreator.MapSimulator
 
                 systemWindow.BindEntryAction("BtChannel", HandleUtilityChannelPopupRequested);
 
-                systemWindow.BindEntryAction("BtKeySetting", () => ShowUtilityWindow(MapSimulatorWindowNames.KeyConfig));
-                systemWindow.BindEntryAction("BtGameOption", () => ShowUtilityOptionWindow(OptionMenuMode.Game));
-                systemWindow.BindEntryAction("BtSystemOption", () => ShowUtilityOptionWindow(OptionMenuMode.System));
-                systemWindow.BindEntryAction("BtGameQuit", ShowUtilityQuitDialog);
-                systemWindow.BindEntryAction("BtJoyPad", () => ShowUtilityOptionWindow(OptionMenuMode.Joypad));
-                systemWindow.BindEntryAction("BtOption", () => ShowUtilityOptionWindow(OptionMenuMode.Extra));
+                systemWindow.BindEntryAction("BtKeySetting", () => ShowUtilityWindow(MapSimulatorWindowNames.KeyConfig, "StatusBar2.img/mainBar/System/BtKeySetting"));
+                systemWindow.BindEntryAction("BtGameOption", () => ShowUtilityOptionWindow(OptionMenuMode.Game, "StatusBar2.img/mainBar/System/BtGameOption"));
+                systemWindow.BindEntryAction("BtSystemOption", () => ShowUtilityOptionWindow(OptionMenuMode.System, "StatusBar2.img/mainBar/System/BtSystemOption"));
+                systemWindow.BindEntryAction("BtGameQuit", () => ShowUtilityQuitDialog("StatusBar2.img/mainBar/System/BtGameQuit"));
+                systemWindow.BindEntryAction("BtJoyPad", () => ShowUtilityOptionWindow(OptionMenuMode.Joypad, "StatusBar2.img/mainBar/System/BtJoyPad"));
+                systemWindow.BindEntryAction("BtOption", () => ShowUtilityOptionWindow(OptionMenuMode.Extra, "StatusBar2.img/mainBar/System/BtOption"));
                 systemWindow.BindEntryCursorHint("BtChannel", GetUtilityChannelPopupCursorHint);
             }
         }
@@ -8167,7 +8324,7 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private bool TryUseSetupInventoryItem(int itemId, int currentTime)
+        private bool TryUseSetupInventoryItem(int itemId, int currentTime, int? slotIndex = null)
         {
             if (itemId <= 0)
             {
@@ -8192,6 +8349,11 @@ namespace HaCreator.MapSimulator
             if (!HasInventoryItem(itemId))
             {
                 return false;
+            }
+
+            if (TryUseItemAuthoredNpcInteractionInventoryItem(itemId, InventoryType.SETUP, currentTime, slotIndex))
+            {
+                return true;
             }
 
             string itemName = ResolvePickupItemName(itemId);
@@ -19751,19 +19913,12 @@ namespace HaCreator.MapSimulator
 
             {
 
-                Pools.DropPickupActorKind.Player => !string.IsNullOrWhiteSpace(recentPickup.ActorName)
+                Pools.DropPickupActorKind.Player => recentPickup.PickerId == (_playerManager?.Player?.Build?.Id ?? 0)
+                    ? ResolveLocalPlayerPickupActorName()
+                    : ResolveRemotePickupActorName(Pools.DropPickupActorKind.Player, recentPickup.PickerId, null),
 
-
-
-                    ? recentPickup.ActorName
-
-
-
-                    : null,
-
-
-
-                Pools.DropPickupActorKind.Pet => ResolvePickupSourceName(recentPickup.PickerId, pickedByPet: true),
+                Pools.DropPickupActorKind.Pet => ResolvePickupSourceName(recentPickup.PickerId, pickedByPet: true)
+                    ?? ResolveRemotePickupActorName(Pools.DropPickupActorKind.Pet, recentPickup.PickerId, null),
 
                 Pools.DropPickupActorKind.Mob => ResolveMobPickupSourceName(recentPickup.PickerId),
 
@@ -21665,11 +21820,11 @@ namespace HaCreator.MapSimulator
             List<string> relationshipLines = new();
             if (state.IsTrader)
             {
-                relationshipLines.Add("Trader");
+                relationshipLines.Add(state.TraderTooltipLabel ?? "Trader");
             }
             if (state.IsMatchParticipant)
             {
-                relationshipLines.Add("Match Cards participant");
+                relationshipLines.Add(state.MatchTooltipLabel ?? "Match Cards participant");
             }
             if (state.IsPartyMember)
             {
@@ -21703,7 +21858,8 @@ namespace HaCreator.MapSimulator
 
             return BuildMinimapTooltipText(
                 state.Name,
-                relationshipLines.Count > 0 ? string.Join(", ", relationshipLines) : "Remote user");
+                relationshipLines.Count > 0 ? string.Join(", ", relationshipLines) : "Remote user",
+                state.RoomDetailTooltipLine);
 
         }
 
@@ -22075,6 +22231,9 @@ namespace HaCreator.MapSimulator
             public int? BattlefieldTeamId { get; set; }
             public bool HasPosition { get; set; }
             public Vector2 Position { get; set; }
+            public string TraderTooltipLabel { get; set; }
+            public string MatchTooltipLabel { get; set; }
+            public string RoomDetailTooltipLine { get; set; }
         }
 
         private void AppendPacketOwnedFieldTrackedUserMarkers(
@@ -22165,12 +22324,20 @@ namespace HaCreator.MapSimulator
             PlayerCharacter player)
 
         {
+            if (!TryGetSocialRoomRuntime(SocialRoomKind.MiniRoom, out SocialRoomRuntime runtime)
+                || runtime == null
+                || runtime.Kind != SocialRoomKind.MiniRoom
+                || !string.Equals(runtime.ModeName, "Match Cards", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
 
             MemoryGameField memoryGame = _specialFieldRuntime?.Minigames.MemoryGame;
             if (memoryGame == null || !memoryGame.IsVisible)
             {
                 return;
             }
+
             string localName = player?.Build?.Name;
             foreach (string participantName in memoryGame.PlayerNames)
 
@@ -22183,6 +22350,12 @@ namespace HaCreator.MapSimulator
                 }
                 MinimapTrackedUserState state = GetOrCreateMinimapTrackedUserState(trackedUsers, participantName);
                 state.IsMatchParticipant = true;
+                ApplyMinimapSocialRoomOccupantTooltip(
+                    state,
+                    SocialRoomKind.MiniRoom,
+                    runtime.Occupants.FirstOrDefault(candidate =>
+                        candidate != null
+                        && string.Equals(candidate.Name, participantName, StringComparison.OrdinalIgnoreCase)));
                 TryAssignTrackedUserPosition(state, participantName);
 
             }
@@ -22206,8 +22379,11 @@ namespace HaCreator.MapSimulator
             PlayerCharacter player)
 
         {
+            if (!TryGetSocialRoomRuntime(kind, out SocialRoomRuntime runtime))
+            {
+                return;
+            }
 
-            SocialRoomRuntime runtime = GetSocialRoomRuntimeIfAvailable(kind);
             if (runtime == null || runtime.GetFieldActorSnapshot(DateTime.UtcNow) == null)
             {
                 return;
@@ -22225,6 +22401,7 @@ namespace HaCreator.MapSimulator
                 }
                 MinimapTrackedUserState state = GetOrCreateMinimapTrackedUserState(trackedUsers, occupant.Name);
                 state.IsTrader = true;
+                ApplyMinimapSocialRoomOccupantTooltip(state, kind, occupant);
                 TryAssignTrackedUserPosition(state, occupant.Name);
             }
         }
@@ -23251,6 +23428,54 @@ namespace HaCreator.MapSimulator
 
             return _mesoAnimFrames[DropPool.GetMoneyIconTypeForAmount(amount)];
 
+        }
+
+        private static void ApplyMinimapSocialRoomOccupantTooltip(
+            MinimapTrackedUserState state,
+            SocialRoomKind kind,
+            SocialRoomOccupant occupant)
+        {
+            if (state == null || occupant == null)
+            {
+                return;
+            }
+
+            switch (kind)
+            {
+                case SocialRoomKind.MiniRoom:
+                    state.MatchTooltipLabel = occupant.Role switch
+                    {
+                        SocialRoomOccupantRole.Owner => "Match Cards host",
+                        SocialRoomOccupantRole.Guest => "Match Cards guest",
+                        SocialRoomOccupantRole.Visitor => "Match Cards visitor",
+                        _ => "Match Cards participant"
+                    };
+                    break;
+                case SocialRoomKind.PersonalShop:
+                    state.TraderTooltipLabel = occupant.Role switch
+                    {
+                        SocialRoomOccupantRole.Owner => "Personal shop owner",
+                        SocialRoomOccupantRole.Buyer => "Personal shop buyer",
+                        SocialRoomOccupantRole.Visitor => "Personal shop visitor",
+                        _ => "Personal shop trader"
+                    };
+                    break;
+                case SocialRoomKind.EntrustedShop:
+                    state.TraderTooltipLabel = occupant.Role switch
+                    {
+                        SocialRoomOccupantRole.Merchant => "Entrusted shop merchant",
+                        SocialRoomOccupantRole.Owner => "Entrusted shop owner",
+                        SocialRoomOccupantRole.Buyer => "Entrusted shop buyer",
+                        SocialRoomOccupantRole.Visitor => "Entrusted shop visitor",
+                        _ => "Entrusted shop trader"
+                    };
+                    break;
+            }
+
+            if (!string.IsNullOrWhiteSpace(occupant.Detail))
+            {
+                state.RoomDetailTooltipLine = occupant.Detail.Trim();
+            }
         }
 
         private void ApplyMesoAnimationsToDropPool()
@@ -25924,6 +26149,8 @@ namespace HaCreator.MapSimulator
                 questAlarmWindow.ConfigurePersistence(_questAlarmStore, () => _playerManager?.Player?.Build);
                 questAlarmWindow.QuestRequested += OpenQuestFromAlarmWindow;
                 questAlarmWindow.QuestLogRequested += OpenQuestLogFromAlarmWindow;
+                questAlarmWindow.QuestDeleted += ResetQuestDetailFromQuestAlarmMutation;
+                questAlarmWindow.TrackerCleared += ResetQuestDetailFromQuestAlarmMutation;
                 questAlarmWindow.StatusMessageRequested += message =>
                 {
                     if (!string.IsNullOrWhiteSpace(message))
@@ -25997,6 +26224,8 @@ namespace HaCreator.MapSimulator
                 radioWindow.SetIndicatorActiveProvider(IsPacketOwnedRadioPlaying);
                 radioWindow.SetIndicatorMutedProvider(() => _utilityBgmMuted);
                 radioWindow.SetClientLeftInsetProvider(ShouldUsePacketOwnedRadioLeftInset);
+                radioWindow.SetIndicatorAnimationStartTickProvider(() =>
+                    _lastPacketOwnedRadioStartTick == int.MinValue ? null : _lastPacketOwnedRadioStartTick);
                 radioWindow.SetTrackNameProvider(GetPacketOwnedRadioTrackName);
                 radioWindow.SetDetailLinesProvider(BuildPacketOwnedRadioWindowLines);
                 radioWindow.SetFooterProvider(BuildPacketOwnedRadioWindowFooter);
@@ -26085,6 +26314,12 @@ namespace HaCreator.MapSimulator
             {
                 SelectQuestInActiveWindow(questId);
             }
+        }
+
+        private void ResetQuestDetailFromQuestAlarmMutation()
+        {
+            _activeQuestDetailQuestId = 0;
+            uiWindowManager?.QuestDetailWindow?.SetDetailState(null, -1, 0);
         }
 
 
@@ -27868,7 +28103,9 @@ namespace HaCreator.MapSimulator
                 renderData.IconTexture = skill?.IconTexture;
                 renderData.RemainingMs = cooldownState.RemainingMs;
                 renderData.DurationMs = cooldownState.DurationMs;
-                renderData.CounterText = cooldownState.SuppressCounterText ? string.Empty : cooldownState.CounterText;
+                SkillManager.TryResolveCooldownMaskVisualState(cooldownState, out int maskFrameIndex, out string counterText);
+                renderData.MaskFrameIndex = maskFrameIndex;
+                renderData.CounterText = counterText;
                 renderData.TooltipStateText = cooldownState.TooltipStateText;
                 renderData.SuppressProgressOverlay = cooldownState.SuppressProgressOverlay;
                 renderData.SuppressCounterText = cooldownState.SuppressCounterText;
@@ -27952,7 +28189,9 @@ namespace HaCreator.MapSimulator
                 renderData.IconTexture = skill?.IconTexture ?? skill?.Icon?.Texture;
                 renderData.RemainingMs = cooldownState.RemainingMs;
                 renderData.DurationMs = cooldownState.DurationMs;
-                renderData.CounterText = cooldownState.SuppressCounterText ? string.Empty : cooldownState.CounterText;
+                SkillManager.TryResolveCooldownMaskVisualState(cooldownState, out int maskFrameIndex, out string counterText);
+                renderData.MaskFrameIndex = maskFrameIndex;
+                renderData.CounterText = counterText;
                 renderData.TooltipStateText = cooldownState.TooltipStateText;
                 renderData.SuppressProgressOverlay = cooldownState.SuppressProgressOverlay;
                 renderData.SuppressCounterText = cooldownState.SuppressCounterText;

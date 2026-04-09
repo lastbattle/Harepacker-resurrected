@@ -54,6 +54,38 @@ namespace HaCreator.MapSimulator
         private sealed record PacketOwnedAntiMacroNoticeDefinition(int StringPoolId, string Text, string AvatarCanvasPath);
         private sealed record PacketOwnedAntiMacroChatDefinition(int StringPoolId, string FormatText, bool SaveScreenshot);
 
+        internal static bool IsPacketOwnedAntiMacroChallengeLaunchMode(int mode)
+        {
+            return mode == PacketOwnedAntiMacroChallengeMode;
+        }
+
+        internal static bool IsPacketOwnedAntiMacroCloseResultMode(int mode)
+        {
+            return mode is PacketOwnedAntiMacroDestroyMode or PacketOwnedAntiMacroResultMode;
+        }
+
+        internal static bool IsPacketOwnedAntiMacroUserBranchMode(int mode)
+        {
+            return mode is PacketOwnedAntiMacroScreenshotReportMode
+                or PacketOwnedAntiMacroUserReportMode
+                or PacketOwnedAntiMacroScreenshotMode
+                or PacketOwnedAntiMacroChatReportMode;
+        }
+
+        internal static bool TryPreparePacketOwnedAntiMacroSubmittedAnswer(string answer, out string submittedAnswer)
+        {
+            if (string.IsNullOrWhiteSpace(answer))
+            {
+                submittedAnswer = string.Empty;
+                return false;
+            }
+
+            // `CUIAntiMacro::SetRet` trims only to reject all-whitespace submissions,
+            // then re-reads the original edit text for opcode 117.
+            submittedAnswer = answer;
+            return true;
+        }
+
         private void RegisterPacketOwnedAntiMacroWindows()
         {
             if (uiWindowManager == null || GraphicsDevice == null)
@@ -249,12 +281,12 @@ namespace HaCreator.MapSimulator
 
         private void HandlePacketOwnedAntiMacroAnswerSubmitted(string answer)
         {
-            if (string.IsNullOrWhiteSpace(answer) || !TryGetActivePacketOwnedAntiMacroWindow(out AntiMacroChallengeWindow window))
+            if (!TryPreparePacketOwnedAntiMacroSubmittedAnswer(answer, out string submittedAnswer)
+                || !TryGetActivePacketOwnedAntiMacroWindow(out AntiMacroChallengeWindow window))
             {
                 return;
             }
 
-            string submittedAnswer = answer.Trim();
             _lastPacketOwnedAntiMacroSubmittedAnswer = submittedAnswer;
             _lastPacketOwnedAntiMacroSubmittedRemainingMs = Math.Max(0, window.ExpiresAt - Environment.TickCount);
             _packetOwnedAntiMacroAwaitingResult = true;
@@ -729,39 +761,33 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedAntiMacroMode = mode;
                 _lastPacketOwnedAntiMacroType = antiMacroType;
 
-                switch (mode)
+                if (IsPacketOwnedAntiMacroChallengeLaunchMode(mode))
                 {
-                    case PacketOwnedAntiMacroChallengeMode:
-                    {
-                        int answerCount = reader.BaseStream.Position < reader.BaseStream.Length
-                            ? reader.ReadByte()
-                            : 0;
-                        byte[] jpegBytes = ReadPacketOwnedAntiMacroCanvasPayload(reader);
-                        message = ApplyPacketOwnedAntiMacroChallenge(antiMacroType, answerCount, jpegBytes);
-                        return true;
-                    }
-
-                    case PacketOwnedAntiMacroDestroyMode:
-                    case PacketOwnedAntiMacroResultMode:
-                        message = ApplyPacketOwnedAntiMacroCloseResult(mode, antiMacroType);
-                        return true;
-
-                    case PacketOwnedAntiMacroScreenshotReportMode:
-                    case PacketOwnedAntiMacroUserReportMode:
-                    case PacketOwnedAntiMacroScreenshotMode:
-                    case PacketOwnedAntiMacroChatReportMode:
-                    {
-                        string userName = reader.BaseStream.Position < reader.BaseStream.Length
-                            ? ReadPacketOwnedMapleString(reader)
-                            : string.Empty;
-                        message = ApplyPacketOwnedAntiMacroUserBranch(mode, antiMacroType, userName);
-                        return true;
-                    }
-
-                    default:
-                        message = ApplyPacketOwnedAntiMacroNotice(mode, antiMacroType);
-                        return true;
+                    int answerCount = reader.BaseStream.Position < reader.BaseStream.Length
+                        ? reader.ReadByte()
+                        : 0;
+                    byte[] jpegBytes = ReadPacketOwnedAntiMacroCanvasPayload(reader);
+                    message = ApplyPacketOwnedAntiMacroChallenge(antiMacroType, answerCount, jpegBytes);
+                    return true;
                 }
+
+                if (IsPacketOwnedAntiMacroCloseResultMode(mode))
+                {
+                    message = ApplyPacketOwnedAntiMacroCloseResult(mode, antiMacroType);
+                    return true;
+                }
+
+                if (IsPacketOwnedAntiMacroUserBranchMode(mode))
+                {
+                    string userName = reader.BaseStream.Position < reader.BaseStream.Length
+                        ? ReadPacketOwnedMapleString(reader)
+                        : string.Empty;
+                    message = ApplyPacketOwnedAntiMacroUserBranch(mode, antiMacroType, userName);
+                    return true;
+                }
+
+                message = ApplyPacketOwnedAntiMacroNotice(mode, antiMacroType);
+                return true;
             }
             catch (Exception ex)
             {
@@ -827,12 +853,12 @@ namespace HaCreator.MapSimulator
                     _lastPacketOwnedAntiMacroMode = resultMode;
                     _lastPacketOwnedAntiMacroType = antiMacroType;
                     string userName = args.Length >= 4 ? string.Join(" ", args, 3, args.Length - 3) : string.Empty;
-                    if (resultMode is PacketOwnedAntiMacroDestroyMode or PacketOwnedAntiMacroResultMode)
+                    if (IsPacketOwnedAntiMacroCloseResultMode(resultMode))
                     {
                         return ChatCommandHandler.CommandResult.Ok(ApplyPacketOwnedAntiMacroCloseResult(resultMode, antiMacroType));
                     }
 
-                    if (resultMode is PacketOwnedAntiMacroScreenshotReportMode or PacketOwnedAntiMacroUserReportMode or PacketOwnedAntiMacroScreenshotMode or PacketOwnedAntiMacroChatReportMode)
+                    if (IsPacketOwnedAntiMacroUserBranchMode(resultMode))
                     {
                         return ChatCommandHandler.CommandResult.Ok(ApplyPacketOwnedAntiMacroUserBranch(resultMode, antiMacroType, userName));
                     }

@@ -229,7 +229,11 @@ namespace HaCreator.MapSimulator
                 int itemCount = BitConverter.ToUInt16(payload, sizeof(int));
                 if (itemCount > 0)
                 {
-                    message = adminShopWindow.BeginPacketOwnedAdminShopSession(npcTemplateId, itemCount);
+                    if (!adminShopWindow.TryBeginPacketOwnedAdminShopSession(payload, out message))
+                    {
+                        return false;
+                    }
+
                     message = ShowPacketOwnedUniqueUtilityWindow(MapSimulatorWindowNames.CashShop, "Admin Shop", message);
                     return true;
                 }

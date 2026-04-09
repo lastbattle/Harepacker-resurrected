@@ -30,7 +30,19 @@ namespace HaCreator.MapSimulator.Interaction
             0x40UL
         };
 
-        private const ulong CharacterDataKnownTailDirectDecodeUnsupportedFlags = 0x3EF00UL;
+        private const ulong CharacterDataKnownTailDirectDecodeUnsupportedFlags = 0x3D700UL;
+        private const int CharacterDataMiniGameRecordByteLength = 0x14;
+        private const int CharacterDataCoupleRecordByteLength = 0x21;
+        private const int CharacterDataFriendRecordByteLength = 0x25;
+        private const int CharacterDataMarriageRecordByteLength = 0x30;
+
+        private enum CharacterDataLeadingTailLayout
+        {
+            None = 0,
+            MiniGameOnly,
+            RelationshipsOnly,
+            MiniGameAndRelationships
+        }
 
         private int _boundMapId = int.MinValue;
         private string _stageStatus = "Packet-owned stage transition idle.";
@@ -1294,8 +1306,59 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             long startPosition = reader.BaseStream.Position;
+            foreach (CharacterDataLeadingTailLayout leadingLayout in Enum.GetValues(typeof(CharacterDataLeadingTailLayout)))
+            {
+                if (TryDecodeKnownCharacterDataTailSectionsWithLeadingLayout(
+                        reader,
+                        characterDataFlags,
+                        snapshot,
+                        leadingLayout,
+                        out decoratedSnapshot))
+                {
+                    return true;
+                }
+
+                if (reader.BaseStream.CanSeek)
+                {
+                    reader.BaseStream.Position = startPosition;
+                }
+            }
+
+            decoratedSnapshot = snapshot;
+            return false;
+        }
+
+        private static bool TryDecodeKnownCharacterDataTailSectionsWithLeadingLayout(
+            BinaryReader reader,
+            ulong characterDataFlags,
+            PacketCharacterDataSnapshot snapshot,
+            CharacterDataLeadingTailLayout leadingLayout,
+            out PacketCharacterDataSnapshot decoratedSnapshot)
+        {
+            decoratedSnapshot = snapshot;
+            long startPosition = reader.BaseStream.Position;
             try
             {
+                if (!TryDecodeCharacterDataLeadingTailSections(
+                        reader,
+                        characterDataFlags,
+                        leadingLayout,
+                        out int miniGameRecordCount,
+                        out int coupleRecordCount,
+                        out int friendRecordCount,
+                        out int marriageRecordCount))
+                {
+                    return false;
+                }
+
+                decoratedSnapshot = decoratedSnapshot with
+                {
+                    MiniGameRecordCount = miniGameRecordCount,
+                    CoupleRecordCount = coupleRecordCount,
+                    FriendRecordCount = friendRecordCount,
+                    MarriageRecordCount = marriageRecordCount
+                };
+
                 if ((characterDataFlags & MapTransferAuthoritativeBootstrapDecoder.CharacterDataMapTransferFlag) != 0)
                 {
                     decoratedSnapshot = decoratedSnapshot with
@@ -1380,6 +1443,68 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        private static bool TryDecodeCharacterDataLeadingTailSections(
+            BinaryReader reader,
+            ulong characterDataFlags,
+            CharacterDataLeadingTailLayout leadingLayout,
+            out int miniGameRecordCount,
+            out int coupleRecordCount,
+            out int friendRecordCount,
+            out int marriageRecordCount)
+        {
+            miniGameRecordCount = 0;
+            coupleRecordCount = 0;
+            friendRecordCount = 0;
+            marriageRecordCount = 0;
+
+            long startPosition = reader.BaseStream.Position;
+            try
+            {
+                if ((characterDataFlags & 0x400UL) != 0 &&
+                    (leadingLayout is CharacterDataLeadingTailLayout.MiniGameOnly or CharacterDataLeadingTailLayout.MiniGameAndRelationships))
+                {
+                    miniGameRecordCount = reader.ReadUInt16();
+                    SkipCharacterDataFixedRecordGroup(reader, miniGameRecordCount, CharacterDataMiniGameRecordByteLength);
+                }
+
+                if ((characterDataFlags & 0x800UL) != 0 &&
+                    (leadingLayout is CharacterDataLeadingTailLayout.RelationshipsOnly or CharacterDataLeadingTailLayout.MiniGameAndRelationships))
+                {
+                    coupleRecordCount = reader.ReadUInt16();
+                    SkipCharacterDataFixedRecordGroup(reader, coupleRecordCount, CharacterDataCoupleRecordByteLength);
+
+                    friendRecordCount = reader.ReadUInt16();
+                    SkipCharacterDataFixedRecordGroup(reader, friendRecordCount, CharacterDataFriendRecordByteLength);
+
+                    marriageRecordCount = reader.ReadUInt16();
+                    SkipCharacterDataFixedRecordGroup(reader, marriageRecordCount, CharacterDataMarriageRecordByteLength);
+                }
+
+                if ((characterDataFlags & 0x400UL) == 0 &&
+                    (leadingLayout is CharacterDataLeadingTailLayout.MiniGameOnly or CharacterDataLeadingTailLayout.MiniGameAndRelationships))
+                {
+                    return false;
+                }
+
+                if ((characterDataFlags & 0x800UL) == 0 &&
+                    (leadingLayout is CharacterDataLeadingTailLayout.RelationshipsOnly or CharacterDataLeadingTailLayout.MiniGameAndRelationships))
+                {
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception) when (reader.BaseStream.CanSeek)
+            {
+                reader.BaseStream.Position = startPosition;
+                miniGameRecordCount = 0;
+                coupleRecordCount = 0;
+                friendRecordCount = 0;
+                marriageRecordCount = 0;
+                return false;
+            }
+        }
+
         private static int[] ReadCharacterDataMapTransferFields(BinaryReader reader, int count)
         {
             int[] fields = new int[count];
@@ -1389,6 +1514,21 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return fields;
+        }
+
+        private static void SkipCharacterDataFixedRecordGroup(BinaryReader reader, int count, int recordByteLength)
+        {
+            if (count <= 0)
+            {
+                return;
+            }
+
+            int totalByteLength = checked(count * recordByteLength);
+            byte[] skippedBytes = reader.ReadBytes(totalByteLength);
+            if (skippedBytes.Length != totalByteLength)
+            {
+                throw new EndOfStreamException("Character-data record group ended before all fixed-size records could be consumed.");
+            }
         }
 
         private static void SkipCharacterDataNewYearCardRecords(BinaryReader reader, int count)
@@ -1678,6 +1818,10 @@ namespace HaCreator.MapSimulator.Interaction
         int? PreInventoryHeaderValue2 = null,
         IReadOnlyList<int> RegularMapTransferFields = null,
         IReadOnlyList<int> ContinentMapTransferFields = null,
+        int MiniGameRecordCount = 0,
+        int CoupleRecordCount = 0,
+        int FriendRecordCount = 0,
+        int MarriageRecordCount = 0,
         int NewYearCardRecordCount = 0,
         int QuestExRecordCount = 0,
         bool HasWildHunterInfo = false,

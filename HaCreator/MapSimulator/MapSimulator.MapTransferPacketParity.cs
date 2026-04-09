@@ -164,7 +164,7 @@ namespace HaCreator.MapSimulator
                     out int matchedOffset,
                     out bool ignoredTrailingLogoutGiftConfig,
                     out bool matchedExactTailBoundary,
-                    out _,
+                    out bool matchedKnownLeadingCharacterDataTail,
                     out bool matchedKnownCharacterDataTail))
             {
                 _lastAuthoritativeMapTransferBootstrapSummary =
@@ -180,11 +180,14 @@ namespace HaCreator.MapSimulator
             string tailBoundarySuffix = matchedExactTailBoundary
                 ? " using the exact payload-tail boundary the client keeps after CharacterData::Decode"
                 : string.Empty;
+            string knownLeadingSuffix = matchedKnownLeadingCharacterDataTail
+                ? " after consuming the client-owned mini-game or relationship lead-in that can sit immediately before adwMapTransfer"
+                : string.Empty;
             string knownTailSuffix = matchedKnownCharacterDataTail
                 ? " matched against a known CharacterData tail layout"
                 : string.Empty;
             _lastAuthoritativeMapTransferBootstrapSummary =
-                $"Hydrated authoritative map-transfer books for {build.Name ?? "Character"} from CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} at payload offset {matchedOffset.ToString(CultureInfo.InvariantCulture)}{logoutGiftSuffix}{tailBoundarySuffix}{knownTailSuffix}.";
+                $"Hydrated authoritative map-transfer books for {build.Name ?? "Character"} from CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} at payload offset {matchedOffset.ToString(CultureInfo.InvariantCulture)}{logoutGiftSuffix}{tailBoundarySuffix}{knownLeadingSuffix}{knownTailSuffix}.";
         }
 
         private bool IsPlausibleAuthoritativeMapTransferMapId(int mapId)

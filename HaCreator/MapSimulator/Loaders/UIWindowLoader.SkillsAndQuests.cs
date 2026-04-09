@@ -2480,6 +2480,19 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadButton(trunkProperty, "BtExit", btClickSound, btOverSound, device),
                 LoadButton(trunkProperty, "BtOutCoin", btClickSound, btOverSound, device),
                 LoadButton(trunkProperty, "BtInCoin", btClickSound, btOverSound, device),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
                 device)
             {
                 Position = new Point(
@@ -2789,7 +2802,8 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadButton(userInfoProperty, "BtTrade", clickSound, overSound, device),
                 LoadButton(userInfoProperty, "BtItem", clickSound, overSound, device),
                 LoadButton(userInfoProperty, "BtWish", clickSound, overSound, device),
-                LoadButton(userInfoProperty, "BtFamily", clickSound, overSound, device));
+                LoadButton(userInfoProperty, "BtFamily", clickSound, overSound, device),
+                LoadButton(uiWindowImage?["ContextMenu"] as WzSubProperty, "BtFollow", clickSound, overSound, device));
             RegisterLegacyUserInfoFrame(window, "Pet", userInfoProperty, "backgrnd2", device);
             RegisterLegacyUserInfoFrame(window, "Ride", userInfoProperty, "backgrnd5", device);
             RegisterLegacyUserInfoFrame(window, "Collection", userInfoProperty, "backgrnd7", device);
@@ -2878,7 +2892,8 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadButton(characterProperty, "BtTrad", clickSound, overSound, device),
                 LoadButton(characterProperty, "BtItem", clickSound, overSound, device),
                 LoadButton(characterProperty, "BtWish", clickSound, overSound, device),
-                LoadButton(characterProperty, "BtFamily", clickSound, overSound, device));
+                LoadButton(characterProperty, "BtFamily", clickSound, overSound, device),
+                LoadButton(uiWindow2Image?["ContextMenu"] as WzSubProperty, "BtFollow", clickSound, overSound, device));
             window.InitializePageButtons(
                 LoadButton(characterProperty, "BtRide", clickSound, overSound, device),
                 LoadButton(characterProperty, "BtPet", clickSound, overSound, device),

@@ -25,11 +25,17 @@ namespace HaCreator.MapSimulator.Managers
             using WaveFileReader reader = new(wavStream);
 
             TimeSpan requestedOffset = TimeSpan.FromMilliseconds(Math.Max(0, startOffsetMs));
-            if (requestedOffset >= reader.TotalTime)
+            if (requestedOffset > reader.TotalTime)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(startOffsetMs),
                     $"Audio offset {startOffsetMs} ms exceeds track duration {reader.TotalTime.TotalMilliseconds:0} ms.");
+            }
+
+            if (requestedOffset == reader.TotalTime)
+            {
+                availableDuration = TimeSpan.Zero;
+                return CreateSilentSoundEffect(reader.WaveFormat);
             }
 
             reader.Position = AlignToBlock(reader.WaveFormat, reader.WaveFormat.AverageBytesPerSecond * requestedOffset.TotalSeconds);
@@ -50,6 +56,18 @@ namespace HaCreator.MapSimulator.Managers
             byte[] trimmedSoundBytes = trimmedWavStream.ToArray();
             using MemoryStream playbackStream = new(trimmedSoundBytes, writable: false);
             return SoundEffect.FromStream(playbackStream);
+        }
+
+        private static SoundEffect CreateSilentSoundEffect(WaveFormat waveFormat)
+        {
+            using MemoryStream silentWavStream = new();
+            using (WaveFileWriter writer = new(silentWavStream, waveFormat))
+            {
+                writer.Write(new byte[Math.Max(1, waveFormat?.BlockAlign ?? 1)], 0, Math.Max(1, waveFormat?.BlockAlign ?? 1));
+            }
+
+            silentWavStream.Position = 0;
+            return SoundEffect.FromStream(silentWavStream);
         }
 
         private static MemoryStream CreateWaveStream(WzBinaryProperty sound)

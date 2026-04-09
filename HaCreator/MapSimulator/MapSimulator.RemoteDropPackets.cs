@@ -47,6 +47,81 @@ namespace HaCreator.MapSimulator
 
         private Vector2? ResolveDropPacketSourcePosition(int sourceId)
         {
+            return ResolveDropPacketSourcePosition(
+                sourceId,
+                _playerManager?.Player?.Build?.Id ?? 0,
+                _playerManager?.Player?.Position,
+                ResolveLocalPetDropPacketSourcePosition,
+                ResolveRemoteUserDropPacketSourcePosition,
+                ResolveMobDropPacketSourcePosition);
+        }
+
+        internal static Vector2? ResolveDropPacketSourcePosition(
+            int sourceId,
+            int localCharacterId,
+            Vector2? localCharacterPosition,
+            Func<int, Vector2?> localPetPositionResolver,
+            Func<int, Vector2?> remoteUserPositionResolver,
+            Func<int, Vector2?> mobPositionResolver)
+        {
+            if (sourceId <= 0)
+            {
+                return null;
+            }
+
+            if (sourceId == localCharacterId && localCharacterPosition.HasValue)
+            {
+                return localCharacterPosition.Value;
+            }
+
+            if (localPetPositionResolver?.Invoke(sourceId) is Vector2 localPetPosition)
+            {
+                return localPetPosition;
+            }
+
+            if (remoteUserPositionResolver?.Invoke(sourceId) is Vector2 remoteUserPosition)
+            {
+                return remoteUserPosition;
+            }
+
+            if (mobPositionResolver?.Invoke(sourceId) is Vector2 mobPosition)
+            {
+                return mobPosition;
+            }
+
+            return null;
+        }
+
+        private Vector2? ResolveLocalPetDropPacketSourcePosition(int sourceId)
+        {
+            if (sourceId <= 0 || _playerManager?.Pets?.ActivePets == null)
+            {
+                return null;
+            }
+
+            foreach (var pet in _playerManager.Pets.ActivePets)
+            {
+                if (pet?.RuntimeId == sourceId)
+                {
+                    return new Vector2(pet.X, pet.Y);
+                }
+            }
+
+            return null;
+        }
+
+        private Vector2? ResolveRemoteUserDropPacketSourcePosition(int sourceId)
+        {
+            if (sourceId <= 0 || _remoteUserPool?.TryGetActor(sourceId, out RemoteUserActor actor) != true || actor == null)
+            {
+                return null;
+            }
+
+            return actor.Position;
+        }
+
+        private Vector2? ResolveMobDropPacketSourcePosition(int sourceId)
+        {
             if (sourceId <= 0)
             {
                 return null;

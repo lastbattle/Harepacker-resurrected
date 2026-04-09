@@ -20,6 +20,9 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsRead { get; init; }
         public bool IsKept { get; init; }
         public bool IsAttachmentClaimed { get; init; }
+        public byte StateFlags { get; init; }
+        public bool HasItemAttachment { get; init; }
+        public bool HasMesoAttachment { get; init; }
         public int AttachmentItemId { get; init; }
         public int AttachmentQuantity { get; init; }
         public int AttachmentMeso { get; init; }
@@ -34,6 +37,17 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal static class PacketOwnedParcelPacketCodec
     {
+        [Flags]
+        private enum ParcelStateFlags : byte
+        {
+            None = 0,
+            Read = 1 << 0,
+            Keep = 1 << 1,
+            Claimed = 1 << 2,
+            HasItem = 1 << 3,
+            HasMeso = 1 << 4
+        }
+
         private const int ParcelFixedBodyLength = 0xEA;
         private const int ParcelSenderOffset = 4;
         private const int ParcelSenderLength = 13;
@@ -124,7 +138,9 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             byte[] parcelBytes = reader.ReadBytes(ParcelFixedBodyLength);
-            bool hasItemAttachment = reader.ReadByte() != 0;
+            ParcelStateFlags stateFlags = (ParcelStateFlags)reader.ReadByte();
+            bool hasItemAttachment = (stateFlags & ParcelStateFlags.HasItem) != 0;
+            bool hasMesoAttachment = (stateFlags & ParcelStateFlags.HasMeso) != 0;
 
             int itemId = 0;
             int quantity = 0;
@@ -142,7 +158,7 @@ namespace HaCreator.MapSimulator.Interaction
             string sender = ReadFixedAscii(parcelBytes, ParcelSenderOffset, ParcelSenderLength);
             string memoText = ExtractMemoText(parcelBytes, sender);
             int serial = BinaryPrimitives.ReadInt32LittleEndian(parcelBytes.AsSpan(0, sizeof(int)));
-            int attachmentMeso = parcelBytes.Length >= ParcelMesoOffset + sizeof(int)
+            int attachmentMeso = hasMesoAttachment && parcelBytes.Length >= ParcelMesoOffset + sizeof(int)
                 ? Math.Max(0, BinaryPrimitives.ReadInt32LittleEndian(parcelBytes.AsSpan(ParcelMesoOffset, sizeof(int))))
                 : 0;
             DateTimeOffset? expirationTimestampUtc = TryDecodeExpirationTimestamp(parcelBytes);
@@ -155,9 +171,12 @@ namespace HaCreator.MapSimulator.Interaction
                 MemoText = memoText,
                 IsQuickDelivery = isQuickDelivery,
                 ExpirationTimestampUtc = expirationTimestampUtc,
-                IsRead = false,
-                IsKept = false,
-                IsAttachmentClaimed = false,
+                IsRead = (stateFlags & ParcelStateFlags.Read) != 0,
+                IsKept = (stateFlags & ParcelStateFlags.Keep) != 0,
+                IsAttachmentClaimed = (stateFlags & ParcelStateFlags.Claimed) != 0,
+                StateFlags = (byte)stateFlags,
+                HasItemAttachment = hasItemAttachment,
+                HasMesoAttachment = hasMesoAttachment,
                 AttachmentItemId = Math.Max(0, itemId),
                 AttachmentQuantity = Math.Max(0, quantity),
                 AttachmentMeso = attachmentMeso,

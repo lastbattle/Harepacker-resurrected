@@ -1847,6 +1847,8 @@ namespace HaCreator.MapSimulator.Loaders
             return maxHeight;
         }
 
+        internal readonly record struct CollapsedMinimapTitleChromeMetrics(int LaneTop, int LaneHeight, int LeftInset);
+
         internal static int ResolveCollapsedMinimapButtonReserveWidthForTesting(
             int minimizeButtonWidth,
             int maximizeButtonWidth,
@@ -1920,6 +1922,33 @@ namespace HaCreator.MapSimulator.Loaders
             return Math.Min(maxLaneHeight, desiredLaneHeight);
         }
 
+        internal static CollapsedMinimapTitleChromeMetrics ResolveCollapsedMinimapTitleChromeMetricsForTesting(
+            System.Drawing.Bitmap leftCap,
+            System.Drawing.Bitmap rightCap,
+            int barHeight,
+            int fallbackLaneTop,
+            int fallbackButtonHeight,
+            int fallbackLeftInset)
+        {
+            int resolvedLaneTop = Math.Max(0, fallbackLaneTop);
+            int resolvedLaneHeight = ResolveCollapsedMinimapTitleLaneHeightForTesting(
+                barHeight,
+                resolvedLaneTop,
+                fallbackButtonHeight);
+            if (TryResolveCollapsedMinimapOpaqueLane(leftCap, rightCap, out int opaqueLaneTop, out int opaqueLaneHeight))
+            {
+                resolvedLaneTop = opaqueLaneTop;
+                resolvedLaneHeight = opaqueLaneHeight;
+            }
+
+            int resolvedLeftInset = ResolveCollapsedMinimapTitleLeftInsetForTesting(
+                leftCap,
+                resolvedLaneTop,
+                resolvedLaneHeight,
+                fallbackLeftInset);
+            return new CollapsedMinimapTitleChromeMetrics(resolvedLaneTop, resolvedLaneHeight, resolvedLeftInset);
+        }
+
         internal static int ResolveCollapsedMinimapVerticalContentOffsetForTesting(
             int contentHeight,
             int laneTop,
@@ -1934,6 +1963,46 @@ namespace HaCreator.MapSimulator.Loaders
             return Math.Min(Math.Max(0, centeredOffset), Math.Max(0, clampedContentHeight - clampedElementHeight));
         }
 
+        internal static int ResolveCollapsedMinimapTitleLeftInsetForTesting(
+            System.Drawing.Bitmap leftCap,
+            int laneTop,
+            int laneHeight,
+            int fallbackInset)
+        {
+            if (!TryGetBitmapDimensions(leftCap, out int width, out int height))
+            {
+                return Math.Max(0, fallbackInset);
+            }
+
+            int scanRow = Math.Clamp(
+                Math.Max(0, laneTop) + Math.Max(0, (Math.Max(1, laneHeight) - 1) / 2),
+                0,
+                Math.Max(0, height - 1));
+            const int minimumRunLength = 4;
+            for (int x = 0; x < width; x++)
+            {
+                System.Drawing.Color pixel = leftCap.GetPixel(x, scanRow);
+                if (!IsCollapsedMinimapInteriorPixel(pixel))
+                {
+                    continue;
+                }
+
+                int runLength = 1;
+                while (x + runLength < width
+                    && IsCollapsedMinimapInteriorPixel(leftCap.GetPixel(x + runLength, scanRow)))
+                {
+                    runLength++;
+                }
+
+                if (runLength >= minimumRunLength)
+                {
+                    return x;
+                }
+            }
+
+            return Math.Max(0, fallbackInset);
+        }
+
         private static System.Drawing.Bitmap RenderCollapsedMinimapTitleContent(
             System.Drawing.Bitmap mapMark,
             string title,
@@ -1943,13 +2012,12 @@ namespace HaCreator.MapSimulator.Loaders
             int reserveWidth,
             int barHeight,
             int titleLaneTop,
-            int titleLaneHeight)
+            int titleLaneHeight,
+            int leftInset,
+            int iconGap,
+            int textLeftPadding,
+            int textRightPadding)
         {
-            const int leftInset = 4;
-            const int iconGap = 2;
-            const int textLeftPadding = 2;
-            const int textRightPadding = 2;
-
             string renderTitle = string.IsNullOrWhiteSpace(title) ? string.Empty : title;
             int iconWidth = mapMark?.Width ?? 0;
             int iconHeight = mapMark?.Height ?? 0;
@@ -2019,6 +2087,75 @@ namespace HaCreator.MapSimulator.Loaders
             graphics.Clip = previousClip;
 
             return contentBitmap;
+        }
+
+        private static bool TryResolveCollapsedMinimapOpaqueLane(
+            System.Drawing.Bitmap leftCap,
+            System.Drawing.Bitmap rightCap,
+            out int laneTop,
+            out int laneHeight)
+        {
+            laneTop = 0;
+            laneHeight = 0;
+            if (!TryGetBitmapDimensions(leftCap, out int leftWidth, out int leftHeight) ||
+                !TryGetBitmapDimensions(rightCap, out int rightWidth, out int rightHeight) ||
+                leftWidth <= 0 ||
+                rightWidth <= 0)
+            {
+                return false;
+            }
+
+            int scanHeight = Math.Min(leftHeight, rightHeight);
+            int firstOpaqueRow = -1;
+            int lastOpaqueRow = -1;
+            for (int y = 0; y < scanHeight; y++)
+            {
+                if (!IsCollapsedMinimapRowFullyOpaque(leftCap, leftWidth, y) ||
+                    !IsCollapsedMinimapRowFullyOpaque(rightCap, rightWidth, y))
+                {
+                    continue;
+                }
+
+                if (firstOpaqueRow < 0)
+                {
+                    firstOpaqueRow = y;
+                }
+
+                lastOpaqueRow = y;
+            }
+
+            if (firstOpaqueRow < 0 || lastOpaqueRow < firstOpaqueRow)
+            {
+                return false;
+            }
+
+            laneTop = firstOpaqueRow;
+            laneHeight = Math.Max(1, (lastOpaqueRow - firstOpaqueRow) + 1);
+            return true;
+        }
+
+        private static bool IsCollapsedMinimapRowFullyOpaque(System.Drawing.Bitmap bitmap, int width, int y)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                if (bitmap.GetPixel(x, y).A < 180)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsCollapsedMinimapInteriorPixel(System.Drawing.Color color)
+        {
+            if (color.A < 150)
+            {
+                return false;
+            }
+
+            int brightness = (color.R + color.G + color.B) / 3;
+            return brightness <= 40;
         }
 
         private static bool TryFindEmbeddedBitmapOffset(
@@ -2306,6 +2443,15 @@ namespace HaCreator.MapSimulator.Loaders
                 buttonHeight: Math.Max(
                     ResolveUiButtonSnapshotHeight(collapsedMaximizeButtonProperty),
                     ResolveUiButtonSnapshotHeight(collapsedMapButtonProperty)));
+            CollapsedMinimapTitleChromeMetrics collapsedTitleChromeMetrics = ResolveCollapsedMinimapTitleChromeMetricsForTesting(
+                collapsedBarLeft,
+                collapsedBarRight,
+                collapsedBarHeight,
+                fallbackLaneTop: 4,
+                fallbackButtonHeight: Math.Max(
+                    ResolveUiButtonSnapshotHeight(collapsedMaximizeButtonProperty),
+                    ResolveUiButtonSnapshotHeight(collapsedMapButtonProperty)),
+                fallbackLeftInset: 4);
             int collapsedTitleMaxBarWidth = Math.Max(1, fullMiniMapStackPanel.GetSize().Width);
             System.Drawing.Bitmap collapsedTitleContent = RenderCollapsedMinimapTitleContent(
                 mapMark,
@@ -2315,8 +2461,12 @@ namespace HaCreator.MapSimulator.Loaders
                 collapsedTitleMaxBarWidth,
                 collapsedButtonReserveWidth,
                 collapsedBarHeight,
-                titleLaneTop: 4,
-                collapsedTitleLaneHeight);
+                collapsedTitleChromeMetrics.LaneTop,
+                collapsedTitleChromeMetrics.LaneHeight,
+                collapsedTitleChromeMetrics.LeftInset,
+                iconGap: 2,
+                textLeftPadding: 2,
+                textRightPadding: 2);
             HaUIStackPanel collapsedMiniMapStackPanel = new HaUIStackPanel(HaUIStackOrientation.Vertical);
             collapsedMiniMapStackPanel.AddRenderable(new HaUIImage(new HaUIInfo()
             {

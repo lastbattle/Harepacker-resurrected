@@ -74,7 +74,9 @@ namespace HaCreator.MapSimulator.Entities
         private readonly Dictionary<int, bool> _stateRepeatModes;
         private readonly Dictionary<int, AuthoredStateTransition[]> _stateTransitions;
         private readonly int[] _availableStates;
+        private readonly int _rootHitDuration;
         private readonly int _templateLayerMode;
+        private readonly bool _templateMoveEnabled;
         private readonly int _originWorldX;
         private readonly int _originWorldY;
         private int _activeState;
@@ -99,7 +101,9 @@ namespace HaCreator.MapSimulator.Entities
             _stateRepeatModes = new Dictionary<int, bool>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
             _availableStates = Array.Empty<int>();
+            _rootHitDuration = 0;
             _templateLayerMode = 0;
+            _templateMoveEnabled = false;
             _originWorldX = reactorInstance?.X ?? 0;
             _originWorldY = reactorInstance?.Y ?? 0;
         }
@@ -113,7 +117,9 @@ namespace HaCreator.MapSimulator.Entities
             _stateIndexedHitDurations = LoadStateIndexedHitDurations(reactorInstance);
             _stateRepeatModes = LoadStateRepeatModes(reactorInstance);
             _stateTransitions = LoadStateTransitions(reactorInstance);
+            _rootHitDuration = LoadRootHitDuration(reactorInstance);
             _templateLayerMode = LoadTemplateLayerMode(reactorInstance);
+            _templateMoveEnabled = LoadTemplateMoveEnabled(reactorInstance);
             _originWorldX = reactorInstance?.X ?? 0;
             _originWorldY = reactorInstance?.Y ?? 0;
 
@@ -142,7 +148,9 @@ namespace HaCreator.MapSimulator.Entities
             _stateRepeatModes = new Dictionary<int, bool>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
             _availableStates = Array.Empty<int>();
+            _rootHitDuration = 0;
             _templateLayerMode = 0;
+            _templateMoveEnabled = false;
             _originWorldX = reactorInstance?.X ?? 0;
             _originWorldY = reactorInstance?.Y ?? 0;
         }
@@ -150,6 +158,8 @@ namespace HaCreator.MapSimulator.Entities
         public int RenderSortKey { get; set; }
 
         public int TemplateLayerMode => _templateLayerMode;
+
+        public bool TemplateMoveEnabled => _templateMoveEnabled;
 
         public void SetAnimationState(int state, int tickCount, bool restartIfSameState = false)
         {
@@ -383,9 +393,54 @@ namespace HaCreator.MapSimulator.Entities
         public bool TryGetHitAnimationDuration(int state, int properEventIndex, out int duration)
         {
             int resolvedState = ResolveState(state);
-            if (properEventIndex >= 0
-                && _stateIndexedHitDurations.TryGetValue((resolvedState, properEventIndex), out duration))
+            if (properEventIndex < 0)
             {
+                duration = GetStateDuration(resolvedState);
+                if (duration > 0)
+                {
+                    return true;
+                }
+
+                if (_rootHitDuration > 0)
+                {
+                    duration = _rootHitDuration;
+                    return true;
+                }
+
+                if (_stateHitDurations.TryGetValue(resolvedState, out duration))
+                {
+                    return true;
+                }
+
+                duration = 0;
+                return false;
+            }
+
+            if (HasAuthoredEventIndex(resolvedState, properEventIndex))
+            {
+                if (_stateIndexedHitDurations.TryGetValue((resolvedState, properEventIndex), out duration))
+                {
+                    return true;
+                }
+
+                if (_stateHitDurations.TryGetValue(resolvedState, out duration))
+                {
+                    return true;
+                }
+
+                if (_rootHitDuration > 0)
+                {
+                    duration = _rootHitDuration;
+                    return true;
+                }
+
+                duration = 0;
+                return false;
+            }
+
+            if (_rootHitDuration > 0)
+            {
+                duration = _rootHitDuration;
                 return true;
             }
 
@@ -417,6 +472,14 @@ namespace HaCreator.MapSimulator.Entities
 
             eventIndex = transitions[0].Order;
             return true;
+        }
+
+        internal bool HasAuthoredEventIndex(int currentState, int properEventIndex)
+        {
+            int resolvedState = ResolveState(currentState);
+            return properEventIndex >= 0
+                && _stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
+                && properEventIndex < transitions.Length;
         }
 
         public Rectangle GetCurrentBounds(int tickCount)
@@ -777,6 +840,17 @@ namespace HaCreator.MapSimulator.Entities
             return hitDurations;
         }
 
+        private static int LoadRootHitDuration(ReactorInstance reactorInstance)
+        {
+            WzImage linkedImage = reactorInstance?.ReactorInfo?.LinkedWzImage;
+            if (linkedImage == null)
+            {
+                return 0;
+            }
+
+            return TryReadHitDuration(WzInfoTools.GetRealProperty(linkedImage["hit"]));
+        }
+
         private static Dictionary<(int State, int ProperEventIndex), int> LoadStateIndexedHitDurations(ReactorInstance reactorInstance)
         {
             var hitDurations = new Dictionary<(int State, int ProperEventIndex), int>();
@@ -888,6 +962,17 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return TryReadOptionalInt(WzInfoTools.GetRealProperty(linkedImage["info"])?["layer"]) ?? 0;
+        }
+
+        private static bool LoadTemplateMoveEnabled(ReactorInstance reactorInstance)
+        {
+            WzImage linkedImage = reactorInstance?.ReactorInfo?.LinkedWzImage;
+            if (linkedImage == null)
+            {
+                return false;
+            }
+
+            return (TryReadOptionalInt(WzInfoTools.GetRealProperty(linkedImage["info"])?["move"]) ?? 0) != 0;
         }
 
         private static AuthoredStateTransition? TryCreateTransition(WzSubProperty eventNode, int order)

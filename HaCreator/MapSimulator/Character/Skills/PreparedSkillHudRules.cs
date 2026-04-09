@@ -85,7 +85,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 2321001 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
                 3121004 => new PreparedSkillHudProfile(true, "KeyDownBar", 2000),
                 3221001 => new PreparedSkillHudProfile(true, "KeyDownBar", 900),
-                4341003 => new PreparedSkillHudProfile(true, "KeyDownBar", 1200),
+                4341003 => new PreparedSkillHudProfile(true, "KeyDownBar1", 1200),
                 // Release-owned branches such as Monkey Wave should use the caller's
                 // authored charge window when available, so the profile itself stays open.
                 MonkeyWaveSkillId => new PreparedSkillHudProfile(true, "KeyDownBar", 0),

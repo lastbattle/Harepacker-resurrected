@@ -39,7 +39,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             35101004,
             35101009,
             35111004,
+            35121003,
             35121005,
+            35121009,
+            35121010,
             35121013
         };
 

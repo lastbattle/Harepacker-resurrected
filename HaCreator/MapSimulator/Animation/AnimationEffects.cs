@@ -20,6 +20,15 @@ namespace HaCreator.MapSimulator.Animation
     /// </summary>
     public class AnimationEffects
     {
+        internal sealed class FollowAnimationOptions
+        {
+            public IReadOnlyList<Vector2> GenerationPoints { get; init; }
+            public int ThetaDegrees { get; init; }
+            public float Radius { get; init; }
+            public bool RandomizeStartupAngle { get; init; }
+            public int UpdateIntervalMs { get; init; }
+        }
+
         private readonly List<OneTimeAnimation> _oneTimeAnimations = new();
         private readonly List<RepeatAnimation> _repeatAnimations = new();
         private readonly List<ChainLightning> _chainLightnings = new();
@@ -227,10 +236,22 @@ namespace HaCreator.MapSimulator.Animation
         public int AddFollow(List<IDXObject> frames, Func<Vector2> getTargetPosition,
             float offsetX, float offsetY, int durationMs, int currentTimeMs)
         {
+            return AddFollow(frames, getTargetPosition, offsetX, offsetY, durationMs, currentTimeMs, options: null);
+        }
+
+        internal int AddFollow(
+            List<IDXObject> frames,
+            Func<Vector2> getTargetPosition,
+            float offsetX,
+            float offsetY,
+            int durationMs,
+            int currentTimeMs,
+            FollowAnimationOptions options)
+        {
             if (frames == null || frames.Count == 0) return -1;
 
             FollowAnimation anim = new FollowAnimation();
-            anim.Initialize(frames, getTargetPosition, offsetX, offsetY, durationMs, currentTimeMs);
+            anim.Initialize(frames, getTargetPosition, offsetX, offsetY, durationMs, currentTimeMs, options, _random);
             _followAnimations.Add(anim);
             return anim.Id;
         }
@@ -561,6 +582,42 @@ namespace HaCreator.MapSimulator.Animation
         public void ClearAreaAnimations()
         {
             _areaAnimations.Clear();
+        }
+
+        internal static Vector2 ResolveFollowGenerationPointOffset(
+            IReadOnlyList<Vector2> generationPoints,
+            int generationPointIndex,
+            float radius,
+            int currentAngleDegrees,
+            out int nextGenerationPointIndex,
+            out int nextAngleDegrees)
+        {
+            if (generationPoints != null && generationPoints.Count > 0)
+            {
+                int resolvedIndex = Math.Max(0, generationPointIndex) % generationPoints.Count;
+                nextGenerationPointIndex = (resolvedIndex + 1) % generationPoints.Count;
+                nextAngleDegrees = NormalizeFollowAngleDegrees(currentAngleDegrees);
+                return generationPoints[resolvedIndex];
+            }
+
+            int normalizedAngle = NormalizeFollowAngleDegrees(currentAngleDegrees);
+            nextGenerationPointIndex = 0;
+            nextAngleDegrees = normalizedAngle;
+            return ResolvePolarFollowOffset(radius, normalizedAngle);
+        }
+
+        internal static Vector2 ResolvePolarFollowOffset(float radius, int angleDegrees)
+        {
+            float radians = MathHelper.ToRadians(NormalizeFollowAngleDegrees(angleDegrees));
+            return new Vector2(
+                (float)Math.Cos(radians) * radius,
+                (float)Math.Sin(radians) * radius);
+        }
+
+        internal static int NormalizeFollowAngleDegrees(int angleDegrees)
+        {
+            int normalized = angleDegrees % 360;
+            return normalized < 0 ? normalized + 360 : normalized;
         }
 
         public int UserStateCount => _userStateAnimations.Count;
@@ -921,11 +978,19 @@ namespace HaCreator.MapSimulator.Animation
         private int _duration;
         private int _currentFrame;
         private int _lastFrameTime;
+        private int _lastFollowUpdateTime;
+        private IReadOnlyList<Vector2> _generationPoints;
+        private int _currentGenerationPointIndex;
+        private int _currentAngleDegrees;
+        private int _thetaDegrees;
+        private int _updateIntervalMs;
+        private float _radius;
+        private Vector2 _followOffset;
 
         public int Id { get; private set; }
 
         public void Initialize(List<IDXObject> frames, Func<Vector2> getTargetPosition,
-            float offsetX, float offsetY, int durationMs, int currentTimeMs)
+            float offsetX, float offsetY, int durationMs, int currentTimeMs, AnimationEffects.FollowAnimationOptions options, Random random)
         {
             Id = _nextId++;
             _frames = frames;
@@ -936,6 +1001,22 @@ namespace HaCreator.MapSimulator.Animation
             _duration = durationMs;
             _currentFrame = 0;
             _lastFrameTime = currentTimeMs;
+            _lastFollowUpdateTime = currentTimeMs;
+            _generationPoints = options?.GenerationPoints ?? Array.Empty<Vector2>();
+            _currentGenerationPointIndex = 0;
+            _thetaDegrees = options?.ThetaDegrees ?? 0;
+            _updateIntervalMs = Math.Max(1, options?.UpdateIntervalMs ?? 100);
+            _radius = Math.Max(0f, options?.Radius ?? 0f);
+            _currentAngleDegrees = options?.RandomizeStartupAngle == true
+                ? random?.Next(0, 360) ?? 0
+                : 0;
+            _followOffset = AnimationEffects.ResolveFollowGenerationPointOffset(
+                _generationPoints,
+                _currentGenerationPointIndex,
+                _radius,
+                _currentAngleDegrees,
+                out _currentGenerationPointIndex,
+                out _currentAngleDegrees);
         }
 
         public bool Update(int currentTimeMs)
@@ -952,6 +1033,23 @@ namespace HaCreator.MapSimulator.Animation
                 _lastFrameTime = currentTimeMs;
             }
 
+            if (currentTimeMs - _lastFollowUpdateTime >= _updateIntervalMs)
+            {
+                _followOffset = AnimationEffects.ResolveFollowGenerationPointOffset(
+                    _generationPoints,
+                    _currentGenerationPointIndex,
+                    _radius,
+                    _currentAngleDegrees,
+                    out _currentGenerationPointIndex,
+                    out _currentAngleDegrees);
+                if ((_generationPoints == null || _generationPoints.Count == 0) && _thetaDegrees != 0)
+                {
+                    _currentAngleDegrees = AnimationEffects.NormalizeFollowAngleDegrees(_currentAngleDegrees + _thetaDegrees);
+                }
+
+                _lastFollowUpdateTime = currentTimeMs;
+            }
+
             return true;
         }
 
@@ -961,8 +1059,8 @@ namespace HaCreator.MapSimulator.Animation
             IDXObject frame = _frames[_currentFrame];
 
             // Use the object's built-in DrawObject method
-            float drawX = targetPos.X + _offsetX;
-            float drawY = targetPos.Y + _offsetY;
+            float drawX = targetPos.X + _offsetX + _followOffset.X;
+            float drawY = targetPos.Y + _offsetY + _followOffset.Y;
             int drawShiftX = -(int)drawX - mapShiftX;
             int drawShiftY = -(int)drawY - mapShiftY;
 

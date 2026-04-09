@@ -7,6 +7,10 @@ namespace HaCreator.MapSimulator.UI
     internal static class StatusBarChatLayoutRules
     {
         internal const int ClientChatLogTextLeftInset = 9;
+        internal const int ClientWhisperPickerModalComboLeft = 21;
+        internal const int ClientWhisperPickerModalComboWidth = 222;
+        internal const int ClientWhisperPickerModalComboBottomOffset = 63;
+        internal const int ClientWhisperPickerModalListGap = 6;
         private const int ChatWrapIndentSpaces = 5;
         private const int ChatSpecialFirstLineWidthReduction = 38;
         private const int WhisperPickerModalContentPadding = 16;
@@ -99,28 +103,73 @@ namespace HaCreator.MapSimulator.UI
                 Math.Max(1, bottom - top));
         }
 
+        public static Rectangle ResolveWhisperPickerModalComboBounds(
+            Rectangle modalBounds,
+            int comboHeight)
+        {
+            int resolvedHeight = Math.Max(18, comboHeight);
+            return new Rectangle(
+                modalBounds.X + ClientWhisperPickerModalComboLeft,
+                modalBounds.Bottom - ClientWhisperPickerModalComboBottomOffset,
+                Math.Min(ClientWhisperPickerModalComboWidth, Math.Max(1, modalBounds.Width - ClientWhisperPickerModalComboLeft - WhisperPickerModalContentPadding)),
+                resolvedHeight);
+        }
+
         public static Rectangle ResolveWhisperPickerModalListBounds(
             Rectangle modalBounds,
-            int listTop,
+            Rectangle comboBounds,
             int rowHeight,
             int visibleRowCount,
             int minimumRowWidth,
-            float maxMeasuredTextWidth,
-            int authoredDividerWidth = 0)
+            float maxMeasuredTextWidth)
         {
             int safeRowHeight = Math.Max(1, rowHeight);
             int safeVisibleRowCount = Math.Max(1, visibleRowCount);
             int measuredWidth = Math.Max(
-                Math.Max(1, minimumRowWidth),
+                Math.Max(Math.Max(1, minimumRowWidth), comboBounds.Width),
                 (int)Math.Ceiling(Math.Max(0f, maxMeasuredTextWidth)) + 14);
-            int preferredWidth = authoredDividerWidth > 0
-                ? Math.Max(authoredDividerWidth, measuredWidth)
-                : measuredWidth;
-            int maximumWidth = Math.Max(1, modalBounds.Width - (WhisperPickerModalContentPadding * 2));
-            int resolvedWidth = Math.Clamp(preferredWidth, Math.Max(1, minimumRowWidth), maximumWidth);
-            int listX = modalBounds.X + Math.Max(0, (modalBounds.Width - resolvedWidth) / 2);
-            int listHeight = safeRowHeight * (safeVisibleRowCount + 1);
-            return new Rectangle(listX, listTop, resolvedWidth, listHeight);
+            int maximumWidth = Math.Max(comboBounds.Width, modalBounds.Width - (WhisperPickerModalContentPadding * 2));
+            int resolvedWidth = Math.Clamp(measuredWidth, comboBounds.Width, maximumWidth);
+            int listHeight = safeRowHeight * safeVisibleRowCount;
+            int listX = comboBounds.X;
+            int listY = comboBounds.Y - ClientWhisperPickerModalListGap - listHeight;
+            if (listY < modalBounds.Y + WhisperPickerModalContentPadding)
+            {
+                listY = modalBounds.Y + WhisperPickerModalContentPadding;
+            }
+
+            return new Rectangle(listX, listY, resolvedWidth, listHeight);
+        }
+
+        public static Rectangle ResolveWhisperPickerModalListBounds(
+            Rectangle modalBounds,
+            int contentY,
+            int rowHeight,
+            int visibleRowCount,
+            int minimumRowWidth,
+            float maxMeasuredTextWidth,
+            int dividerWidth)
+        {
+            int comboHeight = Math.Max(18, Math.Max(1, rowHeight));
+            Rectangle comboBounds = ResolveWhisperPickerModalComboBounds(modalBounds, comboHeight);
+
+            if (dividerWidth > 0)
+            {
+                int centeredLeft = modalBounds.X + Math.Max(0, (modalBounds.Width - dividerWidth) / 2);
+                comboBounds = new Rectangle(
+                    Math.Max(comboBounds.X, centeredLeft),
+                    Math.Max(contentY, comboBounds.Y),
+                    comboBounds.Width,
+                    comboBounds.Height);
+            }
+
+            return ResolveWhisperPickerModalListBounds(
+                modalBounds,
+                comboBounds,
+                rowHeight,
+                visibleRowCount,
+                minimumRowWidth,
+                maxMeasuredTextWidth);
         }
 
         private static int ResolveLongestFittingPrefixLength(

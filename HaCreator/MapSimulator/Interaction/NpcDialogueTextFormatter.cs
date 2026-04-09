@@ -14,6 +14,7 @@ namespace HaCreator.MapSimulator.Interaction
         public Func<int, string> ResolveQuestStateText { get; init; }
         public Func<string> ResolveJobNameText { get; init; }
         public Func<string> ResolveCurrentMapNameText { get; init; }
+        public Func<int, string> ResolveQuestRecordText { get; init; }
     }
 
     internal static class NpcDialogueTextFormatter
@@ -34,6 +35,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex SelectedMobRegex = new(@"#M(\d+):?#", RegexOptions.Compiled);
         private static readonly Regex QuestAmountRegex = new(@"#a(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestValueRegex = new(@"#x(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex QuestRecordRegex = new(@"#R(\d+):?#", RegexOptions.Compiled);
         private static readonly Regex ItemNameAliasRegex = new(@"#z(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ItemIconRegex = new(@"#(?:i|v)\d+:?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex RewardCategoryRegex = new(@"#W[^#\s]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -72,6 +74,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = SelectedMobRegex.Replace(formatted, static match => ResolveSelectedMobText(match.Groups[1].Value));
             formatted = QuestAmountRegex.Replace(formatted, static match => ResolveQuestAmountText(match.Groups[1].Value));
             formatted = QuestValueRegex.Replace(formatted, static match => ResolveQuestValueText(match.Groups[1].Value));
+            formatted = QuestRecordRegex.Replace(formatted, match => ResolveQuestRecordText(match.Groups[1].Value, context));
             formatted = StyleTagRegex.Replace(formatted, string.Empty);
             formatted = ClientPromptTagRegex.Replace(formatted, string.Empty);
             formatted = PluralSuffixRegex.Replace(formatted, "s");
@@ -517,6 +520,22 @@ namespace HaCreator.MapSimulator.Interaction
             return HasSelectedMobFlag(questIdText)
                 ? "the selected bonus amount"
                 : ResolveQuestAmountText(questIdText);
+        }
+
+        private static string ResolveQuestRecordText(string questIdText, NpcDialogueFormattingContext context)
+        {
+            if (context?.ResolveQuestRecordText != null &&
+                int.TryParse(questIdText, out int questId) &&
+                questId > 0)
+            {
+                string resolvedText = context.ResolveQuestRecordText(questId);
+                if (!string.IsNullOrWhiteSpace(resolvedText))
+                {
+                    return resolvedText;
+                }
+            }
+
+            return "0";
         }
 
         private static bool HasSelectedMobFlag(string questIdText)

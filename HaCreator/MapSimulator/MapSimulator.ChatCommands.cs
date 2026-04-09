@@ -3084,7 +3084,16 @@ namespace HaCreator.MapSimulator
                             };
 
                             string summary = args.Length > 4 ? string.Join(' ', args.Skip(4)) : null;
-                            return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.ResolvePacketOwnedRequest(resolveTab, approved, summary));
+                            bool hadSocialPendingRequest = _socialListRuntime.HasPendingPacketOwnedRequest(resolveTab);
+                            string resolveMessage = _socialListRuntime.ResolvePacketOwnedRequest(resolveTab, approved, summary);
+                            if (resolveTab == SocialListTab.Guild
+                                && !hadSocialPendingRequest
+                                && _guildSkillRuntime.HasPendingPacketRequest)
+                            {
+                                resolveMessage = _guildSkillRuntime.ResolvePendingPacketRequest(approved, summary) ?? resolveMessage;
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(resolveMessage);
                         }
 
                         if (string.Equals(packetAction, "upsert", StringComparison.OrdinalIgnoreCase))
@@ -8192,13 +8201,8 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localoverlay",
                 "Inspect or drive packet-authored local overlays, damage-meter timing, and field-hazard notices",
-                "/localoverlay [status|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [force] [buffskill] [message]|hazardclear|packet <fade|balloon|damagemeter|hpdec> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon|damagemeter|hpdec> <hex>]",
+                "/localoverlay [status|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [force] [buffskill] [message]|hazardclear]",
                 HandlePacketOwnedLocalOverlayCommand);
-            _chat.CommandHandler.RegisterCommand(
-                "localoverlaypacket",
-                "Inspect or inject packet-owned field fade and balloon payloads directly",
-                "/localoverlaypacket [status|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]",
-                HandlePacketOwnedLocalOverlayPacketAliasCommand);
             _chat.CommandHandler.RegisterCommand(
                 "combopacket",
                 "Inspect or drive packet-owned combo counter and combo-command HUD parity",

@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.UI.Controls;
 using HaSharedLibrary.Render;
@@ -269,10 +270,10 @@ namespace HaCreator.MapSimulator.UI
                 _statsFont);
 
             // Draw primary stats (STR, DEX, INT, LUK)
-            DrawStatRow(sprite, windowX, windowY, strY, _characterBuild.TotalSTR.ToString());
-            DrawStatRow(sprite, windowX, windowY, dexY, _characterBuild.TotalDEX.ToString());
-            DrawStatRow(sprite, windowX, windowY, intY, _characterBuild.TotalINT.ToString());
-            DrawStatRow(sprite, windowX, windowY, lukY, _characterBuild.TotalLUK.ToString());
+            DrawStatRow(sprite, windowX, windowY, strY, AbilityStatWindowClientText.FormatPrimaryStatValue(_characterBuild.TotalSTR, _characterBuild.STR));
+            DrawStatRow(sprite, windowX, windowY, dexY, AbilityStatWindowClientText.FormatPrimaryStatValue(_characterBuild.TotalDEX, _characterBuild.DEX));
+            DrawStatRow(sprite, windowX, windowY, intY, AbilityStatWindowClientText.FormatPrimaryStatValue(_characterBuild.TotalINT, _characterBuild.INT));
+            DrawStatRow(sprite, windowX, windowY, lukY, AbilityStatWindowClientText.FormatPrimaryStatValue(_characterBuild.TotalLUK, _characterBuild.LUK));
 
             // If in detail mode, draw detail background and extended stats
             if (_isDetailMode && _detailBackground != null)

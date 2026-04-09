@@ -561,40 +561,10 @@ namespace HaCreator.MapSimulator.UI
 
         private bool TryGetCooldownVisualState(int skillId, int currentTime, out int frameIndex, out string remainingText)
         {
-            frameIndex = 15;
+            frameIndex = 0;
             remainingText = string.Empty;
-
-            if (_skillManager == null
-                || !_skillManager.TryGetCooldownUiState(skillId, currentTime, out var cooldownState)
-                || !cooldownState.DisplayInCooldownUi)
-            {
-                return false;
-            }
-
-            int remainingMs = Math.Max(0, cooldownState.RemainingMs);
-            if (remainingMs <= 0)
-            {
-                return false;
-            }
-
-            int totalMs = Math.Max(0, cooldownState.DurationMs);
-            if (totalMs <= 0)
-            {
-                return false;
-            }
-
-            // The client advances the quick-slot CoolTime masks in 15 stepped states (0..14)
-            // and uses frame 15 as the cleared surface when nothing is cooling down.
-            int totalSeconds = Math.Max(1, (int)Math.Ceiling(totalMs / 1000f));
-            int remainingSeconds = Math.Max(0, (int)Math.Ceiling(remainingMs / 1000f));
-            int elapsedSeconds = Math.Clamp(totalSeconds - remainingSeconds, 0, totalSeconds);
-            frameIndex = Math.Clamp((14 * elapsedSeconds) / totalSeconds, 0, 14);
-            remainingText = cooldownState.SuppressCounterText
-                ? string.Empty
-                : string.IsNullOrWhiteSpace(cooldownState.CounterText)
-                    ? Math.Max(1, (int)Math.Ceiling(remainingMs / 1000f)).ToString()
-                    : cooldownState.CounterText;
-            return true;
+            return _skillManager != null
+                && _skillManager.TryGetCooldownMaskVisualState(skillId, currentTime, out frameIndex, out remainingText);
         }
 
         private void DrawHoveredItemTooltip(SpriteBatch sprite, int renderWidth, int renderHeight, int absoluteSlotIndex)

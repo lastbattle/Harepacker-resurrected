@@ -25,6 +25,12 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class GuildSkillRuntime
     {
+        internal enum GuildSkillPendingRequestKind
+        {
+            LevelUp,
+            Renew
+        }
+
         private const int DefaultAvailablePoints = 2;
         private const int DefaultGuildFundMeso = 25000000;
         private const int DefaultLocalGuildLevel = 12;
@@ -53,6 +59,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _hasManagementAuthority = true;
         private GuildSkillPermissionLevel _permissionLevel = GuildSkillPermissionLevel.Master;
         private string _activeGuildStateKey = "Maple GM";
+        private GuildSkillPendingRequest _pendingRequest;
 
         internal static bool HasGuildMembership(CharacterBuild build)
         {
@@ -70,6 +77,11 @@ namespace HaCreator.MapSimulator.Interaction
             bool inGuild = context.HasGuildMembership;
             string newGuildStateKey = inGuild ? NormalizeGuildStateKey(context.GuildName) : string.Empty;
             bool changedGuildIdentity = !string.Equals(_activeGuildStateKey, newGuildStateKey, StringComparison.OrdinalIgnoreCase);
+            if ((!inGuild || changedGuildIdentity) && _pendingRequest != null)
+            {
+                _pendingRequest = null;
+            }
+
             if (changedGuildIdentity && !string.IsNullOrWhiteSpace(_activeGuildStateKey))
             {
                 SaveCurrentGuildState(_activeGuildStateKey);
@@ -154,6 +166,10 @@ namespace HaCreator.MapSimulator.Interaction
             SkillDisplayData selectedSkill = GetSelectedSkill();
             int selectedRequiredGuildLevel = GetRequiredGuildLevel(selectedSkill, selectedSkill?.CurrentLevel + 1 ?? 1);
             int selectedRemainingMinutes = GetRemainingDurationMinutes(selectedSkill);
+            bool hasPendingRequest = _pendingRequest != null;
+            string pendingActionLabel = hasPendingRequest
+                ? _pendingRequest.ActionLabel
+                : string.Empty;
 
             return new GuildSkillSnapshot
             {
@@ -167,9 +183,11 @@ namespace HaCreator.MapSimulator.Interaction
                 GuildPoints = _guildPoints,
                 SelectedIndex = _selectedIndex,
                 RecommendedSkillId = _recommendedSkillId,
+                PendingActionLabel = pendingActionLabel,
+                HasPendingRequest = hasPendingRequest,
                 CanRenew = CanRenew(selectedSkill),
                 CanLevelUpSelected = CanManageSkills() && CanLevelUp(selectedSkill),
-                SummaryLines = BuildSummaryLines(selectedSkill, selectedRequiredGuildLevel, selectedRemainingMinutes),
+                SummaryLines = BuildSummaryLines(selectedSkill, selectedRequiredGuildLevel, selectedRemainingMinutes, pendingActionLabel),
                 Entries = _skills.Select(skill => new GuildSkillEntrySnapshot
                 {
                     InGuild = _isInGuild,
@@ -192,6 +210,7 @@ namespace HaCreator.MapSimulator.Interaction
                     IconTexture = skill.IconTexture,
                     DisabledIconTexture = skill.IconDisabledTexture,
                     IsRecommended = _isInGuild && skill.SkillId == _recommendedSkillId,
+                    PendingActionLabel = _pendingRequest?.SkillId == skill.SkillId ? _pendingRequest.ActionLabel : string.Empty,
                     CanManageSkills = CanManageSkills(),
                     CanLevelUp = CanLevelUp(skill),
                     CanRenew = CanRenew(skill)
@@ -218,7 +237,9 @@ namespace HaCreator.MapSimulator.Interaction
             _selectedIndex = index;
         }
 
-        internal string TryRenewSelectedSkill()
+        internal bool HasPendingPacketRequest => _pendingRequest != null;
+
+        internal string TryRenewSelectedSkill(bool packetOwned)
         {
             if (!_isInGuild)
             {
@@ -253,24 +274,64 @@ namespace HaCreator.MapSimulator.Interaction
                 return BuildInsufficientGuildFundMessage("renew", selectedSkill.SkillName, renewalCost);
             }
 
-            DateTimeOffset now = DateTimeOffset.UtcNow;
-            DateTimeOffset baseTime = now;
-            if (_activeGuildSkillExpirations.TryGetValue(selectedSkill.SkillId, out DateTimeOffset expiration) &&
-                expiration > now)
+            if (packetOwned)
             {
-                baseTime = expiration;
+                return StagePendingRequest(
+                    GuildSkillPendingRequestKind.Renew,
+                    selectedSkill,
+                    renewalCost,
+                    durationMinutes,
+                    targetLevel: selectedSkill.CurrentLevel);
             }
 
-            DateTimeOffset renewedExpiration = baseTime.AddMinutes(durationMinutes);
-            _activeGuildSkillExpirations[selectedSkill.SkillId] = renewedExpiration;
-            _guildFundMeso = Math.Max(0, _guildFundMeso - renewalCost);
-            SaveCurrentGuildState(_activeGuildStateKey);
-
-            int remainingMinutes = Math.Max(1, (int)Math.Ceiling((renewedExpiration - now).TotalMinutes));
-            return $"{selectedSkill.SkillName} renewed for {FormatDuration(durationMinutes)} (cost {FormatMeso(renewalCost)}). Remaining: {FormatDuration(remainingMinutes)}. Guild fund: {FormatMeso(_guildFundMeso)}.";
+            return ApplyRenewSelectedSkill(selectedSkill, renewalCost, durationMinutes);
         }
 
-        internal string TryLevelSelectedSkill()
+        internal string ResolvePendingPacketRequest(bool approved, string summary = null)
+        {
+            if (_pendingRequest == null)
+            {
+                return null;
+            }
+
+            GuildSkillPendingRequest pendingRequest = _pendingRequest;
+            _pendingRequest = null;
+
+            if (!approved)
+            {
+                return string.IsNullOrWhiteSpace(summary)
+                    ? $"{pendingRequest.ActionLabel} for {pendingRequest.SkillName} was rejected. Guild fund remains {FormatMeso(_guildFundMeso)}."
+                    : summary.Trim();
+            }
+
+            if (!_isInGuild || !string.Equals(_activeGuildStateKey, pendingRequest.GuildStateKey, StringComparison.OrdinalIgnoreCase))
+            {
+                return string.IsNullOrWhiteSpace(summary)
+                    ? $"Packet approval for {pendingRequest.ActionLabel.ToLowerInvariant()} on {pendingRequest.SkillName} arrived after the active guild context changed, so the request was discarded."
+                    : summary.Trim();
+            }
+
+            SkillDisplayData selectedSkill = _skills.FirstOrDefault(skill => skill?.SkillId == pendingRequest.SkillId);
+            if (selectedSkill == null)
+            {
+                return string.IsNullOrWhiteSpace(summary)
+                    ? $"Packet approval for {pendingRequest.ActionLabel.ToLowerInvariant()} on skill {pendingRequest.SkillId} could not be applied because that skill is no longer loaded."
+                    : summary.Trim();
+            }
+
+            string result = pendingRequest.Kind switch
+            {
+                GuildSkillPendingRequestKind.Renew => ApplyRenewSelectedSkill(selectedSkill, pendingRequest.Cost, pendingRequest.DurationMinutes),
+                GuildSkillPendingRequestKind.LevelUp => ApplyLevelUpSelectedSkill(selectedSkill, pendingRequest.Cost),
+                _ => $"Unsupported pending guild skill request for {selectedSkill.SkillName}."
+            };
+
+            return string.IsNullOrWhiteSpace(summary)
+                ? result
+                : $"{summary.Trim()} {result}";
+        }
+
+        internal string TryLevelSelectedSkill(bool packetOwned)
         {
             if (!_isInGuild)
             {
@@ -311,6 +372,64 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int levelUpCost = ResolveLevelUpCost(selectedSkill);
+            if (packetOwned)
+            {
+                return StagePendingRequest(
+                    GuildSkillPendingRequestKind.LevelUp,
+                    selectedSkill,
+                    levelUpCost,
+                    durationMinutes: 0,
+                    targetLevel: selectedSkill.CurrentLevel + 1);
+            }
+
+            return ApplyLevelUpSelectedSkill(selectedSkill, levelUpCost);
+        }
+
+        private string StagePendingRequest(
+            GuildSkillPendingRequestKind kind,
+            SkillDisplayData selectedSkill,
+            int cost,
+            int durationMinutes,
+            int targetLevel)
+        {
+            if (_pendingRequest != null)
+            {
+                return $"{_pendingRequest.ActionLabel} for {_pendingRequest.SkillName} is already awaiting packet-owned guild approval.";
+            }
+
+            _pendingRequest = new GuildSkillPendingRequest(
+                kind,
+                _activeGuildStateKey,
+                selectedSkill.SkillId,
+                selectedSkill.SkillName,
+                cost,
+                durationMinutes,
+                targetLevel);
+
+            return $"{_pendingRequest.ActionLabel} for {selectedSkill.SkillName} is now pending packet-owned guild approval.";
+        }
+
+        private string ApplyRenewSelectedSkill(SkillDisplayData selectedSkill, int renewalCost, int durationMinutes)
+        {
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            DateTimeOffset baseTime = now;
+            if (_activeGuildSkillExpirations.TryGetValue(selectedSkill.SkillId, out DateTimeOffset expiration) &&
+                expiration > now)
+            {
+                baseTime = expiration;
+            }
+
+            DateTimeOffset renewedExpiration = baseTime.AddMinutes(durationMinutes);
+            _activeGuildSkillExpirations[selectedSkill.SkillId] = renewedExpiration;
+            _guildFundMeso = Math.Max(0, _guildFundMeso - renewalCost);
+            SaveCurrentGuildState(_activeGuildStateKey);
+
+            int remainingMinutes = Math.Max(1, (int)Math.Ceiling((renewedExpiration - now).TotalMinutes));
+            return $"{selectedSkill.SkillName} renewed for {FormatDuration(durationMinutes)} (cost {FormatMeso(renewalCost)}). Remaining: {FormatDuration(remainingMinutes)}. Guild fund: {FormatMeso(_guildFundMeso)}.";
+        }
+
+        private string ApplyLevelUpSelectedSkill(SkillDisplayData selectedSkill, int levelUpCost)
+        {
             selectedSkill.CurrentLevel++;
             if (selectedSkill.CurrentLevel == 1)
             {
@@ -332,7 +451,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanLevelUp(SkillDisplayData skill)
         {
-            if (!_isInGuild || skill == null || _availablePoints <= 0 || skill.CurrentLevel >= skill.MaxLevel)
+            if (_pendingRequest != null || !_isInGuild || skill == null || _availablePoints <= 0 || skill.CurrentLevel >= skill.MaxLevel)
             {
                 return false;
             }
@@ -343,7 +462,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanRenew(SkillDisplayData skill)
         {
-            if (!CanManageSkills() || skill == null || skill.CurrentLevel <= 0)
+            if (_pendingRequest != null || !CanManageSkills() || skill == null || skill.CurrentLevel <= 0)
             {
                 return false;
             }
@@ -388,14 +507,22 @@ namespace HaCreator.MapSimulator.Interaction
             _recommendedSkillId = nextRecommended.SkillId;
         }
 
-        private string[] BuildSummaryLines(SkillDisplayData selectedSkill, int selectedRequiredGuildLevel, int selectedRemainingMinutes)
+        private string[] BuildSummaryLines(
+            SkillDisplayData selectedSkill,
+            int selectedRequiredGuildLevel,
+            int selectedRemainingMinutes,
+            string pendingActionLabel)
         {
             if (selectedSkill == null)
             {
                 return new[]
                 {
                     _isInGuild ? $"Guild: {_guildName}" : "Current: Join a guild to use guild skills.",
-                    _isInGuild ? $"Role: {_guildRoleLabel}  |  Guild Lv. {_guildLevel}" : "Next: Guild skills unlock with real guild membership.",
+                    _isInGuild
+                        ? string.IsNullOrWhiteSpace(pendingActionLabel)
+                            ? $"Role: {_guildRoleLabel}  |  Guild Lv. {_guildLevel}"
+                            : $"Pending: {pendingActionLabel} approval  |  Guild Lv. {_guildLevel}"
+                        : "Next: Guild skills unlock with real guild membership.",
                     _isInGuild
                         ? $"SP: {_availablePoints}  |  GP: {FormatCompactGuildPoints(_guildPoints)}  |  Fund: {FormatCompactMeso(_guildFundMeso)}"
                         : "State: No guild"
@@ -507,6 +634,13 @@ namespace HaCreator.MapSimulator.Interaction
             if (remainingMinutes > 0)
             {
                 parts.Add($"Remain {FormatDuration(remainingMinutes)}");
+            }
+
+            if (_pendingRequest != null && !string.IsNullOrWhiteSpace(_pendingRequest.ActionLabel))
+            {
+                parts.Add(_pendingRequest.SkillId == selectedSkill.SkillId
+                    ? $"Pending {_pendingRequest.ActionLabel}"
+                    : $"Pending {_pendingRequest.ActionLabel} for {_pendingRequest.SkillName}");
             }
 
             string stateLabel = ResolveStateLabel(_isInGuild, CanManageSkills(), selectedSkill.CurrentLevel, durationMinutes, remainingMinutes);
@@ -782,6 +916,36 @@ namespace HaCreator.MapSimulator.Interaction
         }
     }
 
+    internal sealed class GuildSkillPendingRequest
+    {
+        internal GuildSkillPendingRequest(
+            GuildSkillRuntime.GuildSkillPendingRequestKind kind,
+            string guildStateKey,
+            int skillId,
+            string skillName,
+            int cost,
+            int durationMinutes,
+            int targetLevel)
+        {
+            Kind = kind;
+            GuildStateKey = guildStateKey ?? string.Empty;
+            SkillId = skillId;
+            SkillName = skillName ?? string.Empty;
+            Cost = Math.Max(0, cost);
+            DurationMinutes = Math.Max(0, durationMinutes);
+            TargetLevel = Math.Max(0, targetLevel);
+        }
+
+        internal GuildSkillRuntime.GuildSkillPendingRequestKind Kind { get; }
+        internal string GuildStateKey { get; }
+        internal int SkillId { get; }
+        internal string SkillName { get; }
+        internal int Cost { get; }
+        internal int DurationMinutes { get; }
+        internal int TargetLevel { get; }
+        internal string ActionLabel => Kind == GuildSkillRuntime.GuildSkillPendingRequestKind.LevelUp ? "Level-up" : "Renewal";
+    }
+
     internal sealed class GuildSkillSavedState
     {
         internal GuildSkillSavedState(
@@ -817,6 +981,8 @@ namespace HaCreator.MapSimulator.Interaction
         public int GuildPoints { get; init; }
         public int SelectedIndex { get; init; } = -1;
         public int RecommendedSkillId { get; init; }
+        public string PendingActionLabel { get; init; } = string.Empty;
+        public bool HasPendingRequest { get; init; }
         public bool CanRenew { get; init; }
         public bool CanLevelUpSelected { get; init; }
         public IReadOnlyList<string> SummaryLines { get; init; } = Array.Empty<string>();
@@ -845,6 +1011,7 @@ namespace HaCreator.MapSimulator.Interaction
         public Microsoft.Xna.Framework.Graphics.Texture2D IconTexture { get; init; }
         public Microsoft.Xna.Framework.Graphics.Texture2D DisabledIconTexture { get; init; }
         public bool IsRecommended { get; init; }
+        public string PendingActionLabel { get; init; } = string.Empty;
         public bool CanManageSkills { get; init; }
         public bool CanLevelUp { get; init; }
         public bool CanRenew { get; init; }

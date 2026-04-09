@@ -176,6 +176,7 @@ namespace HaCreator.MapSimulator.UI
         private bool _packetOwnedHasAuthoritativeDisassemblyTargets;
         private bool _packetOwnedHasAuthoritativeHiddenRecipeList;
         private bool _packetOwnedServerOwnsCraftExecution;
+        private PacketOwnedItemMakerPendingRequest _pendingPacketOwnedRequest;
         private string _pendingPacketOwnedRecipeKey;
         private int _pendingPacketOwnedRecipeOutputItemId;
         private int _pendingPacketOwnedDisassemblySlotIndex = -1;
@@ -217,7 +218,8 @@ namespace HaCreator.MapSimulator.UI
                 message = "Item Maker result is unavailable.";
                 return false;
             }
-            message = BuildPacketOwnedResultStatusMessage(packetResult);
+            PacketOwnedItemMakerInventoryReconciliationResult reconciliation = ApplyPacketOwnedInventoryResult(packetResult);
+            message = BuildPacketOwnedResultStatusMessage(packetResult, reconciliation);
 
             if (TryCreatePacketOwnedCraftResult(packetResult, out ItemMakerCraftResult craftResult))
             {
@@ -1766,17 +1768,33 @@ namespace HaCreator.MapSimulator.UI
 
             if (recipe.Mode == ItemMakerRecipeMode.Disassemble)
             {
+                _pendingPacketOwnedRequest = new PacketOwnedItemMakerPendingRequest
+                {
+                    IsDisassembly = true,
+                    SourceSlotIndex = recipe.SourceSlotIndex,
+                    SourceItemId = recipe.OutputItemId
+                };
                 _pendingPacketOwnedDisassemblySlotIndex = recipe.SourceSlotIndex;
                 _pendingPacketOwnedDisassemblyItemId = recipe.OutputItemId;
                 return;
             }
 
+            _pendingPacketOwnedRequest = new PacketOwnedItemMakerPendingRequest
+            {
+                IsDisassembly = false,
+                MesoCost = recipe.MesoCost,
+                CatalystItemId = recipe.CatalystItemId,
+                Materials = recipe.Materials
+                    .Select(material => new PacketOwnedItemMakerMaterialCost(material.InventoryType, material.ItemId, material.Quantity))
+                    .ToArray()
+            };
             _pendingPacketOwnedRecipeKey = recipe.RecipeKey ?? string.Empty;
             _pendingPacketOwnedRecipeOutputItemId = recipe.OutputItemId;
         }
 
         private void ClearPendingPacketOwnedRequest()
         {
+            _pendingPacketOwnedRequest = null;
             _pendingPacketOwnedRecipeKey = string.Empty;
             _pendingPacketOwnedRecipeOutputItemId = 0;
             _pendingPacketOwnedDisassemblySlotIndex = -1;
@@ -1833,27 +1851,68 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
-        private string BuildPacketOwnedResultStatusMessage(PacketOwnedItemMakerResult packetResult)
+        private PacketOwnedItemMakerInventoryReconciliationResult ApplyPacketOwnedInventoryResult(PacketOwnedItemMakerResult packetResult)
+        {
+            return PacketOwnedItemMakerInventoryRuntime.Apply(_inventory, _pendingPacketOwnedRequest, packetResult);
+        }
+
+        private string BuildPacketOwnedResultStatusMessage(
+            PacketOwnedItemMakerResult packetResult,
+            PacketOwnedItemMakerInventoryReconciliationResult reconciliation)
         {
             if (packetResult == null)
             {
                 return "Item Maker result is unavailable.";
             }
 
-            if (packetResult.ResultCode <= 1)
+            string statusMessage = packetResult.ResultCode <= 1
+                ? BuildSuccessfulPacketOwnedStatusMessage(packetResult)
+                : PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult);
+
+            if (reconciliation.Applied
+                && (reconciliation.FailedConsumptionCount > 0 || reconciliation.FailedGrantCount > 0))
             {
-                return PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult);
+                statusMessage += string.Format(
+                    CultureInfo.InvariantCulture,
+                    " Local reconciliation missed {0} consumption(s) and {1} grant(s).",
+                    reconciliation.FailedConsumptionCount,
+                    reconciliation.FailedGrantCount);
             }
 
+            return statusMessage;
+        }
+
+        private string BuildSuccessfulPacketOwnedStatusMessage(PacketOwnedItemMakerResult packetResult)
+        {
             if (_pendingPacketOwnedDisassemblySlotIndex >= 0)
             {
+                return BuildPacketOwnedDisassemblyStatusMessage(packetResult);
+            }
+
+            return PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult);
+        }
+
+        private string BuildPacketOwnedDisassemblyStatusMessage(PacketOwnedItemMakerResult packetResult)
+        {
+            if (packetResult == null)
+            {
+                return "Item Maker result is unavailable.";
+            }
+
+            string sourceItemName = _pendingPacketOwnedDisassemblyItemId > 0
+                ? GetItemName(_pendingPacketOwnedDisassemblyItemId)
+                : "the selected equipment";
+            IReadOnlyList<(int ItemId, int Quantity)> grantedItems = PacketOwnedItemMakerInventoryRuntime.EnumerateGrantedItems(packetResult);
+            if (grantedItems.Count <= 0)
+            {
                 return PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult);
             }
 
-            ItemMakerRecipe pendingRecipe = ResolvePendingPacketOwnedCraftRecipe();
-            InventoryType outputInventoryType = pendingRecipe?.OutputInventoryType ?? InventoryType.NONE;
-            bool usesMonsterCrystalCategory = pendingRecipe?.CategoryKey == MonsterCrystalCategoryKey;
-            return PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult);
+            string rewardSummary = string.Join(
+                ", ",
+                grantedItems.Select(static entry =>
+                    string.Format(CultureInfo.InvariantCulture, "{0} x{1}", GetItemName(entry.ItemId), Math.Max(1, entry.Quantity))));
+            return $"Disassembled {sourceItemName} and produced {rewardSummary}.";
         }
 
         private void DrawSelector(SpriteBatch sprite, Rectangle rect, string label, bool expanded)

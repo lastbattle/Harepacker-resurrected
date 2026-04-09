@@ -223,6 +223,9 @@ namespace HaCreator.MapSimulator.Pools
         private static readonly IReadOnlyDictionary<int, RemoteMechanicModePresentation> RemoteMechanicModePresentationBySkillId =
             new Dictionary<int, RemoteMechanicModePresentation>
             {
+                [35001001] = new("tank_stand", "tank_walk", "tank", "tank_prone"),
+                [35101004] = new("tank_stand", "tank_walk", "tank", "tank_prone"),
+                [35101009] = new("tank_stand", "tank_walk", "tank", "tank_prone"),
                 [35121005] = new("tank_stand", "tank_walk", "tank", "tank_prone"),
                 [35111004] = new("siege_stand", "siege_stand", "siege", "siege_stand"),
                 [35121013] = new("tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand")
@@ -450,6 +453,8 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            ClearTemplateOnlyProfileState(build);
+
             if (!string.IsNullOrWhiteSpace(name))
             {
                 build.Name = name.Trim();
@@ -464,6 +469,33 @@ namespace HaCreator.MapSimulator.Pools
                 actionName,
                 sourceTag,
                 isVisibleInWorld);
+        }
+
+        private static void ClearTemplateOnlyProfileState(CharacterBuild build)
+        {
+            if (build == null)
+            {
+                return;
+            }
+
+            // AvatarLook packets do not author these profile-window fields. Clear them so
+            // remote inspect does not inherit unrelated local-player metadata from the
+            // loader template used for visual decode fallbacks.
+            build.ActivePortableChair = null;
+            build.GuildName = string.Empty;
+            build.AllianceName = string.Empty;
+            build.Fame = 0;
+            build.WorldRank = 0;
+            build.JobRank = 0;
+            build.HasMonsterRiding = false;
+            build.HasPendantSlotExtension = false;
+            build.HasPocketSlot = false;
+            build.TraitCharisma = 0;
+            build.TraitInsight = 0;
+            build.TraitWill = 0;
+            build.TraitCraft = 0;
+            build.TraitSense = 0;
+            build.TraitCharm = 0;
         }
 
         public bool TryMove(int characterId, Vector2 position, bool? facingRight, string actionName, out string message)
@@ -5567,52 +5599,7 @@ namespace HaCreator.MapSimulator.Pools
             IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
             PlayerState state)
         {
-            if (actionAnimations == null || actionAnimations.Count == 0)
-            {
-                return null;
-            }
-
-            foreach (string candidate in EnumerateRemoteShadowPartnerCreateCandidates(state))
-            {
-                if (actionAnimations.ContainsKey(candidate))
-                {
-                    return candidate;
-                }
-            }
-
-            return null;
-        }
-
-        private static IEnumerable<string> EnumerateRemoteShadowPartnerCreateCandidates(PlayerState state)
-        {
-            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            bool airborne = state is PlayerState.Jumping or PlayerState.Falling or PlayerState.Swimming or PlayerState.Flying;
-            bool stationary = state is PlayerState.Standing or PlayerState.Walking or PlayerState.Sitting or PlayerState.Prone;
-
-            foreach (string candidate in new[] { "create2", "create3", "create4" })
-            {
-                string stateVariant = airborne
-                    ? candidate + "_f"
-                    : stationary
-                        ? candidate + "_s"
-                        : null;
-
-                if (!string.IsNullOrWhiteSpace(stateVariant) && yielded.Add(stateVariant))
-                {
-                    yield return stateVariant;
-                }
-
-                if (yielded.Add(candidate))
-                {
-                    yield return candidate;
-                }
-
-                string alternateVariant = airborne ? candidate + "_s" : candidate + "_f";
-                if (yielded.Add(alternateVariant))
-                {
-                    yield return alternateVariant;
-                }
-            }
+            return ShadowPartnerClientActionResolver.ResolveCreateActionName(actionAnimations, state);
         }
 
         private static string ResolveRemoteShadowPartnerFallbackAction(string observedPlayerActionName, PlayerState state)
@@ -6021,15 +6008,24 @@ namespace HaCreator.MapSimulator.Pools
             bool activeAction = state.FadeStartTime < 0
                 && string.Equals(actor.ActionName, state.ActionName, StringComparison.OrdinalIgnoreCase);
             int frameIndex = state.LastFrameIndex;
+            SkillFrame frame = state.LastResolvedFrame;
             float alpha = 1f;
 
             if (activeAction)
             {
                 int animationTime = Math.Max(0, currentTime - state.AnimationStartTime);
-                frameIndex = actor.Assembler.GetFrameIndexAtTime(state.ActionName, animationTime);
-                if (frameIndex >= 0)
+                if (actor.Assembler.TryGetFrameTimingAtTime(state.ActionName, animationTime, out int resolvedFrameIndex, out int frameElapsedMs))
                 {
+                    frameIndex = resolvedFrameIndex;
                     state.LastFrameIndex = frameIndex;
+                    frame = MeleeAfterimagePlaybackResolver.ResolveFrame(
+                        state.AfterImageAction,
+                        frameIndex,
+                        frameElapsedMs);
+                    if (frame != null)
+                    {
+                        state.LastResolvedFrame = frame;
+                    }
                 }
             }
             else if (state.FadeStartTime >= 0)
@@ -6044,28 +6040,18 @@ namespace HaCreator.MapSimulator.Pools
                 alpha = 1f - (fadeElapsed / (float)Math.Max(1, state.FadeDuration));
             }
 
-            if (frameIndex < 0
-                || !state.AfterImageAction.FrameSets.TryGetValue(frameIndex, out MeleeAfterImageFrameSet frameSet)
-                || frameSet?.Frames == null)
+            if (frame?.Texture == null)
             {
                 return;
             }
 
             Color tint = Color.White * MathHelper.Clamp(alpha, 0f, 1f);
-            foreach (SkillFrame frame in frameSet.Frames)
-            {
-                if (frame?.Texture == null)
-                {
-                    continue;
-                }
-
-                bool shouldFlip = state.FacingRight ^ frame.Flip;
-                int drawX = shouldFlip
-                    ? screenX - (frame.Texture.Width - frame.Origin.X)
-                    : screenX - frame.Origin.X;
-                int drawY = screenY - frame.Origin.Y;
-                frame.Texture.DrawBackground(spriteBatch, skeletonMeshRenderer, null, drawX, drawY, tint, shouldFlip, null);
-            }
+            bool shouldFlip = state.FacingRight ^ frame.Flip;
+            int drawX = shouldFlip
+                ? screenX - (frame.Texture.Width - frame.Origin.X)
+                : screenX - frame.Origin.X;
+            int drawY = screenY - frame.Origin.Y;
+            frame.Texture.DrawBackground(spriteBatch, skeletonMeshRenderer, null, drawX, drawY, tint, shouldFlip, null);
         }
 
         private void ApplyMovementSnapshot(RemoteUserActor actor, int currentTime)
@@ -6496,6 +6482,7 @@ namespace HaCreator.MapSimulator.Pools
             public int FadeDuration { get; init; }
             public int FadeStartTime { get; set; } = -1;
             public int LastFrameIndex { get; set; } = -1;
+            public SkillFrame LastResolvedFrame { get; set; }
     }
 
     public sealed class RemotePreparedSkillState

@@ -33,6 +33,13 @@ namespace HaCreator.MapSimulator.UI
         private const int RowQuantityRightPadding = 8;
         private const int RowTextX = 42;
         private const int RowTextY = 10;
+        private const int StorageScrollBarX = 214;
+        private const int StorageScrollBarY = 92;
+        private const int StorageScrollBarHeight = 204;
+        private const int InventoryScrollBarX = 445;
+        private const int InventoryScrollBarY = 134;
+        private const int InventoryScrollBarHeight = 162;
+        private const int ScrollButtonHeight = 12;
         private const int MoneyStorageRightX = 193;
         private const int MoneyInventoryRightX = 424;
         private const int MoneyTextY = 279;
@@ -82,6 +89,19 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _sortButton;
         private readonly UIObject _withdrawMesoButton;
         private readonly UIObject _depositMesoButton;
+        private readonly Texture2D _scrollBaseEnabledTexture;
+        private readonly Texture2D _scrollBaseDisabledTexture;
+        private readonly Texture2D _scrollThumbNormalTexture;
+        private readonly Texture2D _scrollThumbHoverTexture;
+        private readonly Texture2D _scrollThumbPressedTexture;
+        private readonly Texture2D _scrollPrevNormalTexture;
+        private readonly Texture2D _scrollPrevHoverTexture;
+        private readonly Texture2D _scrollPrevPressedTexture;
+        private readonly Texture2D _scrollPrevDisabledTexture;
+        private readonly Texture2D _scrollNextNormalTexture;
+        private readonly Texture2D _scrollNextHoverTexture;
+        private readonly Texture2D _scrollNextPressedTexture;
+        private readonly Texture2D _scrollNextDisabledTexture;
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
         private readonly Texture2D _debugTooltipTexture;
 
@@ -100,6 +120,10 @@ namespace HaCreator.MapSimulator.UI
         private int _inventoryScrollOffset;
         private int _storageSelectedIndex = -1;
         private int _inventorySelectedIndex = -1;
+        private readonly int[] _storageScrollOffsetsByTab = new int[TabCount];
+        private readonly int[] _inventoryScrollOffsetsByTab = new int[TabCount];
+        private readonly int[] _storageSelectedIndicesByTab = new int[TabCount];
+        private readonly int[] _inventorySelectedIndicesByTab = new int[TabCount];
         private int _previousScrollWheelValue;
         private KeyboardState _previousKeyboardState;
         private MouseState _previousMouseState;
@@ -118,6 +142,8 @@ namespace HaCreator.MapSimulator.UI
         private TrunkPane _hoveredPane = TrunkPane.None;
         private int _hoveredStorageIndex = -1;
         private int _hoveredInventoryIndex = -1;
+        private ScrollbarPane? _draggingScrollbarPane;
+        private int _scrollbarThumbDragOffsetY;
 
         internal Func<TrunkAccountSecurityPromptKind, bool> AccountSecurityPromptRequested { get; set; }
         internal Action<TrunkUI> WindowHidden { get; set; }
@@ -188,6 +214,12 @@ namespace HaCreator.MapSimulator.UI
             VerifySecondaryPassword
         }
 
+        private enum ScrollbarPane
+        {
+            Storage,
+            Inventory
+        }
+
         public TrunkUI(
             IDXObject frame,
             IDXObject foreground,
@@ -201,6 +233,19 @@ namespace HaCreator.MapSimulator.UI
             UIObject exitButton,
             UIObject withdrawMesoButton,
             UIObject depositMesoButton,
+            Texture2D scrollPrevNormalTexture,
+            Texture2D scrollPrevHoverTexture,
+            Texture2D scrollPrevPressedTexture,
+            Texture2D scrollPrevDisabledTexture,
+            Texture2D scrollNextNormalTexture,
+            Texture2D scrollNextHoverTexture,
+            Texture2D scrollNextPressedTexture,
+            Texture2D scrollNextDisabledTexture,
+            Texture2D scrollBaseEnabledTexture,
+            Texture2D scrollBaseDisabledTexture,
+            Texture2D scrollThumbNormalTexture,
+            Texture2D scrollThumbHoverTexture,
+            Texture2D scrollThumbPressedTexture,
             GraphicsDevice device)
             : base(frame)
         {
@@ -214,12 +259,28 @@ namespace HaCreator.MapSimulator.UI
             _sortButton = sortButton;
             _withdrawMesoButton = withdrawMesoButton;
             _depositMesoButton = depositMesoButton;
+            _scrollPrevNormalTexture = scrollPrevNormalTexture;
+            _scrollPrevHoverTexture = scrollPrevHoverTexture;
+            _scrollPrevPressedTexture = scrollPrevPressedTexture;
+            _scrollPrevDisabledTexture = scrollPrevDisabledTexture;
+            _scrollNextNormalTexture = scrollNextNormalTexture;
+            _scrollNextHoverTexture = scrollNextHoverTexture;
+            _scrollNextPressedTexture = scrollNextPressedTexture;
+            _scrollNextDisabledTexture = scrollNextDisabledTexture;
+            _scrollBaseEnabledTexture = scrollBaseEnabledTexture;
+            _scrollBaseDisabledTexture = scrollBaseDisabledTexture;
+            _scrollThumbNormalTexture = scrollThumbNormalTexture;
+            _scrollThumbHoverTexture = scrollThumbHoverTexture;
+            _scrollThumbPressedTexture = scrollThumbPressedTexture;
 
             if (device != null)
             {
                 _debugTooltipTexture = new Texture2D(device, 1, 1);
                 _debugTooltipTexture.SetData(new[] { Color.White });
             }
+
+            Array.Fill(_storageSelectedIndicesByTab, -1);
+            Array.Fill(_inventorySelectedIndicesByTab, -1);
 
             InitializeActionButtons(withdrawButton, depositButton, sortButton, exitButton, withdrawMesoButton, depositMesoButton);
             InitializeRowButtons(device);
@@ -244,6 +305,7 @@ namespace HaCreator.MapSimulator.UI
             _previousScrollWheelValue = Mouse.GetState().ScrollWheelValue;
             _previousKeyboardState = Keyboard.GetState();
             _previousMouseState = Mouse.GetState();
+            _draggingScrollbarPane = null;
             UpdateButtonStates();
         }
 
@@ -254,6 +316,7 @@ namespace HaCreator.MapSimulator.UI
             CancelMesoEntry();
             UpdateAccessStatusMessage();
             _previousMouseState = Mouse.GetState();
+            _draggingScrollbarPane = null;
             UpdateButtonStates();
             WindowHidden?.Invoke(this);
         }
@@ -453,9 +516,10 @@ namespace HaCreator.MapSimulator.UI
             _hoveredPane = ResolvePane(mouseState.X, mouseState.Y);
             _hoveredStorageIndex = _hoveredPane == TrunkPane.Storage ? ResolveRowIndex(mouseState.X, mouseState.Y, true) : -1;
             _hoveredInventoryIndex = _hoveredPane == TrunkPane.Inventory ? ResolveRowIndex(mouseState.X, mouseState.Y, false) : -1;
+            UpdateScrollbarDrag(mouseState);
             int wheelDelta = mouseState.ScrollWheelValue - _previousScrollWheelValue;
             _previousScrollWheelValue = mouseState.ScrollWheelValue;
-            if (wheelDelta == 0)
+            if (wheelDelta == 0 || _mesoEntryMode != MesoEntryMode.None)
             {
                 return;
             }
@@ -496,6 +560,8 @@ namespace HaCreator.MapSimulator.UI
             DrawRows(sprite, storageRows, _storageScrollOffset, StorageRowX, StorageRowY, StorageRowWidth);
             DrawRows(sprite, inventoryRows, _inventoryScrollOffset, InventoryRowX, InventoryRowY, InventoryRowWidth);
 
+            DrawScrollBar(sprite, ScrollbarPane.Storage);
+            DrawScrollBar(sprite, ScrollbarPane.Inventory);
             DrawMoneyValues(sprite);
             DrawMesoPrompt(sprite);
             DrawImeCandidateWindow(sprite);
@@ -532,6 +598,11 @@ namespace HaCreator.MapSimulator.UI
                 _softKeyboardActive = true;
                 ClearCompositionText();
                 UpdateButtonStates();
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                handled = true;
+            }
+            else if (!handled && leftJustPressed && _mesoEntryMode == MesoEntryMode.None && TryHandleScrollBarMouseDown(mouseState))
+            {
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
                 handled = true;
             }
@@ -624,14 +695,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            SaveCurrentTabState();
             _currentTab = tabIndex;
-            _storageScrollOffset = 0;
-            _inventoryScrollOffset = 0;
-            _storageSelectedIndex = -1;
-            _inventorySelectedIndex = -1;
+            LoadCurrentTabState();
             CancelMesoEntry();
             _statusMessage = "Select an item to deposit or withdraw.";
-            UpdateTabStates();
             UpdateButtonStates();
         }
 
@@ -654,6 +722,7 @@ namespace HaCreator.MapSimulator.UI
 
             _storageSelectedIndex = actualIndex;
             _inventorySelectedIndex = -1;
+            SyncCurrentTabState();
             UpdateButtonStates();
         }
 
@@ -668,6 +737,7 @@ namespace HaCreator.MapSimulator.UI
 
             _inventorySelectedIndex = actualIndex;
             _storageSelectedIndex = -1;
+            SyncCurrentTabState();
             UpdateButtonStates();
         }
 
@@ -877,8 +947,10 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<InventorySlotData> storageRows = GetStorageRows(inventoryType);
             IReadOnlyList<InventorySlotData> inventoryRows = _inventory?.GetSlots(inventoryType) ?? Array.Empty<InventorySlotData>();
             bool hasStorageAccess = HasStorageAccess();
+            bool promptActive = _mesoEntryMode != MesoEntryMode.None;
 
             _withdrawButton?.SetEnabled(
+                !promptActive &&
                 hasStorageAccess &&
                 _inventory != null &&
                 _storageSelectedIndex >= 0 &&
@@ -891,6 +963,7 @@ namespace HaCreator.MapSimulator.UI
                     storageRows[_storageSelectedIndex].MaxStackSize));
 
             _depositButton?.SetEnabled(
+                !promptActive &&
                 hasStorageAccess &&
                 _inventory != null &&
                 _inventorySelectedIndex >= 0 &&
@@ -898,15 +971,24 @@ namespace HaCreator.MapSimulator.UI
                 inventoryRows[_inventorySelectedIndex] != null &&
                 CanAcceptStorageItem(inventoryType, inventoryRows[_inventorySelectedIndex]));
 
-            _sortButton?.SetEnabled(hasStorageAccess && (storageRows.Count > 1 || inventoryRows.Count > 1));
-            bool mesoEntryActive = _mesoEntryMode != MesoEntryMode.None;
-            _withdrawMesoButton?.SetEnabled(!mesoEntryActive && hasStorageAccess && _inventory != null && GetStorageMesoCount() > 0);
-            _depositMesoButton?.SetEnabled(!mesoEntryActive && hasStorageAccess && _inventory != null && _inventory.GetMesoCount() > 0);
+            _sortButton?.SetEnabled(!promptActive && hasStorageAccess && (storageRows.Count > 1 || inventoryRows.Count > 1));
+            _withdrawMesoButton?.SetEnabled(!promptActive && hasStorageAccess && _inventory != null && GetStorageMesoCount() > 0);
+            _depositMesoButton?.SetEnabled(!promptActive && hasStorageAccess && _inventory != null && _inventory.GetMesoCount() > 0);
 
             for (int row = 0; row < MaxVisibleRows; row++)
             {
-                _storageRowButtons[row].SetVisible(_storageScrollOffset + row < storageRows.Count);
-                _inventoryRowButtons[row].SetVisible(_inventoryScrollOffset + row < inventoryRows.Count);
+                bool storageVisible = _storageScrollOffset + row < storageRows.Count;
+                bool inventoryVisible = _inventoryScrollOffset + row < inventoryRows.Count;
+                _storageRowButtons[row].SetVisible(storageVisible);
+                _inventoryRowButtons[row].SetVisible(inventoryVisible);
+                _storageRowButtons[row].SetEnabled(storageVisible && !promptActive);
+                _inventoryRowButtons[row].SetEnabled(inventoryVisible && !promptActive);
+            }
+
+            SetTabEnabledState(!promptActive);
+            if (!promptActive)
+            {
+                UpdateTabStates();
             }
         }
 
@@ -916,6 +998,7 @@ namespace HaCreator.MapSimulator.UI
             _storageScrollOffset = wheelDelta > 0
                 ? Math.Max(0, _storageScrollOffset - 1)
                 : Math.Min(maxScroll, _storageScrollOffset + 1);
+            SyncCurrentTabState();
             UpdateButtonStates();
         }
 
@@ -926,6 +1009,7 @@ namespace HaCreator.MapSimulator.UI
             _inventoryScrollOffset = wheelDelta > 0
                 ? Math.Max(0, _inventoryScrollOffset - 1)
                 : Math.Min(maxScroll, _inventoryScrollOffset + 1);
+            SyncCurrentTabState();
             UpdateButtonStates();
         }
 
@@ -939,6 +1023,275 @@ namespace HaCreator.MapSimulator.UI
             _inventorySelectedIndex = inventoryRows.Count == 0 ? -1 : Math.Clamp(_inventorySelectedIndex, 0, inventoryRows.Count - 1);
             _storageScrollOffset = Math.Clamp(_storageScrollOffset, 0, Math.Max(0, storageRows.Count - MaxVisibleRows));
             _inventoryScrollOffset = Math.Clamp(_inventoryScrollOffset, 0, Math.Max(0, inventoryRows.Count - MaxVisibleRows));
+            SyncCurrentTabState();
+        }
+
+        private void SaveCurrentTabState()
+        {
+            _storageScrollOffsetsByTab[_currentTab] = _storageScrollOffset;
+            _inventoryScrollOffsetsByTab[_currentTab] = _inventoryScrollOffset;
+            _storageSelectedIndicesByTab[_currentTab] = _storageSelectedIndex;
+            _inventorySelectedIndicesByTab[_currentTab] = _inventorySelectedIndex;
+        }
+
+        private void LoadCurrentTabState()
+        {
+            _storageScrollOffset = _storageScrollOffsetsByTab[_currentTab];
+            _inventoryScrollOffset = _inventoryScrollOffsetsByTab[_currentTab];
+            _storageSelectedIndex = _storageSelectedIndicesByTab[_currentTab];
+            _inventorySelectedIndex = _inventorySelectedIndicesByTab[_currentTab];
+            ClampSelection();
+        }
+
+        private void SyncCurrentTabState()
+        {
+            SaveCurrentTabState();
+        }
+
+        private void SetTabEnabledState(bool enabled)
+        {
+            _tabEquip?.SetEnabled(enabled);
+            _tabUse?.SetEnabled(enabled);
+            _tabSetup?.SetEnabled(enabled);
+            _tabEtc?.SetEnabled(enabled);
+            _tabCash?.SetEnabled(enabled);
+        }
+
+        private void DrawScrollBar(SpriteBatch sprite, ScrollbarPane pane)
+        {
+            Rectangle baseBounds = GetScrollBaseBounds(pane);
+            Rectangle prevBounds = GetScrollPrevBounds(pane);
+            Rectangle nextBounds = GetScrollNextBounds(pane);
+            Rectangle thumbBounds = GetScrollThumbBounds(pane);
+            bool canScroll = CanInteractWithScrollbar(pane) && GetMaxScrollOffset(pane) > 0;
+            bool pressed = _draggingScrollbarPane == pane;
+            bool hoverPrev = prevBounds.Contains(_lastMousePosition);
+            bool hoverNext = nextBounds.Contains(_lastMousePosition);
+            bool hoverThumb = thumbBounds.Contains(_lastMousePosition);
+
+            DrawTexture(sprite, canScroll ? _scrollBaseEnabledTexture : _scrollBaseDisabledTexture, baseBounds, canScroll ? Color.White : new Color(255, 255, 255, 200));
+            DrawTexture(sprite, ResolveScrollPrevTexture(canScroll, hoverPrev), prevBounds, Color.White);
+            DrawTexture(sprite, ResolveScrollNextTexture(canScroll, hoverNext), nextBounds, Color.White);
+            DrawTexture(sprite, ResolveScrollThumbTexture(canScroll, hoverThumb, pressed), thumbBounds, Color.White);
+        }
+
+        private void DrawTexture(SpriteBatch sprite, Texture2D texture, Rectangle bounds, Color color)
+        {
+            if (texture != null)
+            {
+                sprite.Draw(texture, bounds.Location.ToVector2(), color);
+                return;
+            }
+
+            if (_debugTooltipTexture != null)
+            {
+                sprite.Draw(_debugTooltipTexture, bounds, color);
+            }
+        }
+
+        private Texture2D ResolveScrollPrevTexture(bool canScroll, bool hover)
+        {
+            if (!canScroll)
+            {
+                return _scrollPrevDisabledTexture ?? _scrollPrevNormalTexture;
+            }
+
+            return hover ? _scrollPrevHoverTexture ?? _scrollPrevPressedTexture ?? _scrollPrevNormalTexture : _scrollPrevNormalTexture;
+        }
+
+        private Texture2D ResolveScrollNextTexture(bool canScroll, bool hover)
+        {
+            if (!canScroll)
+            {
+                return _scrollNextDisabledTexture ?? _scrollNextNormalTexture;
+            }
+
+            return hover ? _scrollNextHoverTexture ?? _scrollNextPressedTexture ?? _scrollNextNormalTexture : _scrollNextNormalTexture;
+        }
+
+        private Texture2D ResolveScrollThumbTexture(bool canScroll, bool hover, bool pressed)
+        {
+            if (!canScroll)
+            {
+                return _scrollThumbPressedTexture ?? _scrollThumbNormalTexture;
+            }
+
+            if (pressed)
+            {
+                return _scrollThumbPressedTexture ?? _scrollThumbHoverTexture ?? _scrollThumbNormalTexture;
+            }
+
+            return hover ? _scrollThumbHoverTexture ?? _scrollThumbNormalTexture : _scrollThumbNormalTexture;
+        }
+
+        private bool TryHandleScrollBarMouseDown(MouseState mouseState)
+        {
+            foreach (ScrollbarPane pane in Enum.GetValues(typeof(ScrollbarPane)))
+            {
+                Rectangle barBounds = GetScrollBarBounds(pane);
+                if (!barBounds.Contains(mouseState.Position) || !CanInteractWithScrollbar(pane))
+                {
+                    continue;
+                }
+
+                int maxScroll = GetMaxScrollOffset(pane);
+                if (maxScroll <= 0)
+                {
+                    return true;
+                }
+
+                if (GetScrollPrevBounds(pane).Contains(mouseState.Position))
+                {
+                    AdjustScrollOffset(pane, -1);
+                    return true;
+                }
+
+                if (GetScrollNextBounds(pane).Contains(mouseState.Position))
+                {
+                    AdjustScrollOffset(pane, 1);
+                    return true;
+                }
+
+                Rectangle thumbBounds = GetScrollThumbBounds(pane);
+                if (thumbBounds.Contains(mouseState.Position))
+                {
+                    _draggingScrollbarPane = pane;
+                    _scrollbarThumbDragOffsetY = mouseState.Y - thumbBounds.Y;
+                    return true;
+                }
+
+                Rectangle trackBounds = GetScrollTrackBounds(pane);
+                if (trackBounds.Contains(mouseState.Position))
+                {
+                    AdjustScrollOffset(pane, mouseState.Y < thumbBounds.Y ? -MaxVisibleRows : MaxVisibleRows);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void UpdateScrollbarDrag(MouseState mouseState)
+        {
+            if (!_draggingScrollbarPane.HasValue)
+            {
+                return;
+            }
+
+            if (mouseState.LeftButton != ButtonState.Pressed)
+            {
+                _draggingScrollbarPane = null;
+                return;
+            }
+
+            SetScrollOffsetFromThumb(_draggingScrollbarPane.Value, mouseState.Y);
+        }
+
+        private bool CanInteractWithScrollbar(ScrollbarPane pane)
+        {
+            return _mesoEntryMode == MesoEntryMode.None && GetMaxScrollOffset(pane) > 0;
+        }
+
+        private Rectangle GetScrollBarBounds(ScrollbarPane pane)
+        {
+            return pane switch
+            {
+                ScrollbarPane.Storage => new Rectangle(Position.X + StorageScrollBarX, Position.Y + StorageScrollBarY, _scrollBaseEnabledTexture?.Width ?? 11, StorageScrollBarHeight),
+                _ => new Rectangle(Position.X + InventoryScrollBarX, Position.Y + InventoryScrollBarY, _scrollBaseEnabledTexture?.Width ?? 11, InventoryScrollBarHeight)
+            };
+        }
+
+        private Rectangle GetScrollBaseBounds(ScrollbarPane pane)
+        {
+            return GetScrollBarBounds(pane);
+        }
+
+        private Rectangle GetScrollPrevBounds(ScrollbarPane pane)
+        {
+            Rectangle bounds = GetScrollBarBounds(pane);
+            return new Rectangle(bounds.X, bounds.Y, _scrollPrevNormalTexture?.Width ?? bounds.Width, _scrollPrevNormalTexture?.Height ?? ScrollButtonHeight);
+        }
+
+        private Rectangle GetScrollNextBounds(ScrollbarPane pane)
+        {
+            Rectangle bounds = GetScrollBarBounds(pane);
+            int height = _scrollNextNormalTexture?.Height ?? ScrollButtonHeight;
+            return new Rectangle(bounds.X, bounds.Bottom - height, _scrollNextNormalTexture?.Width ?? bounds.Width, height);
+        }
+
+        private Rectangle GetScrollTrackBounds(ScrollbarPane pane)
+        {
+            Rectangle bounds = GetScrollBarBounds(pane);
+            Rectangle prevBounds = GetScrollPrevBounds(pane);
+            Rectangle nextBounds = GetScrollNextBounds(pane);
+            return new Rectangle(bounds.X, prevBounds.Bottom, bounds.Width, Math.Max(0, nextBounds.Y - prevBounds.Bottom));
+        }
+
+        private Rectangle GetScrollThumbBounds(ScrollbarPane pane)
+        {
+            Rectangle trackBounds = GetScrollTrackBounds(pane);
+            int maxScroll = GetMaxScrollOffset(pane);
+            int thumbWidth = _scrollThumbNormalTexture?.Width ?? trackBounds.Width;
+            int thumbHeight = _scrollThumbNormalTexture?.Height ?? trackBounds.Height;
+            if (maxScroll <= 0)
+            {
+                return new Rectangle(trackBounds.X, trackBounds.Y, thumbWidth, Math.Max(0, trackBounds.Height));
+            }
+
+            int travel = Math.Max(0, trackBounds.Height - thumbHeight);
+            int scrollOffset = GetScrollOffset(pane);
+            int thumbY = trackBounds.Y + (travel == 0 ? 0 : (int)Math.Round((scrollOffset / (float)maxScroll) * travel));
+            return new Rectangle(trackBounds.X, thumbY, thumbWidth, thumbHeight);
+        }
+
+        private int GetScrollOffset(ScrollbarPane pane)
+        {
+            return pane == ScrollbarPane.Storage ? _storageScrollOffset : _inventoryScrollOffset;
+        }
+
+        private void SetScrollOffset(ScrollbarPane pane, int value)
+        {
+            int clampedValue = Math.Clamp(value, 0, GetMaxScrollOffset(pane));
+            if (pane == ScrollbarPane.Storage)
+            {
+                _storageScrollOffset = clampedValue;
+            }
+            else
+            {
+                _inventoryScrollOffset = clampedValue;
+            }
+
+            SyncCurrentTabState();
+            UpdateButtonStates();
+        }
+
+        private void AdjustScrollOffset(ScrollbarPane pane, int delta)
+        {
+            SetScrollOffset(pane, GetScrollOffset(pane) + delta);
+        }
+
+        private void SetScrollOffsetFromThumb(ScrollbarPane pane, int mouseY)
+        {
+            Rectangle trackBounds = GetScrollTrackBounds(pane);
+            Rectangle thumbBounds = GetScrollThumbBounds(pane);
+            int maxScroll = GetMaxScrollOffset(pane);
+            int travel = Math.Max(0, trackBounds.Height - thumbBounds.Height);
+            if (travel <= 0 || maxScroll <= 0)
+            {
+                SetScrollOffset(pane, 0);
+                return;
+            }
+
+            int thumbTop = Math.Clamp(mouseY - _scrollbarThumbDragOffsetY, trackBounds.Y, trackBounds.Bottom - thumbBounds.Height);
+            float ratio = (thumbTop - trackBounds.Y) / (float)travel;
+            SetScrollOffset(pane, (int)Math.Round(ratio * maxScroll));
+        }
+
+        private int GetMaxScrollOffset(ScrollbarPane pane)
+        {
+            return pane == ScrollbarPane.Storage
+                ? Math.Max(0, GetStorageRows(GetInventoryTypeFromTab(_currentTab)).Count - MaxVisibleRows)
+                : Math.Max(0, (_inventory?.GetSlots(GetInventoryTypeFromTab(_currentTab)).Count ?? 0) - MaxVisibleRows);
         }
 
         private void DrawRows(SpriteBatch sprite, IReadOnlyList<InventorySlotData> rows, int scrollOffset, int originX, int originY, int rowWidth)

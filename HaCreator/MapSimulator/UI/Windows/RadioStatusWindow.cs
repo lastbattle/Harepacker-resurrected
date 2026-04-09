@@ -45,10 +45,12 @@ namespace HaCreator.MapSimulator.UI
         private Func<bool> _indicatorPlaybackProvider;
         private Func<bool> _indicatorMutedProvider;
         private Func<bool> _clientLeftInsetProvider;
+        private Func<int?> _indicatorAnimationStartTickProvider;
         private Func<string> _trackNameProvider;
         private Func<IReadOnlyList<string>> _detailLinesProvider;
         private Func<string> _footerProvider;
         private float _activeOverlayAlpha;
+        private float _inactiveLayerAlpha = 1f;
         private int _lastIndicatorStateTick = int.MinValue;
 
         internal RadioStatusWindow(
@@ -103,6 +105,11 @@ namespace HaCreator.MapSimulator.UI
             _clientLeftInsetProvider = clientLeftInsetProvider;
         }
 
+        internal void SetIndicatorAnimationStartTickProvider(Func<int?> indicatorAnimationStartTickProvider)
+        {
+            _indicatorAnimationStartTickProvider = indicatorAnimationStartTickProvider;
+        }
+
         internal void SetTrackNameProvider(Func<string> trackNameProvider)
         {
             _trackNameProvider = trackNameProvider;
@@ -138,7 +145,19 @@ namespace HaCreator.MapSimulator.UI
             UpdateAnchoredPosition(renderParameters);
             UpdateIndicatorOverlayState(TickCount);
             Frame = CacheFrame(_inactiveTexture);
-            base.Draw(
+            sprite.Draw(_inactiveTexture, Position.ToVector2(), Color.White * _inactiveLayerAlpha);
+            DrawContents(
+                sprite,
+                skeletonMeshRenderer,
+                gameTime,
+                mapShiftX,
+                mapShiftY,
+                centerX,
+                centerY,
+                drawReflectionInfo,
+                renderParameters,
+                TickCount);
+            DrawOverlay(
                 sprite,
                 skeletonMeshRenderer,
                 gameTime,
@@ -359,6 +378,7 @@ namespace HaCreator.MapSimulator.UI
                 : Math.Max(0, tickCount - _lastIndicatorStateTick);
 
             _activeOverlayAlpha = StepIndicatorAlpha(_activeOverlayAlpha, ownsPlayback, muted, elapsedMs);
+            _inactiveLayerAlpha = ResolveInactiveLayerAlpha(_activeOverlayAlpha);
             _lastIndicatorStateTick = tickCount;
         }
 
@@ -366,37 +386,71 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_activeFrames.Count > 0)
             {
-                int totalDelay = 0;
+                List<int> frameDelays = new(_activeFrames.Count);
                 for (int i = 0; i < _activeFrames.Count; i++)
                 {
-                    totalDelay += _activeFrames[i].DelayMs;
+                    frameDelays.Add(_activeFrames[i].DelayMs);
                 }
 
-                if (totalDelay <= 0)
+                int frameIndex = ResolveAnimatedFrameIndex(
+                    tickCount,
+                    _indicatorAnimationStartTickProvider?.Invoke(),
+                    frameDelays);
+                if ((uint)frameIndex < (uint)_activeFrames.Count)
                 {
-                    return _activeFrames[0].Texture;
+                    return _activeFrames[frameIndex].Texture;
                 }
 
-                int animationTime = Math.Abs(tickCount % totalDelay);
-                for (int i = 0; i < _activeFrames.Count; i++)
-                {
-                    if (animationTime < _activeFrames[i].DelayMs)
-                    {
-                        return _activeFrames[i].Texture;
-                    }
-
-                    animationTime -= _activeFrames[i].DelayMs;
-                }
-
-                return _activeFrames[_activeFrames.Count - 1].Texture;
+                return _activeFrames[0].Texture;
             }
 
             return null;
         }
 
+        internal static int ResolveAnimatedFrameIndex(int tickCount, int? animationStartTick, IReadOnlyList<int> frameDelays)
+        {
+            if (frameDelays == null || frameDelays.Count == 0)
+            {
+                return -1;
+            }
+
+            int totalDelay = 0;
+            for (int i = 0; i < frameDelays.Count; i++)
+            {
+                totalDelay += Math.Max(1, frameDelays[i]);
+            }
+
+            if (totalDelay <= 0)
+            {
+                return 0;
+            }
+
+            int elapsedAnimationMs = animationStartTick.HasValue
+                ? Math.Max(0, tickCount - animationStartTick.Value)
+                : Math.Abs(tickCount);
+            int animationTime = elapsedAnimationMs % totalDelay;
+            for (int i = 0; i < frameDelays.Count; i++)
+            {
+                int frameDelay = Math.Max(1, frameDelays[i]);
+                if (animationTime < frameDelay)
+                {
+                    return i;
+                }
+
+                animationTime -= frameDelay;
+            }
+
+            return frameDelays.Count - 1;
+        }
+
         internal static float ResolveTargetIndicatorAlpha(bool ownsPlayback, bool muted)
         {
             return ownsPlayback && !muted ? 1f : 0f;
+        }
+
+        internal static float ResolveInactiveLayerAlpha(float activeLayerAlpha)
+        {
+            return MathHelper.Clamp(1f - activeLayerAlpha, 0f, 1f);
         }
 
         internal static float StepIndicatorAlpha(float currentAlpha, bool ownsPlayback, bool muted, int elapsedMs)

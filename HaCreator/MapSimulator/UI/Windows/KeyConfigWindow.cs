@@ -33,18 +33,34 @@ namespace HaCreator.MapSimulator.UI
 
         private readonly struct BindingRow
         {
-            public BindingRow(InputAction action, string label, Rectangle bounds, int paletteSlotId)
+            public BindingRow(InputAction action, string label, Rectangle bounds, int paletteSlotId, int clientFunctionId)
             {
                 Action = action;
                 Label = label;
                 Bounds = bounds;
                 PaletteSlotId = paletteSlotId;
+                ClientFunctionId = clientFunctionId;
             }
 
             public InputAction Action { get; }
             public string Label { get; }
             public Rectangle Bounds { get; }
             public int PaletteSlotId { get; }
+            public int ClientFunctionId { get; }
+        }
+
+        public readonly struct ClientOwnerState
+        {
+            public ClientOwnerState(bool hasClientOwner, int clientFunctionId, Keys clientKey)
+            {
+                HasClientOwner = hasClientOwner;
+                ClientFunctionId = clientFunctionId;
+                ClientKey = clientKey;
+            }
+
+            public bool HasClientOwner { get; }
+            public int ClientFunctionId { get; }
+            public Keys ClientKey { get; }
         }
 
         private readonly List<PageLayer> _mainLayers = new();
@@ -112,6 +128,7 @@ namespace HaCreator.MapSimulator.UI
         private SpriteFont _font;
         private Func<PlayerInput> _bindingSource;
         private Action<PlayerInput> _commitHandler;
+        private Func<InputAction, ClientOwnerState> _clientOwnerStateProvider;
         private IDXObject _quickSlotFrame;
         private UIObject _mainOkButton;
         private UIObject _mainCancelButton;
@@ -124,6 +141,7 @@ namespace HaCreator.MapSimulator.UI
         private KeyConfigPage _page;
         private InputAction? _selectedAction;
         private bool _captureArmed;
+        private string _launchSource = string.Empty;
         private string _statusMessage = "Select a row to inspect or clear a local binding.";
 
         public KeyConfigWindow(
@@ -204,6 +222,20 @@ namespace HaCreator.MapSimulator.UI
             _commitHandler = commitHandler;
         }
 
+        public void SetClientOwnerStateProvider(Func<InputAction, ClientOwnerState> clientOwnerStateProvider)
+        {
+            _clientOwnerStateProvider = clientOwnerStateProvider;
+        }
+
+        public void SetLaunchSource(string source)
+        {
+            _launchSource = string.IsNullOrWhiteSpace(source) ? string.Empty : source.Trim();
+            if (!IsVisible && _selectedAction == null && !_captureArmed)
+            {
+                _statusMessage = BuildDefaultStatusMessage();
+            }
+        }
+
         public override void SetFont(SpriteFont font)
         {
             _font = font;
@@ -229,6 +261,7 @@ namespace HaCreator.MapSimulator.UI
         {
             BeginSession();
             SetPage(KeyConfigPage.Main, resetSelection: true, preserveStatusMessage: true);
+            _statusMessage = BuildDefaultStatusMessage();
             base.Show();
         }
 
@@ -358,6 +391,13 @@ namespace HaCreator.MapSimulator.UI
             button.ButtonClickReleased += _ => action?.Invoke();
         }
 
+        private string BuildDefaultStatusMessage()
+        {
+            return string.IsNullOrWhiteSpace(_launchSource)
+                ? "Select a row to inspect or clear a local binding."
+                : $"Select a row to inspect or clear a local binding. Launch source: {_launchSource}.";
+        }
+
         private void RestoreDefaults()
         {
             PlayerInput input = _bindingSource?.Invoke();
@@ -467,8 +507,17 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_highlightTexture, bounds, selected ? new Color(92, 120, 190, 200) : new Color(32, 40, 54, 200));
 
             KeyBinding binding = GetBinding(row.Action);
+            Texture2D paletteTexture = row.PaletteSlotId >= 0 ? GetSelectedPaletteTexture(row.PaletteSlotId) : null;
+            int labelX = bounds.X + 8;
+            if (_page == KeyConfigPage.Main && paletteTexture != null)
+            {
+                Rectangle iconBounds = new(bounds.X + 6, bounds.Y + 3, 18, 18);
+                sprite.Draw(_highlightTexture, iconBounds, new Color(54, 66, 88, 215));
+                sprite.Draw(paletteTexture, new Vector2(iconBounds.X + 1, iconBounds.Y + 1), null, Color.White, 0f, Vector2.Zero, 0.5f, SpriteEffects.None, 0f);
+                labelX = iconBounds.Right + 6;
+            }
 
-            sprite.DrawString(_font, row.Label, new Vector2(bounds.X + 8, bounds.Y + 6), Color.White);
+            sprite.DrawString(_font, row.Label, new Vector2(labelX, bounds.Y + 6), Color.White);
             DrawBindingValue(sprite, bounds, binding);
         }
 
@@ -582,7 +631,7 @@ namespace HaCreator.MapSimulator.UI
             string summaryText = _selectedAction.HasValue
                 ? (_captureArmed
                     ? "Capture armed: press a key or pad button."
-                    : "The footer now tracks the selected action instead of an unowned icon strip.")
+                    : BuildClientOwnerSummary())
                 : "WZ-backed footer palette loaded from UIWindow2.img/KeyConfig/icon in authored slot order.";
             sprite.DrawString(_font, summaryText, new Vector2(infoBounds.X + 6, infoBounds.Y + 33), new Color(210, 210, 210), 0f, Vector2.Zero, 0.36f, SpriteEffects.None, 0f);
 
@@ -602,6 +651,9 @@ namespace HaCreator.MapSimulator.UI
                     ? $"Palette slot {selectedPaletteSlotId}: {GetPaletteSlotLabel(selectedPaletteSlotId)}"
                     : "No recovered palette slot for this staged row.";
                 sprite.DrawString(_font, paletteSlotText, new Vector2(previewBounds.Right + 8, previewBounds.Y + 4), new Color(220, 220, 220), 0f, Vector2.Zero, 0.34f, SpriteEffects.None, 0f);
+
+                string clientOwnerText = BuildClientOwnerStatusText();
+                sprite.DrawString(_font, clientOwnerText, new Vector2(previewBounds.Right + 8, previewBounds.Y + 18), new Color(210, 210, 210), 0f, Vector2.Zero, 0.31f, SpriteEffects.None, 0f);
 
                 Rectangle bindingBounds = new(infoBounds.X + 6, infoBounds.Bottom - 28, infoBounds.Width - 12, 22);
                 sprite.Draw(_highlightTexture, bindingBounds, new Color(56, 68, 92, 215));
@@ -682,6 +734,44 @@ namespace HaCreator.MapSimulator.UI
                 : $"Icon {paletteSlotId}";
         }
 
+        private string BuildClientOwnerSummary()
+        {
+            if (!_selectedAction.HasValue)
+            {
+                return "Select a staged row to inspect its client owner state.";
+            }
+
+            ClientOwnerState ownerState = _clientOwnerStateProvider?.Invoke(_selectedAction.Value) ?? default;
+            if (ownerState.HasClientOwner)
+            {
+                return $"Packet-owned function {ownerState.ClientFunctionId} currently resolves to {FormatKey(ownerState.ClientKey)}.";
+            }
+
+            return "This staged row is explicit in the simulator, but the packet-owned function map does not currently own it.";
+        }
+
+        private string BuildClientOwnerStatusText()
+        {
+            if (!_selectedAction.HasValue)
+            {
+                return string.Empty;
+            }
+
+            BindingRow? selectedRow = TryGetSelectedRow();
+            ClientOwnerState ownerState = _clientOwnerStateProvider?.Invoke(_selectedAction.Value) ?? default;
+            if (ownerState.HasClientOwner)
+            {
+                return $"Client owner: id {ownerState.ClientFunctionId} on {FormatKey(ownerState.ClientKey)}.";
+            }
+
+            if (selectedRow is { ClientFunctionId: >= 0 })
+            {
+                return $"Client owner id {selectedRow.Value.ClientFunctionId} is currently absent from the packet-owned map.";
+            }
+
+            return "No recovered packet-owned function id for this staged row.";
+        }
+
         private Texture2D GetStatusNoticeTexture()
         {
             if (_noticeTextures.Length == 0)
@@ -716,25 +806,25 @@ namespace HaCreator.MapSimulator.UI
             const int rowHeight = 24;
             const int rowGap = 28;
 
-            (InputAction action, string label, int paletteSlotId)[] mainRows =
+            (InputAction action, string label, int paletteSlotId, int clientFunctionId)[] mainRows =
             {
-                (InputAction.Jump, "Jump", 53),
-                (InputAction.Attack, "Attack", 52),
-                (InputAction.Pickup, "Pick Up", 50),
-                (InputAction.Skill1, "Skill 1", -1),
-                (InputAction.Skill2, "Skill 2", -1),
-                (InputAction.Skill3, "Skill 3", -1),
-                (InputAction.Skill4, "Skill 4", -1),
-                (InputAction.Interact, "NPC Chat / Harvest", 54),
-                (InputAction.ToggleInventory, "Inventory", 1),
-                (InputAction.ToggleEquip, "Equip", 0),
-                (InputAction.Skill5, "Skill 5", -1),
-                (InputAction.Skill6, "Skill 6", -1),
-                (InputAction.Skill7, "Skill 7", -1),
-                (InputAction.Skill8, "Skill 8", -1),
-                (InputAction.ToggleQuest, "Quest Log", 8),
-                (InputAction.ToggleStats, "Char Stats", 2),
-                (InputAction.ToggleMinimap, "Mini Map", 7),
+                (InputAction.Jump, "Jump", 53, 53),
+                (InputAction.Attack, "Attack", 52, 52),
+                (InputAction.Pickup, "Pick Up", 50, 50),
+                (InputAction.Skill1, "Skill 1", -1, -1),
+                (InputAction.Skill2, "Skill 2", -1, -1),
+                (InputAction.Skill3, "Skill 3", -1, -1),
+                (InputAction.Skill4, "Skill 4", -1, -1),
+                (InputAction.Interact, "NPC Chat / Harvest", 54, 54),
+                (InputAction.ToggleInventory, "Inventory", 1, 1),
+                (InputAction.ToggleEquip, "Equip", 0, 0),
+                (InputAction.Skill5, "Skill 5", -1, -1),
+                (InputAction.Skill6, "Skill 6", -1, -1),
+                (InputAction.Skill7, "Skill 7", -1, -1),
+                (InputAction.Skill8, "Skill 8", -1, -1),
+                (InputAction.ToggleQuest, "Quest Log", 8, 8),
+                (InputAction.ToggleStats, "Char Stats", 2, 2),
+                (InputAction.ToggleMinimap, "Mini Map", 7, 7),
             };
 
             for (int i = 0; i < mainRows.Length; i++)
@@ -743,7 +833,7 @@ namespace HaCreator.MapSimulator.UI
                 int row = i % 8;
                 int x = column == 0 ? leftX : rightX;
                 int y = topY + (row * rowGap);
-                _bindingRows.Add(new BindingRow(mainRows[i].action, mainRows[i].label, new Rectangle(x, y, rowWidth, rowHeight), mainRows[i].paletteSlotId));
+                _bindingRows.Add(new BindingRow(mainRows[i].action, mainRows[i].label, new Rectangle(x, y, rowWidth, rowHeight), mainRows[i].paletteSlotId, mainRows[i].clientFunctionId));
             }
 
             for (int i = 0; i < 8; i++)
@@ -752,8 +842,26 @@ namespace HaCreator.MapSimulator.UI
                 int row = i % 4;
                 int x = column == 0 ? leftX : rightX;
                 int y = topY + (row * 48);
-                _quickSlotRows.Add(new BindingRow(InputAction.QuickSlot1 + i, $"Quick Slot {i + 1}", new Rectangle(x, y, rowWidth, 32), -1));
+                _quickSlotRows.Add(new BindingRow(InputAction.QuickSlot1 + i, $"Quick Slot {i + 1}", new Rectangle(x, y, rowWidth, 32), -1, -1));
             }
+        }
+
+        private BindingRow? TryGetSelectedRow()
+        {
+            if (!_selectedAction.HasValue)
+            {
+                return null;
+            }
+
+            foreach (BindingRow row in GetActiveRows())
+            {
+                if (row.Action == _selectedAction.Value)
+                {
+                    return row;
+                }
+            }
+
+            return null;
         }
 
         private static string FormatBinding(KeyBinding binding)

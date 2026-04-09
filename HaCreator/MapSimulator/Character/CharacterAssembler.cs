@@ -301,6 +301,12 @@ namespace HaCreator.MapSimulator.Character
             return GetFrameIndexAtTime(frames, timeMs);
         }
 
+        public bool TryGetFrameTimingAtTime(string actionName, int timeMs, out int frameIndex, out int frameElapsedMs)
+        {
+            var frames = GetAnimation(actionName);
+            return TryGetFrameTimingAtTime(frames, timeMs, out frameIndex, out frameElapsedMs);
+        }
+
         private static AssembledFrame GetFrameAtTime(AssembledFrame[] frames, int timeMs)
         {
             if (frames == null || frames.Length == 0)
@@ -419,6 +425,86 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return Math.Min(1, frames.Length - 1);
+        }
+
+        private static bool TryGetFrameTimingAtTime(
+            AssembledFrame[] frames,
+            int timeMs,
+            out int frameIndex,
+            out int frameElapsedMs)
+        {
+            frameIndex = -1;
+            frameElapsedMs = 0;
+
+            if (frames == null || frames.Length == 0)
+            {
+                return false;
+            }
+
+            if (frames.Length == 1)
+            {
+                frameIndex = 0;
+                frameElapsedMs = Math.Max(0, timeMs);
+                return true;
+            }
+
+            int forwardDuration = frames.Sum(f => f.Duration);
+            if (forwardDuration <= 0)
+            {
+                frameIndex = 0;
+                return true;
+            }
+
+            int backwardDuration = 0;
+            for (int i = frames.Length - 2; i >= 1; i--)
+            {
+                backwardDuration += frames[i].Duration;
+            }
+
+            int cycleDuration = forwardDuration + backwardDuration;
+            if (cycleDuration <= 0)
+            {
+                frameIndex = 0;
+                return true;
+            }
+
+            int time = timeMs % cycleDuration;
+            if (time < forwardDuration)
+            {
+                int elapsed = 0;
+                for (int i = 0; i < frames.Length; i++)
+                {
+                    int frameDuration = Math.Max(0, frames[i]?.Duration ?? 0);
+                    if (time < elapsed + frameDuration || i == frames.Length - 1)
+                    {
+                        frameIndex = i;
+                        frameElapsedMs = Math.Max(0, time - elapsed);
+                        return true;
+                    }
+
+                    elapsed += frameDuration;
+                }
+            }
+            else
+            {
+                int backwardTime = time - forwardDuration;
+                int elapsed = 0;
+                for (int i = frames.Length - 2; i >= 1; i--)
+                {
+                    int frameDuration = Math.Max(0, frames[i]?.Duration ?? 0);
+                    if (backwardTime < elapsed + frameDuration || i == 1)
+                    {
+                        frameIndex = i;
+                        frameElapsedMs = Math.Max(0, backwardTime - elapsed);
+                        return true;
+                    }
+
+                    elapsed += frameDuration;
+                }
+            }
+
+            frameIndex = 0;
+            return true;
         }
 
         private AssembledFrame ResolveDynamicPortableChairFrame(AssembledFrame frame, int timeMs)

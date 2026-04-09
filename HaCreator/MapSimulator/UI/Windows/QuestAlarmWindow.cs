@@ -130,6 +130,7 @@ namespace HaCreator.MapSimulator.UI
         internal event Action<int> QuestRequested;
         internal event Action<int, bool> QuestLogRequested;
         internal event Action<string> StatusMessageRequested;
+        internal event Action QuestDeleted;
         internal event Action TrackerCleared;
 
         internal void SetSnapshotProvider(Func<QuestAlarmSnapshot> provider)
@@ -1069,16 +1070,15 @@ namespace HaCreator.MapSimulator.UI
                 hiddenFromAutoRegister = _hiddenAutoQuestIds.Add(questId);
             }
 
-            if (_selectedQuestId == questId)
-            {
-                _selectedQuestId = -1;
-            }
+            _selectedQuestId = -1;
+            _scrollOffset = 0;
 
             QuestAlarmSnapshot refreshedSnapshot = RefreshFilteredSnapshot();
             HandleEmptySnapshotVisibility(refreshedSnapshot);
             ClampScrollOffset(refreshedSnapshot);
             UpdateButtonStates();
             SavePersistedState();
+            QuestDeleted?.Invoke();
 
             if (hiddenFromAutoRegister)
             {

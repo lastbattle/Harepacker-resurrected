@@ -207,6 +207,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly string _windowName;
         private OptionMenuMode _mode;
         private string _statusMessage = string.Empty;
+        private string _launchSource = string.Empty;
         private Func<PlayerInput> _joypadBindingSource;
         private readonly Dictionary<OptionRow, bool> _stagedOptionValues = new();
         private JoypadSessionSnapshot _originalJoypadSession;
@@ -287,7 +288,7 @@ namespace HaCreator.MapSimulator.UI
         public void SetMode(OptionMenuMode mode)
         {
             _mode = mode;
-            _statusMessage = mode switch
+            string baseStatus = mode switch
             {
                 OptionMenuMode.Game => "CUIGameOpt-style social invite and chat toggles loaded from the client option owner.",
                 OptionMenuMode.System => "System launcher path now routes into the same CUIGameOpt checkbox roster and ids.",
@@ -295,6 +296,15 @@ namespace HaCreator.MapSimulator.UI
                 OptionMenuMode.Joypad => "Joypad page now surfaces live pad state and constrained simulator bindings from the shared owner.",
                 _ => string.Empty,
             };
+            _statusMessage = string.IsNullOrWhiteSpace(_launchSource)
+                ? baseStatus
+                : $"{baseStatus} Launch source: {_launchSource}.";
+        }
+
+        public void SetLaunchSource(string source)
+        {
+            _launchSource = string.IsNullOrWhiteSpace(source) ? string.Empty : source.Trim();
+            SetMode(_mode);
         }
 
         public void ShowMode(OptionMenuMode mode)

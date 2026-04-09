@@ -24,6 +24,20 @@ namespace HaCreator.MapSimulator.UI
             return new SkillMacroImeCandidateWindowMetrics(width, height, 0, rowHeight);
         }
 
+        internal static SkillMacroImeCandidateWindowMetrics MeasureVerticalClientOwnerExact(int fontHeight, int pageSize, int widestEntryWidth)
+        {
+            int safeFontHeight = Math.Max(0, fontHeight);
+            int safePageSize = Math.Max(0, pageSize);
+            int safeEntryWidth = Math.Max(0, widestEntryWidth);
+            int rowHeight = safeFontHeight + 1;
+            int width = safeEntryWidth > VerticalOverflowThreshold
+                ? ClientViewportWidth
+                : safeEntryWidth;
+            width += safeFontHeight + 7;
+            int height = (safePageSize * rowHeight) + 3;
+            return new SkillMacroImeCandidateWindowMetrics(width, height, 0, rowHeight);
+        }
+
         internal static SkillMacroImeCandidateWindowMetrics MeasureHorizontal(int fontHeight, int pageSize)
         {
             int safeFontHeight = Math.Max(0, fontHeight);

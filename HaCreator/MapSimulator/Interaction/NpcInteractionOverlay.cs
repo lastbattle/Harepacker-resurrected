@@ -61,7 +61,8 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _isNextButtonHovered;
         private bool _isPrevButtonPressed;
         private bool _isNextButtonPressed;
-        private bool _isPacketQuestResultPrevButtonFocused;
+        private PacketQuestResultUtilDialogFocusedButton _packetQuestResultFocusedButton =
+            PacketQuestResultUtilDialogFocusedButton.NextOrOk;
 
         private readonly struct PageContext
         {
@@ -297,6 +298,14 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (GetPrevButtonRectangle(windowRect).Contains(mousePoint))
             {
+                if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
+                {
+                    FocusPacketQuestResultPrevButton();
+                    return ApplyPacketQuestResultModalResult(
+                        PacketQuestResultUtilDialogModalResult.Prev,
+                        new NpcInteractionOverlayResult(true, null));
+                }
+
                 FocusPacketQuestResultPrevButton();
                 if (_currentPage > 0)
                 {
@@ -314,6 +323,14 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (GetNextButtonRectangle(windowRect).Contains(mousePoint))
             {
+                if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
+                {
+                    FocusPacketQuestResultNextButton();
+                    return ApplyPacketQuestResultModalResult(
+                        PacketQuestResultUtilDialogModalResult.NextOrOk,
+                        new NpcInteractionOverlayResult(true, null));
+                }
+
                 FocusPacketQuestResultNextButton();
                 if (_currentPage < GetCurrentPages().Count - 1)
                 {
@@ -322,12 +339,7 @@ namespace HaCreator.MapSimulator.Interaction
                 else
                 {
                     Close();
-                    return new NpcInteractionOverlayResult(
-                        true,
-                        null,
-                        closeKind: _presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog
-                            ? NpcInteractionOverlayCloseKind.Completed
-                            : NpcInteractionOverlayCloseKind.Dismissed);
+                    return new NpcInteractionOverlayResult(true, null, closeKind: NpcInteractionOverlayCloseKind.Dismissed);
                 }
 
                 return new NpcInteractionOverlayResult(true, null);
@@ -360,12 +372,6 @@ namespace HaCreator.MapSimulator.Interaction
                 return default;
             }
 
-            if (IsKeyReleased(Keys.Escape, keyboardState, previousKeyboardState))
-            {
-                Close();
-                return new NpcInteractionOverlayResult(true, null, closeKind: NpcInteractionOverlayCloseKind.Dismissed);
-            }
-
             if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
             {
                 NpcInteractionOverlayResult packetQuestResult = HandlePacketQuestResultKeyboard(keyboardState, previousKeyboardState);
@@ -373,6 +379,12 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     return packetQuestResult;
                 }
+            }
+
+            if (IsKeyReleased(Keys.Escape, keyboardState, previousKeyboardState))
+            {
+                Close();
+                return new NpcInteractionOverlayResult(true, null, closeKind: NpcInteractionOverlayCloseKind.Dismissed);
             }
 
             NpcInteractionInputRequest inputRequest = GetCurrentInputRequest();
@@ -1669,27 +1681,28 @@ namespace HaCreator.MapSimulator.Interaction
 
         private void ResetPacketQuestResultKeyboardFocus()
         {
-            _isPacketQuestResultPrevButtonFocused = false;
+            _packetQuestResultFocusedButton = PacketQuestResultUtilDialogFocusedButton.NextOrOk;
         }
 
         private void FocusPacketQuestResultPrevButton()
         {
-            if (_currentPage > 0 || _pageContextStack.Count > 0)
-            {
-                _isPacketQuestResultPrevButtonFocused = true;
-            }
+            _packetQuestResultFocusedButton = PacketQuestResultUtilDialogLayout.ResolveFocusedButtonAfterKeyboardNavigation(
+                moveBackward: true,
+                hasPrevPage: HasPacketQuestResultPrevPage());
         }
 
         private void FocusPacketQuestResultNextButton()
         {
-            _isPacketQuestResultPrevButtonFocused = false;
+            _packetQuestResultFocusedButton = PacketQuestResultUtilDialogLayout.ResolveFocusedButtonAfterKeyboardNavigation(
+                moveBackward: false,
+                hasPrevPage: HasPacketQuestResultPrevPage());
         }
 
         private bool IsPacketQuestResultPrevButtonFocused()
         {
             return _presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog
-                && _isPacketQuestResultPrevButtonFocused
-                && (_currentPage > 0 || _pageContextStack.Count > 0);
+                && _packetQuestResultFocusedButton == PacketQuestResultUtilDialogFocusedButton.Prev
+                && HasPacketQuestResultPrevPage();
         }
 
         private bool IsPacketQuestResultNextButtonFocused()
@@ -1698,10 +1711,22 @@ namespace HaCreator.MapSimulator.Interaction
                 && !IsPacketQuestResultPrevButtonFocused();
         }
 
+        private bool HasPacketQuestResultPrevPage()
+        {
+            return _currentPage > 0 || _pageContextStack.Count > 0;
+        }
+
         private NpcInteractionOverlayResult HandlePacketQuestResultKeyboard(
             KeyboardState keyboardState,
             KeyboardState previousKeyboardState)
         {
+            if (IsKeyReleased(Keys.Escape, keyboardState, previousKeyboardState))
+            {
+                return ApplyPacketQuestResultModalResult(
+                    PacketQuestResultUtilDialogModalResult.Close,
+                    new NpcInteractionOverlayResult(true, null));
+            }
+
             if (IsKeyReleased(Keys.Left, keyboardState, previousKeyboardState))
             {
                 FocusPacketQuestResultPrevButton();
@@ -1709,9 +1734,18 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (IsKeyReleased(Keys.Right, keyboardState, previousKeyboardState) ||
-                IsKeyReleased(Keys.Tab, keyboardState, previousKeyboardState))
+                (IsKeyReleased(Keys.Tab, keyboardState, previousKeyboardState) &&
+                 !keyboardState.IsKeyDown(Keys.LeftShift) &&
+                 !keyboardState.IsKeyDown(Keys.RightShift)))
             {
                 FocusPacketQuestResultNextButton();
+                return new NpcInteractionOverlayResult(true, null);
+            }
+
+            if (IsKeyReleased(Keys.Tab, keyboardState, previousKeyboardState) &&
+                (keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift)))
+            {
+                FocusPacketQuestResultPrevButton();
                 return new NpcInteractionOverlayResult(true, null);
             }
 
@@ -1720,33 +1754,56 @@ namespace HaCreator.MapSimulator.Interaction
                 return default;
             }
 
-            if (IsPacketQuestResultPrevButtonFocused())
+            return ApplyPacketQuestResultModalResult(
+                PacketQuestResultUtilDialogLayout.ResolveModalResultForFocusedButton(
+                    _packetQuestResultFocusedButton,
+                    HasPacketQuestResultPrevPage()),
+                new NpcInteractionOverlayResult(true, null));
+        }
+
+        private NpcInteractionOverlayResult ApplyPacketQuestResultModalResult(
+            PacketQuestResultUtilDialogModalResult modalResult,
+            NpcInteractionOverlayResult defaultResult)
+        {
+            switch (modalResult)
             {
-                if (_currentPage > 0)
-                {
-                    _currentPage--;
-                }
-                else if (_pageContextStack.Count > 0)
-                {
-                    PageContext context = _pageContextStack.Pop();
-                    _currentPages = context.Pages;
-                    _currentPage = context.PageIndex;
-                }
+                case PacketQuestResultUtilDialogModalResult.Prev:
+                    if (_currentPage > 0)
+                    {
+                        _currentPage--;
+                    }
+                    else if (_pageContextStack.Count > 0)
+                    {
+                        PageContext context = _pageContextStack.Pop();
+                        _currentPages = context.Pages;
+                        _currentPage = context.PageIndex;
+                    }
 
-                return new NpcInteractionOverlayResult(true, null);
+                    return defaultResult;
+
+                case PacketQuestResultUtilDialogModalResult.NextOrOk:
+                    if (_currentPage < GetCurrentPages().Count - 1)
+                    {
+                        _currentPage++;
+                        return defaultResult;
+                    }
+
+                    Close();
+                    return new NpcInteractionOverlayResult(
+                        true,
+                        null,
+                        closeKind: NpcInteractionOverlayCloseKind.Completed);
+
+                case PacketQuestResultUtilDialogModalResult.Close:
+                    Close();
+                    return new NpcInteractionOverlayResult(
+                        true,
+                        null,
+                        closeKind: NpcInteractionOverlayCloseKind.Dismissed);
+
+                default:
+                    return defaultResult;
             }
-
-            if (_currentPage < GetCurrentPages().Count - 1)
-            {
-                _currentPage++;
-                return new NpcInteractionOverlayResult(true, null);
-            }
-
-            Close();
-            return new NpcInteractionOverlayResult(
-                true,
-                null,
-                closeKind: NpcInteractionOverlayCloseKind.Completed);
         }
 
         private void UpdatePacketQuestResultButtonInteractionState(

@@ -2383,7 +2383,7 @@ namespace HaCreator.MapSimulator.UI
                     widestEntryWidth = Math.Max(widestEntryWidth, entryWidth);
                 }
 
-                SkillMacroImeCandidateWindowMetrics metrics = SkillMacroImeCandidateWindowLayout.MeasureVertical(
+                SkillMacroImeCandidateWindowMetrics metrics = SkillMacroImeCandidateWindowLayout.MeasureVerticalClientOwnerExact(
                     _font.LineSpacing,
                     count,
                     widestEntryWidth);
@@ -2399,18 +2399,27 @@ namespace HaCreator.MapSimulator.UI
                 height = metrics.Height;
             }
 
-            width = Math.Max(64, Math.Min(viewportWidth, width));
+            width = Math.Max(64, width);
             height = Math.Max(4, Math.Min(viewportHeight, height));
             Point origin = ResolveCandidateWindowOrigin(viewport, width, height);
 
-            int x = Math.Clamp(origin.X, 0, Math.Max(0, viewportWidth - width));
+            int x = origin.X;
+            if (x < 0)
+            {
+                x = 0;
+            }
+
+            if (x + width > viewportWidth)
+            {
+                x = viewportWidth - width;
+            }
+
             int y = origin.Y;
             if (y + height > viewportHeight)
             {
                 y = origin.Y - height - 1;
             }
 
-            y = Math.Clamp(y, 0, Math.Max(0, viewportHeight - height));
             return new Rectangle(x, y, width, height);
         }
 
@@ -2524,8 +2533,6 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            x = Math.Clamp(x, 0, Math.Max(0, viewportWidth - width));
-            y = Math.Clamp(y, 0, Math.Max(0, viewportHeight - height));
             origin = new Point(x, y);
             return true;
         }

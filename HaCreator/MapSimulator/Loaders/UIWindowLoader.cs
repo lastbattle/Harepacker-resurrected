@@ -5772,6 +5772,7 @@ namespace HaCreator.MapSimulator.Loaders
                 overlayOffset,
                 LoadWindowCanvasLayerWithOffset(guildSkillProperty, "base", device, out Point headerOffset),
                 headerOffset,
+                frameTexture,
                 LoadCanvasTexture(guildSkillProperty, "skill0", device),
                 LoadCanvasTexture(guildSkillProperty, "skill1", device),
                 LoadCanvasTexture(guildSkillProperty?["recommend"] as WzSubProperty, "0", device),
@@ -7628,8 +7629,10 @@ namespace HaCreator.MapSimulator.Loaders
                     try
                     {
                         closeButton = new UIObject(basicCloseButton, btClickSound, btOverSound, false, Point.Zero, device);
-                        closeButton.X = Math.Max(8, frameTexture.Width - closeButton.CanvasSnapshotWidth - 8);
-                        closeButton.Y = 8;
+                        // Client evidence: CUIEventAlarm::OnCreate positions the close button
+                        // at (m_width - 22, 10) after MakeUOLByUIType resolves its art seam.
+                        closeButton.X = Math.Max(8, frameTexture.Width - 22);
+                        closeButton.Y = 10;
                     }
                     catch
                     {

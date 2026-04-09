@@ -3,12 +3,14 @@ using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Pools;
 using Microsoft.Xna.Framework;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
         private const string WeddingRemoteUserSourceTag = "wedding";
+        private readonly Dictionary<int, int> _weddingRemoteItemEffectRevisionByCharacterId = new();
 
         private void SyncWeddingRemoteActorsToSharedPool(WeddingField field)
         {
@@ -73,14 +75,31 @@ namespace HaCreator.MapSimulator
                         System.Environment.TickCount,
                         out _);
                 }
+
+                if (!_weddingRemoteItemEffectRevisionByCharacterId.TryGetValue(characterId, out int syncedRevision)
+                    || syncedRevision != snapshot.PacketOwnedItemEffectRevision)
+                {
+                    _remoteUserPool.TrySetItemEffect(
+                        characterId,
+                        snapshot.PacketOwnedItemEffectItemId,
+                        pairCharacterId: null,
+                        System.Environment.TickCount,
+                        out _);
+                    _weddingRemoteItemEffectRevisionByCharacterId[characterId] = snapshot.PacketOwnedItemEffectRevision;
+                }
             }
 
             _remoteUserPool.RemoveBySourceTagExcept(WeddingRemoteUserSourceTag, desiredCharacterIds);
+            foreach (int characterId in _weddingRemoteItemEffectRevisionByCharacterId.Keys.Except(desiredCharacterIds).ToArray())
+            {
+                _weddingRemoteItemEffectRevisionByCharacterId.Remove(characterId);
+            }
         }
 
         private void ClearWeddingRemoteActorsFromSharedPool()
         {
             _remoteUserPool.RemoveBySourceTag(WeddingRemoteUserSourceTag);
+            _weddingRemoteItemEffectRevisionByCharacterId.Clear();
         }
 
         private static int ResolveWeddingRemoteUserId(WeddingRemoteParticipantSnapshot snapshot)

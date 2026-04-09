@@ -54,7 +54,9 @@ namespace HaCreator.MapSimulator.Interaction
         public ReviveOwnerVariant Variant { get; init; }
         public string Title { get; init; } = "Revive";
         public string Subtitle { get; init; } = string.Empty;
+        public string PrimaryTitle { get; init; } = string.Empty;
         public string PrimaryDetail { get; init; } = string.Empty;
+        public string SecondaryTitle { get; init; } = string.Empty;
         public string SecondaryDetail { get; init; } = string.Empty;
         public string CountdownText { get; init; } = string.Empty;
         public string StatusText { get; init; } = string.Empty;
@@ -243,7 +245,9 @@ namespace HaCreator.MapSimulator.Interaction
                 Variant = Variant,
                 Title = "Revive",
                 Subtitle = subtitle,
+                PrimaryTitle = ResolvePrimaryTitle(Variant),
                 PrimaryDetail = HasPremiumChoice ? _premiumDetail : _normalDetail,
+                SecondaryTitle = ResolveSecondaryTitle(Variant),
                 SecondaryDetail = HasPremiumChoice ? _normalDetail : "This simulator-local owner still uses one recovery branch when no alternate local revive path is available.",
                 CountdownText = $"Auto revive in {remaining.Minutes:00}:{remaining.Seconds:00}",
                 StatusText = HasPremiumChoice
@@ -265,6 +269,25 @@ namespace HaCreator.MapSimulator.Interaction
                 ReviveOwnerVariant.SoulStoneChoice => "Soul Stone",
                 _ => "Default revive owner"
             };
+        }
+
+        private static string ResolvePrimaryTitle(ReviveOwnerVariant variant)
+        {
+            return variant switch
+            {
+                ReviveOwnerVariant.SoulStoneChoice => "Current Field Recovery",
+                ReviveOwnerVariant.UpgradeTombChoice => "Current Field Recovery",
+                ReviveOwnerVariant.PremiumSafetyCharmChoice => "Current Field Recovery",
+                ReviveOwnerVariant.SafetyCharmChoice => "Current Field Recovery",
+                _ => "Return to Safety"
+            };
+        }
+
+        private static string ResolveSecondaryTitle(ReviveOwnerVariant variant)
+        {
+            return variant == ReviveOwnerVariant.DefaultOnly
+                ? string.Empty
+                : "Return to Safety";
         }
     }
 }

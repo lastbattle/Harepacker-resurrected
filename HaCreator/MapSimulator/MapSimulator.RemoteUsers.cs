@@ -1230,6 +1230,8 @@ namespace HaCreator.MapSimulator
             {
                 DropPickupActorKind.Player when actorId > 0 && remoteUserPool?.TryGetActor(actorId, out RemoteUserActor actor) == true
                     => actor.Name,
+                DropPickupActorKind.Player
+                    => FormatPlayerPickupActorLabel(actorId),
                 DropPickupActorKind.Pet
                     => ResolveRemotePetPickupActorName(actorId, fallbackOwnerId, remoteUserPool, itemNameResolver),
                 DropPickupActorKind.Mob when actorId > 0 && mobNameResolver != null
@@ -1238,6 +1240,13 @@ namespace HaCreator.MapSimulator
                     => FormatOtherPickupActorLabel(actorId),
                 _ => null
             };
+        }
+
+        internal static string FormatPlayerPickupActorLabel(int actorId)
+        {
+            return actorId > 0
+                ? $"Character {actorId}"
+                : null;
         }
 
         internal static string FormatOtherPickupActorLabel(int actorId)
@@ -1253,13 +1262,8 @@ namespace HaCreator.MapSimulator
             RemoteUserActorPool remoteUserPool,
             Func<int, string> itemNameResolver)
         {
-            if (remoteUserPool == null)
-            {
-                return null;
-            }
-
             if (TryDecodeRemotePetPickupActorId(actorId, out int ownerCharacterId, out int slotIndex)
-                && remoteUserPool.TryGetActor(ownerCharacterId, out RemoteUserActor ownerActor))
+                && remoteUserPool?.TryGetActor(ownerCharacterId, out RemoteUserActor ownerActor) == true)
             {
                 string petName = ResolveRemotePetPickupItemName(ownerActor, slotIndex, itemNameResolver);
                 if (!string.IsNullOrWhiteSpace(petName))
@@ -1271,14 +1275,24 @@ namespace HaCreator.MapSimulator
             }
 
             int resolvedOwnerId = fallbackOwnerId;
-            if (resolvedOwnerId <= 0 && actorId > 0 && remoteUserPool.TryGetActor(actorId, out _))
+            if (resolvedOwnerId <= 0 && actorId > 0 && remoteUserPool?.TryGetActor(actorId, out _) == true)
             {
                 resolvedOwnerId = actorId;
             }
 
-            if (resolvedOwnerId > 0 && remoteUserPool.TryGetActor(resolvedOwnerId, out RemoteUserActor fallbackOwner))
+            if (resolvedOwnerId > 0 && remoteUserPool?.TryGetActor(resolvedOwnerId, out RemoteUserActor fallbackOwner) == true)
             {
                 return FormatRemoteOwnerPetLabel(fallbackOwner.Name);
+            }
+
+            if (ownerCharacterId > 0)
+            {
+                return FormatRemoteOwnerPetLabel(FormatPlayerPickupActorLabel(ownerCharacterId));
+            }
+
+            if (resolvedOwnerId > 0)
+            {
+                return FormatRemoteOwnerPetLabel(FormatPlayerPickupActorLabel(resolvedOwnerId));
             }
 
             return null;

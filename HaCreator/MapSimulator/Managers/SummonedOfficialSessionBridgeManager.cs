@@ -1103,6 +1103,18 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
+            // Only promote traces that can actually be turned back into a reusable request template.
+            if (!TryCreateSg88ManualAttackRequestTemplate(
+                    trace,
+                    capture.SummonObjectId,
+                    capture.PrimaryTargetMobId,
+                    capture.TargetMobIds,
+                    out _,
+                    out _))
+            {
+                return;
+            }
+
             int candidateAgeMs = Math.Max(0, unchecked(trace.ObservedAt - capture.RequestedAt));
             int existingAgeMs = capture.RequestPacket.HasValue
                 ? Math.Max(0, unchecked(capture.RequestPacket.Value.ObservedAt - capture.RequestedAt))
@@ -1231,6 +1243,17 @@ namespace HaCreator.MapSimulator.Managers
             if (!TryMapTargetPayloadOffsets(payload, resolvedTargetMobIds, summonPayloadOffsets, out int[] targetPayloadOffsets))
             {
                 error = "SG-88 request packet template could not map every admitted target mob id onto the captured payload.";
+                return false;
+            }
+
+            primaryPayloadOffsets = ResolvePrimaryPayloadOffsets(
+                payload,
+                primaryTargetMobId,
+                summonPayloadOffsets,
+                targetPayloadOffsets);
+            if (primaryPayloadOffsets.Length == 0)
+            {
+                error = "SG-88 request packet template could not isolate a reusable primary target mob id field.";
                 return false;
             }
 
@@ -1382,41 +1405,154 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            HashSet<int> usedOffsets = reservedPayloadOffsets != null
+            HashSet<int> reservedOffsets = reservedPayloadOffsets != null
                 ? new HashSet<int>(reservedPayloadOffsets)
                 : new HashSet<int>();
-            List<int> mappedOffsets = new(targetMobIds.Count);
-            foreach (int targetMobId in targetMobIds)
+            int[][] candidateOffsetSets = new int[targetMobIds.Count][];
+            for (int i = 0; i < targetMobIds.Count; i++)
             {
-                int[] candidateOffsets = FindAllInt32Offsets(payload, targetMobId);
+                int[] candidateOffsets = FindAllInt32Offsets(payload, targetMobIds[i])
+                    .Where(candidateOffset => !reservedOffsets.Contains(candidateOffset))
+                    .Distinct()
+                    .OrderBy(candidateOffset => candidateOffset)
+                    .ToArray();
                 if (candidateOffsets.Length == 0)
                 {
                     return false;
                 }
 
-                int selectedOffset = -1;
-                foreach (int candidateOffset in candidateOffsets)
-                {
-                    if (usedOffsets.Contains(candidateOffset))
-                    {
-                        continue;
-                    }
-
-                    selectedOffset = candidateOffset;
-                    break;
-                }
-
-                if (selectedOffset < 0)
-                {
-                    return false;
-                }
-
-                mappedOffsets.Add(selectedOffset);
-                usedOffsets.Add(selectedOffset);
+                candidateOffsetSets[i] = candidateOffsets;
             }
 
-            offsets = mappedOffsets.ToArray();
-            return true;
+            int[] currentOffsets = new int[targetMobIds.Count];
+            int[] bestOffsets = null;
+            int bestSpan = int.MaxValue;
+            int bestGap = int.MaxValue;
+            SearchOrderedTargetPayloadOffsets(
+                candidateOffsetSets,
+                index: 0,
+                previousOffset: -1,
+                currentOffsets,
+                ref bestOffsets,
+                ref bestSpan,
+                ref bestGap);
+            offsets = bestOffsets ?? Array.Empty<int>();
+            return offsets.Length == targetMobIds.Count;
+        }
+
+        private static void SearchOrderedTargetPayloadOffsets(
+            IReadOnlyList<int[]> candidateOffsetSets,
+            int index,
+            int previousOffset,
+            int[] currentOffsets,
+            ref int[] bestOffsets,
+            ref int bestSpan,
+            ref int bestGap)
+        {
+            if (candidateOffsetSets == null || index < 0)
+            {
+                return;
+            }
+
+            if (index >= candidateOffsetSets.Count)
+            {
+                int span = currentOffsets[^1] - currentOffsets[0];
+                int gap = 0;
+                for (int i = 1; i < currentOffsets.Length; i++)
+                {
+                    gap += currentOffsets[i] - currentOffsets[i - 1];
+                }
+
+                if (bestOffsets == null
+                    || span < bestSpan
+                    || (span == bestSpan && gap < bestGap))
+                {
+                    bestOffsets = (int[])currentOffsets.Clone();
+                    bestSpan = span;
+                    bestGap = gap;
+                }
+
+                return;
+            }
+
+            int[] candidateOffsets = candidateOffsetSets[index];
+            for (int i = 0; i < candidateOffsets.Length; i++)
+            {
+                int candidateOffset = candidateOffsets[i];
+                if (candidateOffset <= previousOffset)
+                {
+                    continue;
+                }
+
+                currentOffsets[index] = candidateOffset;
+                SearchOrderedTargetPayloadOffsets(
+                    candidateOffsetSets,
+                    index + 1,
+                    candidateOffset,
+                    currentOffsets,
+                    ref bestOffsets,
+                    ref bestSpan,
+                    ref bestGap);
+            }
+        }
+
+        private static int[] ResolvePrimaryPayloadOffsets(
+            byte[] payload,
+            int primaryTargetMobId,
+            IReadOnlyList<int> summonPayloadOffsets,
+            IReadOnlyList<int> targetPayloadOffsets)
+        {
+            if (payload == null || payload.Length < sizeof(int) || primaryTargetMobId <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            HashSet<int> summonOffsets = summonPayloadOffsets != null
+                ? new HashSet<int>(summonPayloadOffsets)
+                : new HashSet<int>();
+            HashSet<int> targetOffsets = targetPayloadOffsets != null
+                ? new HashSet<int>(targetPayloadOffsets)
+                : new HashSet<int>();
+            int[] candidateOffsets = FindAllInt32Offsets(payload, primaryTargetMobId)
+                .Where(candidateOffset => !summonOffsets.Contains(candidateOffset))
+                .Distinct()
+                .OrderBy(candidateOffset => candidateOffset)
+                .ToArray();
+            if (candidateOffsets.Length == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            int firstTargetOffset = targetPayloadOffsets != null && targetPayloadOffsets.Count > 0
+                ? targetPayloadOffsets[0]
+                : int.MaxValue;
+            int dedicatedPrimaryOffset = candidateOffsets
+                .Where(candidateOffset => candidateOffset < firstTargetOffset)
+                .DefaultIfEmpty(int.MinValue)
+                .Max();
+            List<int> resolvedOffsets = new();
+            if (dedicatedPrimaryOffset != int.MinValue)
+            {
+                resolvedOffsets.Add(dedicatedPrimaryOffset);
+            }
+
+            foreach (int candidateOffset in candidateOffsets)
+            {
+                if (targetOffsets.Contains(candidateOffset))
+                {
+                    resolvedOffsets.Add(candidateOffset);
+                }
+            }
+
+            if (resolvedOffsets.Count == 0)
+            {
+                resolvedOffsets.Add(candidateOffsets[0]);
+            }
+
+            return resolvedOffsets
+                .Distinct()
+                .OrderBy(candidateOffset => candidateOffset)
+                .ToArray();
         }
 
         private static bool TryWriteInt32LittleEndian(byte[] buffer, int offset, int value)

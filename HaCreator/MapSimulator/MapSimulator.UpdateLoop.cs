@@ -202,7 +202,6 @@ namespace HaCreator.MapSimulator
             {
                 EnsureMapTransferOfficialSessionBridgeState(shouldRun: false);
                 EnsureComboCounterPacketInboxState(shouldRun: false);
-                EnsureLocalOverlayPacketInboxState(shouldRun: false);
                 EnsureLocalUtilityPacketInboxState(shouldRun: false);
                 EnsureLocalUtilityOfficialSessionBridgeState(shouldRun: false);
                 EnsureExpeditionIntermediaryPacketInboxState(shouldRun: false);
@@ -304,8 +303,6 @@ namespace HaCreator.MapSimulator
             EnsureComboCounterPacketInboxState(shouldRun: true);
             DrainComboCounterPacketInbox();
             UpdatePacketOwnedComboState(currTickCount);
-            EnsureLocalOverlayPacketInboxState(shouldRun: true);
-            DrainLocalOverlayPacketInbox();
             SyncPacketOwnedApspContextLifecycle();
             EnsureLocalUtilityPacketInboxState(shouldRun: true);
             EnsurePacketScriptOfficialSessionBridgeState(shouldRun: true);
@@ -328,6 +325,7 @@ namespace HaCreator.MapSimulator
             SyncUtilityChannelSelectorAvailability();
             UpdatePacketOwnedTutorRuntime(currTickCount);
             UpdatePacketOwnedRadioSchedule(currTickCount);
+            UpdateUtilityAudioMix(currTickCount);
 
 
             if (isWindowActive)
