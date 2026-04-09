@@ -79,6 +79,11 @@ It does three things that the old notes did not do well:
 Notes:
 IDA confirms there is a coherent pre-field client surface that is not covered by the first ten backlog docs. The login bootstrap, world/channel selection owners, character-selection roster, avatar preview, character-detail panel, recommend-world helper, connection or utility dialogs, and the separate create-character race/job/avatar/name owners all have dedicated client classes and do not fit cleanly under in-map HUD work or the broader social-window bucket.
 
+## Cross-Document Scope Notes
+
+- `CStage::OnSetCashShop` and `CStage::OnSetITC` stay indexed here only as pre-field stage-handoff references. The actual Cash Shop / ITC service-stage, child-window, and wishlist parity work belongs to backlog 8.
+- `CField::OnCharacterSale` remains relevant here because it is the stage-side bridge back into login-side character-slot entitlement flow, not the broader Cash Shop / ITC owner family itself.
+
 ## Client Function Index By Backlog Area
 
 The list below maps this backlog area to concrete client seams confirmed in IDA.
