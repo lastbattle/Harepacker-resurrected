@@ -420,10 +420,17 @@ namespace HaCreator.MapSimulator.UI
 
         public void ApplyLaunchContext(string npcFunctionText)
         {
+            ResetPacketOwnedLaunchSessionState();
             _launchContextLabel = npcFunctionText?.Trim();
             _launchFilter = ResolveLaunchFilter(_launchContextLabel);
             RebuildVisiblePages();
             FocusLaunchContext();
+        }
+
+        public override void Hide()
+        {
+            ResetPacketOwnedLaunchSessionState();
+            base.Hide();
         }
 
         public void SetGaugeTextures(Texture2D gaugeBarTexture, Texture2D gaugeFillTexture, Point gaugePosition)
@@ -1561,6 +1568,16 @@ namespace HaCreator.MapSimulator.UI
             _packetOwnedHasAuthoritativeDisassemblyTargets = false;
             _packetOwnedHasAuthoritativeHiddenRecipeList = false;
             _packetOwnedServerOwnsCraftExecution = false;
+        }
+
+        private void ResetPacketOwnedLaunchSessionState()
+        {
+            _isCrafting = false;
+            _craftingRecipeIndex = -1;
+            _launchContextLabel = null;
+            _launchFilter = MakerLaunchFilter.None;
+            ClearPendingPacketOwnedRequest();
+            ClearPacketOwnedSessionState();
         }
 
         private string BuildHiddenRecipeLockHint(ItemMakerRecipe recipe)

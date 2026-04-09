@@ -5,6 +5,7 @@ using HaSharedLibrary.Util;
 using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using HaCreator.MapSimulator.Loaders;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -45,6 +46,8 @@ namespace HaCreator.MapSimulator.Interaction
         private UtilDialogButtonTextures _packetQuestResultOkButtonTextures;
         private Texture2D _packetQuestResultSpeakerTexture;
         private int _packetQuestResultSpeakerTemplateId;
+        private readonly List<PacketQuestResultSpeakerFrame> _packetQuestResultSpeakerFrames = new();
+        private int _packetQuestResultSpeakerAnimationStartedAt = int.MinValue;
 
         private SpriteFont _font;
         private string _npcName = "NPC";
@@ -656,8 +659,10 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _packetQuestResultSpeakerTemplateId = speakerTemplateId;
+            DisposePacketQuestResultSpeakerFrames();
             _packetQuestResultSpeakerTexture?.Dispose();
             _packetQuestResultSpeakerTexture = null;
+            _packetQuestResultSpeakerAnimationStartedAt = int.MinValue;
 
             if (speakerTemplateId <= 0)
             {
@@ -666,7 +671,176 @@ namespace HaCreator.MapSimulator.Interaction
 
             WzImage npcImage = global::HaCreator.Program.FindImage("Npc", $"{speakerTemplateId:D7}.img");
             EnsureParsed(npcImage);
-            _packetQuestResultSpeakerTexture = LoadCanvasTexture(WzInfoTools.GetNpcImage(npcImage));
+            LoadPacketQuestResultSpeakerFrames(npcImage);
+            _packetQuestResultSpeakerTexture = _packetQuestResultSpeakerFrames.Count == 0
+                ? LoadCanvasTexture(WzInfoTools.GetNpcImage(npcImage))
+                : null;
+        }
+
+        private void LoadPacketQuestResultSpeakerFrames(WzImage npcImage)
+        {
+            if (npcImage == null)
+            {
+                return;
+            }
+
+            foreach (string actionName in EnumeratePacketQuestResultSpeakerActionCandidates(npcImage))
+            {
+                WzImageProperty actionProperty = ResolveProperty(npcImage, actionName);
+                if (actionProperty == null)
+                {
+                    continue;
+                }
+
+                if (TryLoadPacketQuestResultSpeakerFramesFromAction(actionProperty))
+                {
+                    _packetQuestResultSpeakerAnimationStartedAt = Environment.TickCount;
+                    return;
+                }
+            }
+        }
+
+        private IEnumerable<string> EnumeratePacketQuestResultSpeakerActionCandidates(WzImage npcImage)
+        {
+            HashSet<string> yielded = new(StringComparer.OrdinalIgnoreCase);
+            foreach (string actionName in EnumeratePacketQuestResultSpeakerAliases(ResolveProperty(npcImage, "say/speak") as WzImageProperty))
+            {
+                if (yielded.Add(actionName))
+                {
+                    yield return actionName;
+                }
+            }
+
+            if (yielded.Add("stand"))
+            {
+                yield return "stand";
+            }
+
+            if (yielded.Add("action"))
+            {
+                yield return "action";
+            }
+        }
+
+        private static IEnumerable<string> EnumeratePacketQuestResultSpeakerAliases(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in property.WzProperties)
+            {
+                string alias = child switch
+                {
+                    WzStringProperty stringProperty => stringProperty.Value,
+                    _ => child?.GetString()
+                };
+
+                if (!string.IsNullOrWhiteSpace(alias))
+                {
+                    yield return alias.Trim();
+                }
+            }
+        }
+
+        private bool TryLoadPacketQuestResultSpeakerFramesFromAction(WzImageProperty actionProperty)
+        {
+            SortedDictionary<int, WzCanvasProperty> sortedFrames = GetPacketQuestResultSpeakerCanvasFrames(actionProperty);
+            if (sortedFrames.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (KeyValuePair<int, WzCanvasProperty> entry in sortedFrames)
+            {
+                WzCanvasProperty canvas = entry.Value;
+                Texture2D texture = LoadCanvasTexture(canvas);
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                Point origin = ResolveCanvasOrigin(canvas);
+                int delayMs = ResolveCanvasDelay(canvas);
+                _packetQuestResultSpeakerFrames.Add(new PacketQuestResultSpeakerFrame(texture, origin, delayMs));
+            }
+
+            return _packetQuestResultSpeakerFrames.Count > 0;
+        }
+
+        private static SortedDictionary<int, WzCanvasProperty> GetPacketQuestResultSpeakerCanvasFrames(WzImageProperty actionProperty)
+        {
+            var result = new SortedDictionary<int, WzCanvasProperty>();
+            foreach (WzImageProperty child in actionProperty.WzProperties)
+            {
+                if (!int.TryParse(child.Name, out int frameIndex))
+                {
+                    continue;
+                }
+
+                WzCanvasProperty canvas = WzInfoTools.GetRealProperty(child) as WzCanvasProperty;
+                if (canvas != null)
+                {
+                    result[frameIndex] = canvas;
+                }
+            }
+
+            return result;
+        }
+
+        private static Point ResolveCanvasOrigin(WzCanvasProperty canvas)
+        {
+            if (canvas?["origin"] is WzVectorProperty origin)
+            {
+                return WzInfoTools.VectorToXNAPoint(origin);
+            }
+
+            return Point.Zero;
+        }
+
+        private static int ResolveCanvasDelay(WzCanvasProperty canvas)
+        {
+            int delay = canvas?["delay"]?.GetInt() ?? 0;
+            return delay > 0 ? delay : NpcClientActionSetLoader.DefaultNpcFrameDelay;
+        }
+
+        private PacketQuestResultSpeakerFrame GetActivePacketQuestResultSpeakerFrame()
+        {
+            if (_packetQuestResultSpeakerFrames.Count == 0)
+            {
+                return null;
+            }
+
+            if (_packetQuestResultSpeakerFrames.Count == 1)
+            {
+                return _packetQuestResultSpeakerFrames[0];
+            }
+
+            int startedAt = _packetQuestResultSpeakerAnimationStartedAt == int.MinValue
+                ? Environment.TickCount
+                : _packetQuestResultSpeakerAnimationStartedAt;
+            int elapsed = Math.Max(0, unchecked(Environment.TickCount - startedAt));
+            int[] delays = new int[_packetQuestResultSpeakerFrames.Count];
+            for (int i = 0; i < _packetQuestResultSpeakerFrames.Count; i++)
+            {
+                delays[i] = _packetQuestResultSpeakerFrames[i].DelayMs;
+            }
+
+            int frameIndex = ResolvePacketQuestResultSpeakerFrameIndex(delays, elapsed);
+            return frameIndex >= 0 && frameIndex < _packetQuestResultSpeakerFrames.Count
+                ? _packetQuestResultSpeakerFrames[frameIndex]
+                : _packetQuestResultSpeakerFrames[0];
+        }
+
+        private void DisposePacketQuestResultSpeakerFrames()
+        {
+            for (int i = 0; i < _packetQuestResultSpeakerFrames.Count; i++)
+            {
+                _packetQuestResultSpeakerFrames[i].Texture?.Dispose();
+            }
+
+            _packetQuestResultSpeakerFrames.Clear();
         }
 
         private UtilDialogButtonTextures LoadButtonTextures(WzImage primaryImage, WzImage fallbackImage, string buttonPath)
@@ -913,7 +1087,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         private void DrawPacketQuestResultSpeakerPane(SpriteBatch spriteBatch, Rectangle windowRect, Rectangle bodyTextRect)
         {
-            if (_packetQuestResultSpeakerTexture == null)
+            PacketQuestResultSpeakerFrame activeFrame = GetActivePacketQuestResultSpeakerFrame();
+            Texture2D speakerTexture = activeFrame?.Texture ?? _packetQuestResultSpeakerTexture;
+            if (speakerTexture == null)
             {
                 return;
             }
@@ -924,13 +1100,19 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            Rectangle destination = FitInside(
+            Rectangle destination = activeFrame != null
+                ? PacketQuestResultUtilDialogLayout.GetSpeakerFrameBounds(
+                    portraitBounds,
+                    activeFrame.Origin,
+                    speakerTexture.Width,
+                    speakerTexture.Height)
+                : FitInside(
                 portraitBounds,
-                _packetQuestResultSpeakerTexture.Width,
-                _packetQuestResultSpeakerTexture.Height);
+                speakerTexture.Width,
+                speakerTexture.Height);
             if (destination.Width > 0 && destination.Height > 0)
             {
-                spriteBatch.Draw(_packetQuestResultSpeakerTexture, destination, Color.White);
+                spriteBatch.Draw(speakerTexture, destination, Color.White);
             }
 
             if (_packetQuestResultSeparatorTexture != null)
@@ -969,6 +1151,46 @@ namespace HaCreator.MapSimulator.Interaction
             int x = bounds.X + ((bounds.Width - width) / 2);
             int y = bounds.Y + ((bounds.Height - height) / 2);
             return new Rectangle(x, y, width, height);
+        }
+
+        internal static int ResolvePacketQuestResultSpeakerFrameIndex(
+            IReadOnlyList<int> delaysMs,
+            int elapsedMs)
+        {
+            if (delaysMs == null || delaysMs.Count == 0)
+            {
+                return -1;
+            }
+
+            if (delaysMs.Count == 1)
+            {
+                return 0;
+            }
+
+            int totalDuration = 0;
+            for (int i = 0; i < delaysMs.Count; i++)
+            {
+                totalDuration += Math.Max(1, delaysMs[i]);
+            }
+
+            if (totalDuration <= 0)
+            {
+                return 0;
+            }
+
+            int frameTime = Math.Max(0, elapsedMs) % totalDuration;
+            for (int i = 0; i < delaysMs.Count; i++)
+            {
+                int delay = Math.Max(1, delaysMs[i]);
+                if (frameTime < delay)
+                {
+                    return i;
+                }
+
+                frameTime -= delay;
+            }
+
+            return delaysMs.Count - 1;
         }
 
         private void DrawButton(SpriteBatch spriteBatch, Rectangle rect, string label, bool enabled)

@@ -194,7 +194,18 @@ namespace HaCreator.MapSimulator
 
         internal readonly struct WeddingPhotoSceneContract
         {
-            public WeddingPhotoSceneContract(WeddingPhotoWrapperKind kind, string sourceDescription, string sceneDescription, int returnMapId, int side, int top, int bottom)
+            public WeddingPhotoSceneContract(
+                WeddingPhotoWrapperKind kind,
+                string sourceDescription,
+                string sceneDescription,
+                int returnMapId,
+                int side,
+                int top,
+                int bottom,
+                int viewportLeft,
+                int viewportTop,
+                int viewportRight,
+                int viewportBottom)
             {
                 Kind = kind;
                 SourceDescription = sourceDescription ?? string.Empty;
@@ -203,6 +214,10 @@ namespace HaCreator.MapSimulator
                 Side = Math.Max(0, side);
                 Top = Math.Max(0, top);
                 Bottom = Math.Max(0, bottom);
+                ViewportLeft = viewportLeft;
+                ViewportTop = viewportTop;
+                ViewportRight = viewportRight;
+                ViewportBottom = viewportBottom;
             }
 
             public WeddingPhotoWrapperKind Kind { get; }
@@ -212,9 +227,16 @@ namespace HaCreator.MapSimulator
             public int Side { get; }
             public int Top { get; }
             public int Bottom { get; }
+            public int ViewportLeft { get; }
+            public int ViewportTop { get; }
+            public int ViewportRight { get; }
+            public int ViewportBottom { get; }
             public bool HasSafeArea => Side > 0 || Top > 0 || Bottom > 0;
+            public bool HasViewport => ViewportRight > ViewportLeft && ViewportBottom > ViewportTop;
         }
 
+        private const int ClientOwnedAranTutorialFieldType = 22;
+        private const int ClientOwnedWeddingPhotoFieldType = 61;
         private const int TutorialForcedCapItemId = 1002562;
         private const int TutorialForcedLongcoatItemId = 1052081;
         private const int ShowaBathMaleLongcoatItemId = 1050100;
@@ -820,11 +842,14 @@ namespace HaCreator.MapSimulator
                 string safeArea = weddingPhotoContract.HasSafeArea
                     ? $" safeArea(side={weddingPhotoContract.Side}, top={weddingPhotoContract.Top}, bottom={weddingPhotoContract.Bottom})."
                     : string.Empty;
+                string viewport = weddingPhotoContract.HasViewport
+                    ? $" viewport(left={weddingPhotoContract.ViewportLeft}, top={weddingPhotoContract.ViewportTop}, right={weddingPhotoContract.ViewportRight}, bottom={weddingPhotoContract.ViewportBottom})."
+                    : string.Empty;
                 string ownerLabel = weddingPhotoContract.Kind == WeddingPhotoWrapperKind.SceneOwner
                     ? "wedding-photo field owner active"
                     : "wedding-photo ceremony/photo contract active";
                 activeWrappers.Add(
-                    $"{ownerLabel} ({weddingPhotoContract.SceneDescription}, client owner {weddingPhotoContract.SourceDescription}) on map {mapInfo.id}, returnMap {weddingPhotoContract.ReturnMapId}.{safeArea}");
+                    $"{ownerLabel} ({weddingPhotoContract.SceneDescription}, client owner {weddingPhotoContract.SourceDescription}) on map {mapInfo.id}, returnMap {weddingPhotoContract.ReturnMapId}.{safeArea}{viewport}");
             }
 
             if (_specialFieldRuntime.PartyRaid.HasNativePartyRaidWrapperOwner)
@@ -925,7 +950,7 @@ namespace HaCreator.MapSimulator
             {
                 contract = new TutorialWrapperContract(
                     TutorialWrapperKind.AranTutorial,
-                    $"client owner CField_AranTutorial::GetFieldType = {(int)FieldType.FIELDTYPE_KILLCOUNT} ({FieldType.FIELDTYPE_KILLCOUNT}), WZ onUserEnter={mapInfo?.onUserEnter ?? "<none>"}, mapMark={mapInfo?.mapMark ?? "<none>"}, mapId={mapInfo?.id ?? 0}");
+                    $"client owner CField_AranTutorial::GetFieldType = {ClientOwnedAranTutorialFieldType}, WZ info/fieldType={mapInfo?.fieldType}, onUserEnter={mapInfo?.onUserEnter ?? "<none>"}, mapMark={mapInfo?.mapMark ?? "<none>"}, mapId={mapInfo?.id ?? 0}");
                 return true;
             }
 
@@ -982,7 +1007,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            bool hasAranFieldType = mapInfo.fieldType == FieldType.FIELDTYPE_KILLCOUNT;
+            bool hasAranFieldType = (int)mapInfo.fieldType == ClientOwnedAranTutorialFieldType;
             bool hasAranOnUserEnter = !string.IsNullOrWhiteSpace(mapInfo.onUserEnter)
                 && mapInfo.onUserEnter.StartsWith(AranTutorialOnUserEnterPrefix, StringComparison.OrdinalIgnoreCase);
             bool inAranTutorialRange = mapInfo.id >= AranTutorialMapIdMin
@@ -1035,34 +1060,46 @@ namespace HaCreator.MapSimulator
 
         internal static bool TryBuildWeddingPhotoSceneContract(MapInfo mapInfo, out WeddingPhotoSceneContract contract)
         {
-            if (mapInfo?.fieldType == FieldType.FIELDTYPE_WEDDINGPHOTO || HasWeddingPhotoSceneOwnerContract(mapInfo))
+            TryGetWeddingPhotoSceneSafeArea(mapInfo, out int sceneSide, out int sceneTop, out int sceneBottom);
+            TryGetWeddingPhotoSceneViewport(mapInfo, out int sceneViewportLeft, out int sceneViewportTop, out int sceneViewportRight, out int sceneViewportBottom);
+
+            if ((int?)mapInfo?.fieldType == ClientOwnedWeddingPhotoFieldType || HasWeddingPhotoSceneOwnerContract(mapInfo))
             {
-                TryGetWeddingPhotoSceneSafeArea(mapInfo, out int sceneSide, out int sceneTop, out int sceneBottom);
-                string sourceDescription = mapInfo?.fieldType == FieldType.FIELDTYPE_WEDDINGPHOTO
-                    ? $"CField_WeddingPhoto::GetFieldType = {(int)FieldType.FIELDTYPE_WEDDINGPHOTO} ({FieldType.FIELDTYPE_WEDDINGPHOTO})"
+                string sourceDescription = (int?)mapInfo?.fieldType == ClientOwnedWeddingPhotoFieldType
+                    ? $"CField_WeddingPhoto::GetFieldType = {ClientOwnedWeddingPhotoFieldType}"
                     : $"WZ wedding scene owner contract (onUserEnter={mapInfo?.onUserEnter ?? "<none>"}, mapMark={mapInfo?.mapMark ?? "<none>"}, region={mapInfo?.id / 1000 ?? 0})";
+                string sceneDescription = sceneViewportRight > sceneViewportLeft && sceneViewportBottom > sceneViewportTop
+                    ? "wedding pledge/photo scene owner with WZ viewport envelope"
+                    : "wedding pledge/photo scene owner";
                 contract = new WeddingPhotoSceneContract(
                     WeddingPhotoWrapperKind.SceneOwner,
                     sourceDescription,
-                    "wedding pledge/photo scene owner",
+                    sceneDescription,
                     mapInfo.returnMap,
                     sceneSide,
                     sceneTop,
-                    sceneBottom);
+                    sceneBottom,
+                    sceneViewportLeft,
+                    sceneViewportTop,
+                    sceneViewportRight,
+                    sceneViewportBottom);
                 return true;
             }
 
             if (HasWeddingPhotoSafeAreaContract(mapInfo))
             {
-                TryGetWeddingPhotoSceneSafeArea(mapInfo, out int safeSide, out int safeTop, out int safeBottom);
                 contract = new WeddingPhotoSceneContract(
                     WeddingPhotoWrapperKind.PhotoContract,
                     $"wedding photo safe-area contract (mapMark={mapInfo.mapMark}, region={mapInfo.id / 1000})",
                     "wedding ceremony/photo safe-area contract",
                     mapInfo.returnMap,
-                    safeSide,
-                    safeTop,
-                    safeBottom);
+                    sceneSide,
+                    sceneTop,
+                    sceneBottom,
+                    sceneViewportLeft,
+                    sceneViewportTop,
+                    sceneViewportRight,
+                    sceneViewportBottom);
                 return true;
             }
 
@@ -1076,6 +1113,15 @@ namespace HaCreator.MapSimulator
             top = Math.Max(0, mapInfo?.LBTop ?? 0);
             bottom = Math.Max(0, mapInfo?.LBBottom ?? 0);
             return side > 0 || top > 0 || bottom > 0;
+        }
+
+        internal static bool TryGetWeddingPhotoSceneViewport(MapInfo mapInfo, out int left, out int top, out int right, out int bottom)
+        {
+            left = mapInfo?.VRLeft ?? 0;
+            top = mapInfo?.VRTop ?? 0;
+            right = mapInfo?.VRRight ?? 0;
+            bottom = mapInfo?.VRBottom ?? 0;
+            return right > left && bottom > top;
         }
 
         private static bool HasWeddingPhotoSafeAreaContract(MapInfo mapInfo)

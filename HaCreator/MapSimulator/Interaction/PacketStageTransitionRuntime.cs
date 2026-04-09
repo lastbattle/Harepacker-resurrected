@@ -30,6 +30,8 @@ namespace HaCreator.MapSimulator.Interaction
             0x40UL
         };
 
+        private const ulong CharacterDataKnownTailDirectDecodeUnsupportedFlags = 0x3EF00UL;
+
         private int _boundMapId = int.MinValue;
         private string _stageStatus = "Packet-owned stage transition idle.";
         private string _mapLoadStatus = "Packet-owned map-load presentation idle.";
@@ -963,6 +965,11 @@ namespace HaCreator.MapSimulator.Interaction
                     snapshot = inventoryDecoratedSnapshot;
                 }
 
+                if (TryDecodeKnownCharacterDataTailSections(reader, characterDataFlags, snapshot, out PacketCharacterDataSnapshot tailDecoratedSnapshot))
+                {
+                    snapshot = tailDecoratedSnapshot;
+                }
+
                 head = new PacketCharacterDataTransferHead(snapshot.FieldId, snapshot.PortalIndex, snapshot.Hp);
                 consumedBytes = checked((int)(reader.BaseStream.Position - startPosition));
                 return true;
@@ -1001,8 +1008,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             if ((characterDataFlags & 0x100000UL) != 0)
             {
-                _ = reader.ReadInt32();
-                _ = reader.ReadInt32();
+                snapshot = snapshot with
+                {
+                    PreInventoryHeaderValue1 = reader.ReadInt32(),
+                    PreInventoryHeaderValue2 = reader.ReadInt32()
+                };
             }
 
             return snapshot;
@@ -1271,6 +1281,143 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        private static bool TryDecodeKnownCharacterDataTailSections(
+            BinaryReader reader,
+            ulong characterDataFlags,
+            PacketCharacterDataSnapshot snapshot,
+            out PacketCharacterDataSnapshot decoratedSnapshot)
+        {
+            decoratedSnapshot = snapshot;
+            if ((characterDataFlags & CharacterDataKnownTailDirectDecodeUnsupportedFlags) != 0)
+            {
+                return false;
+            }
+
+            long startPosition = reader.BaseStream.Position;
+            try
+            {
+                if ((characterDataFlags & MapTransferAuthoritativeBootstrapDecoder.CharacterDataMapTransferFlag) != 0)
+                {
+                    decoratedSnapshot = decoratedSnapshot with
+                    {
+                        RegularMapTransferFields = ReadCharacterDataMapTransferFields(reader, MapTransferRuntimeManager.RegularCapacity),
+                        ContinentMapTransferFields = ReadCharacterDataMapTransferFields(reader, MapTransferRuntimeManager.ContinentCapacity)
+                    };
+                }
+
+                if ((characterDataFlags & 0x40000UL) != 0)
+                {
+                    ushort newYearCardCount = reader.ReadUInt16();
+                    SkipCharacterDataNewYearCardRecords(reader, newYearCardCount);
+                    decoratedSnapshot = decoratedSnapshot with
+                    {
+                        NewYearCardRecordCount = newYearCardCount
+                    };
+                }
+
+                if ((characterDataFlags & 0x80000UL) != 0)
+                {
+                    ushort questExCount = reader.ReadUInt16();
+                    for (int i = 0; i < questExCount; i++)
+                    {
+                        _ = reader.ReadUInt16();
+                        _ = ReadMapleString(reader);
+                    }
+
+                    decoratedSnapshot = decoratedSnapshot with
+                    {
+                        QuestExRecordCount = questExCount
+                    };
+                }
+
+                if ((characterDataFlags & 0x200000UL) != 0 &&
+                    decoratedSnapshot.JobId / 100 == 33)
+                {
+                    SkipCharacterDataWildHunterInfo(reader);
+                    decoratedSnapshot = decoratedSnapshot with
+                    {
+                        HasWildHunterInfo = true
+                    };
+                }
+
+                if ((characterDataFlags & 0x400000UL) != 0)
+                {
+                    ushort questCompleteCount = reader.ReadUInt16();
+                    for (int i = 0; i < questCompleteCount; i++)
+                    {
+                        _ = reader.ReadUInt16();
+                        _ = reader.ReadInt64();
+                    }
+
+                    decoratedSnapshot = decoratedSnapshot with
+                    {
+                        QuestCompleteRecordCount = questCompleteCount
+                    };
+                }
+
+                if ((characterDataFlags & 0x800000UL) != 0)
+                {
+                    ushort visitorQuestCount = reader.ReadUInt16();
+                    for (int i = 0; i < visitorQuestCount; i++)
+                    {
+                        _ = reader.ReadUInt16();
+                        _ = reader.ReadUInt16();
+                    }
+
+                    decoratedSnapshot = decoratedSnapshot with
+                    {
+                        VisitorQuestRecordCount = visitorQuestCount
+                    };
+                }
+
+                return true;
+            }
+            catch (Exception) when (reader.BaseStream.CanSeek)
+            {
+                reader.BaseStream.Position = startPosition;
+                decoratedSnapshot = snapshot;
+                return false;
+            }
+        }
+
+        private static int[] ReadCharacterDataMapTransferFields(BinaryReader reader, int count)
+        {
+            int[] fields = new int[count];
+            for (int i = 0; i < count; i++)
+            {
+                fields[i] = reader.ReadInt32();
+            }
+
+            return fields;
+        }
+
+        private static void SkipCharacterDataNewYearCardRecords(BinaryReader reader, int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                _ = reader.ReadInt32();
+                _ = reader.ReadInt32();
+                _ = ReadMapleString(reader);
+                _ = reader.ReadByte();
+                _ = reader.ReadInt64();
+                _ = reader.ReadInt32();
+                _ = ReadMapleString(reader);
+                _ = reader.ReadByte();
+                _ = reader.ReadByte();
+                _ = reader.ReadInt64();
+                _ = ReadMapleString(reader);
+            }
+        }
+
+        private static void SkipCharacterDataWildHunterInfo(BinaryReader reader)
+        {
+            _ = reader.ReadByte();
+            for (int i = 0; i < 5; i++)
+            {
+                _ = reader.ReadInt32();
+            }
+        }
+
         private static PacketCharacterDataSnapshot ReadCharacterDataStatSnapshot(BinaryReader reader)
         {
             int characterId = reader.ReadInt32();
@@ -1521,12 +1668,21 @@ namespace HaCreator.MapSimulator.Interaction
         int FieldId,
         byte PortalIndex,
         int PlayTime,
-            short SubJob,
-            byte FriendMax,
-            string LinkedCharacterName,
-            int? Meso = null,
-            IReadOnlyDictionary<InventoryType, int> InventorySlotLimits = null,
-            LoginAvatarLook AvatarLook = null);
+        short SubJob,
+        byte FriendMax,
+        string LinkedCharacterName,
+        int? Meso = null,
+        IReadOnlyDictionary<InventoryType, int> InventorySlotLimits = null,
+        LoginAvatarLook AvatarLook = null,
+        int? PreInventoryHeaderValue1 = null,
+        int? PreInventoryHeaderValue2 = null,
+        IReadOnlyList<int> RegularMapTransferFields = null,
+        IReadOnlyList<int> ContinentMapTransferFields = null,
+        int NewYearCardRecordCount = 0,
+        int QuestExRecordCount = 0,
+        bool HasWildHunterInfo = false,
+        int QuestCompleteRecordCount = 0,
+        int VisitorQuestRecordCount = 0);
 
     internal readonly record struct PacketCharacterDataItemSlot(byte ItemType, int ItemId);
 

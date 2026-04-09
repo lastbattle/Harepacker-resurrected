@@ -317,77 +317,88 @@ namespace HaCreator.MapSimulator.Managers
                 return IsSupportedPacketType(packetType);
             }
 
-            if (token.Equals("openui", StringComparison.OrdinalIgnoreCase))
+            if (token.Equals("openui", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onopenui", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = OpenUiPacketType;
                 return true;
             }
 
             if (token.Equals("openuiwithoption", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("openuioption", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("openuioption", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onopenuiwithoption", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = OpenUiWithOptionPacketType;
                 return true;
             }
 
             if (token.Equals("commodity", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("gotocommoditysn", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("gotocommoditysn", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("ongotocommoditysn", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = GoToCommoditySnPacketType;
                 return true;
             }
 
             if (token.Equals("notice", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("noticemsg", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("noticemsg", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onnoticemsg", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = NoticeMsgPacketType;
                 return true;
             }
 
             if (token.Equals("chat", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("chatmsg", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("chatmsg", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onchatmsg", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = ChatMsgPacketType;
                 return true;
             }
 
             if (token.Equals("buffzone", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("buffzoneeffect", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("buffzoneeffect", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onbuffzoneeffect", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = BuffzoneEffectPacketType;
                 return true;
             }
 
             if (token.Equals("eventsound", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("playeventsound", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("playeventsound", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onplayeventsound", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = PlayEventSoundPacketType;
                 return true;
             }
 
             if (token.Equals("minigamesound", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("playminigamesound", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("playminigamesound", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onplayminigamesound", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = PlayMinigameSoundPacketType;
                 return true;
             }
 
             if (token.Equals("apspevent", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("askapspevent", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("askapspevent", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onaskapspevent", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = AskApspEventPacketType;
                 return true;
             }
 
             if (token.Equals("followfail", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("followcharacterfailed", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("followcharacterfailed", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onfollowcharacterfailed", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = FollowCharacterFailedPacketType;
                 return true;
             }
 
             if (token.Equals("follow", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("followcharacter", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("followcharacter", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onfollowcharacter", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = FollowCharacterPacketType;
                 return true;
@@ -636,7 +647,8 @@ namespace HaCreator.MapSimulator.Managers
 
             if (token.Equals("hpdec", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("hazard", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("notifyhpdecbyfield", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("notifyhpdecbyfield", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onnotifyhpdecbyfield", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = NotifyHpDecByFieldPacketType;
                 return true;
@@ -652,6 +664,7 @@ namespace HaCreator.MapSimulator.Managers
 
             if (token.Equals("classcompetition", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("openclasscompetitionpage", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onopenclasscompetitionpage", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("classpage", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = OpenClassCompetitionPagePacketType;
@@ -659,7 +672,8 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             if (token.Equals("questguide", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("questguideresult", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("questguideresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onquestguideresult", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = QuestGuideResultPacketType;
                 return true;
@@ -667,7 +681,8 @@ namespace HaCreator.MapSimulator.Managers
 
             if (token.Equals("deliveryquest", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("questdelivery", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("delivery", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("delivery", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("ondeliveryquest", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = DeliveryQuestPacketType;
                 return true;
@@ -732,7 +747,8 @@ namespace HaCreator.MapSimulator.Managers
 
             if (token.Equals("skillcooltime", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("skillcooltimeset", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("cooltime", StringComparison.OrdinalIgnoreCase))
+                || token.Equals("cooltime", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onskillcooltimeset", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = SkillCooltimeSetPacketType;
                 return true;

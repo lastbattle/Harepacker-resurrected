@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator.Interaction
         public Point WindowPosition { get; set; }
         public QuestRewardRaiseWindowMode WindowMode { get; init; }
         public QuestRewardRaiseWindowMode DisplayMode { get; set; }
+        public string OpenDispatchSummary { get; set; } = string.Empty;
         public Dictionary<int, int> SelectedItemsByGroup { get; } = new Dictionary<int, int>();
         public List<QuestRewardRaisePlacedPiece> PlacedPieces { get; } = new List<QuestRewardRaisePlacedPiece>();
     }
@@ -36,5 +37,8 @@ namespace HaCreator.MapSimulator.Interaction
         public int ItemId { get; init; }
         public int Quantity { get; init; } = 1;
         public string Label { get; init; } = string.Empty;
+        public int PacketOpcode { get; init; }
+        public byte[] PacketPayload { get; init; } = Array.Empty<byte>();
+        public string DispatchSummary { get; set; } = string.Empty;
     }
 }

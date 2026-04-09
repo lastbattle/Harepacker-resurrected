@@ -20,6 +20,16 @@ namespace HaCreator.MapSimulator
             "speak"
         };
 
+        private static readonly (int MaskBit, string Key)[] JobBadgeDefinitions =
+        {
+            (1, "beginner"),
+            (2, "warrior"),
+            (4, "magician"),
+            (8, "bowman"),
+            (16, "thief"),
+            (32, "pirate")
+        };
+
         internal static IEnumerable<string> EnumerateNpcActionCandidates(int? shopActionId)
         {
             int clientShopAction = shopActionId.GetValueOrDefault();
@@ -132,6 +142,19 @@ namespace HaCreator.MapSimulator
 
             encodedPosition = int.MinValue;
             return false;
+        }
+
+        internal static IReadOnlyList<(string Key, bool Enabled)> ResolveRequiredJobBadgeStates(int requiredJobMask)
+        {
+            var states = new (string Key, bool Enabled)[JobBadgeDefinitions.Length];
+            for (int i = 0; i < JobBadgeDefinitions.Length; i++)
+            {
+                (int maskBit, string key) = JobBadgeDefinitions[i];
+                bool enabled = requiredJobMask == 0 || (requiredJobMask & maskBit) != 0;
+                states[i] = (key, enabled);
+            }
+
+            return states;
         }
 
         internal static byte[] BuildRepairRequestPayload(short operationCode, int encodedPosition)

@@ -52,15 +52,20 @@ namespace HaCreator.MapSimulator
             (7, InputAction.ToggleMinimap),
             (8, InputAction.ToggleQuest),
             (9, InputAction.ToggleKeyConfig),
+            (16, InputAction.ToggleChat),
+            (50, InputAction.Pickup),
+            (52, InputAction.Attack),
+            (53, InputAction.Jump),
+            (54, InputAction.Interact),
             (15, InputAction.ToggleQuickSlot),
         };
-        private static readonly (string EntryName, int ClientFunctionId, int StringPoolId, string FallbackFormat)[] PacketOwnedStatusBarShortcutTooltipBindings =
+        private static readonly (string StatusBarEntryName, string MenuEntryName, int ClientFunctionId, int StringPoolId, string FallbackFormat)[] PacketOwnedStatusBarShortcutTooltipBindings =
         {
-            ("BtEquip", 0, 0x989, "Equip ({0})"),
-            ("BtItem", 1, 0x98A, "Inventory ({0})"),
-            ("BtStat", 2, 0x98B, "Stats ({0})"),
-            ("BtSkill", 3, 0x98C, "Skills ({0})"),
-            ("BtQuest", 8, 0x18ED, "Quest ({0})"),
+            ("BtEquip", "BtEquip", 0, 0x989, "Equip ({0})"),
+            ("BtInven", "BtItem", 1, 0x98A, "Inventory ({0})"),
+            ("BtStat", "BtStat", 2, 0x98B, "Stats ({0})"),
+            ("BtSkill", "BtSkill", 3, 0x98C, "Skills ({0})"),
+            ("BtQuest", "BtQuest", 8, 0x18ED, "Quest ({0})"),
         };
 
         private readonly PacketOwnedFuncKeyConfigStore _packetOwnedFuncKeyConfigStore = new();
@@ -425,16 +430,19 @@ namespace HaCreator.MapSimulator
 
         private void UpdatePacketOwnedStatusBarShortcutTooltips()
         {
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Menu) is not StatusBarPopupMenuWindow menuWindow)
+            StatusBarPopupMenuWindow menuWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.Menu) as StatusBarPopupMenuWindow;
+            StatusBarChatUI statusBarChat = statusBarChatUI;
+            if (menuWindow == null && statusBarChat == null)
             {
                 return;
             }
 
             for (int i = 0; i < PacketOwnedStatusBarShortcutTooltipBindings.Length; i++)
             {
-                (string entryName, int clientFunctionId, int stringPoolId, string fallbackFormat) = PacketOwnedStatusBarShortcutTooltipBindings[i];
+                (string statusBarEntryName, string menuEntryName, int clientFunctionId, int stringPoolId, string fallbackFormat) = PacketOwnedStatusBarShortcutTooltipBindings[i];
                 string tooltipText = BuildPacketOwnedStatusBarShortcutTooltip(clientFunctionId, stringPoolId, fallbackFormat);
-                menuWindow.SetEntryTooltip(entryName, tooltipText);
+                menuWindow?.SetEntryTooltip(menuEntryName, tooltipText);
+                statusBarChat?.SetShortcutTooltip(statusBarEntryName, tooltipText);
             }
         }
 

@@ -65,22 +65,23 @@ namespace HaCreator.MapSimulator.Character
                 "mining_mechanic"
             };
         private static readonly IReadOnlySet<string> WildHunterJaguarExclusiveActionNames =
-            CreateActionNameSet(
-                57,
-                142,
-                207,
-                208,
-                212,
-                214,
-                229,
-                247,
-                248,
-                249,
-                250,
-                251,
-                253,
-                255,
-                256);
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "swallow_pre",
+                "swallow_loop",
+                "swallow",
+                "swallow_attack",
+                "crossRoad",
+                "wildbeast",
+                "sonicBoom",
+                "clawCut",
+                "mine",
+                "ride",
+                "getoff",
+                "proneStab_jaguar",
+                "herbalism_jaguar",
+                "mining_jaguar"
+            };
 
         private static readonly IReadOnlyDictionary<string, string[]> ActionAliases =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
@@ -364,26 +365,6 @@ namespace HaCreator.MapSimulator.Character
         private static string BuildCacheKey(string actionName, bool preferTiredAction)
         {
             return string.Concat(preferTiredAction ? "tired:" : "base:", actionName ?? string.Empty);
-        }
-
-        private static IReadOnlySet<string> CreateActionNameSet(params int[] actionCodes)
-        {
-            var actionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (actionCodes == null)
-            {
-                return actionNames;
-            }
-
-            foreach (int actionCode in actionCodes)
-            {
-                if (CharacterPart.TryGetActionStringFromCode(actionCode, out string actionName)
-                    && !string.IsNullOrWhiteSpace(actionName))
-                {
-                    actionNames.Add(actionName);
-                }
-            }
-
-            return actionNames;
         }
     }
 }

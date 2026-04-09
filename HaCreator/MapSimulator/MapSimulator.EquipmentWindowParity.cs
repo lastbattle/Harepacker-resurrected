@@ -218,23 +218,7 @@ namespace HaCreator.MapSimulator
 
         private byte[] BuildMechanicEquipmentAuthorityRequestPayload(EquipmentChangeRequest request)
         {
-            using System.IO.MemoryStream stream = new();
-            using System.IO.BinaryWriter writer = new(stream);
-            writer.Write((byte)PacketOwnedMechanicEquipPayloadMode.SlotMutation);
-            writer.Write(request.RequestId);
-            writer.Write(request.RequestedAtTick);
-            writer.Write((byte)request.Kind);
-            writer.Write((byte)request.OwnerKind);
-            writer.Write(request.OwnerSessionId);
-            writer.Write(request.ExpectedCharacterId);
-            writer.Write(request.ExpectedBuildStateToken);
-            writer.Write(request.ExpectedMechanicStateToken);
-            writer.Write(request.ItemId);
-            writer.Write((byte)request.SourceInventoryType);
-            writer.Write(request.SourceInventoryIndex);
-            writer.Write(request.TargetMechanicSlot.HasValue ? (byte)request.TargetMechanicSlot.Value : byte.MaxValue);
-            writer.Write(request.SourceMechanicSlot.HasValue ? (byte)request.SourceMechanicSlot.Value : byte.MaxValue);
-            return stream.ToArray();
+            return MechanicEquipmentPacketParity.EncodeAuthorityRequestPayload(request);
         }
 
         private bool TryQueueMechanicEquipmentPacketResult(
@@ -272,6 +256,469 @@ namespace HaCreator.MapSimulator
                 ? $"Queued packet-authored mechanic equipment result for request {requestId}."
                 : $"Queued packet-authored mechanic equipment rejection for request {requestId}.";
             return true;
+        }
+
+        private bool TryResolvePacketOwnedMechanicAuthorityRequest(
+            MechanicEquipPacketPayload payload,
+            out string message)
+        {
+            message = null;
+            if (payload.Mode != MechanicEquipPacketPayloadMode.AuthorityRequest)
+            {
+                message = "Mechanic authority payload is not a request.";
+                return false;
+            }
+
+            if (payload.RequestId <= 0
+                || !_pendingEquipmentChangeRequests.TryGetValue(payload.RequestId, out PendingEquipmentChangeEnvelope pendingEnvelope)
+                || pendingEnvelope?.Request == null)
+            {
+                message = $"Mechanic authority request did not match a pending request id ({payload.RequestId}).";
+                return false;
+            }
+
+            EquipmentChangeRequest request = pendingEnvelope.Request;
+            if (!IsMechanicEquipmentRequest(request))
+            {
+                message = $"Pending request {payload.RequestId} is not owned by the mechanic equipment tab.";
+                return false;
+            }
+
+            if (request.RequestedAtTick != payload.RequestedAtTick)
+            {
+                message = $"Mechanic authority request for {payload.RequestId} did not match the pending request timestamp.";
+                return false;
+            }
+
+            if (request.Kind != payload.RequestKind
+                || request.OwnerKind != payload.OwnerKind
+                || request.OwnerSessionId != payload.OwnerSessionId
+                || request.ExpectedCharacterId != payload.ExpectedCharacterId
+                || request.ExpectedBuildStateToken != payload.ExpectedBuildStateToken
+                || request.ExpectedMechanicStateToken != payload.ExpectedMechanicStateToken
+                || request.ItemId != payload.ItemId
+                || request.SourceInventoryType != payload.SourceInventoryType
+                || request.SourceInventoryIndex != payload.SourceInventoryIndex
+                || request.TargetMechanicSlot != payload.TargetMechanicSlot
+                || request.SourceMechanicSlot != payload.SourceMechanicSlot)
+            {
+                message = $"Mechanic authority request {payload.RequestId} did not match the pending request state.";
+                return false;
+            }
+
+            return TryQueuePacketOwnedMechanicAuthorityResult(
+                new MechanicEquipPacketPayload(
+                    MechanicEquipPacketPayloadMode.AuthorityResult,
+                    null,
+                    0,
+                    null,
+                    payload.RequestId,
+                    payload.RequestedAtTick,
+                    AuthorityResultKind: MechanicEquipAuthorityResultKind.LocalRequestAccept),
+                out message);
+        }
+
+        private bool TryQueuePacketOwnedMechanicAuthorityResult(
+            MechanicEquipPacketPayload payload,
+            out string message)
+        {
+            message = null;
+            if (payload.Mode != MechanicEquipPacketPayloadMode.AuthorityResult)
+            {
+                message = "Mechanic authority payload is not a result.";
+                return false;
+            }
+
+            if (payload.RequestId <= 0
+                || !_pendingEquipmentChangeRequests.TryGetValue(payload.RequestId, out PendingEquipmentChangeEnvelope pendingEnvelope)
+                || pendingEnvelope?.Request == null)
+            {
+                message = $"Mechanic authority result did not match a pending request id ({payload.RequestId}).";
+                return false;
+            }
+
+            EquipmentChangeRequest request = pendingEnvelope.Request;
+            if (!IsMechanicEquipmentRequest(request))
+            {
+                message = $"Pending request {payload.RequestId} is not owned by the mechanic equipment tab.";
+                return false;
+            }
+
+            if (request.RequestedAtTick != payload.RequestedAtTick)
+            {
+                message = $"Mechanic authority result for request {payload.RequestId} did not match the pending request timestamp.";
+                return false;
+            }
+
+            CharacterBuild build = _playerManager?.Player?.Build;
+            MechanicEquipmentController controller = _playerManager?.CompanionEquipment?.Mechanic;
+            if (build == null || controller == null)
+            {
+                message = "Mechanic equipment runtime is unavailable.";
+                return false;
+            }
+
+            if (payload.AuthorityResultKind == MechanicEquipAuthorityResultKind.Reject)
+            {
+                EquipmentChangeResult rejectResult = EquipmentChangeResult.Reject(
+                    string.IsNullOrWhiteSpace(payload.RejectReason)
+                        ? "The mechanic equipment request was rejected by packet authority."
+                        : payload.RejectReason)
+                    .WithCompletionMetadata(
+                        payload.RequestId,
+                        payload.RequestedAtTick,
+                        currTickCount,
+                        payload.ResolvedBuildStateToken != 0 ? payload.ResolvedBuildStateToken : build.ComputeEquipmentStateToken(),
+                        payload.ResolvedMechanicStateToken != 0 ? payload.ResolvedMechanicStateToken : ComputeMechanicEquipmentStateToken(build));
+                return TryQueueMechanicEquipmentPacketResult(payload.RequestId, payload.RequestedAtTick, rejectResult, out message);
+            }
+
+            if (EquipmentChangeRequestValidator.TryGetRequestStateRejectReason(
+                    request,
+                    build,
+                    out string requestStateRejectReason,
+                    () => ComputeMechanicEquipmentStateToken(build)))
+            {
+                EquipmentChangeResult staleReject = EquipmentChangeResult.Reject(requestStateRejectReason)
+                    .WithCompletionMetadata(
+                        payload.RequestId,
+                        payload.RequestedAtTick,
+                        currTickCount,
+                        build.ComputeEquipmentStateToken(),
+                        ComputeMechanicEquipmentStateToken(build));
+                return TryQueueMechanicEquipmentPacketResult(payload.RequestId, payload.RequestedAtTick, staleReject, out message);
+            }
+
+            if (!TryCreatePacketOwnedMechanicAuthorityResult(request, build, controller, payload, out EquipmentChangeResult acceptedResult, out string rejectReason))
+            {
+                EquipmentChangeResult rejectResult = EquipmentChangeResult.Reject(rejectReason)
+                    .WithCompletionMetadata(
+                        payload.RequestId,
+                        payload.RequestedAtTick,
+                        currTickCount,
+                        build.ComputeEquipmentStateToken(),
+                        ComputeMechanicEquipmentStateToken(build));
+                return TryQueueMechanicEquipmentPacketResult(payload.RequestId, payload.RequestedAtTick, rejectResult, out message);
+            }
+
+            return TryQueueMechanicEquipmentPacketResult(payload.RequestId, payload.RequestedAtTick, acceptedResult, out message);
+        }
+
+        private bool TryCreatePacketOwnedMechanicAuthorityResult(
+            EquipmentChangeRequest request,
+            CharacterBuild build,
+            MechanicEquipmentController controller,
+            MechanicEquipPacketPayload payload,
+            out EquipmentChangeResult result,
+            out string rejectReason)
+        {
+            result = null;
+            rejectReason = null;
+            if (payload.AuthorityResultKind == MechanicEquipAuthorityResultKind.LocalRequestAccept)
+            {
+                result = request.Kind switch
+                {
+                    EquipmentChangeRequestKind.InventoryToCompanion => HandleInventoryToCompanionChange(request, build),
+                    EquipmentChangeRequestKind.CompanionToInventory => HandleCompanionToInventoryChange(request, build),
+                    _ => EquipmentChangeResult.Reject("Unsupported mechanic authority request kind.")
+                };
+
+                if (!result.Accepted)
+                {
+                    rejectReason = result.RejectReason;
+                    return false;
+                }
+
+                result = result.WithCompletionMetadata(
+                    payload.RequestId,
+                    payload.RequestedAtTick,
+                    currTickCount,
+                    build.ComputeEquipmentStateToken(),
+                    ComputeMechanicEquipmentStateToken(build));
+                return true;
+            }
+
+            return request.Kind switch
+            {
+                EquipmentChangeRequestKind.InventoryToCompanion => TryCreatePacketOwnedInventoryToMechanicAuthorityResult(
+                    request,
+                    build,
+                    controller,
+                    payload,
+                    out result,
+                    out rejectReason),
+                EquipmentChangeRequestKind.CompanionToInventory => TryCreatePacketOwnedMechanicToInventoryAuthorityResult(
+                    request,
+                    build,
+                    controller,
+                    payload,
+                    out result,
+                    out rejectReason),
+                _ => FailPacketOwnedMechanicAuthorityResult("Unsupported mechanic authority request kind.", out result, out rejectReason)
+            };
+        }
+
+        private bool TryCreatePacketOwnedInventoryToMechanicAuthorityResult(
+            EquipmentChangeRequest request,
+            CharacterBuild build,
+            MechanicEquipmentController controller,
+            MechanicEquipPacketPayload payload,
+            out EquipmentChangeResult result,
+            out string rejectReason)
+        {
+            result = null;
+            rejectReason = null;
+            if (request.TargetCompanionKind != EquipmentChangeCompanionKind.Mechanic
+                || !request.TargetMechanicSlot.HasValue)
+            {
+                rejectReason = "Packet authority result did not target a mechanic machine slot.";
+                return false;
+            }
+
+            if (uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
+            {
+                rejectReason = "Inventory runtime is unavailable.";
+                return false;
+            }
+
+            IReadOnlyList<InventorySlotData> liveSlots = inventoryWindow.GetSlots(request.SourceInventoryType);
+            if (request.SourceInventoryIndex < 0 || request.SourceInventoryIndex >= liveSlots.Count)
+            {
+                rejectReason = "The source inventory slot changed before the mechanic equipment request completed.";
+                return false;
+            }
+
+            InventorySlotData liveSlot = liveSlots[request.SourceInventoryIndex];
+            if (EquipmentChangeRequestValidator.TryGetInventorySourceRejectReason(request, liveSlot, out rejectReason))
+            {
+                return false;
+            }
+
+            if (TryGetCompanionCashOwnershipRejectReason(
+                    liveSlot,
+                    build,
+                    ResolveLoginRosterAccountId(),
+                    out rejectReason))
+            {
+                return false;
+            }
+
+            controller.EnsureDefaults(build);
+            Dictionary<MechanicEquipSlot, int> beforeState = CaptureMechanicStateSnapshot(controller);
+            if (!TryValidatePacketOwnedMechanicAuthorityScope(request.TargetMechanicSlot.Value, beforeState, payload, request.ItemId, requireClearedSlot: false, out rejectReason))
+            {
+                return false;
+            }
+
+            controller.TryGetItem(request.TargetMechanicSlot.Value, out CompanionEquipItem displacedItem);
+            if (!TryApplyPacketOwnedMechanicAuthorityState(controller, build, payload, out rejectReason))
+            {
+                return false;
+            }
+
+            result = EquipmentChangeResult.Accept(
+                displacedInventorySlots: displacedItem == null
+                    ? Array.Empty<InventorySlotData>()
+                    : EquipUIBigBang.CreateInventorySlots(new[] { displacedItem }))
+                .WithCompletionMetadata(
+                    payload.RequestId,
+                    payload.RequestedAtTick,
+                    currTickCount,
+                    build.ComputeEquipmentStateToken(),
+                    ComputeMechanicEquipmentStateToken(build));
+            return true;
+        }
+
+        private bool TryCreatePacketOwnedMechanicToInventoryAuthorityResult(
+            EquipmentChangeRequest request,
+            CharacterBuild build,
+            MechanicEquipmentController controller,
+            MechanicEquipPacketPayload payload,
+            out EquipmentChangeResult result,
+            out string rejectReason)
+        {
+            result = null;
+            rejectReason = null;
+            if (request.SourceCompanionKind != EquipmentChangeCompanionKind.Mechanic
+                || !request.SourceMechanicSlot.HasValue)
+            {
+                rejectReason = "Packet authority result did not target a mechanic machine slot.";
+                return false;
+            }
+
+            if (uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
+            {
+                rejectReason = "Inventory runtime is unavailable.";
+                return false;
+            }
+
+            controller.EnsureDefaults(build);
+            if (!controller.TryGetItem(request.SourceMechanicSlot.Value, out CompanionEquipItem liveItem)
+                || liveItem == null
+                || liveItem.ItemId != request.ItemId)
+            {
+                rejectReason = "The mechanic machine part changed before the request completed.";
+                return false;
+            }
+
+            if (TryGetCompanionCashOwnershipRejectReason(
+                    liveItem,
+                    build,
+                    ResolveLoginRosterAccountId(),
+                    out rejectReason))
+            {
+                return false;
+            }
+
+            InventoryType inventoryType = liveItem.IsCash ? InventoryType.CASH : InventoryType.EQUIP;
+            if (!inventoryWindow.CanAcceptItem(inventoryType, liveItem.ItemId, 1, maxStackSize: 1))
+            {
+                string inventoryLabel = inventoryType == InventoryType.CASH ? "cash" : "equipment";
+                rejectReason = $"There is no free {inventoryLabel} inventory slot for this companion item.";
+                return false;
+            }
+
+            Dictionary<MechanicEquipSlot, int> beforeState = CaptureMechanicStateSnapshot(controller);
+            if (!TryValidatePacketOwnedMechanicAuthorityScope(request.SourceMechanicSlot.Value, beforeState, payload, request.ItemId, requireClearedSlot: true, out rejectReason))
+            {
+                return false;
+            }
+
+            if (!TryApplyPacketOwnedMechanicAuthorityState(controller, build, payload, out rejectReason))
+            {
+                return false;
+            }
+
+            InventorySlotData returnedSlot = EquipUIBigBang.CreateInventorySlot(liveItem);
+            result = EquipmentChangeResult.Accept(
+                    displacedInventorySlots: returnedSlot == null
+                        ? Array.Empty<InventorySlotData>()
+                        : new[] { returnedSlot })
+                .WithCompletionMetadata(
+                    payload.RequestId,
+                    payload.RequestedAtTick,
+                    currTickCount,
+                    build.ComputeEquipmentStateToken(),
+                    ComputeMechanicEquipmentStateToken(build));
+            return true;
+        }
+
+        private static Dictionary<MechanicEquipSlot, int> CaptureMechanicStateSnapshot(MechanicEquipmentController controller)
+        {
+            Dictionary<MechanicEquipSlot, int> snapshot = new();
+            foreach (MechanicEquipSlot slot in Enum.GetValues<MechanicEquipSlot>())
+            {
+                snapshot[slot] = controller != null && controller.TryGetItem(slot, out CompanionEquipItem item) && item != null
+                    ? item.ItemId
+                    : 0;
+            }
+
+            return snapshot;
+        }
+
+        private static bool TryValidatePacketOwnedMechanicAuthorityScope(
+            MechanicEquipSlot requestSlot,
+            IReadOnlyDictionary<MechanicEquipSlot, int> beforeState,
+            MechanicEquipPacketPayload payload,
+            int expectedItemId,
+            bool requireClearedSlot,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (!MechanicEquipmentPacketParity.HasExplicitAuthorityState(payload))
+            {
+                rejectReason = "Mechanic authority result did not include a usable mechanic state.";
+                return false;
+            }
+
+            if (payload.AuthorityResultKind == MechanicEquipAuthorityResultKind.ClearAllAccept
+                || payload.AuthorityResultKind == MechanicEquipAuthorityResultKind.ResetDefaultsAccept)
+            {
+                rejectReason = "Multi-slot mechanic authority updates are not compatible with a single pending mechanic equipment request.";
+                return false;
+            }
+
+            foreach (MechanicEquipSlot slot in Enum.GetValues<MechanicEquipSlot>())
+            {
+                if (!MechanicEquipmentPacketParity.TryReadFinalItemIdForSlot(payload, beforeState, slot, out int finalItemId, out rejectReason))
+                {
+                    return false;
+                }
+
+                beforeState.TryGetValue(slot, out int currentItemId);
+                if (slot != requestSlot)
+                {
+                    if (finalItemId != currentItemId)
+                    {
+                        rejectReason = "Packet-authored mechanic authority changed slots outside the active request.";
+                        return false;
+                    }
+
+                    continue;
+                }
+
+                if (requireClearedSlot)
+                {
+                    if (finalItemId == expectedItemId || finalItemId != 0)
+                    {
+                        rejectReason = "Packet-authored mechanic authority did not clear the requested machine slot.";
+                        return false;
+                    }
+                }
+                else if (finalItemId != expectedItemId)
+                {
+                    rejectReason = "Packet-authored mechanic authority did not place the requested machine part into the target slot.";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool TryApplyPacketOwnedMechanicAuthorityState(
+            MechanicEquipmentController controller,
+            CharacterBuild build,
+            MechanicEquipPacketPayload payload,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            return payload.AuthorityResultKind switch
+            {
+                MechanicEquipAuthorityResultKind.SnapshotAccept => controller.TryApplyExternalSnapshot(
+                    build,
+                    payload.SnapshotItems,
+                    out rejectReason),
+                MechanicEquipAuthorityResultKind.SlotMutationAccept when payload.Slot.HasValue => controller.TryApplyExternalSlotMutation(
+                    build,
+                    payload.Slot.Value,
+                    payload.ItemId,
+                    out rejectReason),
+                MechanicEquipAuthorityResultKind.ClearAllAccept => controller.TryApplyExternalSnapshot(
+                    build,
+                    null,
+                    out rejectReason),
+                MechanicEquipAuthorityResultKind.ResetDefaultsAccept => ApplyPacketOwnedMechanicEquipDefaults(
+                    controller,
+                    build,
+                    out rejectReason),
+                _ => FailPacketOwnedMechanicAuthorityResult("Mechanic authority payload does not contain an applicable mechanic state.", out rejectReason)
+            };
+        }
+
+        private static bool FailPacketOwnedMechanicAuthorityResult(
+            string rejectReason,
+            out EquipmentChangeResult result,
+            out string message)
+        {
+            result = null;
+            message = rejectReason;
+            return false;
+        }
+
+        private static bool FailPacketOwnedMechanicAuthorityResult(string rejectReason, out string message)
+        {
+            message = rejectReason;
+            return false;
         }
 
         private EquipmentChangeResult HandleInventoryToCharacterChange(EquipmentChangeRequest request, CharacterBuild build)

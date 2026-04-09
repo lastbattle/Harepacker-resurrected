@@ -4,7 +4,8 @@ namespace HaCreator.MapSimulator.UI
 {
     internal static class StatusBarLayoutRules
     {
-        private const float BaseLevelSlotX = 44f;
+        // CUIStatusBar::SetStatusValue uses x = 45 / 39 / 33 for 1/2/3-digit level labels.
+        private const float BaseLevelSlotX = 45f;
         private const int LevelDigitSlotStep = 6;
 
         public static float ResolveLevelSlotX(string levelText)

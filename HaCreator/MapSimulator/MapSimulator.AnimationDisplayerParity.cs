@@ -310,17 +310,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!TryResolveAnimationDisplayerQuestDeliveryEffectUol(itemId, out string effectUol, out resolvedItemId))
-            {
-                return false;
-            }
-
-            WzImageProperty sourceProperty = ResolveAnimationDisplayerProperty(effectUol);
-            if (!TryLoadAnimationDisplayerQuestDeliveryPhaseFrames(
-                    sourceProperty,
+            if (!TryLoadAnimationDisplayerQuestDeliveryFrames(
+                    itemId,
                     out List<IDXObject> startFrames,
                     out List<IDXObject> repeatFrames,
-                    out List<IDXObject> endFrames))
+                    out List<IDXObject> endFrames,
+                    out resolvedItemId))
             {
                 return false;
             }
@@ -336,6 +331,72 @@ namespace HaCreator.MapSimulator
                        offsetX: 0f,
                        offsetY: AnimationDisplayerUserStateOffsetY,
                        currTickCount) >= 0;
+        }
+
+        private bool TryLoadAnimationDisplayerQuestDeliveryFrames(
+            int itemId,
+            out List<IDXObject> startFrames,
+            out List<IDXObject> repeatFrames,
+            out List<IDXObject> endFrames,
+            out int resolvedItemId)
+        {
+            startFrames = null;
+            repeatFrames = null;
+            endFrames = null;
+            resolvedItemId = 0;
+
+            foreach (int candidateItemId in EnumerateAnimationDisplayerQuestDeliveryEffectItemIds(itemId))
+            {
+                if (candidateItemId <= 0)
+                {
+                    continue;
+                }
+
+                if (TryResolveAnimationDisplayerQuestDeliveryEffectUol(candidateItemId, out string effectUol, out _)
+                    && TryLoadAnimationDisplayerQuestDeliveryPhaseFrames(
+                        ResolveAnimationDisplayerProperty(effectUol),
+                        out startFrames,
+                        out repeatFrames,
+                        out endFrames))
+                {
+                    resolvedItemId = candidateItemId;
+                    return true;
+                }
+            }
+
+            foreach (int candidateItemId in EnumerateAnimationDisplayerQuestDeliveryEffectItemIds(itemId))
+            {
+                if (candidateItemId <= 0)
+                {
+                    continue;
+                }
+
+                if (TryLoadAnimationDisplayerQuestDeliveryClientPhaseFrames(
+                        candidateItemId,
+                        out startFrames,
+                        out repeatFrames,
+                        out endFrames))
+                {
+                    resolvedItemId = candidateItemId;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryLoadAnimationDisplayerQuestDeliveryClientPhaseFrames(
+            int itemId,
+            out List<IDXObject> startFrames,
+            out List<IDXObject> repeatFrames,
+            out List<IDXObject> endFrames)
+        {
+            startFrames = LoadAnimationDisplayerFrames(AnimationDisplayerQuestDeliveryStringPoolText.ResolveArrivePath(itemId));
+            repeatFrames = LoadAnimationDisplayerFrames(AnimationDisplayerQuestDeliveryStringPoolText.ResolveWaitPath(itemId));
+            endFrames = LoadAnimationDisplayerFrames(AnimationDisplayerQuestDeliveryStringPoolText.ResolveLeavePath(itemId));
+            return Animation.AnimationEffects.HasFrames(startFrames)
+                || Animation.AnimationEffects.HasFrames(repeatFrames)
+                || Animation.AnimationEffects.HasFrames(endFrames);
         }
 
         private bool TryResolveAnimationDisplayerQuestDeliveryEffectUol(int itemId, out string effectUol, out int resolvedItemId)
@@ -557,6 +618,21 @@ namespace HaCreator.MapSimulator
             return string.IsNullOrWhiteSpace(directUol)
                 ? new[] { fallbackUol }
                 : new[] { directUol, fallbackUol };
+        }
+
+        internal static int[] EnumerateAnimationDisplayerQuestDeliveryEffectItemIds(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            if (itemId == AnimationDisplayerQuestDeliveryFallbackEffectItemId)
+            {
+                return new[] { itemId };
+            }
+
+            return new[] { itemId, AnimationDisplayerQuestDeliveryFallbackEffectItemId };
         }
 
         internal static void ResolveAnimationDisplayerQuestDeliveryPhaseRanges(

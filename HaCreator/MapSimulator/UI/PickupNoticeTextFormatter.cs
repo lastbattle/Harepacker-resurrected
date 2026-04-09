@@ -87,6 +87,30 @@ namespace HaCreator.MapSimulator.UI
             return FormatItemPickup(itemName, itemTypeName, 1);
         }
 
+        public static bool TryFormatItemPickup(string itemName, string itemTypeName, int quantity, out string message)
+        {
+            message = string.Empty;
+            if (string.IsNullOrWhiteSpace(itemName))
+            {
+                return false;
+            }
+
+            message = FormatItemPickup(itemName, itemTypeName, quantity);
+            return true;
+        }
+
+        public static bool TryFormatQuestItemPickup(string itemName, string itemTypeName, out string message)
+        {
+            message = string.Empty;
+            if (string.IsNullOrWhiteSpace(itemName))
+            {
+                return false;
+            }
+
+            message = FormatQuestItemPickup(itemName, itemTypeName);
+            return true;
+        }
+
         public static PickupNoticeMessagePair FormatFailure(
             DropPickupFailureReason reason,
             string itemName = null,

@@ -494,36 +494,35 @@ namespace HaCreator.MapSimulator
 
         private IReadOnlyList<PacketFieldUtilityFootholdEntry> BuildPacketOwnedFootholdSnapshot()
         {
-            if (_dynamicFootholds == null || _dynamicFootholds.PlatformCount == 0)
+            int runtimePlatformCount = _dynamicFootholds?.PlatformCount ?? 0;
+            int authoredObjectCount = _dynamicFootholdField?.DynamicObjectCount ?? 0;
+            if (runtimePlatformCount == 0 && authoredObjectCount == 0)
             {
                 return _packetFieldUtilityFootholdEntries.Count == 0
                     ? Array.Empty<PacketFieldUtilityFootholdEntry>()
                     : _packetFieldUtilityFootholdEntries.ToArray();
             }
 
-            List<PacketFieldUtilityFootholdEntry> entries = new();
-            for (int i = 0; i < _dynamicFootholds.PlatformCount; i++)
+            int snapshotCount = Math.Max(runtimePlatformCount, authoredObjectCount);
+            List<PacketFieldUtilityFootholdEntry> entries = new(snapshotCount);
+            for (int i = 0; i < snapshotCount; i++)
             {
-                DynamicPlatform platform = _dynamicFootholds.GetPlatform(i);
-                if (platform == null)
+                if (TryBuildPacketOwnedLiveFootholdSnapshotEntry(i, out PacketFieldUtilityFootholdEntry liveEntry))
                 {
+                    entries.Add(liveEntry);
                     continue;
                 }
 
-                entries.Add(new PacketFieldUtilityFootholdEntry(
-                    ResolvePacketOwnedDynamicPlatformSnapshotName(i),
-                    platform.IsActive ? 2 : 0,
-                    new[] { i },
-                    new PacketFieldUtilityMovingFootholdState(
-                        (int)platform.Speed,
-                        (int)platform.LeftBound,
-                        (int)platform.RightBound,
-                        (int)platform.TopBound,
-                        (int)platform.BottomBound,
-                        (int)platform.X,
-                        (int)platform.Y,
-                        !platform.MovingDown,
-                        !platform.MovingRight)));
+                if (TryBuildPacketOwnedCachedFootholdSnapshotEntry(i, out PacketFieldUtilityFootholdEntry cachedEntry))
+                {
+                    entries.Add(cachedEntry);
+                    continue;
+                }
+
+                if (TryBuildPacketOwnedDefaultFootholdSnapshotEntry(i, out PacketFieldUtilityFootholdEntry defaultEntry))
+                {
+                    entries.Add(defaultEntry);
+                }
             }
 
             if (entries.Count > 0)
@@ -534,6 +533,125 @@ namespace HaCreator.MapSimulator
             return _packetFieldUtilityFootholdEntries.Count == 0
                 ? Array.Empty<PacketFieldUtilityFootholdEntry>()
                 : _packetFieldUtilityFootholdEntries.ToArray();
+        }
+
+        private bool TryBuildPacketOwnedLiveFootholdSnapshotEntry(int platformId, out PacketFieldUtilityFootholdEntry entry)
+        {
+            entry = null;
+            DynamicPlatform platform = _dynamicFootholds?.GetPlatform(platformId);
+            if (platform == null)
+            {
+                return false;
+            }
+
+            entry = new PacketFieldUtilityFootholdEntry(
+                ResolvePacketOwnedDynamicPlatformSnapshotName(platformId),
+                platform.IsActive ? 2 : 0,
+                ResolvePacketOwnedSnapshotSerialNumbers(platformId),
+                new PacketFieldUtilityMovingFootholdState(
+                    (int)platform.Speed,
+                    (int)platform.LeftBound,
+                    (int)platform.RightBound,
+                    (int)platform.TopBound,
+                    (int)platform.BottomBound,
+                    (int)platform.X,
+                    (int)platform.Y,
+                    !platform.MovingDown,
+                    !platform.MovingRight));
+            return true;
+        }
+
+        private bool TryBuildPacketOwnedCachedFootholdSnapshotEntry(int platformId, out PacketFieldUtilityFootholdEntry entry)
+        {
+            entry = null;
+            if (!TryFindPacketOwnedFootholdEntry(platformId, out PacketFieldUtilityFootholdEntry cachedEntry))
+            {
+                return false;
+            }
+
+            string snapshotName = ResolvePacketOwnedDynamicPlatformSnapshotName(platformId);
+            entry = new PacketFieldUtilityFootholdEntry(
+                string.IsNullOrWhiteSpace(snapshotName) ? cachedEntry.Name : snapshotName,
+                cachedEntry.State,
+                ResolvePacketOwnedSnapshotSerialNumbers(platformId, cachedEntry),
+                cachedEntry.MovingState);
+            return true;
+        }
+
+        private bool TryBuildPacketOwnedDefaultFootholdSnapshotEntry(int platformId, out PacketFieldUtilityFootholdEntry entry)
+        {
+            entry = null;
+            string snapshotName = ResolvePacketOwnedDynamicPlatformSnapshotName(platformId);
+            if (string.IsNullOrWhiteSpace(snapshotName))
+            {
+                return false;
+            }
+
+            entry = new PacketFieldUtilityFootholdEntry(
+                snapshotName,
+                0,
+                ResolvePacketOwnedSnapshotSerialNumbers(platformId),
+                null);
+            return true;
+        }
+
+        private bool TryFindPacketOwnedFootholdEntry(int platformId, out PacketFieldUtilityFootholdEntry entry)
+        {
+            entry = null;
+            for (int i = 0; i < _packetFieldUtilityFootholdEntries.Count; i++)
+            {
+                PacketFieldUtilityFootholdEntry candidate = _packetFieldUtilityFootholdEntries[i];
+                if (candidate == null)
+                {
+                    continue;
+                }
+
+                if (candidate.FootholdSerialNumbers?.Contains(platformId) == true)
+                {
+                    entry = candidate;
+                    return true;
+                }
+            }
+
+            for (int i = 0; i < _packetFieldUtilityFootholdEntries.Count; i++)
+            {
+                PacketFieldUtilityFootholdEntry candidate = _packetFieldUtilityFootholdEntries[i];
+                if (candidate == null
+                    || string.IsNullOrWhiteSpace(candidate.Name)
+                    || _dynamicFootholdField == null
+                    || !_dynamicFootholdField.TryResolveAuthoredDynamicObjectPlatformId(candidate.Name, out int authoredPlatformId)
+                    || authoredPlatformId != platformId)
+                {
+                    continue;
+                }
+
+                entry = candidate;
+                return true;
+            }
+
+            return false;
+        }
+
+        private int[] ResolvePacketOwnedSnapshotSerialNumbers(int platformId, PacketFieldUtilityFootholdEntry cachedEntry = null)
+        {
+            if (cachedEntry?.FootholdSerialNumbers == null || cachedEntry.FootholdSerialNumbers.Count == 0)
+            {
+                return new[] { platformId };
+            }
+
+            List<int> serialNumbers = new(cachedEntry.FootholdSerialNumbers.Count);
+            for (int i = 0; i < cachedEntry.FootholdSerialNumbers.Count; i++)
+            {
+                int serialNumber = cachedEntry.FootholdSerialNumbers[i];
+                if (serialNumber >= 0)
+                {
+                    serialNumbers.Add(serialNumber);
+                }
+            }
+
+            return serialNumbers.Count == 0
+                ? new[] { platformId }
+                : serialNumbers.ToArray();
         }
 
         private string ResolvePacketOwnedDynamicPlatformSnapshotName(int platformId)

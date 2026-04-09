@@ -75,7 +75,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (entry.InGuild)
             {
-                lines.Add($"Guild points: {FormatMeso(entry.GuildPoints)}");
+                lines.Add($"Guild points: {FormatGuildPoints(entry.GuildPoints)}");
             }
 
             if (entry.ActivationCost > 0)
@@ -93,7 +93,10 @@ namespace HaCreator.MapSimulator.UI
                 lines.Add($"Cost unit: {FormatMeso(entry.GuildPriceUnit)}");
             }
 
-            lines.Add($"Fund: {FormatMeso(entry.GuildFundMeso)}");
+            if (entry.InGuild)
+            {
+                lines.Add($"Fund: {FormatMeso(entry.GuildFundMeso)}");
+            }
             return lines;
         }
 
@@ -120,6 +123,11 @@ namespace HaCreator.MapSimulator.UI
         private static string FormatMeso(int amount)
         {
             return $"{Math.Max(0, amount):N0} meso";
+        }
+
+        private static string FormatGuildPoints(int amount)
+        {
+            return $"{Math.Max(0, amount):N0}";
         }
     }
 }

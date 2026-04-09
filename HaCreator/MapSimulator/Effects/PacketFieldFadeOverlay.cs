@@ -12,6 +12,7 @@ namespace HaCreator.MapSimulator.Effects
         private int _startingAlpha;
         private int _layerZ;
         private int _startedAt;
+        private bool _fadeOutStarted;
         private bool _active;
 
         public bool IsActive => _active;
@@ -21,6 +22,7 @@ namespace HaCreator.MapSimulator.Effects
         public int HoldMs => _holdMs;
         public int FadeOutMs => _fadeOutMs;
         public int StartedAt => _startedAt;
+        public bool HasStartedFadeOut => _fadeOutStarted;
         public int FadeOutStartsAt => _active ? _startedAt + _fadeInMs + _holdMs : int.MinValue;
         public int ExpiresAt => _active ? _startedAt + _totalDurationMs : int.MinValue;
 
@@ -33,6 +35,7 @@ namespace HaCreator.MapSimulator.Effects
             _startingAlpha = Math.Clamp(startingAlpha, 0, byte.MaxValue);
             _layerZ = layerZ;
             _startedAt = currentTickCount;
+            _fadeOutStarted = false;
             _active = _totalDurationMs > 0;
         }
 
@@ -46,6 +49,7 @@ namespace HaCreator.MapSimulator.Effects
             _startingAlpha = 0;
             _layerZ = 0;
             _startedAt = 0;
+            _fadeOutStarted = false;
         }
 
         public void Update(int currentTickCount)
@@ -53,6 +57,11 @@ namespace HaCreator.MapSimulator.Effects
             if (!_active)
             {
                 return;
+            }
+
+            if (!_fadeOutStarted && unchecked(currentTickCount - FadeOutStartsAt) >= 0)
+            {
+                _fadeOutStarted = true;
             }
 
             if (unchecked(currentTickCount - ExpiresAt) >= 0)

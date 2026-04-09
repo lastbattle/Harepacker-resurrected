@@ -122,6 +122,21 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        internal static string GetWindowRestrictionMessage(long fieldLimit, string windowName)
+        {
+            return windowName switch
+            {
+                MapSimulatorWindowNames.MemoMailbox or
+                MapSimulatorWindowNames.MemoSend or
+                MapSimulatorWindowNames.MemoGet or
+                MapSimulatorWindowNames.QuestDelivery =>
+                    GetParcelOpenRestrictionMessage(fieldLimit),
+                MapSimulatorWindowNames.QuestAlarm =>
+                    GetQuestAlertRestrictionMessage(fieldLimit),
+                _ => null
+            };
+        }
+
         public static bool CanTakeFallingDamage(long fieldLimit)
         {
             return !FieldLimitType.No_Damage_On_Falling.Check(fieldLimit);

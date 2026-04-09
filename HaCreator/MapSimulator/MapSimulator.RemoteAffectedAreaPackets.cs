@@ -158,15 +158,20 @@ namespace HaCreator.MapSimulator
             System.Collections.Generic.ISet<int> activeProjectedSupportAreaIds)
         {
             SkillData skill = _playerManager?.SkillLoader?.LoadSkill(area.SkillId);
-            SkillData[] supportSkills = ResolveRemoteAffectedAreaSupportSkills(skill);
-            SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel);
-            SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSupportLevelData(levelData, supportSkills);
-            if (skill == null || levelData == null)
+            if (skill == null)
             {
                 return;
             }
 
+            SkillData[] supportSkills = ResolveRemoteAffectedAreaSupportSkills(skill);
+            SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel);
+            SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSupportLevelData(levelData, supportSkills);
             SkillLevelData effectiveLevelData = supportLevelData ?? levelData;
+            if (effectiveLevelData == null)
+            {
+                return;
+            }
+
             TryApplyRemotePlayerSupportAffectedAreaGameplay(
                 area,
                 skill,
@@ -175,7 +180,7 @@ namespace HaCreator.MapSimulator
                 currentTime,
                 activeProjectedSupportAreaIds);
 
-            if (!RemoteAffectedAreaSupportResolver.HasHostileMobGameplay(skill, effectiveLevelData))
+            if (!RemoteAffectedAreaSupportResolver.HasHostileMobGameplay(skill, supportSkills, effectiveLevelData))
             {
                 return;
             }

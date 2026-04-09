@@ -121,6 +121,7 @@ namespace HaCreator.MapSimulator.Companions
         private int _lastBlinkStartTime = int.MinValue;
         private int _questInfoAnimationStartTime = int.MinValue;
         private bool _isSuppressed;
+        private bool _hasActiveOneTimeAction;
         private bool _isFollowActive;
         private int _activeFollowReleaseStableFrames;
         private int _activeVerticalFollowState;
@@ -255,6 +256,7 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             _alpha = ResolveClientLayerAlpha(!_isSuppressed);
+            _hasActiveOneTimeAction = HasClientOwnedOneTimeAction(explicitActionName, currentTime);
             UpdateAuxiliaryLayers(owner, currentTime);
         }
 
@@ -331,6 +333,7 @@ namespace HaCreator.MapSimulator.Companions
             _lastBlinkStartTime = int.MinValue;
             _questInfoAnimationStartTime = int.MinValue;
             _isSuppressed = false;
+            _hasActiveOneTimeAction = false;
             _isFollowActive = false;
             _activeFollowReleaseStableFrames = 0;
             _activeVerticalFollowState = 0;
@@ -546,6 +549,27 @@ namespace HaCreator.MapSimulator.Companions
         private static bool ShouldLoopExplicitAction(string actionName)
         {
             return DragonActionLoader.IsClientHeldActionName(actionName);
+        }
+
+        private bool HasClientOwnedOneTimeAction(string explicitActionName, int currentTime)
+        {
+            if (!IsExplicitDragonAction(_currentActionName))
+            {
+                return false;
+            }
+
+            if (string.Equals(explicitActionName, _currentActionName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (!_currentSet.TryGetAnimation(_currentActionName, out SkillAnimation animation) || animation == null)
+            {
+                return false;
+            }
+
+            int elapsed = Math.Max(0, currentTime - _currentActionStartTime);
+            return !animation.IsComplete(elapsed);
         }
 
         private bool ShouldSuppressForCurrentMap()
@@ -1313,26 +1337,26 @@ namespace HaCreator.MapSimulator.Companions
             return !string.IsNullOrWhiteSpace(imageName) && !string.IsNullOrWhiteSpace(propertyPath);
         }
 
-        internal static bool ShouldHideAuxiliaryLayerForAction(string actionName)
+        internal static bool ShouldHideAuxiliaryLayer(bool hasActiveOneTimeAction)
         {
-            return IsExplicitDragonAction(actionName);
+            return hasActiveOneTimeAction;
         }
 
-        internal static bool ShouldShowAuxiliaryLayer(bool isSuppressed, float actionLayerAlpha, bool hasMountedVehicle, string currentActionName)
+        internal static bool ShouldShowAuxiliaryLayer(bool isSuppressed, float actionLayerAlpha, bool hasMountedVehicle, bool hasActiveOneTimeAction)
         {
             if (isSuppressed || actionLayerAlpha <= 0.01f || hasMountedVehicle)
             {
                 return false;
             }
 
-            return !ShouldHideAuxiliaryLayerForAction(currentActionName);
+            return !ShouldHideAuxiliaryLayer(hasActiveOneTimeAction);
         }
 
         private bool ShouldShowDragonFury(PlayerCharacter owner)
         {
             if (_dragonFuryAnimation == null
                 || !IsDragonFuryVisible()
-                || !ShouldShowAuxiliaryLayer(_isSuppressed, _alpha, HasMountedVehicle(owner), _currentActionName))
+                || !ShouldShowAuxiliaryLayer(_isSuppressed, _alpha, HasMountedVehicle(owner), _hasActiveOneTimeAction))
             {
                 return false;
             }
@@ -1493,22 +1517,8 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            string normalized = rawFormat.Trim().Replace('\\', '/');
-            string formatted = null;
-            if (normalized.Contains("{0}", StringComparison.Ordinal))
-            {
-                formatted = normalized.Replace("{0}", questState.ToString(), StringComparison.Ordinal);
-            }
-            else if (normalized.Contains("%d", StringComparison.Ordinal))
-            {
-                formatted = normalized.Replace("%d", questState.ToString(), StringComparison.Ordinal);
-            }
-            else if (normalized.Contains("%s", StringComparison.Ordinal))
-            {
-                formatted = normalized.Replace("%s", questState.ToString(), StringComparison.Ordinal);
-            }
-
-            if (!LooksLikeQuestInfoEffectUol(formatted))
+            if (!TryFormatQuestInfoEffectUolTemplate(rawFormat, questState.ToString(), out string formatted)
+                || !LooksLikeQuestInfoEffectUol(formatted))
             {
                 return false;
             }
@@ -1534,22 +1544,16 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             string normalized = rawFormat.Trim().Replace('\\', '/');
-            string formatted = null;
-            if (normalized.Contains("{0}", StringComparison.Ordinal))
+            if (!TryFormatQuestInfoEffectUolTemplate(normalized, suffix, out string formatted))
             {
-                formatted = normalized.Replace("{0}", suffix, StringComparison.Ordinal);
-            }
-            else if (normalized.Contains("%s", StringComparison.Ordinal))
-            {
-                formatted = normalized.Replace("%s", suffix, StringComparison.Ordinal);
-            }
-            else if (normalized.Contains("%d", StringComparison.Ordinal))
-            {
-                formatted = normalized.Replace("%d", suffix, StringComparison.Ordinal);
-            }
-            else if (questState == 0 && LooksLikeQuestInfoEffectUol(normalized))
-            {
-                formatted = normalized;
+                if (questState == 0 && LooksLikeQuestInfoEffectUol(normalized))
+                {
+                    formatted = normalized;
+                }
+                else
+                {
+                    return false;
+                }
             }
 
             if (!LooksLikeQuestInfoEffectUol(formatted))
@@ -1559,6 +1563,45 @@ namespace HaCreator.MapSimulator.Companions
 
             effectUol = formatted;
             return true;
+        }
+
+        internal static bool TryFormatQuestInfoEffectUolTemplate(string rawFormat, string replacement, out string formatted)
+        {
+            formatted = null;
+            if (string.IsNullOrWhiteSpace(rawFormat))
+            {
+                return false;
+            }
+
+            string normalized = rawFormat.Trim().Replace('\\', '/');
+            string[] supportedTokens =
+            {
+                "{0}",
+                "%d",
+                "%i",
+                "%u",
+                "%ld",
+                "%li",
+                "%lu",
+                "%hd",
+                "%hi",
+                "%hu",
+                "%s"
+            };
+
+            foreach (string token in supportedTokens)
+            {
+                int tokenIndex = normalized.IndexOf(token, StringComparison.Ordinal);
+                if (tokenIndex < 0)
+                {
+                    continue;
+                }
+
+                formatted = normalized.Remove(tokenIndex, token.Length).Insert(tokenIndex, replacement ?? string.Empty);
+                return true;
+            }
+
+            return false;
         }
 
         private static bool DoesWzEffectAssetExist(string effectUol)
@@ -1681,7 +1724,7 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            return ShouldShowAuxiliaryLayer(_isSuppressed, _alpha, HasMountedVehicle(owner), _currentActionName);
+            return ShouldShowAuxiliaryLayer(_isSuppressed, _alpha, HasMountedVehicle(owner), _hasActiveOneTimeAction);
         }
 
         private void TriggerBlink(PlayerCharacter owner, int currentTime)

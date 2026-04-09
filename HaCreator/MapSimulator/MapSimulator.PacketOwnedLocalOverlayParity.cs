@@ -37,6 +37,13 @@ namespace HaCreator.MapSimulator
             ExternalObserved = 1
         }
 
+        private enum FieldHazardPetConsumeDispatchState
+        {
+            SimulatorOwned = 0,
+            Dispatched = 1,
+            DeferredQueued = 2
+        }
+
         private readonly record struct FieldHazardHpPotionCandidate(int ItemId, InventoryType InventoryType, string ItemName);
         private readonly record struct FieldHazardPetAutoConsumeTarget(
             int PetSlotIndex,
@@ -53,6 +60,7 @@ namespace HaCreator.MapSimulator
             bool BuffSkillRequest,
             ulong PetSerial,
             int RequestIndex,
+            int Opcode,
             int InventoryRuntimeSlotIndex,
             int InventoryClientSlotIndex,
             int InitialSlotQuantity,
@@ -62,6 +70,8 @@ namespace HaCreator.MapSimulator
             int RemoteResultDeadlineAt,
             bool Acknowledged,
             FieldHazardPetConsumeResolutionMode ResolutionMode,
+            FieldHazardPetConsumeDispatchState DispatchState,
+            string RawPacketHex,
             string PayloadHex,
             string TransportDisposition);
 
@@ -103,6 +113,7 @@ namespace HaCreator.MapSimulator
         private const int FieldHazardPetAutoConsumeSyntheticAckDelayMs = 120;
         private const int FieldHazardPetAutoConsumeSyntheticResultDelayMs = 90;
         private const int FieldHazardPetAutoConsumeRemoteObservationWindowMs = 1500;
+        private const int FieldHazardPetAutoConsumeDeferredDispatchObservationWindowMs = 1500;
         private const int FieldHazardPetAutoConsumeDefaultRequestIndex = 0;
         private const int FieldHazardPetAutoConsumeForceRequestIndex = 1;
         private const int FieldHazardPetAutoConsumeBuffSkillRequestIndex = 2;
@@ -984,7 +995,7 @@ namespace HaCreator.MapSimulator
             }
 
             Rectangle contentBounds = new(
-                PacketOwnedBalloonHorizontalPadding,
+                0,
                 PacketOwnedBalloonVerticalPadding,
                 contentWidth,
                 Math.Max(0, bodyHeight - (PacketOwnedBalloonVerticalPadding * 2)));
@@ -1145,7 +1156,7 @@ namespace HaCreator.MapSimulator
             }
 
             Rectangle localContentBounds = new(
-                localBodyBounds.X + PacketOwnedBalloonHorizontalPadding,
+                localBodyBounds.X,
                 localBodyBounds.Y + PacketOwnedBalloonVerticalPadding,
                 Math.Max(0, bodyWidth - PacketOwnedBalloonBodyExtraWidth),
                 Math.Max(0, bodyHeight - (PacketOwnedBalloonVerticalPadding * 2)));
@@ -1279,18 +1290,66 @@ namespace HaCreator.MapSimulator
             }
 
             int lineHeight = ResolvePacketOwnedBalloonLineHeight();
-            int contentWidth = Math.Clamp(message.RequestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
+            int contentWidth = ResolvePacketOwnedBalloonWrapWidth(message.RequestedWidth);
             int bodyWidth = contentWidth + PacketOwnedBalloonBodyExtraWidth;
-            int contentAreaWidth = Math.Max(0, bodyWidth - PacketOwnedBalloonBodyExtraWidth);
             int bodyHeight = Math.Max(26, (lines.Length * lineHeight) + (PacketOwnedBalloonVerticalPadding * 2));
-            int canvasX = Math.Clamp(
-                anchor.X - (bodyWidth / 2),
+            int bodyX = Math.Clamp(
+                anchor.X - (contentWidth / 2),
                 PacketOwnedBalloonScreenMargin,
                 Math.Max(PacketOwnedBalloonScreenMargin, Width - bodyWidth - PacketOwnedBalloonScreenMargin));
-            PacketOwnedBalloonArrowKind arrowKind = SelectPacketOwnedBalloonArrowKind(anchor, canvasX, bodyWidth);
+            Rectangle seedBodyBounds = new(bodyX, 0, bodyWidth, bodyHeight);
+            PacketOwnedBalloonArrowKind aboveArrowKind = SelectPacketOwnedBalloonArrowKind(anchor, seedBodyBounds, placeBelowAnchor: false);
+            LocalOverlayBalloonArrowSprite aboveArrowSprite = ResolvePacketOwnedBalloonArrowSprite(aboveArrowKind);
+            int arrowBelowBodyExtent = ResolvePacketOwnedBalloonArrowBelowBodyExtent(bodyWidth, bodyHeight, aboveArrowKind, aboveArrowSprite);
+            PacketOwnedBalloonArrowKind belowArrowKind = SelectPacketOwnedBalloonArrowKind(anchor, seedBodyBounds, placeBelowAnchor: true);
+            LocalOverlayBalloonArrowSprite belowArrowSprite = ResolvePacketOwnedBalloonArrowSprite(belowArrowKind);
+            int arrowAboveBodyExtent = ResolvePacketOwnedBalloonArrowAboveBodyExtent(bodyWidth, bodyHeight, belowArrowKind, belowArrowSprite);
+            bool placeAboveAnchor = message.AnchorMode == LocalOverlayBalloonAnchorMode.Avatar ||
+                                    ShouldPlacePacketOwnedBalloonAbove(anchor, bodyHeight, arrowBelowBodyExtent, arrowAboveBodyExtent);
+            PacketOwnedBalloonArrowKind arrowKind = placeAboveAnchor ? aboveArrowKind : belowArrowKind;
             LocalOverlayBalloonArrowSprite arrowSprite = ResolvePacketOwnedBalloonArrowSprite(arrowKind);
-            int arrowBelowBodyExtent = ResolvePacketOwnedBalloonArrowBelowBodyExtent(bodyWidth, bodyHeight, arrowKind, arrowSprite);
-            Texture2D visualTexture = GetOrCreatePacketOwnedBalloonVisualTexture(
+            int bodyY = placeAboveAnchor
+                ? anchor.Y - bodyHeight - ResolvePacketOwnedBalloonArrowBelowBodyExtent(bodyWidth, bodyHeight, arrowKind, arrowSprite)
+                : anchor.Y + ResolvePacketOwnedBalloonArrowAboveBodyExtent(bodyWidth, bodyHeight, arrowKind, arrowSprite);
+            Texture2D visualTexture = null;
+            Rectangle bodyBounds = new(
+                bodyX,
+                bodyY,
+                bodyWidth,
+                bodyHeight);
+
+            if (message.AnchorMode != LocalOverlayBalloonAnchorMode.Avatar)
+            {
+                Rectangle provisionalArrowBounds = ResolvePacketOwnedBalloonArrowBounds(bodyBounds, arrowKind, arrowSprite);
+                Rectangle provisionalCanvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, provisionalArrowBounds);
+                Point screenShift = ResolvePacketOwnedBalloonCanvasShift(provisionalCanvasBounds);
+                bodyBounds = OffsetPacketOwnedBalloonBounds(bodyBounds, screenShift);
+                provisionalArrowBounds = OffsetPacketOwnedBalloonBounds(provisionalArrowBounds, screenShift);
+                provisionalCanvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, provisionalArrowBounds);
+                if (occupiedBounds != null)
+                {
+                    ResolvePacketOwnedBalloonOverlap(occupiedBounds, placeAbove: placeAboveAnchor, ref bodyBounds, ref provisionalArrowBounds, ref provisionalCanvasBounds);
+                }
+            }
+
+            arrowKind = SelectPacketOwnedBalloonArrowKind(anchor, bodyBounds, placeBelowAnchor: !placeAboveAnchor);
+            arrowSprite = ResolvePacketOwnedBalloonArrowSprite(arrowKind);
+            Rectangle arrowBounds = ResolvePacketOwnedBalloonArrowBounds(bodyBounds, arrowKind, arrowSprite);
+            Rectangle canvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, arrowBounds);
+            if (message.AnchorMode != LocalOverlayBalloonAnchorMode.Avatar)
+            {
+                Point finalScreenShift = ResolvePacketOwnedBalloonCanvasShift(canvasBounds);
+                bodyBounds = OffsetPacketOwnedBalloonBounds(bodyBounds, finalScreenShift);
+                arrowBounds = OffsetPacketOwnedBalloonBounds(arrowBounds, finalScreenShift);
+                canvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, arrowBounds);
+            }
+
+            Rectangle contentBounds = new(
+                bodyBounds.X,
+                bodyBounds.Y + PacketOwnedBalloonVerticalPadding,
+                contentWidth,
+                Math.Max(0, bodyHeight - (PacketOwnedBalloonVerticalPadding * 2)));
+            visualTexture = GetOrCreatePacketOwnedBalloonVisualTexture(
                 message,
                 lines,
                 lineHeight,
@@ -1298,32 +1357,6 @@ namespace HaCreator.MapSimulator
                 bodyHeight,
                 arrowKind,
                 arrowSprite);
-            Rectangle bodyBounds = new(
-                canvasX,
-                anchor.Y - bodyHeight - arrowBelowBodyExtent,
-                bodyWidth,
-                bodyHeight);
-
-            Rectangle arrowBounds = ResolvePacketOwnedBalloonArrowBounds(bodyBounds, arrowKind, arrowSprite);
-            Rectangle canvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, arrowBounds);
-            if (message.AnchorMode != LocalOverlayBalloonAnchorMode.Avatar)
-            {
-                Point screenShift = ResolvePacketOwnedBalloonCanvasShift(canvasBounds);
-                bodyBounds = OffsetPacketOwnedBalloonBounds(bodyBounds, screenShift);
-                arrowBounds = OffsetPacketOwnedBalloonBounds(arrowBounds, screenShift);
-                canvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, arrowBounds);
-
-                if (occupiedBounds != null)
-                {
-                    ResolvePacketOwnedBalloonOverlap(occupiedBounds, placeAbove: true, ref bodyBounds, ref arrowBounds, ref canvasBounds);
-                }
-            }
-
-            Rectangle contentBounds = new(
-                bodyBounds.X + PacketOwnedBalloonHorizontalPadding,
-                bodyBounds.Y + PacketOwnedBalloonVerticalPadding,
-                contentAreaWidth,
-                Math.Max(0, bodyHeight - (PacketOwnedBalloonVerticalPadding * 2)));
             layout = new PacketOwnedBalloonLayout(message, anchor, canvasBounds, bodyBounds, contentBounds, lines, lineHeight, arrowKind, arrowSprite, arrowBounds, visualTexture);
             return true;
         }
@@ -1431,25 +1464,50 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private PacketOwnedBalloonArrowKind SelectPacketOwnedBalloonArrowKind(Point anchor, int bodyX, int bodyWidth)
+        private bool ShouldPlacePacketOwnedBalloonAbove(Point anchor, int bodyHeight, int arrowBelowBodyExtent, int arrowAboveBodyExtent)
         {
-            int bodyCenterX = bodyX + (bodyWidth / 2);
+            int availableAbove = Math.Max(0, anchor.Y - PacketOwnedBalloonScreenMargin);
+            int availableBelow = Math.Max(0, Height - PacketOwnedBalloonScreenMargin - anchor.Y);
+            bool canPlaceAbove = availableAbove >= bodyHeight + Math.Max(0, arrowBelowBodyExtent);
+            bool canPlaceBelow = availableBelow >= bodyHeight + Math.Max(0, arrowAboveBodyExtent);
+            if (canPlaceAbove)
+            {
+                return true;
+            }
+
+            if (canPlaceBelow)
+            {
+                return false;
+            }
+
+            return availableAbove >= availableBelow;
+        }
+
+        private PacketOwnedBalloonArrowKind SelectPacketOwnedBalloonArrowKind(Point anchor, Rectangle bodyBounds, bool placeBelowAnchor)
+        {
+            int bodyCenterX = bodyBounds.X + (bodyBounds.Width / 2);
             int deltaFromCenter = anchor.X - bodyCenterX;
             bool useLongArrow = Math.Abs(deltaFromCenter) >= PacketOwnedBalloonLongArrowThreshold;
-            bool nearLeft = anchor.X <= bodyX + PacketOwnedBalloonCornerThreshold;
-            bool nearRight = anchor.X >= bodyX + bodyWidth - PacketOwnedBalloonCornerThreshold;
+            bool nearLeft = anchor.X <= bodyBounds.X + PacketOwnedBalloonCornerThreshold;
+            bool nearRight = anchor.X >= bodyBounds.X + bodyBounds.Width - PacketOwnedBalloonCornerThreshold;
 
             if (nearLeft)
             {
-                return useLongArrow ? PacketOwnedBalloonArrowKind.BottomLeftLong : PacketOwnedBalloonArrowKind.BottomLeft;
+                return placeBelowAnchor
+                    ? (useLongArrow ? PacketOwnedBalloonArrowKind.TopLeftLong : PacketOwnedBalloonArrowKind.TopLeft)
+                    : (useLongArrow ? PacketOwnedBalloonArrowKind.BottomLeftLong : PacketOwnedBalloonArrowKind.BottomLeft);
             }
 
             if (nearRight)
             {
-                return useLongArrow ? PacketOwnedBalloonArrowKind.BottomRightLong : PacketOwnedBalloonArrowKind.BottomRight;
+                return placeBelowAnchor
+                    ? (useLongArrow ? PacketOwnedBalloonArrowKind.TopRightLong : PacketOwnedBalloonArrowKind.TopRight)
+                    : (useLongArrow ? PacketOwnedBalloonArrowKind.BottomRightLong : PacketOwnedBalloonArrowKind.BottomRight);
             }
 
-            return useLongArrow ? PacketOwnedBalloonArrowKind.BottomCenterLong : PacketOwnedBalloonArrowKind.BottomCenter;
+            return placeBelowAnchor
+                ? (useLongArrow ? PacketOwnedBalloonArrowKind.TopCenterLong : PacketOwnedBalloonArrowKind.TopCenter)
+                : (useLongArrow ? PacketOwnedBalloonArrowKind.BottomCenterLong : PacketOwnedBalloonArrowKind.BottomCenter);
         }
 
         private LocalOverlayBalloonArrowSprite ResolvePacketOwnedBalloonArrowSprite(PacketOwnedBalloonArrowKind kind)
@@ -1739,6 +1797,7 @@ namespace HaCreator.MapSimulator
                 BuffSkillRequest: buffSkillRequest,
                 PetSerial: petSerial,
                 RequestIndex: requestIndex,
+                Opcode: 0,
                 InventoryRuntimeSlotIndex: inventoryRuntimeSlotIndex,
                 InventoryClientSlotIndex: inventoryClientSlotIndex,
                 InitialSlotQuantity: initialSlotQuantity,
@@ -1748,6 +1807,8 @@ namespace HaCreator.MapSimulator
                 RemoteResultDeadlineAt: currentTickCount + FieldHazardPetAutoConsumeRemoteObservationWindowMs,
                 Acknowledged: false,
                 ResolutionMode: resolutionMode,
+                DispatchState: FieldHazardPetConsumeDispatchState.SimulatorOwned,
+                RawPacketHex: payloadHex,
                 PayloadHex: payloadHex,
                 TransportDisposition: transportDisposition);
             _lastFieldHazardPetAutoConsumeRequestTick = currentTickCount;
@@ -2563,6 +2624,7 @@ namespace HaCreator.MapSimulator
                     Math.Max(0, _packetOwnedFieldFadeOverlay.ExpiresAt - currentTickCount),
                     DescribePacketOwnedFadeAlpha(_packetOwnedFieldFadeOverlay.StartingAlpha),
                     _packetOwnedFieldFadeOverlay.RequestedLayerZ)
+                    + (_packetOwnedFieldFadeOverlay.HasStartedFadeOut ? " Fade-out start armed." : string.Empty)
                 : "Fade inactive.";
 
             LocalOverlayBalloonMessage avatarMessage = _packetOwnedBalloonState.GetAvatarMessage(currentTickCount);

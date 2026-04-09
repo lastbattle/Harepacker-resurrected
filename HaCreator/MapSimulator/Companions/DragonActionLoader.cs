@@ -15,7 +15,7 @@ namespace HaCreator.MapSimulator.Companions
     internal sealed class DragonActionLoader
     {
         private const int FirstClientDragonActionCode = 147;
-        private const int LastClientDragonActionCode = 173;
+        private const int LastClientDragonActionCode = 174;
 
         private static readonly Dictionary<string, string> ClientActionAliases = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -91,17 +91,14 @@ namespace HaCreator.MapSimulator.Companions
 
         public IEnumerable<string> EnumerateKnownActionNames(int dragonJob)
         {
-            WzImage image = global::HaCreator.Program.FindImage("Skill", $"Dragon/{dragonJob}.img");
+            WzImage image = FindDragonImage(dragonJob);
             if (image == null)
             {
                 return ClientActionTable;
             }
 
             return ClientActionTable
-                .Concat(image.WzProperties
-                    .OfType<WzSubProperty>()
-                    .Where(property => !string.Equals(property.Name, "info", StringComparison.OrdinalIgnoreCase))
-                    .Select(property => property.Name))
+                .Concat(EnumerateImageActionNames(image))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
         }
@@ -144,8 +141,9 @@ namespace HaCreator.MapSimulator.Companions
 
         private SkillAnimation LoadAnimation(int dragonJob, string resolvedActionName)
         {
-            WzImage image = global::HaCreator.Program.FindImage("Skill", $"Dragon/{dragonJob}.img");
-            if (image == null || image[resolvedActionName] is not WzSubProperty actionNode)
+            WzImage image = FindDragonImage(dragonJob);
+            WzSubProperty actionNode = FindActionNode(image, resolvedActionName);
+            if (actionNode == null)
             {
                 return null;
             }
@@ -174,6 +172,76 @@ namespace HaCreator.MapSimulator.Companions
 
             animation.CalculateDuration();
             return animation;
+        }
+
+        private static WzImage FindDragonImage(int dragonJob)
+        {
+            return global::HaCreator.Program.FindImage("Skill", $"Dragon/{dragonJob}.img")
+                   ?? global::HaCreator.Program.FindImage("Skill", $"{dragonJob}.img");
+        }
+
+        internal static IEnumerable<string> EnumerateImageActionNames(WzImage image)
+        {
+            if (image == null)
+            {
+                yield break;
+            }
+
+            foreach (string actionName in image.WzProperties
+                         .OfType<WzSubProperty>()
+                         .Where(property => !string.Equals(property.Name, "info", StringComparison.OrdinalIgnoreCase)
+                                            && !string.Equals(property.Name, "skill", StringComparison.OrdinalIgnoreCase))
+                         .Select(property => property.Name))
+            {
+                yield return actionName;
+            }
+
+            if (image["skill"] is not WzSubProperty skillRoot)
+            {
+                yield break;
+            }
+
+            foreach (WzSubProperty skillNode in skillRoot.WzProperties.OfType<WzSubProperty>())
+            {
+                foreach (string actionName in EnumerateSkillActionNames(skillNode))
+                {
+                    yield return actionName;
+                }
+            }
+        }
+
+        internal static WzSubProperty FindActionNode(WzImage image, string actionName)
+        {
+            if (image == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return null;
+            }
+
+            if (image[actionName] is WzSubProperty directActionNode)
+            {
+                return directActionNode;
+            }
+
+            if (image["skill"] is not WzSubProperty skillRoot)
+            {
+                return null;
+            }
+
+            foreach (WzSubProperty skillNode in skillRoot.WzProperties.OfType<WzSubProperty>())
+            {
+                if (skillNode["mob"] is not WzSubProperty mobNode)
+                {
+                    continue;
+                }
+
+                if (EnumerateSkillActionNames(skillNode).Any(candidate =>
+                        string.Equals(candidate, actionName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return mobNode;
+                }
+            }
+
+            return null;
         }
 
         private List<SkillFrame> LoadFrames(WzSubProperty actionNode)
@@ -206,6 +274,23 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return frames;
+        }
+
+        private static IEnumerable<string> EnumerateSkillActionNames(WzSubProperty skillNode)
+        {
+            if (skillNode?["action"] is not WzSubProperty actionNode)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty property in actionNode.WzProperties)
+            {
+                if (TryGetStringValue(property, out string actionName)
+                    && !string.IsNullOrWhiteSpace(actionName))
+                {
+                    yield return actionName;
+                }
+            }
         }
 
         private IDXObject LoadTexture(WzCanvasProperty canvas)
@@ -294,6 +379,18 @@ namespace HaCreator.MapSimulator.Companions
                 WzLongProperty longProperty => (int)longProperty.Value,
                 _ => null
             };
+        }
+
+        private static bool TryGetStringValue(WzImageProperty property, out string value)
+        {
+            if (property is WzStringProperty stringProperty)
+            {
+                value = stringProperty.Value;
+                return true;
+            }
+
+            value = null;
+            return false;
         }
 
         private static WzCanvasProperty ResolveMetadataCanvas(WzCanvasProperty canvas)

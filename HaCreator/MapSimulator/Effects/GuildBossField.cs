@@ -189,9 +189,8 @@ namespace HaCreator.MapSimulator.Effects
 
         public void Enable()
         {
+            ClearRuntimeState();
             _isActive = true;
-            _pulleyState = 0;
-            _localPlayerHitbox = Rectangle.Empty;
         }
 
 
@@ -787,6 +786,7 @@ namespace HaCreator.MapSimulator.Effects
 
         internal void ConfigureFromBoard(Board board)
         {
+            _mapId = board?.MapInfo?.id ?? _mapId;
             if (TryBuildMapContract(board?.MapInfo, out GuildBossMapContract contract))
             {
                 ApplyMapContract(contract);
@@ -798,11 +798,30 @@ namespace HaCreator.MapSimulator.Effects
         #region Reset
         public void Reset()
         {
+            ClearRuntimeState();
             _isActive = false;
+        }
+        #endregion
+
+
+        private void ClearRuntimeState()
+        {
             _mapId = 0;
             _pulleyState = 0;
+            _healerYMin = 0;
+            _healerYMax = 0;
+            _healerRise = 0;
+            _healerFall = 0;
+            _healerHealMin = 0;
+            _healerHealMax = 0;
             _healerEnabled = false;
             _pulleyEnabled = false;
+            _healerX = 0f;
+            _healerY = 0f;
+            _healerTargetY = 0f;
+            _pulleyX = 0f;
+            _pulleyY = 0f;
+            _pulleyArea = Rectangle.Empty;
             _healEffectActive = false;
             _healParticles.Clear();
             _healerPath = null;
@@ -827,7 +846,6 @@ namespace HaCreator.MapSimulator.Effects
             _statusCueText = null;
             _localPlayerHitbox = Rectangle.Empty;
         }
-        #endregion
 
 
         private void UpdateLocalPulleySequence(int currentTimeMs)

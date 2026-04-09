@@ -144,7 +144,7 @@ namespace HaCreator.MapSimulator.UI
             _noticeTextures = noticeTextures ?? Array.Empty<Texture2D>();
             if (paletteTexturesBySlot != null)
             {
-                foreach (KeyValuePair<int, Texture2D> entry in paletteTexturesBySlot.OrderBy(entry => entry.Key))
+                foreach (KeyValuePair<int, Texture2D> entry in paletteTexturesBySlot)
                 {
                     if (entry.Value == null)
                     {
@@ -583,7 +583,7 @@ namespace HaCreator.MapSimulator.UI
                 ? (_captureArmed
                     ? "Capture armed: press a key or pad button."
                     : "The footer now tracks the selected action instead of an unowned icon strip.")
-                : "WZ-backed footer palette loaded from UIWindow2.img/KeyConfig/icon.";
+                : "WZ-backed footer palette loaded from UIWindow2.img/KeyConfig/icon in authored slot order.";
             sprite.DrawString(_font, summaryText, new Vector2(infoBounds.X + 6, infoBounds.Y + 33), new Color(210, 210, 210), 0f, Vector2.Zero, 0.36f, SpriteEffects.None, 0f);
 
             if (_selectedAction.HasValue)
@@ -657,8 +657,15 @@ namespace HaCreator.MapSimulator.UI
                 return -1;
             }
 
-            BindingRow? selectedRow = _bindingRows.FirstOrDefault(row => row.Action == _selectedAction.Value);
-            return selectedRow?.PaletteSlotId ?? -1;
+            foreach (BindingRow row in _bindingRows)
+            {
+                if (row.Action == _selectedAction.Value)
+                {
+                    return row.PaletteSlotId;
+                }
+            }
+
+            return -1;
         }
 
         private Texture2D GetSelectedPaletteTexture(int paletteSlotId)
@@ -713,19 +720,20 @@ namespace HaCreator.MapSimulator.UI
             {
                 (InputAction.Jump, "Jump", 53),
                 (InputAction.Attack, "Attack", 52),
-                (InputAction.Pickup, "Pickup", 50),
+                (InputAction.Pickup, "Pick Up", 50),
                 (InputAction.Skill1, "Skill 1", -1),
                 (InputAction.Skill2, "Skill 2", -1),
                 (InputAction.Skill3, "Skill 3", -1),
                 (InputAction.Skill4, "Skill 4", -1),
+                (InputAction.Interact, "NPC Chat / Harvest", 54),
                 (InputAction.ToggleInventory, "Inventory", 1),
                 (InputAction.ToggleEquip, "Equip", 0),
                 (InputAction.Skill5, "Skill 5", -1),
                 (InputAction.Skill6, "Skill 6", -1),
                 (InputAction.Skill7, "Skill 7", -1),
                 (InputAction.Skill8, "Skill 8", -1),
-                (InputAction.ToggleQuest, "Quest", 8),
-                (InputAction.ToggleStats, "Stats", 2),
+                (InputAction.ToggleQuest, "Quest Log", 8),
+                (InputAction.ToggleStats, "Char Stats", 2),
                 (InputAction.ToggleMinimap, "Mini Map", 7),
             };
 

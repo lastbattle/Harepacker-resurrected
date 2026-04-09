@@ -84,6 +84,7 @@ namespace HaCreator.MapSimulator.Managers
         private TooltipItem[] _visibleTooltips;
         private int _visibleTooltipsCount;
         private readonly List<DropItem> _renderableDropsBuffer = new List<DropItem>();
+        private readonly List<ReactorItem> _renderableReactorsBuffer = new List<ReactorItem>();
 
         #endregion
 
@@ -436,6 +437,8 @@ namespace HaCreator.MapSimulator.Managers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawReactors(in RenderContext context)
         {
+            _renderableReactorsBuffer.Clear();
+
             if (_visibleReactors != null)
             {
                 for (int i = 0; i < _visibleReactorsCount; i++)
@@ -444,24 +447,37 @@ namespace HaCreator.MapSimulator.Managers
                     if (reactorItem == null || !reactorItem.IsVisible)
                         continue;
 
-                    reactorItem.Draw(context.SpriteBatch, context.SkeletonMeshRenderer, context.GameTime,
-                        context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY,
-                        null,
-                        context.RenderParams,
-                        context.TickCount);
+                    _renderableReactorsBuffer.Add(reactorItem);
                 }
+            }
+            else if (_reactorsArray != null)
+            {
+                for (int i = 0; i < _reactorsArray.Length; i++)
+                {
+                    ReactorItem reactorItem = _reactorsArray[i];
+                    if (reactorItem == null || !reactorItem.IsVisible)
+                        continue;
 
-                return;
+                    _renderableReactorsBuffer.Add(reactorItem);
+                }
             }
 
-            if (_reactorsArray == null) return;
-
-            for (int i = 0; i < _reactorsArray.Length; i++)
+            _renderableReactorsBuffer.Sort(static (left, right) =>
             {
-                ReactorItem reactorItem = _reactorsArray[i];
-                if (!reactorItem.IsVisible)
-                    continue;
+                int result = left.RenderSortKey.CompareTo(right.RenderSortKey);
+                if (result != 0)
+                {
+                    return result;
+                }
 
+                int leftY = left.ReactorInstance?.Y ?? 0;
+                int rightY = right.ReactorInstance?.Y ?? 0;
+                return leftY.CompareTo(rightY);
+            });
+
+            for (int i = 0; i < _renderableReactorsBuffer.Count; i++)
+            {
+                ReactorItem reactorItem = _renderableReactorsBuffer[i];
                 reactorItem.Draw(context.SpriteBatch, context.SkeletonMeshRenderer, context.GameTime,
                     context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY,
                     null,

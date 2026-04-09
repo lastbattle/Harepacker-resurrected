@@ -65,6 +65,22 @@ namespace HaCreator.MapSimulator.Character
         public float FallDistance => Math.Max(0f, LandingY - FallStartY);
     }
 
+    internal readonly record struct PacketOwnedEmotionState(
+        int EmotionId,
+        string EmotionName,
+        int DurationMs,
+        int AppliedAt,
+        int ExpireTime,
+        bool ByItemOption)
+    {
+        public bool HasFiniteDuration => DurationMs > 0 && ExpireTime > AppliedAt;
+
+        public bool IsExpired(int currentTime)
+        {
+            return ExpireTime > 0 && currentTime >= ExpireTime;
+        }
+    }
+
     /// <summary>
     /// Player Character Controller - Handles physics, input, and animation
     /// Equivalent to CUserLocal in the MapleStory client
@@ -228,12 +244,14 @@ namespace HaCreator.MapSimulator.Character
                 IReadOnlyList<AssembledPart> parts,
                 Texture2D preparedSnapshotTexture,
                 Rectangle preparedSnapshotBounds,
+                Rectangle positionBounds,
                 bool facingRight,
                 int transitionStartTime)
             {
                 Parts = parts;
                 PreparedSnapshotTexture = preparedSnapshotTexture;
                 PreparedSnapshotBounds = preparedSnapshotBounds;
+                PositionBounds = positionBounds;
                 FacingRight = facingRight;
                 TransitionStartTime = transitionStartTime;
             }
@@ -241,6 +259,7 @@ namespace HaCreator.MapSimulator.Character
             public IReadOnlyList<AssembledPart> Parts { get; }
             public Texture2D PreparedSnapshotTexture { get; }
             public Rectangle PreparedSnapshotBounds { get; }
+            public Rectangle PositionBounds { get; }
             public bool FacingRight { get; }
             public int TransitionStartTime { get; }
         }
@@ -389,6 +408,9 @@ namespace HaCreator.MapSimulator.Character
         private int _nextBlinkTime = Environment.TickCount + FACE_BLINK_MIN_INTERVAL_MS;
         private int _blinkExpressionEndTime;
         private int _hitExpressionEndTime;
+        private int _packetOwnedEmotionId;
+        private int _packetOwnedEmotionDurationMs;
+        private int _packetOwnedEmotionAppliedAt;
         private int _packetOwnedEmotionEndTime;
         private int _nextPortableChairRecoveryTime = int.MaxValue;
         private string _packetOwnedEmotionName = "default";
@@ -1919,11 +1941,18 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            int normalizedDurationMs = Math.Max(0, durationMs);
             SkillAnimation emotionEffectAnimation = LoadPacketOwnedEmotionEffectAnimation(emotionName);
-            if (normalizedDurationMs <= 0 && emotionEffectAnimation?.TotalDuration > 0)
+            int resolvedDurationMs = Math.Max(0, durationMs);
+            bool usedFaceLookDurationFallback = false;
+            if (resolvedDurationMs <= 0 && emotionEffectAnimation?.TotalDuration > 0)
             {
-                normalizedDurationMs = emotionEffectAnimation.TotalDuration;
+                resolvedDurationMs = emotionEffectAnimation.TotalDuration;
+            }
+            else if (resolvedDurationMs <= 0
+                     && Assembler?.TryGetFaceLookDuration(emotionName, out int faceLookDuration) == true)
+            {
+                resolvedDurationMs = faceLookDuration;
+                usedFaceLookDurationFallback = true;
             }
 
             if (string.Equals(emotionName, "default", StringComparison.OrdinalIgnoreCase))
@@ -1933,8 +1962,11 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
+            _packetOwnedEmotionId = emotionId;
+            _packetOwnedEmotionDurationMs = resolvedDurationMs;
+            _packetOwnedEmotionAppliedAt = currentTime;
             _packetOwnedEmotionName = emotionName;
-            _packetOwnedEmotionEndTime = normalizedDurationMs > 0 ? currentTime + normalizedDurationMs : 0;
+            _packetOwnedEmotionEndTime = resolvedDurationMs > 0 ? currentTime + resolvedDurationMs : 0;
             _packetOwnedEmotionByItemOption = byItemOption;
 
             if (Assembler != null)
@@ -1951,11 +1983,33 @@ namespace HaCreator.MapSimulator.Character
                 ClearTransientSkillAvatarEffect(PacketOwnedEmotionEffectSkillId);
             }
 
-            string durationText = normalizedDurationMs > 0
-                ? $"{normalizedDurationMs} ms"
-                : "effect-duration fallback";
+            string durationText = resolvedDurationMs > 0
+                ? $"{resolvedDurationMs} ms"
+                : "until cleared";
+            if (usedFaceLookDurationFallback)
+            {
+                durationText += " (face-look fallback)";
+            }
             string sourceText = byItemOption ? "item-option" : "packet";
             message = $"Applied packet-owned avatar emotion '{emotionName}' ({emotionId}) for {durationText} via {sourceText}.";
+            return true;
+        }
+
+        internal bool TryGetPacketOwnedEmotionState(int currentTime, out PacketOwnedEmotionState state)
+        {
+            state = default;
+            if (!TryGetActivePacketOwnedEmotionName(currentTime, out _))
+            {
+                return false;
+            }
+
+            state = new PacketOwnedEmotionState(
+                _packetOwnedEmotionId,
+                _packetOwnedEmotionName,
+                _packetOwnedEmotionDurationMs,
+                _packetOwnedEmotionAppliedAt,
+                _packetOwnedEmotionEndTime,
+                _packetOwnedEmotionByItemOption);
             return true;
         }
 
@@ -3908,7 +3962,7 @@ namespace HaCreator.MapSimulator.Character
                     DrawMirrorImagePreparedSnapshot(
                         spriteBatch,
                         renderableLayer.Value.PreparedSnapshotTexture,
-                        renderableLayer.Value.PreparedSnapshotBounds,
+                        renderableLayer.Value.PositionBounds,
                         adjustedX,
                         adjustedY,
                         renderableLayer.Value.FacingRight,
@@ -3916,14 +3970,17 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
+                Point preparedPartBaseOffset = ResolveMirrorImagePreparedFallbackPartBaseOffset(
+                    renderableLayer.Value.PreparedSnapshotBounds,
+                    renderableLayer.Value.PositionBounds);
                 for (int i = 0; i < parts.Count; i++)
                 {
                     DrawMirrorImagePreparedPart(
                         spriteBatch,
                         skeletonRenderer,
                         parts[i],
-                        adjustedX,
-                        adjustedY,
+                        adjustedX + preparedPartBaseOffset.X,
+                        adjustedY + preparedPartBaseOffset.Y,
                         renderableLayer.Value.FacingRight,
                         tint);
                 }
@@ -4113,6 +4170,7 @@ namespace HaCreator.MapSimulator.Character
                     liveSourceParts,
                     preparedSnapshotTexture: null,
                     preparedSnapshotBounds: Rectangle.Empty,
+                    positionBounds: CalculateMirrorImageSourceLayerBounds(liveSourceParts),
                     FacingRight,
                     ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedCurrentTime));
             }
@@ -4130,6 +4188,9 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.Parts,
                 preparedLayer.ComposedTexture,
                 preparedLayer.Bounds,
+                ResolveMirrorImageRenderablePositionBounds(
+                    preparedLayer.Bounds,
+                    ResolveMirrorImageLiveRenderBounds(frame, preparedLayer.RenderLayer)),
                 ResolveMirrorImagePreparedFallbackFacing(preparedLayer.PreparedFacingRight, FacingRight),
                 ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedCurrentTime));
         }
@@ -4404,6 +4465,46 @@ namespace HaCreator.MapSimulator.Character
         internal static bool ResolveMirrorImagePreparedFallbackFacing(bool preparedFacingRight, bool currentFacingRight)
         {
             return currentFacingRight;
+        }
+
+        private static Rectangle ResolveMirrorImageLiveRenderBounds(
+            AssembledFrame frame,
+            AvatarRenderLayer renderLayer)
+        {
+            if (frame?.AvatarRenderLayers != null)
+            {
+                int renderLayerIndex = (int)renderLayer;
+                if ((uint)renderLayerIndex < (uint)frame.AvatarRenderLayers.Length)
+                {
+                    return CalculateMirrorImageSourceLayerBounds(frame.AvatarRenderLayers[renderLayerIndex]);
+                }
+            }
+
+            return Rectangle.Empty;
+        }
+
+        internal static Rectangle ResolveMirrorImageRenderablePositionBounds(
+            Rectangle preparedBounds,
+            Rectangle liveBounds)
+        {
+            if (!liveBounds.IsEmpty)
+            {
+                return liveBounds;
+            }
+
+            return preparedBounds;
+        }
+
+        internal static Point ResolveMirrorImagePreparedFallbackPartBaseOffset(
+            Rectangle preparedBounds,
+            Rectangle positionBounds)
+        {
+            if (preparedBounds.IsEmpty || positionBounds.IsEmpty)
+            {
+                return Point.Zero;
+            }
+
+            return new Point(positionBounds.X - preparedBounds.X, positionBounds.Y - preparedBounds.Y);
         }
 
         private Texture2D CreateMirrorImageLayerTexture(IReadOnlyList<AssembledPart> sourceParts, Rectangle bounds)
@@ -6042,6 +6143,9 @@ namespace HaCreator.MapSimulator.Character
 
         private void ResetPacketOwnedEmotionState(bool clearVisualEffect)
         {
+            _packetOwnedEmotionId = 0;
+            _packetOwnedEmotionDurationMs = 0;
+            _packetOwnedEmotionAppliedAt = 0;
             _packetOwnedEmotionName = "default";
             _packetOwnedEmotionEndTime = 0;
             _packetOwnedEmotionByItemOption = false;
@@ -6729,14 +6833,9 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            if (CharacterAssembler.SupportsTamingMobAction(mountPart, actionName))
-            {
-                return true;
-            }
-
-            return string.IsNullOrWhiteSpace(actionName)
-                   && (mountPart.ItemId == BattleshipTamingMobItemId
-                       || mountPart.ItemId == MechanicTamingMobItemId);
+            return SkillManager.SupportsClientOwnedVehicleMountedStateForCurrentAction(
+                mountPart,
+                actionName);
         }
 
         private static bool IsStateDrivenMechanicVehicleAction(string actionName)
@@ -7068,7 +7167,9 @@ namespace HaCreator.MapSimulator.Character
                     transform = CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre", "flamethrower", "flamethrower_after");
                     return true;
                 case 35101009:
-                    transform = CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre2", "flamethrower2", "flamethrower_after2");
+                    transform = string.Equals(normalizedAction, "tank_mRush", StringComparison.OrdinalIgnoreCase)
+                        ? CreateSingleActionTransform(skillId, "tank_mRush", exitActionName: null)
+                        : CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre2", "flamethrower2", "flamethrower_after2");
                     return true;
                 case 35121005:
                     transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_pre", "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after", attackActionAliases: new[] { "tank_laser" });
@@ -7186,9 +7287,12 @@ namespace HaCreator.MapSimulator.Character
 
             if (string.Equals(normalizedAction, "flamethrower_pre2", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "flamethrower2", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalizedAction, "flamethrower_after2", StringComparison.OrdinalIgnoreCase))
+                || string.Equals(normalizedAction, "flamethrower_after2", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_mRush", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre2", "flamethrower2", "flamethrower_after2");
+                transform = string.Equals(normalizedAction, "tank_mRush", StringComparison.OrdinalIgnoreCase)
+                    ? CreateSingleActionTransform(skillId, "tank_mRush", exitActionName: null)
+                    : CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre2", "flamethrower2", "flamethrower_after2");
                 return true;
             }
 

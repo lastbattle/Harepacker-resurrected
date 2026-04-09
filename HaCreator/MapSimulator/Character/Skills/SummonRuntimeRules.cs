@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace HaCreator.MapSimulator.Character.Skills
@@ -20,6 +21,38 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const byte PacketSkillActionSkillBranchMin = 1;
         private const byte PacketSkillActionSkillBranchMax = 6;
         private const int ClientDefaultSummonAttackActionBase = 4;
+        private const int ClientTeslaTriangleAttackAction = 6;
+        private const int ClientSupportOwnedAttackAction = 13;
+        private const int ClientSelfDestructAttackAction = 16;
+        private static readonly string[] ClientSummonSpawnActionNames =
+        {
+            "summoned",
+            "create",
+            "summon"
+        };
+        private static readonly string[] ClientSummonIdleActionNames =
+        {
+            "stand",
+            "fly",
+            "move",
+            "walk",
+            "repeat"
+        };
+        private static readonly string[] ClientSummonPrepareActionNames =
+        {
+            "prepare"
+        };
+        private static readonly string[] ClientSummonRemovalActionNames =
+        {
+            "die",
+            "die1"
+        };
+        private static readonly string[] ClientSummonHitActionNames =
+        {
+            "hit",
+            "hit/0",
+            "hit/0/1"
+        };
 
         public static int ResolveAuthoredDurationMs(SkillData skill, SkillLevelData levelData, int skillLevel)
         {
@@ -224,15 +257,44 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int normalizedAction = packetAction & 0x7F;
+            string specialBranch = ResolveClientSpecificPacketAttackBranch(skill, normalizedAction);
+            if (!string.IsNullOrWhiteSpace(specialBranch))
+            {
+                return specialBranch;
+            }
+
             if (normalizedAction < ClientDefaultSummonAttackActionBase)
             {
                 return null;
             }
 
-            string branchName = $"attack{normalizedAction - ClientDefaultSummonAttackActionBase + 1}";
-            return skill.SummonNamedAnimations.ContainsKey(branchName)
-                ? branchName
-                : null;
+            int attackIndex = normalizedAction - ClientDefaultSummonAttackActionBase + 1;
+            return ResolveNamedSummonBranch(skill, EnumeratePacketAttackBranchCandidates(attackIndex));
+        }
+
+        internal static string ResolveSpawnPlaybackBranch(SkillData skill)
+        {
+            return ResolveSummonPlaybackBranch(skill, skill?.SummonSpawnBranchName, ClientSummonSpawnActionNames);
+        }
+
+        internal static string ResolveIdlePlaybackBranch(SkillData skill)
+        {
+            return ResolveSummonPlaybackBranch(skill, skill?.SummonIdleBranchName, ClientSummonIdleActionNames);
+        }
+
+        internal static string ResolvePreparePlaybackBranch(SkillData skill)
+        {
+            return ResolveSummonPlaybackBranch(skill, skill?.SummonPrepareBranchName, ClientSummonPrepareActionNames);
+        }
+
+        internal static string ResolveRemovalPlaybackBranch(SkillData skill)
+        {
+            return ResolveSummonPlaybackBranch(skill, skill?.SummonRemovalBranchName, ClientSummonRemovalActionNames);
+        }
+
+        internal static string ResolveHitPlaybackBranch(SkillData skill)
+        {
+            return ResolveSummonPlaybackBranch(skill, skill?.SummonHitBranchName, ClientSummonHitActionNames);
         }
 
         private static string ResolvePacketSpecialBranch(
@@ -357,7 +419,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
-            return ResolveNamedSummonBranch(skill, $"skill{normalizedAction}");
+            return ResolveNamedSummonBranch(
+                skill,
+                EnumeratePacketSkillBranchCandidates(skill, normalizedAction));
         }
 
         internal static int ResolveSupportSuspendDurationMs(
@@ -383,6 +447,29 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return GetAnimationDuration(suspendAnimation);
+        }
+
+        internal static bool ShouldTrackSupportSuspendWindow(
+            SkillData skill,
+            SummonAssistType assistType,
+            bool? preferHealFirstOverride = null)
+        {
+            if (assistType != SummonAssistType.Support || skill == null)
+            {
+                return false;
+            }
+
+            bool preferHealFirst = preferHealFirstOverride
+                ?? HasMinionAbilityToken(skill.MinionAbility, "heal");
+            return ResolveSupportSuspendDurationMs(skill, preferHealFirst) > 0;
+        }
+
+        internal static bool ShouldClearHealingRobotSupportSuspend(ActiveSummon summon, int currentTime, int healingRobotSkillId)
+        {
+            return summon != null
+                   && ShouldTrackSupportSuspendWindow(summon.SkillData, summon.AssistType)
+                   && summon.SupportSuspendUntilTime != int.MinValue
+                   && currentTime >= summon.SupportSuspendUntilTime;
         }
 
         internal static int? ResolveBeholderBuffBranchIndex(
@@ -502,6 +589,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static string ResolveNamedSummonBranch(SkillData skill, params string[] preferredBranchNames)
         {
+            return ResolveNamedSummonBranch(skill, (IEnumerable<string>)preferredBranchNames);
+        }
+
+        private static string ResolveNamedSummonBranch(SkillData skill, IEnumerable<string> preferredBranchNames)
+        {
             if (skill?.SummonNamedAnimations == null || preferredBranchNames == null)
             {
                 return null;
@@ -516,6 +608,111 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return null;
+        }
+
+        private static string ResolveClientSpecificPacketAttackBranch(SkillData skill, int normalizedAction)
+        {
+            return normalizedAction switch
+            {
+                ClientTeslaTriangleAttackAction => ResolveNamedSummonBranch(
+                    skill,
+                    "attackTriangle",
+                    "attack1",
+                    "attack",
+                    "attack0"),
+                ClientSupportOwnedAttackAction => ResolveNamedSummonBranch(
+                    skill,
+                    EnumeratePacketSupportOwnedAttackBranchCandidates(skill)),
+                ClientSelfDestructAttackAction => ResolveNamedSummonBranch(
+                    skill,
+                    EnumeratePacketSelfDestructAttackBranchCandidates(skill)),
+                _ => null
+            };
+        }
+
+        private static string ResolveSummonPlaybackBranch(
+            SkillData skill,
+            string explicitBranchName,
+            params string[] clientActionNames)
+        {
+            if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)
+            {
+                return explicitBranchName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(explicitBranchName)
+                && skill.SummonNamedAnimations.ContainsKey(explicitBranchName))
+            {
+                return explicitBranchName;
+            }
+
+            return ResolveNamedSummonBranch(skill, clientActionNames);
+        }
+
+        private static string[] EnumeratePacketAttackBranchCandidates(int attackIndex)
+        {
+            string indexedBranch = $"attack{Math.Max(1, attackIndex)}";
+            return attackIndex switch
+            {
+                1 => new[] { indexedBranch, "attack", "attack0", "attackTriangle" },
+                2 => new[] { indexedBranch, "attack", "attackTriangle", "attack1", "attack0" },
+                _ => new[] { indexedBranch, "attack", "attackTriangle", "attack1", "attack0" }
+            };
+        }
+
+        private static string[] EnumeratePacketSupportOwnedAttackBranchCandidates(SkillData skill)
+        {
+            string primarySupportBranch = ResolveSupportOwnedBranch(skill, preferHealFirst: true);
+            string fallbackSupportBranch = ResolveSupportOwnedBranch(skill, preferHealFirst: false);
+            return new[]
+            {
+                primarySupportBranch,
+                fallbackSupportBranch,
+                "heal",
+                "support",
+                "skill1",
+                "skill2",
+                "attack1",
+                "attack",
+                "attack0"
+            };
+        }
+
+        private static string[] EnumeratePacketSelfDestructAttackBranchCandidates(SkillData skill)
+        {
+            return new[]
+            {
+                skill?.SummonRemovalBranchName,
+                "die1",
+                "die",
+                skill?.SummonAttackBranchName,
+                "attack1",
+                "attack",
+                "attack0"
+            };
+        }
+
+        private static string[] EnumeratePacketSkillBranchCandidates(
+            SkillData skill,
+            byte normalizedAction)
+        {
+            string indexedBranch = $"skill{normalizedAction}";
+            if (normalizedAction == 1 && HasMinionAbilityToken(skill?.MinionAbility, "heal"))
+            {
+                return new[] { indexedBranch, "heal", "support", "skill2" };
+            }
+
+            if (normalizedAction == 1 && HasMinionAbilityToken(skill?.MinionAbility, "summon"))
+            {
+                return new[] { indexedBranch, "subsummon", "skill2" };
+            }
+
+            if (normalizedAction == 2 && HasMinionAbilityToken(skill?.MinionAbility, "summon"))
+            {
+                return new[] { indexedBranch, "subsummon", "skill1" };
+            }
+
+            return new[] { indexedBranch };
         }
 
         private static bool UsesNamedSummonAnimationBranch(SkillData skill, string branchName)

@@ -23,6 +23,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool _isActive;
         private int _mapId;
+        private WzImage _contractImage;
         private int _footholdLayerCount;
         private int _footholdGroupCount;
         private int _footholdSegmentCount;
@@ -40,6 +41,7 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool IsActive => _isActive;
         public int MapId => _mapId;
+        public WzImage ContractImage => _contractImage;
         public int ContractMapId => _contractMapId;
         public int LinkedContractMapId => _linkedContractMapId;
         public bool UsesLinkedContract => _usesLinkedContract;
@@ -95,6 +97,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             _isActive = false;
             _mapId = 0;
+            _contractImage = null;
             _contractMapId = 0;
             _linkedContractMapId = 0;
             _usesLinkedContract = false;
@@ -161,6 +164,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             WzImage contractImage = ResolveContractImage(mapInfo, mapImage, linkedMapResolver);
+            _contractImage = contractImage;
             EnsureImageParsed(contractImage);
 
             if (contractImage["foothold"] is not WzImageProperty footholdRoot)

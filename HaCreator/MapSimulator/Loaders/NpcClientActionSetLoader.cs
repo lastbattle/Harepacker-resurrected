@@ -11,6 +11,7 @@ using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using Microsoft.Xna.Framework.Graphics;
 
 namespace HaCreator.MapSimulator.Loaders
@@ -28,6 +29,8 @@ namespace HaCreator.MapSimulator.Loaders
             GraphicsDevice device,
             ConcurrentBag<WzObject> usedProps,
             CharacterGender? localPlayerGender = null,
+            Func<int, QuestStateType> questStateProvider = null,
+            Func<int, string> questRecordValueProvider = null,
             int requestedClientActionSetIndex = AutomaticClientActionSetIndex)
         {
             WzImage source = npcInstance?.NpcInfo?.LinkedWzImage;
@@ -36,7 +39,12 @@ namespace HaCreator.MapSimulator.Loaders
 
             var animationSet = new NpcAnimationSet
             {
-                ClientActionSetIndex = ResolveClientActionSetIndex(actionSets, localPlayerGender, requestedClientActionSetIndex)
+                ClientActionSetIndex = ResolveClientActionSetIndex(
+                    actionSets,
+                    localPlayerGender,
+                    questStateProvider,
+                    questRecordValueProvider,
+                    requestedClientActionSetIndex)
             };
 
             foreach (NpcActionDescriptor action in EnumerateActionsForIndex(actionSets, animationSet.ClientActionSetIndex))
@@ -76,6 +84,8 @@ namespace HaCreator.MapSimulator.Loaders
         internal static int ResolveClientActionSetIndex(
             IReadOnlyList<NpcClientActionSetDefinition> actionSets,
             CharacterGender? localPlayerGender = null,
+            Func<int, QuestStateType> questStateProvider = null,
+            Func<int, string> questRecordValueProvider = null,
             int requestedClientActionSetIndex = AutomaticClientActionSetIndex)
         {
             if (actionSets == null || actionSets.Count == 0)
@@ -97,6 +107,11 @@ namespace HaCreator.MapSimulator.Loaders
 
             foreach (NpcClientActionSetDefinition actionSet in actionSets)
             {
+                if (actionSet.IsRootSet)
+                {
+                    continue;
+                }
+
                 if (MatchesLocalPlayerGender(actionSet, localPlayerGender) && !actionSet.HasQuestConditions)
                 {
                     return actionSet.Index;
@@ -105,9 +120,23 @@ namespace HaCreator.MapSimulator.Loaders
 
             foreach (NpcClientActionSetDefinition actionSet in actionSets)
             {
-                if (MatchesLocalPlayerGender(actionSet, localPlayerGender))
+                if (actionSet.IsRootSet)
+                {
+                    continue;
+                }
+
+                if (MatchesLocalPlayerGender(actionSet, localPlayerGender)
+                    && MatchesQuestConditions(actionSet, questStateProvider, questRecordValueProvider))
                 {
                     return actionSet.Index;
+                }
+            }
+
+            for (int i = 0; i < actionSets.Count; i++)
+            {
+                if (actionSets[i].IsRootSet)
+                {
+                    return actionSets[i].Index;
                 }
             }
 
@@ -165,9 +194,10 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 actionSets.Add(new NpcClientActionSetDefinition(
                     0,
-                    HasQuestConditions: false,
+                    IsRootSet: true,
                     RequiredGender: null,
                     Hide: GetHideFlag(source.WzProperties),
+                    QuestConditions: Array.Empty<NpcQuestConditionDefinition>(),
                     Actions: rootActions));
             }
 
@@ -180,12 +210,13 @@ namespace HaCreator.MapSimulator.Loaders
                     continue;
                 }
 
-                bool hasQuestConditions = conditionProperty.WzProperties.Any(IsQuestConditionProperty);
+                IReadOnlyList<NpcQuestConditionDefinition> questConditions = GetQuestConditions(conditionProperty.WzProperties);
                 actionSets.Add(new NpcClientActionSetDefinition(
                     nextIndex++,
-                    hasQuestConditions,
+                    IsRootSet: false,
                     GetRequiredGender(conditionProperty.WzProperties),
                     GetHideFlag(conditionProperty.WzProperties),
+                    questConditions,
                     actions));
             }
 
@@ -313,6 +344,137 @@ namespace HaCreator.MapSimulator.Loaders
             return int.TryParse(property?.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
         }
 
+        private static IReadOnlyList<NpcQuestConditionDefinition> GetQuestConditions(IEnumerable<WzImageProperty> properties)
+        {
+            var questConditions = new List<NpcQuestConditionDefinition>();
+            foreach (WzImageProperty property in properties ?? Enumerable.Empty<WzImageProperty>())
+            {
+                if (TryBuildQuestCondition(property, out NpcQuestConditionDefinition questCondition))
+                {
+                    questConditions.Add(questCondition);
+                }
+            }
+
+            return questConditions;
+        }
+
+        private static bool TryBuildQuestCondition(WzImageProperty property, out NpcQuestConditionDefinition questCondition)
+        {
+            questCondition = default;
+            if (!int.TryParse(property?.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int questId) || questId <= 0)
+            {
+                return false;
+            }
+
+            int requiredState = -1;
+            string requiredRecordValue = null;
+
+            switch (property)
+            {
+                case WzStringProperty stringProperty:
+                    requiredRecordValue = stringProperty.Value;
+                    break;
+                case WzIntProperty:
+                case WzShortProperty:
+                case WzLongProperty:
+                    requiredState = property.GetInt();
+                    break;
+                default:
+                    if (property.WzProperties != null)
+                    {
+                        foreach (WzImageProperty childProperty in property.WzProperties)
+                        {
+                            if (childProperty == null)
+                            {
+                                continue;
+                            }
+
+                            if (requiredState < 0 &&
+                                (string.Equals(childProperty.Name, "state", StringComparison.OrdinalIgnoreCase)
+                                 || childProperty is WzIntProperty
+                                 || childProperty is WzShortProperty
+                                 || childProperty is WzLongProperty))
+                            {
+                                requiredState = childProperty.GetInt();
+                                continue;
+                            }
+
+                            if (string.IsNullOrEmpty(requiredRecordValue) && childProperty is WzStringProperty nestedStringProperty)
+                            {
+                                requiredRecordValue = nestedStringProperty.Value;
+                            }
+                        }
+                    }
+
+                    break;
+            }
+
+            questCondition = new NpcQuestConditionDefinition(questId, requiredState, requiredRecordValue ?? string.Empty);
+            return true;
+        }
+
+        private static bool MatchesQuestConditions(
+            NpcClientActionSetDefinition actionSet,
+            Func<int, QuestStateType> questStateProvider,
+            Func<int, string> questRecordValueProvider)
+        {
+            if (!actionSet.HasQuestConditions)
+            {
+                return false;
+            }
+
+            foreach (NpcQuestConditionDefinition questCondition in actionSet.QuestConditions)
+            {
+                if (!MatchesQuestCondition(questCondition, questStateProvider, questRecordValueProvider))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool MatchesQuestCondition(
+            NpcQuestConditionDefinition questCondition,
+            Func<int, QuestStateType> questStateProvider,
+            Func<int, string> questRecordValueProvider)
+        {
+            bool matched = true;
+
+            if (questCondition.RequiredState >= 0)
+            {
+                QuestStateType questState = questStateProvider?.Invoke(questCondition.QuestId) ?? QuestStateType.Not_Started;
+                matched = questCondition.RequiredState switch
+                {
+                    3 => questState is QuestStateType.Started or QuestStateType.Completed,
+                    _ => MapQuestState(questState) == questCondition.RequiredState
+                };
+            }
+
+            if (!matched)
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrEmpty(questCondition.RequiredRecordValue))
+            {
+                string questRecordValue = questRecordValueProvider?.Invoke(questCondition.QuestId) ?? string.Empty;
+                matched = string.Equals(questCondition.RequiredRecordValue, questRecordValue, StringComparison.Ordinal);
+            }
+
+            return matched;
+        }
+
+        private static int MapQuestState(QuestStateType questState)
+        {
+            return questState switch
+            {
+                QuestStateType.Started => 1,
+                QuestStateType.Completed => 2,
+                _ => 0
+            };
+        }
+
         private static bool MatchesLocalPlayerGender(
             NpcClientActionSetDefinition actionSet,
             CharacterGender? localPlayerGender)
@@ -352,10 +514,16 @@ namespace HaCreator.MapSimulator.Loaders
 
         internal readonly record struct NpcClientActionSetDefinition(
             int Index,
-            bool HasQuestConditions,
+            bool IsRootSet,
             CharacterGender? RequiredGender,
             bool Hide,
-            IReadOnlyList<WzImageProperty> Actions);
+            IReadOnlyList<NpcQuestConditionDefinition> QuestConditions,
+            IReadOnlyList<WzImageProperty> Actions)
+        {
+            internal bool HasQuestConditions => QuestConditions?.Count > 0;
+        }
+
+        internal readonly record struct NpcQuestConditionDefinition(int QuestId, int RequiredState, string RequiredRecordValue);
 
         private readonly record struct NpcActionCacheKey(int TemplateId, int ClientActionSetIndex, string ActionName);
 

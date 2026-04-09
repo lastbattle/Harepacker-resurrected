@@ -16,6 +16,7 @@ namespace HaCreator.MapSimulator.Managers
 
     public sealed class LoginSelectCharacterByVacResultProfile
     {
+        public string Source { get; init; }
         public byte ResultCode { get; init; }
         public byte SecondaryCode { get; init; }
         public byte[] Payload { get; init; } = Array.Empty<byte>();
@@ -72,6 +73,7 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     profile = new LoginSelectCharacterByVacResultProfile
                     {
+                        Source = profile.Source,
                         ResultCode = profile.ResultCode,
                         SecondaryCode = profile.SecondaryCode,
                         Payload = (byte[])data.Clone(),
@@ -128,6 +130,7 @@ namespace HaCreator.MapSimulator.Managers
 
                 profile = new LoginSelectCharacterByVacResultProfile
                 {
+                    Source = null,
                     ResultCode = resultCode,
                     SecondaryCode = secondaryCode,
                     Payload = Array.Empty<byte>(),

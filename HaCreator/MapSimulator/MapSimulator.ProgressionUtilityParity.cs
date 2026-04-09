@@ -92,7 +92,8 @@ namespace HaCreator.MapSimulator
                 "Game Menu",
                 body,
                 LoginUtilityDialogButtonLayout.YesNo,
-                LoginUtilityDialogAction.ConfirmUtilityQuit);
+                LoginUtilityDialogAction.ConfirmUtilityQuit,
+                frameVariant: LoginUtilityDialogFrameVariant.InGameFadeYesNo);
         }
 
         private RankingWindowSnapshot BuildUtilityRankingSnapshot()
@@ -109,6 +110,9 @@ namespace HaCreator.MapSimulator
             int characterId = build?.Id ?? 0;
             string landingUrl = BuildRankingLandingUrl(build, worldId, out bool usedResolvedTemplate);
             string webSeedText = BuildRankingLandingSeed(build, worldId, out _);
+            string templateSeedText = ProgressionUtilityParityRules.FormatRankingLandingTemplateSeed(
+                RankingStringPoolUrlTemplateId,
+                out bool usedResolvedTemplateSeed);
             string requestShapeText = ProgressionUtilityParityRules.FormatRankingRequestParameters(worldRequestId, characterId);
             string hostText = $"get_server_string_0 => {RankingServerHost}";
             string launchSource = string.IsNullOrWhiteSpace(_lastRankingLaunchSource) ? "status-bar owner" : _lastRankingLaunchSource;
@@ -190,8 +194,8 @@ namespace HaCreator.MapSimulator
             {
                 Title = "Ranking",
                 Subtitle = subtitle,
-                StatusText = "BtRank now mirrors the client owner lifecycle more closely: loading-layer request first, navigated local world/job/popularity/combat cards second. StringPool[0xAA2] now resolves the full gamerank.maplestory NavigateUrl target, but remote ladders, returned page payloads, and packet-fed ranking pages are still outside this board.",
-                NavigationCaption = usedResolvedTemplate ? "StringPool[0xAA2] NavigateUrl" : "NavigateUrl fallback",
+                StatusText = "BtRank now mirrors the client owner lifecycle more closely: loading-layer request first, navigated local world/job/popularity/combat cards second. The owner now keeps the recovered StringPool[0xAA2] template, resolved host seed, and explicit worldid/characterid payload split visible, but remote ladders, returned page payloads, and packet-fed ranking pages are still outside this board.",
+                NavigationCaption = usedResolvedTemplateSeed ? templateSeedText : $"{templateSeedText} (fallback)",
                 NavigationSeedText = landingUrl,
                 NavigationHostText = hostText,
                 NavigationRequestText = requestShapeText,

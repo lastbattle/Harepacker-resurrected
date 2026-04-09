@@ -1189,30 +1189,24 @@ namespace HaCreator.MapSimulator.UI
 
                 bool enabled = !hiddenAreaCodes.Contains(slot.Entry.AreaCode);
                 Rectangle bounds = slot.Bounds;
-                string labelText = Truncate(slot.Entry.AreaName, 14);
-                string countText = slot.Entry.Count.ToString();
                 float labelScale = 0.38f;
+                string countText = slot.Entry.Count.ToString();
                 float countScale = 0.38f;
-                Vector2 labelMeasure = ClientTextDrawing.Measure((GraphicsDevice)null, labelText, labelScale, _font);
                 Vector2 countMeasure = ClientTextDrawing.Measure((GraphicsDevice)null, countText, countScale, _font);
                 Color labelColor = enabled ? new Color(70, 45, 24) : new Color(106, 98, 88);
                 Color countColor = enabled ? new Color(108, 76, 42) : new Color(128, 120, 108);
                 Color leaderColor = enabled ? new Color(153, 121, 80) : new Color(156, 148, 136);
                 int textX = HasClientCategoryButtonArt() ? bounds.X + ClientCategoryTextLeft : bounds.X + 6;
                 int textY = HasClientCategoryButtonArt()
-                    ? bounds.Y + GetCategoryRowTextTopOffset(visibleSlots, slot)
+                    ? bounds.Y + GetCategoryRowTextTopOffset(slot)
                     : bounds.Y + 3;
                 int countRight = HasClientCategoryButtonArt() ? bounds.X + ClientCategoryCountRight : bounds.Right - 5;
-                int countLeft = (int)(countRight - countMeasure.X);
-                int availableLabelWidth = Math.Max(16, countLeft - textX - 6);
+                int countLeft = (int)MathF.Floor(countRight - countMeasure.X);
+                int availableLabelWidth = Math.Max(0, countLeft - textX - 6);
+                string labelText = FitSingleLineText(slot.Entry.AreaName, availableLabelWidth, labelScale);
+                Vector2 labelMeasure = ClientTextDrawing.Measure((GraphicsDevice)null, labelText, labelScale, _font);
 
-                DrawText(
-                    sprite,
-                    labelText,
-                    new Vector2(textX, textY),
-                    labelColor,
-                    labelScale,
-                    availableLabelWidth);
+                ClientTextDrawing.Draw(sprite, labelText, new Vector2(textX, textY), labelColor, labelScale, _font);
                 DrawCategoryLeaderText(
                     sprite,
                     textX + labelMeasure.X,
@@ -1220,12 +1214,7 @@ namespace HaCreator.MapSimulator.UI
                     Math.Max(0f, countLeft - (textX + labelMeasure.X) - 3f),
                     leaderColor,
                     labelScale);
-                DrawText(
-                    sprite,
-                    countText,
-                    new Vector2(countLeft, textY),
-                    countColor,
-                    countScale);
+                ClientTextDrawing.Draw(sprite, countText, new Vector2(countLeft, textY), countColor, countScale, _font);
             }
         }
 
@@ -1523,7 +1512,7 @@ namespace HaCreator.MapSimulator.UI
             return _categoryLegendSheetTextures[Math.Clamp(textureIndex, 0, _categoryLegendSheetTextures.Length - 1)];
         }
 
-        private static int GetCategoryRowTextTopOffset(IReadOnlyList<CategoryButtonSlot> visibleSlots, CategoryButtonSlot slot)
+        private int GetCategoryRowTextTopOffset(CategoryButtonSlot slot)
         {
             if (slot == null)
             {
@@ -1531,6 +1520,43 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return slot.HasVisibleRowBelow ? 4 : 3;
+        }
+
+        private string FitSingleLineText(string text, float maxWidth, float scale)
+        {
+            if (string.IsNullOrWhiteSpace(text) || _font == null || maxWidth <= 0f)
+            {
+                return string.Empty;
+            }
+
+            string trimmed = text.Trim();
+            if (ClientTextDrawing.Measure((GraphicsDevice)null, trimmed, scale, _font).X <= maxWidth)
+            {
+                return trimmed;
+            }
+
+            const string ellipsis = "...";
+            float ellipsisWidth = ClientTextDrawing.Measure((GraphicsDevice)null, ellipsis, scale, _font).X;
+            if (ellipsisWidth >= maxWidth)
+            {
+                return string.Empty;
+            }
+
+            for (int length = trimmed.Length - 1; length > 0; length--)
+            {
+                string candidate = trimmed.Substring(0, length).TrimEnd();
+                if (candidate.Length == 0)
+                {
+                    continue;
+                }
+
+                if (ClientTextDrawing.Measure((GraphicsDevice)null, candidate, scale, _font).X + ellipsisWidth <= maxWidth)
+                {
+                    return candidate + ellipsis;
+                }
+            }
+
+            return string.Empty;
         }
 
         private static int FindCategorySlotIndex(IReadOnlyList<CategoryButtonSlot> visibleSlots, CategoryButtonSlot slot)

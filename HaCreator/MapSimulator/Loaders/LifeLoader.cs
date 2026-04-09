@@ -13,6 +13,7 @@ using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using Microsoft.Xna.Framework.Graphics;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -728,6 +729,15 @@ namespace HaCreator.MapSimulator.Loaders
                 {
                     metadata.FrameHitAttachOverrides[frameIndex] = attach;
                 }
+
+                foreach ((int frameIndex, bool attach) in ReadIndexedAttackFrameHitMetadataFlags(
+                             attackStateProperty,
+                             "attach",
+                             "bHitAttach",
+                             "hitAttach"))
+                {
+                    metadata.FrameHitAttachOverrides.TryAdd(frameIndex, attach);
+                }
             }
 
             if (explicitInfoFacingAttach == int.MinValue
@@ -741,6 +751,16 @@ namespace HaCreator.MapSimulator.Loaders
                              "facingAttach"))
                 {
                     metadata.FrameFacingAttachOverrides[frameIndex] = attachFacing;
+                }
+
+                foreach ((int frameIndex, bool attachFacing) in ReadIndexedAttackFrameHitMetadataFlags(
+                             attackStateProperty,
+                             "attachfacing",
+                             "bFacingAttach",
+                             "bFacingAttatch",
+                             "facingAttach"))
+                {
+                    metadata.FrameFacingAttachOverrides.TryAdd(frameIndex, attachFacing);
                 }
             }
 
@@ -866,6 +886,22 @@ namespace HaCreator.MapSimulator.Loaders
             params string[] propertyNames)
         {
             foreach ((int frameIndex, WzImageProperty metadataNode) in EnumerateIndexedInfoHitMetadataNodes(infoHitNode))
+            {
+                int value = ReadOptionalInt(metadataNode, int.MinValue, propertyNames);
+                if (value == int.MinValue)
+                {
+                    continue;
+                }
+
+                yield return (frameIndex, value > 0);
+            }
+        }
+
+        private static IEnumerable<(int FrameIndex, bool Value)> ReadIndexedAttackFrameHitMetadataFlags(
+            WzImageProperty attackStateProperty,
+            params string[] propertyNames)
+        {
+            foreach ((int frameIndex, WzImageProperty metadataNode) in EnumerateIndexedAttackFrameHitMetadataNodes(attackStateProperty))
             {
                 int value = ReadOptionalInt(metadataNode, int.MinValue, propertyNames);
                 if (value == int.MinValue)
@@ -1323,6 +1359,32 @@ namespace HaCreator.MapSimulator.Loaders
             }
         }
 
+        private static IEnumerable<(int FrameIndex, WzImageProperty MetadataNode)> EnumerateIndexedAttackFrameHitMetadataNodes(WzImageProperty attackStateProperty)
+        {
+            WzSubProperty attackStateNode = WzInfoTools.GetRealProperty(attackStateProperty) as WzSubProperty;
+            if (attackStateNode == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty frameProperty in attackStateNode.WzProperties
+                         .Where(property => int.TryParse(property?.Name, out _))
+                         .OrderBy(property => int.Parse(property.Name)))
+            {
+                if (!int.TryParse(frameProperty.Name, out int frameIndex))
+                {
+                    continue;
+                }
+
+                WzImageProperty resolvedFrameProperty = WzInfoTools.GetRealProperty(frameProperty);
+                WzImageProperty frameHitNode = WzInfoTools.GetRealProperty(resolvedFrameProperty?["hit"]);
+                if (frameHitNode != null)
+                {
+                    yield return (frameIndex, frameHitNode);
+                }
+            }
+        }
+
         private static bool HasRenderableHitFrames(WzImageProperty hitNode)
         {
             if (hitNode == null)
@@ -1597,7 +1659,9 @@ namespace HaCreator.MapSimulator.Loaders
         public static NpcItem CreateNpcFromProperty(
             TexturePool texturePool, NpcInstance npcInstance, float UserScreenScaleFactor,
             GraphicsDevice device, ConcurrentBag<WzObject> usedProps, bool includeTooltips = true,
-            CharacterGender? localPlayerGender = null)
+            CharacterGender? localPlayerGender = null,
+            Func<int, QuestStateType> questStateProvider = null,
+            Func<int, string> questRecordValueProvider = null)
         {
             NpcInfo npcInfo = (NpcInfo)npcInstance.BaseInfo;
             WzImage source = npcInfo.LinkedWzImage;
@@ -1608,7 +1672,9 @@ namespace HaCreator.MapSimulator.Loaders
                 npcInstance,
                 device,
                 usedProps,
-                localPlayerGender);
+                localPlayerGender,
+                questStateProvider,
+                questRecordValueProvider);
             if (animationSet.ActionCount == 0) // fix japan ms v186, (9000021.img「ガガ」) なぜだ？;(
                 return null;
 

@@ -46,6 +46,26 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Packet-owned initial quiz active: question {_questionNumber}, {remainingSeconds}s remaining, title={FormatQuotedValue(_title)}.";
         }
 
+        internal bool TryBuildOwnerSnapshot(int currentTickCount, out InitialQuizOwnerSnapshot snapshot)
+        {
+            if (!IsActive(currentTickCount))
+            {
+                snapshot = null;
+                return false;
+            }
+
+            int remainingMs = GetRemainingMs(currentTickCount);
+            snapshot = new InitialQuizOwnerSnapshot(
+                _title,
+                _problemText,
+                _hintText,
+                _answer,
+                _questionNumber,
+                (remainingMs + 999) / 1000,
+                remainingMs);
+            return true;
+        }
+
         internal void Clear()
         {
             _expiresAtTick = 0;
@@ -139,4 +159,13 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"\"{value.Trim()}\"";
         }
     }
+
+    internal sealed record InitialQuizOwnerSnapshot(
+        string Title,
+        string ProblemText,
+        string HintText,
+        int CorrectAnswer,
+        int QuestionNumber,
+        int RemainingSeconds,
+        int RemainingMs);
 }

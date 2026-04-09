@@ -12,7 +12,8 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class FamilyTreeWindow : UIWindowBase
     {
-        // CUIFamilyChart::_DrawChartItem reads these from the client's aptNode_ table.
+        // Shaped around the shipped FamilyTree art and the verified _DrawChartItem text offsets.
+        // The raw aptNode_ coordinate table still has to be lifted from the client data section.
         private static readonly Point[] SlotPositions =
         {
             new(222, 40),

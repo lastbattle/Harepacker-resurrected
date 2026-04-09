@@ -16,6 +16,30 @@ namespace HaCreator.MapSimulator.UI
 {
     public abstract class LoginCreateCharacterWindowBase : UIWindowBase, ISoftKeyboardHost
     {
+        private enum AvatarKeyboardFocus
+        {
+            Face = 0,
+            Hair = 1,
+            HairColor = 2,
+            Skin = 3,
+            Coat = 4,
+            Pants = 5,
+            Shoes = 6,
+            Weapon = 7,
+            Gender = 8,
+            Name = 9,
+            Dice = 10,
+            Confirm = 11,
+            Cancel = 12
+        }
+
+        private enum NameKeyboardFocus
+        {
+            Input = 0,
+            Check = 1,
+            Cancel = 2
+        }
+
         private static readonly Point StageBasePosition = new(220, 180);
         private static readonly Point RaceStatusPosition = new(224, 420);
         private static readonly Rectangle RaceStatusBounds = new(0, 0, 350, 78);
@@ -67,9 +91,9 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _raceConfirmOkTexture;
         private readonly Texture2D _raceConfirmCancelTexture;
         private readonly Dictionary<LoginCreateCharacterRaceKind, AnimationFrame> _raceConfirmLabelFramesByRace;
-        private readonly UIObject _confirmButton;
-        private readonly UIObject _cancelButton;
-        private readonly UIObject _checkButton;
+        private readonly Dictionary<LoginCreateCharacterRaceKind, UIObject> _confirmButtonsByRace;
+        private readonly Dictionary<LoginCreateCharacterRaceKind, UIObject> _cancelButtonsByRace;
+        private readonly Dictionary<LoginCreateCharacterRaceKind, UIObject> _checkButtonsByRace;
         private readonly string _windowName;
         private readonly LoginCreateCharacterStage _fixedStage;
         private readonly Texture2D _pixelTexture;
@@ -92,6 +116,8 @@ namespace HaCreator.MapSimulator.UI
         private bool _softKeyboardActive;
         private string _compositionText = string.Empty;
         private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
+        private AvatarKeyboardFocus _avatarKeyboardFocus = AvatarKeyboardFocus.Face;
+        private NameKeyboardFocus _nameKeyboardFocus = NameKeyboardFocus.Input;
 
         protected LoginCreateCharacterWindowBase(
             IDXObject frame,
@@ -109,9 +135,9 @@ namespace HaCreator.MapSimulator.UI
             Texture2D raceConfirmOkTexture,
             Texture2D raceConfirmCancelTexture,
             IReadOnlyDictionary<LoginCreateCharacterRaceKind, AnimationFrame> raceConfirmLabelFramesByRace,
-            UIObject confirmButton,
-            UIObject cancelButton,
-            UIObject checkButton)
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, UIObject> confirmButtonsByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, UIObject> cancelButtonsByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, UIObject> checkButtonsByRace)
             : base(frame)
         {
             _windowName = windowName ?? MapSimulatorWindowNames.LoginCreateCharacter;
@@ -141,30 +167,54 @@ namespace HaCreator.MapSimulator.UI
                 _pixelTexture.SetData(new[] { Color.White });
             }
 
-            _confirmButton = confirmButton;
-            if (_confirmButton != null)
+            _confirmButtonsByRace = InitializeActionButtons(confirmButtonsByRace, () => ConfirmRequested?.Invoke());
+            _cancelButtonsByRace = InitializeActionButtons(cancelButtonsByRace, () => CancelRequested?.Invoke());
+            _checkButtonsByRace = InitializeActionButtons(checkButtonsByRace, () =>
             {
-                _confirmButton.ButtonClickReleased += _ => ConfirmRequested?.Invoke();
-                AddButton(_confirmButton);
-            }
+                _softKeyboardActive = false;
+                DuplicateCheckRequested?.Invoke();
+            });
+        }
 
-            _cancelButton = cancelButton;
-            if (_cancelButton != null)
-            {
-                _cancelButton.ButtonClickReleased += _ => CancelRequested?.Invoke();
-                AddButton(_cancelButton);
-            }
-
-            _checkButton = checkButton;
-            if (_checkButton != null)
-            {
-                _checkButton.ButtonClickReleased += _ =>
-                {
-                    _softKeyboardActive = false;
-                    DuplicateCheckRequested?.Invoke();
-                };
-                AddButton(_checkButton);
-            }
+        protected LoginCreateCharacterWindowBase(
+            IDXObject frame,
+            string windowName,
+            LoginCreateCharacterStage fixedStage,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyDictionary<LoginCreateCharacterStage, Texture2D>> framesByRaceAndStage,
+            IReadOnlyList<Texture2D> jobTextures,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>> avatarEnabledTexturesByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>> avatarDisabledTexturesByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, Texture2D> racePreviewTexturesByRace,
+            IReadOnlyList<CharacterSelectWindow.AnimationFrame> diceFrames,
+            Texture2D leftArrowTexture,
+            Texture2D rightArrowTexture,
+            Texture2D raceConfirmBackgroundTexture,
+            Texture2D raceConfirmOkTexture,
+            Texture2D raceConfirmCancelTexture,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, AnimationFrame> raceConfirmLabelFramesByRace,
+            UIObject confirmButton,
+            UIObject cancelButton,
+            UIObject checkButton)
+            : this(
+                frame,
+                windowName,
+                fixedStage,
+                framesByRaceAndStage,
+                jobTextures,
+                avatarEnabledTexturesByRace,
+                avatarDisabledTexturesByRace,
+                racePreviewTexturesByRace,
+                diceFrames,
+                leftArrowTexture,
+                rightArrowTexture,
+                raceConfirmBackgroundTexture,
+                raceConfirmOkTexture,
+                raceConfirmCancelTexture,
+                raceConfirmLabelFramesByRace,
+                CreateSingleActionButtonMap(confirmButton),
+                CreateSingleActionButtonMap(cancelButton),
+                CreateSingleActionButtonMap(checkButton))
+        {
         }
 
         public override string WindowName => _windowName;
@@ -232,6 +282,15 @@ namespace HaCreator.MapSimulator.UI
             else
             {
                 _softKeyboardActive = true;
+            }
+
+            if (_fixedStage == LoginCreateCharacterStage.AvatarSelect)
+            {
+                ClampAvatarKeyboardFocus();
+            }
+            else if (_fixedStage == LoginCreateCharacterStage.NameSelect)
+            {
+                ClampNameKeyboardFocus();
             }
 
             ConfigureButtons();
@@ -337,9 +396,29 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleAvatarSelectKeyboardInput(KeyboardState keyboardState)
         {
+            if (Pressed(keyboardState, Keys.Up))
+            {
+                MoveAvatarFocus(-1);
+            }
+
+            if (Pressed(keyboardState, Keys.Down) || Pressed(keyboardState, Keys.Tab))
+            {
+                MoveAvatarFocus(1);
+            }
+
+            if (Pressed(keyboardState, Keys.Left))
+            {
+                ActivateAvatarFocus(-1);
+            }
+
+            if (Pressed(keyboardState, Keys.Right))
+            {
+                ActivateAvatarFocus(1);
+            }
+
             if (Pressed(keyboardState, Keys.Enter))
             {
-                ConfirmRequested?.Invoke();
+                ActivateAvatarFocus(0);
             }
 
             if (Pressed(keyboardState, Keys.Escape))
@@ -350,9 +429,34 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleNameSelectKeyboardInput(KeyboardState keyboardState)
         {
+            if (Pressed(keyboardState, Keys.Tab))
+            {
+                MoveNameFocus(1);
+            }
+
+            if (Pressed(keyboardState, Keys.Up))
+            {
+                MoveNameFocus(-1);
+            }
+
+            if (Pressed(keyboardState, Keys.Down))
+            {
+                MoveNameFocus(1);
+            }
+
+            if (Pressed(keyboardState, Keys.Left) && _nameKeyboardFocus != NameKeyboardFocus.Input)
+            {
+                MoveNameFocus(-1);
+            }
+
+            if (Pressed(keyboardState, Keys.Right) && _nameKeyboardFocus != NameKeyboardFocus.Input)
+            {
+                MoveNameFocus(1);
+            }
+
             if (Pressed(keyboardState, Keys.Enter))
             {
-                DuplicateCheckRequested?.Invoke();
+                ActivateNameFocus();
             }
 
             if (Pressed(keyboardState, Keys.Escape))
@@ -360,7 +464,7 @@ namespace HaCreator.MapSimulator.UI
                 CancelRequested?.Invoke();
             }
 
-            if (Pressed(keyboardState, Keys.Back) && _displayName.Length > 0)
+            if (_nameKeyboardFocus == NameKeyboardFocus.Input && Pressed(keyboardState, Keys.Back) && _displayName.Length > 0)
             {
                 ClearCompositionText();
                 RemoveLastNameCharacter();
@@ -456,10 +560,12 @@ namespace HaCreator.MapSimulator.UI
             {
                 DrawPreview(sprite, skeletonMeshRenderer, tickCount);
                 DrawAvatarOptions(sprite, tickCount);
+                DrawAvatarKeyboardFocus(sprite);
             }
             else if (_fixedStage == LoginCreateCharacterStage.NameSelect)
             {
                 DrawNameEntry(sprite);
+                DrawNameKeyboardFocus(sprite);
             }
             else if (_fixedStage == LoginCreateCharacterStage.RaceSelect)
             {
@@ -496,6 +602,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (_fixedStage == LoginCreateCharacterStage.NameSelect && handled && mouseState.LeftButton == ButtonState.Pressed)
             {
+                SyncNameFocusFromPoint(localPoint);
                 if (!GetLocalNameInputBounds().Contains(localPoint))
                 {
                     _softKeyboardActive = false;
@@ -506,6 +613,18 @@ namespace HaCreator.MapSimulator.UI
 
             if (handled)
             {
+                if (mouseState.LeftButton == ButtonState.Pressed)
+                {
+                    if (_fixedStage == LoginCreateCharacterStage.AvatarSelect)
+                    {
+                        SyncAvatarFocusFromPoint(localPoint);
+                    }
+                    else if (_fixedStage == LoginCreateCharacterStage.NameSelect)
+                    {
+                        SyncNameFocusFromPoint(localPoint);
+                    }
+                }
+
                 return true;
             }
 
@@ -581,6 +700,7 @@ namespace HaCreator.MapSimulator.UI
                 Rectangle nameDisplayBounds = new(stageOrigin.X + NameDisplayBounds.X, stageOrigin.Y + NameDisplayBounds.Y, NameDisplayBounds.Width, NameDisplayBounds.Height);
                 if (nameDisplayBounds.Contains(localPoint))
                 {
+                    _avatarKeyboardFocus = AvatarKeyboardFocus.Name;
                     NameEditRequested?.Invoke();
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
                     return true;
@@ -589,6 +709,7 @@ namespace HaCreator.MapSimulator.UI
                 Rectangle avatarDiceBounds = new(stageOrigin.X + AvatarDiceBounds.X, stageOrigin.Y + AvatarDiceBounds.Y, AvatarDiceBounds.Width, AvatarDiceBounds.Height);
                 if (avatarDiceBounds.Contains(localPoint))
                 {
+                    _avatarKeyboardFocus = AvatarKeyboardFocus.Dice;
                     DiceRequested?.Invoke();
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
                     return true;
@@ -620,10 +741,12 @@ namespace HaCreator.MapSimulator.UI
 
                 if (row == _avatarIndices.Length)
                 {
+                    _avatarKeyboardFocus = AvatarKeyboardFocus.Gender;
                     GenderToggleRequested?.Invoke();
                 }
                 else
                 {
+                    _avatarKeyboardFocus = (AvatarKeyboardFocus)row;
                     AvatarShiftRequested?.Invoke((LoginCreateCharacterAvatarPart)row, leftArrow.Contains(localPoint) ? -1 : 1);
                 }
 
@@ -931,58 +1054,62 @@ namespace HaCreator.MapSimulator.UI
 
         private void ConfigureButtons()
         {
-            if (_confirmButton != null)
-            {
-                bool showConfirmButton =
-                    _fixedStage != LoginCreateCharacterStage.NameSelect &&
-                    !(_fixedStage == LoginCreateCharacterStage.RaceSelect && _isRaceConfirmationOpen);
-                _confirmButton.SetVisible(showConfirmButton);
-                _confirmButton.SetEnabled(
-                    _fixedStage switch
+            Point stageOrigin = GetStageOrigin();
+            ConfigureActionButtonFamily(
+                _confirmButtonsByRace,
+                button =>
+                {
+                    bool showConfirmButton =
+                        _fixedStage != LoginCreateCharacterStage.NameSelect &&
+                        !(_fixedStage == LoginCreateCharacterStage.RaceSelect && _isRaceConfirmationOpen);
+                    button.SetVisible(showConfirmButton);
+                    button.SetEnabled(
+                        _fixedStage switch
+                        {
+                            LoginCreateCharacterStage.AvatarSelect => !string.IsNullOrWhiteSpace(_checkedName),
+                            _ => true
+                        });
+                    (button.X, button.Y) = _fixedStage switch
                     {
-                        LoginCreateCharacterStage.AvatarSelect => !string.IsNullOrWhiteSpace(_checkedName),
-                        _ => true
-                    });
-                Point stageOrigin = GetStageOrigin();
-                (_confirmButton.X, _confirmButton.Y) = _fixedStage switch
-                {
-                    LoginCreateCharacterStage.RaceSelect => (stageOrigin.X + 26, stageOrigin.Y + 144),
-                    LoginCreateCharacterStage.AvatarSelect => GetActionPanelButtonPosition(stageOrigin, AvatarActionPanelBounds, _confirmButton, secondarySlot: false),
-                    LoginCreateCharacterStage.NameSelect => (stageOrigin.X + 27, stageOrigin.Y + 178),
-                    _ => (stageOrigin.X + 18, stageOrigin.Y + 238)
-                };
-            }
+                        LoginCreateCharacterStage.RaceSelect => (stageOrigin.X + 26, stageOrigin.Y + 144),
+                        LoginCreateCharacterStage.AvatarSelect => GetActionPanelButtonPosition(stageOrigin, AvatarActionPanelBounds, button, secondarySlot: false),
+                        LoginCreateCharacterStage.NameSelect => (stageOrigin.X + 27, stageOrigin.Y + 178),
+                        _ => (stageOrigin.X + 18, stageOrigin.Y + 238)
+                    };
+                });
 
-            if (_cancelButton != null)
-            {
-                _cancelButton.SetVisible(!(_fixedStage == LoginCreateCharacterStage.RaceSelect && _isRaceConfirmationOpen));
-                _cancelButton.SetEnabled(true);
-                Point stageOrigin = GetStageOrigin();
-                (_cancelButton.X, _cancelButton.Y) = _fixedStage switch
+            ConfigureActionButtonFamily(
+                _cancelButtonsByRace,
+                button =>
                 {
-                    LoginCreateCharacterStage.RaceSelect => (stageOrigin.X + 110, stageOrigin.Y + 144),
-                    LoginCreateCharacterStage.AvatarSelect => GetActionPanelButtonPosition(stageOrigin, AvatarActionPanelBounds, _cancelButton, secondarySlot: true),
-                    LoginCreateCharacterStage.NameSelect => GetActionPanelButtonPosition(stageOrigin, NameActionPanelBounds, _cancelButton, secondarySlot: true),
-                    _ => (stageOrigin.X + 102, stageOrigin.Y + 238)
-                };
-            }
+                    button.SetVisible(!(_fixedStage == LoginCreateCharacterStage.RaceSelect && _isRaceConfirmationOpen));
+                    button.SetEnabled(true);
+                    (button.X, button.Y) = _fixedStage switch
+                    {
+                        LoginCreateCharacterStage.RaceSelect => (stageOrigin.X + 110, stageOrigin.Y + 144),
+                        LoginCreateCharacterStage.AvatarSelect => GetActionPanelButtonPosition(stageOrigin, AvatarActionPanelBounds, button, secondarySlot: true),
+                        LoginCreateCharacterStage.NameSelect => GetActionPanelButtonPosition(stageOrigin, NameActionPanelBounds, button, secondarySlot: true),
+                        _ => (stageOrigin.X + 102, stageOrigin.Y + 238)
+                    };
+                });
 
-            if (_checkButton != null)
-            {
-                bool showCheckButton = _fixedStage == LoginCreateCharacterStage.NameSelect;
-                _checkButton.SetVisible(showCheckButton);
-                _checkButton.SetEnabled(showCheckButton && !string.IsNullOrWhiteSpace(_displayName));
-                if (showCheckButton)
+            ConfigureActionButtonFamily(
+                _checkButtonsByRace,
+                button =>
                 {
-                    Point stageOrigin = GetStageOrigin();
-                    (_checkButton.X, _checkButton.Y) = GetActionPanelButtonPosition(
-                        stageOrigin,
-                        NameActionPanelBounds,
-                        _checkButton,
-                        secondarySlot: false,
-                        centerWithinSlot: true);
-                }
-            }
+                    bool showCheckButton = _fixedStage == LoginCreateCharacterStage.NameSelect;
+                    button.SetVisible(showCheckButton);
+                    button.SetEnabled(showCheckButton && !string.IsNullOrWhiteSpace(_displayName));
+                    if (showCheckButton)
+                    {
+                        (button.X, button.Y) = GetActionPanelButtonPosition(
+                            stageOrigin,
+                            NameActionPanelBounds,
+                            button,
+                            secondarySlot: false,
+                            centerWithinSlot: true);
+                    }
+                });
         }
 
         private static (int X, int Y) GetActionPanelButtonPosition(
@@ -1517,6 +1644,344 @@ namespace HaCreator.MapSimulator.UI
 
             return frames[^1];
         }
+
+        private static IReadOnlyDictionary<LoginCreateCharacterRaceKind, UIObject> CreateSingleActionButtonMap(UIObject button)
+        {
+            if (button == null)
+            {
+                return null;
+            }
+
+            return new Dictionary<LoginCreateCharacterRaceKind, UIObject>
+            {
+                [LoginCreateCharacterRaceKind.Explorer] = button
+            };
+        }
+
+        private void ConfigureActionButtonFamily(
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, UIObject> buttonsByRace,
+            Action<UIObject> configure)
+        {
+            if (buttonsByRace == null || configure == null)
+            {
+                return;
+            }
+
+            UIObject activeButton = ResolveActionButton(buttonsByRace);
+            foreach (KeyValuePair<LoginCreateCharacterRaceKind, UIObject> pair in buttonsByRace)
+            {
+                UIObject button = pair.Value;
+                if (button == null)
+                {
+                    continue;
+                }
+
+                if (!ReferenceEquals(button, activeButton))
+                {
+                    button.SetVisible(false);
+                    button.SetEnabled(false);
+                    continue;
+                }
+
+                configure(button);
+            }
+        }
+
+        private static Dictionary<LoginCreateCharacterRaceKind, UIObject> InitializeActionButtons(
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, UIObject> buttonsByRace,
+            Action onClick)
+        {
+            var resolved = new Dictionary<LoginCreateCharacterRaceKind, UIObject>();
+            if (buttonsByRace == null)
+            {
+                return resolved;
+            }
+
+            foreach (KeyValuePair<LoginCreateCharacterRaceKind, UIObject> pair in buttonsByRace)
+            {
+                UIObject button = pair.Value;
+                if (button == null || resolved.ContainsKey(pair.Key))
+                {
+                    continue;
+                }
+
+                if (onClick != null)
+                {
+                    button.ButtonClickReleased += _ => onClick();
+                }
+
+                resolved[pair.Key] = button;
+            }
+
+            return resolved;
+        }
+
+        private UIObject ResolveActionButton(IReadOnlyDictionary<LoginCreateCharacterRaceKind, UIObject> buttonsByRace)
+        {
+            if (buttonsByRace == null)
+            {
+                return null;
+            }
+
+            if (buttonsByRace.TryGetValue(_selectedRace, out UIObject activeButton) && activeButton != null)
+            {
+                return activeButton;
+            }
+
+            return buttonsByRace.TryGetValue(LoginCreateCharacterRaceKind.Explorer, out activeButton)
+                ? activeButton
+                : buttonsByRace.Values.FirstOrDefault(button => button != null);
+        }
+
+        private Rectangle GetButtonBounds(UIObject button)
+        {
+            if (button == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(
+                Position.X + button.X,
+                Position.Y + button.Y,
+                Math.Max(1, button.CanvasSnapshotWidth),
+                Math.Max(1, button.CanvasSnapshotHeight));
+        }
+
+        private Rectangle GetConfirmButtonBounds() => GetButtonBounds(ResolveActionButton(_confirmButtonsByRace));
+
+        private Rectangle GetCancelButtonBounds() => GetButtonBounds(ResolveActionButton(_cancelButtonsByRace));
+
+        private Rectangle GetCheckButtonBounds() => GetButtonBounds(ResolveActionButton(_checkButtonsByRace));
+
+        private void DrawAvatarKeyboardFocus(SpriteBatch sprite)
+        {
+            Rectangle focusBounds = _avatarKeyboardFocus switch
+            {
+                AvatarKeyboardFocus.Name => new Rectangle(
+                    Position.X + StageBasePosition.X + NameDisplayBounds.X,
+                    Position.Y + StageBasePosition.Y + NameDisplayBounds.Y,
+                    NameDisplayBounds.Width,
+                    NameDisplayBounds.Height),
+                AvatarKeyboardFocus.Dice => new Rectangle(
+                    Position.X + StageBasePosition.X + AvatarDiceBounds.X,
+                    Position.Y + StageBasePosition.Y + AvatarDiceBounds.Y,
+                    AvatarDiceBounds.Width,
+                    AvatarDiceBounds.Height),
+                AvatarKeyboardFocus.Confirm => GetConfirmButtonBounds(),
+                AvatarKeyboardFocus.Cancel => GetCancelButtonBounds(),
+                _ => GetAvatarRowBounds((int)_avatarKeyboardFocus)
+            };
+
+            if (focusBounds.Width > 0 && focusBounds.Height > 0)
+            {
+                DrawSelection(sprite, focusBounds);
+            }
+        }
+
+        private void DrawNameKeyboardFocus(SpriteBatch sprite)
+        {
+            Rectangle focusBounds = _nameKeyboardFocus switch
+            {
+                NameKeyboardFocus.Check => GetCheckButtonBounds(),
+                NameKeyboardFocus.Cancel => GetCancelButtonBounds(),
+                _ => GetNameInputBounds()
+            };
+
+            if (focusBounds.Width > 0 && focusBounds.Height > 0)
+            {
+                DrawSelection(sprite, focusBounds);
+            }
+        }
+
+        private Rectangle GetAvatarRowBounds(int row)
+        {
+            Point stageOrigin = GetStageOrigin();
+            return new Rectangle(
+                Position.X + stageOrigin.X + AvatarListBounds.X,
+                Position.Y + stageOrigin.Y + AvatarListBounds.Y + (row * 18),
+                AvatarListBounds.Width,
+                17);
+        }
+
+        private void ClampAvatarKeyboardFocus()
+        {
+            if (!Enum.IsDefined(typeof(AvatarKeyboardFocus), _avatarKeyboardFocus))
+            {
+                _avatarKeyboardFocus = AvatarKeyboardFocus.Face;
+            }
+        }
+
+        private void ClampNameKeyboardFocus()
+        {
+            if (!Enum.IsDefined(typeof(NameKeyboardFocus), _nameKeyboardFocus))
+            {
+                _nameKeyboardFocus = NameKeyboardFocus.Input;
+            }
+        }
+
+        private void MoveAvatarFocus(int delta)
+        {
+            const int focusCount = (int)AvatarKeyboardFocus.Cancel + 1;
+            int index = ((int)_avatarKeyboardFocus + delta) % focusCount;
+            if (index < 0)
+            {
+                index += focusCount;
+            }
+
+            _avatarKeyboardFocus = (AvatarKeyboardFocus)index;
+        }
+
+        private void ActivateAvatarFocus(int delta)
+        {
+            switch (_avatarKeyboardFocus)
+            {
+                case AvatarKeyboardFocus.Face:
+                case AvatarKeyboardFocus.Hair:
+                case AvatarKeyboardFocus.HairColor:
+                case AvatarKeyboardFocus.Skin:
+                case AvatarKeyboardFocus.Coat:
+                case AvatarKeyboardFocus.Pants:
+                case AvatarKeyboardFocus.Shoes:
+                case AvatarKeyboardFocus.Weapon:
+                    if (delta != 0)
+                    {
+                        AvatarShiftRequested?.Invoke((LoginCreateCharacterAvatarPart)(int)_avatarKeyboardFocus, delta);
+                    }
+                    break;
+                case AvatarKeyboardFocus.Gender:
+                    if (delta != 0 || delta == 0)
+                    {
+                        GenderToggleRequested?.Invoke();
+                    }
+                    break;
+                case AvatarKeyboardFocus.Name:
+                    if (delta == 0)
+                    {
+                        NameEditRequested?.Invoke();
+                    }
+                    break;
+                case AvatarKeyboardFocus.Dice:
+                    if (delta == 0)
+                    {
+                        DiceRequested?.Invoke();
+                    }
+                    break;
+                case AvatarKeyboardFocus.Confirm:
+                    if (delta == 0)
+                    {
+                        ConfirmRequested?.Invoke();
+                    }
+                    break;
+                case AvatarKeyboardFocus.Cancel:
+                    if (delta == 0)
+                    {
+                        CancelRequested?.Invoke();
+                    }
+                    break;
+            }
+        }
+
+        private void MoveNameFocus(int delta)
+        {
+            const int focusCount = (int)NameKeyboardFocus.Cancel + 1;
+            int index = ((int)_nameKeyboardFocus + delta) % focusCount;
+            if (index < 0)
+            {
+                index += focusCount;
+            }
+
+            _nameKeyboardFocus = (NameKeyboardFocus)index;
+            _softKeyboardActive = _nameKeyboardFocus == NameKeyboardFocus.Input;
+        }
+
+        private void ActivateNameFocus()
+        {
+            switch (_nameKeyboardFocus)
+            {
+                case NameKeyboardFocus.Check:
+                    _softKeyboardActive = false;
+                    DuplicateCheckRequested?.Invoke();
+                    break;
+                case NameKeyboardFocus.Cancel:
+                    _softKeyboardActive = false;
+                    CancelRequested?.Invoke();
+                    break;
+                default:
+                    _softKeyboardActive = true;
+                    DuplicateCheckRequested?.Invoke();
+                    break;
+            }
+        }
+
+        private void SyncAvatarFocusFromPoint(Point localPoint)
+        {
+            Point stageOrigin = GetStageOrigin();
+            Rectangle nameDisplayBounds = new(stageOrigin.X + NameDisplayBounds.X, stageOrigin.Y + NameDisplayBounds.Y, NameDisplayBounds.Width, NameDisplayBounds.Height);
+            if (nameDisplayBounds.Contains(localPoint))
+            {
+                _avatarKeyboardFocus = AvatarKeyboardFocus.Name;
+                return;
+            }
+
+            Rectangle avatarDiceBounds = new(stageOrigin.X + AvatarDiceBounds.X, stageOrigin.Y + AvatarDiceBounds.Y, AvatarDiceBounds.Width, AvatarDiceBounds.Height);
+            if (avatarDiceBounds.Contains(localPoint))
+            {
+                _avatarKeyboardFocus = AvatarKeyboardFocus.Dice;
+                return;
+            }
+
+            for (int row = 0; row < _avatarIndices.Length + 1; row++)
+            {
+                Rectangle rowBounds = new(stageOrigin.X + AvatarListBounds.X, stageOrigin.Y + AvatarListBounds.Y + (row * 18), AvatarListBounds.Width, 17);
+                if (!rowBounds.Contains(localPoint))
+                {
+                    continue;
+                }
+
+                _avatarKeyboardFocus = row == _avatarIndices.Length
+                    ? AvatarKeyboardFocus.Gender
+                    : (AvatarKeyboardFocus)row;
+                return;
+            }
+
+            Rectangle confirmBounds = GetConfirmButtonBounds();
+            if (confirmBounds.Contains(localPoint + Position))
+            {
+                _avatarKeyboardFocus = AvatarKeyboardFocus.Confirm;
+                return;
+            }
+
+            Rectangle cancelBounds = GetCancelButtonBounds();
+            if (cancelBounds.Contains(localPoint + Position))
+            {
+                _avatarKeyboardFocus = AvatarKeyboardFocus.Cancel;
+            }
+        }
+
+        private void SyncNameFocusFromPoint(Point localPoint)
+        {
+            if (GetLocalNameInputBounds().Contains(localPoint))
+            {
+                _nameKeyboardFocus = NameKeyboardFocus.Input;
+                _softKeyboardActive = true;
+                return;
+            }
+
+            Point screenPoint = localPoint + Position;
+            if (GetCheckButtonBounds().Contains(screenPoint))
+            {
+                _nameKeyboardFocus = NameKeyboardFocus.Check;
+                _softKeyboardActive = false;
+                return;
+            }
+
+            if (GetCancelButtonBounds().Contains(screenPoint))
+            {
+                _nameKeyboardFocus = NameKeyboardFocus.Cancel;
+                _softKeyboardActive = false;
+            }
+        }
+
     }
 
     public sealed class LoginCreateCharacterRaceSelectWindow : LoginCreateCharacterWindowBase

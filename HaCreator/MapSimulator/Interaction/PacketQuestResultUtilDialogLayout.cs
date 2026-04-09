@@ -81,6 +81,45 @@ namespace HaCreator.MapSimulator.Interaction
             return new Rectangle(x, y, width, barHeight);
         }
 
+        internal static Rectangle GetSpeakerFrameBounds(
+            Rectangle portraitBounds,
+            Point origin,
+            int frameWidth,
+            int frameHeight)
+        {
+            if (portraitBounds.Width <= 0 ||
+                portraitBounds.Height <= 0 ||
+                frameWidth <= 0 ||
+                frameHeight <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            float scale = Math.Min(
+                portraitBounds.Width / (float)frameWidth,
+                portraitBounds.Height / (float)frameHeight);
+            int width = Math.Max(1, (int)Math.Round(frameWidth * scale));
+            int height = Math.Max(1, (int)Math.Round(frameHeight * scale));
+            int anchoredX = portraitBounds.X + ((portraitBounds.Width - width) / 2);
+            int anchoredY = portraitBounds.Bottom - height;
+
+            if (origin.X > 0 || origin.Y > 0)
+            {
+                anchoredX = (int)Math.Round((portraitBounds.X + (portraitBounds.Width / 2f)) - (origin.X * scale));
+                anchoredY = (int)Math.Round(portraitBounds.Bottom - (origin.Y * scale));
+            }
+
+            int minX = portraitBounds.X;
+            int maxX = portraitBounds.Right - width;
+            int minY = portraitBounds.Y;
+            int maxY = portraitBounds.Bottom - height;
+            return new Rectangle(
+                Math.Clamp(anchoredX, minX, Math.Max(minX, maxX)),
+                Math.Clamp(anchoredY, minY, Math.Max(minY, maxY)),
+                width,
+                height);
+        }
+
         internal static string ResolveNextButtonText(bool hasNextPage)
         {
             return hasNextPage ? "Next" : "OK";

@@ -27,6 +27,7 @@ namespace HaCreator.MapSimulator
         private byte[] _packetOwnedLogoutGiftLeadingOpaqueBytes = Array.Empty<byte>();
         private int[] _packetOwnedLogoutGiftLeadingOpaqueInt32Values = Array.Empty<int>();
         private PacketOwnedLogoutGiftContextField[] _packetOwnedLogoutGiftLeadingContextFields = Array.Empty<PacketOwnedLogoutGiftContextField>();
+        private PacketOwnedLogoutGiftContextField[] _packetOwnedLogoutGiftCommodityContextFields = Array.Empty<PacketOwnedLogoutGiftContextField>();
         private bool _packetOwnedLogoutGiftHasPredictQuitFlag;
         private int _packetOwnedLogoutGiftPredictQuitRawValue;
         private int _lastPacketOwnedLogoutGiftRefreshTick = int.MinValue;
@@ -109,7 +110,8 @@ namespace HaCreator.MapSimulator
             string selectionSuffix = _lastPacketOwnedLogoutGiftSelectionTick == int.MinValue
                 ? string.Empty
                 : $" Last simulated outpacket {PacketOwnedLogoutGiftSelectionOpcode} slot {_lastPacketOwnedLogoutGiftSelectionRequestIndex + 1} at tick {_lastPacketOwnedLogoutGiftSelectionTick.ToString(CultureInfo.InvariantCulture)}.";
-            string detail = $"{_lastPacketOwnedLogoutGiftSummary}{launchSuffix}{selectionSuffix}";
+            string contextSuffix = BuildPacketOwnedLogoutGiftContextOwnershipSuffix();
+            string detail = $"{_lastPacketOwnedLogoutGiftSummary}{contextSuffix}{launchSuffix}{selectionSuffix}";
 
             return new LogoutGiftOwnerSnapshot
             {
@@ -156,6 +158,14 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedLogoutGiftSummary =
                 $"Closed the packet-owned logout-gift owner. Client TryShowLogoutGiftDialog follow-up util dialog (StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)}): {completionMessage}{continuationSuffix}";
             return _lastPacketOwnedLogoutGiftSummary;
+        }
+
+        private bool TryLaunchPacketOwnedLogoutGiftForUtilityQuit(out string message)
+        {
+            return TryShowPacketOwnedLogoutGiftDialog(
+                PacketOwnedLogoutGiftContinuation.ExitSimulator,
+                "Game menu quit",
+                out message);
         }
 
         private bool TryApplyPacketOwnedLogoutGiftPayload(byte[] payload, out string message)
@@ -296,6 +306,7 @@ namespace HaCreator.MapSimulator
             _packetOwnedLogoutGiftLeadingOpaqueBytes = leadingOpaqueBytes ?? Array.Empty<byte>();
             _packetOwnedLogoutGiftLeadingOpaqueInt32Values = leadingOpaqueInt32Values ?? Array.Empty<int>();
             _packetOwnedLogoutGiftLeadingContextFields = DecodePacketOwnedLogoutGiftLeadingContextFields(_packetOwnedLogoutGiftLeadingOpaqueInt32Values);
+            _packetOwnedLogoutGiftCommodityContextFields = DecodePacketOwnedLogoutGiftCommodityContextFields(_packetOwnedLogoutGiftCommoditySerialNumbers);
             _packetOwnedLogoutGiftHasPredictQuitFlag = TryResolvePacketOwnedLogoutGiftPredictQuit(
                 _packetOwnedLogoutGiftLeadingContextFields,
                 out _packetOwnedLogoutGiftPredictQuitRawValue);
@@ -349,6 +360,7 @@ namespace HaCreator.MapSimulator
                 _packetOwnedLogoutGiftLeadingOpaqueBytes = Array.Empty<byte>();
                 _packetOwnedLogoutGiftLeadingOpaqueInt32Values = Array.Empty<int>();
                 _packetOwnedLogoutGiftLeadingContextFields = Array.Empty<PacketOwnedLogoutGiftContextField>();
+                _packetOwnedLogoutGiftCommodityContextFields = Array.Empty<PacketOwnedLogoutGiftContextField>();
                 _packetOwnedLogoutGiftHasPredictQuitFlag = false;
                 _packetOwnedLogoutGiftPredictQuitRawValue = 0;
                 _lastPacketOwnedLogoutGiftSelectionRequestIndex = -1;
@@ -411,9 +423,10 @@ namespace HaCreator.MapSimulator
             string predictQuitPrefix = _packetOwnedLogoutGiftHasPredictQuitFlag
                 ? $"CWvsContext m_bPredictQuit={(_packetOwnedLogoutGiftPredictQuitRawValue != 0 ? "true" : "false")} (TryShowLogoutGiftDialog gate) "
                 : string.Empty;
+            string commodityContextSuffix = BuildPacketOwnedLogoutGiftCommodityContextSuffix();
             return _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
-                ? $"{predictQuitPrefix}cached {entryCount} logout-gift slots plus {DescribePacketOwnedLogoutGiftLeadingTail()}."
-                : $"{predictQuitPrefix}cached {entryCount} logout-gift commodity slot(s).";
+                ? $"{predictQuitPrefix}cached {entryCount} logout-gift slots plus {DescribePacketOwnedLogoutGiftLeadingTail()}.{commodityContextSuffix}"
+                : $"{predictQuitPrefix}cached {entryCount} logout-gift commodity slot(s).{commodityContextSuffix}";
         }
 
         private bool ShouldShowPacketOwnedLogoutGiftOwner()
@@ -493,6 +506,27 @@ namespace HaCreator.MapSimulator
             return fields;
         }
 
+        internal static PacketOwnedLogoutGiftContextField[] DecodePacketOwnedLogoutGiftCommodityContextFields(int[] commoditySerialNumbers)
+        {
+            if (commoditySerialNumbers == null || commoditySerialNumbers.Length == 0)
+            {
+                return Array.Empty<PacketOwnedLogoutGiftContextField>();
+            }
+
+            PacketOwnedLogoutGiftContextField[] fields = new PacketOwnedLogoutGiftContextField[commoditySerialNumbers.Length];
+            for (int i = 0; i < commoditySerialNumbers.Length; i++)
+            {
+                int dwordIndex = PacketOwnedLogoutGiftCommodityContextDwordIndex + i;
+                fields[i] = new PacketOwnedLogoutGiftContextField(
+                    dwordIndex,
+                    dwordIndex * sizeof(int),
+                    commoditySerialNumbers[i],
+                    $"LogoutGift commodity SN[{i}]");
+            }
+
+            return fields;
+        }
+
         internal static string DescribePacketOwnedLogoutGiftLeadingContextFields(IReadOnlyList<PacketOwnedLogoutGiftContextField> fields)
         {
             if (fields == null || fields.Count == 0)
@@ -507,6 +541,49 @@ namespace HaCreator.MapSimulator
                     string.Equals(field.SemanticName, "CWvsContext::m_bPredictQuit", StringComparison.Ordinal)
                         ? $"{field.SemanticName}@0x{field.ByteOffset.ToString("X", CultureInfo.InvariantCulture)}={field.Value.ToString(CultureInfo.InvariantCulture)} ({(field.Value != 0 ? "true" : "false")}, TryShowLogoutGiftDialog gate)"
                         : $"CWvsContext dword[{field.DwordIndex.ToString(CultureInfo.InvariantCulture)}]@0x{field.ByteOffset.ToString("X", CultureInfo.InvariantCulture)}={field.Value.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            return string.Join(", ", parts);
+        }
+
+        private string BuildPacketOwnedLogoutGiftCommodityContextSuffix()
+        {
+            string description = DescribePacketOwnedLogoutGiftCommodityContextFields(_packetOwnedLogoutGiftCommodityContextFields);
+            return string.IsNullOrWhiteSpace(description)
+                ? string.Empty
+                : $" Client cache {description}.";
+        }
+
+        private string BuildPacketOwnedLogoutGiftContextOwnershipSuffix()
+        {
+            string leading = DescribePacketOwnedLogoutGiftLeadingContextFields(_packetOwnedLogoutGiftLeadingContextFields);
+            string commodity = DescribePacketOwnedLogoutGiftCommodityContextFields(_packetOwnedLogoutGiftCommodityContextFields);
+            if (string.IsNullOrWhiteSpace(leading))
+            {
+                return string.IsNullOrWhiteSpace(commodity)
+                    ? string.Empty
+                    : $" Client cache ownership: {commodity}.";
+            }
+
+            if (string.IsNullOrWhiteSpace(commodity))
+            {
+                return $" Client cache ownership: {leading}.";
+            }
+
+            return $" Client cache ownership: {leading}; {commodity}.";
+        }
+
+        private static string DescribePacketOwnedLogoutGiftCommodityContextFields(IReadOnlyList<PacketOwnedLogoutGiftContextField> fields)
+        {
+            if (fields == null || fields.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            List<string> parts = new(fields.Count);
+            foreach (PacketOwnedLogoutGiftContextField field in fields)
+            {
+                parts.Add($"{field.SemanticName}@0x{field.ByteOffset.ToString("X", CultureInfo.InvariantCulture)}={field.Value.ToString(CultureInfo.InvariantCulture)}");
             }
 
             return string.Join(", ", parts);

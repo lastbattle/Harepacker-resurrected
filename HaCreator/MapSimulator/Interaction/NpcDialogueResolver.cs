@@ -5,18 +5,22 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal static class NpcDialogueResolver
     {
-        public static IReadOnlyList<NpcInteractionPage> ResolveInitialPages(NpcItem npc)
+        public static IReadOnlyList<NpcInteractionPage> ResolveInitialPages(
+            NpcItem npc,
+            NpcDialogueFormattingContext formattingContext = null)
         {
             string npcName = npc?.NpcInstance?.NpcInfo?.StringName;
             string npcDescription = npc?.NpcInstance?.NpcInfo?.StringFunc;
 
             var pages = new List<NpcInteractionPage>();
+            string formattedDescription = NpcDialogueTextFormatter.Format(npcDescription, formattingContext);
 
             if (!string.IsNullOrWhiteSpace(npcDescription))
             {
                 pages.Add(new NpcInteractionPage
                 {
-                    Text = NpcDialogueTextFormatter.Format(npcDescription)
+                    RawText = npcDescription,
+                    Text = formattedDescription
                 });
             }
 
@@ -25,15 +29,17 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 for (int i = 0; i < idleSpeechLines.Count; i++)
                 {
-                    string line = NpcDialogueTextFormatter.Format(idleSpeechLines[i]);
+                    string rawLine = idleSpeechLines[i];
+                    string line = NpcDialogueTextFormatter.Format(rawLine, formattingContext);
                     if (string.IsNullOrWhiteSpace(line) ||
-                        (!string.IsNullOrWhiteSpace(npcDescription) && string.Equals(line, NpcDialogueTextFormatter.Format(npcDescription), System.StringComparison.Ordinal)))
+                        (!string.IsNullOrWhiteSpace(formattedDescription) && string.Equals(line, formattedDescription, System.StringComparison.Ordinal)))
                     {
                         continue;
                     }
 
                     pages.Add(new NpcInteractionPage
                     {
+                        RawText = rawLine ?? string.Empty,
                         Text = line
                     });
                 }

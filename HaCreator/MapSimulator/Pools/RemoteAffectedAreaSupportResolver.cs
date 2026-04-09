@@ -452,12 +452,20 @@ namespace HaCreator.MapSimulator.Pools
 
         public static bool IsHostilePlayerAreaSkill(SkillData skill, SkillLevelData levelData = null)
         {
+            return IsHostilePlayerAreaSkill(skill, supportSkills: null, levelData);
+        }
+
+        public static bool IsHostilePlayerAreaSkill(
+            SkillData skill,
+            IEnumerable<SkillData> supportSkills,
+            SkillLevelData levelData = null)
+        {
             if (skill == null)
             {
                 return false;
             }
 
-            if (!HasHostileMobGameplay(skill, levelData))
+            if (!HasHostileMobGameplay(skill, supportSkills, levelData))
             {
                 return false;
             }
@@ -471,6 +479,42 @@ namespace HaCreator.MapSimulator.Pools
         }
 
         public static bool HasHostileMobGameplay(SkillData skill, SkillLevelData levelData = null)
+        {
+            return HasHostileMobGameplay(skill, supportSkills: null, levelData);
+        }
+
+        public static bool HasHostileMobGameplay(
+            SkillData skill,
+            IEnumerable<SkillData> supportSkills,
+            SkillLevelData levelData = null)
+        {
+            if (HasHostileMobGameplayCore(skill, levelData))
+            {
+                return true;
+            }
+
+            if (supportSkills == null)
+            {
+                return false;
+            }
+
+            foreach (SkillData supportSkill in supportSkills)
+            {
+                if (supportSkill == null || ReferenceEquals(supportSkill, skill))
+                {
+                    continue;
+                }
+
+                if (HasHostileMobGameplayCore(supportSkill, levelData))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool HasHostileMobGameplayCore(SkillData skill, SkillLevelData levelData)
         {
             if (skill == null)
             {

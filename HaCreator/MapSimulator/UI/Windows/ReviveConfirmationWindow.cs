@@ -15,7 +15,11 @@ namespace HaCreator.MapSimulator.UI
         private const int DefaultHeight = 176;
 
         private readonly Texture2D _pixel;
+        private readonly Texture2D _noticeFrame;
         private readonly Texture2D _separatorLine;
+        private readonly Texture2D _progressBar;
+        private readonly Texture2D _inactiveDot;
+        private readonly Texture2D _activeDot;
         private UIObject _premiumButton;
         private UIObject _declineButton;
         private UIObject _defaultButton;
@@ -26,11 +30,22 @@ namespace HaCreator.MapSimulator.UI
         private Action<string> _feedbackHandler;
         private ReviveOwnerSnapshot _snapshot = new();
 
-        internal ReviveConfirmationWindow(IDXObject frame, Texture2D pixel, Texture2D separatorLine)
+        internal ReviveConfirmationWindow(
+            IDXObject frame,
+            Texture2D pixel,
+            Texture2D noticeFrame,
+            Texture2D separatorLine,
+            Texture2D progressBar,
+            Texture2D inactiveDot,
+            Texture2D activeDot)
             : base(frame)
         {
             _pixel = pixel ?? throw new ArgumentNullException(nameof(pixel));
+            _noticeFrame = noticeFrame;
             _separatorLine = separatorLine;
+            _progressBar = progressBar;
+            _inactiveDot = inactiveDot;
+            _activeDot = activeDot;
             SupportsDragging = false;
         }
 
@@ -126,28 +141,31 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            DrawWindowText(sprite, _snapshot.Title, new Vector2(Position.X + 16, Position.Y + 16), new Color(60, 37, 20), 0.52f);
-            DrawWindowText(sprite, _snapshot.Subtitle, new Vector2(Position.X + 16, Position.Y + 38), new Color(120, 94, 69), 0.35f);
-            DrawWindowText(sprite, _snapshot.CountdownText, new Vector2(Position.X + 214, Position.Y + 18), new Color(139, 62, 47), 0.33f);
+            DrawWindowText(sprite, _snapshot.Title, new Vector2(Position.X + 20, Position.Y + 20), new Color(60, 37, 20), 0.52f);
+            DrawWindowText(sprite, _snapshot.Subtitle, new Vector2(Position.X + 20, Position.Y + 42), new Color(120, 94, 69), 0.35f);
+            DrawWindowText(sprite, _snapshot.CountdownText, new Vector2(Position.X + 176, Position.Y + 21), new Color(139, 62, 47), 0.33f);
+            DrawProgressBar(sprite);
 
-            float detailY = Position.Y + 62f;
-            foreach (string line in WrapText(_snapshot.PrimaryDetail, 300f, 0.36f))
+            float detailY = Position.Y + 66f;
+            DrawDetailBullet(sprite, new Vector2(Position.X + 19, detailY + 2f), isActive: true);
+            foreach (string line in WrapText(_snapshot.PrimaryDetail, 276f, 0.36f))
             {
-                DrawWindowText(sprite, line, new Vector2(Position.X + 16, detailY), new Color(75, 58, 39), 0.36f);
+                DrawWindowText(sprite, line, new Vector2(Position.X + 31, detailY), new Color(75, 58, 39), 0.36f);
                 detailY += 16f;
             }
 
             if (!string.IsNullOrWhiteSpace(_snapshot.SecondaryDetail))
             {
-                detailY += 4f;
-                foreach (string line in WrapText(_snapshot.SecondaryDetail, 300f, 0.33f))
+                detailY += 5f;
+                DrawDetailBullet(sprite, new Vector2(Position.X + 19, detailY + 1f), isActive: false);
+                foreach (string line in WrapText(_snapshot.SecondaryDetail, 276f, 0.33f))
                 {
-                    DrawWindowText(sprite, line, new Vector2(Position.X + 16, detailY), new Color(113, 92, 70), 0.33f);
+                    DrawWindowText(sprite, line, new Vector2(Position.X + 31, detailY), new Color(113, 92, 70), 0.33f);
                     detailY += 15f;
                 }
             }
 
-            DrawWindowText(sprite, _snapshot.StatusText, new Vector2(Position.X + 16, Position.Y + 136), new Color(110, 86, 59), 0.32f);
+            DrawWindowText(sprite, _snapshot.StatusText, new Vector2(Position.X + 18, Position.Y + 136), new Color(110, 86, 59), 0.32f);
         }
 
         private void RefreshLayout()
@@ -172,8 +190,8 @@ namespace HaCreator.MapSimulator.UI
 
             if (_defaultButton != null)
             {
-                // CUIRevive::OnCreate switches to a separate single-button path for the default-only owner.
-                _defaultButton.X = 170;
+                // CUIRevive::OnCreate applies an additional +42 X offset on the single-button branch.
+                _defaultButton.X = 212;
                 _defaultButton.Y = 145;
                 _defaultButton.SetVisible(_snapshot.IsOpen && !_snapshot.HasPremiumChoice);
                 _defaultButton.ButtonVisible = _snapshot.IsOpen && !_snapshot.HasPremiumChoice;
@@ -184,8 +202,19 @@ namespace HaCreator.MapSimulator.UI
         private void DrawPanel(SpriteBatch sprite)
         {
             Rectangle bounds = GetWindowBounds();
-            sprite.Draw(_pixel, bounds, new Color(247, 239, 223, 248));
-            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y, bounds.Width, 26), new Color(229, 212, 184));
+            sprite.Draw(_pixel, bounds, new Color(247, 239, 223, 240));
+
+            Rectangle noticeBounds = new Rectangle(bounds.X + 10, bounds.Y + 10, bounds.Width - 20, 132);
+            if (_noticeFrame != null)
+            {
+                sprite.Draw(_noticeFrame, noticeBounds, Color.White);
+            }
+            else
+            {
+                sprite.Draw(_pixel, noticeBounds, new Color(247, 239, 223, 248));
+                sprite.Draw(_pixel, new Rectangle(noticeBounds.X, noticeBounds.Y, noticeBounds.Width, 26), new Color(229, 212, 184));
+            }
+
             sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Bottom - 28, bounds.Width, 28), new Color(238, 228, 209));
             sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(118, 84, 55));
             sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(118, 84, 55));
@@ -201,6 +230,43 @@ namespace HaCreator.MapSimulator.UI
             {
                 sprite.Draw(_pixel, separatorBounds, new Color(190, 168, 142));
             }
+        }
+
+        private void DrawProgressBar(SpriteBatch sprite)
+        {
+            Rectangle trackBounds = new(Position.X + 199, Position.Y + 38, 109, 19);
+            sprite.Draw(_pixel, trackBounds, new Color(203, 191, 173, 210));
+
+            int fillWidth = Math.Max(0, (int)Math.Round(trackBounds.Width * _snapshot.RemainingRatio));
+            if (fillWidth <= 0)
+            {
+                return;
+            }
+
+            Rectangle fillBounds = new(trackBounds.X, trackBounds.Y, fillWidth, trackBounds.Height);
+            if (_progressBar != null)
+            {
+                sprite.Draw(
+                    _progressBar,
+                    fillBounds,
+                    new Rectangle(0, 0, Math.Min(_progressBar.Width, fillWidth), _progressBar.Height),
+                    Color.White);
+                return;
+            }
+
+            sprite.Draw(_pixel, fillBounds, new Color(171, 120, 76));
+        }
+
+        private void DrawDetailBullet(SpriteBatch sprite, Vector2 position, bool isActive)
+        {
+            Texture2D texture = isActive ? _activeDot ?? _inactiveDot : _inactiveDot ?? _activeDot;
+            if (texture == null)
+            {
+                sprite.Draw(_pixel, new Rectangle((int)position.X, (int)position.Y, 6, 6), isActive ? new Color(171, 120, 76) : new Color(154, 138, 118));
+                return;
+            }
+
+            sprite.Draw(texture, position, Color.White);
         }
 
         private void ShowFeedback(string message)

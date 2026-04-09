@@ -98,10 +98,16 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
-        private bool TryOpenFieldRestrictedWindow(string windowName, bool inheritDirectionModeOwner = false, Action beforeShow = null)
+        private bool TryOpenFieldRestrictedWindow(
+            string windowName,
+            out string restrictionMessage,
+            bool inheritDirectionModeOwner = false,
+            Action beforeShow = null)
         {
-            if (!TryShowFieldRestrictedWindow(windowName))
+            restrictionMessage = GetFieldWindowRestrictionMessage(windowName);
+            if (!string.IsNullOrWhiteSpace(restrictionMessage))
             {
+                PushFieldRuleMessage(restrictionMessage, Environment.TickCount, showOverlay: false);
                 return false;
             }
 
@@ -118,17 +124,15 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryOpenFieldRestrictedWindow(string windowName, bool inheritDirectionModeOwner = false, Action beforeShow = null)
+        {
+            return TryOpenFieldRestrictedWindow(windowName, out _, inheritDirectionModeOwner, beforeShow);
+        }
+
         private string GetFieldWindowRestrictionMessage(string windowName)
         {
             long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
-            return windowName switch
-            {
-                MapSimulatorWindowNames.MemoMailbox or MapSimulatorWindowNames.QuestDelivery =>
-                    FieldInteractionRestrictionEvaluator.GetParcelOpenRestrictionMessage(fieldLimit),
-                MapSimulatorWindowNames.QuestAlarm =>
-                    FieldInteractionRestrictionEvaluator.GetQuestAlertRestrictionMessage(fieldLimit),
-                _ => null
-            };
+            return FieldInteractionRestrictionEvaluator.GetWindowRestrictionMessage(fieldLimit, windowName);
         }
 
         private void HandlePlayerLanding(PlayerCharacter player, PlayerLandingInfo landingInfo)

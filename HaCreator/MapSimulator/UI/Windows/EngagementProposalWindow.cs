@@ -13,13 +13,16 @@ namespace HaCreator.MapSimulator.UI
     internal sealed class EngagementProposalWindow : UIWindowBase
     {
         private const int FrameWidth = 260;
-        private const int HeadingTop = 2;
         private const int TextTop = 20;
         private const int TextCenterWidth = 234;
         private const int TextWrapWidth = 200;
         private const int TextLeft = 15;
         private const int TextSlotHeight = 16;
         private const int TextDrawHeight = 14;
+        private const int CenterBandTop = 20;
+        private const int TextBoxTopFromBottom = 47;
+        private const int BottomBandTopFromBottom = 31;
+        private const int BottomTextTopFromBottom = 15;
         private const int MinimumLineCount = 2;
         private const int HeightPadding = 67;
         private const int ButtonX = 197;
@@ -126,7 +129,7 @@ namespace HaCreator.MapSimulator.UI
             int TickCount)
         {
             DrawFrame(sprite);
-            DrawHeading(sprite);
+            DrawBottomText(sprite);
             if (_font == null)
             {
                 return;
@@ -176,27 +179,32 @@ namespace HaCreator.MapSimulator.UI
         {
             DrawHorizontalBand(sprite, _assets.Top, Position.X, Position.Y, _assets.TopHeight);
 
-            int centerTop = Position.Y + _assets.TopHeight;
-            int centerHeight = Math.Max(1, _frameHeight - _assets.TopHeight - _assets.BottomHeight);
+            int centerTop = Position.Y + CenterBandTop;
+            int textBoxTop = Position.Y + Math.Max(CenterBandTop, _frameHeight - TextBoxTopFromBottom);
+            int centerHeight = Math.Max(0, textBoxTop - centerTop);
             for (int y = 0; y < centerHeight; y += _assets.CenterHeight)
             {
                 DrawHorizontalBand(sprite, _assets.Center, Position.X, centerTop + y, Math.Min(_assets.CenterHeight, centerHeight - y));
             }
 
-            DrawHorizontalBand(sprite, _assets.Bottom, Position.X, Position.Y + _frameHeight - _assets.BottomHeight, _assets.BottomHeight);
+            DrawHorizontalBand(sprite, _assets.TextBox, Position.X, textBoxTop, Math.Min(_assets.TextBoxHeight, _frameHeight - (_frameHeight - TextBoxTopFromBottom)));
+
+            int bottomBandTop = Position.Y + Math.Max(0, _frameHeight - BottomBandTopFromBottom);
+            int bottomBandHeight = Math.Max(0, _frameHeight - (bottomBandTop - Position.Y));
+            DrawHorizontalBand(sprite, _assets.Bottom, Position.X, bottomBandTop, bottomBandHeight);
         }
 
-        private void DrawHeading(SpriteBatch sprite)
+        private void DrawBottomText(SpriteBatch sprite)
         {
-            Texture2D headingTexture = _assets.Heading;
-            if (headingTexture == null)
+            Texture2D bottomTextTexture = _assets.BottomText;
+            if (bottomTextTexture == null)
             {
                 return;
             }
 
-            int drawX = Position.X + _assets.HeadingOffset.X;
-            int drawY = Position.Y + _assets.HeadingOffset.Y;
-            sprite.Draw(headingTexture, new Rectangle(drawX, drawY, headingTexture.Width, headingTexture.Height), Color.White);
+            int drawX = Position.X + _assets.BottomTextOffset.X;
+            int drawY = Position.Y + _frameHeight - BottomTextTopFromBottom + _assets.BottomTextOffset.Y;
+            sprite.Draw(bottomTextTexture, new Rectangle(drawX, drawY, bottomTextTexture.Width, bottomTextTexture.Height), Color.White);
         }
 
         private void DrawHorizontalBand(SpriteBatch sprite, EngagementProposalBand band, int x, int y, int drawHeight)
@@ -380,22 +388,31 @@ namespace HaCreator.MapSimulator.UI
 
     internal sealed class EngagementProposalWindowAssets
     {
-        internal EngagementProposalWindowAssets(Texture2D heading, Point headingOffset, EngagementProposalBand top, EngagementProposalBand center, EngagementProposalBand bottom)
+        internal EngagementProposalWindowAssets(
+            Texture2D bottomText,
+            Point bottomTextOffset,
+            EngagementProposalBand top,
+            EngagementProposalBand center,
+            EngagementProposalBand textBox,
+            EngagementProposalBand bottom)
         {
-            Heading = heading;
-            HeadingOffset = heading == null ? new Point(92, 2) : headingOffset;
+            BottomText = bottomText;
+            BottomTextOffset = bottomText == null ? new Point(92, 2) : bottomTextOffset;
             Top = top ?? throw new ArgumentNullException(nameof(top));
             Center = center ?? throw new ArgumentNullException(nameof(center));
+            TextBox = textBox ?? throw new ArgumentNullException(nameof(textBox));
             Bottom = bottom ?? throw new ArgumentNullException(nameof(bottom));
         }
 
-        internal Texture2D Heading { get; }
-        internal Point HeadingOffset { get; }
+        internal Texture2D BottomText { get; }
+        internal Point BottomTextOffset { get; }
         internal EngagementProposalBand Top { get; }
         internal EngagementProposalBand Center { get; }
+        internal EngagementProposalBand TextBox { get; }
         internal EngagementProposalBand Bottom { get; }
         internal int TopHeight => Top.Height;
         internal int CenterHeight => Math.Max(1, Center.Height);
+        internal int TextBoxHeight => Math.Max(1, TextBox.Height);
         internal int BottomHeight => Bottom.Height;
     }
 

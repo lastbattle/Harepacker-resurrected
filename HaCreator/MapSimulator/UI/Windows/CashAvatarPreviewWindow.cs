@@ -58,6 +58,7 @@ namespace HaCreator.MapSimulator.UI
         private bool _lastPreviewedWeaponSticker;
         private int _previewPetItemId;
         private int _previewWearMutationCount;
+        private string _previewMutationState = "No staged preview mutation.";
 
         public CashAvatarPreviewWindow(
             GraphicsDevice device,
@@ -266,6 +267,7 @@ namespace HaCreator.MapSimulator.UI
             _lastPreviewedSlot = null;
             _lastPreviewedWeaponSticker = false;
             _buyAvatarButton?.SetEnabled(true);
+            _previewMutationState = "Default-avatar snapshot restored.";
             _statusMessage = "CCSWnd_Char::OnDefaultAvatar restored the avatar-look snapshot, pet/riding state, and preview objects.";
         }
 
@@ -296,6 +298,9 @@ namespace HaCreator.MapSimulator.UI
             _lastPreviewedSlot = null;
             _lastPreviewedWeaponSticker = false;
             _previewOwnerState = "CUserPreview kept the avatar-preview layer active after the takeoff mutation.";
+            _previewMutationState = removedPart == null
+                ? "Takeoff mutation found no staged equip."
+                : $"Takeoff mutation cleared {removedPart.Slot}.";
             ClearPreviewWearInfo(removedPart?.Slot ?? EquipSlot.None);
             RefreshPreviewRuntimeState();
         }
@@ -457,6 +462,7 @@ namespace HaCreator.MapSimulator.UI
             _previewPhysicalSpaceState = _previewBuild == null
                 ? "CWvsPhysicalSpace2D unavailable."
                 : "CWvsPhysicalSpace2D loaded field / ladderRope and bound the preview layer origin.";
+            _previewMutationState = "AvatarLook snapshot seeded into the preview runtime.";
             ApplyClientDefaultAvatarState();
         }
 
@@ -501,8 +507,12 @@ namespace HaCreator.MapSimulator.UI
             int equippedCount = _previewBuild?.Equipment?.Count ?? 0;
             string ridingState = _previewBuild?.HasMonsterRiding == true ? "ride on" : "ride off";
             string effectState = _previewBuild?.WeaponSticker != null ? "weapon sticker active" : "weapon sticker idle";
+            string petState = _previewPetItemId > 0
+                ? $"pet {_previewPetItemId.ToString()}"
+                : "pet idle";
             _previewResetState =
-                $"WearInfo {activeWearEntries}/{ClientWearInfoCapacity}  Equip {equippedCount}  Mutations {_previewWearMutationCount}  {ridingState}  {effectState}";
+                $"WearInfo {activeWearEntries}/{ClientWearInfoCapacity}  Equip {equippedCount}  Mutations {_previewWearMutationCount}  {ridingState}  {effectState}  {petState}";
+            _previewPhysicalSpaceState = $"CWvsPhysicalSpace2D kept the 24,40 212x165 preview lane live after {_previewMutationState}.";
         }
 
         private void RecordPreviewWearInfo(CharacterPart part)
@@ -609,7 +619,8 @@ namespace HaCreator.MapSimulator.UI
             _previewBuild.RemotePetItemIds = new[] { selection.RewardItemId, 0, 0 };
             _previewAssembler = new CharacterAssembler(_previewBuild);
             _previewOwnerState = $"CUserPreview::SetPet staged pet {selection.RewardItemId.ToString()} on the preview actor.";
-            _previewResetState = "CCSWnd_Char pet info updated without discarding the avatar-look snapshot.";
+            _previewMutationState = $"pet mutation {selection.RewardItemId.ToString()}";
+            RefreshPreviewRuntimeState();
             _statusMessage = $"CCSWnd_Char::SetPet staged {selection.Title} on the dedicated preview actor.";
         }
 
@@ -655,6 +666,7 @@ namespace HaCreator.MapSimulator.UI
             _lastPreviewedWeaponSticker = false;
             _buyAvatarButton?.SetEnabled(true);
             _previewOwnerState = $"CUserPreview::SetAvatarLook refreshed body-part {(int)loadedPart.Slot} with client-style coat or shield conflict rules.";
+            _previewMutationState = $"wear mutation {(int)loadedPart.Slot}";
             RecordPreviewWearInfo(loadedPart);
             RefreshPreviewRuntimeState();
             _statusMessage = $"CCSWnd_Char::OnWear previewed {selection.Title} on {loadedPart.Slot}.";
@@ -676,6 +688,7 @@ namespace HaCreator.MapSimulator.UI
             _buyAvatarButton?.SetEnabled(true);
             string visibleWeaponLabel = underlyingWeapon?.Name ?? "base weapon";
             _previewOwnerState = $"CCSWnd_Char kept {visibleWeaponLabel} as the avatar weapon and routed the cash item through nWeaponStickerID.";
+            _previewMutationState = $"weapon-sticker mutation {selection.RewardItemId.ToString()}";
             RecordPreviewWearInfo(EquipSlot.Weapon, selection.RewardItemId);
             RefreshPreviewRuntimeState();
             _statusMessage = $"CCSWnd_Char::OnWear previewed weapon sticker {selection.Title}.";

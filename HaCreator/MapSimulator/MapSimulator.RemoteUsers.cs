@@ -50,6 +50,23 @@ namespace HaCreator.MapSimulator
                 observationSource);
         }
 
+        internal static Vector2 ResolveRemoteTownPortalMoveObservationPositionForTesting(
+            PlayerMovementSyncSnapshot movementSnapshot,
+            Vector2? liveActorPosition)
+        {
+            if (liveActorPosition.HasValue)
+            {
+                return liveActorPosition.Value;
+            }
+
+            if (movementSnapshot == null)
+            {
+                return Vector2.Zero;
+            }
+
+            return new Vector2(movementSnapshot.PassivePosition.X, movementSnapshot.PassivePosition.Y);
+        }
+
         private void RegisterRemoteUserChatCommand()
         {
             _chat.CommandHandler.RegisterCommand(
@@ -837,9 +854,14 @@ namespace HaCreator.MapSimulator
                         : moveMessage;
                     if (moved)
                     {
+                        Vector2 observationPosition = ResolveRemoteTownPortalMoveObservationPositionForTesting(
+                            movePacket.Snapshot,
+                            _remoteUserPool.TryGetActor(movePacket.CharacterId, out RemoteUserActor movedActor)
+                                ? movedActor.Position
+                                : null);
                         RememberRemoteTownPortalOwnerFieldObservation(
                             (uint)movePacket.CharacterId,
-                            new Vector2(movePacket.Snapshot.PassivePosition.X, movePacket.Snapshot.PassivePosition.Y),
+                            observationPosition,
                             TemporaryPortalField.RemoteTownPortalObservationSource.MovementSnapshot);
                     }
 

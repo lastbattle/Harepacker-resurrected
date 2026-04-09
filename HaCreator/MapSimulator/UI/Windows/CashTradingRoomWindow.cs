@@ -29,6 +29,17 @@ namespace HaCreator.MapSimulator.UI
             Idle
         }
 
+        private enum TradeOwnerFocusTarget
+        {
+            ChatLog,
+            ChatEdit,
+            TradeButton,
+            ResetButton,
+            CoinButton,
+            ClaimButton,
+            EnterButton
+        }
+
         private readonly struct LayerInfo
         {
             public LayerInfo(IDXObject layer, Point offset)
@@ -53,6 +64,16 @@ namespace HaCreator.MapSimulator.UI
         private const int MaxVisibleChatLines = 6;
         private const int MaxChatHistory = 24;
         private const int ChatMaxLength = 34;
+        private static readonly TradeOwnerFocusTarget[] FocusCycleOrder =
+        {
+            TradeOwnerFocusTarget.ChatEdit,
+            TradeOwnerFocusTarget.ChatLog,
+            TradeOwnerFocusTarget.TradeButton,
+            TradeOwnerFocusTarget.ResetButton,
+            TradeOwnerFocusTarget.CoinButton,
+            TradeOwnerFocusTarget.ClaimButton,
+            TradeOwnerFocusTarget.EnterButton
+        };
 
         private readonly List<LayerInfo> _layers = new();
         private readonly Texture2D _solidPixel;
@@ -94,6 +115,7 @@ namespace HaCreator.MapSimulator.UI
         private int _tradeRevision;
         private int _remoteProgressTick;
         private RemoteTradeProgressState _remoteProgressState = RemoteTradeProgressState.Reviewing;
+        private TradeOwnerFocusTarget _focusedControl = TradeOwnerFocusTarget.ChatEdit;
         private string _statusMessage = "CCashTradingRoomDlg ready: chat entry, scrollbar, and money fonts are staged.";
 
         public CashTradingRoomWindow(IDXObject frame, GraphicsDevice graphicsDevice)
@@ -122,6 +144,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _chatEditControl.ActivateByOwner();
+            _focusedControl = TradeOwnerFocusTarget.ChatEdit;
             _previousKeyboardState = Keyboard.GetState();
             _previousMouseState = Mouse.GetState();
         }
@@ -182,6 +205,7 @@ namespace HaCreator.MapSimulator.UI
             _tradeRevision = 0;
             _remoteProgressTick = Environment.TickCount + 1800;
             _remoteProgressState = RemoteTradeProgressState.Reviewing;
+            _focusedControl = TradeOwnerFocusTarget.ChatEdit;
             _chatEntries.Clear();
             _chatEntries.Add($"{_remoteTraderName}: Added ore stack to the trade window.");
             _chatEntries.Add($"{_localTraderName}: Checking the premium offer.");
@@ -365,6 +389,7 @@ namespace HaCreator.MapSimulator.UI
                 if (inputBounds.Contains(mouseState.Position))
                 {
                     _chatEditControl.FocusAtMouseX(mouseState.X, ownerBounds);
+                    _focusedControl = TradeOwnerFocusTarget.ChatEdit;
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
                     handledByOwner = true;
                 }
@@ -372,6 +397,7 @@ namespace HaCreator.MapSimulator.UI
                 {
                     _draggingChatScrollThumb = true;
                     _chatScrollThumbGrabOffset = mouseState.Y - chatThumbBounds.Y;
+                    _focusedControl = TradeOwnerFocusTarget.ChatLog;
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
                     _previousMouseState = mouseState;
                     return true;
@@ -379,6 +405,7 @@ namespace HaCreator.MapSimulator.UI
                 else if (chatScrollBounds.Contains(mouseState.Position))
                 {
                     ApplyScrollTrackClick(mouseState.Y, ownerBounds);
+                    _focusedControl = TradeOwnerFocusTarget.ChatLog;
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
                     _previousMouseState = mouseState;
                     return true;
@@ -392,6 +419,7 @@ namespace HaCreator.MapSimulator.UI
             if (wheelDelta != 0 && GetChatLogBounds(ownerBounds).Contains(mouseState.Position))
             {
                 ScrollChat(wheelDelta > 0 ? -1 : 1);
+                _focusedControl = TradeOwnerFocusTarget.ChatLog;
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
                 handledByOwner = true;
             }
@@ -496,9 +524,9 @@ namespace HaCreator.MapSimulator.UI
 
             float stateY = Position.Y + 188;
             sprite.DrawString(_font, $"Stage: {_sessionStage}  Lock: {(_localLocked ? "Locked" : "Open")}  Accept: {(_localAccepted ? "Accepted" : "Pending")}", new Vector2(Position.X + 22, stateY), labelColor);
-            sprite.DrawString(_font, $"Edit [{ChatEditX},{ChatEditY} {ChatEditWidth}x{ChatEditHeight}]  Focus {(_chatEditControl.HasFocus ? "on" : "off")}  Scroll [{ChatScrollX},{ChatScrollY} h{ChatScrollHeight} wheel {ChatWheelRange}]  Offset {_chatScrollOffset}", new Vector2(Position.X + 22, stateY + 18), mutedColor);
+            sprite.DrawString(_font, $"Edit [{ChatEditX},{ChatEditY} {ChatEditWidth}x{ChatEditHeight}]  Focus {(_chatEditControl.HasFocus ? "on" : "off")}  Owner focus {DescribeFocusedControl()}  Scroll [{ChatScrollX},{ChatScrollY} h{ChatScrollHeight} wheel {ChatWheelRange}]  Offset {_chatScrollOffset}", new Vector2(Position.X + 22, stateY + 18), mutedColor);
             sprite.DrawString(_font, $"Draft fallback: {_chatDrafts[_chatDraftIndex]}", new Vector2(Position.X + 22, stateY + 36), accentColor);
-            sprite.DrawString(_font, $"Remote: {_remoteProgressState}  Buttons: Trade / Reset / Coin / Clame / Enter", new Vector2(Position.X + 22, stateY + 54), mutedColor);
+            sprite.DrawString(_font, $"Remote: {_remoteProgressState}  Buttons: Trade / Reset / Coin / Clame / Enter  Tab cycles owner focus; Space activates.", new Vector2(Position.X + 22, stateY + 54), mutedColor);
 
             Rectangle chatBox = GetChatLogBounds(GetWindowBounds());
             sprite.DrawString(_font, "Chat log", new Vector2(chatBox.X, chatBox.Y - 18), labelColor);
@@ -660,46 +688,144 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleOwnerKeyboard(KeyboardState keyboardState)
         {
-            if (Pressed(keyboardState, _previousKeyboardState, Keys.Up))
+            if (Pressed(keyboardState, _previousKeyboardState, Keys.Tab))
+            {
+                bool reverse = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+                CycleFocusedControl(reverse ? -1 : 1);
+            }
+            else if (!_chatEditControl.HasFocus && (Pressed(keyboardState, _previousKeyboardState, Keys.Space) || Pressed(keyboardState, _previousKeyboardState, Keys.Enter)))
+            {
+                ActivateFocusedControl();
+            }
+            else if (!_chatEditControl.HasFocus && Pressed(keyboardState, _previousKeyboardState, Keys.T))
+            {
+                FocusAndActivateButton(TradeOwnerFocusTarget.TradeButton);
+            }
+            else if (!_chatEditControl.HasFocus && Pressed(keyboardState, _previousKeyboardState, Keys.R))
+            {
+                FocusAndActivateButton(TradeOwnerFocusTarget.ResetButton);
+            }
+            else if (!_chatEditControl.HasFocus && Pressed(keyboardState, _previousKeyboardState, Keys.C))
+            {
+                FocusAndActivateButton(TradeOwnerFocusTarget.CoinButton);
+            }
+            else if (!_chatEditControl.HasFocus && Pressed(keyboardState, _previousKeyboardState, Keys.A))
+            {
+                FocusAndActivateButton(TradeOwnerFocusTarget.ClaimButton);
+            }
+            else if (Pressed(keyboardState, _previousKeyboardState, Keys.Up))
             {
                 ScrollChat(-1);
+                _focusedControl = TradeOwnerFocusTarget.ChatLog;
                 _statusMessage = "CCashTradingRoomDlg::OnScroll moved the dedicated chat scrollbar upward.";
             }
             else if (Pressed(keyboardState, _previousKeyboardState, Keys.Down))
             {
                 ScrollChat(1);
+                _focusedControl = TradeOwnerFocusTarget.ChatLog;
                 _statusMessage = "CCashTradingRoomDlg::OnScroll moved the dedicated chat scrollbar downward.";
             }
             else if (Pressed(keyboardState, _previousKeyboardState, Keys.PageUp))
             {
                 ScrollChat(-MaxVisibleChatLines);
+                _focusedControl = TradeOwnerFocusTarget.ChatLog;
                 _statusMessage = "CCashTradingRoomDlg::OnScroll paged the dedicated chat scrollbar upward.";
             }
             else if (Pressed(keyboardState, _previousKeyboardState, Keys.PageDown))
             {
                 ScrollChat(MaxVisibleChatLines);
+                _focusedControl = TradeOwnerFocusTarget.ChatLog;
                 _statusMessage = "CCashTradingRoomDlg::OnScroll paged the dedicated chat scrollbar downward.";
             }
             else if (Pressed(keyboardState, _previousKeyboardState, Keys.Home))
             {
                 _chatScrollOffset = GetMaxChatScrollOffset();
+                _focusedControl = TradeOwnerFocusTarget.ChatLog;
                 _statusMessage = "CCashTradingRoomDlg::OnScroll moved the chat log to the oldest visible entry.";
             }
             else if (Pressed(keyboardState, _previousKeyboardState, Keys.End))
             {
                 _chatScrollOffset = 0;
+                _focusedControl = TradeOwnerFocusTarget.ChatLog;
                 _statusMessage = "CCashTradingRoomDlg::OnScroll returned the chat log to the newest entry.";
             }
             else if (Pressed(keyboardState, _previousKeyboardState, Keys.Left) && string.IsNullOrWhiteSpace(_chatEditControl.Text))
             {
                 _chatDraftIndex = (_chatDraftIndex + _chatDrafts.Length - 1) % _chatDrafts.Length;
+                _focusedControl = TradeOwnerFocusTarget.ChatEdit;
                 _statusMessage = "CCashTradingRoomDlg rotated the staged draft on the dedicated edit-control runtime.";
             }
             else if (Pressed(keyboardState, _previousKeyboardState, Keys.Right) && string.IsNullOrWhiteSpace(_chatEditControl.Text))
             {
                 _chatDraftIndex = (_chatDraftIndex + 1) % _chatDrafts.Length;
+                _focusedControl = TradeOwnerFocusTarget.ChatEdit;
                 _statusMessage = "CCashTradingRoomDlg advanced the staged draft on the dedicated edit-control runtime.";
             }
+        }
+
+        private void CycleFocusedControl(int delta)
+        {
+            int currentIndex = Array.IndexOf(FocusCycleOrder, _focusedControl);
+            if (currentIndex < 0)
+            {
+                currentIndex = 0;
+            }
+
+            int nextIndex = (currentIndex + FocusCycleOrder.Length + delta) % FocusCycleOrder.Length;
+            _focusedControl = FocusCycleOrder[nextIndex];
+            _chatEditControl.SetFocus(_focusedControl == TradeOwnerFocusTarget.ChatEdit);
+            _statusMessage = $"CCashTradingRoomDlg moved owner focus to {DescribeFocusedControl()}.";
+        }
+
+        private void ActivateFocusedControl()
+        {
+            switch (_focusedControl)
+            {
+                case TradeOwnerFocusTarget.ChatLog:
+                    _statusMessage = "CCashTradingRoomDlg kept focus on the dedicated chat scrollbar and log surface.";
+                    break;
+                case TradeOwnerFocusTarget.ChatEdit:
+                    _chatEditControl.ActivateByOwner();
+                    _statusMessage = "CCashTradingRoomDlg focused the dedicated chat-entry control.";
+                    break;
+                case TradeOwnerFocusTarget.TradeButton:
+                    ToggleTradeLock();
+                    break;
+                case TradeOwnerFocusTarget.ResetButton:
+                    ResetTrade();
+                    break;
+                case TradeOwnerFocusTarget.CoinButton:
+                    IncreaseTradeOffer();
+                    break;
+                case TradeOwnerFocusTarget.ClaimButton:
+                    ToggleTradeAcceptance();
+                    break;
+                case TradeOwnerFocusTarget.EnterButton:
+                    SubmitChatEntry();
+                    break;
+            }
+        }
+
+        private void FocusAndActivateButton(TradeOwnerFocusTarget focusTarget)
+        {
+            _focusedControl = focusTarget;
+            _chatEditControl.SetFocus(false);
+            ActivateFocusedControl();
+        }
+
+        private string DescribeFocusedControl()
+        {
+            return _focusedControl switch
+            {
+                TradeOwnerFocusTarget.ChatLog => "chat log",
+                TradeOwnerFocusTarget.ChatEdit => "chat edit",
+                TradeOwnerFocusTarget.TradeButton => "BtTrade",
+                TradeOwnerFocusTarget.ResetButton => "BtReset",
+                TradeOwnerFocusTarget.CoinButton => "BtCoin",
+                TradeOwnerFocusTarget.ClaimButton => "BtClame",
+                TradeOwnerFocusTarget.EnterButton => "BtEnter",
+                _ => "owner"
+            };
         }
 
         private string ResolveRemoteChatReply(string localChatLine)

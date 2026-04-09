@@ -83,6 +83,10 @@ namespace HaCreator.MapSimulator.Pools
         int StartTime,
         int EndTime);
 
+    internal readonly record struct PacketOwnedExpiryTargetCandidate(
+        int MobObjectId,
+        Rectangle Hitbox);
+
     public sealed class SummonedPool
     {
         private const int TeslaCoilSkillId = 35111002;
@@ -695,15 +699,19 @@ namespace HaCreator.MapSimulator.Pools
         private static void ArmPacketOwnedSupportSuspend(PacketOwnedSummonState state, int currentTime)
         {
             if (state?.Summon?.SkillData == null
-                || state.Summon.SkillId != HealingRobotSkillId
-                || state.Summon.AssistType != SummonAssistType.Support)
+                || !SummonRuntimeRules.ShouldTrackSupportSuspendWindow(
+                    state.Summon.SkillData,
+                    state.Summon.AssistType))
             {
                 return;
             }
 
+            bool preferHealFirst = SummonRuntimeRules.HasMinionAbilityToken(
+                state.Summon.SkillData.MinionAbility,
+                "heal");
             int suspendDurationMs = SummonRuntimeRules.ResolveSupportSuspendDurationMs(
                 state.Summon.SkillData,
-                preferHealFirst: true,
+                preferHealFirst,
                 explicitBranchName: state.Summon.CurrentAnimationBranchName);
             state.Summon.SupportSuspendUntilTime = suspendDurationMs > 0
                 ? currentTime + suspendDurationMs
@@ -1720,7 +1728,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (idleState == SummonActorState.Idle)
             {
-                if (ShouldClearPacketOwnedHealingRobotSupportSuspend(state))
+                if (ShouldClearPacketOwnedHealingRobotSupportSuspend(state, currentTime))
                 {
                     state.Summon.SupportSuspendUntilTime = int.MinValue;
                 }
@@ -1744,11 +1752,12 @@ namespace HaCreator.MapSimulator.Pools
             return elapsed >= 0 && duration > 0 && elapsed < duration;
         }
 
-        private static bool ShouldClearPacketOwnedHealingRobotSupportSuspend(PacketOwnedSummonState state)
+        private static bool ShouldClearPacketOwnedHealingRobotSupportSuspend(PacketOwnedSummonState state, int currentTime)
         {
-            return state?.Summon?.SkillId == HealingRobotSkillId
-                   && state.Summon.AssistType == SummonAssistType.Support
-                   && state.Summon.SupportSuspendUntilTime != int.MinValue;
+            return SummonRuntimeRules.ShouldClearHealingRobotSupportSuspend(
+                state?.Summon,
+                currentTime,
+                HealingRobotSkillId);
         }
 
         private static void AdvanceSummonHitPeriod(ActiveSummon summon, int currentTime)
@@ -2827,6 +2836,12 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            Vector2 primaryTargetCenter = GetMobHitboxCenter(targets[0], currentTime);
+            if (MathF.Abs(primaryTargetCenter.X - state.Summon.PositionX) > 0.5f)
+            {
+                state.Summon.FacingRight = primaryTargetCenter.X >= state.Summon.PositionX;
+            }
+
             state.LastAttackTargets = targets
                 .Select(static target => new SummonedAttackTargetPacket(target.PoolId, 0, 0))
                 .ToArray();
@@ -2848,18 +2863,67 @@ namespace HaCreator.MapSimulator.Pools
                 summon.SkillData.SummonMobCountOverride > 0
                     ? summon.SkillData.SummonMobCountOverride
                     : summon.LevelData?.MobCount ?? 1);
-            Vector2 summonPosition = new(summon.PositionX, summon.PositionY);
-            Rectangle summonBounds = GetPacketOwnedSummonAttackBounds(summon);
+            Dictionary<int, MobItem> candidatesById = _mobPool.ActiveMobs
+                .Where(static mob => mob?.PoolId > 0)
+                .GroupBy(static mob => mob.PoolId)
+                .ToDictionary(static group => group.Key, static group => group.First());
 
-            return _mobPool.ActiveMobs
-                .Where(mob => mob != null && IsMobInPacketOwnedSummonAttackRange(summon, summonBounds, mob, currentTime))
-                .OrderBy(mob => Vector2.DistanceSquared(summonPosition, GetMobHitboxCenter(mob, currentTime)))
-                .ThenBy(mob => mob.PoolId)
-                .Take(maxTargets)
+            int[] orderedTargetIds = ResolvePacketOwnedExpiryTargetOrder(
+                summon,
+                candidatesById.Values.Select(mob => new PacketOwnedExpiryTargetCandidate(
+                    mob.PoolId,
+                    GetMobHitbox(mob, currentTime))),
+                maxTargets);
+
+            return orderedTargetIds
+                .Where(candidatesById.ContainsKey)
+                .Select(targetId => candidatesById[targetId])
                 .ToList();
         }
 
-        private static Rectangle GetPacketOwnedSummonAttackBounds(ActiveSummon summon)
+        internal static int[] ResolvePacketOwnedExpiryTargetOrder(
+            ActiveSummon summon,
+            IEnumerable<PacketOwnedExpiryTargetCandidate> candidates,
+            int maxTargets)
+        {
+            if (summon?.SkillData == null || candidates == null || maxTargets <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            Vector2 summonPosition = new(summon.PositionX, summon.PositionY);
+            Rectangle summonBounds = GetPacketOwnedSummonAttackBounds(summon);
+
+            return candidates
+                .Where(candidate => candidate.MobObjectId > 0
+                                    && !candidate.Hitbox.IsEmpty
+                                    && IsMobHitboxInPacketOwnedSummonAttackRange(summon, summonBounds, candidate.Hitbox))
+                .Select(candidate =>
+                {
+                    float centerX = candidate.Hitbox.Left + (candidate.Hitbox.Width * 0.5f);
+                    float centerY = candidate.Hitbox.Top + (candidate.Hitbox.Height * 0.5f);
+                    float deltaX = centerX - summonPosition.X;
+                    float deltaY = centerY - summonPosition.Y;
+                    return new
+                    {
+                        candidate.MobObjectId,
+                        DistanceSq = (deltaX * deltaX) + (deltaY * deltaY),
+                        ForwardPenalty = summon.FacingRight
+                            ? (deltaX < 0f ? 1 : 0)
+                            : (deltaX > 0f ? 1 : 0),
+                        VerticalDistance = MathF.Abs(deltaY)
+                    };
+                })
+                .OrderBy(entry => entry.DistanceSq)
+                .ThenBy(entry => entry.ForwardPenalty)
+                .ThenBy(entry => entry.VerticalDistance)
+                .ThenBy(entry => entry.MobObjectId)
+                .Take(maxTargets)
+                .Select(entry => entry.MobObjectId)
+                .ToArray();
+        }
+
+        internal static Rectangle GetPacketOwnedSummonAttackBounds(ActiveSummon summon)
         {
             if (summon?.SkillData == null)
             {
@@ -2867,12 +2931,18 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             Vector2 summonPosition = new(summon.PositionX, summon.PositionY);
+            string attackBranchName = summon.CurrentAnimationBranchName;
             Rectangle localHitbox = summon.AssistType == SummonAssistType.Support
                 ? SummonRuntimeRules.ResolveSupportOwnedRange(
                     summon.SkillData,
                     summon.FacingRight,
-                    summon.CurrentAnimationBranchName)
-                : summon.SkillData.GetSummonAttackRange(summon.FacingRight);
+                    attackBranchName)
+                : summon.SkillData.TryGetSummonAttackRange(
+                    summon.FacingRight,
+                    attackBranchName,
+                    out Rectangle branchRange)
+                    ? branchRange
+                    : summon.SkillData.GetSummonAttackRange(summon.FacingRight);
             if (!localHitbox.IsEmpty)
             {
                 return new Rectangle(
@@ -2882,10 +2952,13 @@ namespace HaCreator.MapSimulator.Pools
                     localHitbox.Height);
             }
 
-            if (summon.SkillData.SummonAttackRadius > 0)
+            int attackRadius = summon.SkillData.ResolveSummonAttackRadius(attackBranchName);
+            if (attackRadius > 0)
             {
-                Point centerOffset = summon.SkillData.GetSummonAttackCircleCenterOffset(summon.FacingRight);
-                int radius = (int)MathF.Ceiling(summon.SkillData.SummonAttackRadius);
+                Point centerOffset = summon.SkillData.GetSummonAttackCircleCenterOffset(
+                    summon.FacingRight,
+                    attackBranchName);
+                int radius = (int)MathF.Ceiling(attackRadius);
                 return new Rectangle(
                     (int)summonPosition.X + centerOffset.X - radius,
                     (int)summonPosition.Y + centerOffset.Y - radius,
@@ -2912,13 +2985,30 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            if (summon.SkillData?.SummonAttackRadius > 0)
+            return IsMobHitboxInPacketOwnedSummonAttackRange(summon, summonBounds, mobHitbox);
+        }
+
+        private static bool IsMobHitboxInPacketOwnedSummonAttackRange(
+            ActiveSummon summon,
+            Rectangle summonBounds,
+            Rectangle mobHitbox)
+        {
+            if (summon?.SkillData == null || mobHitbox.IsEmpty)
             {
-                Point centerOffset = summon.SkillData.GetSummonAttackCircleCenterOffset(summon.FacingRight);
+                return false;
+            }
+
+            string attackBranchName = summon.CurrentAnimationBranchName;
+            int attackRadius = summon.SkillData.ResolveSummonAttackRadius(attackBranchName);
+            if (attackRadius > 0)
+            {
+                Point centerOffset = summon.SkillData.GetSummonAttackCircleCenterOffset(
+                    summon.FacingRight,
+                    attackBranchName);
                 Vector2 circleCenter = new(
                     summon.PositionX + centerOffset.X,
                     summon.PositionY + centerOffset.Y);
-                return DoesRectangleIntersectCircle(mobHitbox, circleCenter, summon.SkillData.SummonAttackRadius);
+                return DoesRectangleIntersectCircle(mobHitbox, circleCenter, attackRadius);
             }
 
             return summonBounds.Intersects(mobHitbox);

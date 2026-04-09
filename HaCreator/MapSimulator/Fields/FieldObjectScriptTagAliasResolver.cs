@@ -170,18 +170,34 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             int separatorIndex = scriptName.LastIndexOfAny(new[] { '_', '-' });
-            if (separatorIndex < 0 || separatorIndex >= scriptName.Length - 1)
+            if (separatorIndex >= 0 && separatorIndex < scriptName.Length - 1)
+            {
+                ReadOnlySpan<char> separatedSuffix = scriptName.AsSpan(separatorIndex + 1);
+                if (int.TryParse(separatedSuffix, out stage) && stage >= 0)
+                {
+                    scriptBaseName = scriptName[..separatorIndex];
+                    return !string.IsNullOrWhiteSpace(scriptBaseName);
+                }
+            }
+
+            int suffixStart = scriptName.Length;
+            while (suffixStart > 0 && char.IsDigit(scriptName[suffixStart - 1]))
+            {
+                suffixStart--;
+            }
+
+            if (suffixStart <= 0 || suffixStart >= scriptName.Length)
             {
                 return false;
             }
 
-            ReadOnlySpan<char> suffix = scriptName.AsSpan(separatorIndex + 1);
+            ReadOnlySpan<char> suffix = scriptName.AsSpan(suffixStart);
             if (!int.TryParse(suffix, out stage) || stage < 0)
             {
                 return false;
             }
 
-            scriptBaseName = scriptName[..separatorIndex];
+            scriptBaseName = scriptName[..suffixStart];
             return !string.IsNullOrWhiteSpace(scriptBaseName);
         }
 

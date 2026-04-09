@@ -1593,7 +1593,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private static PartyRaidFieldMode InferModeFromMapId(int mapId)
         {
-            if (mapId <= 0 || mapId < 923020010 || mapId > 923020499)
+            if (mapId <= 0 || mapId < 923020010 || mapId > 923020599)
             {
                 return PartyRaidFieldMode.None;
             }
@@ -1604,7 +1604,7 @@ namespace HaCreator.MapSimulator.Fields
                 return PartyRaidFieldMode.Result;
             }
 
-            if (suffix is 189 or 190 or 289 or 290 or 389 or 390 or 489 or 490)
+            if (suffix is 189 or 190 or 289 or 290 or 389 or 390 or 489 or 490 or 589 or 590)
             {
                 return PartyRaidFieldMode.Boss;
             }
@@ -1663,7 +1663,13 @@ namespace HaCreator.MapSimulator.Fields
             return InferTeamColorFromMapId(mapInfo?.id ?? 0);
         }
 
-        private static PartyRaidTeamColor InferTeamColorFromMapId(int mapId) => mapId == 923020120 ? PartyRaidTeamColor.Blue : PartyRaidTeamColor.Red;
+        private static PartyRaidTeamColor InferTeamColorFromMapId(int mapId)
+        {
+            int stageSuffix = Math.Abs(mapId % 100);
+            return stageSuffix is >= 10 and <= 24
+                ? PartyRaidTeamColor.Blue
+                : PartyRaidTeamColor.Red;
+        }
         private static bool UsesWinBadge(PartyRaidResultOutcome outcome) => outcome == PartyRaidResultOutcome.Win || outcome == PartyRaidResultOutcome.Clear;
         private static string GetOutcomeLabel(PartyRaidResultOutcome outcome) => outcome switch { PartyRaidResultOutcome.Win => "WIN", PartyRaidResultOutcome.Lose => "LOSE", PartyRaidResultOutcome.Clear => "CLEAR", _ => "RESULT" };
         private static string GetTeamLabel(PartyRaidTeamColor teamColor) => teamColor == PartyRaidTeamColor.Blue ? "blue" : "red";

@@ -308,6 +308,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, QuestDefinition> _definitions = new();
         private readonly Dictionary<string, List<int>> _showLayerTagQuestIds = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, QuestProgress> _progress = new();
+        private readonly Dictionary<int, string> _questRecordValues = new();
         private readonly Dictionary<int, int> _trackedItems = new();
         private readonly Dictionary<int, long> _questAlarmUpdateTicks = new();
         private readonly Dictionary<int, string> _questMateNames = new();
@@ -347,7 +348,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ResolvePlayerNameText = () => ResolveCurrentPlayerNameForDialogue(build),
                 ResolveItemCountText = itemId => GetResolvedItemCount(itemId).ToString(CultureInfo.InvariantCulture),
                 ResolveQuestStateText = questId => FormatQuestStateForDialogue(GetQuestState(questId)),
-                ResolveJobNameText = () => ResolveCurrentJobNameForDialogue(build)
+                ResolveJobNameText = () => ResolveCurrentJobNameForDialogue(build),
+                ResolveCurrentMapNameText = ResolveCurrentMapNameForDialogue
             };
         }
 
@@ -374,6 +376,20 @@ namespace HaCreator.MapSimulator.Interaction
             return string.IsNullOrWhiteSpace(resolvedJobName)
                 ? "your job"
                 : resolvedJobName;
+        }
+
+        private string ResolveCurrentMapNameForDialogue()
+        {
+            int currentMapId = _currentMapIdProvider?.Invoke() ?? 0;
+            if (currentMapId <= 0)
+            {
+                return "this map";
+            }
+
+            string resolvedMapName = _mapNameProvider?.Invoke(currentMapId);
+            return string.IsNullOrWhiteSpace(resolvedMapName)
+                ? $"Map {currentMapId}"
+                : resolvedMapName;
         }
 
         public void ConfigureMesoRuntime(Func<long> mesoCountProvider, Func<long, bool> consumeMeso, Action<long> addMeso)
@@ -688,12 +704,14 @@ namespace HaCreator.MapSimulator.Interaction
 
         public void SetPacketOwnedQuestMateName(int questId, string mateName)
         {
+            string normalizedMateName = mateName?.Trim() ?? string.Empty;
+            SetPacketOwnedQuestRecordValue(questId, normalizedMateName);
+
             if (questId <= 0)
             {
                 return;
             }
 
-            string normalizedMateName = mateName?.Trim() ?? string.Empty;
             if (normalizedMateName.Length == 0)
             {
                 _questMateNames.Remove(questId);
@@ -714,6 +732,37 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             mateName = string.Empty;
+            return false;
+        }
+
+        public void SetPacketOwnedQuestRecordValue(int questId, string value)
+        {
+            if (questId <= 0)
+            {
+                return;
+            }
+
+            string normalizedValue = value?.Trim() ?? string.Empty;
+            if (normalizedValue.Length == 0)
+            {
+                _questRecordValues.Remove(questId);
+                return;
+            }
+
+            _questRecordValues[questId] = normalizedValue;
+        }
+
+        public bool TryGetQuestRecordValue(int questId, out string value)
+        {
+            if (questId > 0 &&
+                _questRecordValues.TryGetValue(questId, out string storedValue) &&
+                !string.IsNullOrEmpty(storedValue))
+            {
+                value = storedValue;
+                return true;
+            }
+
+            value = string.Empty;
             return false;
         }
 
@@ -1924,7 +1973,7 @@ namespace HaCreator.MapSimulator.Interaction
                     Kind = NpcInteractionEntryKind.Talk,
                     Title = "Talk",
                     Subtitle = npc?.NpcInstance?.NpcInfo?.StringFunc ?? string.Empty,
-                    Pages = NpcDialogueResolver.ResolveInitialPages(npc)
+                    Pages = NpcDialogueResolver.ResolveInitialPages(npc, CreateDialogueFormattingContext(build))
                 }
             };
 
@@ -3449,23 +3498,7 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
-            for (int i = 0; i < definition.EndActions.RewardItems.Count; i++)
-            {
-                QuestRewardItem item = definition.EndActions.RewardItems[i];
-                if (item.Count <= 0 ||
-                    !MatchesRewardItemFilter(item, build))
-                {
-                    continue;
-                }
-
-                lines.Add(new QuestLogLineSnapshot
-                {
-                    Label = "Item",
-                    Text = GetRewardItemDescription(item),
-                    IsComplete = true,
-                    ItemId = item.ItemId
-                });
-            }
+            AppendVisibleRewardItemLines(lines, definition.EndActions.RewardItems, build);
 
             for (int i = 0; i < definition.EndActions.SkillRewards.Count; i++)
             {
@@ -7569,6 +7602,137 @@ namespace HaCreator.MapSimulator.Interaction
             return string.Join(" ", parts);
         }
 
+        private void AppendVisibleRewardItemLines(
+            ICollection<QuestLogLineSnapshot> lines,
+            IReadOnlyList<QuestRewardItem> rewards,
+            CharacterBuild build)
+        {
+            if (lines == null || rewards == null || rewards.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < rewards.Count; i++)
+            {
+                QuestRewardItem reward = rewards[i];
+                if (reward == null ||
+                    reward.Count <= 0 ||
+                    reward.SelectionType == QuestRewardSelectionType.PlayerSelection ||
+                    !MatchesRewardItemFilter(reward, build))
+                {
+                    continue;
+                }
+
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Item",
+                    Text = GetRewardItemDescription(reward),
+                    IsComplete = true,
+                    ItemId = reward.ItemId
+                });
+            }
+
+            foreach ((int _, List<QuestRewardItem> groupRewards) in GetFilteredChoiceRewardGroups(rewards, build))
+            {
+                if (groupRewards.Count == 0)
+                {
+                    continue;
+                }
+
+                if (groupRewards.Count == 1)
+                {
+                    QuestRewardItem reward = groupRewards[0];
+                    lines.Add(new QuestLogLineSnapshot
+                    {
+                        Label = "Item",
+                        Text = GetRewardItemDescription(reward, includeSelectionTag: false, includeFilters: build == null),
+                        IsComplete = true,
+                        ItemId = reward.ItemId
+                    });
+                    continue;
+                }
+
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Choice",
+                    Text = BuildChoiceRewardDisplayText(groupRewards, build, includeSelectionTag: false),
+                    IsComplete = true
+                });
+            }
+        }
+
+        private List<string> BuildVisibleRewardItemActionLines(
+            IReadOnlyList<QuestRewardItem> rewards,
+            CharacterBuild build,
+            bool includeSelectionTag)
+        {
+            var lines = new List<string>();
+            if (rewards == null || rewards.Count == 0)
+            {
+                return lines;
+            }
+
+            for (int i = 0; i < rewards.Count; i++)
+            {
+                QuestRewardItem reward = rewards[i];
+                if (reward == null ||
+                    reward.Count <= 0 ||
+                    reward.SelectionType == QuestRewardSelectionType.PlayerSelection ||
+                    !MatchesRewardItemFilter(reward, build))
+                {
+                    continue;
+                }
+
+                lines.Add(GetRewardItemDescription(
+                    reward,
+                    includeSelectionTag,
+                    includeFilters: build == null));
+            }
+
+            foreach ((int _, List<QuestRewardItem> groupRewards) in GetFilteredChoiceRewardGroups(rewards, build))
+            {
+                if (groupRewards.Count == 0)
+                {
+                    continue;
+                }
+
+                if (groupRewards.Count == 1)
+                {
+                    lines.Add(GetRewardItemDescription(
+                        groupRewards[0],
+                        includeSelectionTag: false,
+                        includeFilters: build == null));
+                    continue;
+                }
+
+                lines.Add(BuildChoiceRewardDisplayText(groupRewards, build, includeSelectionTag));
+            }
+
+            return lines;
+        }
+
+        private static string BuildChoiceRewardDisplayText(
+            IReadOnlyList<QuestRewardItem> groupRewards,
+            CharacterBuild build,
+            bool includeSelectionTag)
+        {
+            if (groupRewards == null || groupRewards.Count == 0)
+            {
+                return "Choose 1 reward.";
+            }
+
+            string optionText = string.Join(
+                ", ",
+                groupRewards.Select(reward => GetRewardItemDescription(
+                    reward,
+                    includeSelectionTag: false,
+                    includeFilters: build == null)));
+
+            return includeSelectionTag
+                ? $"Choose 1 reward: {optionText}"
+                : $"Choose 1: {optionText}";
+        }
+
         private static string FormatJobClassName(CharacterClassType jobClass)
         {
             return jobClass switch
@@ -8347,20 +8511,7 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add($"{FormatTraitName(reward.Trait)} {reward.Amount:+#;-#;0}");
             }
 
-            for (int i = 0; i < actions.RewardItems.Count; i++)
-            {
-                QuestRewardItem reward = actions.RewardItems[i];
-                if (reward?.Count <= 0 ||
-                    !MatchesRewardItemFilter(reward, build))
-                {
-                    continue;
-                }
-
-                lines.Add(GetRewardItemDescription(
-                    reward,
-                    includeSelectionTag,
-                    includeFilters: build == null));
-            }
+            lines.AddRange(BuildVisibleRewardItemActionLines(actions.RewardItems, build, includeSelectionTag));
 
             for (int i = 0; i < actions.SkillRewards.Count; i++)
             {

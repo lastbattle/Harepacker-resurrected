@@ -151,6 +151,8 @@ namespace HaCreator.MapSimulator.UI {
         private readonly Dictionary<int, Rectangle> _cooldownIconHitboxes = new Dictionary<int, Rectangle>();
         private readonly Dictionary<int, StatusBarCooldownRenderData> _cooldownTooltipEntries = new Dictionary<int, StatusBarCooldownRenderData>();
         private readonly Dictionary<string, StatusBarKeyDownBarTextures> _keyDownBarTextures = new Dictionary<string, StatusBarKeyDownBarTextures>(StringComparer.OrdinalIgnoreCase);
+        private Texture2D[] _cooldownMaskTextures = Array.Empty<Texture2D>();
+        private Texture2D _temporaryStatViewTexture;
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
         private StatusBarWarningAnimation _hpWarningAnimation = new StatusBarWarningAnimation();
         private StatusBarWarningAnimation _mpWarningAnimation = new StatusBarWarningAnimation();
@@ -421,6 +423,16 @@ namespace HaCreator.MapSimulator.UI {
                     _buffIconTextures[iconEntry.Key] = iconEntry.Value;
                 }
             }
+        }
+
+        public void SetCooldownMasks(Texture2D[] cooldownMaskTextures)
+        {
+            _cooldownMaskTextures = cooldownMaskTextures ?? Array.Empty<Texture2D>();
+        }
+
+        public void SetTemporaryStatViewTexture(Texture2D temporaryStatViewTexture)
+        {
+            _temporaryStatViewTexture = temporaryStatViewTexture;
         }
 
         public void SetKeyDownBarTextures(Dictionary<string, StatusBarKeyDownBarTextures> keyDownBarTextures)
@@ -1030,6 +1042,12 @@ namespace HaCreator.MapSimulator.UI {
 
         private void DrawBuffIconFrame(SpriteBatch sprite, Rectangle iconRect)
         {
+            if (_temporaryStatViewTexture != null)
+            {
+                sprite.Draw(_temporaryStatViewTexture, iconRect, Color.White);
+                return;
+            }
+
             if (_pixelTexture == null)
             {
                 return;
@@ -1161,10 +1179,7 @@ namespace HaCreator.MapSimulator.UI {
 
                     if (!cooldownEntry.SuppressProgressOverlay)
                     {
-                        float remainingProgress = cooldownEntry.DurationMs > 0
-                            ? Math.Clamp(cooldownEntry.RemainingMs / (float)cooldownEntry.DurationMs, 0f, 1f)
-                            : 1f;
-                        DrawCooldownOverlay(sprite, iconRect, remainingProgress);
+                        DrawCooldownMask(sprite, iconRect, cooldownEntry.RemainingMs, cooldownEntry.DurationMs);
                     }
 
                     if (_font == null || cooldownEntry.RemainingMs <= 0 || cooldownEntry.SuppressCounterText)
@@ -1207,13 +1222,31 @@ namespace HaCreator.MapSimulator.UI {
                 cooldownEntry.IconTexture);
         }
 
-        private void DrawCooldownOverlay(SpriteBatch sprite, Rectangle iconRect, float remainingProgress)
+        private void DrawCooldownMask(SpriteBatch sprite, Rectangle iconRect, int remainingMs, int durationMs)
         {
+            int frameIndex = ResolveCooldownMaskFrameIndex(remainingMs, durationMs);
+            if (_cooldownMaskTextures.Length > 0)
+            {
+                int resolvedFrameIndex = Math.Clamp(frameIndex, 0, _cooldownMaskTextures.Length - 1);
+                Texture2D maskTexture = _cooldownMaskTextures[resolvedFrameIndex];
+                if (maskTexture != null)
+                {
+                    sprite.Draw(maskTexture, iconRect, Color.White);
+                    return;
+                }
+            }
+
             if (_pixelTexture == null)
             {
                 return;
             }
 
+            if (frameIndex >= 15)
+            {
+                return;
+            }
+
+            float remainingProgress = 1f - (frameIndex / 14f);
             int overlayHeight = Math.Clamp((int)Math.Round(iconRect.Height * remainingProgress), 0, iconRect.Height);
             if (overlayHeight <= 0)
             {
@@ -1226,6 +1259,16 @@ namespace HaCreator.MapSimulator.UI {
                 iconRect.Width,
                 overlayHeight);
             sprite.Draw(_pixelTexture, overlayRect, new Color(0, 0, 0, 150));
+        }
+
+        private static int ResolveCooldownMaskFrameIndex(int remainingMs, int durationMs)
+        {
+            int clampedRemainingMs = Math.Max(0, remainingMs);
+            int resolvedDurationMs = Math.Max(clampedRemainingMs, durationMs);
+            int totalSeconds = Math.Max(1, (int)Math.Ceiling(resolvedDurationMs / 1000f));
+            int remainingSeconds = Math.Max(0, (int)Math.Ceiling(clampedRemainingMs / 1000f));
+            int elapsedSeconds = Math.Clamp(totalSeconds - remainingSeconds, 0, totalSeconds);
+            return Math.Clamp((14 * elapsedSeconds) / totalSeconds, 0, 14);
         }
 
         private void DrawPreparedSkillBar(SpriteBatch sprite, Vector2 basePosGauge, int currentTime)

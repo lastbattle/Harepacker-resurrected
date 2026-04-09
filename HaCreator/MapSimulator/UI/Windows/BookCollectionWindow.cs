@@ -76,8 +76,6 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Rectangle LeftPageIndexBounds = new(143, 286, 84, 18);
         private static readonly Rectangle RightPageIndexBounds = new(249, 286, 84, 18);
         private static readonly Rectangle StatusBounds = new(16, 286, 184, 18);
-        private static readonly Rectangle LeftCollectionPageBounds = new(20, 34, 196, 248);
-        private static readonly Rectangle RightCollectionPageBounds = new(240, 34, 196, 248);
         private static readonly Rectangle ClientLeftCollectionPageContentBounds = new(23, 34, 190, 248);
         private static readonly Rectangle ClientRightCollectionPageContentBounds = new(243, 34, 190, 248);
         private static readonly Rectangle ClientLeftCollectionPageIndexBounds = new(23, 293, 190, 16);
@@ -154,6 +152,8 @@ namespace HaCreator.MapSimulator.UI
         private Keys _lastHeldSearchKey = Keys.None;
         private int _searchKeyHoldStartTime = int.MinValue;
         private int _lastSearchKeyRepeatTime = int.MinValue;
+        private bool _searchSelectionDragActive;
+        private int _searchSelectionDragAnchor = -1;
         private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
 
         public BookCollectionWindow(IDXObject frame, Texture2D pixel, GraphicsDevice graphicsDevice, Action closeRequested = null) : base(frame)
@@ -725,9 +725,34 @@ namespace HaCreator.MapSimulator.UI
         private void HandleMouseInput()
         {
             MouseState mouse = Mouse.GetState();
+            KeyboardState keyboard = Keyboard.GetState();
+            bool leftPressed = mouse.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
             bool leftReleased = mouse.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
             bool rightReleased = mouse.RightButton == ButtonState.Released && _previousMouseState.RightButton == ButtonState.Pressed;
             Point point = mouse.Position;
+            Rectangle searchBounds = OffsetBounds(SearchBoxBounds, InfoPageOrigin);
+
+            if (leftPressed && !UsesCollectionLayout && searchBounds.Contains(point))
+            {
+                EnterSearchMode();
+                BeginSearchSelectionDrag(point.X, keyboard);
+                ClearCompositionText();
+                _previousMouseState = mouse;
+                return;
+            }
+
+            if (_searchSelectionDragActive)
+            {
+                if (mouse.LeftButton == ButtonState.Pressed)
+                {
+                    UpdateSearchSelectionDrag(point.X);
+                    _caretBlinkTick = Environment.TickCount;
+                    _previousMouseState = mouse;
+                    return;
+                }
+
+                EndSearchSelectionDrag();
+            }
 
             if (leftReleased)
             {
@@ -746,15 +771,6 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 if (_contextMenuVisible && !GetContextMenuBounds().Contains(point)) _contextMenuVisible = false;
-                if (!UsesCollectionLayout && OffsetBounds(SearchBoxBounds, InfoPageOrigin).Contains(point))
-                {
-                    EnterSearchMode();
-                    MoveSearchCaret(ResolveSearchCursorFromMouse(point.X), false);
-                    _caretBlinkTick = Environment.TickCount;
-                    ClearCompositionText();
-                    _previousMouseState = mouse;
-                    return;
-                }
                 for (int i = 0; i <= _leftTabs.Count; i++) if (GetLeftTabBounds(i).Contains(point)) { _selectedLeftTabIndex = i; _currentGradeIndex = Math.Max(0, i - 1); _currentPageIndex = 0; SelectCardOnCurrentPage(); _contextMenuVisible = false; _previousMouseState = mouse; return; }
                 for (int i = 0; i < Math.Min(_rightTabs.Count, _rightTabOrder.Count); i++) if (GetRightTabBounds(i).Contains(point) && !IsOverviewTabSelected) { _detailTab = _rightTabOrder[i]; _previousMouseState = mouse; return; }
                 for (int i = 0; i < GetCurrentPageCards().Count; i++) if (GetCardBounds(i).Contains(point)) { _selectedSlotIndex = i; _contextMenuVisible = false; break; }
@@ -776,6 +792,51 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _previousMouseState = mouse;
+        }
+
+        private void BeginSearchSelectionDrag(int mouseX, KeyboardState keyboard)
+        {
+            bool shift = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
+            int caretPosition = ResolveSearchCursorFromMouse(mouseX);
+            int existingAnchor = _searchSelectionAnchor >= 0
+                ? Math.Clamp(_searchSelectionAnchor, 0, _searchQuery.Length)
+                : Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length);
+
+            _searchSelectionDragAnchor = shift ? existingAnchor : caretPosition;
+            _searchSelectionDragActive = true;
+            ApplySearchSelectionDrag(caretPosition);
+            _caretBlinkTick = Environment.TickCount;
+        }
+
+        private void UpdateSearchSelectionDrag(int mouseX)
+        {
+            if (!_searchSelectionDragActive)
+            {
+                return;
+            }
+
+            ApplySearchSelectionDrag(ResolveSearchCursorFromMouse(mouseX));
+        }
+
+        private void EndSearchSelectionDrag()
+        {
+            _searchSelectionDragActive = false;
+            _searchSelectionDragAnchor = -1;
+        }
+
+        private void ApplySearchSelectionDrag(int targetPosition)
+        {
+            int clampedPosition = Math.Clamp(targetPosition, 0, _searchQuery.Length);
+            int dragAnchor = Math.Clamp(_searchSelectionDragAnchor, 0, _searchQuery.Length);
+            if (dragAnchor == clampedPosition)
+            {
+                ClearSearchSelection();
+                _searchCursorPosition = clampedPosition;
+                return;
+            }
+
+            _searchSelectionAnchor = dragAnchor;
+            _searchCursorPosition = clampedPosition;
         }
 
         private void UpdateContextButtons()
@@ -1126,19 +1187,16 @@ namespace HaCreator.MapSimulator.UI
             DrawCollectionPage(
                 sprite,
                 spreadStart,
-                OffsetBounds(LeftCollectionPageBounds, Point.Zero),
                 OffsetBounds(ClientLeftCollectionPageContentBounds, Point.Zero));
             DrawCollectionPage(
                 sprite,
                 spreadStart + 1,
-                OffsetBounds(RightCollectionPageBounds, Point.Zero),
                 OffsetBounds(ClientRightCollectionPageContentBounds, Point.Zero));
         }
 
-        private void DrawCollectionPage(SpriteBatch sprite, int pageIndex, Rectangle frameBounds, Rectangle contentBounds)
+        private void DrawCollectionPage(SpriteBatch sprite, int pageIndex, Rectangle contentBounds)
         {
             CollectionBookPageSnapshot page = GetCollectionPage(pageIndex);
-            DrawPageFrame(sprite, frameBounds);
 
             if (page == null)
             {
@@ -1218,13 +1276,6 @@ namespace HaCreator.MapSimulator.UI
                         alignment);
                     break;
             }
-        }
-
-        private void DrawPageFrame(SpriteBatch sprite, Rectangle bounds)
-        {
-            sprite.Draw(_pixel, bounds, new Color(255, 251, 241, 12));
-            DrawOutline(sprite, bounds, new Color(191, 173, 141, 64));
-            DrawOutline(sprite, new Rectangle(bounds.X + 1, bounds.Y + 1, bounds.Width - 2, bounds.Height - 2), new Color(255, 255, 255, 22));
         }
 
         private void DrawRule(SpriteBatch sprite, Rectangle bounds)
@@ -1445,6 +1496,8 @@ namespace HaCreator.MapSimulator.UI
             _collectionSnapshot = null;
             _snapshot = null;
             ResetSearchKeyRepeatState();
+            _searchSelectionDragActive = false;
+            _searchSelectionDragAnchor = -1;
             ClearImeCandidateList();
         }
 

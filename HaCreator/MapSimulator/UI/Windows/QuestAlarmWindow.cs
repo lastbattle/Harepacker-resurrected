@@ -744,7 +744,8 @@ namespace HaCreator.MapSimulator.UI
 
             if (_autoButton != null)
             {
-                _autoButton.SetEnabled(_autoTrackEnabled);
+                _autoButton.SetEnabled(true);
+                _autoButton.SetButtonState(_autoTrackEnabled ? UIObjectState.Pressed : UIObjectState.Normal);
             }
 
             if (_questButton != null)
@@ -1504,7 +1505,15 @@ namespace HaCreator.MapSimulator.UI
         {
             if (snapshot?.Entries != null && snapshot.Entries.Count == 0 && IsVisible)
             {
-                Hide();
+                _selectedQuestId = -1;
+                _scrollOffset = 0;
+                if (!_isMinimized)
+                {
+                    _isMinimized = true;
+                    RefreshFrame(snapshot);
+                    UpdateButtonStates();
+                    SavePersistedState();
+                }
             }
         }
 

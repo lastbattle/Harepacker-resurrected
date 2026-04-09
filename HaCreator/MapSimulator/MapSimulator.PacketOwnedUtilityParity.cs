@@ -32,6 +32,7 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private const int FollowRequestClientOptionId = 1014;
+        private const int FollowRequestPromptStringPoolId = 0x1599;
         private const int PacketOwnedBattleshipCooldownSentinel = 0x004FAE6F;
         private const int PacketOwnedBattleshipSkillId = 5221006;
         private const int PacketOwnedBattleshipMountItemId = 1932000;
@@ -66,7 +67,10 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedCurrentExJablinSkillId = 4120010;
         private const string PacketOwnedExJablinSkillDescriptionMarker = "the next attack will always be a Critical Attack";
         private const int PacketOwnedBaseTimeBombHitPeriodMs = 1500;
-        private static readonly int[] PacketOwnedTimeBombInvincibilityOptionIds = { 20366, 30366, 30371 };
+        private const int PacketOwnedTimeBombInvincibilityOptionType = 52;
+        private const string PacketOwnedTimeBombInvincibilityDurationTemplate = "Invincible for #time more seconds after getting attacked.";
+        private const string PacketOwnedTimeBombInvincibilityChanceTemplate = "#prop% chance to become invincible for #time seconds when attacked.";
+        private static readonly int[] PacketOwnedFallbackTimeBombInvincibilityOptionIds = { 20366, 30366, 30371 };
         private const string PacketOwnedApspPromptPrimaryLabel = "OK";
         private const string PacketOwnedApspPromptSecondaryLabel = "Cancel";
         private const int PacketOwnedTutorBalloonScreenMargin = 6;
@@ -102,20 +106,6 @@ namespace HaCreator.MapSimulator
             int ImpactPercent,
             int Damage);
 
-        private enum PacketOwnedMechanicEquipPayloadMode : byte
-        {
-            Snapshot = 0,
-            SlotMutation = 1,
-            ClearAll = 2,
-            ResetDefaults = 3
-        }
-
-        private readonly record struct PacketOwnedMechanicEquipPayload(
-            PacketOwnedMechanicEquipPayloadMode Mode,
-            MechanicEquipSlot? Slot,
-            int ItemId,
-            IReadOnlyDictionary<MechanicEquipSlot, int> SnapshotItems);
-
         internal sealed class PacketOwnedTimeBombInvincibilityOptionDefinition
         {
             public string DisplayTemplate { get; init; } = string.Empty;
@@ -132,6 +122,7 @@ namespace HaCreator.MapSimulator
         private static readonly Lazy<HashSet<int>> PacketOwnedTimeBombSkillIdCatalog = new(CreatePacketOwnedTimeBombSkillIdCatalog);
         private static readonly Lazy<HashSet<int>> PacketOwnedVengeanceSkillIdCatalog = new(CreatePacketOwnedVengeanceSkillIdCatalog);
         private static readonly Lazy<HashSet<int>> PacketOwnedExJablinSkillIdCatalog = new(CreatePacketOwnedExJablinSkillIdCatalog);
+        private static readonly Lazy<int[]> PacketOwnedTimeBombInvincibilityOptionIds = new(CreatePacketOwnedTimeBombInvincibilityOptionIds);
         private static readonly Lazy<IReadOnlyDictionary<int, int[]>> PacketOwnedSkillIdAliasCandidates = new(CreatePacketOwnedSkillIdAliasCandidates);
         private LocalOverlayBalloonSkin _packetOwnedTutorBalloonSkin;
         private readonly Dictionary<int, List<IDXObject>> _packetOwnedTutorCueFramesByIndex = new();
@@ -3085,6 +3076,13 @@ namespace HaCreator.MapSimulator
                 return unavailable;
             }
 
+            if (string.Equals(windowName, MapSimulatorWindowNames.Ranking, StringComparison.Ordinal)
+                || string.Equals(windowName, MapSimulatorWindowNames.Event, StringComparison.Ordinal))
+            {
+                ShowRecordedUtilityWindow(windowName, $"packet-owned {displayName}");
+                return $"Opened packet-owned {displayName}.";
+            }
+
             ShowWindow(windowName, window, trackDirectionModeOwner: true);
             return $"Opened packet-owned {displayName}.";
         }
@@ -3608,7 +3606,7 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
-        private static IEnumerable<(string ImageName, string PropertyPath)> BuildPacketOwnedRadioTrackCandidates(string descriptor)
+        internal static IEnumerable<(string ImageName, string PropertyPath)> BuildPacketOwnedRadioTrackCandidates(string descriptor)
         {
             if (string.IsNullOrWhiteSpace(descriptor))
             {
@@ -3637,7 +3635,7 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private static IEnumerable<string> BuildPacketOwnedRadioDescriptorCandidates(string descriptor)
+        internal static IEnumerable<string> BuildPacketOwnedRadioDescriptorCandidates(string descriptor)
         {
             string normalized = NormalizePacketOwnedClientSoundDescriptor(descriptor);
             if (string.IsNullOrWhiteSpace(normalized))
@@ -3647,21 +3645,21 @@ namespace HaCreator.MapSimulator
 
             HashSet<string> yieldedDescriptors = new(StringComparer.OrdinalIgnoreCase);
             if (TryFormatPacketOwnedClientSoundDescriptorTemplate(
-                    PacketOwnedRadioAudioTemplateStringPoolId,
-                    normalized,
-                    out string audioTemplateDescriptor)
-                && yieldedDescriptors.Add(audioTemplateDescriptor))
-            {
-                yield return audioTemplateDescriptor;
-            }
-
-            if (TryFormatPacketOwnedClientSoundDescriptorTemplate(
                     PacketOwnedRadioTrackTemplateStringPoolId,
                     normalized,
                     out string trackTemplateDescriptor)
                 && yieldedDescriptors.Add(trackTemplateDescriptor))
             {
                 yield return trackTemplateDescriptor;
+            }
+
+            if (TryFormatPacketOwnedClientSoundDescriptorTemplate(
+                    PacketOwnedRadioAudioTemplateStringPoolId,
+                    normalized,
+                    out string audioTemplateDescriptor)
+                && yieldedDescriptors.Add(audioTemplateDescriptor))
+            {
+                yield return audioTemplateDescriptor;
             }
 
             if (yieldedDescriptors.Add(normalized))
@@ -5387,10 +5385,15 @@ namespace HaCreator.MapSimulator
 
         private static string BuildPacketOwnedFollowPromptBody(string requesterName, int requesterId)
         {
+            string promptText = MapleStoryStringPool.GetOrFallback(
+                FollowRequestPromptStringPoolId,
+                "You have been sent a follow request.");
             string displayName = string.IsNullOrWhiteSpace(requesterName)
                 ? requesterId > 0 ? $"Character {requesterId}" : "Unknown character"
                 : requesterName.Trim();
-            return $"{displayName} asked to follow the local player. Press Yes to accept the request on the existing local follow seam or No to decline it.";
+            return string.Equals(displayName, "Unknown character", StringComparison.Ordinal)
+                ? promptText
+                : $"{promptText}\r\nRequester: {displayName}";
         }
 
         private bool TryMirrorPacketOwnedFollowRequestToOfficialSession(int driverId, bool autoRequest, bool keyInput, out string status)
@@ -6306,7 +6309,7 @@ namespace HaCreator.MapSimulator
         private Dictionary<int, PacketOwnedTimeBombInvincibilityOptionDefinition> BuildPacketOwnedTimeBombInvincibilityOptionDefinitions()
         {
             var definitions = new Dictionary<int, PacketOwnedTimeBombInvincibilityOptionDefinition>();
-            foreach (int itemOptionId in PacketOwnedTimeBombInvincibilityOptionIds)
+            foreach (int itemOptionId in PacketOwnedTimeBombInvincibilityOptionIds.Value)
             {
                 PacketOwnedTimeBombInvincibilityOptionDefinition definition = ResolvePacketOwnedTimeBombInvincibilityOptionDefinition(itemOptionId);
                 if (definition != null)
@@ -6371,6 +6374,62 @@ namespace HaCreator.MapSimulator
             };
             _packetOwnedTimeBombInvincibilityOptions[itemOptionId] = definition;
             return definition;
+        }
+
+        internal static int[] CreatePacketOwnedTimeBombInvincibilityOptionIds()
+        {
+            WzImage itemOptionImage = Program.DataSource?.GetImage("Item", "ItemOption.img");
+            if (itemOptionImage == null)
+            {
+                return PacketOwnedFallbackTimeBombInvincibilityOptionIds;
+            }
+
+            itemOptionImage.ParseImage();
+            IReadOnlyList<int> discoveredIds = CollectPacketOwnedTimeBombInvincibilityOptionIds(
+                itemOptionImage.WzProperties
+                    .OfType<WzImageProperty>()
+                    .Select(optionRoot =>
+                    {
+                        int optionId = int.TryParse(optionRoot.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedOptionId)
+                            ? parsedOptionId
+                            : 0;
+                        int optionType = (optionRoot["info"]?["optionType"] as WzIntProperty)?.Value ?? 0;
+                        string displayTemplate = optionRoot["info"]?["string"]?.GetString() ?? string.Empty;
+                        return (OptionId: optionId, OptionType: optionType, DisplayTemplate: displayTemplate);
+                    }));
+
+            return discoveredIds.Count > 0
+                ? discoveredIds.ToArray()
+                : PacketOwnedFallbackTimeBombInvincibilityOptionIds;
+        }
+
+        internal static IReadOnlyList<int> CollectPacketOwnedTimeBombInvincibilityOptionIds(
+            IEnumerable<(int OptionId, int OptionType, string DisplayTemplate)> candidates)
+        {
+            if (candidates == null)
+            {
+                return Array.Empty<int>();
+            }
+
+            return candidates
+                .Where(candidate => candidate.OptionId > 0
+                    && candidate.OptionType == PacketOwnedTimeBombInvincibilityOptionType
+                    && IsPacketOwnedTimeBombInvincibilityDisplayTemplate(candidate.DisplayTemplate))
+                .Select(candidate => candidate.OptionId)
+                .Distinct()
+                .OrderBy(optionId => optionId)
+                .ToArray();
+        }
+
+        internal static bool IsPacketOwnedTimeBombInvincibilityDisplayTemplate(string displayTemplate)
+        {
+            if (string.IsNullOrWhiteSpace(displayTemplate))
+            {
+                return false;
+            }
+
+            return string.Equals(displayTemplate, PacketOwnedTimeBombInvincibilityDurationTemplate, StringComparison.Ordinal)
+                || string.Equals(displayTemplate, PacketOwnedTimeBombInvincibilityChanceTemplate, StringComparison.Ordinal);
         }
 
         private static Dictionary<string, int> BuildPacketOwnedTimeBombPotentialLineLookup(
@@ -6972,10 +7031,20 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedMechanicEquipPayload(byte[] payload, out string message)
         {
             message = null;
-            if (!TryDecodePacketOwnedMechanicEquipPayload(payload, out PacketOwnedMechanicEquipPayload decodedPayload, out string errorMessage))
+            if (!MechanicEquipmentPacketParity.TryDecodePayload(payload, out MechanicEquipPacketPayload decodedPayload, out string errorMessage))
             {
                 message = errorMessage;
                 return false;
+            }
+
+            if (decodedPayload.Mode == MechanicEquipPacketPayloadMode.AuthorityRequest)
+            {
+                return TryResolvePacketOwnedMechanicAuthorityRequest(decodedPayload, out message);
+            }
+
+            if (decodedPayload.Mode == MechanicEquipPacketPayloadMode.AuthorityResult)
+            {
+                return TryQueuePacketOwnedMechanicAuthorityResult(decodedPayload, out message);
             }
 
             CharacterBuild build = _playerManager?.Player?.Build;
@@ -6988,20 +7057,20 @@ namespace HaCreator.MapSimulator
 
             bool applied = decodedPayload.Mode switch
             {
-                PacketOwnedMechanicEquipPayloadMode.Snapshot => controller.TryApplyExternalSnapshot(
+                MechanicEquipPacketPayloadMode.Snapshot => controller.TryApplyExternalSnapshot(
                     build,
                     decodedPayload.SnapshotItems,
                     out errorMessage),
-                PacketOwnedMechanicEquipPayloadMode.SlotMutation when decodedPayload.Slot.HasValue => controller.TryApplyExternalSlotMutation(
+                MechanicEquipPacketPayloadMode.SlotMutation when decodedPayload.Slot.HasValue => controller.TryApplyExternalSlotMutation(
                     build,
                     decodedPayload.Slot.Value,
                     decodedPayload.ItemId,
                     out errorMessage),
-                PacketOwnedMechanicEquipPayloadMode.ClearAll => controller.TryApplyExternalSnapshot(
+                MechanicEquipPacketPayloadMode.ClearAll => controller.TryApplyExternalSnapshot(
                     build,
                     null,
                     out errorMessage),
-                PacketOwnedMechanicEquipPayloadMode.ResetDefaults => ApplyPacketOwnedMechanicEquipDefaults(controller, build, out errorMessage),
+                MechanicEquipPacketPayloadMode.ResetDefaults => ApplyPacketOwnedMechanicEquipDefaults(controller, build, out errorMessage),
                 _ => false
             };
             if (!applied)
@@ -7015,12 +7084,12 @@ namespace HaCreator.MapSimulator
             StampPacketOwnedUtilityRequestState();
             message = decodedPayload.Mode switch
             {
-                PacketOwnedMechanicEquipPayloadMode.Snapshot => "Applied packet-authored mechanic equipment snapshot.",
-                PacketOwnedMechanicEquipPayloadMode.SlotMutation => decodedPayload.ItemId > 0
+                MechanicEquipPacketPayloadMode.Snapshot => "Applied packet-authored mechanic equipment snapshot.",
+                MechanicEquipPacketPayloadMode.SlotMutation => decodedPayload.ItemId > 0
                     ? $"Applied packet-authored mechanic slot update for {decodedPayload.Slot} with item {decodedPayload.ItemId}."
                     : $"Applied packet-authored mechanic slot clear for {decodedPayload.Slot}.",
-                PacketOwnedMechanicEquipPayloadMode.ClearAll => "Cleared packet-authored mechanic equipment state.",
-                PacketOwnedMechanicEquipPayloadMode.ResetDefaults => "Reset mechanic equipment to the client default machine-part set.",
+                MechanicEquipPacketPayloadMode.ClearAll => "Cleared packet-authored mechanic equipment state.",
+                MechanicEquipPacketPayloadMode.ResetDefaults => "Reset mechanic equipment to the client default machine-part set.",
                 _ => "Applied packet-authored mechanic equipment state."
             };
             return true;
@@ -7046,94 +7115,6 @@ namespace HaCreator.MapSimulator
 
             controller.ResetToDefaults(build);
             return true;
-        }
-
-        private static bool TryDecodePacketOwnedMechanicEquipPayload(
-            byte[] payload,
-            out PacketOwnedMechanicEquipPayload decodedPayload,
-            out string errorMessage)
-        {
-            decodedPayload = default;
-            errorMessage = null;
-            if (payload == null || payload.Length == 0)
-            {
-                errorMessage =
-                    "Mechanic equipment payload is missing. Use mode 0 for a five-slot snapshot, 1 for a slot mutation, 2 to clear all, or 3 to reset defaults.";
-                return false;
-            }
-
-            try
-            {
-                using MemoryStream stream = new(payload, writable: false);
-                using BinaryReader reader = new(stream);
-                PacketOwnedMechanicEquipPayloadMode mode = (PacketOwnedMechanicEquipPayloadMode)reader.ReadByte();
-                switch (mode)
-                {
-                    case PacketOwnedMechanicEquipPayloadMode.Snapshot:
-                    {
-                        if (stream.Length - stream.Position != sizeof(int) * 5)
-                        {
-                            errorMessage = "Mechanic snapshot payload must contain five Int32 item ids ordered as ENGINE, FRAME, TRANS, ARM, LEG.";
-                            return false;
-                        }
-
-                        Dictionary<MechanicEquipSlot, int> snapshotItems = new()
-                        {
-                            [MechanicEquipSlot.Engine] = reader.ReadInt32(),
-                            [MechanicEquipSlot.Frame] = reader.ReadInt32(),
-                            [MechanicEquipSlot.Transistor] = reader.ReadInt32(),
-                            [MechanicEquipSlot.Arm] = reader.ReadInt32(),
-                            [MechanicEquipSlot.Leg] = reader.ReadInt32()
-                        };
-                        decodedPayload = new PacketOwnedMechanicEquipPayload(mode, null, 0, snapshotItems);
-                        return true;
-                    }
-                    case PacketOwnedMechanicEquipPayloadMode.SlotMutation:
-                    {
-                        if (stream.Length - stream.Position != sizeof(byte) + sizeof(int))
-                        {
-                            errorMessage = "Mechanic slot-mutation payload must contain a slot byte followed by an Int32 item id. Use item id 0 to clear that slot.";
-                            return false;
-                        }
-
-                        byte slotValue = reader.ReadByte();
-                        if (!Enum.IsDefined(typeof(MechanicEquipSlot), (int)slotValue))
-                        {
-                            errorMessage = $"Mechanic slot value {slotValue} is invalid.";
-                            return false;
-                        }
-
-                        decodedPayload = new PacketOwnedMechanicEquipPayload(
-                            mode,
-                            (MechanicEquipSlot)slotValue,
-                            reader.ReadInt32(),
-                            null);
-                        return true;
-                    }
-                    case PacketOwnedMechanicEquipPayloadMode.ClearAll:
-                    case PacketOwnedMechanicEquipPayloadMode.ResetDefaults:
-                    {
-                        if (stream.Position != stream.Length)
-                        {
-                            errorMessage = mode == PacketOwnedMechanicEquipPayloadMode.ClearAll
-                                ? "Mechanic clear-all payload should not contain extra bytes."
-                                : "Mechanic reset-defaults payload should not contain extra bytes.";
-                            return false;
-                        }
-
-                        decodedPayload = new PacketOwnedMechanicEquipPayload(mode, null, 0, null);
-                        return true;
-                    }
-                    default:
-                        errorMessage = $"Mechanic equipment payload mode {(byte)mode} is unsupported.";
-                        return false;
-                }
-            }
-            catch (Exception ex)
-            {
-                errorMessage = $"Mechanic equipment payload could not be decoded: {ex.Message}";
-                return false;
-            }
         }
 
         private bool TryApplyPacketOwnedQuestGuidePayload(byte[] payload, out string message)

@@ -563,8 +563,8 @@ namespace HaCreator.MapSimulator.Effects
             string timerText = _timeOverTick == int.MinValue ? "stopped" : FormatTimer(RemainingSeconds);
             string transferText = _pendingTransferMapId > 0 ? $", pendingReturn={_pendingTransferMapId}" : string.Empty;
             string transferPortalText = _pendingTransferMapId > 0 && !string.IsNullOrWhiteSpace(_pendingTransferPortalName)
-                ? string.Empty
-                : $", pendingPortal={_pendingTransferPortalName}";
+                ? $", pendingPortal={_pendingTransferPortalName}"
+                : string.Empty;
             string clockPacketText = _lastDecodedClockType >= 0
                 ? $", rawClock={_lastDecodedClockType}:{_lastDecodedClockDurationSec}s/{_lastDecodedClockPayloadLength}b"
                 : string.Empty;
@@ -990,6 +990,20 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             return true;
+        }
+        internal static bool TryParseTransferPacketPayload(
+            byte[] payload,
+            out int mapId,
+            out string portalName)
+        {
+            return TryParseTransferPacketPayload(
+                payload,
+                allowPortalName: true,
+                out mapId,
+                out portalName,
+                out _,
+                out _,
+                out _);
         }
         private static bool IsLikelyPacketTransferMapId(int mapId)
         {

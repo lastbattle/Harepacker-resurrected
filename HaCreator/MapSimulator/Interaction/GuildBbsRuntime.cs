@@ -37,7 +37,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int VisibleCashEmoticonCount = 7;
         private const int DefaultBasicEmoticonCount = 3;
         private const int DefaultCashEmoticonCount = 7;
-        private const int MaxClientCashEmoticonCount = 7;
+        internal const int ClientCashEmoticonCount = 7;
         private const int CashEmoticonItemIdStart = 5290000;
         private const int ClientCashEmoticonIdStart = 100;
         private const GuildBbsPermissionMask SupportedPermissionMask =
@@ -127,7 +127,7 @@ namespace HaCreator.MapSimulator.Interaction
         public void ConfigureEmoticonCatalog(int basicEmoticonCount, int cashEmoticonCount)
         {
             _basicEmoticonCount = Math.Max(1, basicEmoticonCount);
-            _cashEmoticonCount = Math.Max(1, Math.Min(MaxClientCashEmoticonCount, cashEmoticonCount));
+            _cashEmoticonCount = Math.Max(1, Math.Min(ClientCashEmoticonCount, cashEmoticonCount));
             NormalizeDraftState();
         }
 
@@ -357,6 +357,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EmoticonSlot = selectedThread.EmoticonSlot,
                 CashEmoticonPageIndex = selectedThread.CashEmoticonPageIndex
             };
+            NormalizeCashSelection(_compose);
             return $"Editing thread #{selectedThread.ThreadId}.";
         }
 

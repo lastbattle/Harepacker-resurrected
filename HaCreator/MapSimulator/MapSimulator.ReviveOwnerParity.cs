@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
+using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
@@ -9,6 +10,7 @@ using MapleLib.WzLib.WzStructure.Data;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace HaCreator.MapSimulator
@@ -199,18 +201,75 @@ namespace HaCreator.MapSimulator
             int premiumSafetyCharmCount = GetInventoryWindowItemCount(5131000);
             int safetyCharmCount = GetInventoryWindowItemCount(5130000);
             int wheelOfFortuneCount = GetInventoryWindowItemCount(5510000);
+            bool canUsePremiumCurrentFieldRecovery = IsPremiumCurrentFieldReviveUsable();
 
             // Client evidence:
             // - CUIRevive::OnCreate checks soul-stone state first.
             // - It then gates the upgrade-tomb branch on is_fieldtype_upgradetomb_usable plus Wheel of Fortune ownership.
-            // - It falls through to the premium/default revive-owner branch otherwise.
+            // - It falls through to the premium/default revive-owner branch otherwise, with an
+            //   extra safety-charm gate driven by CWvsContext state and an adjacent field-owned flag.
+            // WZ evidence:
+            // - Map info can carry revive-current-field markers such as reviveCurField and
+            //   forceReturnOnDead even though the current extracted dataset rarely surfaces them.
             // The simulator can back the Soul Stone branch from the active buff runtime and the
-            // other branches from the live inventory seam.
+            // other branches from the live inventory seam plus the closest available field rule.
             return ReviveOwnerRuntime.ResolveClientVariant(
                 hasSoulStone,
                 hasUpgradeTombChoice: wheelOfFortuneCount > 0 && IsUpgradeTombReviveUsable(),
-                hasPremiumSafetyCharm: premiumSafetyCharmCount > 0,
-                hasSafetyCharm: safetyCharmCount > 0);
+                hasPremiumSafetyCharm: canUsePremiumCurrentFieldRecovery && premiumSafetyCharmCount > 0,
+                hasSafetyCharm: canUsePremiumCurrentFieldRecovery && safetyCharmCount > 0);
+        }
+
+        private bool IsPremiumCurrentFieldReviveUsable()
+        {
+            MapInfo mapInfo = _mapBoard?.MapInfo;
+            if (mapInfo == null)
+            {
+                return true;
+            }
+
+            if (TryGetUnsupportedMapInfoFlag(mapInfo, "reviveCurField", out bool reviveCurField))
+            {
+                return reviveCurField;
+            }
+
+            if (TryGetUnsupportedMapInfoFlag(mapInfo, "ReviveCurFieldOfNoTransfer", out bool reviveCurFieldOfNoTransfer))
+            {
+                return reviveCurFieldOfNoTransfer;
+            }
+
+            if (TryGetUnsupportedMapInfoFlag(mapInfo, "forceReturnOnDead", out bool forceReturnOnDead) && forceReturnOnDead)
+            {
+                return false;
+            }
+
+            int mapId = mapInfo.id;
+            return mapInfo.forcedReturn <= 0
+                || mapInfo.forcedReturn == MapConstants.MaxMap
+                || mapInfo.forcedReturn == mapId;
+        }
+
+        private static bool TryGetUnsupportedMapInfoFlag(MapInfo mapInfo, string propertyName, out bool value)
+        {
+            value = false;
+            if (mapInfo?.unsupportedInfoProperties == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            var property = mapInfo.unsupportedInfoProperties.FirstOrDefault(
+                candidate => string.Equals(candidate?.Name, propertyName, StringComparison.Ordinal));
+            if (property == null)
+            {
+                return false;
+            }
+
+            value = property switch
+            {
+                WzStringProperty stringProperty when int.TryParse(stringProperty.Value, out int parsed) => parsed != 0,
+                _ => InfoTool.GetInt(property, 0) != 0
+            };
+            return true;
         }
 
         private bool IsUpgradeTombReviveUsable()

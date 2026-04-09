@@ -252,6 +252,7 @@ namespace HaCreator.MapSimulator
             if (!_gameState.HideUIMode) {
                 DrawUI(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, mouseState, TickCount, IsActive); // status bar and minimap
                 DrawPacketOwnedQuizNotice(TickCount);
+                DrawPacketOwnedScriptOwnerVisuals(TickCount);
             }
 
             if (!_gameState.HideUIMode)

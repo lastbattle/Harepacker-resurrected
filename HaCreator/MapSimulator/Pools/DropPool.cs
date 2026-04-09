@@ -192,6 +192,7 @@ namespace HaCreator.MapSimulator.Pools
         public float PickupTargetY { get; set; }
         public int PickupDurationMs { get; set; }
         public bool UsePickupAbsorbMotion { get; set; }
+        public Func<Vector2?> PickupTargetPositionResolver { get; set; }
         public int RemovalFadeDurationMs { get; set; }
         public bool TriggerPacketExplodeEffectOnRemove { get; set; }
         public float RemovalStartScale { get; set; } = 1f;
@@ -355,6 +356,12 @@ namespace HaCreator.MapSimulator.Pools
 
             if (UsePickupAbsorbMotion)
             {
+                if (PickupTargetPositionResolver?.Invoke() is Vector2 liveTargetPosition)
+                {
+                    PickupTargetX = liveTargetPosition.X;
+                    PickupTargetY = liveTargetPosition.Y;
+                }
+
                 float easedT = 1f - MathF.Pow(1f - t, 3f);
                 X = MathHelper.Lerp(PickupStartX, PickupTargetX, easedT);
                 Y = MathHelper.Lerp(PickupStartY, PickupTargetY, easedT) - (18f * MathF.Sin(t * MathF.PI));
@@ -481,7 +488,11 @@ namespace HaCreator.MapSimulator.Pools
         /// <summary>
         /// Start pickup animation
         /// </summary>
-        public void StartPickup(int currentTime, Vector2? targetPosition = null, int durationMs = PICKUP_DURATION)
+        public void StartPickup(
+            int currentTime,
+            Vector2? targetPosition = null,
+            int durationMs = PICKUP_DURATION,
+            Func<Vector2?> targetPositionResolver = null)
         {
             if (State != DropState.Idle)
                 return;
@@ -495,6 +506,7 @@ namespace HaCreator.MapSimulator.Pools
             UsePickupAbsorbMotion = targetPosition.HasValue;
             PickupTargetX = targetPosition?.X ?? X;
             PickupTargetY = targetPosition?.Y ?? GroundY - 30f;
+            PickupTargetPositionResolver = targetPositionResolver;
             RemovalFadeDurationMs = 0;
         }
 
@@ -900,6 +912,7 @@ namespace HaCreator.MapSimulator.Pools
             drop.PickupTargetY = 0f;
             drop.PickupDurationMs = 0;
             drop.UsePickupAbsorbMotion = false;
+            drop.PickupTargetPositionResolver = null;
             drop.RemovalFadeDurationMs = 0;
             drop.TriggerPacketExplodeEffectOnRemove = false;
             drop.RemovalStartScale = 1f;
@@ -1011,7 +1024,8 @@ namespace HaCreator.MapSimulator.Pools
             DropPickupActorKind actorKind,
             string actorName = null,
             bool pickedByPet = false,
-            Vector2? pickupTargetPosition = null)
+            Vector2? pickupTargetPosition = null,
+            Func<Vector2?> pickupTargetPositionResolver = null)
         {
             if (actorKind == DropPickupActorKind.Player)
             {
@@ -1023,7 +1037,8 @@ namespace HaCreator.MapSimulator.Pools
                     actorKind,
                     notifyLocalPickup: false,
                     actorName,
-                    pickupTargetPosition);
+                    pickupTargetPosition,
+                    pickupTargetPositionResolver: pickupTargetPositionResolver);
             }
 
             if (actorKind == DropPickupActorKind.Pet)
@@ -1036,7 +1051,8 @@ namespace HaCreator.MapSimulator.Pools
                     actorKind,
                     notifyLocalPickup: false,
                     actorName,
-                    pickupTargetPosition);
+                    pickupTargetPosition,
+                    pickupTargetPositionResolver: pickupTargetPositionResolver);
             }
 
             if (actorKind == DropPickupActorKind.Mob)
@@ -1049,7 +1065,8 @@ namespace HaCreator.MapSimulator.Pools
                     actorKind,
                     notifyLocalPickup: false,
                     actorName,
-                    pickupTargetPosition);
+                    pickupTargetPosition,
+                    pickupTargetPositionResolver: pickupTargetPositionResolver);
             }
 
             if (actorKind == DropPickupActorKind.Other)
@@ -1062,7 +1079,8 @@ namespace HaCreator.MapSimulator.Pools
                     actorKind,
                     notifyLocalPickup: false,
                     actorName,
-                    pickupTargetPosition);
+                    pickupTargetPosition,
+                    pickupTargetPositionResolver: pickupTargetPositionResolver);
             }
 
             return false;
@@ -2060,7 +2078,8 @@ namespace HaCreator.MapSimulator.Pools
             bool notifyLocalPickup,
             string actorName = null,
             Vector2? pickupTargetPosition = null,
-            int pickupDurationMs = DropItem.PACKET_ABSORB_DURATION)
+            int pickupDurationMs = DropItem.PACKET_ABSORB_DURATION,
+            Func<Vector2?> pickupTargetPositionResolver = null)
         {
             if (drop == null || drop.State != DropState.Idle || !drop.CanPickup)
             {
@@ -2070,7 +2089,7 @@ namespace HaCreator.MapSimulator.Pools
             actorName = string.IsNullOrWhiteSpace(actorName)
                 ? _pickupActorNameResolver?.Invoke(actorKind, pickerId, pickedByPet)
                 : actorName;
-            drop.StartPickup(currentTime, pickupTargetPosition, pickupDurationMs);
+            drop.StartPickup(currentTime, pickupTargetPosition, pickupDurationMs, pickupTargetPositionResolver);
             RecordRecentPickupItem(drop, pickerId, pickedByPet, currentTime, actorKind, actorName);
             _onDropPickedUp?.Invoke(drop);
 
@@ -2222,7 +2241,10 @@ namespace HaCreator.MapSimulator.Pools
                             currentTime,
                             DropPickupActorKind.Player,
                             notifyLocalPickup: true,
-                            pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet));
+                            pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet),
+                            pickupTargetPositionResolver: actorPositionResolver == null
+                                ? null
+                                : () => actorPositionResolver(packet.Reason, packet));
                     }
 
                     return ResolveRemotePickup(
@@ -2231,7 +2253,10 @@ namespace HaCreator.MapSimulator.Pools
                         currentTime,
                         DropPickupActorKind.Player,
                         actorNameResolver?.Invoke(packet.Reason, packet),
-                        pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet));
+                        pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet),
+                        pickupTargetPositionResolver: actorPositionResolver == null
+                            ? null
+                            : () => actorPositionResolver(packet.Reason, packet));
 
                 case PacketDropLeaveReason.MobPickup:
                     return ResolveRemotePickup(
@@ -2240,7 +2265,10 @@ namespace HaCreator.MapSimulator.Pools
                         currentTime,
                         DropPickupActorKind.Mob,
                         actorNameResolver?.Invoke(packet.Reason, packet),
-                        pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet));
+                        pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet),
+                        pickupTargetPositionResolver: actorPositionResolver == null
+                            ? null
+                            : () => actorPositionResolver(packet.Reason, packet));
 
                 case PacketDropLeaveReason.PetPickup:
                     if (packet.ActorId == localCharacterId)
@@ -2253,7 +2281,10 @@ namespace HaCreator.MapSimulator.Pools
                             currentTime,
                             DropPickupActorKind.Pet,
                             notifyLocalPickup: true,
-                            pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet));
+                            pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet),
+                            pickupTargetPositionResolver: actorPositionResolver == null
+                                ? null
+                                : () => actorPositionResolver(packet.Reason, packet));
                     }
 
                     int remotePetActorId = petPickupActorIdResolver?.Invoke(packet) ?? packet.ActorId;
@@ -2264,7 +2295,10 @@ namespace HaCreator.MapSimulator.Pools
                         DropPickupActorKind.Pet,
                         actorNameResolver?.Invoke(packet.Reason, packet),
                         pickedByPet: true,
-                        pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet));
+                        pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet),
+                        pickupTargetPositionResolver: actorPositionResolver == null
+                            ? null
+                            : () => actorPositionResolver(packet.Reason, packet));
 
                 default:
                     return false;

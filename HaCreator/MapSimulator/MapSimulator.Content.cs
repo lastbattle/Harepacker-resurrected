@@ -315,7 +315,9 @@ namespace HaCreator.MapSimulator
                         UserScreenScaleFactor,
                         _DxDeviceManager.GraphicsDevice,
                         usedProps,
-                        _playerManager?.Player?.Build?.Gender);
+                        _playerManager?.Player?.Build?.Gender,
+                        _questRuntime.GetCurrentState,
+                        questId => _questRuntime.TryGetQuestRecordValue(questId, out string value) ? value : string.Empty);
                     if (npcItem != null)
                         mapObjects_NPCs.Add(npcItem);
                 }
@@ -1442,7 +1444,9 @@ namespace HaCreator.MapSimulator
                         UserScreenScaleFactor,
                         _DxDeviceManager.GraphicsDevice,
                         usedProps,
-                        _playerManager?.Player?.Build?.Gender);
+                        _playerManager?.Player?.Build?.Gender,
+                        _questRuntime.GetCurrentState,
+                        questId => _questRuntime.TryGetQuestRecordValue(questId, out string value) ? value : string.Empty);
                     if (npcItem != null)
                     {
                         mapObjects_NPCs.Add(npcItem);

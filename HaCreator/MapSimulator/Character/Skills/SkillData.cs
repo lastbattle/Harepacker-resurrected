@@ -1291,6 +1291,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Vector2? PreferredTargetPosition { get; set; }
         public bool PreferStoredTargetPosition { get; set; }
         public ShootAmmoSelection ResolvedShootAmmoSelection { get; set; }
+        public int ResolvedShootWeaponCode { get; set; }
+        public int ResolvedShootWeaponItemId { get; set; }
         public bool AllowFollowUpQueue { get; set; } = true;
         public bool ForceCritical { get; set; }
         public bool IsQueuedFinalAttack { get; set; }

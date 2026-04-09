@@ -113,7 +113,7 @@ namespace HaCreator.MapSimulator.UI
         public override bool CapturesKeyboardInput => IsVisible && (UsingNativeEditHost ? _nativeEditHost.HasFocus : _editControl.HasFocus);
         bool ISoftKeyboardHost.WantsSoftKeyboard => !UsingNativeEditHost && IsVisible && _editControl.HasFocus && _softKeyboardActive;
         SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => SoftKeyboardKeyboardType.AlphaNumeric;
-        int ISoftKeyboardHost.SoftKeyboardTextLength => _editControl.Text?.Length ?? 0;
+        int ISoftKeyboardHost.SoftKeyboardTextLength => CurrentInput?.Length ?? 0;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => InputMaxLength;
         bool ISoftKeyboardHost.CanSubmitSoftKeyboard => CanSubmitAnswer();
 
@@ -273,6 +273,7 @@ namespace HaCreator.MapSimulator.UI
             if (UsingNativeEditHost)
             {
                 _nativeEditHost.UpdateBounds(GetNativeInputBounds());
+                _nativeEditHost.SynchronizeState();
             }
             else
             {
@@ -645,7 +646,7 @@ namespace HaCreator.MapSimulator.UI
 
         private bool CanSubmitAnswer()
         {
-            return _editControl.CanSubmitAnswer(GetRemainingSeconds(Environment.TickCount));
+            return !string.IsNullOrWhiteSpace(CurrentInput) && GetRemainingSeconds(Environment.TickCount) > 0;
         }
 
         private static Rectangle FitTexture(Rectangle bounds, int width, int height, bool upscale)

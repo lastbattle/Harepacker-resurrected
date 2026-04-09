@@ -39,6 +39,8 @@ namespace HaCreator.MapSimulator.Loaders
         private static readonly ConcurrentDictionary<string, Dictionary<string, Texture2D>> _buffIconTextureCache = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, IReadOnlyDictionary<string, BuffIconCatalogEntry>> _buffIconCatalogCache = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, Texture2D[]> _skillTooltipTextureCache = new(StringComparer.Ordinal);
+        private static readonly ConcurrentDictionary<string, Texture2D[]> _statusBarCooldownMaskCache = new(StringComparer.Ordinal);
+        private static readonly ConcurrentDictionary<string, Texture2D> _statusBarTemporaryStatViewCache = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, Dictionary<string, StatusBarKeyDownBarTextures>> _keyDownBarTextureCache = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, StatusBarWarningAnimation> _warningAnimationCache = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, (Dictionary<MapSimulatorChatTargetType, Texture2D> Textures, Dictionary<MapSimulatorChatTargetType, Point> Origins)> _chatTargetTextureCache = new(StringComparer.Ordinal);
@@ -469,6 +471,8 @@ namespace HaCreator.MapSimulator.Loaders
                     statusBar.SetGaugeTextures(hpGaugeTexture, mpGaugeTexture, expGaugeTexture);
                     statusBar.SetBuffIconTextures(LoadBuffIconTextures(uiBuffIcon, device));
                     }
+                    statusBar.SetCooldownMasks(LoadStatusBarCooldownMasks(device, isBigBang: true));
+                    statusBar.SetTemporaryStatViewTexture(LoadStatusBarTemporaryStatViewTexture(device, isBigBang: true));
                     statusBar.SetTooltipTextures(LoadSkillTooltipTextures(device));
                     statusBar.SetWarningAnimations(
                         LoadStatusBarWarningAnimation(mainBarProperties?["aniHPGauge"] as WzSubProperty, device),
@@ -626,15 +630,16 @@ namespace HaCreator.MapSimulator.Loaders
                     chatUI.SetWhisperPickerTextures(
                         LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["list5"] as WzCanvasProperty, device),
                         LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["list4"] as WzCanvasProperty, device));
-                    chatUI.SetWhisperPickerDialogTextures(
-                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["t"] as WzCanvasProperty, device),
-                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["c"] as WzCanvasProperty, device),
-                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["s"] as WzCanvasProperty, device),
-                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["bar"] as WzCanvasProperty, device),
-                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtPrev"]?["normal"]?["0"] as WzCanvasProperty, device),
-                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtNext"]?["normal"]?["0"] as WzCanvasProperty, device),
-                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtOK"]?["normal"]?["0"] as WzCanvasProperty, device),
-                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtClose"]?["normal"]?["0"] as WzCanvasProperty, device));
+            chatUI.SetWhisperPickerDialogTextures(
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["t"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["c"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["s"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["bar"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["line"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtPrev"]?["normal"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtNext"]?["normal"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtOK"]?["normal"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtClose"]?["normal"]?["0"] as WzCanvasProperty, device));
                     Vector2 chatTargetLabelPos = ResolveCanvasPosition(chatFrameAnchorOrigin, subProperty_chatTarget?["all"] as WzCanvasProperty).ToVector2();
                     Vector2 chatEnterPos = ResolveCanvasPosition(chatFrameAnchorOrigin, chatEnterCanvas).ToVector2();
                     Rectangle chatEnterBounds = ResolveCanvasBounds(chatFrameAnchorOrigin, chatEnterCanvas);
@@ -673,6 +678,11 @@ namespace HaCreator.MapSimulator.Loaders
                         LoadPointNotificationAnimation(mainBarProperties?["SpNotify"] as WzSubProperty, device));
                     chatUI.SetPointNotificationAnchor(mainBarFrameOrigin);
                     chatUI.BindControls(obj_Ui_chatTarget, obj_Ui_chatOpen, obj_Ui_chatClose, obj_Ui_scrollUp, obj_Ui_scrollDown, obj_Ui_BtCharacter, obj_Ui_MemoIcon);
+                    chatUI.RegisterShortcutTooltipButton("BtEquip", obj_Ui_BtEquip);
+                    chatUI.RegisterShortcutTooltipButton("BtInven", obj_Ui_BtInven);
+                    chatUI.RegisterShortcutTooltipButton("BtStat", obj_Ui_BtStat);
+                    chatUI.RegisterShortcutTooltipButton("BtSkill", obj_Ui_BtSkill);
+                    chatUI.RegisterShortcutTooltipButton("BtQuest", obj_Ui_BtQuest);
 
                     var result = new Tuple<StatusBarUI, StatusBarChatUI>(statusBar, chatUI);
                     _statusBarCache[statusBarCacheKey] = result;
@@ -822,6 +832,8 @@ namespace HaCreator.MapSimulator.Loaders
                     statusBar.SetGaugeTextures(hpGaugeTexture, mpGaugeTexture, expGaugeTexture);
                     statusBar.SetBuffIconTextures(LoadBuffIconTextures(uiBuffIcon, device));
                     }
+                    statusBar.SetCooldownMasks(LoadStatusBarCooldownMasks(device, isBigBang: false));
+                    statusBar.SetTemporaryStatViewTexture(LoadStatusBarTemporaryStatViewTexture(device, isBigBang: false));
                     statusBar.SetTooltipTextures(LoadSkillTooltipTextures(device));
                     statusBar.SetWarningAnimations(
                         LoadStatusBarWarningAnimation(gaugeProperties?["hpFlash"] as WzSubProperty, device),
@@ -1015,6 +1027,56 @@ namespace HaCreator.MapSimulator.Loaders
             tooltipFrames[2] = LoadCanvasTexture(mainProperty["tip2"] as WzCanvasProperty, device);
             _skillTooltipTextureCache[cacheKey] = tooltipFrames;
             return tooltipFrames;
+        }
+
+        private static Texture2D[] LoadStatusBarCooldownMasks(GraphicsDevice device, bool isBigBang)
+        {
+            if (device == null)
+            {
+                return Array.Empty<Texture2D>();
+            }
+
+            string cacheKey = $"{GetDeviceCachePrefix(device)}|statusbarCooldown|bb:{isBigBang}";
+            if (_statusBarCooldownMaskCache.TryGetValue(cacheKey, out Texture2D[] cachedMasks))
+            {
+                return cachedMasks;
+            }
+
+            WzImage uiWindowImage = Program.FindImage("UI", isBigBang ? "UIWindow2.img" : "UIWindow.img");
+            WzSubProperty coolTimeProperty = isBigBang
+                ? uiWindowImage?["Skill"]?["main"]?["CoolTime"] as WzSubProperty
+                : uiWindowImage?["Skill"]?["CoolTime"] as WzSubProperty;
+
+            Texture2D[] masks = new Texture2D[16];
+            if (coolTimeProperty != null)
+            {
+                for (int i = 0; i < masks.Length; i++)
+                {
+                    masks[i] = LoadCanvasTexture(coolTimeProperty[i.ToString()] as WzCanvasProperty, device);
+                }
+            }
+
+            _statusBarCooldownMaskCache[cacheKey] = masks;
+            return masks;
+        }
+
+        private static Texture2D LoadStatusBarTemporaryStatViewTexture(GraphicsDevice device, bool isBigBang)
+        {
+            if (device == null)
+            {
+                return null;
+            }
+
+            string cacheKey = $"{GetDeviceCachePrefix(device)}|statusbarTemporaryStat|bb:{isBigBang}";
+            if (_statusBarTemporaryStatViewCache.TryGetValue(cacheKey, out Texture2D cachedTexture))
+            {
+                return cachedTexture;
+            }
+
+            WzImage uiWindowImage = Program.FindImage("UI", isBigBang ? "UIWindow2.img" : "UIWindow.img");
+            Texture2D texture = LoadCanvasTexture(uiWindowImage?["TemporaryStatView"]?["1"] as WzCanvasProperty, device);
+            _statusBarTemporaryStatViewCache[cacheKey] = texture;
+            return texture;
         }
 
         private static WzCanvasProperty ResolveBigBangStatusBarBackgroundCanvas(WzSubProperty mainBarProperties, RenderParameters renderParams)
@@ -1758,6 +1820,33 @@ namespace HaCreator.MapSimulator.Loaders
             return maxWidth;
         }
 
+        private static int ResolveUiButtonSnapshotHeight(WzSubProperty buttonProperty)
+        {
+            if (buttonProperty == null)
+            {
+                return 0;
+            }
+
+            int maxHeight = 0;
+            foreach (string stateName in new[] { "normal", "disabled", "pressed", "mouseOver" })
+            {
+                if (buttonProperty[stateName] is not WzSubProperty stateProperty)
+                {
+                    continue;
+                }
+
+                foreach (WzImageProperty frameProperty in stateProperty.WzProperties)
+                {
+                    if (frameProperty is WzCanvasProperty canvasProperty)
+                    {
+                        maxHeight = Math.Max(maxHeight, canvasProperty.GetLinkedWzCanvasBitmap()?.Height ?? 0);
+                    }
+                }
+            }
+
+            return maxHeight;
+        }
+
         internal static int ResolveCollapsedMinimapButtonReserveWidthForTesting(
             int minimizeButtonWidth,
             int maximizeButtonWidth,
@@ -1808,19 +1897,58 @@ namespace HaCreator.MapSimulator.Loaders
                 + Math.Max(0, reserveWidth));
         }
 
+        internal static int ResolveCollapsedMinimapBarHeightForTesting(
+            int leftHeight,
+            int centerHeight,
+            int rightHeight,
+            int fallbackHeight)
+        {
+            return Math.Max(
+                Math.Max(1, fallbackHeight),
+                Math.Max(Math.Max(0, leftHeight), Math.Max(Math.Max(0, centerHeight), Math.Max(0, rightHeight))));
+        }
+
+        internal static int ResolveCollapsedMinimapTitleLaneHeightForTesting(
+            int barHeight,
+            int laneTop,
+            int buttonHeight)
+        {
+            int clampedBarHeight = Math.Max(1, barHeight);
+            int clampedLaneTop = Math.Max(0, laneTop);
+            int maxLaneHeight = Math.Max(1, clampedBarHeight - clampedLaneTop);
+            int desiredLaneHeight = Math.Max(1, buttonHeight);
+            return Math.Min(maxLaneHeight, desiredLaneHeight);
+        }
+
+        internal static int ResolveCollapsedMinimapVerticalContentOffsetForTesting(
+            int contentHeight,
+            int laneTop,
+            int laneHeight,
+            int elementHeight)
+        {
+            int clampedContentHeight = Math.Max(1, contentHeight);
+            int clampedElementHeight = Math.Max(0, elementHeight);
+            int clampedLaneTop = Math.Max(0, laneTop);
+            int clampedLaneHeight = Math.Max(1, laneHeight);
+            int centeredOffset = clampedLaneTop + Math.Max(0, (clampedLaneHeight - clampedElementHeight) / 2);
+            return Math.Min(Math.Max(0, centeredOffset), Math.Max(0, clampedContentHeight - clampedElementHeight));
+        }
+
         private static System.Drawing.Bitmap RenderCollapsedMinimapTitleContent(
             System.Drawing.Bitmap mapMark,
             string title,
             float userScreenScaleFactor,
             System.Drawing.Color textColor,
             int maxBarWidth,
-            int reserveWidth)
+            int reserveWidth,
+            int barHeight,
+            int titleLaneTop,
+            int titleLaneHeight)
         {
             const int leftInset = 4;
             const int iconGap = 2;
             const int textLeftPadding = 2;
             const int textRightPadding = 2;
-            const int fallbackBarHeight = 20;
 
             string renderTitle = string.IsNullOrWhiteSpace(title) ? string.Empty : title;
             int iconWidth = mapMark?.Width ?? 0;
@@ -1851,7 +1979,9 @@ namespace HaCreator.MapSimulator.Loaders
                 mapMark != null ? iconGap : 0,
                 textLeftPadding,
                 textRightPadding);
-            int contentHeight = Math.Max(fallbackBarHeight, Math.Max(iconHeight, measuredTextHeight));
+            int contentHeight = Math.Max(
+                ResolveCollapsedMinimapBarHeightForTesting(barHeight, 0, 0, fallbackHeight: 20),
+                Math.Max(iconHeight, measuredTextHeight));
 
             System.Drawing.Bitmap contentBitmap = new System.Drawing.Bitmap(contentWidth, contentHeight);
             using System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(contentBitmap);
@@ -1861,13 +1991,21 @@ namespace HaCreator.MapSimulator.Loaders
             int currentX = leftInset;
             if (mapMark != null)
             {
-                int iconY = Math.Max(0, (contentHeight - iconHeight) / 2);
+                int iconY = ResolveCollapsedMinimapVerticalContentOffsetForTesting(
+                    contentHeight,
+                    titleLaneTop,
+                    titleLaneHeight,
+                    iconHeight);
                 graphics.DrawImageUnscaled(mapMark, currentX, iconY);
                 currentX += iconWidth + iconGap;
             }
 
             currentX += textLeftPadding;
-            int textY = Math.Max(0, (contentHeight - measuredTextHeight) / 2);
+            int textY = ResolveCollapsedMinimapVerticalContentOffsetForTesting(
+                contentHeight,
+                titleLaneTop,
+                titleLaneHeight,
+                measuredTextHeight);
             System.Drawing.Rectangle textRect = new System.Drawing.Rectangle(
                 currentX,
                 textY,
@@ -2157,6 +2295,17 @@ namespace HaCreator.MapSimulator.Loaders
             System.Drawing.Bitmap collapsedBarLeft = ((WzCanvasProperty)collapsedBarProperty?["w"])?.GetLinkedWzCanvasBitmap();
             System.Drawing.Bitmap collapsedBarCenter = ((WzCanvasProperty)collapsedBarProperty?["c"])?.GetLinkedWzCanvasBitmap();
             System.Drawing.Bitmap collapsedBarRight = ((WzCanvasProperty)collapsedBarProperty?["e"])?.GetLinkedWzCanvasBitmap();
+            int collapsedBarHeight = ResolveCollapsedMinimapBarHeightForTesting(
+                collapsedBarLeft?.Height ?? 0,
+                collapsedBarCenter?.Height ?? 0,
+                collapsedBarRight?.Height ?? 0,
+                fallbackHeight: 20);
+            int collapsedTitleLaneHeight = ResolveCollapsedMinimapTitleLaneHeightForTesting(
+                collapsedBarHeight,
+                laneTop: 4,
+                buttonHeight: Math.Max(
+                    ResolveUiButtonSnapshotHeight(collapsedMaximizeButtonProperty),
+                    ResolveUiButtonSnapshotHeight(collapsedMapButtonProperty)));
             int collapsedTitleMaxBarWidth = Math.Max(1, fullMiniMapStackPanel.GetSize().Width);
             System.Drawing.Bitmap collapsedTitleContent = RenderCollapsedMinimapTitleContent(
                 mapMark,
@@ -2164,7 +2313,10 @@ namespace HaCreator.MapSimulator.Loaders
                 UserScreenScaleFactor,
                 color_foreGround,
                 collapsedTitleMaxBarWidth,
-                collapsedButtonReserveWidth);
+                collapsedButtonReserveWidth,
+                collapsedBarHeight,
+                titleLaneTop: 4,
+                collapsedTitleLaneHeight);
             HaUIStackPanel collapsedMiniMapStackPanel = new HaUIStackPanel(HaUIStackOrientation.Vertical);
             collapsedMiniMapStackPanel.AddRenderable(new HaUIImage(new HaUIInfo()
             {

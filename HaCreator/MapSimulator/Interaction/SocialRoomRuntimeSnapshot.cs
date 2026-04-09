@@ -44,6 +44,10 @@ namespace HaCreator.MapSimulator.Interaction
         public int MiniRoomOmokStoneAnimationTimeLeftMs { get; set; }
         public int MiniRoomOmokDialogEffectTimeLeftMs { get; set; }
         public string MiniRoomOmokDialogStatus { get; set; }
+        public string MiniRoomOmokPendingPromptText { get; set; }
+        public int MiniRoomOmokLastClientSoundStringPoolId { get; set; } = -1;
+        public string MiniRoomOmokLastClientSoundPath { get; set; }
+        public string MiniRoomOmokLastOutboundPacketSummary { get; set; }
         public List<int> MiniRoomOmokBoard { get; set; } = new();
         public List<SocialRoomOmokMoveSnapshot> MiniRoomOmokMoveHistory { get; set; } = new();
         public int TradeLocalOfferMeso { get; set; }
@@ -115,6 +119,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string Title { get; set; }
         public string PromptText { get; set; }
         public string DefaultText { get; set; }
+        public string CurrentText { get; set; }
         public int StringPoolId { get; set; } = -1;
         public int MinimumLength { get; set; }
         public int MaximumLength { get; set; }

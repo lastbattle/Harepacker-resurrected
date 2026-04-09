@@ -191,6 +191,7 @@ namespace HaCreator.MapSimulator.UI
         private int _compositionCursorPosition = -1;
         private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
         internal Func<int, int, bool> OnImeCandidateSelected;
+        internal Func<IntPtr> ResolveImeWindowHandle;
 
         public WorldMapUI(
             IDXObject frame,
@@ -437,6 +438,7 @@ namespace HaCreator.MapSimulator.UI
 
             ClearCompositionText();
             InsertSearchText(text);
+            UpdateImePresentationPlacement();
         }
 
         public override void HandleCompositionText(string text)
@@ -478,6 +480,7 @@ namespace HaCreator.MapSimulator.UI
             _compositionClauseOffsets = ClampClauseOffsets(effectiveState.ClauseOffsets, _compositionText.Length);
             _compositionCursorPosition = Math.Clamp(effectiveState.CursorPosition, -1, _compositionText.Length);
             _caretBlinkTick = Environment.TickCount;
+            UpdateImePresentationPlacement();
         }
 
         public override void ClearCompositionText()
@@ -493,6 +496,7 @@ namespace HaCreator.MapSimulator.UI
             _candidateListState = CapturesKeyboardInput && state != null && state.HasCandidates
                 ? state
                 : ImeCandidateListState.Empty;
+            UpdateImePresentationPlacement();
         }
 
         public override void ClearImeCandidateList()
@@ -679,6 +683,7 @@ namespace HaCreator.MapSimulator.UI
             UpdateHoveredSearchResult(mouseState);
             HandleSearchMouseInput(mouseState);
             HandleSearchKeyboardInput(keyboardState, tickCount);
+            UpdateImePresentationPlacement();
             _previousSearchKeyboardState = keyboardState;
             _previousMouseState = mouseState;
         }
@@ -2672,6 +2677,88 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return new SearchInputVisualState(visibleText, visibleStart, visibleCaretIndex, visibleCompositionStart, visibleCompositionLength);
+        }
+
+        private void UpdateImePresentationPlacement()
+        {
+            if (!CapturesKeyboardInput
+                || !_searchMode
+                || _font == null
+                || ResolveImeWindowHandle == null
+                || (_compositionText.Length == 0 && !_candidateListState.HasCandidates))
+            {
+                return;
+            }
+
+            IntPtr windowHandle = ResolveImeWindowHandle();
+            if (windowHandle == IntPtr.Zero)
+            {
+                return;
+            }
+
+            Rectangle searchInputBounds = GetSearchInputBounds();
+            SearchInputVisualState searchVisual = BuildSearchInputVisualState();
+            int visibleCaretIndex = Math.Clamp(searchVisual.VisibleCaretIndex, 0, searchVisual.VisibleText.Length);
+            string caretPrefix = visibleCaretIndex <= 0
+                ? string.Empty
+                : searchVisual.VisibleText[..visibleCaretIndex];
+            int compositionCaretWidth = MeasureImePlacementWidth(caretPrefix);
+
+            bool useClauseAnchor = searchVisual.VisibleCompositionLength > 0;
+            int clauseAnchorIndex = useClauseAnchor
+                ? Math.Clamp(searchVisual.VisibleCompositionStart + ResolveCompositionAnchorIndex(), 0, searchVisual.VisibleText.Length)
+                : visibleCaretIndex;
+            string clausePrefix = clauseAnchorIndex <= 0
+                ? string.Empty
+                : searchVisual.VisibleText[..clauseAnchorIndex];
+            int clauseAnchorWidth = MeasureImePlacementWidth(clausePrefix);
+            int clauseWidth = useClauseAnchor
+                ? MeasureImePlacementWidth(ResolveActiveCompositionClauseText())
+                : 1;
+
+            SkillMacroImeWindowPlacement placement = SkillMacroImeWindowPlacementLayout.Resolve(
+                searchInputBounds,
+                SearchTextInsetX,
+                _font.LineSpacing,
+                compositionCaretWidth,
+                useClauseAnchor,
+                clauseAnchorWidth,
+                clauseWidth);
+            WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement);
+        }
+
+        private int MeasureImePlacementWidth(string text)
+        {
+            if (_font == null || string.IsNullOrEmpty(text))
+            {
+                return 0;
+            }
+
+            return (int)Math.Round(_font.MeasureString(text).X);
+        }
+
+        private string ResolveActiveCompositionClauseText()
+        {
+            if (string.IsNullOrEmpty(_compositionText))
+            {
+                return string.Empty;
+            }
+
+            if (_compositionClauseOffsets.Count >= 2)
+            {
+                int cursor = Math.Clamp(_compositionCursorPosition, 0, _compositionText.Length);
+                for (int i = 0; i < _compositionClauseOffsets.Count - 1; i++)
+                {
+                    int start = Math.Clamp(_compositionClauseOffsets[i], 0, _compositionText.Length);
+                    int end = Math.Clamp(_compositionClauseOffsets[i + 1], start, _compositionText.Length);
+                    if (cursor >= start && cursor <= end)
+                    {
+                        return _compositionText[start..end];
+                    }
+                }
+            }
+
+            return _compositionText;
         }
 
         private Point ResolveCandidateWindowOrigin(Viewport viewport, int width, int height)

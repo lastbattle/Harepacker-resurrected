@@ -5,7 +5,15 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class QuestRewardRaiseManagerRuntime
     {
+        private sealed record QuestRewardRaiseOwnerSnapshot(
+            int OwnerItemId,
+            int QrData,
+            int MaxDropCount,
+            QuestRewardRaiseWindowMode WindowMode);
+
         private int _nextManagerSessionId = 1;
+        private readonly System.Collections.Generic.Dictionary<int, QuestRewardRaiseOwnerSnapshot> _ownerSnapshotsByQuestId = new();
+        private readonly System.Collections.Generic.Dictionary<int, Point> _windowPositionsByOwnerItemId = new();
 
         public QuestRewardRaiseState ActiveRaise { get; private set; }
 
@@ -17,15 +25,29 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
-            QuestRewardRaiseWindowMode windowMode = prompt.OwnerContext?.WindowMode ?? QuestRewardRaiseWindowMode.Selection;
+            int questId = Math.Max(0, prompt.QuestId);
+            _ownerSnapshotsByQuestId.TryGetValue(questId, out QuestRewardRaiseOwnerSnapshot snapshot);
+
+            QuestRewardRaiseWindowMode windowMode = prompt.OwnerContext?.WindowMode
+                ?? snapshot?.WindowMode
+                ?? QuestRewardRaiseWindowMode.Selection;
+            int ownerItemId = Math.Max(0, prompt.OwnerContext?.OwnerItemId ?? snapshot?.OwnerItemId ?? 0);
+            int qrData = prompt.OwnerContext?.InitialQrData ?? snapshot?.QrData ?? 0;
+            int maxDropCount = Math.Max(1, prompt.OwnerContext?.MaxDropCount ?? snapshot?.MaxDropCount ?? 1);
             Point windowPosition = defaultPosition;
             if (ActiveRaise != null
                 && ActiveRaise.Prompt?.QuestId == prompt.QuestId
-                && ActiveRaise.OwnerItemId == Math.Max(0, prompt.OwnerContext?.OwnerItemId ?? 0)
+                && ActiveRaise.OwnerItemId == ownerItemId
                 && ActiveRaise.WindowMode == windowMode
                 && ActiveRaise.WindowPosition != Point.Zero)
             {
                 windowPosition = ActiveRaise.WindowPosition;
+            }
+            else if (ownerItemId > 0
+                && _windowPositionsByOwnerItemId.TryGetValue(ownerItemId, out Point backupPosition)
+                && backupPosition != Point.Zero)
+            {
+                windowPosition = backupPosition;
             }
 
             ActiveRaise = new QuestRewardRaiseState
@@ -34,13 +56,19 @@ namespace HaCreator.MapSimulator.Interaction
                 Prompt = prompt,
                 GroupIndex = 0,
                 ManagerSessionId = GetNextManagerSessionId(),
-                OwnerItemId = Math.Max(0, prompt.OwnerContext?.OwnerItemId ?? 0),
-                QrData = prompt.OwnerContext?.InitialQrData ?? 0,
-                MaxDropCount = Math.Max(1, prompt.OwnerContext?.MaxDropCount ?? 1),
+                OwnerItemId = ownerItemId,
+                QrData = qrData,
+                MaxDropCount = maxDropCount,
                 WindowMode = windowMode,
                 DisplayMode = windowMode,
                 WindowPosition = windowPosition
             };
+
+            if (questId > 0)
+            {
+                _ownerSnapshotsByQuestId[questId] = new QuestRewardRaiseOwnerSnapshot(ownerItemId, qrData, maxDropCount, windowMode);
+            }
+
             return ActiveRaise;
         }
 
@@ -53,8 +81,62 @@ namespace HaCreator.MapSimulator.Interaction
         public QuestRewardRaiseState DestroyActiveRaise()
         {
             QuestRewardRaiseState activeRaise = ActiveRaise;
+            BackupWindowPosition(activeRaise);
             ActiveRaise = null;
             return activeRaise;
+        }
+
+        public bool TrySetQrDataForQuest(int questId, int qrData, out QuestRewardRaiseState updatedState)
+        {
+            updatedState = null;
+            questId = Math.Max(0, questId);
+            if (questId <= 0)
+            {
+                return false;
+            }
+
+            if (_ownerSnapshotsByQuestId.TryGetValue(questId, out QuestRewardRaiseOwnerSnapshot snapshot))
+            {
+                _ownerSnapshotsByQuestId[questId] = snapshot with { QrData = qrData };
+            }
+
+            if (ActiveRaise?.Prompt?.QuestId != questId)
+            {
+                return snapshot != null;
+            }
+
+            ActiveRaise.QrData = qrData;
+            updatedState = ActiveRaise;
+            return true;
+        }
+
+        public QuestRewardRaiseState DestroyByQuestId(int questId)
+        {
+            questId = Math.Max(0, questId);
+            if (questId <= 0 || ActiveRaise?.Prompt?.QuestId != questId)
+            {
+                return null;
+            }
+
+            return DestroyActiveRaise();
+        }
+
+        private void BackupWindowPosition(QuestRewardRaiseState state)
+        {
+            if (state?.OwnerItemId > 0 && state.WindowPosition != Point.Zero)
+            {
+                _windowPositionsByOwnerItemId[state.OwnerItemId] = state.WindowPosition;
+            }
+
+            int questId = Math.Max(0, state?.Prompt?.QuestId ?? 0);
+            if (questId > 0)
+            {
+                _ownerSnapshotsByQuestId[questId] = new QuestRewardRaiseOwnerSnapshot(
+                    Math.Max(0, state.OwnerItemId),
+                    state.QrData,
+                    Math.Max(1, state.MaxDropCount),
+                    state.WindowMode);
+            }
         }
 
         private int GetNextManagerSessionId()

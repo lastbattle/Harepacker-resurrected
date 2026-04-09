@@ -88,6 +88,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, PacketRouteState> _packetRoutes = new();
         private readonly List<int> _packetRouteOrder = new();
         private readonly List<PacketCatalogEntry> _cashPacketCatalogEntries = new();
+        private readonly List<PacketCatalogEntry> _cashInventoryPacketEntries = new();
         private readonly List<PacketCatalogEntry> _itcPacketCatalogEntries = new();
         private readonly List<PacketCatalogEntry> _itcSalePacketEntries = new();
         private readonly List<PacketCatalogEntry> _itcPurchasePacketEntries = new();
@@ -124,6 +125,8 @@ namespace HaCreator.MapSimulator.UI
         private int _cashCharacterCount;
         private readonly int[] _cashWishlistSerialNumbers = new int[10];
         private string _cashItemLastSummary = "No cash-item result routed yet.";
+        private string _cashGiftLastSummary = "No packet-authored gift result routed yet.";
+        private string _cashPurchaseRecordSummary = "No packet-authored purchase record routed yet.";
         private int _itcNormalItemSubtype = -1;
         private int _itcNormalItemPage;
         private int _itcNormalItemCategory;
@@ -172,6 +175,9 @@ namespace HaCreator.MapSimulator.UI
         public int CashCharacterCount => _cashCharacterCount;
         public IReadOnlyList<int> CashWishlistSerialNumbers => _cashWishlistSerialNumbers;
         public string CashItemLastSummary => _cashItemLastSummary;
+        public string CashGiftLastSummary => _cashGiftLastSummary;
+        public string CashPurchaseRecordSummary => _cashPurchaseRecordSummary;
+        public IReadOnlyList<PacketCatalogEntry> CashInventoryPacketEntries => _cashInventoryPacketEntries;
         public int ItcNormalItemMutationCount => _itcNormalItemMutationCount;
         public int ItcNormalItemSubtype => _itcNormalItemSubtype;
         public int ItcNormalItemPage => _itcNormalItemPage;
@@ -286,6 +292,9 @@ namespace HaCreator.MapSimulator.UI
             _cashItemMutationCount = 0;
             _cashItemLastSummary = "No cash-item result routed yet.";
             _cashPacketCatalogEntries.Clear();
+            _cashInventoryPacketEntries.Clear();
+            _cashGiftLastSummary = "No packet-authored gift result routed yet.";
+            _cashPurchaseRecordSummary = "No packet-authored purchase record routed yet.";
             _itcNormalItemSubtype = -1;
             _itcNormalItemPage = 0;
             _itcNormalItemCategory = 0;
@@ -582,7 +591,10 @@ namespace HaCreator.MapSimulator.UI
             {
                 $"Equip {_inventory.GetSlots(InventoryType.EQUIP).Count}, Use {_inventory.GetSlots(InventoryType.USE).Count}, Setup {_inventory.GetSlots(InventoryType.SETUP).Count}.",
                 $"Etc {_inventory.GetSlots(InventoryType.ETC).Count}, Cash {_inventory.GetSlots(InventoryType.CASH).Count}.",
-                $"Meso {_inventory.GetMesoCount().ToString("N0", CultureInfo.InvariantCulture)}."
+                $"Meso {_inventory.GetMesoCount().ToString("N0", CultureInfo.InvariantCulture)}.",
+                _cashInventoryPacketEntries.Count > 0
+                    ? $"{_cashInventoryPacketEntries[0].Detail}"
+                    : _cashGiftLastSummary
             };
         }
 
@@ -659,7 +671,8 @@ namespace HaCreator.MapSimulator.UI
                 _pendingCommoditySerialNumber > 0
                     ? $"GoToCommoditySN {_pendingCommoditySerialNumber} is waiting on the best-items owner."
                     : "No commodity serial is waiting on best-items.",
-                wishlistLine
+                wishlistLine,
+                _cashPurchaseRecordSummary
             };
         }
 
@@ -837,6 +850,24 @@ namespace HaCreator.MapSimulator.UI
                     ? buyDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResBuyDone", packetPayload),
                 101 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResBuyFailed"),
+                107 => TryApplyCashGiftDone(packetPayload, out string giftDoneMessage)
+                    ? giftDoneMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResGiftDone", packetPayload),
+                -102 => TryApplyCashBuyPackageDone(packetPayload, out string buyPackageDoneMessage)
+                    ? buyPackageDoneMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResBuyPackageDone", packetPayload),
+                -100 => TryApplyCashGiftPackageDone(packetPayload, out string giftPackageDoneMessage)
+                    ? giftPackageDoneMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResGiftPackageDone", packetPayload),
+                -98 => TryApplyCashBuyNormalDone(packetPayload, out string buyNormalDoneMessage)
+                    ? buyNormalDoneMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResBuyNormalDone", packetPayload),
+                -81 => TryApplyCashPurchaseRecord(packetPayload, out string purchaseRecordMessage)
+                    ? purchaseRecordMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResPurchaseRecord", packetPayload),
+                -106 => TryApplyCashRebateDone(packetPayload, out string rebateDoneMessage)
+                    ? rebateDoneMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResRebateDone", packetPayload),
                 109 => BuildCashSimpleResult("CCashShop::OnCashItemResIncSlotCountDone", packetPayload),
                 110 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResIncSlotCountFailed"),
                 111 => TryApplyCashCounterUpdate(packetPayload, "CCashShop::OnCashItemResIncTrunkCountDone", 48, value => _cashLockerSlotLimit = value, out string trunkMessage)
@@ -1024,6 +1055,173 @@ namespace HaCreator.MapSimulator.UI
             _cashLockerItemCount = Math.Max(0, _cashLockerItemCount + 1);
             _noticeState = $"A purchased cash item was appended to the locker (now {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)} item(s)).";
             message = "CCashShop::OnCashItemResBuyDone appended one 55-byte cash-item body to the locker and invalidated CCSWnd_Locker.";
+            return true;
+        }
+
+        private bool TryApplyCashGiftDone(byte[] payload, out string message)
+        {
+            message = null;
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (stream.Length < 1)
+            {
+                return false;
+            }
+
+            _ = reader.ReadByte();
+            if (!TryReadMapleString(reader, out string recipient)
+                || stream.Length - stream.Position < sizeof(int) + sizeof(short) + sizeof(int))
+            {
+                return false;
+            }
+
+            int itemId = reader.ReadInt32();
+            int quantity = Math.Max(1, (int)reader.ReadInt16());
+            int prepaidCost = Math.Max(0, reader.ReadInt32());
+            _cashGiftLastSummary =
+                $"Gifted item {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)} x{quantity.ToString(CultureInfo.InvariantCulture)} to {SanitizePacketString(recipient, "gift recipient")} for {prepaidCost.ToString("N0", CultureInfo.InvariantCulture)} NX Prepaid.";
+            _noticeState = _cashGiftLastSummary;
+            message = $"CCashShop::OnCashItemResGiftDone confirmed {_cashGiftLastSummary}";
+            return true;
+        }
+
+        private bool TryApplyCashBuyPackageDone(byte[] payload, out string message)
+        {
+            message = null;
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (stream.Length < 1 + sizeof(byte) + sizeof(short))
+            {
+                return false;
+            }
+
+            _ = reader.ReadByte();
+            int itemCount = Math.Max(0, (int)reader.ReadByte());
+            long itemBlockLength = 55L * itemCount;
+            if (stream.Length - stream.Position < itemBlockLength + sizeof(short))
+            {
+                return false;
+            }
+
+            stream.Position += itemBlockLength;
+            int bonusCount = Math.Max(0, (int)reader.ReadUInt16());
+            _cashLockerItemCount = Math.Max(0, _cashLockerItemCount + itemCount);
+            _noticeState = $"Package purchase appended {itemCount.ToString(CultureInfo.InvariantCulture)} locker item(s){(bonusCount > 0 ? $" and reported {bonusCount.ToString(CultureInfo.InvariantCulture)} bonus count." : ".")}";
+            message =
+                $"CCashShop::OnCashItemResBuyPackageDone appended {itemCount.ToString(CultureInfo.InvariantCulture)} 55-byte cash-item bodies to CCSWnd_Locker{(bonusCount > 0 ? $" and surfaced bonus count {bonusCount.ToString(CultureInfo.InvariantCulture)}" : string.Empty)}.";
+            return true;
+        }
+
+        private bool TryApplyCashGiftPackageDone(byte[] payload, out string message)
+        {
+            message = null;
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (stream.Length < 1)
+            {
+                return false;
+            }
+
+            _ = reader.ReadByte();
+            if (!TryReadMapleString(reader, out string recipient)
+                || stream.Length - stream.Position < sizeof(int) + (sizeof(short) * 2) + sizeof(int))
+            {
+                return false;
+            }
+
+            int itemId = reader.ReadInt32();
+            int itemCount = Math.Max(0, (int)reader.ReadUInt16());
+            int bonusCount = Math.Max(0, (int)reader.ReadUInt16());
+            int prepaidCost = Math.Max(0, reader.ReadInt32());
+            _cashGiftLastSummary =
+                $"Gifted package {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)} to {SanitizePacketString(recipient, "gift recipient")} with {itemCount.ToString(CultureInfo.InvariantCulture)} item(s), {bonusCount.ToString(CultureInfo.InvariantCulture)} bonus count, and {prepaidCost.ToString("N0", CultureInfo.InvariantCulture)} NX Prepaid.";
+            _noticeState = _cashGiftLastSummary;
+            message = $"CCashShop::OnCashItemResGiftPackageDone confirmed {_cashGiftLastSummary}";
+            return true;
+        }
+
+        private bool TryApplyCashBuyNormalDone(byte[] payload, out string message)
+        {
+            message = null;
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (stream.Length < 1 + sizeof(int))
+            {
+                return false;
+            }
+
+            _ = reader.ReadByte();
+            int itemCount = Math.Max(0, reader.ReadInt32());
+            if (stream.Length - stream.Position < itemCount * sizeof(long))
+            {
+                return false;
+            }
+
+            _cashInventoryPacketEntries.Clear();
+            for (int i = 0; i < itemCount; i++)
+            {
+                int slotIndex = Math.Max(0, (int)reader.ReadUInt16());
+                int itemId = Math.Max(0, reader.ReadInt32());
+                int inventoryTab = Math.Max(0, (itemId / 1_000_000) - 1);
+                _ = reader.ReadUInt16();
+                _cashInventoryPacketEntries.Add(new PacketCatalogEntry
+                {
+                    Title = $"Inventory tab {inventoryTab.ToString(CultureInfo.InvariantCulture)} slot {slotIndex.ToString(CultureInfo.InvariantCulture)}",
+                    Detail = $"CCSWnd_Inventory focused tab {inventoryTab.ToString(CultureInfo.InvariantCulture)} for item {itemId.ToString(CultureInfo.InvariantCulture)} at slot {slotIndex.ToString(CultureInfo.InvariantCulture)}.",
+                    Seller = "CCSWnd_Inventory",
+                    PriceLabel = $"Item {itemId.ToString(CultureInfo.InvariantCulture)}",
+                    StateLabel = "Bought",
+                    ListingId = slotIndex,
+                    ItemId = itemId
+                });
+            }
+
+            _noticeState = _cashInventoryPacketEntries.Count > 0
+                ? _cashInventoryPacketEntries[0].Detail
+                : "Cash inventory purchase result completed without any decoded inventory slot rows.";
+            message =
+                $"CCashShop::OnCashItemResBuyNormalDone updated {_cashInventoryPacketEntries.Count.ToString(CultureInfo.InvariantCulture)} inventory slot row(s) through CCSWnd_Inventory.";
+            return true;
+        }
+
+        private bool TryApplyCashPurchaseRecord(byte[] payload, out string message)
+        {
+            message = null;
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (stream.Length < 1 + sizeof(int) + sizeof(byte))
+            {
+                return false;
+            }
+
+            _ = reader.ReadByte();
+            int commoditySerialNumber = Math.Max(0, reader.ReadInt32());
+            bool purchaseRecorded = reader.ReadByte() != 0;
+            _cashPurchaseRecordSummary = commoditySerialNumber > 0
+                ? $"Purchase record SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)} is {(purchaseRecorded ? "marked purchased" : "present but not purchased")}."
+                : $"Global purchase record state is {(purchaseRecorded ? "enabled" : "cleared")}.";
+            _noticeState = _cashPurchaseRecordSummary;
+            message = $"CCashShop::OnCashItemResPurchaseRecord updated {_cashPurchaseRecordSummary}";
+            return true;
+        }
+
+        private bool TryApplyCashRebateDone(byte[] payload, out string message)
+        {
+            message = null;
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (stream.Length < 1 + sizeof(long) + sizeof(int))
+            {
+                return false;
+            }
+
+            _ = reader.ReadByte();
+            long serialNumber = reader.ReadInt64();
+            int prepaidRefund = Math.Max(0, reader.ReadInt32());
+            _cashLockerItemCount = Math.Max(0, _cashLockerItemCount - 1);
+            _noticeState =
+                $"Rebate removed locker serial {serialNumber.ToString(CultureInfo.InvariantCulture)} and returned {prepaidRefund.ToString("N0", CultureInfo.InvariantCulture)} NX Prepaid.";
+            message = $"CCashShop::OnCashItemResRebateDone updated CCSWnd_Locker with {_noticeState}";
             return true;
         }
 
@@ -1421,6 +1619,12 @@ namespace HaCreator.MapSimulator.UI
         private static string BuildPacketDecodeFailure(string ownerName, byte[] payload)
         {
             return $"{ownerName} reached the simulator, but the packet body could not be decoded from {payload.Length.ToString(CultureInfo.InvariantCulture)} byte(s).";
+        }
+
+        private static string SanitizePacketString(string value, string fallback)
+        {
+            string trimmed = value?.Trim();
+            return string.IsNullOrWhiteSpace(trimmed) ? fallback : trimmed;
         }
 
         private string BuildItcFailureMessage(byte[] payload, string ownerName)

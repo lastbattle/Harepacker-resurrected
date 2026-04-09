@@ -397,7 +397,7 @@ namespace HaCreator.MapSimulator.Interaction
                     _isInGuild ? $"Guild: {_guildName}" : "Current: Join a guild to use guild skills.",
                     _isInGuild ? $"Role: {_guildRoleLabel}  |  Guild Lv. {_guildLevel}" : "Next: Guild skills unlock with real guild membership.",
                     _isInGuild
-                        ? $"SP: {_availablePoints}  |  GP: {FormatCompactMeso(_guildPoints)}  |  Fund: {FormatCompactMeso(_guildFundMeso)}"
+                        ? $"SP: {_availablePoints}  |  GP: {FormatCompactGuildPoints(_guildPoints)}  |  Fund: {FormatCompactMeso(_guildFundMeso)}"
                         : "State: No guild"
                 };
             }
@@ -485,7 +485,6 @@ namespace HaCreator.MapSimulator.Interaction
                 parts.Add($"Req Lv. {selectedRequiredGuildLevel}");
             }
 
-            int previewLevel = Math.Max(1, Math.Min(selectedSkill.MaxLevel, selectedSkill.CurrentLevel + 1));
             int activationCost = ResolveLevelUpCost(selectedSkill);
             if (activationCost > 0)
             {
@@ -520,7 +519,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (_isInGuild)
             {
-                parts.Add($"GP {FormatCompactMeso(_guildPoints)}");
+                parts.Add($"GP {FormatCompactGuildPoints(_guildPoints)}");
                 parts.Add(CanManageSkills() ? $"SP {_availablePoints}" : "View only");
             }
             else
@@ -596,6 +595,11 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private static string FormatCompactMeso(int amount)
+        {
+            return Math.Max(0, amount).ToString("N0", CultureInfo.InvariantCulture);
+        }
+
+        private static string FormatCompactGuildPoints(int amount)
         {
             return Math.Max(0, amount).ToString("N0", CultureInfo.InvariantCulture);
         }

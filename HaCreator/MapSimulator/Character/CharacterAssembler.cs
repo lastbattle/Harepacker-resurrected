@@ -231,6 +231,20 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        public bool TryGetFaceLookDuration(string expressionName, out int durationMs)
+        {
+            durationMs = 0;
+
+            FaceLookEntry faceLook = GetFaceLook(expressionName);
+            if (faceLook == null || faceLook.TotalDuration <= 0)
+            {
+                return false;
+            }
+
+            durationMs = faceLook.TotalDuration;
+            return true;
+        }
+
         /// <summary>
         /// Get assembled frames for an action
         /// </summary>
@@ -486,13 +500,16 @@ namespace HaCreator.MapSimulator.Character
             }
 
             var frames = new List<AssembledFrame>();
-            CharacterPart activeTamingMob = GetActiveTamingMobPart();
-            bool suppressBaseAvatar = ShouldSuppressBaseAvatarForTamingMob(activeTamingMob, actionName);
+            CharacterLoader.CharacterActionMergeInput mergeInput =
+                CharacterLoader.PrepareActionMergeInput(_build, actionName, GetActiveTamingMobPart());
+            string resolvedActionName = mergeInput.ActionName;
+            CharacterPart activeTamingMob = mergeInput.ActiveTamingMobPart;
+            bool suppressBaseAvatar = ShouldSuppressBaseAvatarForTamingMob(activeTamingMob, resolvedActionName);
 
             // Get body animation as the base (determines frame count and timing)
             CharacterAnimation bodyAnim = suppressBaseAvatar
-                ? GetPartAnimation(activeTamingMob, actionName)
-                : _build.Body?.GetAnimation(CharacterPart.ParseActionString(actionName));
+                ? GetPartAnimation(activeTamingMob, resolvedActionName)
+                : _build.Body?.GetAnimation(CharacterPart.ParseActionString(resolvedActionName));
             if (bodyAnim == null || bodyAnim.Frames.Count == 0)
             {
                 // Try stand1 as fallback
@@ -512,7 +529,7 @@ namespace HaCreator.MapSimulator.Character
             for (int i = 0; i < bodyAnim.Frames.Count; i++)
             {
                 var bodyFrame = bodyAnim.Frames[i];
-                var assembled = AssembleFrame(actionName, i, bodyFrame);
+                var assembled = AssembleFrame(mergeInput, i, bodyFrame);
                 frames.Add(assembled);
             }
 
@@ -568,15 +585,16 @@ namespace HaCreator.MapSimulator.Character
             return assembled;
         }
 
-        private AssembledFrame AssembleFrame(string actionName, int frameIndex, CharacterFrame bodyFrame)
+        private AssembledFrame AssembleFrame(CharacterLoader.CharacterActionMergeInput mergeInput, int frameIndex, CharacterFrame bodyFrame)
         {
+            string actionName = mergeInput?.ActionName ?? CharacterPart.GetActionString(CharacterAction.Stand1);
             var assembled = new AssembledFrame
             {
                 Duration = bodyFrame.Delay
             };
 
             var parts = new List<AssembledPart>();
-            CharacterPart activeTamingMob = GetActiveTamingMobPart();
+            CharacterPart activeTamingMob = mergeInput?.ActiveTamingMobPart;
             bool suppressBaseAvatar = ShouldSuppressBaseAvatarForTamingMob(activeTamingMob, actionName);
 
             // Body is the anchor point - navel at origin
@@ -600,6 +618,8 @@ namespace HaCreator.MapSimulator.Character
             CharacterFrame headFrame = suppressBaseAvatar ? null : GetPartFrame(_build.Head, actionName, frameIndex);
 
             Point? headOffset = null;
+            CharacterPart visibleFaceAccessory = !suppressBaseAvatar ? GetVisibleFaceAccessoryPart() : null;
+            FaceLookEntry faceLook = !suppressBaseAvatar ? GetFaceLook(_faceExpressionName, visibleFaceAccessory) : null;
             if (!suppressBaseAvatar && headFrame != null)
             {
                 Point headNeck = headFrame.GetMapPoint(MAP_NECK);
@@ -616,16 +636,27 @@ namespace HaCreator.MapSimulator.Character
                 }
 
                 // Add face - relative to head
-                var faceFrame = GetFaceFrame(_build.Face, _faceExpressionName, frameIndex);
-                if (faceFrame != null)
+                FaceLookFrame faceLookFrame = GetFaceLookFrame(faceLook, frameIndex);
+                if (faceLookFrame?.FaceFrame != null)
                 {
                     Point headBrow = headFrame.GetMapPoint(MAP_BROW);
-                    Point faceBrow = faceFrame.GetMapPoint(MAP_BROW);
+                    Point faceBrow = faceLookFrame.FaceFrame.GetMapPoint(MAP_BROW);
                     Point faceOffset = new Point(
                         headOffset.Value.X + headBrow.X - faceBrow.X,
                         headOffset.Value.Y + headBrow.Y - faceBrow.Y);
 
-                    AddPart(parts, faceFrame, faceOffset, CharacterPartType.Face, _build.Face);
+                    AddPart(parts, faceLookFrame.FaceFrame, faceOffset, CharacterPartType.Face, _build.Face);
+                }
+
+                if (faceLookFrame?.AccessoryFrame != null && visibleFaceAccessory != null)
+                {
+                    Point headBrow = headFrame.GetMapPoint(MAP_BROW);
+                    Point accessoryBrow = faceLookFrame.AccessoryFrame.GetMapPoint(MAP_BROW);
+                    Point accessoryOffset = new Point(
+                        headOffset.Value.X + headBrow.X - accessoryBrow.X,
+                        headOffset.Value.Y + headBrow.Y - accessoryBrow.Y);
+
+                    AddPart(parts, faceLookFrame.AccessoryFrame, accessoryOffset, CharacterPartType.Face_Accessory, visibleFaceAccessory);
                 }
 
                 // Add hair - relative to head
@@ -660,19 +691,51 @@ namespace HaCreator.MapSimulator.Character
             }
 
             // Add equipment
-            foreach (var kv in _build.Equipment)
+            bool renderedWeaponLane = false;
+            IReadOnlyDictionary<EquipSlot, CharacterPart> mergedEquipment = mergeInput?.Equipment ?? _build.Equipment;
+            foreach (var kv in mergedEquipment)
             {
                 if (suppressBaseAvatar && kv.Key != EquipSlot.TamingMob)
                 {
                     continue;
                 }
 
-                CharacterPart renderPart = ResolveDisplayedEquipmentPart(kv.Key, kv.Value, actionName, frameIndex);
+                if (kv.Key == EquipSlot.FaceAccessory && faceLook?.HasAccessory == true)
+                {
+                    continue;
+                }
+
+                CharacterPart renderPart = ResolveDisplayedEquipmentPart(
+                    kv.Key,
+                    kv.Value,
+                    mergeInput?.WeaponSticker,
+                    actionName,
+                    frameIndex);
                 var equipFrame = GetPartFrame(renderPart, actionName, frameIndex);
                 if (equipFrame == null) continue;
 
                 Point equipOffset = CalculateEquipOffset(equipFrame, bodyFrame, headFrame, baseOffset, headOffset, renderPart.Type);
                 AddPart(parts, equipFrame, equipOffset, renderPart.Type, renderPart);
+                if (kv.Key == EquipSlot.Weapon)
+                {
+                    renderedWeaponLane = true;
+                }
+            }
+
+            if (!suppressBaseAvatar && !renderedWeaponLane && mergeInput?.WeaponSticker != null)
+            {
+                CharacterFrame stickerFrame = GetPartFrame(mergeInput.WeaponSticker, actionName, frameIndex);
+                if (stickerFrame != null)
+                {
+                    Point stickerOffset = CalculateEquipOffset(
+                        stickerFrame,
+                        bodyFrame,
+                        headFrame,
+                        baseOffset,
+                        headOffset,
+                        mergeInput.WeaponSticker.Type);
+                    AddPart(parts, stickerFrame, stickerOffset, mergeInput.WeaponSticker.Type, mergeInput.WeaponSticker);
+                }
             }
 
             if (!suppressBaseAvatar && IsPortableChairAction(actionName))
@@ -705,15 +768,20 @@ namespace HaCreator.MapSimulator.Character
                 : null;
         }
 
-        private CharacterPart ResolveDisplayedEquipmentPart(EquipSlot slot, CharacterPart equippedPart, string actionName, int frameIndex)
+        private CharacterPart ResolveDisplayedEquipmentPart(
+            EquipSlot slot,
+            CharacterPart equippedPart,
+            CharacterPart weaponSticker,
+            string actionName,
+            int frameIndex)
         {
-            if (slot != EquipSlot.Weapon || _build.WeaponSticker == null)
+            if (slot != EquipSlot.Weapon || weaponSticker == null)
             {
                 return equippedPart;
             }
 
-            CharacterFrame stickerFrame = GetPartFrame(_build.WeaponSticker, actionName, frameIndex);
-            return stickerFrame != null ? _build.WeaponSticker : equippedPart;
+            CharacterFrame stickerFrame = GetPartFrame(weaponSticker, actionName, frameIndex);
+            return stickerFrame != null ? weaponSticker : equippedPart;
         }
 
         private void AddPortableChairLayers(List<AssembledPart> parts, int frameIndex)
@@ -1148,18 +1216,37 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        private CharacterFrame GetFaceFrame(FacePart face, string expressionName, int frameIndex)
+        private FaceLookEntry GetFaceLook(string expressionName, CharacterPart visibleFaceAccessory)
         {
-            if (face == null) return null;
-
-            var expr = face.GetExpression(expressionName) ?? face.GetExpression("default") ?? face.GetExpression("blink");
-            if (expr == null || expr.Frames.Count == 0)
+            if (_build?.Face == null)
             {
                 return null;
             }
 
-            int idx = frameIndex % expr.Frames.Count;
-            return expr.Frames[idx];
+            return _build.Face.GetLook(expressionName, _build.Skin, visibleFaceAccessory);
+        }
+
+        private FaceLookEntry GetFaceLook(string expressionName)
+        {
+            return GetFaceLook(expressionName, GetVisibleFaceAccessoryPart());
+        }
+
+        private CharacterPart GetVisibleFaceAccessoryPart()
+        {
+            return _build?.Equipment != null
+                && _build.Equipment.TryGetValue(EquipSlot.FaceAccessory, out CharacterPart faceAccessoryPart)
+                ? faceAccessoryPart
+                : null;
+        }
+
+        private static FaceLookFrame GetFaceLookFrame(FaceLookEntry faceLook, int frameIndex)
+        {
+            if (faceLook?.Frames == null || faceLook.Frames.Count == 0)
+            {
+                return null;
+            }
+
+            return faceLook.Frames[frameIndex % faceLook.Frames.Count];
         }
 
         private Point CalculateEquipOffset(

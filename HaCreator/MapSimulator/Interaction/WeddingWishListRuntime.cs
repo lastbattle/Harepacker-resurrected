@@ -194,6 +194,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal string SetActivePane(WeddingWishListSelectionPane pane)
         {
             _activePane = pane;
+            ApplyInputPaneFocusBehavior();
             ClearTransientActionState();
             ClampSelections();
             EnsureSelectionVisible(pane);
@@ -220,6 +221,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _activePane = pane;
+            ApplyInputPaneFocusBehavior();
             ClearTransientActionState();
             ClampSelections();
             EnsureSelectionVisible(pane);
@@ -413,10 +415,11 @@ namespace HaCreator.MapSimulator.Interaction
             _candidateQuery = string.Empty;
             RefreshCandidateEntries();
             _selectedCandidateIndex = 0;
-            _selectedWishIndex = _wishListEntries.Count - 1;
+            _selectedWishIndex = -1;
+            _activePane = WeddingWishListSelectionPane.Candidate;
             ClearTransientActionState();
             ClampSelections();
-            EnsureSelectionVisible(WeddingWishListSelectionPane.WishList);
+            EnsureSelectionVisible(WeddingWishListSelectionPane.Candidate);
             _statusMessage = $"Inserted \"{ResolveItemLabel(enteredWish)}\" into the wedding wish list.";
             return _statusMessage;
         }
@@ -437,6 +440,7 @@ namespace HaCreator.MapSimulator.Interaction
             _candidateQuery += value;
             RefreshCandidateEntries();
             _selectedCandidateIndex = 0;
+            _selectedWishIndex = -1;
             ClearTransientActionState();
             ClampSelections();
             EnsureSelectionVisible(WeddingWishListSelectionPane.Candidate);
@@ -454,6 +458,7 @@ namespace HaCreator.MapSimulator.Interaction
             _candidateQuery = _candidateQuery[..^1];
             RefreshCandidateEntries();
             _selectedCandidateIndex = 0;
+            _selectedWishIndex = -1;
             ClearTransientActionState();
             ClampSelections();
             EnsureSelectionVisible(WeddingWishListSelectionPane.Candidate);
@@ -563,6 +568,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _giftByWishItemId.Remove(removed.ItemId);
             }
 
+            _selectedWishIndex = -1;
             ClearTransientActionState();
             ClampSelections();
             _statusMessage = $"Removed {ResolveItemLabel(removed)} from the wedding wish list.";
@@ -862,7 +868,7 @@ namespace HaCreator.MapSimulator.Interaction
             _selectedTabIndex = Math.Clamp(_selectedTabIndex, 0, TabInventoryTypes.Length - 1);
             _selectedGiftIndex = ClampIndex(_selectedGiftIndex, GetGiftEntriesForCurrentMode().Count);
             _selectedInventoryIndex = ClampIndex(_selectedInventoryIndex, GetInventoryEntriesForSelectedTab().Count);
-            _selectedWishIndex = ClampIndex(_selectedWishIndex, _wishListEntries.Count);
+            _selectedWishIndex = ClampOptionalIndex(_selectedWishIndex, _wishListEntries.Count);
             _selectedCandidateIndex = ClampIndex(_selectedCandidateIndex, _candidateEntries.Count);
         }
 
@@ -900,6 +906,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int selectedIndex = GetSelectedIndex(pane);
+            if (selectedIndex < 0)
+            {
+                return;
+            }
+
             int startIndex = GetFirstVisibleIndex(pane);
             int maxStart = Math.Max(0, count - visibleRows);
             if (selectedIndex < startIndex)
@@ -922,6 +933,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (count <= 0 || visibleRows <= 0)
             {
                 SetSelectedIndex(pane, 0);
+                return;
+            }
+
+            if (GetSelectedIndex(pane) < 0)
+            {
                 return;
             }
 
@@ -1008,6 +1024,18 @@ namespace HaCreator.MapSimulator.Interaction
         private static int ClampIndex(int index, int count)
         {
             return count <= 0 ? 0 : Math.Clamp(index, 0, count - 1);
+        }
+
+        private static int ClampOptionalIndex(int index, int count)
+        {
+            if (count <= 0)
+            {
+                return -1;
+            }
+
+            return index < 0
+                ? -1
+                : Math.Clamp(index, 0, count - 1);
         }
 
         private static InventorySlotData CloneForDialog(InventorySlotData slot)
@@ -1350,6 +1378,23 @@ namespace HaCreator.MapSimulator.Interaction
             _pendingPutSourceItem = null;
             _pendingPutQuantity = 1;
             _inputConfirmationArmed = false;
+        }
+
+        private void ApplyInputPaneFocusBehavior()
+        {
+            if (_mode != WeddingWishListDialogMode.Input)
+            {
+                return;
+            }
+
+            if (_activePane == WeddingWishListSelectionPane.Candidate)
+            {
+                _selectedWishIndex = -1;
+            }
+            else if (_activePane == WeddingWishListSelectionPane.WishList && _selectedWishIndex < 0 && _wishListEntries.Count > 0)
+            {
+                _selectedWishIndex = 0;
+            }
         }
     }
 

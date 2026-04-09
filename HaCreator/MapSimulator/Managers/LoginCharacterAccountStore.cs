@@ -351,6 +351,79 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public bool UpdateExtraCharacterEntitlementForAccount(
+            string accountName,
+            int accountId,
+            int buyCharacterCount,
+            LoginExtraCharInfoResultProfile extraCharInfoResult)
+        {
+            if (accountId <= 0)
+            {
+                return false;
+            }
+
+            string normalizedAccountName = string.IsNullOrWhiteSpace(accountName)
+                ? "explorergm"
+                : accountName.Trim();
+            LoginExtraCharInfoResultProfile normalizedExtraCharInfoResult =
+                NormalizeExtraCharInfoResultProfile(extraCharInfoResult, accountId);
+            Dictionary<int, PersistedAccountState> statesByWorld = new();
+
+            foreach (PersistedAccountState persistedState in EnumeratePersistedStatesForAccount(normalizedAccountName, accountId)
+                         .Where(state => state != null)
+                         .OrderBy(state => Math.Max(0, state.WorldId)))
+            {
+                int worldId = Math.Max(0, persistedState.WorldId);
+                if (!statesByWorld.ContainsKey(worldId))
+                {
+                    statesByWorld[worldId] = ClonePersistedState(persistedState);
+                }
+            }
+
+            if (statesByWorld.Count == 0)
+            {
+                return false;
+            }
+
+            int normalizedBuyCharacterCount = NormalizeBuyCharacterCount(
+                buyCharacterCount,
+                normalizedExtraCharInfoResult,
+                accountId);
+            bool changed = false;
+
+            foreach ((int worldId, PersistedAccountState persistedState) in statesByWorld)
+            {
+                PersistedAccountState reboundState = ClonePersistedState(persistedState);
+                reboundState.AccountId = accountId;
+                reboundState.AccountName = normalizedAccountName;
+                reboundState.ExtraCharInfoResult = CloneExtraCharInfoResultProfile(normalizedExtraCharInfoResult);
+                reboundState.BuyCharacterCount = normalizedBuyCharacterCount;
+
+                string accountIdKey = ResolveAccountKey(normalizedAccountName, worldId, accountId);
+                string accountNameKey = ResolveAccountKey(normalizedAccountName, worldId);
+                bool worldChanged =
+                    !AreEquivalentPersistedStates(_accountsByKey.TryGetValue(accountIdKey, out PersistedAccountState persistedById)
+                            ? persistedById
+                            : null,
+                        reboundState) ||
+                    !AreEquivalentPersistedStates(_accountsByKey.TryGetValue(accountNameKey, out PersistedAccountState persistedByName)
+                            ? persistedByName
+                            : null,
+                        reboundState);
+
+                _accountsByKey[accountIdKey] = reboundState;
+                _accountsByKey[accountNameKey] = ClonePersistedState(reboundState);
+                changed |= worldChanged;
+            }
+
+            if (changed)
+            {
+                SaveToDisk();
+            }
+
+            return changed;
+        }
+
         public int PruneStatesForAccount(string accountName, IEnumerable<int> keepWorldIds, int? accountId = null)
         {
             string normalizedAccountName = string.IsNullOrWhiteSpace(accountName)
@@ -635,6 +708,23 @@ namespace HaCreator.MapSimulator.Managers
                 })
                 .ToList()
                 ?? new List<CashShopStorageExpansionRecordState>();
+        }
+
+        private static bool AreEquivalentPersistedStates(PersistedAccountState left, PersistedAccountState right)
+        {
+            if (left == null || right == null)
+            {
+                return left == right;
+            }
+
+            return string.Equals(left.AccountName ?? string.Empty, right.AccountName ?? string.Empty, StringComparison.Ordinal) &&
+                   left.AccountId == right.AccountId &&
+                   Math.Max(0, left.WorldId) == Math.Max(0, right.WorldId) &&
+                   Math.Max(0, left.SlotCount) == Math.Max(0, right.SlotCount) &&
+                   Math.Max(0, left.BuyCharacterCount) == Math.Max(0, right.BuyCharacterCount) &&
+                   CloneExtraCharInfoResultProfile(left.ExtraCharInfoResult)?.AccountId == CloneExtraCharInfoResultProfile(right.ExtraCharInfoResult)?.AccountId &&
+                   CloneExtraCharInfoResultProfile(left.ExtraCharInfoResult)?.ResultFlag == CloneExtraCharInfoResultProfile(right.ExtraCharInfoResult)?.ResultFlag &&
+                   CloneExtraCharInfoResultProfile(left.ExtraCharInfoResult)?.CanHaveExtraCharacter == CloneExtraCharInfoResultProfile(right.ExtraCharInfoResult)?.CanHaveExtraCharacter;
         }
 
         private static LoginExtraCharInfoResultProfile CloneExtraCharInfoResultProfile(LoginExtraCharInfoResultProfile profile)

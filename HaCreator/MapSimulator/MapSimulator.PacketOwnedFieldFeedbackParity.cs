@@ -238,36 +238,46 @@ namespace HaCreator.MapSimulator
         {
             const string animationKey = "reward-roulette";
             ClearPacketOwnedUiAnimations(animationKey);
-            bool shownAnyLayer = false;
-            foreach ((string categoryName, string imageName, string propertyPath) in EnumeratePacketOwnedRewardRouletteAnimationCandidates(
+            foreach (IReadOnlyList<(string CategoryName, string ImageName, string PropertyPath)> family in EnumeratePacketOwnedRewardRouletteAnimationCandidateFamilies(
                 rewardJobIndex,
                 rewardPartIndex,
                 rewardLevelIndex))
             {
-                string cacheKey = $"reward-roulette:{categoryName}/{imageName}:{propertyPath}";
-                if (!TryGetOrCreatePacketOwnedAnimationFrames(
-                    cacheKey,
-                    () => LoadPacketOwnedAnimationFrames(
-                        ResolvePacketOwnedPropertyPath(
-                            Program.FindImage(categoryName, imageName),
-                            propertyPath)),
-                    out List<IDXObject> frames))
+                bool shownAnyLayer = false;
+                foreach ((string categoryName, string imageName, string propertyPath) in family)
                 {
-                    continue;
+                    string cacheKey = $"reward-roulette:{categoryName}/{imageName}:{propertyPath}";
+                    if (!TryGetOrCreatePacketOwnedAnimationFrames(
+                        cacheKey,
+                        () => LoadPacketOwnedAnimationFrames(
+                            ResolvePacketOwnedPropertyPath(
+                                Program.FindImage(categoryName, imageName),
+                                propertyPath)),
+                        out List<IDXObject> frames))
+                    {
+                        continue;
+                    }
+
+                    EnqueuePacketOwnedUiAnimation(
+                        frames,
+                        _renderParams.RenderWidth / 2,
+                        Math.Max(0, Height / 2 - 24),
+                        currTickCount,
+                        animationKey);
+                    shownAnyLayer = true;
                 }
 
-                EnqueuePacketOwnedUiAnimation(
-                    frames,
-                    _renderParams.RenderWidth / 2,
-                    Math.Max(0, Height / 2 - 24),
-                    currTickCount,
-                    animationKey);
-                shownAnyLayer = true;
+                if (shownAnyLayer)
+                {
+                    ShowUtilityFeedbackMessage(
+                        $"Packet-owned reward roulette: job={rewardJobIndex} part={rewardPartIndex} level={rewardLevelIndex}.");
+                    return true;
+                }
             }
 
             ShowUtilityFeedbackMessage(
                 $"Packet-owned reward roulette: job={rewardJobIndex} part={rewardPartIndex} level={rewardLevelIndex}.");
-            return shownAnyLayer;
+            return false;
         }
 
         private bool TryQueuePacketOwnedWhisperFindTransfer(int mapId, int x, int y)
@@ -794,6 +804,21 @@ namespace HaCreator.MapSimulator
                 .ToArray();
         }
 
+        internal static IReadOnlyList<IReadOnlyList<string>> GetPacketOwnedRewardRouletteAnimationCandidateFamiliesForTest(
+            int rewardJobIndex,
+            int rewardPartIndex,
+            int rewardLevelIndex)
+        {
+            return EnumeratePacketOwnedRewardRouletteAnimationCandidateFamilies(
+                    rewardJobIndex,
+                    rewardPartIndex,
+                    rewardLevelIndex)
+                .Select(static family => (IReadOnlyList<string>)family
+                    .Select(static candidate => $"{candidate.CategoryName}:{candidate.ImageName}:{candidate.PropertyPath}")
+                    .ToArray())
+                .ToArray();
+        }
+
         internal static string GetPacketOwnedSummonEffectUolForTest(byte effectId)
         {
             return FormatPacketOwnedEffectUol(
@@ -866,6 +891,49 @@ namespace HaCreator.MapSimulator
             int rewardPartIndex,
             int rewardLevelIndex)
         {
+            foreach (IReadOnlyList<(string CategoryName, string ImageName, string PropertyPath)> family in EnumeratePacketOwnedRewardRouletteAnimationCandidateFamilies(
+                rewardJobIndex,
+                rewardPartIndex,
+                rewardLevelIndex))
+            {
+                foreach ((string CategoryName, string ImageName, string PropertyPath) candidate in family)
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<IReadOnlyList<(string CategoryName, string ImageName, string PropertyPath)>> EnumeratePacketOwnedRewardRouletteAnimationCandidateFamilies(
+            int rewardJobIndex,
+            int rewardPartIndex,
+            int rewardLevelIndex)
+        {
+            (string CategoryName, string ImageName, string PropertyPath)[] mapFamily = EnumeratePacketOwnedRewardRouletteMapAnimationCandidates(
+                    rewardJobIndex,
+                    rewardPartIndex,
+                    rewardLevelIndex)
+                .ToArray();
+            if (mapFamily.Length > 0)
+            {
+                yield return mapFamily;
+            }
+
+            (string CategoryName, string ImageName, string PropertyPath)[] fallbackFamily = EnumeratePacketOwnedRewardRouletteFallbackAnimationCandidates(
+                    rewardJobIndex,
+                    rewardPartIndex,
+                    rewardLevelIndex)
+                .ToArray();
+            if (fallbackFamily.Length > 0)
+            {
+                yield return fallbackFamily;
+            }
+        }
+
+        private static IEnumerable<(string CategoryName, string ImageName, string PropertyPath)> EnumeratePacketOwnedRewardRouletteMapAnimationCandidates(
+            int rewardJobIndex,
+            int rewardPartIndex,
+            int rewardLevelIndex)
+        {
             HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
             (int StringPoolId, int RequestedIndex)[] layerRequests =
             {
@@ -919,7 +987,14 @@ namespace HaCreator.MapSimulator
                     yield return joinedCandidate;
                 }
             }
+        }
 
+        private static IEnumerable<(string CategoryName, string ImageName, string PropertyPath)> EnumeratePacketOwnedRewardRouletteFallbackAnimationCandidates(
+            int rewardJobIndex,
+            int rewardPartIndex,
+            int rewardLevelIndex)
+        {
+            HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
             foreach ((string format, int requestedIndex) in new[]
             {
                 (PacketOwnedRewardRouletteFallbackFormats[0], rewardJobIndex),

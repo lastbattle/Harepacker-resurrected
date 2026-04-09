@@ -63,10 +63,18 @@ namespace HaCreator.MapSimulator.Managers
             int Opcode,
             int PayloadLength,
             string PayloadHex,
+            string RawPacketHex,
             string Source,
             int ObservedAt,
             int? BoundSg88SummonObjectId,
             int? BoundSg88RequestedAt);
+        internal readonly record struct Sg88ManualAttackRequestPacketTemplate(
+            int Opcode,
+            byte[] RawPacket,
+            int[] SummonObjectIdOffsets,
+            int[] PrimaryTargetMobIdOffsets,
+            int[] TargetMobIdOffsets,
+            int TargetCount);
         internal readonly record struct Sg88ManualAttackTraceBinding(
             bool IsWithinCaptureWindow,
             bool MatchedSummonObjectId,
@@ -478,6 +486,70 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        internal bool TrySendLearnedSg88ManualAttackRequest(
+            int summonObjectId,
+            int requestedAt,
+            int primaryTargetMobId,
+            IReadOnlyList<int> targetMobIds,
+            out string status)
+        {
+            status = null;
+            int[] resolvedTargetMobIds = targetMobIds?
+                .Where(static mobId => mobId > 0)
+                .Distinct()
+                .ToArray() ?? Array.Empty<int>();
+            if (summonObjectId <= 0 || requestedAt == int.MinValue)
+            {
+                status = "SG-88 request replay requires a positive summon object id and request tick.";
+                return false;
+            }
+
+            if (primaryTargetMobId <= 0 || resolvedTargetMobIds.Length == 0)
+            {
+                status = "SG-88 request replay requires at least one admitted target mob id.";
+                return false;
+            }
+
+            Sg88ManualAttackRequestPacketTemplate template;
+            string templateStatus;
+            lock (_sync)
+            {
+                if (!TryResolveLearnedSg88ManualAttackRequestTemplate(
+                        resolvedTargetMobIds.Length,
+                        out template,
+                        out templateStatus))
+                {
+                    status = templateStatus;
+                    LastStatus = status;
+                    return false;
+                }
+            }
+
+            if (!TryBuildSg88ManualAttackRequestRawPacket(
+                    template,
+                    summonObjectId,
+                    primaryTargetMobId,
+                    resolvedTargetMobIds,
+                    out byte[] rawPacket,
+                    out string buildError))
+            {
+                status = buildError;
+                LastStatus = status;
+                return false;
+            }
+
+            if (!TrySendOutboundRawPacket(rawPacket, out string sendStatus))
+            {
+                status = sendStatus;
+                return false;
+            }
+
+            RecordObservedOutboundPacket(rawPacket, $"simulator:sg88-template:{requestedAt}");
+            status = $"{sendStatus} Learned SG-88 template targetCount={template.TargetCount} opcode=0x{template.Opcode:X}.";
+            LastStatus = status;
+            return true;
+        }
+
         internal void ResolveSg88ManualAttackRequest(int summonObjectId, int requestedAt, string resolutionSource)
         {
             if (summonObjectId <= 0 || requestedAt == int.MinValue)
@@ -833,6 +905,7 @@ namespace HaCreator.MapSimulator.Managers
                 opcode,
                 payload.Length,
                 Convert.ToHexString(payload),
+                Convert.ToHexString(rawPacket),
                 string.IsNullOrWhiteSpace(source) ? "unknown-source" : source.Trim(),
                 Environment.TickCount,
                 null,
@@ -1087,6 +1160,274 @@ namespace HaCreator.MapSimulator.Managers
             {
                 return Array.Empty<byte>();
             }
+        }
+
+        private static byte[] TryDecodeObservedRawPacketHex(string rawPacketHex)
+        {
+            if (string.IsNullOrWhiteSpace(rawPacketHex))
+            {
+                return Array.Empty<byte>();
+            }
+
+            try
+            {
+                return Convert.FromHexString(rawPacketHex);
+            }
+            catch (FormatException)
+            {
+                return Array.Empty<byte>();
+            }
+        }
+
+        internal static bool TryCreateSg88ManualAttackRequestTemplate(
+            OutboundPacketTrace requestPacket,
+            int summonObjectId,
+            int primaryTargetMobId,
+            IReadOnlyList<int> targetMobIds,
+            out Sg88ManualAttackRequestPacketTemplate template,
+            out string error)
+        {
+            template = default;
+            error = "SG-88 request packet template is missing.";
+            byte[] rawPacket = TryDecodeObservedRawPacketHex(requestPacket.RawPacketHex);
+            if (!TryValidateOutboundRawPacket(rawPacket, out int opcode, out _))
+            {
+                return false;
+            }
+
+            byte[] payload = rawPacket.Length > sizeof(ushort)
+                ? rawPacket[sizeof(ushort)..]
+                : Array.Empty<byte>();
+            if (payload.Length < sizeof(int))
+            {
+                error = "SG-88 request packet template payload is too short.";
+                return false;
+            }
+
+            int[] resolvedTargetMobIds = targetMobIds?
+                .Where(static mobId => mobId > 0)
+                .Distinct()
+                .ToArray() ?? Array.Empty<int>();
+            if (resolvedTargetMobIds.Length == 0)
+            {
+                error = "SG-88 request packet template requires at least one target mob id.";
+                return false;
+            }
+
+            int[] summonPayloadOffsets = FindAllInt32Offsets(payload, summonObjectId);
+            if (summonObjectId <= 0 || summonPayloadOffsets.Length == 0)
+            {
+                error = "SG-88 request packet template could not locate the summon object id in the captured payload.";
+                return false;
+            }
+
+            int[] primaryPayloadOffsets = FindAllInt32Offsets(payload, primaryTargetMobId);
+            if (primaryTargetMobId <= 0 || primaryPayloadOffsets.Length == 0)
+            {
+                error = "SG-88 request packet template could not locate the primary target mob id in the captured payload.";
+                return false;
+            }
+
+            if (!TryMapTargetPayloadOffsets(payload, resolvedTargetMobIds, summonPayloadOffsets, out int[] targetPayloadOffsets))
+            {
+                error = "SG-88 request packet template could not map every admitted target mob id onto the captured payload.";
+                return false;
+            }
+
+            template = new Sg88ManualAttackRequestPacketTemplate(
+                opcode,
+                (byte[])rawPacket.Clone(),
+                summonPayloadOffsets.Select(static offset => offset + sizeof(ushort)).ToArray(),
+                primaryPayloadOffsets.Select(static offset => offset + sizeof(ushort)).ToArray(),
+                targetPayloadOffsets.Select(static offset => offset + sizeof(ushort)).ToArray(),
+                resolvedTargetMobIds.Length);
+            error = null;
+            return true;
+        }
+
+        internal static bool TryBuildSg88ManualAttackRequestRawPacket(
+            Sg88ManualAttackRequestPacketTemplate template,
+            int summonObjectId,
+            int primaryTargetMobId,
+            IReadOnlyList<int> targetMobIds,
+            out byte[] rawPacket,
+            out string error)
+        {
+            rawPacket = Array.Empty<byte>();
+            error = "SG-88 request packet template is missing.";
+            if (template.RawPacket == null || template.RawPacket.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            int[] resolvedTargetMobIds = targetMobIds?
+                .Where(static mobId => mobId > 0)
+                .Distinct()
+                .ToArray() ?? Array.Empty<int>();
+            if (summonObjectId <= 0 || primaryTargetMobId <= 0 || resolvedTargetMobIds.Length == 0)
+            {
+                error = "SG-88 request packet replay requires summon, primary target, and admitted target ids.";
+                return false;
+            }
+
+            if (resolvedTargetMobIds.Length != template.TargetMobIdOffsets.Length)
+            {
+                error = $"SG-88 request packet replay requires {template.TargetMobIdOffsets.Length} target id slot(s), but the active request has {resolvedTargetMobIds.Length}.";
+                return false;
+            }
+
+            rawPacket = (byte[])template.RawPacket.Clone();
+            foreach (int offset in template.SummonObjectIdOffsets)
+            {
+                if (!TryWriteInt32LittleEndian(rawPacket, offset, summonObjectId))
+                {
+                    error = "SG-88 request packet replay could not rewrite the summon object id.";
+                    rawPacket = Array.Empty<byte>();
+                    return false;
+                }
+            }
+
+            foreach (int offset in template.PrimaryTargetMobIdOffsets)
+            {
+                if (!TryWriteInt32LittleEndian(rawPacket, offset, primaryTargetMobId))
+                {
+                    error = "SG-88 request packet replay could not rewrite the primary target mob id.";
+                    rawPacket = Array.Empty<byte>();
+                    return false;
+                }
+            }
+
+            for (int i = 0; i < template.TargetMobIdOffsets.Length; i++)
+            {
+                if (!TryWriteInt32LittleEndian(rawPacket, template.TargetMobIdOffsets[i], resolvedTargetMobIds[i]))
+                {
+                    error = $"SG-88 request packet replay could not rewrite target mob slot {i}.";
+                    rawPacket = Array.Empty<byte>();
+                    return false;
+                }
+            }
+
+            error = null;
+            return true;
+        }
+
+        private bool TryResolveLearnedSg88ManualAttackRequestTemplate(
+            int targetCount,
+            out Sg88ManualAttackRequestPacketTemplate template,
+            out string status)
+        {
+            template = default;
+            status = "No learned SG-88 request packet template is available yet.";
+            if (targetCount <= 0)
+            {
+                return false;
+            }
+
+            foreach (Sg88ManualAttackCapture capture in _recentSg88ManualAttackCaptures.Reverse())
+            {
+                if (capture?.RequestPacket is not OutboundPacketTrace requestPacket
+                    || capture.TargetMobIds.Length != targetCount)
+                {
+                    continue;
+                }
+
+                if (!TryCreateSg88ManualAttackRequestTemplate(
+                        requestPacket,
+                        capture.SummonObjectId,
+                        capture.PrimaryTargetMobId,
+                        capture.TargetMobIds,
+                        out template,
+                        out _))
+                {
+                    continue;
+                }
+
+                status =
+                    $"Using learned SG-88 request template from opcode 0x{template.Opcode:X} captured at tick {capture.RequestedAt} ({capture.ResolutionSource ?? "resolved"}).";
+                return true;
+            }
+
+            status = $"No learned SG-88 request packet template matched targetCount={targetCount}.";
+            return false;
+        }
+
+        private static int[] FindAllInt32Offsets(byte[] payload, int value)
+        {
+            if (payload == null || payload.Length < sizeof(int))
+            {
+                return Array.Empty<int>();
+            }
+
+            List<int> offsets = new();
+            for (int offset = 0; offset <= payload.Length - sizeof(int); offset++)
+            {
+                if (BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int))) == value)
+                {
+                    offsets.Add(offset);
+                }
+            }
+
+            return offsets.ToArray();
+        }
+
+        private static bool TryMapTargetPayloadOffsets(
+            byte[] payload,
+            IReadOnlyList<int> targetMobIds,
+            IReadOnlyList<int> reservedPayloadOffsets,
+            out int[] offsets)
+        {
+            offsets = Array.Empty<int>();
+            if (payload == null || payload.Length < sizeof(int) || targetMobIds == null || targetMobIds.Count == 0)
+            {
+                return false;
+            }
+
+            HashSet<int> usedOffsets = reservedPayloadOffsets != null
+                ? new HashSet<int>(reservedPayloadOffsets)
+                : new HashSet<int>();
+            List<int> mappedOffsets = new(targetMobIds.Count);
+            foreach (int targetMobId in targetMobIds)
+            {
+                int[] candidateOffsets = FindAllInt32Offsets(payload, targetMobId);
+                if (candidateOffsets.Length == 0)
+                {
+                    return false;
+                }
+
+                int selectedOffset = -1;
+                foreach (int candidateOffset in candidateOffsets)
+                {
+                    if (usedOffsets.Contains(candidateOffset))
+                    {
+                        continue;
+                    }
+
+                    selectedOffset = candidateOffset;
+                    break;
+                }
+
+                if (selectedOffset < 0)
+                {
+                    return false;
+                }
+
+                mappedOffsets.Add(selectedOffset);
+                usedOffsets.Add(selectedOffset);
+            }
+
+            offsets = mappedOffsets.ToArray();
+            return true;
+        }
+
+        private static bool TryWriteInt32LittleEndian(byte[] buffer, int offset, int value)
+        {
+            if (buffer == null || offset < 0 || offset > buffer.Length - sizeof(int))
+            {
+                return false;
+            }
+
+            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(offset, sizeof(int)), value);
+            return true;
         }
 
         private static bool PayloadContainsInt32(byte[] payload, int value)

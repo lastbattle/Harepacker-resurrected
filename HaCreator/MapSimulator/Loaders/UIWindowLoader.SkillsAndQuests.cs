@@ -1526,7 +1526,13 @@ namespace HaCreator.MapSimulator.Loaders
             InitializeQuestDetailNoticeArt(window, uiWindow2Image?["Quest"]?["list"] as WzSubProperty, legacyQuestProperty, device);
 
 
-            UIObject closeButton = CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width);
+            UIObject closeButton = CreateCloseButton(
+                    questInfoProperty?["BtClose"] as WzSubProperty,
+                    clickSound,
+                    overSound,
+                    device,
+                    frameTexture.Width)
+                ?? CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width);
 
             window.InitializeCloseButton(closeButton);
 
@@ -1584,7 +1590,13 @@ namespace HaCreator.MapSimulator.Loaders
             InitializeQuestDetailNoticeArt(window, questProperty, questProperty, device);
 
 
-            UIObject closeButton = CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width);
+            UIObject closeButton = CreateCloseButton(
+                    questProperty?["BtClose"] as WzSubProperty,
+                    clickSound,
+                    overSound,
+                    device,
+                    frameTexture.Width)
+                ?? CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width);
 
             window.InitializeCloseButton(closeButton);
 

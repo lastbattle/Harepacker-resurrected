@@ -13,6 +13,12 @@ namespace HaCreator.MapSimulator.Interaction
     internal static class FollowCharacterFailureCodec
     {
         internal const int ClearPendingReasonCode = -2;
+        private const int FollowFailureUnknownStringPoolId = 0x16DA;
+        private const int FollowFailureInvalidMapStringPoolId = 0x16DB;
+        private const int FollowFailureOccupiedTargetStringPoolId = 0x16DC;
+        private const int FollowFailureTargetUnavailableStringPoolId = 0x16DD;
+        private const int FollowFailureAlreadyFollowingStringPoolId = 0x16DE;
+        private const int FollowFailureRejectedStringPoolId = 0x16DF;
 
         public static bool TryDecodePayload(
             byte[] payload,
@@ -59,16 +65,25 @@ namespace HaCreator.MapSimulator.Interaction
 
             return reasonCode switch
             {
-                1 => "Follow-character request failed because the target could not be reached from the current position.",
+                1 => MapleStoryStringPool.GetOrFallback(
+                    FollowFailureInvalidMapStringPoolId,
+                    "You are currently in a place where you cannot accept the follow request."),
                 2 => ResolveOccupiedDriverMessage(driverId, driverNameResolver),
-                3 => "Follow-character request failed because one side is already mounted, transformed, or otherwise unavailable for follow.",
-                4 => "Follow-character request failed with client reason 4.",
-                5 => "Follow-character request failed with client reason 5.",
-                6 => "Follow-character request failed because the target was outside the client follow window.",
-                _ => string.Format(
-                    CultureInfo.InvariantCulture,
-                    "Follow-character request failed with client reason {0}.",
-                    reasonCode)
+                3 => MapleStoryStringPool.GetOrFallback(
+                    FollowFailureTargetUnavailableStringPoolId,
+                    "Follow target cannot accept the request at this time."),
+                4 => MapleStoryStringPool.GetOrFallback(
+                    FollowFailureTargetUnavailableStringPoolId,
+                    "Follow target cannot accept the request at this time."),
+                5 => MapleStoryStringPool.GetOrFallback(
+                    FollowFailureAlreadyFollowingStringPoolId,
+                    "You cannot send a follow request while you are already following someone."),
+                6 => MapleStoryStringPool.GetOrFallback(
+                    FollowFailureRejectedStringPoolId,
+                    "The follow request has not been accepted."),
+                _ => MapleStoryStringPool.GetOrFallback(
+                    FollowFailureUnknownStringPoolId,
+                    "The follow request could not be executed due to an unknown error.")
             };
         }
 
@@ -77,21 +92,25 @@ namespace HaCreator.MapSimulator.Interaction
             string driverName = driverNameResolver?.Invoke(driverId)?.Trim();
             if (!string.IsNullOrWhiteSpace(driverName))
             {
-                return string.Format(
-                    CultureInfo.InvariantCulture,
-                    "Follow-character request failed because the target is already following {0}.",
-                    driverName);
+                string format = MapleStoryStringPool.GetOrFallback(
+                    FollowFailureOccupiedTargetStringPoolId,
+                    "Your target is already following %s.");
+                string compositeFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                    FollowFailureOccupiedTargetStringPoolId,
+                    "Your target is already following {0}.",
+                    1,
+                    out _);
+                if (format.Contains("%s", StringComparison.Ordinal))
+                {
+                    return string.Format(CultureInfo.InvariantCulture, compositeFormat, driverName);
+                }
+
+                return format;
             }
 
-            if (driverId > 0)
-            {
-                return string.Format(
-                    CultureInfo.InvariantCulture,
-                    "Follow-character request failed because the target is already following character #{0}.",
-                    driverId);
-            }
-
-            return "Follow-character request failed because the target is already following another character.";
+            return MapleStoryStringPool.GetOrFallback(
+                FollowFailureInvalidMapStringPoolId,
+                "You are currently in a place where you cannot accept the follow request.");
         }
     }
 }

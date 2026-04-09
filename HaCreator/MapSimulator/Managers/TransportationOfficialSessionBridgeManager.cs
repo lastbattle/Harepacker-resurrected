@@ -27,6 +27,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int MaxRecentOutboundPackets = 32;
 
         private readonly ConcurrentQueue<TransportationPacketInboxMessage> _pendingMessages = new();
+        private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
         private readonly object _sync = new();
         private readonly Queue<OutboundPacketTrace> _recentOutboundPackets = new();
 
@@ -46,6 +47,7 @@ namespace HaCreator.MapSimulator.Managers
             string PayloadHex,
             string RawPacketHex,
             string Source);
+        private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket);
 
         private sealed class BridgePair
         {
@@ -95,8 +97,15 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasAttachedClient => _activePair != null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
+        public int SentCount { get; private set; }
         public int ForwardedOutboundCount { get; private set; }
         public int ForwardedOutboundTransportCount { get; private set; }
+        public int QueuedCount { get; private set; }
+        public int LastSentOpcode { get; private set; } = -1;
+        public byte[] LastSentRawPacket { get; private set; } = Array.Empty<byte>();
+        public int LastQueuedOpcode { get; private set; } = -1;
+        public byte[] LastQueuedRawPacket { get; private set; } = Array.Empty<byte>();
+        public int PendingPacketCount => _pendingOutboundPackets.Count;
         public string LastStatus { get; private set; } = "Transport official-session bridge inactive.";
 
         public string DescribeStatus()
@@ -107,7 +116,13 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Transport official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; forwardedOutboundTransport={ForwardedOutboundTransportCount}. {LastStatus}";
+            string lastOutbound = LastSentOpcode >= 0
+                ? $" lastOut={LastSentOpcode}[{Convert.ToHexString(LastSentRawPacket)}]."
+                : string.Empty;
+            string lastQueued = LastQueuedOpcode >= 0
+                ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
+                : string.Empty;
+            return $"Transport official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; forwardedOutbound={ForwardedOutboundCount}; forwardedOutboundTransport={ForwardedOutboundTransportCount}; inbound opcodes=164,165; outbound opcode={TransportationFieldInitRequestCodec.OutboundFieldInitOpcode}.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public string DescribeRecentOutboundPackets(int maxCount = 10)
@@ -394,6 +409,45 @@ namespace HaCreator.MapSimulator.Managers
             return _pendingMessages.TryDequeue(out message);
         }
 
+        public bool TrySendFieldInitRequest(int fieldId, int shipKind, out string status)
+        {
+            if (!TransportationFieldInitRequestCodec.IsSupportedShipKind(shipKind))
+            {
+                status = $"Transport field-init request only supports ship kinds 0 and 1, but received {shipKind}.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] rawPacket = TransportationFieldInitRequestCodec.BuildRawFieldInitPacket(fieldId, shipKind);
+            if (!TrySendRawPacket(rawPacket, out status, countAsTypedSend: true))
+            {
+                return false;
+            }
+
+            status = $"Injected transport field-init opcode {TransportationFieldInitRequestCodec.OutboundFieldInitOpcode} for field {fieldId} shipKind {shipKind} into live session {_activePair?.RemoteEndpoint ?? "unknown-remote"}.";
+            LastStatus = status;
+            return true;
+        }
+
+        public bool TryQueueFieldInitRequest(int fieldId, int shipKind, out string status)
+        {
+            if (!TransportationFieldInitRequestCodec.IsSupportedShipKind(shipKind))
+            {
+                status = $"Transport field-init request only supports ship kinds 0 and 1, but received {shipKind}.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] rawPacket = TransportationFieldInitRequestCodec.BuildRawFieldInitPacket(fieldId, shipKind);
+            _pendingOutboundPackets.Enqueue(new PendingOutboundPacket(TransportationFieldInitRequestCodec.OutboundFieldInitOpcode, rawPacket));
+            QueuedCount++;
+            LastQueuedOpcode = TransportationFieldInitRequestCodec.OutboundFieldInitOpcode;
+            LastQueuedRawPacket = rawPacket;
+            status = $"Queued transport field-init opcode {TransportationFieldInitRequestCodec.OutboundFieldInitOpcode} for field {fieldId} shipKind {shipKind} for deferred live-session injection.";
+            LastStatus = status;
+            return true;
+        }
+
         public void RecordDispatchResult(string source, TransportationPacketInboxMessage message, bool success, string result)
         {
             string summary = string.IsNullOrWhiteSpace(result)
@@ -496,7 +550,10 @@ namespace HaCreator.MapSimulator.Managers
                     pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
                     pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
                     pair.InitCompleted = true;
-                    LastStatus = $"Transport official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
+                    int flushed = FlushQueuedOutboundPackets(pair);
+                    LastStatus = flushed > 0
+                        ? $"Transport official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint} and flushed {flushed} queued outbound packet(s)."
+                        : $"Transport official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
                     pair.ClientSession.WaitForData();
                     return;
                 }
@@ -572,7 +629,7 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private bool TrySendRawPacket(byte[] rawPacket, out string status)
+        private bool TrySendRawPacket(byte[] rawPacket, out string status, bool countAsTypedSend = false)
         {
             BridgePair pair = _activePair;
             if (pair == null || !pair.InitCompleted)
@@ -598,6 +655,13 @@ namespace HaCreator.MapSimulator.Managers
                     : Array.Empty<byte>();
 
                 pair.ServerSession.SendPacket(clonedPacket);
+                if (countAsTypedSend)
+                {
+                    SentCount++;
+                    LastSentOpcode = opcode;
+                    LastSentRawPacket = clonedPacket;
+                }
+
                 ForwardedOutboundCount++;
                 if (opcode == TransportationPacketInboxManager.PacketTypeContiMove
                     || opcode == TransportationPacketInboxManager.PacketTypeContiState)
@@ -672,11 +736,46 @@ namespace HaCreator.MapSimulator.Managers
                 {
                 }
 
+                while (_pendingOutboundPackets.TryDequeue(out _))
+                {
+                }
+
                 ReceivedCount = 0;
+                SentCount = 0;
                 ForwardedOutboundCount = 0;
                 ForwardedOutboundTransportCount = 0;
+                QueuedCount = 0;
+                LastSentOpcode = -1;
+                LastSentRawPacket = Array.Empty<byte>();
+                LastQueuedOpcode = -1;
+                LastQueuedRawPacket = Array.Empty<byte>();
                 _recentOutboundPackets.Clear();
             }
+        }
+
+        private int FlushQueuedOutboundPackets(BridgePair pair)
+        {
+            if (pair == null || !pair.InitCompleted)
+            {
+                return 0;
+            }
+
+            int flushed = 0;
+            while (_pendingOutboundPackets.TryPeek(out PendingOutboundPacket pending))
+            {
+                pair.ServerSession.SendPacket((byte[])pending.RawPacket.Clone());
+                if (!_pendingOutboundPackets.TryDequeue(out PendingOutboundPacket dequeued))
+                {
+                    break;
+                }
+
+                SentCount++;
+                LastSentOpcode = dequeued.Opcode;
+                LastSentRawPacket = dequeued.RawPacket;
+                flushed++;
+            }
+
+            return flushed;
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

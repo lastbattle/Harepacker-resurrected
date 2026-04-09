@@ -332,39 +332,13 @@ namespace HaCreator.MapSimulator.UI
                 return null;
             }
 
-            if (IsJobName(build.JobName, "warrior"))
+            int jobBadgeIndex = (build.Job % 1000) / 100;
+            if (jobBadgeIndex == 5)
             {
-                return GetJobBadgeTexture(1);
+                jobBadgeIndex = 0;
             }
 
-            if (IsJobName(build.JobName, "magician", "mage"))
-            {
-                return GetJobBadgeTexture(2);
-            }
-
-            if (IsJobName(build.JobName, "bowman", "archer"))
-            {
-                return GetJobBadgeTexture(3);
-            }
-
-            if (IsJobName(build.JobName, "thief", "rogue", "dual"))
-            {
-                return GetJobBadgeTexture(4);
-            }
-
-            if (IsJobName(build.JobName, "beginner", "noblesse", "legend", "citizen"))
-            {
-                return GetJobBadgeTexture(0);
-            }
-
-            return (build.Job / 100) switch
-            {
-                1 => GetJobBadgeTexture(1),
-                2 => GetJobBadgeTexture(2),
-                3 => GetJobBadgeTexture(3),
-                4 => GetJobBadgeTexture(4),
-                _ => GetJobBadgeTexture(0)
-            };
+            return GetJobBadgeTexture(jobBadgeIndex);
         }
 
         private Texture2D GetJobBadgeTexture(int index)

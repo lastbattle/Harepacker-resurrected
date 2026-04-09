@@ -689,6 +689,7 @@ namespace HaCreator.MapSimulator.UI
             AppendInfoEffectLines(effectLines, infoProperty);
             AppendChairRecoveryEffectLines(effectLines, infoProperty);
             AppendPetFoodEffectLine(effectLines, specProperty);
+            AppendBuffItemEffectLines(effectLines, itemProperty?["buff"] as WzSubProperty);
             AppendScriptedUseEffectLines(effectLines, specProperty);
             AppendPickupModifierEffectLines(effectLines, specProperty);
             AppendMobEffectLines(effectLines, itemProperty?["mob"] as WzSubProperty);
@@ -716,6 +717,7 @@ namespace HaCreator.MapSimulator.UI
             AppendIndependentFlatEffectLines(effectLines, specProperty);
             AppendIndependentPercentEffectLines(effectLines, specProperty);
             AppendCureEffectLine(effectLines, specProperty);
+            AppendFatigueEffectLine(effectLines, specProperty["incFatigue"]);
             AppendMoveToEffectLine(effectLines, TryGetPositiveInt(specProperty["moveTo"]));
             AppendMorphEffectLine(effectLines, specProperty);
             AppendBoosterEffectLine(effectLines, specProperty["booster"], specProperty["indieBooster"]);
@@ -1023,6 +1025,39 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static void AppendBuffItemEffectLines(List<string> effectLines, WzSubProperty buffProperty)
+        {
+            if (buffProperty?.WzProperties == null)
+            {
+                return;
+            }
+
+            HashSet<string> seenLines = new(StringComparer.Ordinal);
+            foreach (WzImageProperty child in buffProperty.WzProperties)
+            {
+                if (child is not WzSubProperty buffEntry)
+                {
+                    continue;
+                }
+
+                int buffItemId = GetIntValue(buffEntry["buffItemID"]);
+                if (buffItemId <= 0)
+                {
+                    continue;
+                }
+
+                string label = ResolveTooltipItemLabel(buffItemId);
+                int probability = GetIntValue(buffEntry["prob"]);
+                string line = probability > 0 && probability < 100
+                    ? $"Buff Item: {label} ({probability.ToString(CultureInfo.InvariantCulture)}%)"
+                    : $"Buff Item: {label}";
+                if (seenLines.Add(line))
+                {
+                    effectLines.Add(line);
+                }
+            }
+        }
+
         private static void AppendPickupModifierEffectLines(List<string> effectLines, WzSubProperty specProperty)
         {
             if (specProperty == null)
@@ -1131,6 +1166,17 @@ namespace HaCreator.MapSimulator.UI
             effectLines.Add($"Berserk {FormatSignedValue(berserk)}");
         }
 
+        private static void AppendFatigueEffectLine(List<string> effectLines, WzImageProperty property)
+        {
+            int fatigue = GetIntValue(property);
+            if (fatigue == 0)
+            {
+                return;
+            }
+
+            effectLines.Add($"Fatigue {FormatSignedValue(fatigue)}");
+        }
+
         private static void AppendThawEffectLine(List<string> effectLines, WzImageProperty property)
         {
             int thaw = GetIntValue(property);
@@ -1201,6 +1247,7 @@ namespace HaCreator.MapSimulator.UI
             AppendReplaceMetadataLines(metadataLines, infoProperty);
             AppendRecoveryRateMetadataLines(metadataLines, infoProperty);
             AppendRandomChairEffectMetadataLines(metadataLines, infoProperty);
+            AppendCashAvailabilityMetadataLines(metadataLines, infoProperty);
             AppendAdditionalInfoFlagsMetadataLines(metadataLines, infoProperty, specProperty);
         }
 
@@ -1428,6 +1475,30 @@ namespace HaCreator.MapSimulator.UI
                 {
                     metadataLines.Add(line);
                 }
+            }
+        }
+
+        private static void AppendCashAvailabilityMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            if (GetIntValue(infoProperty["autoBuff"]) == 1)
+            {
+                metadataLines.Add("Auto Buff item");
+            }
+
+            if (GetIntValue(infoProperty["flatRate"]) == 1)
+            {
+                metadataLines.Add("Flat-rate item");
+            }
+
+            int limitMinutes = GetIntOrStringValue(infoProperty["limitMin"]);
+            if (limitMinutes > 0)
+            {
+                metadataLines.Add($"Time limit: {FormatMinuteDuration(limitMinutes)}");
             }
         }
 
@@ -1869,6 +1940,11 @@ namespace HaCreator.MapSimulator.UI
         public static IReadOnlyList<string> BuildEffectLinesForTests(WzSubProperty infoProperty, WzSubProperty specProperty)
         {
             return BuildEffectLines(0, null, infoProperty, specProperty);
+        }
+
+        public static IReadOnlyList<string> BuildEffectLinesForTests(WzSubProperty itemProperty, WzSubProperty infoProperty, WzSubProperty specProperty)
+        {
+            return BuildEffectLines(0, itemProperty, infoProperty, specProperty);
         }
 
         public static IReadOnlyList<string> BuildQuestRequirementMetadataLinesForTests(WzSubProperty infoProperty)

@@ -172,18 +172,25 @@ namespace HaCreator.MapSimulator.UI
 
         private sealed class WorldButtonEntry
         {
-            public WorldButtonEntry(int worldId, UIObject button, Texture2D icon, SelectorOverlayFrame keyFocusedFrame)
+            public WorldButtonEntry(
+                int worldId,
+                UIObject button,
+                Texture2D icon,
+                SelectorOverlayFrame keyFocusedFrame,
+                SelectorAnimatedOverlay mouseOverOverlay)
             {
                 WorldId = worldId;
                 Button = button;
                 Icon = icon;
                 KeyFocusedFrame = keyFocusedFrame;
+                MouseOverOverlay = mouseOverOverlay;
             }
 
             public int WorldId { get; }
             public UIObject Button { get; }
             public Texture2D Icon { get; }
             public SelectorOverlayFrame KeyFocusedFrame { get; }
+            public SelectorAnimatedOverlay MouseOverOverlay { get; }
         }
 
         private readonly List<WorldButtonEntry> _worldButtons = new List<WorldButtonEntry>();
@@ -197,6 +204,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _viewChoiceButton;
         private readonly UIObject _viewAllButton;
         private readonly SelectorOverlayFrame _viewAllKeyFocusedFrame;
+        private readonly SelectorAnimatedOverlay _viewAllMouseOverOverlay;
         private SpriteFont _font;
         private int _currentWorldId;
         private int _selectedWorldId;
@@ -213,11 +221,12 @@ namespace HaCreator.MapSimulator.UI
             Point frameOverlayOffset,
             Texture2D highlightTexture,
             IReadOnlyDictionary<byte, SelectorAnimatedOverlay> worldStateAnimations,
-            IEnumerable<(int worldId, UIObject button, Texture2D icon, SelectorOverlayFrame keyFocusedFrame)> worldButtons,
+            IEnumerable<(int worldId, UIObject button, Texture2D icon, SelectorOverlayFrame keyFocusedFrame, SelectorAnimatedOverlay mouseOverOverlay)> worldButtons,
             IEnumerable<UIObject> emptySlotButtons = null,
             UIObject viewChoiceButton = null,
             UIObject viewAllButton = null,
-            SelectorOverlayFrame viewAllKeyFocusedFrame = default)
+            SelectorOverlayFrame viewAllKeyFocusedFrame = default,
+            SelectorAnimatedOverlay viewAllMouseOverOverlay = null)
             : base(frame)
         {
             _frameOverlayTexture = frameOverlayTexture;
@@ -227,8 +236,9 @@ namespace HaCreator.MapSimulator.UI
             _viewChoiceButton = viewChoiceButton;
             _viewAllButton = viewAllButton;
             _viewAllKeyFocusedFrame = viewAllKeyFocusedFrame;
+            _viewAllMouseOverOverlay = viewAllMouseOverOverlay;
 
-            foreach ((int worldId, UIObject button, Texture2D icon, SelectorOverlayFrame keyFocusedFrame) in worldButtons ?? Enumerable.Empty<(int, UIObject, Texture2D, SelectorOverlayFrame)>())
+            foreach ((int worldId, UIObject button, Texture2D icon, SelectorOverlayFrame keyFocusedFrame, SelectorAnimatedOverlay mouseOverOverlay) in worldButtons ?? Enumerable.Empty<(int, UIObject, Texture2D, SelectorOverlayFrame, SelectorAnimatedOverlay)>())
             {
                 if (button == null || icon == null)
                 {
@@ -238,7 +248,7 @@ namespace HaCreator.MapSimulator.UI
                 int capturedWorldId = worldId;
                 button.ButtonClickReleased += _ => SelectWorld(capturedWorldId);
                 AddButton(button);
-                _worldButtons.Add(new WorldButtonEntry(worldId, button, icon, keyFocusedFrame));
+                _worldButtons.Add(new WorldButtonEntry(worldId, button, icon, keyFocusedFrame, mouseOverOverlay));
             }
 
             foreach (UIObject button in emptySlotButtons ?? Enumerable.Empty<UIObject>())
@@ -528,6 +538,8 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            DrawAnimatedOverlay(sprite, focusedEntry.Button, focusedEntry.MouseOverOverlay);
+
             sprite.Draw(
                 focusedEntry.KeyFocusedFrame.Texture,
                 new Vector2(
@@ -570,8 +582,14 @@ namespace HaCreator.MapSimulator.UI
             if (!_focusViewAllButton ||
                 !_viewAllEnabled ||
                 _viewAllButton == null ||
-                !_viewAllButton.ButtonVisible ||
-                _viewAllKeyFocusedFrame.IsEmpty)
+                !_viewAllButton.ButtonVisible)
+            {
+                return;
+            }
+
+            DrawAnimatedOverlay(sprite, _viewAllButton, _viewAllMouseOverOverlay);
+
+            if (_viewAllKeyFocusedFrame.IsEmpty)
             {
                 return;
             }
@@ -581,6 +599,27 @@ namespace HaCreator.MapSimulator.UI
                 new Vector2(
                     Position.X + _viewAllButton.X + _viewAllKeyFocusedFrame.Offset.X,
                     Position.Y + _viewAllButton.Y + _viewAllKeyFocusedFrame.Offset.Y),
+                Color.White);
+        }
+
+        private void DrawAnimatedOverlay(SpriteBatch sprite, UIObject button, SelectorAnimatedOverlay overlay)
+        {
+            if (sprite == null || button == null || overlay == null || overlay.IsEmpty)
+            {
+                return;
+            }
+
+            SelectorAnimatedOverlayFrame frame = overlay.GetFrame(Environment.TickCount);
+            if (frame.IsEmpty)
+            {
+                return;
+            }
+
+            sprite.Draw(
+                frame.Texture,
+                new Vector2(
+                    Position.X + button.X + frame.Offset.X,
+                    Position.Y + button.Y + frame.Offset.Y),
                 Color.White);
         }
 

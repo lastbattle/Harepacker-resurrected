@@ -95,8 +95,8 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Regex VegaModifierRegex = new Regex(@"enables\s+a\s+(\d+)\s*%\s+success\s+rate\s+on\s+a\s+(\d+)\s*%\s+scroll", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex ScrollTargetRegex = new Regex(@"Scroll\s+for\s+(.+?)\s+for\s", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex PercentChanceRegex = new Regex(@"(\d+)\s*%\s+chance", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex DestroyChanceRegex = new Regex(@"(?:chance\s+of\s+being\s+destroyed|destroyed\s+in\s+a)\s*(\d+)\s*%\s*(?:rate)?|(\d+)\s*%\s+chance\s+of\s+being\s+destroyed", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex CompleteDestroyRegex = new Regex(@"(?:if\s+(?:it\s+)?fails?|upon\s+failure).*completely\s+destroyed", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex DestroyChanceRegex = new Regex(@"(?:chance\s+of\s+being\s+destroyed|destroyed\s+(?:in|at)\s+(?:a\s+)?)\s*(\d+)\s*%\s*(?:[-\s]*chance|rate)?|(\d+)\s*%\s*(?:[-\s]*chance\s+of\s+being\s+destroyed|chance\s+of\s+being\s+destroyed)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex CompleteDestroyRegex = new Regex(@"(?:if\s+(?:it\s+)?fails?|upon\s+failure).*?(?:completely\s+destroyed|destroyed\s+completely)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex WeaponAttackBonusRegex = new Regex(@"(?:Weapon\s+Attack|Physical\s+Attack(?:\s+Power)?|Attack\s+Power|(?<![A-Za-z.])ATT(?![A-Za-z]))(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex MagicAttackBonusRegex = new Regex(@"(?:Magic(?:al)?\s+Attack(?:\s+Power)?|Magical\s+Power|Magic\s+Power|M\.?\s*ATT)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex WeaponDefenseBonusRegex = new Regex(@"(?:Weapon\s+Defense|Physical\s+Defense|Weapon\s+Def(?:ense)?|PDD|(?<![A-Za-z.])DEF(?![A-Za-z]))(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -3601,13 +3601,10 @@ namespace HaCreator.MapSimulator.UI
             profile = default;
             string description = ResolveCachedItemDescription(itemId);
             if (!string.IsNullOrWhiteSpace(description) &&
-                description.IndexOf("Vega's Spell", StringComparison.OrdinalIgnoreCase) >= 0)
+                description.IndexOf("Vega's Spell", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                TryParseSuccessRateText(description, out int basePercent))
             {
-                Match match = PercentRateRegex.Match(description);
-                if (match.Success && int.TryParse(match.Groups[1].Value, out int basePercent))
-                {
-                    profile = new VegaCompatibleScrollProfile(basePercent / 100f);
-                }
+                profile = new VegaCompatibleScrollProfile(basePercent / 100f);
             }
 
             VegaCompatibleScrollProfileCache[itemId] = profile;

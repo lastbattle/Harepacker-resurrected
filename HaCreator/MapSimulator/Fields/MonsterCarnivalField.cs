@@ -681,10 +681,10 @@ namespace HaCreator.MapSimulator.Fields
             enemyTeam.CurrentCp = Math.Max(0, enemyTeamCp);
             enemyTeam.TotalCp = Math.Max(enemyTeam.CurrentCp, enemyTeamTotalCp);
 
-            ShowStatus($"Entered Monster Carnival as {FormatTeam(localTeam)}.", Environment.TickCount);
+            ShowStatus(BuildEnterStatusMessage(localTeam), Environment.TickCount);
             RecordRecoveredClientOwnerAction(
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnEnter refreshed the Carnival HUD state.",
-                Array.Empty<int>());
+                new[] { 0x1027 });
         }
 
         public void UpdateTeamCp(
@@ -1949,6 +1949,13 @@ namespace HaCreator.MapSimulator.Fields
         private static string FormatSignedDelta(int value)
         {
             return value >= 0 ? $"+{value}" : value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private string BuildEnterStatusMessage(MonsterCarnivalTeam localTeam)
+        {
+            MonsterCarnivalStringPoolMessage definition = new(0x1027, "Monster Carnival is now underway!!");
+            string underwayMessage = FormatStringPoolMessage(definition);
+            return $"{underwayMessage} Entered as {FormatTeam(localTeam)}.";
         }
 
         private string BuildProcessForDeathMessage(MonsterCarnivalTeam team, string characterName, int remainingRevives)

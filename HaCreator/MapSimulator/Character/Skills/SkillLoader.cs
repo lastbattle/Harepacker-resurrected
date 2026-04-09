@@ -3950,29 +3950,93 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private List<int> GetJobPath(int job)
         {
-            var path = new List<int> { 0 }; // Always include beginner
+            int normalizedJob = Math.Abs(job);
+            if (TryBuildSpecialJobPath(normalizedJob, out List<int> specialPath))
+            {
+                return specialPath;
+            }
 
-            if (job == 0)
+            var path = new List<int> { 0 };
+
+            if (normalizedJob == 0)
+            {
                 return path;
+            }
 
-            // Add first job
-            int firstJob = (job / 100) * 100;
+            int firstJob = (normalizedJob / 100) * 100;
             if (firstJob > 0)
+            {
                 path.Add(firstJob);
+            }
 
-            // Add second job
-            int secondJob = (job / 10) * 10;
+            int secondJob = (normalizedJob / 10) * 10;
             if (secondJob > firstJob)
+            {
                 path.Add(secondJob);
+            }
 
-            // Add third job
-            int thirdJob = secondJob + (job % 10 > 0 ? 1 : 0);
-            if (thirdJob > secondJob && thirdJob < job)
+            int thirdJob = secondJob + (normalizedJob % 10 > 0 ? 1 : 0);
+            if (thirdJob > secondJob && thirdJob < normalizedJob)
+            {
                 path.Add(thirdJob);
+            }
 
-            // Add current job
-            if (!path.Contains(job))
-                path.Add(job);
+            if (!path.Contains(normalizedJob))
+            {
+                path.Add(normalizedJob);
+            }
+
+            return path;
+        }
+
+        private static bool TryBuildSpecialJobPath(int job, out List<int> path)
+        {
+            path = job switch
+            {
+                2000 or >= 2100 and <= 2112 => BuildLineagePath(job, 2000, 2100, 2110, 2111, 2112),
+                2001 or >= 2200 and <= 2218 => BuildLineagePath(job, 2001, 2200, 2210, 2211, 2212, 2213, 2214, 2215, 2216, 2217, 2218),
+                2002 or >= 2300 and <= 2312 => BuildLineagePath(job, 2002, 2300, 2310, 2311, 2312),
+                2003 or >= 2400 and <= 2412 => BuildLineagePath(job, 2003, 2400, 2410, 2411, 2412),
+                2004 or >= 2700 and <= 2712 => BuildLineagePath(job, 2004, 2700, 2710, 2711, 2712),
+                2005 or >= 2500 and <= 2512 => BuildLineagePath(job, 2005, 2500, 2510, 2511, 2512),
+                1000 or >= 1100 and <= 1112 => BuildLineagePath(job, 1000, 1100, 1110, 1111, 1112),
+                >= 1200 and <= 1212 => BuildLineagePath(job, 1000, 1200, 1210, 1211, 1212),
+                >= 1300 and <= 1312 => BuildLineagePath(job, 1000, 1300, 1310, 1311, 1312),
+                >= 1400 and <= 1412 => BuildLineagePath(job, 1000, 1400, 1410, 1411, 1412),
+                >= 1500 and <= 1512 => BuildLineagePath(job, 1000, 1500, 1510, 1511, 1512),
+                3000 or >= 3200 and <= 3212 => BuildLineagePath(job, 3000, 3200, 3210, 3211, 3212),
+                >= 3300 and <= 3312 => BuildLineagePath(job, 3000, 3300, 3310, 3311, 3312),
+                >= 3500 and <= 3512 => BuildLineagePath(job, 3000, 3500, 3510, 3511, 3512),
+                3001 or >= 3100 and <= 3112 => BuildLineagePath(job, 3001, 3100, 3110, 3111, 3112),
+                3002 or >= 3600 and <= 3612 => BuildLineagePath(job, 3000, 3002, 3600, 3610, 3611, 3612),
+                4001 or >= 4100 and <= 4112 => BuildLineagePath(job, 4001, 4100, 4110, 4111, 4112),
+                4002 or >= 4200 and <= 4212 => BuildLineagePath(job, 4002, 4200, 4210, 4211, 4212),
+                5000 or >= 5100 and <= 5112 => BuildLineagePath(job, 5000, 5100, 5110, 5111, 5112),
+                6000 or >= 6100 and <= 6112 => BuildLineagePath(job, 6000, 6100, 6110, 6111, 6112),
+                6001 or >= 6500 and <= 6512 => BuildLineagePath(job, 6001, 6500, 6510, 6511, 6512),
+                >= 430 and <= 434 => BuildLineagePath(job, 0, 400, 430, 431, 432, 433, 434),
+                _ => null
+            };
+
+            return path != null;
+        }
+
+        private static List<int> BuildLineagePath(int currentJob, params int[] lineage)
+        {
+            var path = new List<int>(lineage.Length);
+            foreach (int jobId in lineage)
+            {
+                path.Add(jobId);
+                if (jobId == currentJob)
+                {
+                    break;
+                }
+            }
+
+            if (!path.Contains(currentJob))
+            {
+                path.Add(currentJob);
+            }
 
             return path;
         }
@@ -4414,6 +4478,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 yield return suffixTemplateId;
             }
+        }
+
+        internal static IReadOnlyList<int> EnumerateFlagOnlyMorphTemplateCandidatesForTesting(int skillId)
+        {
+            return EnumerateFlagOnlyMorphTemplateCandidates(skillId).ToArray();
         }
 
         private static bool HasFlagOnlyMorphMetadata(WzImageProperty node, string name)

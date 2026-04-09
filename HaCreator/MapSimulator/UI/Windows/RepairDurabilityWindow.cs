@@ -1445,27 +1445,16 @@ namespace HaCreator.MapSimulator.UI
         private List<Texture2D> BuildTooltipJobBadges(int requiredJobMask)
         {
             List<Texture2D> textures = new(6);
-            AppendJobBadgeTexture(textures, requiredJobMask, 1, "beginner");
-            AppendJobBadgeTexture(textures, requiredJobMask, 2, "warrior");
-            AppendJobBadgeTexture(textures, requiredJobMask, 4, "magician");
-            AppendJobBadgeTexture(textures, requiredJobMask, 8, "bowman");
-            AppendJobBadgeTexture(textures, requiredJobMask, 16, "thief");
-            AppendJobBadgeTexture(textures, requiredJobMask, 32, "pirate");
+            foreach ((string key, bool enabled) in RepairDurabilityClientParity.ResolveRequiredJobBadgeStates(requiredJobMask))
+            {
+                Texture2D texture = ResolveRequirementLabel(enabled, key);
+                if (texture != null)
+                {
+                    textures.Add(texture);
+                }
+            }
+
             return textures;
-        }
-
-        private void AppendJobBadgeTexture(List<Texture2D> textures, int requiredJobMask, int maskBit, string key)
-        {
-            if (textures == null || (requiredJobMask & maskBit) == 0)
-            {
-                return;
-            }
-
-            Texture2D texture = ResolveRequirementLabel(true, key);
-            if (texture != null)
-            {
-                textures.Add(texture);
-            }
         }
 
         private static float DrawJobBadgeRow(SpriteBatch sprite, int x, float y, IReadOnlyList<Texture2D> textures)

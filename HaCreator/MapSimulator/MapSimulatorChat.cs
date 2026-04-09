@@ -960,14 +960,17 @@ namespace HaCreator.MapSimulator
             WhisperTargetPickerPresentation presentation = WhisperTargetPickerPresentation.Inline)
         {
             string normalizedInitialTarget = NormalizeChatSpeakerCandidate(initialTarget);
+            bool explicitInitialTarget = !string.IsNullOrWhiteSpace(normalizedInitialTarget);
             if (string.IsNullOrWhiteSpace(normalizedInitialTarget))
             {
                 normalizedInitialTarget = NormalizeChatSpeakerCandidate(_whisperTarget);
+                explicitInitialTarget = !string.IsNullOrWhiteSpace(normalizedInitialTarget);
             }
 
             if (string.IsNullOrWhiteSpace(normalizedInitialTarget))
             {
                 normalizedInitialTarget = NormalizeChatSpeakerCandidate(_replyTarget);
+                explicitInitialTarget = !string.IsNullOrWhiteSpace(normalizedInitialTarget);
             }
 
             if (!_isWhisperTargetPickerActive)
@@ -981,12 +984,7 @@ namespace HaCreator.MapSimulator
             _whisperTargetPickerPresentation = presentation;
             ResetHistoryNavigation();
 
-            if (string.IsNullOrWhiteSpace(normalizedInitialTarget) && _whisperCandidates.Count > 0)
-            {
-                normalizedInitialTarget = _whisperCandidates[0];
-            }
-
-            SetInputText(normalizedInitialTarget);
+            SetInputText(explicitInitialTarget ? normalizedInitialTarget : string.Empty);
             SyncWhisperTargetPickerSelectionFromInput();
         }
 
@@ -1903,7 +1901,7 @@ namespace HaCreator.MapSimulator
             string normalizedInput = NormalizeChatSpeakerCandidate(_inputText.ToString());
             if (string.IsNullOrWhiteSpace(normalizedInput))
             {
-                _whisperTargetPickerSelectionIndex = _whisperCandidates.Count > 0 ? 0 : -1;
+                _whisperTargetPickerSelectionIndex = -1;
                 return;
             }
 

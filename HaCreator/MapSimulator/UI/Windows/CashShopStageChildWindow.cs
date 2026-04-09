@@ -156,6 +156,7 @@ namespace HaCreator.MapSimulator.UI
         private int _oneADayRemainingSeconds;
         private int _oneADayCountdownDeadlineTick = int.MinValue;
         private string _oneADaySessionState = "Reward session idle.";
+        private bool _oneADayRuntimeSeeded;
 
         public CashShopStageChildWindow(IDXObject frame, string windowName, string title)
             : base(frame)
@@ -992,6 +993,7 @@ namespace HaCreator.MapSimulator.UI
         private void ApplyOneADayButtonState(string actionKey)
         {
             OneADayOwnerState state = _oneADayStateProvider?.Invoke();
+            SyncOneADayOwnerState();
             switch (actionKey)
             {
                 case "BtJoin":
@@ -1003,17 +1005,29 @@ namespace HaCreator.MapSimulator.UI
                     }
 
                     SelectOneADaySelector(0, state);
+                    if (_oneADayPending)
+                    {
+                        _oneADayPlateFocusIndex = 0;
+                    }
+
                     _oneADaySessionState = !_oneADayPending
                         ? "CCSWnd_OneADay kept the Today selector active but no packet-armed reward session is pending."
-                        : "CCSWnd_OneADay routed the Today selector through the packet-armed purchase lane.";
+                        : "CCSWnd_OneADay routed the Today selector through the packet-armed purchase lane and kept the active reward plate selected.";
                     break;
                 case "BtShortcut":
                     _oneADayShortcutHelpActive = true;
                     _oneADaySessionState = $"CCSWnd_OneADay opened the dedicated {ResolveOneADayPlateName(state)} help surface without leaving the current selector lane.";
                     break;
                 case "BtClose":
-                    _oneADayShortcutHelpActive = false;
-                    _oneADaySessionState = "CCSWnd_OneADay dismissed the current reward preview while keeping the owner shell alive.";
+                    if (_oneADayShortcutHelpActive)
+                    {
+                        _oneADayShortcutHelpActive = false;
+                        _oneADaySessionState = "CCSWnd_OneADay dismissed the shortcut-help plate and returned to the staged reward owner.";
+                    }
+                    else
+                    {
+                        _oneADaySessionState = "CCSWnd_OneADay dismissed the current reward preview while keeping the owner shell alive.";
+                    }
                     break;
             }
         }
@@ -1420,22 +1434,36 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int nextRemainingSeconds = Math.Max(0, (state.Hour * 3600) + (state.Minute * 60) + state.Second);
-            if (!force
-                && state.IsPending == _oneADayPending
-                && nextRemainingSeconds == _oneADayRemainingSeconds)
+            bool pendingChanged = !_oneADayRuntimeSeeded || state.IsPending != _oneADayPending;
+            bool countdownRestarted = _oneADayRuntimeSeeded
+                && state.IsPending
+                && nextRemainingSeconds > 0
+                && (nextRemainingSeconds > (_oneADayRemainingSeconds + 1) || _oneADayCountdownDeadlineTick == int.MinValue);
+            bool selectorReseedRequested = force || !_oneADayRuntimeSeeded;
+
+            if (!pendingChanged && !countdownRestarted && !selectorReseedRequested)
             {
                 return;
             }
 
             _oneADayPending = state.IsPending;
-            _oneADaySelectorIndex = Math.Clamp(state.SelectorIndex, 0, Math.Max(0, state.SelectorCount - 1));
-            _oneADayShortcutHelpActive = force ? false : _oneADayShortcutHelpActive;
+            if (selectorReseedRequested)
+            {
+                _oneADaySelectorIndex = Math.Clamp(state.SelectorIndex, 0, Math.Max(0, state.SelectorCount - 1));
+                _oneADayShortcutHelpActive = false;
+            }
+
             int activeOfferCount = _oneADaySelectorIndex == 1 ? state.PreviousOfferCount : state.PlateCount;
             _oneADayPlateFocusIndex = Math.Clamp(_oneADayPlateFocusIndex, 0, Math.Max(0, activeOfferCount - 1));
-            _oneADayRemainingSeconds = nextRemainingSeconds;
-            _oneADayCountdownDeadlineTick = nextRemainingSeconds > 0
-                ? Environment.TickCount + (nextRemainingSeconds * 1000)
-                : int.MinValue;
+            if (pendingChanged || countdownRestarted)
+            {
+                _oneADayRemainingSeconds = nextRemainingSeconds;
+                _oneADayCountdownDeadlineTick = state.IsPending && nextRemainingSeconds > 0
+                    ? Environment.TickCount + (nextRemainingSeconds * 1000)
+                    : int.MinValue;
+            }
+
+            _oneADayRuntimeSeeded = true;
             _oneADaySessionState = state.IsPending
                 ? "CCSWnd_OneADay::ChangeState(0,1) armed the Today/Previous selector, key-focus canvas, and reward plate surfaces."
                 : "CCSWnd_OneADay::ChangeState(0,1) left the owner idle while keeping the Today/Previous selector seam alive.";
@@ -1460,6 +1488,7 @@ namespace HaCreator.MapSimulator.UI
             if (_oneADayRemainingSeconds == 0)
             {
                 _oneADayPending = false;
+                _oneADayCountdownDeadlineTick = int.MinValue;
                 _oneADaySessionState = "CCSWnd_OneADay exhausted the current reward countdown and returned to the idle owner state.";
                 _statusMessage = _oneADaySessionState;
             }

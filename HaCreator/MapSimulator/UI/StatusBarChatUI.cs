@@ -69,6 +69,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<UIObject> uiButtons = new List<UIObject>();
         private readonly Dictionary<MapSimulatorChatTargetType, ChatTargetLabelPlacement> _chatTargetLabels =
             new Dictionary<MapSimulatorChatTargetType, ChatTargetLabelPlacement>();
+        private readonly Dictionary<string, UIObject> _shortcutTooltipButtons = new Dictionary<string, UIObject>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> _shortcutTooltips = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         private Func<MapSimulatorChatRenderState> _chatStateProvider;
         private UIObject _chatOpenButton;
@@ -97,6 +99,7 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _whisperPickerDialogCenterTexture;
         private Texture2D _whisperPickerDialogBottomTexture;
         private Texture2D _whisperPickerDialogBarTexture;
+        private Texture2D _whisperPickerDialogLineTexture;
         private Texture2D _whisperPickerPrevButtonTexture;
         private Texture2D _whisperPickerNextButtonTexture;
         private Texture2D _whisperPickerOkButtonTexture;
@@ -213,6 +216,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D centerTexture,
             Texture2D bottomTexture,
             Texture2D barTexture,
+            Texture2D lineTexture,
             Texture2D prevButtonTexture,
             Texture2D nextButtonTexture,
             Texture2D okButtonTexture,
@@ -222,6 +226,7 @@ namespace HaCreator.MapSimulator.UI
             _whisperPickerDialogCenterTexture = centerTexture;
             _whisperPickerDialogBottomTexture = bottomTexture;
             _whisperPickerDialogBarTexture = barTexture;
+            _whisperPickerDialogLineTexture = lineTexture;
             _whisperPickerPrevButtonTexture = prevButtonTexture;
             _whisperPickerNextButtonTexture = nextButtonTexture;
             _whisperPickerOkButtonTexture = okButtonTexture;
@@ -358,6 +363,32 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public void RegisterShortcutTooltipButton(string entryName, UIObject button)
+        {
+            if (string.IsNullOrWhiteSpace(entryName) || button == null)
+            {
+                return;
+            }
+
+            _shortcutTooltipButtons[entryName] = button;
+        }
+
+        public void SetShortcutTooltip(string entryName, string tooltipText)
+        {
+            if (string.IsNullOrWhiteSpace(entryName))
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(tooltipText))
+            {
+                _shortcutTooltips.Remove(entryName);
+                return;
+            }
+
+            _shortcutTooltips[entryName] = tooltipText.Trim();
+        }
+
         /// <summary>
         /// Draw
         /// </summary>
@@ -405,6 +436,7 @@ namespace HaCreator.MapSimulator.UI
 
             DrawChatOverlay(sprite, TickCount, chatState);
             DrawPointNotifications(sprite, TickCount);
+            DrawHoveredShortcutTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
         }
 
         private void DrawChatOverlay(SpriteBatch sprite, int tickCount, MapSimulatorChatRenderState chatState)
@@ -431,6 +463,7 @@ namespace HaCreator.MapSimulator.UI
                 DrawChatInput(sprite, chatState, tickCount);
                 DrawWhisperTargetPicker(sprite, chatState);
             }
+
         }
 
         private void SyncChatToggleButtons(bool isChatActive)
@@ -830,7 +863,6 @@ namespace HaCreator.MapSimulator.UI
 
             DrawModalWhisperPickerFrame(sprite, _whisperPickerBounds.Value);
 
-            int contentX = modalX + WhisperPickerModalContentPadding;
             int contentY = modalY + topHeight + WhisperPickerModalHeaderGap;
             if (_whisperPickerDialogBarTexture != null)
             {
@@ -838,14 +870,27 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_whisperPickerDialogBarTexture, new Vector2(barX, modalY + 6), Color.White);
             }
 
-            Vector2 titlePos = new Vector2(contentX, modalY + 8f);
+            Rectangle listBounds = StatusBarChatLayoutRules.ResolveWhisperPickerModalListBounds(
+                _whisperPickerBounds.Value,
+                contentY,
+                rowHeight,
+                visibleCount,
+                ResolveWhisperPickerMinimumRowWidth(),
+                ResolveWhisperPickerMaxCandidateWidth(chatState, firstVisibleIndex, visibleCount),
+                _whisperPickerDialogLineTexture?.Width ?? 0);
+            Vector2 titlePos = new Vector2(listBounds.X, modalY + 8f);
             DrawTextWithShadow(sprite, "Whisper Target", titlePos, new Color(244, 240, 227), Color.Black);
+            if (_whisperPickerDialogLineTexture != null)
+            {
+                int dividerX = modalX + Math.Max(0, (modalWidth - _whisperPickerDialogLineTexture.Width) / 2);
+                sprite.Draw(_whisperPickerDialogLineTexture, new Vector2(dividerX, contentY - 4), Color.White);
+            }
 
             DrawWhisperPickerRow(
                 sprite,
-                contentX,
-                contentY,
-                modalWidth - (WhisperPickerModalContentPadding * 2),
+                listBounds.X,
+                listBounds.Y,
+                listBounds.Width,
                 rowHeight,
                 chatState.InputText ?? string.Empty,
                 isSelected: chatState.WhisperTargetPickerSelectionIndex < 0,
@@ -861,9 +906,9 @@ namespace HaCreator.MapSimulator.UI
 
                 DrawWhisperPickerRow(
                     sprite,
-                    contentX,
-                    contentY + ((i + 1) * rowHeight),
-                    modalWidth - (WhisperPickerModalContentPadding * 2),
+                    listBounds.X,
+                    listBounds.Y + ((i + 1) * rowHeight),
+                    listBounds.Width,
                     rowHeight,
                     candidates[candidateIndex],
                     isSelected: candidateIndex == chatState.WhisperTargetPickerSelectionIndex,
@@ -1699,5 +1744,110 @@ namespace HaCreator.MapSimulator.UI
                 out _) == MapSimulatorChat.WhisperTargetValidationResult.Valid;
         }
         #endregion
+
+        private void DrawHoveredShortcutTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
+        {
+            if (_font == null || _shortcutTooltips.Count == 0)
+            {
+                return;
+            }
+
+            string hoveredEntryName = TryResolveHoveredShortcutTooltipEntryName(Mouse.GetState().X, Mouse.GetState().Y);
+            if (string.IsNullOrWhiteSpace(hoveredEntryName)
+                || !_shortcutTooltips.TryGetValue(hoveredEntryName, out string tooltipText)
+                || string.IsNullOrWhiteSpace(tooltipText)
+                || !TryGetShortcutTooltipBounds(hoveredEntryName, out Rectangle anchorBounds))
+            {
+                return;
+            }
+
+            const float textScale = 0.75f;
+            const int paddingX = 6;
+            const int paddingY = 4;
+            Vector2 textSize = ClientTextDrawing.Measure((GraphicsDevice)null, tooltipText, textScale, _font);
+            int width = Math.Max(22, (int)Math.Ceiling(textSize.X) + (paddingX * 2));
+            int height = Math.Max(16, (int)Math.Ceiling(textSize.Y) + (paddingY * 2));
+            int x = anchorBounds.Right + 8;
+            int y = anchorBounds.Center.Y - (height / 2);
+
+            if (x + width > renderWidth)
+            {
+                x = anchorBounds.Left - width - 8;
+            }
+
+            if (x < 8)
+            {
+                x = Math.Max(8, Math.Min(anchorBounds.Left, renderWidth - width - 8));
+                y = anchorBounds.Top - height - 6;
+            }
+
+            if (y + height > renderHeight - 8)
+            {
+                y = renderHeight - height - 8;
+            }
+
+            if (y < 8)
+            {
+                y = Math.Min(renderHeight - height - 8, anchorBounds.Bottom + 6);
+            }
+
+            Texture2D pixel = EnsureTooltipPixel(sprite.GraphicsDevice);
+            Rectangle background = new Rectangle(x, y, width, height);
+            Color border = new Color(255, 238, 155, 210);
+            sprite.Draw(pixel, background, new Color(24, 28, 37, 220));
+            sprite.Draw(pixel, new Rectangle(background.X, background.Y, background.Width, 1), border);
+            sprite.Draw(pixel, new Rectangle(background.X, background.Bottom - 1, background.Width, 1), border);
+            sprite.Draw(pixel, new Rectangle(background.X, background.Y, 1, background.Height), border);
+            sprite.Draw(pixel, new Rectangle(background.Right - 1, background.Y, 1, background.Height), border);
+            ClientTextDrawing.Draw(sprite, tooltipText, new Vector2(background.X + paddingX + 1, background.Y + paddingY + 1), Color.Black, textScale, _font);
+            ClientTextDrawing.Draw(sprite, tooltipText, new Vector2(background.X + paddingX, background.Y + paddingY), new Color(255, 238, 155), textScale, _font);
+        }
+
+        private string TryResolveHoveredShortcutTooltipEntryName(int mouseX, int mouseY)
+        {
+            foreach (KeyValuePair<string, UIObject> entry in _shortcutTooltipButtons)
+            {
+                if (TryGetShortcutTooltipBounds(entry.Key, out Rectangle bounds)
+                    && bounds.Contains(mouseX, mouseY))
+                {
+                    return entry.Key;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private bool TryGetShortcutTooltipBounds(string entryName, out Rectangle bounds)
+        {
+            bounds = Rectangle.Empty;
+            if (string.IsNullOrWhiteSpace(entryName)
+                || !_shortcutTooltipButtons.TryGetValue(entryName, out UIObject button)
+                || button == null
+                || !button.ButtonVisible)
+            {
+                return false;
+            }
+
+            int width = button.CanvasSnapshotWidth;
+            int height = button.CanvasSnapshotHeight;
+            if (width <= 0 || height <= 0)
+            {
+                return false;
+            }
+
+            bounds = new Rectangle(Position.X + button.X, Position.Y + button.Y, width, height);
+            return true;
+        }
+
+        private Texture2D EnsureTooltipPixel(GraphicsDevice graphicsDevice)
+        {
+            if (_pixelTexture == null && graphicsDevice != null)
+            {
+                _pixelTexture = new Texture2D(graphicsDevice, 1, 1);
+                _pixelTexture.SetData(new[] { Color.White });
+            }
+
+            return _pixelTexture;
+        }
     }
 }

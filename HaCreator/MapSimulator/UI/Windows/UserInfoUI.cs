@@ -10,6 +10,7 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
@@ -161,6 +162,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<string> _wishEntries = new List<string> { "White Scroll", "Brown Work Gloves", "Ilbi Throwing-Star" };
         private readonly Dictionary<ItemMakerRecipeFamily, IDXObject> _productSkillIcons = new Dictionary<ItemMakerRecipeFamily, IDXObject>();
         private readonly Dictionary<int, Texture2D> _itemIconCache = new Dictionary<int, Texture2D>();
+        private readonly HashSet<string> _collectRewardClaims = new HashSet<string>(StringComparer.Ordinal);
         private IDXObject _productSkillRecipeIcon;
         private IDXObject _marriedIcon;
 
@@ -217,7 +219,6 @@ namespace HaCreator.MapSimulator.UI
         private bool _petExceptionBlocksMeso = true;
         private int _selectedPetExceptionIndex = -1;
         private bool _collectSortByName;
-        private bool _collectRewardClaimed;
         private MouseState _previousMouseState;
         private CharacterBuild _snapshotCacheBuild;
         private ItemMakerProgressionSnapshot _currentCollectionSnapshot = ItemMakerProgressionSnapshot.Default;
@@ -930,6 +931,15 @@ namespace HaCreator.MapSimulator.UI
             if (TryGetSelectedRemotePetItemId(out int remotePetItemId, out int remotePetCount))
             {
                 string petName = ResolveRemotePetDisplayName(remotePetItemId);
+                Texture2D petIcon = TryResolveItemIcon(sprite, remotePetItemId);
+                if (petIcon != null)
+                {
+                    sprite.Draw(
+                        petIcon,
+                        new Rectangle(Position.X + 20, Position.Y + 52, 32, 32),
+                        Color.White);
+                }
+
                 DrawLabeledRow(sprite, 50, "Pet", petName, ValueColor, 132);
                 DrawLabeledRow(sprite, 74, "Slot", $"Remote pet slot {_selectedPetTabIndex + 1}", MutedColor, 132);
                 DrawLabeledRow(sprite, 98, "Source", "Remote AvatarLook / user packet", SecondaryColor, 132);
@@ -1556,7 +1566,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 bool showCollectButtons = _currentPage == UserInfoPage.Collect && !remoteInspection;
                 _collectClaimButton.ButtonVisible = showCollectButtons;
-                _collectClaimButton.SetEnabled(showCollectButtons && !_exceptionPopupOpen && CanClaimCollectReward() && !_collectRewardClaimed);
+                _collectClaimButton.SetEnabled(showCollectButtons && !_exceptionPopupOpen && CanClaimCollectReward() && !HasClaimedCollectReward());
             }
 
             if (_exceptionRegisterButton != null)
@@ -1589,7 +1599,7 @@ namespace HaCreator.MapSimulator.UI
             bool popularityMode = characterPage && remoteInspection;
             if (_popupUpButton != null)
             {
-                _popupUpButton.ButtonVisible = characterPage;
+                _popupUpButton.ButtonVisible = popupSelectorMode || popularityMode;
                 _popupUpButton.SetEnabled(!_exceptionPopupOpen && (popularityMode
                     ? CanRequestPopularity(PopularityChangeDirection.Up)
                     : popupSelectorMode && CanScrollPopupSelectionUp()));
@@ -1597,7 +1607,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (_popupDownButton != null)
             {
-                _popupDownButton.ButtonVisible = characterPage;
+                _popupDownButton.ButtonVisible = popupSelectorMode || popularityMode;
                 _popupDownButton.SetEnabled(!_exceptionPopupOpen && (popularityMode
                     ? CanRequestPopularity(PopularityChangeDirection.Down)
                     : popupSelectorMode && CanScrollPopupSelectionDown()));
@@ -1974,13 +1984,20 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (_collectRewardClaimed)
+            if (HasClaimedCollectReward())
             {
                 _statusMessage = "Collection reward has already been claimed in this simulator session.";
                 return;
             }
 
-            _collectRewardClaimed = true;
+            string claimKey = BuildCollectRewardClaimKey();
+            if (string.IsNullOrWhiteSpace(claimKey))
+            {
+                _statusMessage = "Collection reward claim could not resolve an active character owner.";
+                return;
+            }
+
+            _collectRewardClaims.Add(claimKey);
             _statusMessage = "Collection reward claim acknowledged locally.";
             UpdateButtonStates();
         }
@@ -2018,6 +2035,35 @@ namespace HaCreator.MapSimulator.UI
                 || progression.DiscoveredRecipeCount > 0
                 || progression.UnlockedHiddenRecipeCount > 0
                 || snapshot.OwnedCardTypes > 0;
+        }
+
+        private bool HasClaimedCollectReward()
+        {
+            string claimKey = BuildCollectRewardClaimKey();
+            return !string.IsNullOrWhiteSpace(claimKey) && _collectRewardClaims.Contains(claimKey);
+        }
+
+        private string BuildCollectRewardClaimKey()
+        {
+            if (IsRemoteInspectionActive())
+            {
+                return null;
+            }
+
+            CharacterBuild build = GetDisplayedBuild();
+            if (build == null)
+            {
+                return null;
+            }
+
+            if (build.Id > 0)
+            {
+                return build.Id.ToString(CultureInfo.InvariantCulture);
+            }
+
+            return string.IsNullOrWhiteSpace(build.Name)
+                ? null
+                : build.Name.Trim();
         }
 
         private List<(string Label, string Value)> BuildCollectEntries()
@@ -2403,7 +2449,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (IsRemoteInspectionActive())
             {
-                return Math.Min(3, GetDisplayedBuild()?.RemotePetItemIds?.Count ?? 0);
+                return GetResolvedRemotePetItemIds().Count;
             }
 
             return Math.Min(3, _petController?.ActivePets?.Count ?? 0);
@@ -2425,8 +2471,8 @@ namespace HaCreator.MapSimulator.UI
 
         private bool TryGetSelectedRemotePetItemId(out int petItemId, out int petCount)
         {
-            IReadOnlyList<int> petItemIds = GetDisplayedBuild()?.RemotePetItemIds;
-            petCount = Math.Min(3, petItemIds?.Count ?? 0);
+            IReadOnlyList<int> petItemIds = GetResolvedRemotePetItemIds();
+            petCount = petItemIds.Count;
             if (!IsRemoteInspectionActive() || petCount <= 0)
             {
                 petItemId = 0;
@@ -2435,6 +2481,32 @@ namespace HaCreator.MapSimulator.UI
 
             petItemId = petItemIds[Math.Clamp(_selectedPetTabIndex, 0, petCount - 1)];
             return petItemId > 0;
+        }
+
+        private IReadOnlyList<int> GetResolvedRemotePetItemIds()
+        {
+            IReadOnlyList<int> remotePetItemIds = GetDisplayedBuild()?.RemotePetItemIds;
+            if (remotePetItemIds == null || remotePetItemIds.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            List<int> resolvedPetItemIds = new List<int>(3);
+            foreach (int petItemId in remotePetItemIds)
+            {
+                if (petItemId <= 0)
+                {
+                    continue;
+                }
+
+                resolvedPetItemIds.Add(petItemId);
+                if (resolvedPetItemIds.Count >= 3)
+                {
+                    break;
+                }
+            }
+
+            return resolvedPetItemIds;
         }
 
         private static string ResolveRemotePetDisplayName(int petItemId)

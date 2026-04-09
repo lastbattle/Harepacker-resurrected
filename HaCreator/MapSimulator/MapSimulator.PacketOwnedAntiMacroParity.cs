@@ -27,9 +27,6 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedAntiMacroNoticeMode = 11;
         private const int PacketOwnedAntiMacroAnswerSubmitOpcode = 117;
         private const int PacketOwnedAntiMacroDefaultDurationMs = 60000;
-        private const int PacketOwnedAntiMacroScreenshotFolderModeClientDirectory = 0;
-        private const int PacketOwnedAntiMacroScreenshotFolderModeDesktop = 1;
-        private const int PacketOwnedAntiMacroScreenshotFolderModeRootDrive = 2;
         private static readonly Point PacketOwnedAntiMacroBackground2Offset = new(3, 7);
         private static readonly Point PacketOwnedAntiMacroBackground3Offset = new(5, 23);
         private const string PacketOwnedAntiMacroPopupCanvasPath = "Macro/popup";
@@ -497,7 +494,7 @@ namespace HaCreator.MapSimulator
 
         private string SavePacketOwnedAntiMacroScreenshot(string userName)
         {
-            string screenshotDirectory = ResolvePacketOwnedAntiMacroScreenshotBaseFolder();
+            string screenshotDirectory = PacketOwnedAntiMacroScreenshotPathResolver.ResolveBaseFolder();
             _lastPacketOwnedAntiMacroScreenshotBaseFolder = screenshotDirectory;
             if (string.IsNullOrWhiteSpace(screenshotDirectory))
             {
@@ -506,14 +503,11 @@ namespace HaCreator.MapSimulator
             }
 
             Directory.CreateDirectory(screenshotDirectory);
-            string safeUserName = SanitizePacketOwnedAntiMacroFileName(string.IsNullOrWhiteSpace(userName) ? "AntiMacro" : userName.Trim());
-            string filePath = Path.Combine(
+            string safeUserName = PacketOwnedAntiMacroScreenshotPathResolver.SanitizeUserName(userName);
+            string filePath = PacketOwnedAntiMacroScreenshotPathResolver.BuildFilePath(
                 screenshotDirectory,
-                string.Format(
-                    CultureInfo.InvariantCulture,
-                    "{0}_{1:yyyyMMdd_HHmmss}.jpg",
-                    safeUserName,
-                    DateTime.Now));
+                safeUserName,
+                DateTime.Now);
 
             if (!_screenshotManager.TrySaveBackBufferAsJpeg(GraphicsDevice, filePath, out string error))
             {
@@ -524,17 +518,6 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedAntiMacroScreenshotPath = filePath;
             _lastPacketOwnedAntiMacroSummary = $"Saved packet-owned anti-macro screenshot to {filePath}.";
             return _lastPacketOwnedAntiMacroSummary;
-        }
-
-        private static string SanitizePacketOwnedAntiMacroFileName(string userName)
-        {
-            StringBuilder builder = new();
-            foreach (char c in userName)
-            {
-                builder.Append(Array.IndexOf(Path.GetInvalidFileNameChars(), c) >= 0 ? '_' : c);
-            }
-
-            return builder.Length == 0 ? "AntiMacro" : builder.ToString();
         }
 
         private string ApplyPacketOwnedAntiMacroUserBranch(int mode, int antiMacroType, string userName)
@@ -671,66 +654,6 @@ namespace HaCreator.MapSimulator
             byte[] bytes = Encoding.Default.GetBytes(resolvedText);
             writer.Write((ushort)bytes.Length);
             writer.Write(bytes);
-        }
-
-        private static string ResolvePacketOwnedAntiMacroScreenshotBaseFolder()
-        {
-            switch (ResolvePacketOwnedAntiMacroScreenshotFolderMode())
-            {
-                case PacketOwnedAntiMacroScreenshotFolderModeClientDirectory:
-                {
-                    // Mirrors CScreenShot::GetBaseFolder mode 0: GetModuleFileName -> Dir_upDir.
-                    string processPath = Environment.ProcessPath;
-                    if (!string.IsNullOrWhiteSpace(processPath))
-                    {
-                        string executableDirectory = Path.GetDirectoryName(processPath);
-                        if (!string.IsNullOrWhiteSpace(executableDirectory))
-                        {
-                            string clientBaseFolder = Directory.GetParent(executableDirectory)?.FullName;
-                            return TrimPacketOwnedAntiMacroTrailingDirectorySeparator(clientBaseFolder);
-                        }
-                    }
-
-                    return string.Empty;
-                }
-
-                case PacketOwnedAntiMacroScreenshotFolderModeDesktop:
-                    // Mirrors CScreenShot::GetBaseFolder mode 1.
-                    return TrimPacketOwnedAntiMacroTrailingDirectorySeparator(
-                        Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory));
-
-                case PacketOwnedAntiMacroScreenshotFolderModeRootDrive:
-                    // Mirrors CScreenShot::GetBaseFolder mode 2.
-                    return @"C:\";
-
-                default:
-                    return string.Empty;
-            }
-        }
-
-        private static int ResolvePacketOwnedAntiMacroScreenshotFolderMode()
-        {
-            // The client reads this from CConfig::m_nScreenShotSaveLocation; the simulator keeps the same
-            // mode values but sources them from an opt-in environment variable until that config seam exists.
-            string configuredValue = Environment.GetEnvironmentVariable("MAPSIM_CLIENT_SCREENSHOT_MODE");
-            return int.TryParse(configuredValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedMode)
-                && parsedMode is >= PacketOwnedAntiMacroScreenshotFolderModeClientDirectory and <= PacketOwnedAntiMacroScreenshotFolderModeRootDrive
-                ? parsedMode
-                : PacketOwnedAntiMacroScreenshotFolderModeClientDirectory;
-        }
-
-        private static string TrimPacketOwnedAntiMacroTrailingDirectorySeparator(string path)
-        {
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                return string.Empty;
-            }
-
-            string root = Path.GetPathRoot(path);
-            string trimmed = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            return string.IsNullOrEmpty(trimmed) && !string.IsNullOrEmpty(root)
-                ? root
-                : trimmed;
         }
 
         private static WzCanvasProperty ResolvePacketOwnedAntiMacroCanvas(string path)

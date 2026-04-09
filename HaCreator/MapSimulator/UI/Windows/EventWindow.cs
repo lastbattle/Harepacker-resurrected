@@ -867,9 +867,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int x = Position.X + 18;
-            int y = Position.Y + 84;
-            sprite.DrawString(_font, "Alarm", new Vector2(x, y), new Color(255, 228, 151));
-            int stripTop = y + _font.LineSpacing;
+            int stripTop = Position.Y + 84;
             int stripWidth = 198; // Client evidence: CUIEventAlarm::Draw clips m_aCT lines to width 198.
 
             int visibleLines = Math.Min(3, snapshot.AlarmLines.Count);
@@ -897,7 +895,7 @@ namespace HaCreator.MapSimulator.UI
                 maxLineBottom = Math.Max(maxLineBottom, drawY + _font.LineSpacing);
             }
 
-            return (maxLineBottom - Position.Y) + 6;
+            return (maxLineBottom - Position.Y) + 8;
         }
 
         private int GetContentTop(EventWindowSnapshot snapshot)
@@ -908,7 +906,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int visibleLines = Math.Min(3, snapshot.AlarmLines.Count);
-            int stripTop = 84 + _font.LineSpacing;
+            int stripTop = 84;
             int maxLineTop = 0;
             for (int i = 0; i < visibleLines; i++)
             {
@@ -921,7 +919,7 @@ namespace HaCreator.MapSimulator.UI
                 maxLineTop = Math.Max(maxLineTop, Math.Max(0, line.Top));
             }
 
-            return stripTop + maxLineTop + _font.LineSpacing + 6;
+            return stripTop + maxLineTop + _font.LineSpacing + 8;
         }
 
         private string TrimTextToWidth(string text, float maxWidth)

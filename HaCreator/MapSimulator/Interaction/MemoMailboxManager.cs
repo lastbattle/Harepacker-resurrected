@@ -191,7 +191,8 @@ namespace HaCreator.MapSimulator.Interaction
             int attachmentItemId = 0,
             int attachmentQuantity = 0,
             int attachmentMeso = 0,
-            bool isAttachmentClaimed = false)
+            bool isAttachmentClaimed = false,
+            bool notifySocialText = true)
         {
             DeliverMemo(
                 memoId: null,
@@ -205,7 +206,8 @@ namespace HaCreator.MapSimulator.Interaction
                 attachmentQuantity: attachmentQuantity,
                 attachmentMeso: attachmentMeso,
                 isQuickDelivery: false,
-                isAttachmentClaimed: isAttachmentClaimed);
+                isAttachmentClaimed: isAttachmentClaimed,
+                notifySocialText: notifySocialText);
         }
 
         internal void ReplacePacketOwnedParcelSession(
@@ -239,7 +241,8 @@ namespace HaCreator.MapSimulator.Interaction
                         attachmentItemId: entry.AttachmentItemId,
                         attachmentQuantity: entry.AttachmentQuantity,
                         attachmentMeso: ResolvePacketOwnedAttachmentMeso(entry),
-                        isAttachmentClaimed: entry.IsAttachmentClaimed);
+                        isAttachmentClaimed: entry.IsAttachmentClaimed,
+                        notifySocialText: false);
                     displayTime = displayTime.AddSeconds(-1);
                 }
             }
@@ -298,7 +301,8 @@ namespace HaCreator.MapSimulator.Interaction
             int attachmentQuantity,
             int attachmentMeso,
             bool isQuickDelivery,
-            bool isAttachmentClaimed)
+            bool isAttachmentClaimed,
+            bool notifySocialText = false)
         {
             if (string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(body))
             {
@@ -328,6 +332,11 @@ namespace HaCreator.MapSimulator.Interaction
             _lastActionSummary = attachment == null
                 ? $"Queued parcel '{subject.Trim()}' from {sender?.Trim() ?? "Maple Delivery Service"}."
                 : $"Queued parcel '{subject.Trim()}' with {BuildAttachmentSummary(attachment)}.";
+
+            if (notifySocialText)
+            {
+                NotifySocialChatObserved(body);
+            }
         }
 
         internal void SetDraftRecipient(string recipient)
@@ -541,7 +550,8 @@ namespace HaCreator.MapSimulator.Interaction
                 attachmentQuantity: attachmentQuantity,
                 attachmentMeso: attachmentMeso,
                 isQuickDelivery: isQuickDelivery,
-                isAttachmentClaimed: isClaimed);
+                isAttachmentClaimed: isClaimed,
+                notifySocialText: true);
             message = $"Queued packet-owned parcel '{resolvedSubject}' from {sender.Trim()}.";
             _lastActionSummary = message;
             return true;
@@ -647,7 +657,8 @@ namespace HaCreator.MapSimulator.Interaction
                     ? $"Your parcel to {recipient} was queued through the simulator delivery owner."
                     : $"Your parcel to {recipient} was queued through the simulator delivery owner with {BuildAttachmentSummary(attachment)}.",
                 DateTimeOffset.Now,
-                isRead: false);
+                isRead: false,
+                notifySocialText: false);
 
             NotifySocialChatObserved(body);
             ResetDraft();
@@ -681,7 +692,8 @@ namespace HaCreator.MapSimulator.Interaction
                     : $"Your quick parcel notice to {recipient} was staged through the simulator parcel owner with {BuildAttachmentSummary(attachment)}.",
                 DateTimeOffset.Now,
                 isRead: false,
-                attachmentMeso: attachment?.Kind == MemoAttachmentKind.Meso ? attachment.Meso : 0);
+                attachmentMeso: attachment?.Kind == MemoAttachmentKind.Meso ? attachment.Meso : 0,
+                notifySocialText: false);
 
             NotifySocialChatObserved(body);
             ResetDraft();
@@ -715,7 +727,8 @@ namespace HaCreator.MapSimulator.Interaction
                 "Maple Delivery Service",
                 "Welcome parcel",
                 "This receive tab tracks simulator-owned parcel entries separately from whisper or messenger surfaces. Use it to validate parcel selection, receive state, and discard flow.",
-                now.AddMinutes(-18));
+                now.AddMinutes(-18),
+                notifySocialText: false);
             DeliverMemo(
                 "Duey",
                 "Package delivery",
@@ -724,12 +737,14 @@ namespace HaCreator.MapSimulator.Interaction
                 isRead: false,
                 isKept: true,
                 attachmentItemId: 2000005,
-                attachmentQuantity: 5);
+                attachmentQuantity: 5,
+                notifySocialText: false);
             DeliverMemo(
                 "Maple Delivery Service",
                 "Tax notice",
                 "Send and quick-send tabs share the fee popup in the client. Draft edits stay in the parcel owner, with chat commands as supplemental controls.",
-                now.AddMinutes(-9));
+                now.AddMinutes(-9),
+                notifySocialText: false);
             DeliverMemo(
                 "Cody",
                 "Receipt archive",
@@ -738,7 +753,8 @@ namespace HaCreator.MapSimulator.Interaction
                 isRead: true,
                 isKept: true,
                 attachmentMeso: 7500,
-                isAttachmentClaimed: true);
+                isAttachmentClaimed: true,
+                notifySocialText: false);
         }
 
         private bool CanSendDraft()
@@ -956,7 +972,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static DateTimeOffset ResolvePacketOwnedDeliveredAt(PacketOwnedParcelDecodedEntry entry, DateTimeOffset fallback)
         {
-            return entry?.ClientTimestampUtc?.ToLocalTime() ?? fallback;
+            return entry?.ExpirationTimestampUtc?.ToLocalTime() ?? fallback;
         }
 
         private int ResolveMemoId(int? requestedMemoId)

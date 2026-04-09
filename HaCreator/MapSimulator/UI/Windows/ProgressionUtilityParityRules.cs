@@ -7,6 +7,19 @@ namespace HaCreator.MapSimulator.UI
     internal static class ProgressionUtilityParityRules
     {
         private const string RankingLandingUrlFallbackFormat = "http://{0}.nexon.com/maplestory/page/Gnxgame.aspx?URL=webclient/totpersonrank&worldid={1}&characterid={2}";
+        private const string RankingLandingTemplateFallbackFormat = "http://%s.nexon.com/maplestory/page/Gnxgame.aspx?URL=webclient/totpersonrank&worldid=%d&characterid=%d";
+
+        internal static string ResolveRankingLandingTemplate(int templateId, out bool usedResolvedTemplate)
+        {
+            string resolvedTemplate = MapleStoryStringPool.GetOrFallback(
+                Math.Max(0, templateId),
+                RankingLandingTemplateFallbackFormat);
+            usedResolvedTemplate = !string.Equals(
+                resolvedTemplate,
+                RankingLandingTemplateFallbackFormat,
+                StringComparison.Ordinal);
+            return resolvedTemplate;
+        }
 
         internal static string ResolveRankingLandingUrl(string serverHost, int templateId, int worldId, int characterId, out bool usedResolvedTemplate)
         {
@@ -37,6 +50,16 @@ namespace HaCreator.MapSimulator.UI
                 "StringPool[0x{0:X}] => {1}",
                 Math.Max(0, templateId),
                 resolvedUrl);
+        }
+
+        internal static string FormatRankingLandingTemplateSeed(int templateId, out bool usedResolvedTemplate)
+        {
+            string resolvedTemplate = ResolveRankingLandingTemplate(templateId, out usedResolvedTemplate);
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "StringPool[0x{0:X}] => {1}",
+                Math.Max(0, templateId),
+                resolvedTemplate);
         }
 
         internal static string FormatRankingRequestParameters(int worldId, int characterId)

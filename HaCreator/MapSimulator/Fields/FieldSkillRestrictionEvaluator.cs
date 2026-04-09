@@ -14,6 +14,14 @@ namespace HaCreator.MapSimulator.Fields
     public static class FieldSkillRestrictionEvaluator
     {
         private const int RocketBoosterSkillId = 35101004;
+
+        public sealed class RuntimeState
+        {
+            public bool CoconutBasicActionOwned { get; init; }
+            public bool SnowBallBasicActionOwned { get; init; }
+            public bool GuildBossBasicActionOwned { get; init; }
+        }
+
         private static readonly HashSet<int> ClientUnableToUseSkillAllowlist = new HashSet<int>
         {
             4211002,
@@ -62,7 +70,17 @@ namespace HaCreator.MapSimulator.Fields
 
         public static bool CanUseSkill(MapInfo mapInfo, SkillData skill, int currentJobId, string externalRestrictionMessage)
         {
-            return GetRestrictionMessage(mapInfo, skill, currentJobId, externalRestrictionMessage) == null;
+            return GetRestrictionMessage(mapInfo, skill, currentJobId, externalRestrictionMessage, runtimeState: null) == null;
+        }
+
+        public static bool CanUseSkill(
+            MapInfo mapInfo,
+            SkillData skill,
+            int currentJobId,
+            string externalRestrictionMessage,
+            RuntimeState runtimeState)
+        {
+            return GetRestrictionMessage(mapInfo, skill, currentJobId, externalRestrictionMessage, runtimeState) == null;
         }
 
         public static string GetRestrictionMessage(MapInfo mapInfo, SkillData skill)
@@ -85,6 +103,16 @@ namespace HaCreator.MapSimulator.Fields
 
         public static string GetRestrictionMessage(MapInfo mapInfo, SkillData skill, int currentJobId, string externalRestrictionMessage)
         {
+            return GetRestrictionMessage(mapInfo, skill, currentJobId, externalRestrictionMessage, runtimeState: null);
+        }
+
+        public static string GetRestrictionMessage(
+            MapInfo mapInfo,
+            SkillData skill,
+            int currentJobId,
+            string externalRestrictionMessage,
+            RuntimeState runtimeState)
+        {
             if (skill == null)
                 return "Skill data is unavailable.";
 
@@ -99,7 +127,7 @@ namespace HaCreator.MapSimulator.Fields
                 return externalRestrictionMessage;
             }
 
-            return GetClientOwnedFieldRestrictionMessage(mapInfo, skill, currentJobId);
+            return GetClientOwnedFieldRestrictionMessage(mapInfo, skill, currentJobId, runtimeState);
         }
 
         public static string GetSkillCancelRestrictionMessage(MapInfo mapInfo, SkillData skill)
@@ -171,7 +199,7 @@ namespace HaCreator.MapSimulator.Fields
             return null;
         }
 
-        private static string GetClientOwnedFieldRestrictionMessage(MapInfo mapInfo, SkillData skill, int currentJobId)
+        private static string GetClientOwnedFieldRestrictionMessage(MapInfo mapInfo, SkillData skill, int currentJobId, RuntimeState runtimeState)
         {
             if (mapInfo == null || skill == null)
             {
@@ -184,17 +212,17 @@ namespace HaCreator.MapSimulator.Fields
                 return noSkillRestrictionMessage;
             }
 
-            if (IsCoconutBasicActionMap(mapInfo))
+            if (runtimeState?.CoconutBasicActionOwned == true)
             {
                 return "Skills cannot be used while the Coconut minigame owns basic attacks.";
             }
 
-            if (SnowBallField.SnowBallFieldDataLoader.IsSnowBallMap(mapInfo))
+            if (runtimeState?.SnowBallBasicActionOwned == true)
             {
                 return "Skills cannot be used while the Snowball minigame owns basic attacks.";
             }
 
-            if (IsGuildBossBasicActionMap(mapInfo))
+            if (runtimeState?.GuildBossBasicActionOwned == true)
             {
                 return "Skills cannot be used while the Guild Boss field owns basic attacks.";
             }
@@ -476,25 +504,5 @@ namespace HaCreator.MapSimulator.Fields
             return false;
         }
 
-        private static bool IsCoconutBasicActionMap(MapInfo mapInfo)
-        {
-            if (mapInfo?.fieldType == FieldType.FIELDTYPE_COCONUT)
-            {
-                return true;
-            }
-
-            return FindAdditionalFieldProperty(mapInfo, "coconut") != null;
-        }
-
-        private static bool IsGuildBossBasicActionMap(MapInfo mapInfo)
-        {
-            if (mapInfo?.fieldType == FieldType.FIELDTYPE_GUILDBOSS)
-            {
-                return true;
-            }
-
-            return FindAdditionalFieldProperty(mapInfo, "pulley") != null
-                   || FindAdditionalFieldProperty(mapInfo, "healer") != null;
-        }
     }
 }

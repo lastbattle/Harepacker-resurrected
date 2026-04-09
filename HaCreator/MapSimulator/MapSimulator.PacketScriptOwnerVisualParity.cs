@@ -1,0 +1,431 @@
+using HaCreator.MapSimulator.Interaction;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace HaCreator.MapSimulator
+{
+    public partial class MapSimulator
+    {
+        private const int PacketScriptOwnerOverlayTopMargin = 74;
+
+        private bool _packetScriptOwnerVisualsLoaded;
+        private Texture2D _packetScriptOwnerPixelTexture;
+        private Texture2D _packetScriptInitialQuizBackTexture;
+        private Texture2D _packetScriptInitialQuizBackTexture2;
+        private Texture2D _packetScriptInitialQuizBackTexture3;
+        private Texture2D _packetScriptInitialQuizOkButtonTexture;
+        private Texture2D _packetScriptInitialQuizAniTexture;
+        private Texture2D _packetScriptSpeedQuizBackTexture;
+        private Texture2D _packetScriptSpeedQuizBackTexture2;
+        private Texture2D _packetScriptSpeedQuizBackTexture3;
+        private Texture2D _packetScriptSpeedQuizOkButtonTexture;
+        private Texture2D _packetScriptSpeedQuizNextButtonTexture;
+        private Texture2D _packetScriptSpeedQuizGiveUpButtonTexture;
+        private PacketScriptDigitStrip _packetScriptInitialQuizDigits;
+        private PacketScriptDigitStrip _packetScriptInitialQuizHeaderDigits;
+        private PacketScriptDigitStrip _packetScriptSpeedQuizDigits;
+
+        private sealed record PacketScriptDigitStrip(Texture2D[] Digits, Texture2D CommaTexture);
+
+        private void DrawPacketOwnedScriptOwnerVisuals(int currentTickCount)
+        {
+            if (_fontChat == null || GraphicsDevice == null)
+            {
+                return;
+            }
+
+            EnsurePacketScriptOwnerVisualsLoaded();
+
+            Rectangle initialBounds = Rectangle.Empty;
+            if (_initialQuizTimerRuntime.TryBuildOwnerSnapshot(currentTickCount, out InitialQuizOwnerSnapshot initialSnapshot))
+            {
+                initialBounds = DrawPacketOwnedInitialQuizOwner(initialSnapshot);
+            }
+
+            if (_speedQuizOwnerRuntime.TryBuildOwnerSnapshot(currentTickCount, out SpeedQuizOwnerSnapshot speedSnapshot))
+            {
+                DrawPacketOwnedSpeedQuizOwner(speedSnapshot, initialBounds);
+            }
+        }
+
+        private Rectangle DrawPacketOwnedInitialQuizOwner(InitialQuizOwnerSnapshot snapshot)
+        {
+            Texture2D primaryBackground = _packetScriptInitialQuizBackTexture3 ?? _packetScriptInitialQuizBackTexture2 ?? _packetScriptInitialQuizBackTexture;
+            if (primaryBackground == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            Rectangle previewBounds = PacketScriptQuizOwnerLayout.ResolvePreviewBounds(
+                _renderParams.RenderWidth,
+                _renderParams.RenderHeight,
+                primaryBackground.Width,
+                primaryBackground.Height,
+                ResolvePacketScriptOwnerPreviewTop());
+            if (previewBounds == Rectangle.Empty)
+            {
+                return Rectangle.Empty;
+            }
+
+            DrawPacketScriptOwnerBackground(previewBounds, _packetScriptInitialQuizBackTexture, _packetScriptInitialQuizBackTexture2, _packetScriptInitialQuizBackTexture3);
+
+            Rectangle titleBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, 18, 14, primaryBackground.Width - 36, 20, primaryBackground.Width, primaryBackground.Height);
+            Rectangle problemBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, 16, 42, primaryBackground.Width - 32, 86, primaryBackground.Width, primaryBackground.Height);
+            Rectangle hintBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, 16, 132, primaryBackground.Width - 32, 32, primaryBackground.Width, primaryBackground.Height);
+            Rectangle footerBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, 16, primaryBackground.Height - 30, primaryBackground.Width - 32, 16, primaryBackground.Width, primaryBackground.Height);
+
+            DrawPacketScriptOwnerWrappedText(snapshot.Title, titleBounds, new Color(88, 43, 18), 0.54f, maxLines: 1);
+            DrawPacketScriptOwnerWrappedText(snapshot.ProblemText, problemBounds, new Color(63, 34, 16), 0.48f, maxLines: 4);
+            DrawPacketScriptOwnerWrappedText(snapshot.HintText, hintBounds, new Color(116, 73, 24), 0.42f, maxLines: 2);
+            DrawPacketScriptOwnerWrappedText($"Question {snapshot.QuestionNumber}", footerBounds, new Color(95, 58, 24), 0.42f, maxLines: 1);
+
+            Rectangle questionDigitsBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, 18, 174, 64, 32, primaryBackground.Width, primaryBackground.Height);
+            Rectangle timerDigitsBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, primaryBackground.Width - 82, 16, 64, 24, primaryBackground.Width, primaryBackground.Height);
+            DrawPacketScriptNumber(questionDigitsBounds, Math.Max(0, snapshot.QuestionNumber), _packetScriptInitialQuizHeaderDigits ?? _packetScriptInitialQuizDigits, Color.White);
+            DrawPacketScriptTime(timerDigitsBounds, Math.Max(0, snapshot.RemainingSeconds), _packetScriptInitialQuizDigits, Color.White);
+
+            if (_packetScriptInitialQuizAniTexture != null)
+            {
+                Rectangle aniBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, primaryBackground.Width - 62, primaryBackground.Height - 54, 30, 26, primaryBackground.Width, primaryBackground.Height);
+                _spriteBatch.Draw(_packetScriptInitialQuizAniTexture, aniBounds, Color.White);
+            }
+
+            if (_packetScriptInitialQuizOkButtonTexture != null)
+            {
+                Rectangle buttonBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, (primaryBackground.Width - 40) / 2, primaryBackground.Height - 26, 40, 16, primaryBackground.Width, primaryBackground.Height);
+                _spriteBatch.Draw(_packetScriptInitialQuizOkButtonTexture, buttonBounds, Color.White * 0.92f);
+            }
+
+            return previewBounds;
+        }
+
+        private void DrawPacketOwnedSpeedQuizOwner(SpeedQuizOwnerSnapshot snapshot, Rectangle initialBounds)
+        {
+            Texture2D primaryBackground = _packetScriptSpeedQuizBackTexture3 ?? _packetScriptSpeedQuizBackTexture2 ?? _packetScriptSpeedQuizBackTexture;
+            if (primaryBackground == null)
+            {
+                return;
+            }
+
+            Rectangle previewBounds = PacketScriptQuizOwnerLayout.ResolveStackedPreviewBounds(
+                initialBounds,
+                primaryBackground.Width,
+                primaryBackground.Height,
+                _renderParams.RenderWidth,
+                _renderParams.RenderHeight);
+            if (previewBounds == Rectangle.Empty)
+            {
+                return;
+            }
+
+            DrawPacketScriptOwnerBackground(previewBounds, _packetScriptSpeedQuizBackTexture, _packetScriptSpeedQuizBackTexture2, _packetScriptSpeedQuizBackTexture3);
+
+            Rectangle headerBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, 16, 18, primaryBackground.Width - 32, 18, primaryBackground.Width, primaryBackground.Height);
+            DrawPacketScriptOwnerWrappedText("Speed Quiz", headerBounds, new Color(92, 42, 20), 0.52f, maxLines: 1);
+
+            DrawPacketScriptOwnerMetric(previewBounds, primaryBackground, 26, "Question", $"{snapshot.CurrentQuestion}/{Math.Max(snapshot.TotalQuestions, 1)}", rightAlignedDigits: false);
+            DrawPacketScriptOwnerMetric(previewBounds, primaryBackground, 74, "Correct", snapshot.CorrectAnswers.ToString(), rightAlignedDigits: false);
+            DrawPacketScriptOwnerMetric(previewBounds, primaryBackground, 122, "Remain", snapshot.RemainingQuestions.ToString(), rightAlignedDigits: false);
+            DrawPacketScriptOwnerMetric(previewBounds, primaryBackground, 170, "Timer", $"{Math.Max(0, snapshot.RemainingSeconds)}s", rightAlignedDigits: true);
+
+            Rectangle summaryBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, 18, 222, primaryBackground.Width - 36, 74, primaryBackground.Width, primaryBackground.Height);
+            DrawPacketScriptOwnerWrappedText(
+                $"Question {snapshot.CurrentQuestion} of {Math.Max(snapshot.TotalQuestions, 1)}\n" +
+                $"Correct answers: {snapshot.CorrectAnswers}\n" +
+                $"Questions remaining: {snapshot.RemainingQuestions}",
+                summaryBounds,
+                new Color(88, 52, 24),
+                0.42f,
+                maxLines: 4);
+
+            DrawPacketScriptOwnerButtons(previewBounds, primaryBackground);
+        }
+
+        private void DrawPacketScriptOwnerMetric(Rectangle previewBounds, Texture2D primaryBackground, int sourceY, string label, string value, bool rightAlignedDigits)
+        {
+            Rectangle labelBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, 18, sourceY, 76, 18, primaryBackground.Width, primaryBackground.Height);
+            Rectangle valueBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, 96, sourceY - 2, primaryBackground.Width - 114, 22, primaryBackground.Width, primaryBackground.Height);
+            DrawPacketScriptOwnerWrappedText(label, labelBounds, new Color(96, 50, 20), 0.43f, maxLines: 1);
+
+            if (rightAlignedDigits)
+            {
+                DrawPacketScriptOwnerWrappedText(value, valueBounds, new Color(61, 30, 16), 0.46f, maxLines: 1);
+                return;
+            }
+
+            DrawPacketScriptNumber(valueBounds, value, _packetScriptSpeedQuizDigits, Color.White, centerHorizontally: false);
+        }
+
+        private void DrawPacketScriptOwnerButtons(Rectangle previewBounds, Texture2D primaryBackground)
+        {
+            Rectangle okBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, 22, primaryBackground.Height - 30, 40, 16, primaryBackground.Width, primaryBackground.Height);
+            Rectangle nextBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, 70, primaryBackground.Height - 30, 40, 16, primaryBackground.Width, primaryBackground.Height);
+            Rectangle giveUpBounds = PacketScriptQuizOwnerLayout.AnchorRect(previewBounds, 118, primaryBackground.Height - 30, 60, 16, primaryBackground.Width, primaryBackground.Height);
+
+            DrawPacketScriptOwnerButton(_packetScriptSpeedQuizOkButtonTexture, okBounds, Color.White * 0.92f);
+            DrawPacketScriptOwnerButton(_packetScriptSpeedQuizNextButtonTexture, nextBounds, Color.White * 0.92f);
+            DrawPacketScriptOwnerButton(_packetScriptSpeedQuizGiveUpButtonTexture, giveUpBounds, Color.White * 0.92f);
+
+            if (_packetScriptSpeedQuizOkButtonTexture == null && _packetScriptSpeedQuizNextButtonTexture == null && _packetScriptSpeedQuizGiveUpButtonTexture == null)
+            {
+                Rectangle fallback = new(okBounds.X, okBounds.Y, giveUpBounds.Right - okBounds.X, Math.Max(okBounds.Height, giveUpBounds.Height));
+                DrawPacketScriptOwnerFrame(fallback, new Color(80, 50, 24, 180), new Color(170, 118, 66, 220));
+                DrawPacketScriptOwnerWrappedText("OK / Next / Give Up", fallback, new Color(255, 239, 189), 0.38f, maxLines: 1);
+            }
+        }
+
+        private void DrawPacketScriptOwnerButton(Texture2D texture, Rectangle bounds, Color color)
+        {
+            if (texture != null && bounds != Rectangle.Empty)
+            {
+                _spriteBatch.Draw(texture, bounds, color);
+            }
+        }
+
+        private void DrawPacketScriptOwnerBackground(Rectangle previewBounds, params Texture2D[] layers)
+        {
+            bool drewTexture = false;
+            for (int i = 0; i < layers.Length; i++)
+            {
+                if (layers[i] == null)
+                {
+                    continue;
+                }
+
+                _spriteBatch.Draw(layers[i], previewBounds, Color.White);
+                drewTexture = true;
+            }
+
+            if (!drewTexture)
+            {
+                DrawPacketScriptOwnerFrame(previewBounds, new Color(31, 22, 18, 216), new Color(193, 141, 88));
+            }
+        }
+
+        private void DrawPacketScriptOwnerFrame(Rectangle bounds, Color fill, Color border)
+        {
+            if (_packetScriptOwnerPixelTexture == null || bounds == Rectangle.Empty)
+            {
+                return;
+            }
+
+            _spriteBatch.Draw(_packetScriptOwnerPixelTexture, bounds, fill);
+            _spriteBatch.Draw(_packetScriptOwnerPixelTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), border);
+            _spriteBatch.Draw(_packetScriptOwnerPixelTexture, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), border);
+            _spriteBatch.Draw(_packetScriptOwnerPixelTexture, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), border);
+            _spriteBatch.Draw(_packetScriptOwnerPixelTexture, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), border);
+        }
+
+        private void DrawPacketScriptOwnerWrappedText(string text, Rectangle bounds, Color color, float scale, int maxLines)
+        {
+            if (_fontChat == null || string.IsNullOrWhiteSpace(text) || bounds == Rectangle.Empty)
+            {
+                return;
+            }
+
+            Vector2 drawPosition = new(bounds.X, bounds.Y);
+            int lineCount = 0;
+            foreach (string line in WrapPacketScriptOwnerText(text, bounds.Width, scale))
+            {
+                _spriteBatch.DrawString(_fontChat, line, drawPosition, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+                drawPosition.Y += _fontChat.LineSpacing * scale;
+                lineCount++;
+                if (lineCount >= maxLines || drawPosition.Y > bounds.Bottom)
+                {
+                    break;
+                }
+            }
+        }
+
+        private IEnumerable<string> WrapPacketScriptOwnerText(string text, int width, float scale)
+        {
+            if (_fontChat == null || width <= 0)
+            {
+                yield break;
+            }
+
+            foreach (string paragraph in (text ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+            {
+                string[] words = paragraph.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                if (words.Length == 0)
+                {
+                    yield return string.Empty;
+                    continue;
+                }
+
+                string currentLine = words[0];
+                for (int i = 1; i < words.Length; i++)
+                {
+                    string candidate = $"{currentLine} {words[i]}";
+                    if (_fontChat.MeasureString(candidate).X * scale <= width)
+                    {
+                        currentLine = candidate;
+                        continue;
+                    }
+
+                    yield return currentLine;
+                    currentLine = words[i];
+                }
+
+                yield return currentLine;
+            }
+        }
+
+        private void DrawPacketScriptTime(Rectangle bounds, int remainingSeconds, PacketScriptDigitStrip digitStrip, Color color)
+        {
+            int minutes = Math.Max(0, remainingSeconds) / 60;
+            int seconds = Math.Max(0, remainingSeconds) % 60;
+            DrawPacketScriptNumber(bounds, $"{minutes:D2},{seconds:D2}", digitStrip, color, centerHorizontally: true);
+        }
+
+        private void DrawPacketScriptNumber(Rectangle bounds, int value, PacketScriptDigitStrip digitStrip, Color color)
+        {
+            DrawPacketScriptNumber(bounds, value.ToString(), digitStrip, color, centerHorizontally: true);
+        }
+
+        private void DrawPacketScriptNumber(Rectangle bounds, string text, PacketScriptDigitStrip digitStrip, Color color, bool centerHorizontally)
+        {
+            if (digitStrip?.Digits == null || bounds == Rectangle.Empty || string.IsNullOrWhiteSpace(text))
+            {
+                DrawPacketScriptOwnerWrappedText(text, bounds, new Color(61, 30, 16), 0.48f, maxLines: 1);
+                return;
+            }
+
+            List<Texture2D> textures = new();
+            foreach (char ch in text)
+            {
+                if (char.IsDigit(ch))
+                {
+                    int index = ch - '0';
+                    if (index >= 0 && index < digitStrip.Digits.Length && digitStrip.Digits[index] != null)
+                    {
+                        textures.Add(digitStrip.Digits[index]);
+                    }
+                }
+                else if ((ch == ',' || ch == ':') && digitStrip.CommaTexture != null)
+                {
+                    textures.Add(digitStrip.CommaTexture);
+                }
+            }
+
+            if (textures.Count == 0)
+            {
+                DrawPacketScriptOwnerWrappedText(text, bounds, new Color(61, 30, 16), 0.48f, maxLines: 1);
+                return;
+            }
+
+            int totalWidth = textures.Sum(static texture => texture?.Width ?? 0);
+            int maxHeight = textures.Max(static texture => texture?.Height ?? 0);
+            if (totalWidth <= 0 || maxHeight <= 0)
+            {
+                return;
+            }
+
+            float scale = Math.Min(bounds.Width / (float)totalWidth, bounds.Height / (float)maxHeight);
+            scale = Math.Clamp(scale, 0.45f, 1.4f);
+            int drawX = centerHorizontally
+                ? bounds.X + Math.Max(0, (int)Math.Round((bounds.Width - (totalWidth * scale)) * 0.5f))
+                : bounds.X;
+            int drawY = bounds.Y + Math.Max(0, (int)Math.Round((bounds.Height - (maxHeight * scale)) * 0.5f));
+
+            for (int i = 0; i < textures.Count; i++)
+            {
+                Texture2D texture = textures[i];
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                Rectangle drawBounds = new(
+                    drawX,
+                    drawY,
+                    Math.Max(1, (int)Math.Round(texture.Width * scale)),
+                    Math.Max(1, (int)Math.Round(texture.Height * scale)));
+                _spriteBatch.Draw(texture, drawBounds, color);
+                drawX += drawBounds.Width;
+            }
+        }
+
+        private int ResolvePacketScriptOwnerPreviewTop()
+        {
+            int minimapBottom = miniMapUi != null ? miniMapUi.Position.Y + (miniMapUi.Frame0?.Height ?? 0) : 0;
+            return Math.Max(PacketScriptOwnerOverlayTopMargin, minimapBottom + 10);
+        }
+
+        private void EnsurePacketScriptOwnerVisualsLoaded()
+        {
+            if (_packetScriptOwnerVisualsLoaded || GraphicsDevice == null)
+            {
+                return;
+            }
+
+            _packetScriptOwnerVisualsLoaded = true;
+            _packetScriptOwnerPixelTexture ??= new Texture2D(GraphicsDevice, 1, 1);
+            _packetScriptOwnerPixelTexture.SetData(new[] { Color.White });
+
+            WzImage uiWindowImage = Program.FindImage("UI", "UIWindow.img");
+            WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img") ?? uiWindowImage;
+
+            LoadPacketScriptInitialQuizVisuals(uiWindow2Image, uiWindowImage);
+            LoadPacketScriptSpeedQuizVisuals(uiWindow2Image, uiWindowImage);
+        }
+
+        private void LoadPacketScriptInitialQuizVisuals(WzImage preferredImage, WzImage fallbackImage)
+        {
+            WzSubProperty preferred = preferredImage?["InitialQuiz"] as WzSubProperty;
+            WzSubProperty fallback = fallbackImage?["InitialQuiz"] as WzSubProperty;
+            _packetScriptInitialQuizBackTexture = LoadUiCanvasTexture((preferred?["backgrnd"] ?? fallback?["backgrnd"]) as WzCanvasProperty);
+            _packetScriptInitialQuizBackTexture2 = LoadUiCanvasTexture((preferred?["backgrnd2"] ?? fallback?["backgrnd2"]) as WzCanvasProperty);
+            _packetScriptInitialQuizBackTexture3 = LoadUiCanvasTexture((preferred?["backgrnd3"] ?? fallback?["backgrnd3"]) as WzCanvasProperty);
+            _packetScriptInitialQuizOkButtonTexture = LoadUiCanvasTexture(ResolvePacketScriptButtonCanvas(preferred?["BtOK"] as WzSubProperty) ?? ResolvePacketScriptButtonCanvas(fallback?["BtOK"] as WzSubProperty));
+            _packetScriptInitialQuizAniTexture = LoadUiCanvasTexture(ResolvePacketScriptAnimatedCanvas(preferred?["ani"] as WzSubProperty) ?? ResolvePacketScriptAnimatedCanvas(fallback?["ani"] as WzSubProperty));
+            _packetScriptInitialQuizDigits = LoadPacketScriptDigitStrip(preferred?["num1"] as WzSubProperty, fallback?["num1"] as WzSubProperty);
+            _packetScriptInitialQuizHeaderDigits = LoadPacketScriptDigitStrip(preferred?["number"] as WzSubProperty, fallback?["num2"] as WzSubProperty);
+        }
+
+        private void LoadPacketScriptSpeedQuizVisuals(WzImage preferredImage, WzImage fallbackImage)
+        {
+            WzSubProperty preferred = preferredImage?["SpeedQuiz"] as WzSubProperty;
+            WzSubProperty fallback = fallbackImage?["SpeedQuiz"] as WzSubProperty;
+            _packetScriptSpeedQuizBackTexture = LoadUiCanvasTexture((preferred?["backgrnd"] ?? fallback?["backgrnd"]) as WzCanvasProperty);
+            _packetScriptSpeedQuizBackTexture2 = LoadUiCanvasTexture((preferred?["backgrnd2"] ?? fallback?["backgrnd2"]) as WzCanvasProperty);
+            _packetScriptSpeedQuizBackTexture3 = LoadUiCanvasTexture((preferred?["backgrnd3"] ?? fallback?["backgrnd3"]) as WzCanvasProperty);
+            _packetScriptSpeedQuizOkButtonTexture = LoadUiCanvasTexture(ResolvePacketScriptButtonCanvas(preferred?["BtOK"] as WzSubProperty) ?? ResolvePacketScriptButtonCanvas(fallback?["BtOK"] as WzSubProperty));
+            _packetScriptSpeedQuizNextButtonTexture = LoadUiCanvasTexture(ResolvePacketScriptButtonCanvas(preferred?["BtNext"] as WzSubProperty) ?? ResolvePacketScriptButtonCanvas(fallback?["BtNext"] as WzSubProperty));
+            _packetScriptSpeedQuizGiveUpButtonTexture = LoadUiCanvasTexture(ResolvePacketScriptButtonCanvas(preferred?["BtGiveup"] as WzSubProperty) ?? ResolvePacketScriptButtonCanvas(fallback?["BtGiveup"] as WzSubProperty));
+            _packetScriptSpeedQuizDigits = LoadPacketScriptDigitStrip(preferred?["num1"] as WzSubProperty, fallback?["num1"] as WzSubProperty);
+        }
+
+        private PacketScriptDigitStrip LoadPacketScriptDigitStrip(WzSubProperty preferred, WzSubProperty fallback)
+        {
+            Texture2D[] digits = new Texture2D[10];
+            for (int i = 0; i < digits.Length; i++)
+            {
+                digits[i] = LoadUiCanvasTexture((preferred?[i.ToString()] ?? fallback?[i.ToString()]) as WzCanvasProperty);
+            }
+
+            Texture2D commaTexture = LoadUiCanvasTexture((preferred?["comma"] ?? fallback?["comma"]) as WzCanvasProperty);
+            return digits.Any(static texture => texture != null) || commaTexture != null
+                ? new PacketScriptDigitStrip(digits, commaTexture)
+                : null;
+        }
+
+        private static WzCanvasProperty ResolvePacketScriptButtonCanvas(WzSubProperty buttonProperty)
+        {
+            return buttonProperty?["normal"]?["0"] as WzCanvasProperty
+                ?? buttonProperty?["normal"]?.WzProperties.OfType<WzCanvasProperty>().FirstOrDefault()
+                ?? buttonProperty?.WzProperties.OfType<WzCanvasProperty>().FirstOrDefault();
+        }
+
+        private static WzCanvasProperty ResolvePacketScriptAnimatedCanvas(WzSubProperty animationProperty)
+        {
+            return animationProperty?["0"] as WzCanvasProperty
+                ?? animationProperty?.WzProperties.OfType<WzCanvasProperty>().FirstOrDefault();
+        }
+    }
+}

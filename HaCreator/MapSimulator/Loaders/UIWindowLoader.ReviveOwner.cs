@@ -39,7 +39,11 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D frameTexture = CreateFilledTexture(device, 332, 176, Color.Transparent, Color.Transparent);
             Texture2D pixel = CreateFilledTexture(device, 1, 1, Color.White, Color.White);
             WzSubProperty utilDialogProperty = uiWindow2Image?["UtilDlgEx"] as WzSubProperty;
+            Texture2D noticeTexture = LoadCanvasTexture(utilDialogProperty, "notice", device);
             Texture2D separatorLine = LoadCanvasTexture(utilDialogProperty, "line", device);
+            Texture2D progressBar = LoadCanvasTexture(utilDialogProperty, "bar", device);
+            Texture2D inactiveDot = LoadCanvasTexture(utilDialogProperty, "dot0", device);
+            Texture2D activeDot = LoadCanvasTexture(utilDialogProperty, "dot1", device);
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
 
@@ -52,7 +56,11 @@ namespace HaCreator.MapSimulator.Loaders
             ReviveConfirmationWindow window = new(
                 new DXObject(0, 0, frameTexture, 0),
                 pixel,
-                separatorLine)
+                noticeTexture,
+                separatorLine,
+                progressBar,
+                inactiveDot,
+                activeDot)
             {
                 Position = position
             };

@@ -9,6 +9,7 @@ namespace HaCreator.MapSimulator.UI
         internal const int ClientChatLogTextLeftInset = 9;
         private const int ChatWrapIndentSpaces = 5;
         private const int ChatSpecialFirstLineWidthReduction = 38;
+        private const int WhisperPickerModalContentPadding = 16;
 
         public static IReadOnlyList<string> WrapClientChatText(
             string text,
@@ -96,6 +97,30 @@ namespace HaCreator.MapSimulator.UI
                 top,
                 Math.Max(1, right - left),
                 Math.Max(1, bottom - top));
+        }
+
+        public static Rectangle ResolveWhisperPickerModalListBounds(
+            Rectangle modalBounds,
+            int listTop,
+            int rowHeight,
+            int visibleRowCount,
+            int minimumRowWidth,
+            float maxMeasuredTextWidth,
+            int authoredDividerWidth = 0)
+        {
+            int safeRowHeight = Math.Max(1, rowHeight);
+            int safeVisibleRowCount = Math.Max(1, visibleRowCount);
+            int measuredWidth = Math.Max(
+                Math.Max(1, minimumRowWidth),
+                (int)Math.Ceiling(Math.Max(0f, maxMeasuredTextWidth)) + 14);
+            int preferredWidth = authoredDividerWidth > 0
+                ? Math.Max(authoredDividerWidth, measuredWidth)
+                : measuredWidth;
+            int maximumWidth = Math.Max(1, modalBounds.Width - (WhisperPickerModalContentPadding * 2));
+            int resolvedWidth = Math.Clamp(preferredWidth, Math.Max(1, minimumRowWidth), maximumWidth);
+            int listX = modalBounds.X + Math.Max(0, (modalBounds.Width - resolvedWidth) / 2);
+            int listHeight = safeRowHeight * (safeVisibleRowCount + 1);
+            return new Rectangle(listX, listTop, resolvedWidth, listHeight);
         }
 
         private static int ResolveLongestFittingPrefixLength(

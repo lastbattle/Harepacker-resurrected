@@ -17,6 +17,7 @@ using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
 using HaSharedLibrary.Util;
@@ -142,29 +143,74 @@ namespace HaCreator.MapSimulator.Effects
         private const int ResultMissPercentY = 111;
         private const int ResultScoreX = 258;
         private const int ResultScoreY = 168;
-        private const string TimerboardSourcePath = "UI/UIWindow(.2).img/*[258x61 timerboard canvas]";
+        private const string TimerboardSourcePath = "Map/Obj/etc.img/killing/backgrnd";
         private const string TimerDigitSourcePath = "UI/UIWindow(.2).img/MonsterKilling/Count/number";
         private const string CountDigitSourcePath = "UI/UIWindow(.2).img/MonsterKilling/Count/number2";
         private const string CountBoardPath = "UI/UIWindow(.2).img/MonsterKilling/Count/backgrd0";
         private const string CountBoardSkillPath = "UI/UIWindow(.2).img/MonsterKilling/Count/backgrd1";
-        private const string GaugeRootPath = "UI/UIWindow(.2).img/MonsterKilling/Gauge";
+        private const string KeyAnimationClosePath = "UI/UIWindow.img/MonsterKilling/Count/keyBackgrd/close";
+        private const string KeyAnimationLoopPath = "UI/UIWindow.img/MonsterKilling/Count/keyBackgrd/ing";
+        private const string KeyAnimationOpenPath = "UI/UIWindow.img/MonsterKilling/Count/keyBackgrd/open";
+        private const string GaugeBackgroundPath = "UI/UIWindow.img/MonsterKilling/Gauge/backgrd";
+        private const string GaugeDangerBackgroundPath = "UI/UIWindow.img/MonsterKilling/Gauge/backgrdD";
+        private const string GaugeDangerPath = "UI/UIWindow.img/MonsterKilling/Gauge/danger";
+        private const string GaugeDangerIconPath = "UI/UIWindow.img/MonsterKilling/Gauge/iconD";
+        private const string GaugeFillPath = "UI/UIWindow.img/MonsterKilling/Gauge/pixel";
+        private const string GaugeTextPath = "UI/UIWindow.img/MonsterKilling/Gauge/text";
+        private const string GaugeDangerTextPath = "UI/UIWindow.img/MonsterKilling/Gauge/textD";
         private const string ResultBoardPath = "UI/UIWindow(.2).img/MonsterKilling/Result/backgrd";
         private const string ResultOverlayPath = "UI/UIWindow(.2).img/MonsterKilling/Result/backgrd2";
         private const string ResultRateDigitPath = "UI/UIWindow(.2).img/MonsterKilling/Result/number";
         private const string ResultScoreDigitPath = "UI/UIWindow(.2).img/MonsterKilling/Result/number2";
         private const string ResultRankPath = "UI/UIWindow(.2).img/MonsterKilling/Result/Rank";
-        private const string ResultEffectRootPath = "Map/Effect.img/killing/yeti{0..4}";
+        private const string ClearScreenEffectStringPoolPath = "killing/clear";
         private static readonly StringPoolEntryEvidence TimerboardSourceEvidence = new(
             TimerboardSourceStringPoolId,
             TimerboardSourcePath,
             "CTimerboard_Massacre::OnCreate");
         private static readonly StringPoolEntryEvidence ClearScreenEffectEvidence = new(
             ClearScreenEffectStringPoolId,
-            "Map/Effect.img/killing/clear",
+            ClearScreenEffectStringPoolPath,
             "CField_Massacre::Update");
         private static readonly StringPoolEntryEvidence CountDigitEvidence = new(
             CountBoardDigitStringPoolId,
             CountDigitSourcePath,
+            "CField_Massacre::Init");
+        private static readonly StringPoolEntryEvidence KeyAnimationCloseEvidence = new(
+            KeyAnimationCloseStringPoolId,
+            KeyAnimationClosePath,
+            "CField_Massacre::_SetMassacreInfo");
+        private static readonly StringPoolEntryEvidence KeyAnimationLoopEvidence = new(
+            KeyAnimationLoopStringPoolId,
+            KeyAnimationLoopPath,
+            "CField_Massacre::Init");
+        private static readonly StringPoolEntryEvidence KeyAnimationOpenEvidence = new(
+            KeyAnimationOpenStringPoolId,
+            KeyAnimationOpenPath,
+            "CField_Massacre::_SetMassacreInfo");
+        private static readonly StringPoolEntryEvidence GaugeDangerBackgroundEvidence = new(
+            GaugeDangerBackgroundStringPoolId,
+            GaugeDangerBackgroundPath,
+            "CField_Massacre::Init");
+        private static readonly StringPoolEntryEvidence GaugeDangerEvidence = new(
+            GaugeDangerStringPoolId,
+            GaugeDangerPath,
+            "CField_Massacre::_SetDecGauge");
+        private static readonly StringPoolEntryEvidence GaugeDangerIconEvidence = new(
+            GaugeDangerIconStringPoolId,
+            GaugeDangerIconPath,
+            "CField_Massacre::Init");
+        private static readonly StringPoolEntryEvidence GaugeFillEvidence = new(
+            GaugeFillStringPoolId,
+            GaugeFillPath,
+            "CField_Massacre::Init");
+        private static readonly StringPoolEntryEvidence GaugeTextEvidence = new(
+            GaugeTextStringPoolId,
+            GaugeTextPath,
+            "CField_Massacre::Init");
+        private static readonly StringPoolEntryEvidence GaugeDangerTextEvidence = new(
+            GaugeDangerTextStringPoolId,
+            GaugeDangerTextPath,
             "CField_Massacre::Init");
         private static readonly StringPoolEntryEvidence ResultBoardEvidence = new(
             ResultBoardStringPoolId,
@@ -631,13 +677,21 @@ namespace HaCreator.MapSimulator.Effects
                     $"{TimerDigitSourcePath} (CTimerboard_Massacre::Draw)",
                     $"{CountBoardPath}|{CountBoardSkillPath}",
                     FormatStringPoolEntry(CountDigitEvidence),
-                    $"{GaugeRootPath} (CField_Massacre::Init)",
+                    FormatStringPoolEntry(KeyAnimationCloseEvidence),
+                    FormatStringPoolEntry(KeyAnimationLoopEvidence),
+                    FormatStringPoolEntry(KeyAnimationOpenEvidence),
+                    $"{GaugeBackgroundPath} (CField_Massacre::Init)",
+                    FormatStringPoolEntry(GaugeDangerBackgroundEvidence),
+                    FormatStringPoolEntry(GaugeDangerEvidence),
+                    FormatStringPoolEntry(GaugeDangerIconEvidence),
+                    FormatStringPoolEntry(GaugeFillEvidence),
+                    FormatStringPoolEntry(GaugeTextEvidence),
+                    FormatStringPoolEntry(GaugeDangerTextEvidence),
                     FormatStringPoolEntry(ClearScreenEffectEvidence),
                     FormatStringPoolEntry(ResultBoardEvidence),
                     FormatStringPoolEntry(ResultOverlayEvidence),
                     FormatStringPoolEntry(ResultRateDigitEvidence),
                     FormatStringPoolEntry(ResultScoreDigitEvidence),
-                    $"{ResultEffectRootPath} (rank fx)",
                     FormatResultRankEvidence()
                 });
             return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{depletionText}{countBoardText}{disableSkillText}{nextCountEffect}{countEffectText}{bonusText}{resultText}, evidence=[{evidenceText}]";
@@ -1035,7 +1089,9 @@ namespace HaCreator.MapSimulator.Effects
                 uiImages.Add(uiImage);
             }
 
-            _timerboardSourceTexture = LoadCanvasTexture(FindTimerboardSourceCanvas(uiImages));
+            _timerboardSourceTexture = LoadCanvasTexture(
+                ResolveCanvas(FindPropertyByResourcePath(TimerboardSourceStringPoolId, TimerboardSourcePath))
+                ?? FindTimerboardSourceCanvas(uiImages));
             WzImage effectImage = global::HaCreator.Program.FindImage("Map", "Effect.img")
                 ?? global::HaCreator.Program.FindImage("Map", "effect.img");
             WzImageProperty count = FindFirstUiProperty(uiImages, "MonsterKilling/Count");
@@ -1044,30 +1100,50 @@ namespace HaCreator.MapSimulator.Effects
 
             LoadDigitTextures(FindFirstUiProperty(uiImages, "MonsterKilling/Count/number"), _timerDigits);
             // CField_Massacre::Init resolves StringPool 0x1513 into the count-board bitmap digits.
-            LoadDigitTextures(FindFirstUiProperty(uiImages, "MonsterKilling/Count/number2"), _countDigits);
+            LoadDigitTextures(
+                FindPropertyByResourcePath(CountBoardDigitStringPoolId, CountDigitSourcePath)
+                ?? FindFirstUiProperty(uiImages, "MonsterKilling/Count/number2"),
+                _countDigits);
             _countBoardTexture = LoadCanvasTexture(FindFirstUiProperty(uiImages, "MonsterKilling/Count/backgrd0") as WzCanvasProperty);
             _countBoardSkillTexture = LoadCanvasTexture(FindFirstUiProperty(uiImages, "MonsterKilling/Count/backgrd1") as WzCanvasProperty);
             // CField_Massacre::Init maps StringPool ids 0x1519/0x151A and 0x1516-0x1518/0x151B
             // onto the normal and danger gauge layers recovered from MonsterKilling/Gauge.
-            _gaugeBackgroundFrame = LoadFrame(FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/backgrd") as WzCanvasProperty, _device);
-            _gaugeTextFrame = LoadFrame(FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/text") as WzCanvasProperty, _device);
-            _gaugePixelTexture = LoadCanvasTexture(FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/pixel") as WzCanvasProperty);
-            _dangerFrames = LoadAnimationFrames(gauge?["danger"]);
-            _dangerIconFrames = LoadAnimationFrames(gauge?["iconD"]);
-            _dangerTextFrames = LoadAnimationFrames(gauge?["textD"]);
-            _dangerBackgroundFrames = LoadAnimationFrames(gauge?["backgrdD"]);
-            _keyOpenFrames = LoadAnimationFrames(count?["keyBackgrd"]?["open"]);
-            _keyLoopFrames = LoadAnimationFrames(count?["keyBackgrd"]?["ing"]);
-            _keyCloseFrames = LoadAnimationFrames(count?["keyBackgrd"]?["close"]);
-            _resultBoardTexture = LoadCanvasTexture(FindFirstUiProperty(uiImages, "MonsterKilling/Result/backgrd") as WzCanvasProperty);
-            _resultBoardPulseFrames = LoadAnimationFrames(result?["backgrd2"]);
+            _gaugeBackgroundFrame = LoadFrame(
+                ResolveCanvas(FindPropertyByResourcePath(GaugeTextStringPoolId, GaugeBackgroundPath))
+                ?? FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/backgrd") as WzCanvasProperty,
+                _device);
+            _gaugeTextFrame = LoadFrame(
+                ResolveCanvas(FindPropertyByResourcePath(GaugeTextStringPoolId, GaugeTextPath))
+                ?? FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/text") as WzCanvasProperty,
+                _device);
+            _gaugePixelTexture = LoadCanvasTexture(
+                ResolveCanvas(FindPropertyByResourcePath(GaugeFillStringPoolId, GaugeFillPath))
+                ?? FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/pixel") as WzCanvasProperty);
+            _dangerFrames = LoadAnimationFrames(FindPropertyByResourcePath(GaugeDangerStringPoolId, GaugeDangerPath) ?? gauge?["danger"]);
+            _dangerIconFrames = LoadAnimationFrames(FindPropertyByResourcePath(GaugeDangerIconStringPoolId, GaugeDangerIconPath) ?? gauge?["iconD"]);
+            _dangerTextFrames = LoadAnimationFrames(FindPropertyByResourcePath(GaugeDangerTextStringPoolId, GaugeDangerTextPath) ?? gauge?["textD"]);
+            _dangerBackgroundFrames = LoadAnimationFrames(FindPropertyByResourcePath(GaugeDangerBackgroundStringPoolId, GaugeDangerBackgroundPath) ?? gauge?["backgrdD"]);
+            _keyOpenFrames = LoadAnimationFrames(FindPropertyByResourcePath(KeyAnimationOpenStringPoolId, KeyAnimationOpenPath) ?? count?["keyBackgrd"]?["open"]);
+            _keyLoopFrames = LoadAnimationFrames(FindPropertyByResourcePath(KeyAnimationLoopStringPoolId, KeyAnimationLoopPath) ?? count?["keyBackgrd"]?["ing"]);
+            _keyCloseFrames = LoadAnimationFrames(FindPropertyByResourcePath(KeyAnimationCloseStringPoolId, KeyAnimationClosePath) ?? count?["keyBackgrd"]?["close"]);
+            _resultBoardTexture = LoadCanvasTexture(
+                ResolveCanvas(FindPropertyByResourcePath(ResultBoardStringPoolId, ResultBoardPath))
+                ?? FindFirstUiProperty(uiImages, "MonsterKilling/Result/backgrd") as WzCanvasProperty);
+            _resultBoardPulseFrames = LoadAnimationFrames(FindPropertyByResourcePath(ResultOverlayStringPoolId, ResultOverlayPath) ?? result?["backgrd2"]);
             // CField_MassacreResult::Init constructs the small and big CBitmapNumber helpers from
             // StringPool ids 0x151E and 0x151F, which resolve onto Result/number and Result/number2.
-            LoadDigitTextures(FindFirstUiProperty(uiImages, "MonsterKilling/Result/number"), _resultRateDigits);
-            LoadDigitTextures(FindFirstUiProperty(uiImages, "MonsterKilling/Result/number2"), _resultDigits, out _resultPlusTexture);
+            LoadDigitTextures(
+                FindPropertyByResourcePath(ResultRateDigitStringPoolId, ResultRateDigitPath)
+                ?? FindFirstUiProperty(uiImages, "MonsterKilling/Result/number"),
+                _resultRateDigits);
+            LoadDigitTextures(
+                FindPropertyByResourcePath(ResultScoreDigitStringPoolId, ResultScoreDigitPath)
+                ?? FindFirstUiProperty(uiImages, "MonsterKilling/Result/number2"),
+                _resultDigits,
+                out _resultPlusTexture);
             // CField_MassacreResult::OnMassacreResult resolves rank-specific layer ids 0x1520-0x1524
             // onto Result/Rank/{a,b,c,d,s} before drawing the repeated result board overlay.
-            LoadRankTextures(result?["Rank"]);
+            LoadRankTextures((FindPropertyByResourcePath(ResultRankSStringPoolId, $"{ResultRankPath}/s")?.Parent as WzImageProperty) ?? result?["Rank"] as WzImageProperty);
             WzImageProperty killing = effectImage?["killing"];
             _countEffectFirstStartFrames = LoadAnimationFrames(killing?["first"]?["start"]);
             _countEffectStageFrames = LoadAnimationFrames(killing?["first"]?["stage"]);
@@ -1448,6 +1524,82 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             return null;
+        }
+
+        private static WzImageProperty FindPropertyByResourcePath(int stringPoolId, string fallbackPath)
+        {
+            string resourcePath = MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackPath);
+            return ResolveClientResourcePath(resourcePath);
+        }
+
+        private static WzImageProperty ResolveClientResourcePath(string resourcePath)
+        {
+            if (string.IsNullOrWhiteSpace(resourcePath))
+            {
+                return null;
+            }
+
+            string normalized = resourcePath.Replace('\\', '/').Trim();
+            int firstSeparator = normalized.IndexOf('/');
+            if (firstSeparator <= 0 || firstSeparator >= normalized.Length - 1)
+            {
+                return null;
+            }
+
+            string category = normalized.Substring(0, firstSeparator);
+            string remainder = normalized.Substring(firstSeparator + 1);
+            int imageIndex = remainder.IndexOf(".img", StringComparison.OrdinalIgnoreCase);
+            if (imageIndex < 0)
+            {
+                return null;
+            }
+
+            string imageName = remainder.Substring(0, imageIndex + 4);
+            string propertyPath = imageIndex + 4 < remainder.Length
+                ? remainder.Substring(imageIndex + 4).TrimStart('/')
+                : string.Empty;
+
+            foreach (string candidateImageName in EnumerateResourceImageCandidates(category, imageName))
+            {
+                WzImage image = global::HaCreator.Program.FindImage(category, candidateImageName);
+                if (image == null)
+                {
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(propertyPath))
+                {
+                    return null;
+                }
+
+                WzImageProperty property = ResolvePropertyPath(image, propertyPath);
+                if (property != null)
+                {
+                    return property;
+                }
+            }
+
+            return null;
+        }
+
+        private static IEnumerable<string> EnumerateResourceImageCandidates(string category, string imageName)
+        {
+            if (!string.IsNullOrWhiteSpace(imageName))
+            {
+                yield return imageName;
+            }
+
+            if (string.Equals(category, "UI", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.Equals(imageName, "UIWindow.img", StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return "UIWindow2.img";
+                }
+                else if (string.Equals(imageName, "UIWindow2.img", StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return "UIWindow.img";
+                }
+            }
         }
 
         private static WzImageProperty ResolvePropertyPath(WzImage image, string relativePath)

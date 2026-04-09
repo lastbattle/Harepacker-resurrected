@@ -1466,12 +1466,12 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
-            if (source.Level > 0)
+            if (destination.Level <= 0 && source.Level > 0)
             {
                 destination.Level = source.Level;
             }
 
-            if (source.Job >= 0)
+            if (destination.Job < 0 && source.Job >= 0)
             {
                 destination.Job = source.Job;
             }
@@ -1481,7 +1481,7 @@ namespace HaCreator.MapSimulator.Effects
                 destination.JobName = source.JobName;
             }
 
-            if (!string.IsNullOrWhiteSpace(source.GuildName))
+            if (string.IsNullOrWhiteSpace(destination.GuildName) && !string.IsNullOrWhiteSpace(source.GuildName))
             {
                 destination.GuildName = source.GuildName;
             }

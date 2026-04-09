@@ -7,6 +7,9 @@ namespace HaCreator.MapSimulator.Interaction
         private const int BlockedStateStringPoolId = 66;
         private const int IncompatiblePairStringPoolId = 5423;
         private const int WhiteScrollPromptStringPoolId = 0x1160;
+        private const int WhiteScrollUsedStringPoolId = 0x1161;
+        private const int WhiteScrollProtectedFailureStringPoolId = 0x1162;
+        private const int WhiteScrollSuccessStringPoolId = 0x1163;
         private const int UnknownResultStringPoolId = 5424;
         private const int UnexpectedResultStringPoolId = 6764;
 
@@ -43,6 +46,27 @@ namespace HaCreator.MapSimulator.Interaction
             return MapleStoryStringPool.GetOrFallback(
                 WhiteScrollPromptStringPoolId,
                 "Use White Scroll protection for this Vega request?");
+        }
+
+        public static string GetWhiteScrollUsedNotice()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                WhiteScrollUsedStringPoolId,
+                "The White Scroll has been used.");
+        }
+
+        public static string GetWhiteScrollProtectedFailureNotice()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                WhiteScrollProtectedFailureStringPoolId,
+                "The item upgrade failed, but since the White Scroll was used, the number of item upgrade slots remained intact.");
+        }
+
+        public static string GetWhiteScrollSuccessNotice()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                WhiteScrollSuccessStringPoolId,
+                "The item was successfully upgraded, and the White Scroll was used in the process.");
         }
 
         public static string FormatUnknownResultNotice(int resultCode)

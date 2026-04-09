@@ -135,6 +135,11 @@ namespace HaCreator.MapSimulator.UI
 
         internal static int GetKeyIndexFromPoint(int localX, int localY)
         {
+            if (GetKeyBounds(36).Contains(localX, localY))
+            {
+                return 36;
+            }
+
             if (localY - KeyboardTop < 0)
             {
                 return -1;
@@ -247,7 +252,7 @@ namespace HaCreator.MapSimulator.UI
                 yield break;
             }
 
-            for (int i = 0; i <= 35; i++)
+            for (int i = 0; i < LowercaseKeyTexts.Length; i++)
             {
                 yield return i;
             }

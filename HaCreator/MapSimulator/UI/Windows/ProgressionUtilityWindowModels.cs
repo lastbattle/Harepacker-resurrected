@@ -477,22 +477,22 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<CollectionBookEntrySnapshot> entries = page?.Entries ?? Array.Empty<CollectionBookEntrySnapshot>();
             for (int row = 0; row < EntriesPerPage; row++)
             {
-                int rowTop = 68 + (row * 28);
+                int rowTop = 66 + (row * 25);
                 CollectionBookEntrySnapshot entry = row < entries.Count ? entries[row] : null;
                 if (entry != null)
                 {
-                    records.Add(CreateTextRecord(entry.Label, 16, rowTop, 104, 2, CollectionBookTextAlignment.Left));
-                    records.Add(CreateTextRecord(entry.Value, 106, rowTop, 76, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Right));
-                    records.Add(CreateTextRecord(entry.Detail, 22, rowTop + 12, 160, 10, CollectionBookTextAlignment.Left));
+                    records.Add(CreateTextRecord(entry.Label, 16, rowTop, 96, 2, CollectionBookTextAlignment.Left));
+                    records.Add(CreateTextRecord(entry.Value, 104, rowTop, 78, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Right));
+                    records.Add(CreateTextRecord(entry.Detail, 22, rowTop + 10, 156, 10, CollectionBookTextAlignment.Left));
                 }
 
                 if (row < EntriesPerPage - 1)
                 {
-                    records.Add(CreateRuleRecord(15, rowTop + 24, 166));
+                    records.Add(CreateRuleRecord(15, rowTop + 19, 166));
                 }
             }
 
-            records.Add(CreateRuleRecord(15, 220, 166));
+            records.Add(CreateRuleRecord(15, 221, 166));
             records.Add(CreateTextRecord(page?.Footer, 16, 227, 164, 11, CollectionBookTextAlignment.Center));
             return records;
         }
@@ -509,13 +509,13 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<CollectionBookEntrySnapshot> entries = page?.Entries ?? Array.Empty<CollectionBookEntrySnapshot>();
             CollectionBookEntrySnapshot characterEntry = entries.Count > 0 ? entries[0] : null;
             CollectionBookEntrySnapshot targetEntry = entries.Count > 1 ? entries[1] : null;
-            AddOverviewIdentityEntryRecords(records, characterEntry, 68);
-            AddOverviewIdentityEntryRecords(records, targetEntry, 98);
+            AddOverviewIdentityEntryRecords(records, characterEntry, 66);
+            AddOverviewIdentityEntryRecords(records, targetEntry, 94);
 
             int metricRowCount = Math.Min(5, Math.Max(0, entries.Count - 2));
             for (int row = 0; row < metricRowCount; row++)
             {
-                int rowTop = 128 + (row * 19);
+                int rowTop = 122 + (row * 19);
                 AddOverviewMetricEntryRecords(records, entries[row + 2], rowTop);
             }
 
@@ -533,8 +533,8 @@ namespace HaCreator.MapSimulator.UI
 
             records.Add(CreateTextRecord(entry.Label, 16, top, 44, 2, CollectionBookTextAlignment.Left));
             records.Add(CreateTextRecord(entry.Value, 60, top, 120, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Left));
-            records.Add(CreateTextRecord(entry.Detail, 22, top + 11, 158, 10, CollectionBookTextAlignment.Left));
-            records.Add(CreateRuleRecord(15, top + 25, 166));
+            records.Add(CreateTextRecord(entry.Detail, 22, top + 10, 158, 10, CollectionBookTextAlignment.Left));
+            records.Add(CreateRuleRecord(15, top + 23, 166));
         }
 
         private static void AddOverviewMetricEntryRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top)
@@ -546,8 +546,8 @@ namespace HaCreator.MapSimulator.UI
 
             records.Add(CreateTextRecord(entry.Label, 16, top, 98, 2, CollectionBookTextAlignment.Left));
             records.Add(CreateTextRecord(entry.Value, 106, top, 76, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Right));
-            records.Add(CreateTextRecord(entry.Detail, 22, top + 10, 160, 10, CollectionBookTextAlignment.Left));
-            records.Add(CreateRuleRecord(15, top + 17, 166));
+            records.Add(CreateTextRecord(entry.Detail, 22, top + 9, 160, 10, CollectionBookTextAlignment.Left));
+            records.Add(CreateRuleRecord(15, top + 16, 166));
         }
 
         private static CollectionBookRecordSnapshot CreateTextRecord(string text, int left, int top, int width, int styleIndex, CollectionBookTextAlignment alignment)
@@ -615,7 +615,7 @@ namespace HaCreator.MapSimulator.UI
                 return "No active build";
             }
 
-            return $"Fame {build.Fame}  World {FormatRank(build.WorldRank)}  Job {FormatRank(build.JobRank)}";
+            return $"Fame {build.Fame}  WR {FormatRank(build.WorldRank)}  JR {FormatRank(build.JobRank)}";
         }
 
         private static string BuildCompactCollectionSubtitle(CharacterBuild build, CollectionBookOwnerContextSnapshot ownerContext)

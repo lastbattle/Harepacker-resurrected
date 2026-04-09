@@ -33,6 +33,25 @@ namespace HaCreator.MapSimulator.Interaction
                 $"Packet-owned speed quiz active: question {_currentQuestion}/{_totalQuestions}, score {_correctAnswers}, remaining {_remainingQuestions}, {remainingSeconds}s left.";
         }
 
+        internal bool TryBuildOwnerSnapshot(int currentTickCount, out SpeedQuizOwnerSnapshot snapshot)
+        {
+            if (!IsActive(currentTickCount))
+            {
+                snapshot = null;
+                return false;
+            }
+
+            int remainingMs = GetRemainingMs(currentTickCount);
+            snapshot = new SpeedQuizOwnerSnapshot(
+                _currentQuestion,
+                _totalQuestions,
+                _correctAnswers,
+                _remainingQuestions,
+                (remainingMs + 999) / 1000,
+                remainingMs);
+            return true;
+        }
+
         internal void Clear()
         {
             _expiresAtTick = 0;
@@ -59,4 +78,12 @@ namespace HaCreator.MapSimulator.Interaction
                 $"Synced packet-authored speed quiz owner: question {_currentQuestion}/{_totalQuestions}, score {_correctAnswers}, remaining {_remainingQuestions}, {Math.Max(0, remainingSeconds)}s left.";
         }
     }
+
+    internal sealed record SpeedQuizOwnerSnapshot(
+        int CurrentQuestion,
+        int TotalQuestions,
+        int CorrectAnswers,
+        int RemainingQuestions,
+        int RemainingSeconds,
+        int RemainingMs);
 }

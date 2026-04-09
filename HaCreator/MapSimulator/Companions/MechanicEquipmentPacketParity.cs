@@ -1,0 +1,468 @@
+using HaCreator.MapSimulator.UI;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using System;
+using System.Collections.Generic;
+using System.IO;
+
+namespace HaCreator.MapSimulator.Companions
+{
+    internal enum MechanicEquipPacketPayloadMode : byte
+    {
+        Snapshot = 0,
+        SlotMutation = 1,
+        ClearAll = 2,
+        ResetDefaults = 3,
+        AuthorityRequest = 4,
+        AuthorityResult = 5
+    }
+
+    internal enum MechanicEquipAuthorityResultKind : byte
+    {
+        Reject = 0,
+        LocalRequestAccept = 1,
+        SnapshotAccept = 2,
+        SlotMutationAccept = 3,
+        ClearAllAccept = 4,
+        ResetDefaultsAccept = 5
+    }
+
+    internal readonly record struct MechanicEquipPacketPayload(
+        MechanicEquipPacketPayloadMode Mode,
+        MechanicEquipSlot? Slot,
+        int ItemId,
+        IReadOnlyDictionary<MechanicEquipSlot, int> SnapshotItems,
+        int RequestId = 0,
+        int RequestedAtTick = 0,
+        EquipmentChangeRequestKind RequestKind = default,
+        EquipmentChangeOwnerKind OwnerKind = default,
+        int OwnerSessionId = 0,
+        int ExpectedCharacterId = 0,
+        int ExpectedBuildStateToken = 0,
+        int ExpectedMechanicStateToken = 0,
+        InventoryType SourceInventoryType = InventoryType.NONE,
+        int SourceInventoryIndex = -1,
+        MechanicEquipSlot? TargetMechanicSlot = null,
+        MechanicEquipSlot? SourceMechanicSlot = null,
+        MechanicEquipAuthorityResultKind AuthorityResultKind = default,
+        int ResolvedBuildStateToken = 0,
+        int ResolvedMechanicStateToken = 0,
+        string RejectReason = null);
+
+    internal static class MechanicEquipmentPacketParity
+    {
+        internal static byte[] EncodeAuthorityRequestPayload(EquipmentChangeRequest request)
+        {
+            if (request == null)
+            {
+                return Array.Empty<byte>();
+            }
+
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream);
+            writer.Write((byte)MechanicEquipPacketPayloadMode.AuthorityRequest);
+            writer.Write(request.RequestId);
+            writer.Write(request.RequestedAtTick);
+            writer.Write((byte)request.Kind);
+            writer.Write((byte)request.OwnerKind);
+            writer.Write(request.OwnerSessionId);
+            writer.Write(request.ExpectedCharacterId);
+            writer.Write(request.ExpectedBuildStateToken);
+            writer.Write(request.ExpectedMechanicStateToken);
+            writer.Write(request.ItemId);
+            writer.Write((byte)request.SourceInventoryType);
+            writer.Write(request.SourceInventoryIndex);
+            writer.Write(request.TargetMechanicSlot.HasValue ? (byte)request.TargetMechanicSlot.Value : byte.MaxValue);
+            writer.Write(request.SourceMechanicSlot.HasValue ? (byte)request.SourceMechanicSlot.Value : byte.MaxValue);
+            return stream.ToArray();
+        }
+
+        internal static bool TryDecodePayload(
+            byte[] payload,
+            out MechanicEquipPacketPayload decodedPayload,
+            out string errorMessage)
+        {
+            decodedPayload = default;
+            errorMessage = null;
+            if (payload == null || payload.Length == 0)
+            {
+                errorMessage =
+                    "Mechanic equipment payload is missing. Use modes 0-3 for direct mechanic state, 4 for an authority request, or 5 for an authority result.";
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                MechanicEquipPacketPayloadMode mode = (MechanicEquipPacketPayloadMode)reader.ReadByte();
+                switch (mode)
+                {
+                    case MechanicEquipPacketPayloadMode.Snapshot:
+                    {
+                        if (stream.Length - stream.Position != sizeof(int) * 5)
+                        {
+                            errorMessage = "Mechanic snapshot payload must contain five Int32 item ids ordered as ENGINE, FRAME, TRANS, ARM, LEG.";
+                            return false;
+                        }
+
+                        decodedPayload = new MechanicEquipPacketPayload(
+                            mode,
+                            null,
+                            0,
+                            ReadSnapshotItems(reader));
+                        return true;
+                    }
+                    case MechanicEquipPacketPayloadMode.SlotMutation:
+                    {
+                        if (stream.Length - stream.Position != sizeof(byte) + sizeof(int))
+                        {
+                            errorMessage = "Mechanic slot-mutation payload must contain a slot byte followed by an Int32 item id. Use item id 0 to clear that slot.";
+                            return false;
+                        }
+
+                        if (!TryReadMechanicSlot(reader, out MechanicEquipSlot slot, out errorMessage))
+                        {
+                            return false;
+                        }
+
+                        decodedPayload = new MechanicEquipPacketPayload(
+                            mode,
+                            slot,
+                            reader.ReadInt32(),
+                            null);
+                        return true;
+                    }
+                    case MechanicEquipPacketPayloadMode.ClearAll:
+                    case MechanicEquipPacketPayloadMode.ResetDefaults:
+                    {
+                        if (stream.Position != stream.Length)
+                        {
+                            errorMessage = mode == MechanicEquipPacketPayloadMode.ClearAll
+                                ? "Mechanic clear-all payload should not contain extra bytes."
+                                : "Mechanic reset-defaults payload should not contain extra bytes.";
+                            return false;
+                        }
+
+                        decodedPayload = new MechanicEquipPacketPayload(mode, null, 0, null);
+                        return true;
+                    }
+                    case MechanicEquipPacketPayloadMode.AuthorityRequest:
+                    {
+                        const long authorityRequestLength =
+                            sizeof(int) * 8
+                            + sizeof(byte) * 5;
+                        if (stream.Length - stream.Position != authorityRequestLength)
+                        {
+                            errorMessage =
+                                "Mechanic authority-request payload must contain request id, requested tick, request kind, owner kind, owner session id, expected character id, build token, mechanic token, item id, source inventory type/index, target slot, and source slot.";
+                            return false;
+                        }
+
+                        int requestId = reader.ReadInt32();
+                        int requestedAtTick = reader.ReadInt32();
+                        byte requestKindValue = reader.ReadByte();
+                        if (!Enum.IsDefined(typeof(EquipmentChangeRequestKind), (int)requestKindValue))
+                        {
+                            errorMessage = "Mechanic authority-request kind is invalid.";
+                            return false;
+                        }
+
+                        EquipmentChangeRequestKind requestKind = (EquipmentChangeRequestKind)requestKindValue;
+                        byte ownerKindValue = reader.ReadByte();
+                        if (!Enum.IsDefined(typeof(EquipmentChangeOwnerKind), (int)ownerKindValue))
+                        {
+                            errorMessage = "Mechanic authority-request owner kind is invalid.";
+                            return false;
+                        }
+
+                        EquipmentChangeOwnerKind ownerKind = (EquipmentChangeOwnerKind)ownerKindValue;
+                        int ownerSessionId = reader.ReadInt32();
+                        int expectedCharacterId = reader.ReadInt32();
+                        int expectedBuildStateToken = reader.ReadInt32();
+                        int expectedMechanicStateToken = reader.ReadInt32();
+                        int itemId = reader.ReadInt32();
+
+                        byte sourceInventoryTypeValue = reader.ReadByte();
+                        if (!Enum.IsDefined(typeof(InventoryType), (int)sourceInventoryTypeValue))
+                        {
+                            errorMessage = $"Mechanic authority-request source inventory type {sourceInventoryTypeValue} is invalid.";
+                            return false;
+                        }
+
+                        int sourceInventoryIndex = reader.ReadInt32();
+                        if (!TryReadOptionalMechanicSlot(reader, out MechanicEquipSlot? targetSlot, out errorMessage)
+                            || !TryReadOptionalMechanicSlot(reader, out MechanicEquipSlot? sourceSlot, out errorMessage))
+                        {
+                            return false;
+                        }
+
+                        decodedPayload = new MechanicEquipPacketPayload(
+                            mode,
+                            null,
+                            itemId,
+                            null,
+                            requestId,
+                            requestedAtTick,
+                            requestKind,
+                            ownerKind,
+                            ownerSessionId,
+                            expectedCharacterId,
+                            expectedBuildStateToken,
+                            expectedMechanicStateToken,
+                            (InventoryType)sourceInventoryTypeValue,
+                            sourceInventoryIndex,
+                            targetSlot,
+                            sourceSlot);
+                        return true;
+                    }
+                    case MechanicEquipPacketPayloadMode.AuthorityResult:
+                    {
+                        if (stream.Length - stream.Position < sizeof(int) * 4 + sizeof(byte))
+                        {
+                            errorMessage =
+                                "Mechanic authority-result payload must contain request id, requested tick, result kind, build token, and mechanic token.";
+                            return false;
+                        }
+
+                        int requestId = reader.ReadInt32();
+                        int requestedAtTick = reader.ReadInt32();
+                        byte resultKindValue = reader.ReadByte();
+                        if (!Enum.IsDefined(typeof(MechanicEquipAuthorityResultKind), (int)resultKindValue))
+                        {
+                            errorMessage = $"Mechanic authority-result kind {resultKindValue} is invalid.";
+                            return false;
+                        }
+
+                        MechanicEquipAuthorityResultKind resultKind = (MechanicEquipAuthorityResultKind)resultKindValue;
+                        int resolvedBuildStateToken = reader.ReadInt32();
+                        int resolvedMechanicStateToken = reader.ReadInt32();
+
+                        switch (resultKind)
+                        {
+                            case MechanicEquipAuthorityResultKind.Reject:
+                                if (stream.Position > stream.Length)
+                                {
+                                    errorMessage = "Mechanic authority rejection payload is truncated.";
+                                    return false;
+                                }
+
+                                decodedPayload = new MechanicEquipPacketPayload(
+                                    mode,
+                                    null,
+                                    0,
+                                    null,
+                                    requestId,
+                                    requestedAtTick,
+                                    ResolvedBuildStateToken: resolvedBuildStateToken,
+                                    ResolvedMechanicStateToken: resolvedMechanicStateToken,
+                                    AuthorityResultKind: resultKind,
+                                    RejectReason: reader.ReadString());
+                                return stream.Position == stream.Length
+                                    ? true
+                                    : FailWithTrailingBytes("Mechanic authority rejection payload should not contain extra bytes.", out decodedPayload, out errorMessage);
+                            case MechanicEquipAuthorityResultKind.LocalRequestAccept:
+                            {
+                                if (stream.Position != stream.Length)
+                                {
+                                    errorMessage = "Mechanic local-request authority acceptance should not contain extra bytes.";
+                                    return false;
+                                }
+
+                                decodedPayload = new MechanicEquipPacketPayload(
+                                    mode,
+                                    null,
+                                    0,
+                                    null,
+                                    requestId,
+                                    requestedAtTick,
+                                    AuthorityResultKind: resultKind,
+                                    ResolvedBuildStateToken: resolvedBuildStateToken,
+                                    ResolvedMechanicStateToken: resolvedMechanicStateToken);
+                                return true;
+                            }
+                            case MechanicEquipAuthorityResultKind.SnapshotAccept:
+                            {
+                                if (stream.Length - stream.Position != sizeof(int) * 5)
+                                {
+                                    errorMessage = "Mechanic snapshot authority acceptance must contain five Int32 item ids ordered as ENGINE, FRAME, TRANS, ARM, LEG.";
+                                    return false;
+                                }
+
+                                decodedPayload = new MechanicEquipPacketPayload(
+                                    mode,
+                                    null,
+                                    0,
+                                    ReadSnapshotItems(reader),
+                                    requestId,
+                                    requestedAtTick,
+                                    AuthorityResultKind: resultKind,
+                                    ResolvedBuildStateToken: resolvedBuildStateToken,
+                                    ResolvedMechanicStateToken: resolvedMechanicStateToken);
+                                return true;
+                            }
+                            case MechanicEquipAuthorityResultKind.SlotMutationAccept:
+                            {
+                                if (stream.Length - stream.Position != sizeof(byte) + sizeof(int))
+                                {
+                                    errorMessage = "Mechanic slot-mutation authority acceptance must contain a slot byte followed by an Int32 item id.";
+                                    return false;
+                                }
+
+                                if (!TryReadMechanicSlot(reader, out MechanicEquipSlot slot, out errorMessage))
+                                {
+                                    return false;
+                                }
+
+                                decodedPayload = new MechanicEquipPacketPayload(
+                                    mode,
+                                    slot,
+                                    reader.ReadInt32(),
+                                    null,
+                                    requestId,
+                                    requestedAtTick,
+                                    AuthorityResultKind: resultKind,
+                                    ResolvedBuildStateToken: resolvedBuildStateToken,
+                                    ResolvedMechanicStateToken: resolvedMechanicStateToken);
+                                return true;
+                            }
+                            case MechanicEquipAuthorityResultKind.ClearAllAccept:
+                            case MechanicEquipAuthorityResultKind.ResetDefaultsAccept:
+                            {
+                                if (stream.Position != stream.Length)
+                                {
+                                    errorMessage = resultKind == MechanicEquipAuthorityResultKind.ClearAllAccept
+                                        ? "Mechanic clear-all authority acceptance should not contain extra bytes."
+                                        : "Mechanic reset-defaults authority acceptance should not contain extra bytes.";
+                                    return false;
+                                }
+
+                                decodedPayload = new MechanicEquipPacketPayload(
+                                    mode,
+                                    null,
+                                    0,
+                                    null,
+                                    requestId,
+                                    requestedAtTick,
+                                    AuthorityResultKind: resultKind,
+                                    ResolvedBuildStateToken: resolvedBuildStateToken,
+                                    ResolvedMechanicStateToken: resolvedMechanicStateToken);
+                                return true;
+                            }
+                            default:
+                                errorMessage = $"Mechanic authority-result kind {resultKindValue} is unsupported.";
+                                return false;
+                        }
+                    }
+                    default:
+                        errorMessage = $"Mechanic equipment payload mode {(byte)mode} is unsupported.";
+                        return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Mechanic equipment payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        internal static bool TryReadFinalItemIdForSlot(
+            MechanicEquipPacketPayload payload,
+            IReadOnlyDictionary<MechanicEquipSlot, int> currentItems,
+            MechanicEquipSlot slot,
+            out int itemId,
+            out string errorMessage)
+        {
+            itemId = 0;
+            errorMessage = null;
+            int currentItemId = 0;
+            currentItems?.TryGetValue(slot, out currentItemId);
+            switch (payload.AuthorityResultKind)
+            {
+                case MechanicEquipAuthorityResultKind.SnapshotAccept:
+                    if (payload.SnapshotItems == null || !payload.SnapshotItems.TryGetValue(slot, out itemId))
+                    {
+                        itemId = 0;
+                    }
+
+                    return true;
+                case MechanicEquipAuthorityResultKind.SlotMutationAccept:
+                    itemId = payload.Slot == slot ? payload.ItemId : currentItemId;
+                    return true;
+                case MechanicEquipAuthorityResultKind.ClearAllAccept:
+                    itemId = 0;
+                    return true;
+                case MechanicEquipAuthorityResultKind.ResetDefaultsAccept:
+                    errorMessage = "Reset-defaults authority results are not compatible with single-slot mechanic equipment requests.";
+                    return false;
+                default:
+                    errorMessage = "Mechanic authority payload does not expose a final mechanic slot state.";
+                    return false;
+            }
+        }
+
+        internal static bool HasExplicitAuthorityState(MechanicEquipPacketPayload payload)
+        {
+            return payload.AuthorityResultKind == MechanicEquipAuthorityResultKind.SnapshotAccept
+                   || payload.AuthorityResultKind == MechanicEquipAuthorityResultKind.SlotMutationAccept
+                   || payload.AuthorityResultKind == MechanicEquipAuthorityResultKind.ClearAllAccept
+                   || payload.AuthorityResultKind == MechanicEquipAuthorityResultKind.ResetDefaultsAccept;
+        }
+
+        private static Dictionary<MechanicEquipSlot, int> ReadSnapshotItems(BinaryReader reader)
+        {
+            return new Dictionary<MechanicEquipSlot, int>
+            {
+                [MechanicEquipSlot.Engine] = reader.ReadInt32(),
+                [MechanicEquipSlot.Frame] = reader.ReadInt32(),
+                [MechanicEquipSlot.Transistor] = reader.ReadInt32(),
+                [MechanicEquipSlot.Arm] = reader.ReadInt32(),
+                [MechanicEquipSlot.Leg] = reader.ReadInt32()
+            };
+        }
+
+        private static bool TryReadMechanicSlot(BinaryReader reader, out MechanicEquipSlot slot, out string errorMessage)
+        {
+            slot = default;
+            errorMessage = null;
+            byte slotValue = reader.ReadByte();
+            if (!Enum.IsDefined(typeof(MechanicEquipSlot), (int)slotValue))
+            {
+                errorMessage = $"Mechanic slot value {slotValue} is invalid.";
+                return false;
+            }
+
+            slot = (MechanicEquipSlot)slotValue;
+            return true;
+        }
+
+        private static bool TryReadOptionalMechanicSlot(BinaryReader reader, out MechanicEquipSlot? slot, out string errorMessage)
+        {
+            slot = null;
+            errorMessage = null;
+            byte slotValue = reader.ReadByte();
+            if (slotValue == byte.MaxValue)
+            {
+                return true;
+            }
+
+            if (!Enum.IsDefined(typeof(MechanicEquipSlot), (int)slotValue))
+            {
+                errorMessage = $"Mechanic slot value {slotValue} is invalid.";
+                return false;
+            }
+
+            slot = (MechanicEquipSlot)slotValue;
+            return true;
+        }
+
+        private static bool FailWithTrailingBytes(
+            string message,
+            out MechanicEquipPacketPayload decodedPayload,
+            out string errorMessage)
+        {
+            decodedPayload = default;
+            errorMessage = message;
+            return false;
+        }
+    }
+}

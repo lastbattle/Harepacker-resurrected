@@ -16,7 +16,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string Sender { get; init; } = string.Empty;
         public string MemoText { get; init; } = string.Empty;
         public bool IsQuickDelivery { get; init; }
-        public DateTimeOffset? ClientTimestampUtc { get; init; }
+        public DateTimeOffset? ExpirationTimestampUtc { get; init; }
         public bool IsRead { get; init; }
         public bool IsKept { get; init; }
         public bool IsAttachmentClaimed { get; init; }
@@ -34,16 +34,14 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal static class PacketOwnedParcelPacketCodec
     {
-        private const byte ParcelFlagRead = 1 << 0;
-        private const byte ParcelFlagKeep = 1 << 1;
-        private const byte ParcelFlagClaimed = 1 << 2;
-        private const byte ParcelFlagHasItem = 1 << 3;
-        private const byte ParcelFlagHasMeso = 1 << 4;
         private const int ParcelFixedBodyLength = 0xEA;
         private const int ParcelSenderOffset = 4;
         private const int ParcelSenderLength = 13;
         private const int ParcelMesoOffset = 0x11;
-        private const int ParcelClientTimestampOffset = 0x15;
+        private const int ParcelExpiryTimestampOffset = 0x15;
+        private const int ParcelQuickDeliveryOffset = 0x1D;
+        private const int ParcelMemoOffset = 0x21;
+        private const int ParcelMemoLength = ParcelFixedBodyLength - ParcelMemoOffset;
         private const int MinimumMemoCandidateLength = 4;
         private const int MinimumAttachmentBodyLength = sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long) + sizeof(long);
 
@@ -126,9 +124,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             byte[] parcelBytes = reader.ReadBytes(ParcelFixedBodyLength);
-            byte flags = reader.ReadByte();
-            bool hasItemAttachment = (flags & ParcelFlagHasItem) != 0;
-            bool hasMesoAttachment = (flags & ParcelFlagHasMeso) != 0;
+            bool hasItemAttachment = reader.ReadByte() != 0;
 
             int itemId = 0;
             int quantity = 0;
@@ -146,20 +142,22 @@ namespace HaCreator.MapSimulator.Interaction
             string sender = ReadFixedAscii(parcelBytes, ParcelSenderOffset, ParcelSenderLength);
             string memoText = ExtractMemoText(parcelBytes, sender);
             int serial = BinaryPrimitives.ReadInt32LittleEndian(parcelBytes.AsSpan(0, sizeof(int)));
-            int attachmentMeso = hasMesoAttachment && parcelBytes.Length >= ParcelMesoOffset + sizeof(int)
+            int attachmentMeso = parcelBytes.Length >= ParcelMesoOffset + sizeof(int)
                 ? Math.Max(0, BinaryPrimitives.ReadInt32LittleEndian(parcelBytes.AsSpan(ParcelMesoOffset, sizeof(int))))
                 : 0;
-            DateTimeOffset? clientTimestampUtc = TryDecodeClientTimestamp(parcelBytes);
+            DateTimeOffset? expirationTimestampUtc = TryDecodeExpirationTimestamp(parcelBytes);
+            bool isQuickDelivery = parcelBytes.Length > ParcelQuickDeliveryOffset && parcelBytes[ParcelQuickDeliveryOffset] != 0;
 
             entry = new PacketOwnedParcelDecodedEntry
             {
                 ParcelSerial = Math.Max(0, serial),
                 Sender = string.IsNullOrWhiteSpace(sender) ? "Maple Delivery Service" : sender,
                 MemoText = memoText,
-                ClientTimestampUtc = clientTimestampUtc,
-                IsRead = (flags & ParcelFlagRead) != 0,
-                IsKept = (flags & ParcelFlagKeep) != 0,
-                IsAttachmentClaimed = (flags & ParcelFlagClaimed) != 0,
+                IsQuickDelivery = isQuickDelivery,
+                ExpirationTimestampUtc = expirationTimestampUtc,
+                IsRead = false,
+                IsKept = false,
+                IsAttachmentClaimed = false,
                 AttachmentItemId = Math.Max(0, itemId),
                 AttachmentQuantity = Math.Max(0, quantity),
                 AttachmentMeso = attachmentMeso,
@@ -352,14 +350,14 @@ namespace HaCreator.MapSimulator.Interaction
             return Encoding.ASCII.GetString(slice).TrimEnd('\0', ' ');
         }
 
-        private static DateTimeOffset? TryDecodeClientTimestamp(ReadOnlySpan<byte> bytes)
+        private static DateTimeOffset? TryDecodeExpirationTimestamp(ReadOnlySpan<byte> bytes)
         {
-            if (bytes.Length < ParcelClientTimestampOffset + sizeof(long))
+            if (bytes.Length < ParcelExpiryTimestampOffset + sizeof(long))
             {
                 return null;
             }
 
-            long rawFileTime = BinaryPrimitives.ReadInt64LittleEndian(bytes.Slice(ParcelClientTimestampOffset, sizeof(long)));
+            long rawFileTime = BinaryPrimitives.ReadInt64LittleEndian(bytes.Slice(ParcelExpiryTimestampOffset, sizeof(long)));
             if (rawFileTime <= 0)
             {
                 return null;
@@ -383,6 +381,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string ExtractMemoText(ReadOnlySpan<byte> bytes, string sender)
         {
+            string fixedMemo = ReadFixedAscii(bytes, ParcelMemoOffset, ParcelMemoLength);
+            if (!string.IsNullOrWhiteSpace(fixedMemo)
+                && !string.Equals(fixedMemo, sender, StringComparison.OrdinalIgnoreCase))
+            {
+                return fixedMemo;
+            }
+
             string mapleStringCandidate = ExtractLongestMapleStringCandidate(bytes, sender);
             if (!string.IsNullOrWhiteSpace(mapleStringCandidate))
             {

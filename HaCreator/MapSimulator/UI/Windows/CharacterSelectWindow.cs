@@ -198,6 +198,8 @@ namespace HaCreator.MapSimulator.UI
             if (!wasVisible)
             {
                 _showTick = -1;
+                _hasKeyboardFocus = true;
+                _focusedButton = ResolveFirstAvailableButton();
                 _previousKeyboardState = Keyboard.GetState();
             }
         }
@@ -304,7 +306,10 @@ namespace HaCreator.MapSimulator.UI
             DrawAnimation(sprite, _statusSparkleFrames, tickCount, true, ClientStatusSparkleAnchor, false);
             DrawAnimation(sprite, ResolveStatusScrollFrames(), tickCount, false, ClientStatusScrollPosition, true);
             DrawAnimation(sprite, _statusCharacterFrames, tickCount, true, ClientStatusAccentPosition, false);
-            DrawAnimation(sprite, _statusAccentFrames, tickCount, true, ClientStatusAccentPosition, false);
+            if (!ReferenceEquals(_statusAccentFrames, _statusCharacterFrames))
+            {
+                DrawAnimation(sprite, _statusAccentFrames, tickCount, true, ClientStatusAccentPosition, false);
+            }
 
             DrawFocusedButtonAnimation(sprite, tickCount);
         }

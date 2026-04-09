@@ -939,6 +939,9 @@ namespace HaCreator.MapSimulator.Interaction
             internal string ItemName { get; init; } = string.Empty;
             internal string Title { get; init; } = string.Empty;
             internal InventoryType InventoryType { get; init; }
+            internal InventoryType PacketGroupInventoryType { get; init; }
+            internal int PacketGroupRowIndex { get; init; }
+            internal bool WasRetainedFromPreviousSnapshot { get; init; }
             internal int Quantity { get; init; }
             internal byte SlotType { get; init; }
             internal bool HasCashSerialNumber { get; init; }
@@ -966,6 +969,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly List<string> _recentNotes = new();
         private readonly List<StoreBankItemEntry> _decodedItems = new();
         private readonly Dictionary<InventoryType, int> _decodedCountsByType = new();
+        private readonly Dictionary<InventoryType, int> _retainedCountsByType = new();
         private static readonly StoreInventoryGroup[] StoreInventoryGroups =
         {
             new(InventoryType.EQUIP, 4),
@@ -1065,6 +1069,7 @@ namespace HaCreator.MapSimulator.Interaction
                     ? $"NPC template: {_npcTemplateId.ToString(CultureInfo.InvariantCulture)} | Slot count: {_slotCount.ToString(CultureInfo.InvariantCulture)} | Money: {_money.ToString(CultureInfo.InvariantCulture)} | Flags: 0x{_dbcharFlagMask.ToString("X", CultureInfo.InvariantCulture)}"
                     : "No decoded SetStoreBankDlg payload is staged.",
                 BuildDecodedInventorySummary(),
+                BuildRetainedInventorySummary(),
                 HasPendingGetAllRequest
                     ? (_pendingGetAllFee > 0
                         ? $"Pending get-all modal: {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s), fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)} (StringPool 0xDC4)."
@@ -1206,6 +1211,7 @@ namespace HaCreator.MapSimulator.Interaction
             Dictionary<InventoryType, int> previousCountsByType = new(_decodedCountsByType);
             List<StoreBankItemEntry> previousItems = new(_decodedItems);
             _decodedCountsByType.Clear();
+            _retainedCountsByType.Clear();
             _decodedItems.Clear();
             if (payload.Length < sizeof(int) + sizeof(byte) + sizeof(long))
             {
@@ -1241,7 +1247,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _decodedCountsByType[group.InventoryType] = groupCount;
                 for (int itemIndex = 0; itemIndex < groupCount; itemIndex++)
                 {
-                    if (!TryReadStoreBankItem(reader, group.InventoryType, out StoreBankItemEntry entry))
+                    if (!TryReadStoreBankItem(reader, group.InventoryType, itemIndex, out StoreBankItemEntry entry))
                     {
                         return false;
                     }
@@ -1268,9 +1274,12 @@ namespace HaCreator.MapSimulator.Interaction
                 for (int itemIndex = 0; itemIndex < previousItems.Count; itemIndex++)
                 {
                     StoreBankItemEntry previousItem = previousItems[itemIndex];
-                    if (previousItem.InventoryType == inventoryType)
+                    if (previousItem.PacketGroupInventoryType == inventoryType)
                     {
-                        _decodedItems.Add(previousItem);
+                        _decodedItems.Add(CloneRetainedItem(previousItem));
+                        _retainedCountsByType[inventoryType] = _retainedCountsByType.TryGetValue(inventoryType, out int retainedCount)
+                            ? retainedCount + 1
+                            : 1;
                     }
                 }
             }
@@ -1283,6 +1292,34 @@ namespace HaCreator.MapSimulator.Interaction
             return _decodedCountsByType.Count > 0
                 ? $"Decoded inventory groups: {BuildDecodedInventorySummaryCore()}."
                 : "Decoded inventory groups: none surfaced in the staged payload.";
+        }
+
+        private string BuildRetainedInventorySummary()
+        {
+            if (_retainedCountsByType.Count == 0)
+            {
+                return "Retained rows: none copied from omitted packet groups.";
+            }
+
+            List<string> segments = new();
+            foreach (InventoryType inventoryType in new[]
+                     {
+                         InventoryType.EQUIP,
+                         InventoryType.USE,
+                         InventoryType.SETUP,
+                         InventoryType.ETC,
+                         InventoryType.CASH
+                     })
+            {
+                if (_retainedCountsByType.TryGetValue(inventoryType, out int count) && count > 0)
+                {
+                    segments.Add($"{inventoryType}:{count.ToString(CultureInfo.InvariantCulture)}");
+                }
+            }
+
+            return segments.Count > 0
+                ? $"Retained rows from omitted packet groups: {string.Join(", ", segments)}."
+                : "Retained rows: none copied from omitted packet groups.";
         }
 
         private string BuildDecodedInventorySummaryCore()
@@ -1331,7 +1368,7 @@ namespace HaCreator.MapSimulator.Interaction
                 for (int i = 0; i < _decodedItems.Count; i++)
                 {
                     StoreBankItemEntry item = _decodedItems[i];
-                    if (item.InventoryType != inventoryType)
+                    if (item.PacketGroupInventoryType != inventoryType)
                     {
                         continue;
                     }
@@ -1343,7 +1380,7 @@ namespace HaCreator.MapSimulator.Interaction
                         ? string.Empty
                         : $" | {item.MetadataSummary}";
                     string bodySuffix = BuildDecodedItemBodySuffix(item);
-                    names.Add($"{item.ItemName}{quantitySuffix}{BuildDecodedItemMarker(item)}{BuildDecodedItemSerialMarker(item)}{metadataSuffix}{bodySuffix}");
+                    names.Add($"#{item.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} {item.ItemName}{quantitySuffix}{BuildDecodedItemMarker(item)}{BuildDecodedItemSerialMarker(item)}{metadataSuffix}{bodySuffix}");
                     if (names.Count >= 4)
                     {
                         break;
@@ -1377,6 +1414,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static string BuildDecodedItemMarker(StoreBankItemEntry item)
         {
             List<string> markers = new();
+            markers.Add($"row{item.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)}");
             markers.Add(item.SlotType switch
             {
                 1 => "equip",
@@ -1388,6 +1426,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (item.HasCashSerialNumber)
             {
                 markers.Add("cash");
+            }
+
+            if (item.WasRetainedFromPreviousSnapshot)
+            {
+                markers.Add("retained");
             }
 
             return markers.Count > 0
@@ -1494,7 +1537,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private static bool TryReadStoreBankItem(BinaryReader reader, InventoryType expectedInventoryType, out StoreBankItemEntry entry)
+        private static bool TryReadStoreBankItem(BinaryReader reader, InventoryType expectedInventoryType, int packetGroupRowIndex, out StoreBankItemEntry entry)
         {
             entry = null;
             Stream stream = reader.BaseStream;
@@ -1582,6 +1625,9 @@ namespace HaCreator.MapSimulator.Interaction
                 ItemName = itemName,
                 Title = title,
                 InventoryType = resolvedInventoryType,
+                PacketGroupInventoryType = expectedInventoryType,
+                PacketGroupRowIndex = Math.Max(1, packetGroupRowIndex + 1),
+                WasRetainedFromPreviousSnapshot = false,
                 Quantity = Math.Max(1, quantity),
                 SlotType = slotType,
                 HasCashSerialNumber = hasCashSerialNumber,
@@ -1594,6 +1640,35 @@ namespace HaCreator.MapSimulator.Interaction
                 PetData = petData
             };
             return true;
+        }
+
+        private static StoreBankItemEntry CloneRetainedItem(StoreBankItemEntry item)
+        {
+            if (item == null)
+            {
+                return null;
+            }
+
+            return new StoreBankItemEntry
+            {
+                ItemId = item.ItemId,
+                ItemName = item.ItemName,
+                Title = item.Title,
+                InventoryType = item.InventoryType,
+                PacketGroupInventoryType = item.PacketGroupInventoryType,
+                PacketGroupRowIndex = item.PacketGroupRowIndex,
+                WasRetainedFromPreviousSnapshot = true,
+                Quantity = item.Quantity,
+                SlotType = item.SlotType,
+                HasCashSerialNumber = item.HasCashSerialNumber,
+                ItemSerialNumber = item.ItemSerialNumber,
+                CashSerialNumber = item.CashSerialNumber,
+                IsRechargeBundle = item.IsRechargeBundle,
+                MetadataSummary = item.MetadataSummary,
+                EquipData = item.EquipData,
+                BundleData = item.BundleData,
+                PetData = item.PetData
+            };
         }
 
         private static bool TryReadEquipBody(BinaryReader reader, bool hasCashSerialNumber, out string title, out string metadataSummary, out StoreBankEquipData equipData)

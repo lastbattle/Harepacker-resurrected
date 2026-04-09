@@ -179,8 +179,7 @@ namespace HaCreator.MapSimulator.UI
                 message,
                 PickupMessageType.QuestItemPickup,
                 currentTime,
-                icon,
-                textColor: new Color(150, 255, 150));
+                icon);
         }
 
         /// <summary>
@@ -253,11 +252,9 @@ namespace HaCreator.MapSimulator.UI
         {
             switch (type)
             {
-                case PickupMessageType.QuestItemPickup:
-                    return new Color(150, 255, 150);
                 case PickupMessageType.InventoryFull:
                 case PickupMessageType.CantPickup:
-                    return new Color(255, 100, 100);
+                    return Color.White;
                 default:
                     return Color.White;
             }

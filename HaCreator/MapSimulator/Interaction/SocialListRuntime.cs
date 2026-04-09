@@ -457,7 +457,7 @@ namespace HaCreator.MapSimulator.Interaction
                 "Friend.Chat" => SendFriendChat(),
                 "Friend.Whisper" => WhisperSelected("friend"),
                 "Friend.GroupWhisper" => GroupWhisperFriend(),
-                "Friend.Mate" => "Couple and mate flows still need their own dedicated relationship runtime.",
+                "Friend.Mate" => "Maple Mate proposals now open the dedicated MateMessage owner.",
                 "Friend.Message" => MemoSelectedFriend(),
                 "Friend.Mod" => ModifyFriendMemo(),
                 "Friend.Delete" => DeleteFriend(),
@@ -474,7 +474,7 @@ namespace HaCreator.MapSimulator.Interaction
                 "Guild.Board" => "Guild BBS has its own backlog item and is not wired from the member list yet.",
                 "Guild.Invite" => AddGuildMember(),
                 "Guild.Withdraw" => RemoveGuildMember("guild"),
-                "Guild.PartyInvite" => "Guild party invite forwarded from the member list shell.",
+                "Guild.PartyInvite" => InviteSelectedEntryToPartyFromTab(SocialListTab.Guild, "guild"),
                 "Guild.GradeUp" => AdjustGuildGrade(1),
                 "Guild.GradeDown" => AdjustGuildGrade(-1),
                 "Guild.Kick" => RemoveGuildMember("guild"),
@@ -487,7 +487,7 @@ namespace HaCreator.MapSimulator.Interaction
                 "Guild.Change" => "Guild notice editing now opens the dedicated change tab inside guild management.",
                 "Alliance.Invite" => AddAllianceMember(),
                 "Alliance.Withdraw" => RemoveGuildMember("alliance"),
-                "Alliance.PartyInvite" => "Alliance party invite forwarded from the union tab.",
+                "Alliance.PartyInvite" => InviteSelectedEntryToPartyFromTab(SocialListTab.Alliance, "alliance"),
                 "Alliance.GradeUp" => AdjustAllianceGrade(1),
                 "Alliance.GradeDown" => AdjustAllianceGrade(-1),
                 "Alliance.Kick" => RemoveGuildMember("alliance"),
@@ -963,10 +963,17 @@ namespace HaCreator.MapSimulator.Interaction
                             destination.Add("Guild.Change");
                         }
 
-                        if (!selectedEntry.IsLocalPlayer && canManageGuildRoster)
+                        if (!selectedEntry.IsLocalPlayer)
                         {
-                            destination.Add("Guild.PartyInvite");
-                            destination.Add("Guild.Kick");
+                            if (HasLocalPartyLeader())
+                            {
+                                destination.Add("Guild.PartyInvite");
+                            }
+
+                            if (canManageGuildRoster)
+                            {
+                                destination.Add("Guild.Kick");
+                            }
                         }
                         else if (selectedEntry.IsLocalPlayer)
                         {
@@ -998,10 +1005,17 @@ namespace HaCreator.MapSimulator.Interaction
                             destination.Add("Alliance.Notice");
                         }
 
-                        if (!selectedEntry.IsLocalPlayer && canManageAllianceRanks)
+                        if (!selectedEntry.IsLocalPlayer)
                         {
-                            destination.Add("Alliance.PartyInvite");
-                            destination.Add("Alliance.Kick");
+                            if (HasLocalPartyLeader())
+                            {
+                                destination.Add("Alliance.PartyInvite");
+                            }
+
+                            if (canManageAllianceRanks)
+                            {
+                                destination.Add("Alliance.Kick");
+                            }
                         }
                         else if (selectedEntry.IsLocalPlayer)
                         {
@@ -1128,6 +1142,49 @@ namespace HaCreator.MapSimulator.Interaction
                 false,
                 false));
             return $"{selectedFriend.Name} was invited from the friend tab into the party roster.";
+        }
+
+        private string InviteSelectedEntryToPartyFromTab(SocialListTab sourceTab, string owner)
+        {
+            if (TryStagePacketOwnedRequest(SocialListTab.Party, "Party invite", out string requestMessage))
+            {
+                return requestMessage;
+            }
+
+            if (!HasLocalPartyLeader())
+            {
+                return $"Party invite from the {owner} tab needs a local party leader entry first.";
+            }
+
+            SocialEntryState selectedEntry = GetSelectedEntry(sourceTab);
+            if (selectedEntry == null || selectedEntry.IsLocalPlayer)
+            {
+                return $"Select a non-local {owner} entry before inviting it into the party roster.";
+            }
+
+            if (!selectedEntry.IsOnline)
+            {
+                return $"{selectedEntry.Name} is offline, so the {owner} tab cannot route a party invite right now.";
+            }
+
+            if (_entriesByTab[SocialListTab.Party].Any(entry => string.Equals(entry.Name, selectedEntry.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                return $"{selectedEntry.Name} is already in the party roster.";
+            }
+
+            _entriesByTab[SocialListTab.Party].Add(new SocialEntryState(
+                selectedEntry.Name,
+                selectedEntry.PrimaryText,
+                $"Invited from {owner} tab",
+                selectedEntry.LocationSummary,
+                selectedEntry.Channel,
+                selectedEntry.IsOnline,
+                false,
+                false));
+            _selectedIndexByTab[SocialListTab.Party] = _entriesByTab[SocialListTab.Party].Count - 1;
+            EnsureSelectionVisible(SocialListTab.Party, _entriesByTab[SocialListTab.Party].Count);
+
+            return $"{selectedEntry.Name} was invited from the {owner} tab into the party roster.";
         }
 
         private string WhisperSelected(string owner)

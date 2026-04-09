@@ -9,6 +9,10 @@ namespace HaCreator.MapSimulator.Managers
     {
         internal const ulong CharacterDataMapTransferFlag = 0x1000UL;
         private const int LogoutGiftConfigByteLength = 3 * sizeof(int);
+        private const int MiniGameRecordByteLength = 0x14;
+        private const int CoupleRecordByteLength = 0x21;
+        private const int FriendRecordByteLength = 0x25;
+        private const int MarriageRecordByteLength = 0x30;
         internal const int BootstrapBookByteLength =
             (MapTransferRuntimeManager.RegularCapacity + MapTransferRuntimeManager.ContinentCapacity) * sizeof(int);
 
@@ -22,6 +26,7 @@ namespace HaCreator.MapSimulator.Managers
             out int matchedOffset,
             out bool ignoredTrailingLogoutGiftConfig,
             out bool matchedExactTailBoundary,
+            out bool matchedKnownLeadingCharacterDataTail,
             out bool matchedKnownCharacterDataTail)
         {
             regularFields = null;
@@ -29,6 +34,7 @@ namespace HaCreator.MapSimulator.Managers
             matchedOffset = -1;
             ignoredTrailingLogoutGiftConfig = false;
             matchedExactTailBoundary = false;
+            matchedKnownLeadingCharacterDataTail = false;
             matchedKnownCharacterDataTail = false;
 
             if (payload.Length < BootstrapBookByteLength || isPlausibleMapId == null)
@@ -47,6 +53,7 @@ namespace HaCreator.MapSimulator.Managers
                         out regularFields,
                         out continentFields,
                         out matchedOffset,
+                        out matchedKnownLeadingCharacterDataTail,
                         out matchedKnownCharacterDataTail))
                 {
                     ignoredTrailingLogoutGiftConfig = true;
@@ -62,6 +69,22 @@ namespace HaCreator.MapSimulator.Managers
                         out regularFields,
                         out continentFields,
                         out matchedOffset,
+                        out matchedKnownLeadingCharacterDataTail,
+                        out matchedKnownCharacterDataTail))
+                {
+                    ignoredTrailingLogoutGiftConfig = true;
+                    return true;
+                }
+
+                if (TryFindBootstrapBooksFromKnownLeadingLayouts(
+                        leadingPayload,
+                        characterDataFlags,
+                        characterJobId,
+                        isPlausibleMapId,
+                        out regularFields,
+                        out continentFields,
+                        out matchedOffset,
+                        out matchedKnownLeadingCharacterDataTail,
                         out matchedKnownCharacterDataTail))
                 {
                     ignoredTrailingLogoutGiftConfig = true;
@@ -77,9 +100,24 @@ namespace HaCreator.MapSimulator.Managers
                     out regularFields,
                     out continentFields,
                     out matchedOffset,
+                    out matchedKnownLeadingCharacterDataTail,
                     out matchedKnownCharacterDataTail))
             {
                 matchedExactTailBoundary = true;
+                return true;
+            }
+
+            if (TryFindBootstrapBooksFromKnownLeadingLayouts(
+                    payload,
+                    characterDataFlags,
+                    characterJobId,
+                    isPlausibleMapId,
+                    out regularFields,
+                    out continentFields,
+                    out matchedOffset,
+                    out matchedKnownLeadingCharacterDataTail,
+                    out matchedKnownCharacterDataTail))
+            {
                 return true;
             }
 
@@ -91,6 +129,7 @@ namespace HaCreator.MapSimulator.Managers
                 out regularFields,
                 out continentFields,
                 out matchedOffset,
+                out matchedKnownLeadingCharacterDataTail,
                 out matchedKnownCharacterDataTail);
         }
 
@@ -102,11 +141,13 @@ namespace HaCreator.MapSimulator.Managers
             out int[] regularFields,
             out int[] continentFields,
             out int matchedOffset,
+            out bool matchedKnownLeadingCharacterDataTail,
             out bool matchedKnownCharacterDataTail)
         {
             regularFields = null;
             continentFields = null;
             matchedOffset = -1;
+            matchedKnownLeadingCharacterDataTail = false;
             matchedKnownCharacterDataTail = false;
 
             if (payload.Length < BootstrapBookByteLength)
@@ -124,6 +165,7 @@ namespace HaCreator.MapSimulator.Managers
                 out regularFields,
                 out continentFields,
                 out matchedOffset,
+                out matchedKnownLeadingCharacterDataTail,
                 out matchedKnownCharacterDataTail);
         }
 
@@ -135,11 +177,13 @@ namespace HaCreator.MapSimulator.Managers
             out int[] regularFields,
             out int[] continentFields,
             out int matchedOffset,
+            out bool matchedKnownLeadingCharacterDataTail,
             out bool matchedKnownCharacterDataTail)
         {
             regularFields = null;
             continentFields = null;
             matchedOffset = -1;
+            matchedKnownLeadingCharacterDataTail = false;
             matchedKnownCharacterDataTail = false;
 
             if (payload.Length < BootstrapBookByteLength || isPlausibleMapId == null)
@@ -158,6 +202,7 @@ namespace HaCreator.MapSimulator.Managers
                         out regularFields,
                         out continentFields,
                         out matchedOffset,
+                        out matchedKnownLeadingCharacterDataTail,
                         out matchedKnownCharacterDataTail))
                 {
                     return true;
@@ -176,11 +221,13 @@ namespace HaCreator.MapSimulator.Managers
             out int[] regularFields,
             out int[] continentFields,
             out int matchedOffset,
+            out bool matchedKnownLeadingCharacterDataTail,
             out bool matchedKnownCharacterDataTail)
         {
             regularFields = null;
             continentFields = null;
             matchedOffset = -1;
+            matchedKnownLeadingCharacterDataTail = false;
             matchedKnownCharacterDataTail = false;
 
             int slotCount = MapTransferRuntimeManager.RegularCapacity + MapTransferRuntimeManager.ContinentCapacity;
@@ -234,6 +281,120 @@ namespace HaCreator.MapSimulator.Managers
             continentFields = candidateContinent;
             matchedOffset = offset;
             matchedKnownCharacterDataTail = matchedKnownTail;
+            return true;
+        }
+
+        private static bool TryFindBootstrapBooksFromKnownLeadingLayouts(
+            ReadOnlySpan<byte> payload,
+            ulong characterDataFlags,
+            short characterJobId,
+            Func<int, bool> isPlausibleMapId,
+            out int[] regularFields,
+            out int[] continentFields,
+            out int matchedOffset,
+            out bool matchedKnownLeadingCharacterDataTail,
+            out bool matchedKnownCharacterDataTail)
+        {
+            regularFields = null;
+            continentFields = null;
+            matchedOffset = -1;
+            matchedKnownLeadingCharacterDataTail = false;
+            matchedKnownCharacterDataTail = false;
+
+            if (payload.Length < BootstrapBookByteLength || isPlausibleMapId == null)
+            {
+                return false;
+            }
+
+            HashSet<int> candidateOffsets = new();
+            AddKnownLeadingLayoutOffsets(payload, candidateOffsets);
+            foreach (int candidateOffset in candidateOffsets)
+            {
+                if (candidateOffset <= 0)
+                {
+                    continue;
+                }
+
+                if (TryReadBootstrapBooksAtOffset(
+                        payload,
+                        candidateOffset,
+                        characterDataFlags,
+                        characterJobId,
+                        isPlausibleMapId,
+                        out regularFields,
+                        out continentFields,
+                        out matchedOffset,
+                        out _,
+                        out matchedKnownCharacterDataTail))
+                {
+                    matchedKnownLeadingCharacterDataTail = true;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static void AddKnownLeadingLayoutOffsets(ReadOnlySpan<byte> payload, ISet<int> offsets)
+        {
+            if (offsets == null || payload.Length < sizeof(ushort) + BootstrapBookByteLength)
+            {
+                return;
+            }
+
+            if (TrySkipMiniGameRecordGroup(payload, 0, out int miniGameOffset))
+            {
+                offsets.Add(miniGameOffset);
+
+                if (TrySkipRelationshipRecordGroups(payload, miniGameOffset, out int miniGameRelationshipOffset))
+                {
+                    offsets.Add(miniGameRelationshipOffset);
+                }
+            }
+
+            if (TrySkipRelationshipRecordGroups(payload, 0, out int relationshipOffset))
+            {
+                offsets.Add(relationshipOffset);
+            }
+        }
+
+        private static bool TrySkipMiniGameRecordGroup(ReadOnlySpan<byte> payload, int offset, out int nextOffset)
+        {
+            return TrySkipFixedRecordGroup(payload, offset, MiniGameRecordByteLength, out nextOffset);
+        }
+
+        private static bool TrySkipRelationshipRecordGroups(ReadOnlySpan<byte> payload, int offset, out int nextOffset)
+        {
+            nextOffset = offset;
+            if (!TrySkipFixedRecordGroup(payload, nextOffset, CoupleRecordByteLength, out nextOffset))
+            {
+                return false;
+            }
+
+            if (!TrySkipFixedRecordGroup(payload, nextOffset, FriendRecordByteLength, out nextOffset))
+            {
+                return false;
+            }
+
+            return TrySkipFixedRecordGroup(payload, nextOffset, MarriageRecordByteLength, out nextOffset);
+        }
+
+        private static bool TrySkipFixedRecordGroup(ReadOnlySpan<byte> payload, int offset, int recordByteLength, out int nextOffset)
+        {
+            nextOffset = offset;
+            if ((uint)offset > payload.Length || recordByteLength <= 0 || payload.Length - offset < sizeof(ushort))
+            {
+                return false;
+            }
+
+            ushort count = BitConverter.ToUInt16(payload.Slice(offset, sizeof(ushort)));
+            int sectionByteLength = sizeof(ushort) + (count * recordByteLength);
+            if (payload.Length - offset < sectionByteLength)
+            {
+                return false;
+            }
+
+            nextOffset = offset + sectionByteLength;
             return true;
         }
 

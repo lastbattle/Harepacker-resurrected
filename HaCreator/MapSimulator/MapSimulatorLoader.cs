@@ -16,6 +16,7 @@ using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
+using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using MapleLib.Converters;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -418,14 +419,18 @@ namespace HaCreator.MapSimulator {
             float UserScreenScaleFactor,
             GraphicsDevice device,
             ConcurrentBag<WzObject> usedProps,
-            CharacterGender? localPlayerGender = null) {
+            CharacterGender? localPlayerGender = null,
+            Func<int, QuestStateType> questStateProvider = null,
+            Func<int, string> questRecordValueProvider = null) {
             return LifeLoader.CreateNpcFromProperty(
                 texturePool,
                 npcInstance,
                 UserScreenScaleFactor,
                 device,
                 usedProps,
-                localPlayerGender: localPlayerGender);
+                localPlayerGender: localPlayerGender,
+                questStateProvider: questStateProvider,
+                questRecordValueProvider: questRecordValueProvider);
         }
         #endregion
 

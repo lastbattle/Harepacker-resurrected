@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Pools;
@@ -38,6 +39,20 @@ namespace HaCreator.MapSimulator.Character
         private const int CarryItemEffectBundleItemId = 1112916;
         private const int CarryItemEffectSingleAItemId = 1112924;
         private const int CarryItemEffectSingleBItemId = 1112926;
+        private const int ClientFallbackMaleTopId = 1040036;
+        private const int ClientFallbackFemaleTopId = 1041046;
+        private const int ClientFallbackMaleBottomId = 1060026;
+        private const int ClientFallbackFemaleBottomId = 1061039;
+        private const int BlockedCapItemId = 1002186;
+        private const int BlockedEarringsItemId = 1032024;
+        private const int BlockedEyeAccessoryItemId = 1022079;
+        private const int BlockedShoesItemId = 1072153;
+        private const int BlockedGloveItemId = 1082102;
+        private const int BlockedCapeItemId = 1102039;
+        private const int BlockedShieldItemId = 1092067;
+        private const int BlockedWeaponStickerItemIdA = 1702099;
+        private const int BlockedWeaponStickerItemIdB = 1702190;
+        private const int MechanicTamingMobItemId = 1932016;
 
         private static readonly SkinColor[] PreferredStarterSkins =
         {
@@ -110,6 +125,14 @@ namespace HaCreator.MapSimulator.Character
             public IReadOnlyList<int> PantsIds { get; init; } = Array.Empty<int>();
             public IReadOnlyList<int> ShoesIds { get; init; } = Array.Empty<int>();
             public IReadOnlyList<int> WeaponIds { get; init; } = Array.Empty<int>();
+        }
+
+        internal sealed class CharacterActionMergeInput
+        {
+            public string ActionName { get; init; } = CharacterPart.GetActionString(CharacterAction.Stand1);
+            public IReadOnlyDictionary<EquipSlot, CharacterPart> Equipment { get; init; } = new Dictionary<EquipSlot, CharacterPart>();
+            public CharacterPart WeaponSticker { get; init; }
+            public CharacterPart ActiveTamingMobPart { get; init; }
         }
 
         public CharacterLoader(WzFile characterWz, GraphicsDevice device, TexturePool texturePool)
@@ -578,6 +601,62 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
+            ItemEffectAnimationSet effectSet = CreateItemEffectAnimationSet(itemId, itemEffectProperty);
+            if (effectSet == null)
+            {
+                return null;
+            }
+
+            _itemEffectCache[itemId] = effectSet;
+            return effectSet;
+        }
+
+        public ItemEffectAnimationSet LoadNewYearCardEffectAnimationSet(
+            int itemId = RelationshipOverlayClientStringPoolText.NewYearCardDefaultItemId)
+        {
+            int resolvedItemId = itemId > 0
+                ? itemId
+                : RelationshipOverlayClientStringPoolText.NewYearCardDefaultItemId;
+            if (_itemEffectCache.TryGetValue(resolvedItemId, out ItemEffectAnimationSet cached))
+            {
+                return cached;
+            }
+
+            WzSubProperty itemEffectProperty = ResolveNewYearCardEffectProperty(resolvedItemId);
+            if (itemEffectProperty == null
+                && resolvedItemId != RelationshipOverlayClientStringPoolText.NewYearCardDefaultItemId)
+            {
+                resolvedItemId = RelationshipOverlayClientStringPoolText.NewYearCardDefaultItemId;
+                if (_itemEffectCache.TryGetValue(resolvedItemId, out cached))
+                {
+                    return cached;
+                }
+
+                itemEffectProperty = ResolveNewYearCardEffectProperty(resolvedItemId);
+            }
+
+            if (itemEffectProperty == null)
+            {
+                return null;
+            }
+
+            ItemEffectAnimationSet effectSet = CreateItemEffectAnimationSet(resolvedItemId, itemEffectProperty);
+            if (effectSet == null)
+            {
+                return null;
+            }
+
+            _itemEffectCache[resolvedItemId] = effectSet;
+            return effectSet;
+        }
+
+        private ItemEffectAnimationSet CreateItemEffectAnimationSet(int itemId, WzSubProperty itemEffectProperty)
+        {
+            if (itemId <= 0 || itemEffectProperty == null)
+            {
+                return null;
+            }
+
             var effectSet = new ItemEffectAnimationSet
             {
                 ItemId = itemId
@@ -606,8 +685,25 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
-            _itemEffectCache[itemId] = effectSet;
             return effectSet;
+        }
+
+        private static WzSubProperty ResolveNewYearCardEffectProperty(int itemId)
+        {
+            string effectPath = RelationshipOverlayClientStringPoolText.ResolveNewYearCardEffectPath(itemId);
+            if (!TryParseSetItemEffectLink(effectPath, out string imageName, out string propertyPath))
+            {
+                return null;
+            }
+
+            WzImage effectImage = Program.FindImage("Effect", imageName);
+            if (effectImage == null)
+            {
+                return null;
+            }
+
+            effectImage.ParseImage();
+            return effectImage[propertyPath] as WzSubProperty;
         }
 
         public ItemEffectAnimationSet LoadCompletedSetItemEffectAnimationSet(int setItemId)
@@ -1407,6 +1503,7 @@ namespace HaCreator.MapSimulator.Character
             if (node == null) return null;
 
             var anim = new CharacterAnimation();
+            int? animationDelay = GetIntValue(node["delay"]);
 
             if (node is WzSubProperty subProp)
             {
@@ -1419,7 +1516,11 @@ namespace HaCreator.MapSimulator.Character
                     if (frameNode is WzCanvasProperty frameCanvas)
                     {
                         var frame = LoadFrame(frameCanvas, i.ToString());
-                        if (frame != null) anim.Frames.Add(frame);
+                        if (frame != null)
+                        {
+                            ApplyFaceFrameDelayOverride(frame, frameNode, animationDelay);
+                            anim.Frames.Add(frame);
+                        }
                     }
                 }
 
@@ -1437,7 +1538,11 @@ namespace HaCreator.MapSimulator.Character
                             if (frameNode is WzCanvasProperty frameCanvas)
                             {
                                 var frame = LoadFrame(frameCanvas, i.ToString());
-                                if (frame != null) anim.Frames.Add(frame);
+                                if (frame != null)
+                                {
+                                    ApplyFaceFrameDelayOverride(frame, frameNode, animationDelay);
+                                    anim.Frames.Add(frame);
+                                }
                             }
                         }
                     }
@@ -1445,18 +1550,46 @@ namespace HaCreator.MapSimulator.Character
                     else if (faceNode is WzCanvasProperty faceCanvas)
                     {
                         var frame = LoadFrame(faceCanvas, "0");
-                        if (frame != null) anim.Frames.Add(frame);
+                        if (frame != null)
+                        {
+                            ApplyFaceFrameDelayOverride(frame, faceNode, animationDelay);
+                            anim.Frames.Add(frame);
+                        }
                     }
                 }
             }
             else if (node is WzCanvasProperty canvas)
             {
                 var frame = LoadFrame(canvas, "0");
-                if (frame != null) anim.Frames.Add(frame);
+                if (frame != null)
+                {
+                    ApplyFaceFrameDelayOverride(frame, node, animationDelay);
+                    anim.Frames.Add(frame);
+                }
             }
 
             anim.CalculateTotalDuration();
             return anim;
+        }
+
+        private static void ApplyFaceFrameDelayOverride(CharacterFrame frame, WzImageProperty frameNode, int? animationDelay)
+        {
+            if (frame == null)
+            {
+                return;
+            }
+
+            int? frameDelay = GetIntValue(frameNode?["delay"]);
+            if (frameDelay.HasValue)
+            {
+                frame.Delay = frameDelay.Value;
+                return;
+            }
+
+            if (animationDelay.HasValue)
+            {
+                frame.Delay = animationDelay.Value;
+            }
         }
 
         #endregion
@@ -2945,6 +3078,7 @@ namespace HaCreator.MapSimulator.Character
                 JobName = "Beginner"
             };
 
+            AttachEquipmentResolver(build);
             EquipRandomStarterGear(build, starterCatalog);
             return build;
         }
@@ -3031,6 +3165,7 @@ namespace HaCreator.MapSimulator.Character
                 JobName = "Beginner"
             };
 
+            AttachEquipmentResolver(build);
             EquipDefaultItem(build, coatId, nameof(EquipSlot.Coat), DefaultWizetSuitId);
             EquipDefaultItem(build, pantsId, nameof(EquipSlot.Pants), DefaultWizetPantsId);
             EquipDefaultItem(build, shoesId, nameof(EquipSlot.Shoes), DefaultLeatherSandalsId);
@@ -3442,6 +3577,7 @@ namespace HaCreator.MapSimulator.Character
 
             SimulatorDefaultAvatarSelection fallbackSelection = GetDefaultAvatarSelection(avatarLook.Gender);
             CharacterBuild build = template?.Clone() ?? CreateDefaultAvatarMetadataTemplate(fallbackSelection);
+            AttachEquipmentResolver(build);
 
             build.Gender = avatarLook.Gender;
             build.Skin = avatarLook.Skin;
@@ -3465,6 +3601,274 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return build;
+        }
+
+        private void AttachEquipmentResolver(CharacterBuild build)
+        {
+            if (build != null)
+            {
+                build.EquipmentPartLoader = LoadEquipment;
+            }
+        }
+
+        internal static CharacterActionMergeInput PrepareActionMergeInput(
+            CharacterBuild build,
+            string actionName,
+            CharacterPart activeTamingMobPart)
+        {
+            if (build == null)
+            {
+                return new CharacterActionMergeInput();
+            }
+
+            string resolvedActionName = string.IsNullOrWhiteSpace(actionName)
+                ? CharacterPart.GetActionString(CharacterAction.Stand1)
+                : actionName;
+            string requestedActionName = resolvedActionName;
+
+            Dictionary<EquipSlot, CharacterPart> equipment = new();
+            if (build.Equipment != null)
+            {
+                foreach (KeyValuePair<EquipSlot, CharacterPart> entry in build.Equipment)
+                {
+                    if (entry.Value != null)
+                    {
+                        equipment[entry.Key] = entry.Value;
+                    }
+                }
+            }
+
+            StripAlwaysSuppressedActionLanes(equipment);
+
+            bool keepMinimalArrowEruptionSet = string.Equals(
+                requestedActionName,
+                "arrowEruption",
+                StringComparison.OrdinalIgnoreCase);
+
+            if (keepMinimalArrowEruptionSet)
+            {
+                RetainOnlyArrowEruptionLanes(equipment);
+            }
+            else
+            {
+                ApplyBodyValidityFallbacks(build, equipment);
+            }
+
+            StripBlockedEquipmentIds(equipment);
+
+            CharacterPart weaponSticker = build.WeaponSticker;
+            if (IsBlockedWeaponStickerId(weaponSticker?.ItemId ?? 0))
+            {
+                equipment.Remove(EquipSlot.Weapon);
+                weaponSticker = null;
+            }
+
+            if (ShouldSuppressShieldAndWeaponForMountedFamily(activeTamingMobPart))
+            {
+                equipment.Remove(EquipSlot.Shield);
+                equipment.Remove(EquipSlot.Weapon);
+                resolvedActionName = RemapMountedFamilyAction(resolvedActionName);
+            }
+
+            if (string.Equals(requestedActionName, "coolingeffect", StringComparison.OrdinalIgnoreCase))
+            {
+                equipment.Remove(EquipSlot.Shield);
+                equipment.Remove(EquipSlot.Weapon);
+            }
+
+            if (string.Equals(requestedActionName, "somersault", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(requestedActionName, "doublefire", StringComparison.OrdinalIgnoreCase))
+            {
+                weaponSticker = null;
+            }
+
+            if (IsGhostAction(requestedActionName))
+            {
+                RetainOnlyGhostCoreLanes(equipment);
+                weaponSticker = null;
+            }
+
+            equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart filteredTamingMobPart);
+            return new CharacterActionMergeInput
+            {
+                ActionName = resolvedActionName,
+                Equipment = equipment,
+                WeaponSticker = weaponSticker,
+                ActiveTamingMobPart = filteredTamingMobPart
+            };
+        }
+
+        private static void StripAlwaysSuppressedActionLanes(IDictionary<EquipSlot, CharacterPart> equipment)
+        {
+            if (equipment == null)
+            {
+                return;
+            }
+
+            equipment.Remove(EquipSlot.Ring1);
+            equipment.Remove(EquipSlot.Ring2);
+            equipment.Remove(EquipSlot.Ring3);
+            equipment.Remove(EquipSlot.Ring4);
+        }
+
+        private static void RetainOnlyArrowEruptionLanes(IDictionary<EquipSlot, CharacterPart> equipment)
+        {
+            if (equipment == null)
+            {
+                return;
+            }
+
+            HashSet<EquipSlot> allowedSlots = new()
+            {
+                EquipSlot.Cap,
+                EquipSlot.EyeAccessory,
+                EquipSlot.Earrings
+            };
+
+            foreach (EquipSlot slot in equipment.Keys.ToArray())
+            {
+                if (!allowedSlots.Contains(slot))
+                {
+                    equipment.Remove(slot);
+                }
+            }
+        }
+
+        private static void ApplyBodyValidityFallbacks(CharacterBuild build, IDictionary<EquipSlot, CharacterPart> equipment)
+        {
+            if (build == null || equipment == null)
+            {
+                return;
+            }
+
+            equipment.TryGetValue(EquipSlot.Coat, out CharacterPart coatPart);
+            equipment.TryGetValue(EquipSlot.Pants, out CharacterPart pantsPart);
+
+            if (coatPart == null)
+            {
+                int fallbackTopId = build.Gender == CharacterGender.Female ? ClientFallbackFemaleTopId : ClientFallbackMaleTopId;
+                CharacterPart fallbackTop = build.EquipmentPartLoader?.Invoke(fallbackTopId);
+                if (fallbackTop?.Slot == EquipSlot.Coat)
+                {
+                    equipment[EquipSlot.Coat] = fallbackTop;
+                    coatPart = fallbackTop;
+                }
+            }
+
+            if (pantsPart == null && !IsLongcoat(coatPart))
+            {
+                int fallbackBottomId = build.Gender == CharacterGender.Female ? ClientFallbackFemaleBottomId : ClientFallbackMaleBottomId;
+                CharacterPart fallbackBottom = build.EquipmentPartLoader?.Invoke(fallbackBottomId);
+                if (fallbackBottom?.Slot == EquipSlot.Pants)
+                {
+                    equipment[EquipSlot.Pants] = fallbackBottom;
+                }
+            }
+        }
+
+        private static bool IsLongcoat(CharacterPart part)
+        {
+            return part?.Type == CharacterPartType.Longcoat || (part?.ItemId ?? 0) / 10000 == 105;
+        }
+
+        private static void StripBlockedEquipmentIds(IDictionary<EquipSlot, CharacterPart> equipment)
+        {
+            if (equipment == null)
+            {
+                return;
+            }
+
+            RemoveSlotIfItemMatches(equipment, EquipSlot.Cap, BlockedCapItemId);
+            RemoveSlotIfItemMatches(equipment, EquipSlot.Earrings, BlockedEarringsItemId);
+            RemoveSlotIfItemMatches(equipment, EquipSlot.EyeAccessory, BlockedEyeAccessoryItemId);
+            RemoveSlotIfItemMatches(equipment, EquipSlot.Shoes, BlockedShoesItemId);
+            RemoveSlotIfItemMatches(equipment, EquipSlot.Glove, BlockedGloveItemId);
+            RemoveSlotIfItemMatches(equipment, EquipSlot.Cape, BlockedCapeItemId);
+            RemoveSlotIfItemMatches(equipment, EquipSlot.Shield, BlockedShieldItemId);
+        }
+
+        private static void RemoveSlotIfItemMatches(IDictionary<EquipSlot, CharacterPart> equipment, EquipSlot slot, int itemId)
+        {
+            if (equipment.TryGetValue(slot, out CharacterPart part) && part?.ItemId == itemId)
+            {
+                equipment.Remove(slot);
+            }
+        }
+
+        private static bool IsBlockedWeaponStickerId(int itemId)
+        {
+            return itemId == BlockedWeaponStickerItemIdA || itemId == BlockedWeaponStickerItemIdB;
+        }
+
+        private static bool ShouldSuppressShieldAndWeaponForMountedFamily(CharacterPart activeTamingMobPart)
+        {
+            int vehicleId = activeTamingMobPart?.ItemId ?? 0;
+            if (vehicleId <= 0)
+            {
+                return false;
+            }
+
+            return vehicleId / 10000 == 190
+                   || vehicleId / 10000 == 193
+                   || vehicleId == 1902040
+                   || vehicleId == 1902041
+                   || vehicleId == 1902042
+                   || vehicleId / 1000 == 1983
+                   || vehicleId == MechanicTamingMobItemId;
+        }
+
+        private static string RemapMountedFamilyAction(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return CharacterPart.GetActionString(CharacterAction.Stand1);
+            }
+
+            if (string.Equals(actionName, "msummon", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "msummon2", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "rush2", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "sanctuary", StringComparison.OrdinalIgnoreCase))
+            {
+                return actionName;
+            }
+
+            if (string.Equals(actionName, "shoot6", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "arrowRain", StringComparison.OrdinalIgnoreCase))
+            {
+                return "arrowRain";
+            }
+
+            return "magic1";
+        }
+
+        private static bool IsGhostAction(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && (string.Equals(actionName, "ghost", StringComparison.OrdinalIgnoreCase)
+                       || actionName.StartsWith("ghost", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static void RetainOnlyGhostCoreLanes(IDictionary<EquipSlot, CharacterPart> equipment)
+        {
+            if (equipment == null)
+            {
+                return;
+            }
+
+            HashSet<EquipSlot> allowedSlots = new()
+            {
+                EquipSlot.Cap,
+                EquipSlot.EyeAccessory,
+                EquipSlot.Earrings
+            };
+
+            foreach (EquipSlot slot in equipment.Keys.ToArray())
+            {
+                if (!allowedSlots.Contains(slot))
+                {
+                    equipment.Remove(slot);
+                }
+            }
         }
 
         private void EquipDefaultSimulatorGear(CharacterBuild build, IReadOnlyDictionary<EquipSlot, int> equipmentItemIdsBySlot)

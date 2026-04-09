@@ -333,14 +333,14 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleTransportSessionCommand(string[] args)
         {
-            const string sessionUsage = "Usage: /transport session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]";
+            const string sessionUsage = "Usage: /transport session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]";
             string sessionAction = args.Length > 1 ? args[1] : "status";
 
             switch (sessionAction.ToLowerInvariant())
             {
                 case "status":
                     return ChatCommandHandler.CommandResult.Info(
-                        $"{_transportField.DescribeStatus()}{Environment.NewLine}{_transportPacketInbox.LastStatus}{Environment.NewLine}{_transportOfficialSessionBridge.DescribeStatus()}");
+                        $"{_transportField.DescribeStatus()}{Environment.NewLine}{_lastTransportFieldInitRequestSummary}{Environment.NewLine}{_transportPacketInbox.LastStatus}{Environment.NewLine}{_transportOfficialSessionBridge.DescribeStatus()}");
 
                 case "discover":
                     if (args.Length < 3
@@ -391,6 +391,64 @@ namespace HaCreator.MapSimulator
                     return _transportOfficialSessionBridge.TryReplayRecentOutboundPacket(replayIndex, out string replayStatus)
                         ? ChatCommandHandler.CommandResult.Ok(replayStatus)
                         : ChatCommandHandler.CommandResult.Error(replayStatus);
+
+                case "sendinit":
+                {
+                    int? fieldIdOverride = null;
+                    int? shipKindOverride = null;
+                    if (args.Length >= 3)
+                    {
+                        if (!int.TryParse(args[2], out int parsedFieldId) || parsedFieldId <= 0)
+                        {
+                            return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                        }
+
+                        fieldIdOverride = parsedFieldId;
+                    }
+
+                    if (args.Length >= 4)
+                    {
+                        if (!int.TryParse(args[3], out int parsedShipKind))
+                        {
+                            return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                        }
+
+                        shipKindOverride = parsedShipKind;
+                    }
+
+                    return TryDispatchTransportFieldInitRequest(queueOnly: false, fieldIdOverride, shipKindOverride, out string sendInitStatus)
+                        ? ChatCommandHandler.CommandResult.Ok(sendInitStatus)
+                        : ChatCommandHandler.CommandResult.Error(sendInitStatus);
+                }
+
+                case "queueinit":
+                {
+                    int? fieldIdOverride = null;
+                    int? shipKindOverride = null;
+                    if (args.Length >= 3)
+                    {
+                        if (!int.TryParse(args[2], out int parsedFieldId) || parsedFieldId <= 0)
+                        {
+                            return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                        }
+
+                        fieldIdOverride = parsedFieldId;
+                    }
+
+                    if (args.Length >= 4)
+                    {
+                        if (!int.TryParse(args[3], out int parsedShipKind))
+                        {
+                            return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                        }
+
+                        shipKindOverride = parsedShipKind;
+                    }
+
+                    return TryDispatchTransportFieldInitRequest(queueOnly: true, fieldIdOverride, shipKindOverride, out string queueInitStatus)
+                        ? ChatCommandHandler.CommandResult.Ok(queueInitStatus)
+                        : ChatCommandHandler.CommandResult.Error(queueInitStatus);
+                }
 
                 case "start":
                     if (args.Length < 5
@@ -7273,15 +7331,24 @@ namespace HaCreator.MapSimulator
                         case "open":
                         case "inbox":
                             _memoMailbox.SetActiveTab(ParcelDialogTab.Receive);
-                            ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.MemoMailbox);
+                            if (!TryOpenFieldRestrictedWindow(MapSimulatorWindowNames.MemoMailbox, out string openRestrictionMessage, inheritDirectionModeOwner: true))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(openRestrictionMessage);
+                            }
                             return ChatCommandHandler.CommandResult.Ok("Opened the parcel receive tab.");
                         case "compose":
                             _memoMailbox.SetActiveTab(ParcelDialogTab.Send);
-                            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.MemoMailbox);
+                            if (!TryOpenFieldRestrictedWindow(MapSimulatorWindowNames.MemoMailbox, out string composeRestrictionMessage))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(composeRestrictionMessage);
+                            }
                             return ChatCommandHandler.CommandResult.Ok("Opened the parcel send tab. Use /memo draft ... to edit the current draft.");
                         case "quick":
                             _memoMailbox.SetActiveTab(ParcelDialogTab.QuickSend);
-                            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.MemoMailbox);
+                            if (!TryOpenFieldRestrictedWindow(MapSimulatorWindowNames.MemoMailbox, out string quickRestrictionMessage))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(quickRestrictionMessage);
+                            }
                             return ChatCommandHandler.CommandResult.Ok("Opened the parcel quick-send tab.");
                         case "tab":
                             if (args.Length < 2)
@@ -7302,13 +7369,19 @@ namespace HaCreator.MapSimulator
                             }
 
                             _memoMailbox.SetActiveTab(requestedTab);
-                            ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.MemoMailbox);
+                            if (!TryOpenFieldRestrictedWindow(MapSimulatorWindowNames.MemoMailbox, out string tabRestrictionMessage, inheritDirectionModeOwner: true))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(tabRestrictionMessage);
+                            }
                             return ChatCommandHandler.CommandResult.Ok($"Switched the parcel dialog to the {args[1].Trim()} tab.");
                         case "send":
                             if (_memoMailbox.TryDispatchActiveDraft(out string sendMessage))
                             {
                                 uiWindowManager?.HideWindow(MapSimulatorWindowNames.MemoSend);
-                                ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.MemoMailbox);
+                                if (!TryOpenFieldRestrictedWindow(MapSimulatorWindowNames.MemoMailbox, out string sendRestrictionMessage, inheritDirectionModeOwner: true))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error(sendRestrictionMessage);
+                                }
                                 return ChatCommandHandler.CommandResult.Ok(sendMessage);
                             }
 

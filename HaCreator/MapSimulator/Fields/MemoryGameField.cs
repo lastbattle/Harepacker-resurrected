@@ -127,7 +127,6 @@ namespace HaCreator.MapSimulator.Fields
         private const int ClientPromptBoxHeight = 98;
         private const int ClientPromptButtonWidth = 64;
         private const int ClientPromptButtonHeight = 22;
-        private const string MiniRoomStringPoolClientSource = "StringPool::ms_aString / StringPool::GetString (MapleStory.exe v95)";
         private static readonly IReadOnlyDictionary<int, MiniRoomGameMessageDefinition> MiniRoomGameMessages = new Dictionary<int, MiniRoomGameMessageDefinition>
         {
             [0] = new MiniRoomGameMessageDefinition(0x1C8, "[%s] have been expelled."),
@@ -148,33 +147,6 @@ namespace HaCreator.MapSimulator.Fields
         {
             [0x1CC] = new MiniRoomNoticeMessageDefinition(0x1CC, "You have left the room."),
             [0x1D3] = new MiniRoomNoticeMessageDefinition(0x1D3, "The room is closed.")
-        };
-        private static readonly IReadOnlyDictionary<int, MiniRoomStringPoolEntryEvidence> MiniRoomRecoveredStringPoolEntries = new Dictionary<int, MiniRoomStringPoolEntryEvidence>
-        {
-            // Recovered from MapleStory.exe v95 by following StringPool::GetString
-            // (0x746750) and decoding StringPool::ms_aString with StringPool::ms_aKey.
-            [0x1C4] = new MiniRoomStringPoolEntryEvidence(0x1C4, 0xFB, "2D 93 80 F1 12 5B 44 6D EA 67 56 B0 ED FC F5 5C 12 98", "[%s] have entered.", MiniRoomStringPoolClientSource),
-            [0x1C5] = new MiniRoomStringPoolEntryEvidence(0x1C5, 0xFC, "B6 48 94 05 44 0E 2B 41 7B AE 0B D8 55 47 20", "[%s] have left.", MiniRoomStringPoolClientSource),
-            [0x1C6] = new MiniRoomStringPoolEntryEvidence(0x1C6, 0xFD, "81 FE BD ED E8 A4 F5 18 58 3C AC 1B 0A 0A 79 81 FA AF A1 90 A4 A9 F5 18 58 3C AE 1C 12 03 6E C5 AE B3 A7 C3 E8 AB F5 03 58 32", "[%s] have called to leave after this game.", MiniRoomStringPoolClientSource),
-            [0x1C7] = new MiniRoomStringPoolEntryEvidence(0x1C7, 0xFE, "EE 92 EE 3C B1 F1 49 AA 1F 19 FD 95 A2 AF 5C A7 D9 D2 F9 41 E5 F1 4D FC 08 5C EF 81 A9 BF 4D EB C1 D8 BD 0D F4 F8 5E B9 5A 58 F8 80 A9 BE 19 BF DD DE EE 41 F6 F8 45 B9 54", "[%s] have cancelled the request to leave after this game.", MiniRoomStringPoolClientSource),
-            [0x1C8] = new MiniRoomStringPoolEntryEvidence(0x1C8, 0xFF, "30 4A 49 9E 03 5A 30 CE 91 53 5F 8C FC F6 53 F2 13 1F 5F AF 4F 57 35 96", "[%s] have been expelled.", MiniRoomStringPoolClientSource),
-            [0x1CA] = new MiniRoomStringPoolEntryEvidence(0x1CA, 0x01, "F6 99 98 51 AC A1 27 95 B4 EC 91 C9 14 07 AB 34 D9 D9 8F 22", "[%s] have forfeited.", MiniRoomStringPoolClientSource),
-            [0x1CB] = new MiniRoomStringPoolEntryEvidence(0x1CB, 0x02, "5B 5C A5 44 39 FA EC B1 C6 B9 9D 29 BD B6 F9 C8 2F 1C B2 39 78 B2 E5 A6 CD FD 86 2F AD B3 B2", "[%s] have requested a handicap.", MiniRoomStringPoolClientSource),
-            [0x1CC] = new MiniRoomStringPoolEntryEvidence(0x1CC, 0x03, "EF 9C D9 12 5B 44 6D EA 67 5F BB FF ED A7 4D 1E D3 D3 DE 5D 5C 48 35", "You have left the room.", MiniRoomStringPoolClientSource),
-            [0x1CD] = new MiniRoomStringPoolEntryEvidence(0x1CD, 0x04, "36 C2 2B 39 41 39 17 6A FB 15 D3 1D", "[%s]'s turn.", MiniRoomStringPoolClientSource),
-            [0x1CE] = new MiniRoomStringPoolEntryEvidence(0x1CE, 0x05, "80 EB C3 95 EC FC 0F 4E 3C A2 1B 12 05 74 80 BE FB AD D1 BA A8 E7 40 1D 4C A3 1F 07 15 79 C5 B9 B4 A0 C4 A1 A2 E1 0B 13", "[%s] has matched cards. Please continue.", MiniRoomStringPoolClientSource),
-            [0x1CF] = new MiniRoomStringPoolEntryEvidence(0x1CF, 0x06, "EC B8 12 CC B9 4B BD 14 1E EA D4 BF B8 58 B9 C1 97 E9 09 F4 B9 4F BD 17 5C BE 90 B9 A9 19 BF DA 97 F1 61 F2 F2 08 B3 1C 19 F3 91 BF A3 4A E5", "[%s] can't start the game due to lack of mesos.", MiniRoomStringPoolClientSource),
-            [0x1D0] = new MiniRoomStringPoolEntryEvidence(0x1D0, 0x07, "3B 52 A6 03 55 30 D5 91 53 55 88 EA B8 73 E3 0A 1D 4E A6 47 1C", "The game has started.", MiniRoomStringPoolClientSource),
-            [0x1D1] = new MiniRoomStringPoolEntryEvidence(0x1D1, 0x08, "8A 1D E3 66 03 C2 1C 8D C6 13 B2 40 10 82 40 B2 BB 11 A8 4B 6E F7 19 8D C6 09 BC 5C 5D C7 59 BF B2 19 A6 27 11 D7 1E 85 87 0F BA 50 51 8B 42 AF FE 16 EA 29 17 C6 51 81 88 5B E2 03 10 94 4B B5 F0", "The game has ended.\r\nThe room will automatically close in 10 sec.", MiniRoomStringPoolClientSource),
-            [0x1D2] = new MiniRoomStringPoolEntryEvidence(0x1D2, 0x09, "8D DB 2C FF AC 25 CD F1 A0 92 C0 12 4F", "10 sec. left.", MiniRoomStringPoolClientSource),
-            [0x1D3] = new MiniRoomStringPoolEntryEvidence(0x1D3, 0x0A, "2D BE 7C 39 E0 E2 A8 CE B9 86 3F EC A0 F0 D4 28 1C B2 37", "The room is closed.", MiniRoomStringPoolClientSource),
-            [0x1D7] = new MiniRoomStringPoolEntryEvidence(0x1D7, 0x0E, "DC 13 F4 B9 51 B3 0F 19 ED 81 BE A9 19 B2 DA C2 BD 16 F0 F7 5C FC 0E 56 BE 93 A5 BA 5C EB C0 C7 A2", "Are you sure you want to give up?", MiniRoomStringPoolClientSource),
-            [0x1D9] = new MiniRoomStringPoolEntryEvidence(0x1D9, 0x10, "2C E9 33 16 83 1E 98 96 14 BD 56 5E 93 0E A4 BB 04 F3 23 17 D7 02 C8 87 5B A7 5A 55 C9 23 DC 89 1C EA 2A 44 DA 1E 9D C6 1A B0 50 55 97 5A F6 B7 01 B9", "Your opponent requests a tie.\r\nWill you accept it?", MiniRoomStringPoolClientSource),
-            [0x1DA] = new MiniRoomStringPoolEntryEvidence(0x1DA, 0x11, "BC 65 E0 A5 66 9A BE B9 D7 D4 03 10 BB 38 DE C8 CB 6D AC BD 2F 86 EE", "Will you request a tie?", MiniRoomStringPoolClientSource),
-            [0x1DB] = new MiniRoomStringPoolEntryEvidence(0x1DB, 0x12, "8F 76 6C E0 AD A8 D3 E9 80 22 A9 AD E8 9B 3F 1C B8 70 7C F6 AD BE CC EC 9D 6C BE A6 ED CE 3E 0A A2 39 7F FD FF E7 C2 B9 9B 25 A9 ED", "Your opponent denied your request for a tie.", MiniRoomStringPoolClientSource),
-            [0x1E0] = new MiniRoomStringPoolEntryEvidence(0x1E0, 0x17, "94 4A 5E 3D 98 8D 1C 48 C9 FA F9 1F FB 4B 1B 55 E3 4F 57 30 CE 91 53 5C 8F ED FD 01 B7 1F 07 53 B0 03 55 30 D5 91 4C", "Will you call to leave after this game?", MiniRoomStringPoolClientSource),
-            [0x1E1] = new MiniRoomStringPoolEntryEvidence(0x1E1, 0x18, "D1 2F 08 CF 51 91 89 0E F3 50 51 89 4D B3 B2 55 F2 2E 01 83 03 8D 97 0E B6 40 44 EA 24 A2 B1 55 EA 23 05 D5 14 C8 87 1D A7 56 42 C7 5A BE B7 06 A6 21 05 CE 14 D7", "Will you cancel the request\r\nto leave after this game?", MiniRoomStringPoolClientSource),
-            [0x1E4] = new MiniRoomStringPoolEntryEvidence(0x1E4, 0x1B, "73 41 40 3B F6 28 46 FE EA EC F5 5C 56 CF 9C D9 12 44 44 75 FB 67 47 B1 B9 F5 E2 58 76 D3 CC", "Are you sure you want to leave?", MiniRoomStringPoolClientSource)
         };
 
 
@@ -294,26 +266,6 @@ namespace HaCreator.MapSimulator.Fields
 
             public string Text { get; }
         }
-
-        private readonly struct MiniRoomStringPoolEntryEvidence
-        {
-            public MiniRoomStringPoolEntryEvidence(int id, byte seed, string rawHex, string decodedText, string source)
-            {
-                Id = id;
-                Seed = seed;
-                RawHex = rawHex ?? string.Empty;
-                DecodedText = decodedText ?? string.Empty;
-                Source = source ?? string.Empty;
-            }
-
-            public int Id { get; }
-            public byte Seed { get; }
-            public string RawHex { get; }
-            public string DecodedText { get; }
-            public string Source { get; }
-        }
-
-
 
         private readonly struct PendingRemoteAction
         {
@@ -2511,9 +2463,9 @@ namespace HaCreator.MapSimulator.Fields
                 return $"MiniRoom game message {gameMessageCode} for {resolvedName}.";
             }
 
-            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(definition.StringPoolId, definition.FallbackText, 1, out _);
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(definition.StringPoolId, definition.FallbackText, 1, out bool usedResolvedText);
             string text = string.Format(CultureInfo.InvariantCulture, format, resolvedName);
-            return $"{text} [StringPool 0x{definition.StringPoolId:X}]";
+            return usedResolvedText ? text : $"{text} [StringPool 0x{definition.StringPoolId:X}]";
         }
 
 
@@ -2730,73 +2682,20 @@ namespace HaCreator.MapSimulator.Fields
 
         private static string ResolveMemoryGamePromptText(int stringPoolId, string name = null)
         {
-            string resolvedName = string.IsNullOrWhiteSpace(name) ? "The other player" : name.Trim();
-            if (TryResolveRecoveredMiniRoomStringText(stringPoolId, out string recoveredFormat))
-            {
-                string recoveredComposite = ConvertMiniRoomPrintfToCompositeFormat(recoveredFormat, 1);
-                return string.Format(CultureInfo.InvariantCulture, recoveredComposite, resolvedName);
-            }
-
             string fallbackText = stringPoolId switch
             {
-                MemoryGameGiveUpPromptStringPoolId => "Would you like to give up this Match Cards round?",
-                MemoryGameBanPromptStringPoolId => string.Format(CultureInfo.InvariantCulture, "Would you like to ban {0} from the room?", resolvedName),
-                MemoryGameIncomingTiePromptStringPoolId => string.Format(CultureInfo.InvariantCulture, "{0} requested a tie. Accept it?", resolvedName),
-                MemoryGameOutgoingTiePromptStringPoolId => "Would you like to request a tie?",
-                MemoryGameTieResultNoticeStringPoolId => "The other player declined the tie request.",
-                MemoryGameBookLeavePromptStringPoolId => "Would you like to leave the room after this round?",
-                MemoryGameCancelLeavePromptStringPoolId => "Cancel the pending leave request after this round?",
-                MemoryGameCloseRoomPromptStringPoolId => "Would you like to close the Match Cards room?",
+                MemoryGameGiveUpPromptStringPoolId => "Are you sure you want to give up?",
+                MemoryGameBanPromptStringPoolId => "Will you expel the user?",
+                MemoryGameIncomingTiePromptStringPoolId => "Your opponent requests a tie.\r\nWill you accept it?",
+                MemoryGameOutgoingTiePromptStringPoolId => "Will you request a tie?",
+                MemoryGameTieResultNoticeStringPoolId => "Your opponent denied your request for a tie.",
+                MemoryGameBookLeavePromptStringPoolId => "Will you call to leave after this game?",
+                MemoryGameCancelLeavePromptStringPoolId => "Will you cancel the request\r\nto leave after this game?",
+                MemoryGameCloseRoomPromptStringPoolId => "Are you sure you want to leave?",
                 _ => $"Match Cards prompt 0x{stringPoolId:X}."
             };
 
-            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(stringPoolId, fallbackText, 1, out bool usedResolvedText);
-            string text = string.Format(CultureInfo.InvariantCulture, format, resolvedName);
-            return usedResolvedText ? text : $"{text} [StringPool 0x{stringPoolId:X}]";
-        }
-
-        private static bool TryResolveRecoveredMiniRoomStringText(int stringPoolId, out string text)
-        {
-            if (MiniRoomRecoveredStringPoolEntries.TryGetValue(stringPoolId, out MiniRoomStringPoolEntryEvidence evidence)
-                && !string.IsNullOrWhiteSpace(evidence.DecodedText))
-            {
-                text = evidence.DecodedText;
-                return true;
-            }
-
-            text = null;
-            return false;
-        }
-
-        private static string ConvertMiniRoomPrintfToCompositeFormat(string format, int maxPlaceholderCount)
-        {
-            if (string.IsNullOrWhiteSpace(format))
-            {
-                return string.Empty;
-            }
-
-            int tokenIndex = 0;
-            int searchStart = 0;
-            while (tokenIndex < maxPlaceholderCount)
-            {
-                int markerIndex = format.IndexOf("%s", searchStart, StringComparison.Ordinal);
-                if (markerIndex < 0)
-                {
-                    markerIndex = format.IndexOf("%d", searchStart, StringComparison.Ordinal);
-                }
-
-                if (markerIndex < 0)
-                {
-                    break;
-                }
-
-                string replacement = $"{{{tokenIndex}}}";
-                format = format.Remove(markerIndex, 2).Insert(markerIndex, replacement);
-                searchStart = markerIndex + replacement.Length;
-                tokenIndex++;
-            }
-
-            return format;
+            return MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackText, appendFallbackSuffix: true);
         }
 
 

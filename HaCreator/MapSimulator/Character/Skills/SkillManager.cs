@@ -341,6 +341,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private enum ClientRandomMovingShootActionFamily
         {
             None,
+            Unsupported,
             Shoot,
             OneHandedStab,
             TwoHandedStab,
@@ -642,9 +643,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["mhpR"] = "Max HP",
-                ["indieMhpR"] = "Max HP",
                 ["mmpR"] = "Max MP",
-                ["indieMmpR"] = "Max MP",
                 ["pddR"] = "Physical Defense",
                 ["mddR"] = "Magic Defense",
                 ["accR"] = "Accuracy",
@@ -5748,6 +5747,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             string currentWeaponType = null)
         {
             ClientRandomMovingShootActionFamily actionFamily = ResolveClientRandomMovingShootActionFamily(
+                queuedAttackActionType,
                 currentActionName,
                 currentRawActionCode,
                 currentWeaponType);
@@ -5791,60 +5791,124 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
 
         private static ClientRandomMovingShootActionFamily ResolveClientRandomMovingShootActionFamily(
+            int? queuedAttackActionType,
             string currentActionName,
             int? currentRawActionCode,
             string currentWeaponType)
         {
+            ClientRandomMovingShootActionFamily requiredFamily = ResolveRequiredClientRandomMovingShootActionFamily(queuedAttackActionType);
             string normalizedActionName = NormalizeDeferredMovingShootActionOwnerName(currentActionName, currentRawActionCode);
             if (!string.IsNullOrWhiteSpace(normalizedActionName))
             {
-                if (normalizedActionName.StartsWith("shoot", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(normalizedActionName, "shotC1", StringComparison.OrdinalIgnoreCase))
+                ClientRandomMovingShootActionFamily currentActionFamily = ResolveClientRandomMovingShootActionFamilyFromActionName(normalizedActionName);
+                if (IsCompatibleClientRandomMovingShootActionFamily(currentActionFamily, requiredFamily))
                 {
-                    return ClientRandomMovingShootActionFamily.Shoot;
-                }
-
-                if (normalizedActionName.StartsWith("stabO", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(normalizedActionName, "stabD1", StringComparison.OrdinalIgnoreCase))
-                {
-                    return ClientRandomMovingShootActionFamily.OneHandedStab;
-                }
-
-                if (normalizedActionName.StartsWith("stabT", StringComparison.OrdinalIgnoreCase))
-                {
-                    return ClientRandomMovingShootActionFamily.TwoHandedStab;
-                }
-
-                if (normalizedActionName.StartsWith("swingP", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(normalizedActionName, "doubleSwing", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(normalizedActionName, "tripleSwing", StringComparison.OrdinalIgnoreCase))
-                {
-                    return ClientRandomMovingShootActionFamily.PolearmSwing;
-                }
-
-                if (normalizedActionName.StartsWith("swingT", StringComparison.OrdinalIgnoreCase))
-                {
-                    return ClientRandomMovingShootActionFamily.TwoHandedSwing;
-                }
-
-                if (normalizedActionName.StartsWith("swingO", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(normalizedActionName, "swingD1", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(normalizedActionName, "swingD2", StringComparison.OrdinalIgnoreCase))
-                {
-                    return ClientRandomMovingShootActionFamily.OneHandedSwing;
+                    return currentActionFamily;
                 }
             }
 
             string normalizedWeaponType = currentWeaponType?.Trim().ToLowerInvariant();
-            return normalizedWeaponType switch
+            ClientRandomMovingShootActionFamily weaponFamily = normalizedWeaponType switch
             {
                 "bow" or "crossbow" or "claw" or "gun" or "double bowgun" or "cannon" => ClientRandomMovingShootActionFamily.Shoot,
                 "dagger" => ClientRandomMovingShootActionFamily.OneHandedStab,
-                "spear" or "polearm" => ClientRandomMovingShootActionFamily.PolearmSwing,
+                // The shared body action surface still publishes distinct `stabT*` and
+                // `swingP*` families, so keep spear and polearm inference separate when
+                // the queued moving-shoot owner has to fall back to weapon family.
+                "spear" => ClientRandomMovingShootActionFamily.TwoHandedStab,
+                "polearm" => ClientRandomMovingShootActionFamily.PolearmSwing,
                 "2h sword" or "2h axe" or "2h blunt" => ClientRandomMovingShootActionFamily.TwoHandedSwing,
                 "1h sword" or "1h axe" or "1h blunt" or "katara" or "wand" or "staff" or "knuckle" => ClientRandomMovingShootActionFamily.OneHandedSwing,
                 _ => ClientRandomMovingShootActionFamily.None
             };
+
+            return IsCompatibleClientRandomMovingShootActionFamily(weaponFamily, requiredFamily)
+                ? weaponFamily
+                : ClientRandomMovingShootActionFamily.None;
+        }
+
+        private static ClientRandomMovingShootActionFamily ResolveClientRandomMovingShootActionFamilyFromActionName(string normalizedActionName)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedActionName))
+            {
+                return ClientRandomMovingShootActionFamily.None;
+            }
+
+            if (normalizedActionName.StartsWith("shoot", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedActionName, "shotC1", StringComparison.OrdinalIgnoreCase))
+            {
+                return ClientRandomMovingShootActionFamily.Shoot;
+            }
+
+            if (normalizedActionName.StartsWith("stabO", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedActionName, "stabD1", StringComparison.OrdinalIgnoreCase))
+            {
+                return ClientRandomMovingShootActionFamily.OneHandedStab;
+            }
+
+            if (normalizedActionName.StartsWith("stabT", StringComparison.OrdinalIgnoreCase))
+            {
+                return ClientRandomMovingShootActionFamily.TwoHandedStab;
+            }
+
+            if (normalizedActionName.StartsWith("swingP", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedActionName, "doubleSwing", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedActionName, "tripleSwing", StringComparison.OrdinalIgnoreCase))
+            {
+                return ClientRandomMovingShootActionFamily.PolearmSwing;
+            }
+
+            if (normalizedActionName.StartsWith("swingT", StringComparison.OrdinalIgnoreCase))
+            {
+                return ClientRandomMovingShootActionFamily.TwoHandedSwing;
+            }
+
+            if (normalizedActionName.StartsWith("swingO", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedActionName, "swingD1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedActionName, "swingD2", StringComparison.OrdinalIgnoreCase))
+            {
+                return ClientRandomMovingShootActionFamily.OneHandedSwing;
+            }
+
+            return ClientRandomMovingShootActionFamily.None;
+        }
+
+        private static ClientRandomMovingShootActionFamily ResolveRequiredClientRandomMovingShootActionFamily(int? queuedAttackActionType)
+        {
+            return queuedAttackActionType switch
+            {
+                MovingShootAttackActionTypeShoot => ClientRandomMovingShootActionFamily.Shoot,
+                MovingShootAttackActionTypeMagic => ClientRandomMovingShootActionFamily.Unsupported,
+                MovingShootAttackActionTypeMelee => ClientRandomMovingShootActionFamily.OneHandedSwing,
+                _ => ClientRandomMovingShootActionFamily.None
+            };
+        }
+
+        private static bool IsCompatibleClientRandomMovingShootActionFamily(
+            ClientRandomMovingShootActionFamily candidateFamily,
+            ClientRandomMovingShootActionFamily requiredFamily)
+        {
+            if (candidateFamily == ClientRandomMovingShootActionFamily.None)
+            {
+                return false;
+            }
+
+            if (requiredFamily == ClientRandomMovingShootActionFamily.Unsupported)
+            {
+                return false;
+            }
+
+            if (requiredFamily == ClientRandomMovingShootActionFamily.None)
+            {
+                return true;
+            }
+
+            if (requiredFamily == ClientRandomMovingShootActionFamily.Shoot)
+            {
+                return candidateFamily == ClientRandomMovingShootActionFamily.Shoot;
+            }
+
+            return candidateFamily != ClientRandomMovingShootActionFamily.Shoot;
         }
 
         internal static bool UsesClientRandomShootAttackActionTable(SkillData skill)
@@ -6890,6 +6954,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return SkillMovementFamily.BoundJump;
             }
 
+            // Some client-moved rush families, such as Dual Blade's Tornado Spin
+            // (Skill/432.img/4321000), only advertise movement through info/casterMove
+            // + info/type=41 and do not publish a normal top-level action string.
+            if (skill.CasterMove && skill.ClientInfoType == 41)
+            {
+                return SkillMovementFamily.Rush;
+            }
+
             if (candidateActions.Any(candidate =>
                     ActionTextContains(candidate, "fly")
                     || ActionTextContains(candidate, "flying")
@@ -7770,10 +7842,42 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            projectile.ResolvedShootAmmoSelection = ClientShootAmmoResolver.RefreshQueuedSelectionSlotMetadata(
-                projectile.ResolvedShootAmmoSelection,
+            projectile.ResolvedShootAmmoSelection = RefreshQueuedProjectileFireTimeSelection(
+                projectile,
                 _inventoryRuntime.GetSlots(InventoryType.USE),
                 _inventoryRuntime.GetSlots(InventoryType.CASH),
+                weaponCode,
+                weaponItemId);
+        }
+
+        internal static ShootAmmoSelection RefreshQueuedProjectileFireTimeSelection(
+            ActiveProjectile projectile,
+            IReadOnlyList<InventorySlotData> useSlots,
+            IReadOnlyList<InventorySlotData> cashSlots,
+            int fallbackWeaponCode,
+            int fallbackWeaponItemId)
+        {
+            if (projectile?.ResolvedShootAmmoSelection == null
+                || (!projectile.IsQueuedFinalAttack && !projectile.IsQueuedSparkAttack))
+            {
+                return projectile?.ResolvedShootAmmoSelection?.Snapshot();
+            }
+
+            int weaponCode = projectile.ResolvedShootWeaponCode > 0
+                ? projectile.ResolvedShootWeaponCode
+                : fallbackWeaponCode;
+            int weaponItemId = projectile.ResolvedShootWeaponItemId > 0
+                ? projectile.ResolvedShootWeaponItemId
+                : fallbackWeaponItemId;
+            if (weaponCode <= 0 || weaponItemId <= 0)
+            {
+                return projectile.ResolvedShootAmmoSelection.Snapshot();
+            }
+
+            return ClientShootAmmoResolver.RefreshQueuedSelectionSlotMetadata(
+                projectile.ResolvedShootAmmoSelection,
+                useSlots,
+                cashSlots,
                 weaponCode,
                 weaponItemId);
         }
@@ -8875,17 +8979,32 @@ namespace HaCreator.MapSimulator.Character.Skills
                     GetMastery(weapon),
                     ResolveActiveAfterImageChargeElement(),
                     out MeleeAfterImageAction afterImageAction)
-                || afterImageAction == null
-                || !afterImageAction.HasRange)
+                || afterImageAction == null)
             {
-                return false;
+                afterImageAction = _loader.ApplyClientMeleeRangeOverride(
+                    null,
+                    skill?.SkillId ?? 0,
+                    currentRawActionCodeOverride,
+                    facingRight: true);
+                if (afterImageAction == null || !afterImageAction.HasRange)
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                afterImageAction = _loader.ApplyClientMeleeRangeOverride(
+                    afterImageAction,
+                    skill?.SkillId ?? 0,
+                    currentRawActionCodeOverride,
+                    facingRight: true);
+                if (afterImageAction == null || !afterImageAction.HasRange)
+                {
+                    return false;
+                }
             }
 
-            hitbox = _loader.ApplyClientMeleeRangeOverride(
-                afterImageAction,
-                skill?.SkillId ?? 0,
-                currentRawActionCodeOverride,
-                facingRight: true)?.Range ?? afterImageAction.Range;
+            hitbox = afterImageAction.Range;
             if (!facingRight)
             {
                 hitbox = new Rectangle(
@@ -9863,6 +9982,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool usesStoredShootPoint = attackOriginOverride.HasValue;
             float projectileSpawnY = usesStoredShootPoint ? attackOrigin.Y : attackOrigin.Y - 20f;
             ShootAmmoSelection resolvedShootAmmoSelection = LastResolvedShootAmmoSelection?.Snapshot();
+            int resolvedShootWeaponCode = GetEquippedWeaponCode();
+            int resolvedShootWeaponItemId = _player?.Build?.GetWeapon()?.ItemId ?? 0;
             List<int> releaseSchedule = BuildProjectileReleaseSchedule(levelData, bulletCount);
             List<int?> projectileTargetAssignments = ResolveMultiTargetProjectileAssignments(
                 skill,
@@ -9881,9 +10002,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 int? projectilePreferredTargetMobId = i < projectileTargetAssignments.Count
                     ? projectileTargetAssignments[i]
                     : preferredTargetMobId;
+                Vector2? liveProjectilePreferredTargetPosition = ResolveDeferredPreferredTargetPosition(projectilePreferredTargetMobId, currentTime);
                 Vector2? projectilePreferredTargetPosition = ResolveDeferredProjectileTargetPositionSnapshot(
                     preferredTargetPositionOverride,
-                    ResolveDeferredPreferredTargetPosition(projectilePreferredTargetMobId, currentTime));
+                    liveProjectilePreferredTargetPosition,
+                    preferStoredTargetPosition: !skill.MultiTargeting || !liveProjectilePreferredTargetPosition.HasValue);
                 var proj = new ActiveProjectile
                 {
                     Id = _nextProjectileId++,
@@ -9904,8 +10027,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                     PreferredTargetPosition = projectilePreferredTargetPosition,
                     PreferStoredTargetPosition = attackOriginOverride.HasValue
                         && preferredTargetPositionOverride.HasValue
+                        && (!skill.MultiTargeting || !liveProjectilePreferredTargetPosition.HasValue)
                         && ShouldUseSmoothingMovingShoot(skill),
                     ResolvedShootAmmoSelection = resolvedShootAmmoSelection?.Snapshot(),
+                    ResolvedShootWeaponCode = resolvedShootWeaponCode,
+                    ResolvedShootWeaponItemId = resolvedShootWeaponItemId,
                     AllowFollowUpQueue = queueFollowUps,
                     ForceCritical = forceCriticalForAttack,
                     IsQueuedFinalAttack = isQueuedFinalAttack,
@@ -10020,11 +10146,15 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static Vector2? ResolveDeferredProjectileTargetPositionSnapshot(
             Vector2? storedPreferredTargetPosition,
-            Vector2? livePreferredTargetPosition)
+            Vector2? livePreferredTargetPosition,
+            bool preferStoredTargetPosition = true)
         {
-            // `m_movingShootEntry` carries the queued target point through delayed execution.
-            // A live mob lookup only fills the gap when no queued world position was stored.
-            return storedPreferredTargetPosition ?? livePreferredTargetPosition;
+            // `m_movingShootEntry` carries one queued world point, but client-shaped
+            // multi-target volleys should still keep their per-projectile live target
+            // snapshots when those targets were resolved before spawn.
+            return preferStoredTargetPosition
+                ? storedPreferredTargetPosition ?? livePreferredTargetPosition
+                : livePreferredTargetPosition ?? storedPreferredTargetPosition;
         }
 
         private bool TryAimProjectileAtTarget(ActiveProjectile proj, int currentTime, float speed)
@@ -11425,7 +11555,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 summon.CurrentAnimationBranchName = null;
             }
 
-            if (state == SummonActorState.Idle && ShouldClearHealingRobotSupportSuspend(summon))
+            if (state == SummonActorState.Idle && ShouldClearHealingRobotSupportSuspend(summon, currentTime))
             {
                 summon.SupportSuspendUntilTime = int.MinValue;
             }
@@ -13285,12 +13415,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
-            if (!string.IsNullOrWhiteSpace(skill.SummonHitBranchName))
+            string hitBranchName = SummonRuntimeRules.ResolveHitPlaybackBranch(skill);
+            if (!string.IsNullOrWhiteSpace(hitBranchName))
             {
                 SkillAnimation hitBranchAnimation = _loader.ResolveSummonActionAnimation(
                     skill,
                     summon.Level,
-                    skill.SummonHitBranchName,
+                    hitBranchName,
                     skill.SummonHitAnimation);
                 if (hitBranchAnimation?.Frames.Count > 0)
                 {
@@ -13301,11 +13432,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             return skill.SummonHitAnimation;
         }
 
-        private static bool ShouldClearHealingRobotSupportSuspend(ActiveSummon summon)
+        private static bool ShouldClearHealingRobotSupportSuspend(ActiveSummon summon, int currentTime)
         {
-            return summon?.SkillId == HEALING_ROBOT_SKILL_ID
-                   && summon.AssistType == SummonAssistType.Support
-                   && summon.SupportSuspendUntilTime != int.MinValue;
+            return SummonRuntimeRules.ShouldClearHealingRobotSupportSuspend(
+                summon,
+                currentTime,
+                HEALING_ROBOT_SKILL_ID);
         }
 
         private bool ProcessFriendlySummonBuffSupport(ActiveSummon summon, int currentTime)
@@ -13764,12 +13896,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return namedAnimation;
             }
 
-            if (!string.IsNullOrWhiteSpace(skill.SummonRemovalBranchName))
+            string removalBranchName = SummonRuntimeRules.ResolveRemovalPlaybackBranch(skill);
+            if (!string.IsNullOrWhiteSpace(removalBranchName))
             {
                 SkillAnimation removalAnimation = _loader.ResolveSummonActionAnimation(
                     skill,
                     summon.Level,
-                    skill.SummonRemovalBranchName,
+                    removalBranchName,
                     skill.SummonRemovalAnimation);
                 if (removalAnimation?.Frames.Count > 0)
                 {
@@ -13787,7 +13920,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 GetSkillAnimationDuration(_loader.ResolveSummonActionAnimation(
                     summon?.SkillData,
                     summon?.Level ?? 0,
-                    summon?.SkillData?.SummonRemovalBranchName,
+                    SummonRuntimeRules.ResolveRemovalPlaybackBranch(summon?.SkillData),
                     summon?.SkillData?.SummonRemovalAnimation))
                 ?? GetSkillAnimationDuration(ResolveSummonHitPlaybackAnimation(summon))
                 ?? GetSkillAnimationDuration(ResolveSummonPendingRemovalActionAnimation(summon))
@@ -16331,7 +16464,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            return ShouldUseFallbackPropertyDisplayName(propertyName, includeIndependentStats: false)
+            return ShouldUseFallbackPropertyDisplayName(propertyName, includeIndependentStats: true)
                 && SkillDataLoader.TryResolveFallbackStatPresentation(propertyName, 1, out string fallbackDisplayName, out _)
                 && !string.IsNullOrWhiteSpace(displayName = fallbackDisplayName);
         }
@@ -16378,6 +16511,35 @@ namespace HaCreator.MapSimulator.Character.Skills
                     representedLabels.Add(label);
                 }
             }
+        }
+
+        internal static (string FamilyDisplayName, IReadOnlyList<string> TemporaryStatDisplayNames) ResolveStatusBarBuffTooltipPresentationForParity(
+            SkillLevelData levelData,
+            params string[] temporaryStatLabels)
+        {
+            if (temporaryStatLabels == null || temporaryStatLabels.Length == 0)
+            {
+                return (string.Empty, Array.Empty<string>());
+            }
+
+            BuffTemporaryStatPresentation[] temporaryStats = temporaryStatLabels
+                .Where(label => !string.IsNullOrWhiteSpace(label))
+                .Select(label => ResolvedTemporaryStatPresentationCatalog.TryGetValue(label, out BuffTemporaryStatPresentation presentation)
+                    ? presentation
+                    : CreateTemporaryStatPresentation(label, label, null, GenericBuffSortOrder, GenericBuffPrimaryPriority))
+                .ToArray();
+            if (temporaryStats.Length == 0)
+            {
+                return (string.Empty, Array.Empty<string>());
+            }
+
+            string authoredFamilyDisplayName = ResolveAuthoredFamilyDisplayName(levelData, temporaryStats);
+            string familyDisplayName = ResolveBuffFamilyDisplayName(
+                authoredFamilyDisplayName,
+                ResolveFamilyOwnerTemporaryStat(temporaryStats),
+                supplementalBuffIconEntry: null);
+            IReadOnlyList<string> temporaryStatDisplayNames = ResolveAuthoredTemporaryStatDisplayNames(levelData, temporaryStats);
+            return (familyDisplayName, temporaryStatDisplayNames);
         }
 
         private static BuffTemporaryStatPresentation CreateTemporaryStatPresentation(
@@ -19031,10 +19193,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (skill == null)
                 return null;
 
+            string spawnBranchName = SummonRuntimeRules.ResolveSpawnPlaybackBranch(skill);
             var spawnAnimation = _loader.ResolveSummonActionAnimation(
                                      skill,
                                      summon?.Level ?? 0,
-                                     skill.SummonSpawnBranchName,
+                                     spawnBranchName,
                                      skill.SummonSpawnAnimation)
                                  ?? skill.SummonSpawnAnimation;
             if (spawnAnimation?.Frames.Count > 0)
@@ -19051,10 +19214,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 animationTime = Math.Max(0, elapsedTime - spawnDuration);
             }
 
+            string removalBranchName = SummonRuntimeRules.ResolveRemovalPlaybackBranch(skill);
             var removalAnimation = _loader.ResolveSummonActionAnimation(
                                        skill,
                                        summon?.Level ?? 0,
-                                       skill.SummonRemovalBranchName,
+                                       removalBranchName,
                                        skill.SummonRemovalAnimation)
                                    ?? skill.SummonRemovalAnimation;
             if (removalAnimation?.Frames.Count > 0
@@ -19084,10 +19248,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
+            string prepareBranchName = SummonRuntimeRules.ResolvePreparePlaybackBranch(skill);
             var prepareAnimation = _loader.ResolveSummonActionAnimation(
                                        skill,
                                        summon?.Level ?? 0,
-                                       skill.SummonPrepareBranchName,
+                                       prepareBranchName,
                                        skill.SummonAttackPrepareAnimation)
                                    ?? skill.SummonAttackPrepareAnimation;
             if (prepareAnimation?.Frames.Count > 0
@@ -19137,10 +19302,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
+            string idleBranchName = SummonRuntimeRules.ResolveIdlePlaybackBranch(skill);
             SkillAnimation idleAnimation = _loader.ResolveSummonActionAnimation(
                                                skill,
                                                summon?.Level ?? 0,
-                                               skill.SummonIdleBranchName,
+                                               idleBranchName,
                                                skill.SummonAnimation)
                                            ?? skill.SummonAnimation;
             if (idleAnimation?.Frames.Count > 0)

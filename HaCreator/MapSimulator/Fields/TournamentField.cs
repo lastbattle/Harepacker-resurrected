@@ -297,40 +297,58 @@ namespace HaCreator.MapSimulator.Fields
             byte branch = reader.ReadByte();
             byte noticeCode = reader.ReadByte();
 
-            TournamentClientMessage message = branch == 0
-                ? noticeCode switch
+            if (branch == 0)
+            {
+                if (!TryResolveBlockedEntryNotice(noticeCode, out TournamentClientMessage blockedEntryNotice))
                 {
-                    0 => new TournamentClientMessage(0x3A4, "Tournament entry notice branch 0 reported that the current session cannot proceed."),
-                    1 => new TournamentClientMessage(0x3A3, "Tournament entry notice branch 1 reported that the current session cannot proceed."),
-                    _ => new TournamentClientMessage(0x3A3, $"Tournament blocked notice branch received unknown code {noticeCode}.")
+                    SetLifecyclePhase(
+                        TournamentLifecyclePhase.EntryGate,
+                        $"Blocked entry code {noticeCode} fell outside the client's recovered 0/1 notice branches and was ignored.");
+                    RecordIgnoredPacket($"notice (374) ignored blocked-entry code={noticeCode}", currentTimeMs);
+                    return;
                 }
-                : noticeCode switch
-                {
-                    1 => new TournamentClientMessage(0x3A7, "Tournament round-result branch selected notice code 1."),
-                    2 => new TournamentClientMessage(0x3A6, "Tournament round-result branch selected notice code 2."),
-                    _ => new TournamentClientMessage(0x3A5, string.Format(CultureInfo.InvariantCulture, "Tournament round-result branch selected code {0}.", noticeCode))
-                };
 
-            string summary = branch == 0
-                ? $"notice (374) blocked-entry code={noticeCode}"
-                : $"notice (374) round-result code={noticeCode}";
+                SetLifecyclePhase(
+                    TournamentLifecyclePhase.EntryGate,
+                    $"Blocked entry branch {noticeCode} stayed inside the Tournament lobby gate.");
+                SetStatus(
+                    FormatStringPoolMessage(blockedEntryNotice),
+                    currentTimeMs,
+                    new[] { blockedEntryNotice.StringPoolId },
+                    $"notice (374) blocked-entry code={noticeCode}",
+                    "CUtilDlg::Notice");
+                return;
+            }
+
+            if (noticeCode > 0x10)
+            {
+                SetLifecyclePhase(
+                    TournamentLifecyclePhase.RestPeriod,
+                    $"Round-result code {noticeCode} exceeded the client's recovered Tournament notice range and was ignored.");
+                RecordIgnoredPacket($"notice (374) ignored round-result code={noticeCode}", currentTimeMs);
+                return;
+            }
+
+            TournamentClientMessage message = noticeCode switch
+            {
+                1 => new TournamentClientMessage(0x3A7, "Tournament round-result branch selected notice code 1."),
+                2 => new TournamentClientMessage(0x3A6, "Tournament round-result branch selected notice code 2."),
+                _ => new TournamentClientMessage(0x3A5, string.Format(CultureInfo.InvariantCulture, "Tournament round-result branch selected code {0}.", noticeCode))
+            };
+
             SetLifecyclePhase(
-                branch == 0 ? TournamentLifecyclePhase.EntryGate : TournamentLifecyclePhase.RestPeriod,
-                branch == 0
-                    ? $"Blocked entry branch {noticeCode} stayed inside the Tournament lobby gate."
-                    : "Round-result notice entered the resting-period seam described by String/Map.img/victoria/109070000/help0.");
+                TournamentLifecyclePhase.RestPeriod,
+                "Round-result notice entered the resting-period seam described by String/Map.img/victoria/109070000/help0.");
             SetStatus(
-                branch == 0
-                    ? FormatStringPoolMessage(message)
-                    : noticeCode switch
-                    {
-                        1 => FormatStringPoolMessage(message),
-                        2 => FormatStringPoolMessage(message),
-                        _ => FormatStringPoolMessage(message, noticeCode)
-                    },
+                noticeCode switch
+                {
+                    1 => FormatStringPoolMessage(message),
+                    2 => FormatStringPoolMessage(message),
+                    _ => FormatStringPoolMessage(message, noticeCode)
+                },
                 currentTimeMs,
                 new[] { message.StringPoolId },
-                summary,
+                $"notice (374) round-result code={noticeCode}",
                 "CUtilDlg::Notice");
         }
 
@@ -406,22 +424,35 @@ namespace HaCreator.MapSimulator.Fields
                 _ => null
             };
 
-            string fallback = message.HasValue
-                ? (uewCode is 8 or 16
-                    ? FormatStringPoolMessage(message.Value, uewCode)
-                    : FormatStringPoolMessage(message.Value))
-                : $"Tournament UEW packet reported code {uewCode}.";
-            int[] ids = message.HasValue ? new[] { message.Value.StringPoolId } : Array.Empty<int>();
-            SetStatus(fallback, currentTimeMs, ids, $"uew (377) code={uewCode}", "CUtilDlg::Notice");
+            if (!message.HasValue)
+            {
+                SetLifecyclePhase(
+                    TournamentLifecyclePhase.SessionNotice,
+                    $"Tournament UEW code {uewCode} fell outside the client's recovered 2/4/8/16 notice branches and was ignored.");
+                RecordIgnoredPacket($"uew (377) ignored code={uewCode}", currentTimeMs);
+                return;
+            }
+
+            string fallback = uewCode is 8 or 16
+                ? FormatStringPoolMessage(message.Value, uewCode)
+                : FormatStringPoolMessage(message.Value);
+            SetStatus(fallback, currentTimeMs, new[] { message.Value.StringPoolId }, $"uew (377) code={uewCode}", "CUtilDlg::Notice");
         }
 
         private void SetStatus(string text, int currentTimeMs, IReadOnlyList<int> stringPoolIds, string packetSummary, string dialogOwner = null)
         {
             _statusMessage = text;
-            _statusMessageUntil = currentTimeMs + StatusDurationMs;
+            _statusMessageUntil = string.IsNullOrWhiteSpace(text)
+                ? 0
+                : currentTimeMs + StatusDurationMs;
             _lastPacketSummary = packetSummary;
             _lastDialogOwner = dialogOwner;
             _lastStringPoolIds = stringPoolIds?.Where(id => id > 0).Distinct().ToArray() ?? Array.Empty<int>();
+        }
+
+        private void RecordIgnoredPacket(string packetSummary, int currentTimeMs)
+        {
+            SetStatus(null, currentTimeMs, Array.Empty<int>(), packetSummary);
         }
 
         private void SetLifecyclePhase(TournamentLifecyclePhase phase, string summary)
@@ -504,6 +535,22 @@ namespace HaCreator.MapSimulator.Fields
                 378 => "noop (378)",
                 _ => packetType.ToString(CultureInfo.InvariantCulture)
             };
+        }
+
+        private static bool TryResolveBlockedEntryNotice(byte noticeCode, out TournamentClientMessage message)
+        {
+            switch (noticeCode)
+            {
+                case 0:
+                    message = new TournamentClientMessage(0x3A4, "Tournament entry notice branch 0 reported that the current session cannot proceed.");
+                    return true;
+                case 1:
+                    message = new TournamentClientMessage(0x3A3, "Tournament entry notice branch 1 reported that the current session cannot proceed.");
+                    return true;
+                default:
+                    message = default;
+                    return false;
+            }
         }
 
         private static string FormatStringPoolMessage(TournamentClientMessage definition, params object[] args)

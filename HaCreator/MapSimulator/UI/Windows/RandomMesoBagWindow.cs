@@ -17,18 +17,26 @@ namespace HaCreator.MapSimulator.UI
         private const int AmountOffsetY = 34;
         private const int OkButtonOffsetX = 204;
         private const int OkButtonOffsetY = 77;
+        private const int FallbackMessageY = 34;
+        private const int FallbackAmountY = 56;
+        private const int FallbackOkButtonBottomMargin = 10;
 
         private readonly IReadOnlyDictionary<int, IDXObject> _backgrounds;
+        private readonly IReadOnlyDictionary<int, bool> _authoredLayoutByRank;
         private readonly IDXObject _defaultBackground;
         private UIObject _okButton;
         private string _descriptionText = string.Empty;
         private string _amountText = string.Empty;
         private int _rank = 1;
+        private bool _useAuthoredLayout = true;
 
-        public RandomMesoBagWindow(IReadOnlyDictionary<int, IDXObject> backgrounds)
+        public RandomMesoBagWindow(
+            IReadOnlyDictionary<int, IDXObject> backgrounds,
+            IReadOnlyDictionary<int, bool> authoredLayoutByRank)
             : base(backgrounds != null && backgrounds.TryGetValue(1, out IDXObject defaultBackground) ? defaultBackground : null)
         {
             _backgrounds = backgrounds ?? new Dictionary<int, IDXObject>();
+            _authoredLayoutByRank = authoredLayoutByRank ?? new Dictionary<int, bool>();
             _defaultBackground = Frame;
         }
 
@@ -43,6 +51,10 @@ namespace HaCreator.MapSimulator.UI
             Frame = _backgrounds.TryGetValue(_rank, out IDXObject background)
                 ? background
                 : _defaultBackground;
+            _useAuthoredLayout = _authoredLayoutByRank.TryGetValue(_rank, out bool useAuthoredLayout)
+                ? useAuthoredLayout
+                : false;
+            ApplyButtonLayout();
         }
 
         public void InitializeButtons(UIObject okButton)
@@ -53,8 +65,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _okButton.X = OkButtonOffsetX;
-            _okButton.Y = OkButtonOffsetY;
+            ApplyButtonLayout();
             _okButton.ButtonClickReleased += _ => Hide();
             AddButton(_okButton);
         }
@@ -79,13 +90,11 @@ namespace HaCreator.MapSimulator.UI
             DrawText(
                 sprite,
                 _descriptionText,
-                new Vector2(Position.X + MessageOffsetX, Position.Y + MessageOffsetY),
+                ResolveMessagePosition(_descriptionText),
                 Color.White);
-            DrawRightAlignedText(
+            DrawAmountText(
                 sprite,
                 _amountText,
-                Position.X + AmountRightEdgeX,
-                Position.Y + AmountOffsetY,
                 new Color(255, 236, 140));
         }
 
@@ -104,7 +113,7 @@ namespace HaCreator.MapSimulator.UI
                 color);
         }
 
-        private void DrawRightAlignedText(SpriteBatch sprite, string text, int rightEdgeX, int y, Color color)
+        private void DrawAmountText(SpriteBatch sprite, string text, Color color)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -112,12 +121,85 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Vector2 size = MeasureWindowText(null, text);
+            Vector2 position = ResolveAmountPosition(size.X);
             SelectorWindowDrawing.DrawShadowedText(
                 sprite,
                 WindowFont,
                 text,
-                new Vector2(rightEdgeX - size.X, y),
+                position,
                 color);
+        }
+
+        private void ApplyButtonLayout()
+        {
+            if (_okButton == null)
+            {
+                return;
+            }
+
+            BaseDXDrawableItem buttonDrawable = _okButton.GetBaseDXDrawableItemByState();
+            int buttonWidth = buttonDrawable?.Frame0?.Width ?? 40;
+            int buttonHeight = buttonDrawable?.Frame0?.Height ?? 16;
+            Point position = ResolveOkButtonPosition(
+                CurrentFrame?.Width ?? 312,
+                CurrentFrame?.Height ?? 132,
+                buttonWidth,
+                buttonHeight,
+                _useAuthoredLayout);
+            _okButton.X = position.X;
+            _okButton.Y = position.Y;
+        }
+
+        private Vector2 ResolveMessagePosition(string text)
+        {
+            float measuredWidth = string.IsNullOrWhiteSpace(text) ? 0f : MeasureWindowText(null, text).X;
+            Point position = ResolveMessagePosition(CurrentFrame?.Width ?? 312, measuredWidth, _useAuthoredLayout);
+            return new Vector2(Position.X + position.X, Position.Y + position.Y);
+        }
+
+        private Vector2 ResolveAmountPosition(float measuredWidth)
+        {
+            Point position = ResolveAmountPosition(CurrentFrame?.Width ?? 312, measuredWidth, _useAuthoredLayout);
+            return new Vector2(Position.X + position.X, Position.Y + position.Y);
+        }
+
+        internal static Point ResolveOkButtonPosition(
+            int frameWidth,
+            int frameHeight,
+            int buttonWidth,
+            int buttonHeight,
+            bool useAuthoredLayout)
+        {
+            if (useAuthoredLayout)
+            {
+                return new Point(OkButtonOffsetX, OkButtonOffsetY);
+            }
+
+            int centeredX = Math.Max(0, (frameWidth - Math.Max(0, buttonWidth)) / 2);
+            int anchoredY = Math.Max(0, frameHeight - Math.Max(0, buttonHeight) - FallbackOkButtonBottomMargin);
+            return new Point(centeredX, anchoredY);
+        }
+
+        internal static Point ResolveMessagePosition(int frameWidth, float measuredWidth, bool useAuthoredLayout)
+        {
+            if (useAuthoredLayout)
+            {
+                return new Point(MessageOffsetX, MessageOffsetY);
+            }
+
+            int centeredX = Math.Max(0, (int)MathF.Round((frameWidth - measuredWidth) / 2f));
+            return new Point(centeredX, FallbackMessageY);
+        }
+
+        internal static Point ResolveAmountPosition(int frameWidth, float measuredWidth, bool useAuthoredLayout)
+        {
+            if (useAuthoredLayout)
+            {
+                return new Point(Math.Max(0, (int)MathF.Round(AmountRightEdgeX - measuredWidth)), AmountOffsetY);
+            }
+
+            int centeredX = Math.Max(0, (int)MathF.Round((frameWidth - measuredWidth) / 2f));
+            return new Point(centeredX, FallbackAmountY);
         }
     }
 }

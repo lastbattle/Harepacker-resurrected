@@ -1,8 +1,9 @@
 using HaCreator.MapSimulator.Interaction;
 using Microsoft.Xna.Framework;
 using System;
-using SD = System.Drawing;
-using SWF = System.Windows.Forms;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -18,36 +19,62 @@ namespace HaCreator.MapSimulator.UI
             "Tahoma",
         };
 
+        private const int ClientControlId = AntiMacroEditControl.ClientControlId;
+        private const int FontHeightPixels = 12;
+        private const int GwlWndProc = -4;
+        private const int SwHide = 0;
+        private const int SwShow = 5;
+        private const int SwpNoZOrder = 0x0004;
+        private const int SwpNoActivate = 0x0010;
+        private const int WmSetFont = 0x0030;
+        private const int WmGetFont = 0x0031;
+        private const int WmChar = 0x0102;
+        private const int WmKeyDown = 0x0100;
+        private const int WmPaste = 0x0302;
+        private const int EmGetSel = 0x00B0;
+        private const int EmSetSel = 0x00B1;
+        private const int EmReplaceSel = 0x00C2;
+        private const int EmLimitText = 0x00C5;
+        private const int VkReturn = 0x0D;
+        private const uint WsChild = 0x40000000;
+        private const uint WsVisible = 0x10000000;
+        private const uint WsTabStop = 0x00010000;
+        private const uint EsAutoHScroll = 0x0080;
+        private const uint WsExClientEdge = 0x00000200;
+        private static readonly IntPtr HwndTop = IntPtr.Zero;
+        private static readonly object HostMapLock = new();
+        private static readonly Dictionary<IntPtr, NativeAntiMacroEditHost> HostByHandle = new();
+
         private readonly int _maxLength;
-        private SWF.Control _parentControl;
-        private SWF.TextBox _textBox;
+        private readonly WndProcDelegate _subclassWndProc;
+
+        private IntPtr _parentHandle;
+        private IntPtr _editHandle;
+        private IntPtr _originalWndProc;
+        private IntPtr _fontHandle;
+        private string _lastKnownText = string.Empty;
 
         public NativeAntiMacroEditHost(int maxLength)
         {
             _maxLength = Math.Max(1, maxLength);
+            _subclassWndProc = SubclassWndProc;
         }
 
-        public bool IsAttached => _textBox != null && _parentControl != null;
-        public bool HasFocus => _textBox?.Focused ?? false;
-        public string Text => _textBox?.Text ?? string.Empty;
+        public bool IsAttached => _editHandle != IntPtr.Zero && IsWindow(_editHandle);
+        public bool HasFocus => IsAttached && GetFocus() == _editHandle;
+        public string Text => IsAttached ? GetControlText() : string.Empty;
 
         public event Action<string> TextChanged;
         public event Action SubmitRequested;
 
         public bool TryAttach(IntPtr parentHandle, Rectangle bounds)
         {
-            if (parentHandle == IntPtr.Zero)
+            if (parentHandle == IntPtr.Zero || !IsWindow(parentHandle))
             {
                 return false;
             }
 
-            SWF.Control parentControl = SWF.Control.FromHandle(parentHandle);
-            if (parentControl == null)
-            {
-                return false;
-            }
-
-            if (ReferenceEquals(parentControl, _parentControl) && _textBox != null && !_textBox.IsDisposed)
+            if (parentHandle == _parentHandle && IsAttached)
             {
                 UpdateBounds(bounds);
                 return true;
@@ -55,10 +82,38 @@ namespace HaCreator.MapSimulator.UI
 
             Dispose();
 
-            _parentControl = parentControl;
-            _textBox = CreateTextBox(bounds);
-            _parentControl.Controls.Add(_textBox);
-            _textBox.BringToFront();
+            _parentHandle = parentHandle;
+            _editHandle = CreateWindowEx(
+                WsExClientEdge,
+                "EDIT",
+                string.Empty,
+                WsChild | WsVisible | WsTabStop | EsAutoHScroll,
+                bounds.X,
+                bounds.Y,
+                bounds.Width,
+                bounds.Height,
+                _parentHandle,
+                new IntPtr(ClientControlId),
+                IntPtr.Zero,
+                IntPtr.Zero);
+
+            if (_editHandle == IntPtr.Zero)
+            {
+                _parentHandle = IntPtr.Zero;
+                return false;
+            }
+
+            lock (HostMapLock)
+            {
+                HostByHandle[_editHandle] = this;
+            }
+
+            _originalWndProc = SetWindowLongPtr(_editHandle, GwlWndProc, Marshal.GetFunctionPointerForDelegate(_subclassWndProc));
+            ApplyClientFont();
+            SendMessage(_editHandle, EmLimitText, new IntPtr(_maxLength), IntPtr.Zero);
+            SendMessage(_editHandle, EmSetSel, IntPtr.Zero, IntPtr.Zero);
+            SetVisible(false);
+            SynchronizeState();
             return true;
         }
 
@@ -69,7 +124,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _textBox.SetBounds(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+            SetWindowPos(_editHandle, HwndTop, bounds.X, bounds.Y, bounds.Width, bounds.Height, SwpNoZOrder | SwpNoActivate);
         }
 
         public void SetVisible(bool visible)
@@ -79,11 +134,28 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _textBox.Visible = visible;
+            ShowWindow(_editHandle, visible ? SwShow : SwHide);
             if (visible)
             {
-                _textBox.BringToFront();
+                SetWindowPos(_editHandle, HwndTop, 0, 0, 0, 0, SwpNoZOrder | SwpNoActivate);
             }
+        }
+
+        public void SynchronizeState()
+        {
+            if (!IsAttached)
+            {
+                return;
+            }
+
+            string currentText = GetControlText();
+            if (string.Equals(currentText, _lastKnownText, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _lastKnownText = currentText;
+            TextChanged?.Invoke(currentText);
         }
 
         public void Reset()
@@ -93,9 +165,9 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _textBox.Text = string.Empty;
-            _textBox.SelectionStart = 0;
-            _textBox.SelectionLength = 0;
+            SetWindowText(_editHandle, string.Empty);
+            SendMessage(_editHandle, EmSetSel, IntPtr.Zero, IntPtr.Zero);
+            SynchronizeState();
         }
 
         public void Focus()
@@ -105,19 +177,19 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _textBox.Focus();
-            _textBox.SelectionStart = _textBox.TextLength;
-            _textBox.SelectionLength = 0;
+            SetFocus(_editHandle);
+            int textLength = GetWindowTextLength(_editHandle);
+            SendMessage(_editHandle, EmSetSel, new IntPtr(textLength), new IntPtr(textLength));
         }
 
         public void Blur()
         {
-            if (!IsAttached)
+            if (!IsAttached || _parentHandle == IntPtr.Zero)
             {
                 return;
             }
 
-            _parentControl?.Focus();
+            SetFocus(_parentHandle);
         }
 
         public bool TryInsertCharacter(char character)
@@ -127,12 +199,14 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (_textBox.SelectionLength == 0 && _textBox.TextLength >= _maxLength)
+            GetSelection(out int selectionStart, out int selectionEnd);
+            string currentText = GetControlText();
+            if (selectionStart == selectionEnd && currentText.Length >= _maxLength)
             {
                 return false;
             }
 
-            _textBox.SelectedText = character.ToString();
+            ReplaceSelection(character.ToString());
             return true;
         }
 
@@ -143,20 +217,19 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (_textBox.SelectionLength > 0)
+            GetSelection(out int selectionStart, out int selectionEnd);
+            if (selectionStart != selectionEnd)
             {
                 return TryInsertCharacter(character);
             }
 
-            int selectionStart = _textBox.SelectionStart;
             if (selectionStart <= 0)
             {
                 return false;
             }
 
-            _textBox.SelectionStart = selectionStart - 1;
-            _textBox.SelectionLength = 1;
-            _textBox.SelectedText = character.ToString();
+            SendMessage(_editHandle, EmSetSel, new IntPtr(selectionStart - 1), new IntPtr(selectionStart));
+            ReplaceSelection(character.ToString());
             return true;
         }
 
@@ -167,89 +240,247 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (_textBox.SelectionLength > 0)
+            GetSelection(out int selectionStart, out int selectionEnd);
+            if (selectionStart == selectionEnd)
             {
-                _textBox.SelectedText = string.Empty;
-                return true;
+                if (selectionStart <= 0)
+                {
+                    return false;
+                }
+
+                selectionStart--;
             }
 
-            int selectionStart = _textBox.SelectionStart;
-            if (selectionStart <= 0)
-            {
-                return false;
-            }
-
-            _textBox.SelectionStart = selectionStart - 1;
-            _textBox.SelectionLength = 1;
-            _textBox.SelectedText = string.Empty;
+            SendMessage(_editHandle, EmSetSel, new IntPtr(selectionStart), new IntPtr(selectionEnd));
+            ReplaceSelection(string.Empty);
             return true;
         }
 
         public void Dispose()
         {
-            if (_textBox != null)
+            if (_editHandle != IntPtr.Zero)
             {
-                _textBox.TextChanged -= OnTextChanged;
-                _textBox.KeyDown -= OnKeyDown;
-                if (_parentControl != null && !_parentControl.IsDisposed)
+                lock (HostMapLock)
                 {
-                    _parentControl.Controls.Remove(_textBox);
+                    HostByHandle.Remove(_editHandle);
                 }
 
-                _textBox.Dispose();
-                _textBox = null;
+                if (_originalWndProc != IntPtr.Zero)
+                {
+                    SetWindowLongPtr(_editHandle, GwlWndProc, _originalWndProc);
+                    _originalWndProc = IntPtr.Zero;
+                }
+
+                DestroyWindow(_editHandle);
+                _editHandle = IntPtr.Zero;
             }
 
-            _parentControl = null;
-        }
-
-        private SWF.TextBox CreateTextBox(Rectangle bounds)
-        {
-            string requestedFontFamily = MapleStoryStringPool.GetOrFallback(AntiMacroEditControl.ClientFontStringPoolId, "Arial");
-            SD.Font font = ClientTextRasterizer.CreateClientFont(
-                pixelSize: 12f,
-                requestedFamily: requestedFontFamily,
-                preferredPrivateFontFamilyCandidates: ClientFontFamilyCandidates);
-
-            SWF.TextBox textBox = new()
+            if (_fontHandle != IntPtr.Zero)
             {
-                BorderStyle = SWF.BorderStyle.None,
-                MaxLength = _maxLength,
-                Multiline = false,
-                ShortcutsEnabled = true,
-                HideSelection = false,
-                ImeMode = SWF.ImeMode.On,
-                BackColor = SD.Color.White,
-                ForeColor = SD.Color.Black,
-                Font = font,
-                Location = new SD.Point(bounds.X, bounds.Y),
-                Size = new SD.Size(bounds.Width, bounds.Height),
-                Margin = SWF.Padding.Empty,
-                WordWrap = false,
-                TextAlign = SWF.HorizontalAlignment.Left,
-                TabStop = false,
-                Visible = false
-            };
-            textBox.TextChanged += OnTextChanged;
-            textBox.KeyDown += OnKeyDown;
-            return textBox;
+                DeleteObject(_fontHandle);
+                _fontHandle = IntPtr.Zero;
+            }
+
+            _parentHandle = IntPtr.Zero;
+            _lastKnownText = string.Empty;
         }
 
-        private void OnTextChanged(object sender, EventArgs e)
+        private void ApplyClientFont()
         {
-            TextChanged?.Invoke(Text);
-        }
-
-        private void OnKeyDown(object sender, SWF.KeyEventArgs e)
-        {
-            if (e.KeyCode != SWF.Keys.Enter)
+            if (!IsAttached)
             {
                 return;
             }
 
-            e.SuppressKeyPress = true;
-            e.Handled = true;
-            SubmitRequested?.Invoke();
+            string requestedFontFamily = MapleStoryStringPool.GetOrFallback(AntiMacroEditControl.ClientFontStringPoolId, "Arial");
+            string resolvedFontFamily = ClientTextRasterizer.ResolvePreferredFontFamily(
+                requestedFontFamily,
+                preferredPrivateFontFamilyCandidates: ClientFontFamilyCandidates);
+
+            if (_fontHandle != IntPtr.Zero)
+            {
+                DeleteObject(_fontHandle);
+                _fontHandle = IntPtr.Zero;
+            }
+
+            IntPtr deviceContext = GetDC(_editHandle);
+            int pixelsPerInch = 96;
+            if (deviceContext != IntPtr.Zero)
+            {
+                pixelsPerInch = Math.Max(1, GetDeviceCaps(deviceContext, 90));
+                ReleaseDC(_editHandle, deviceContext);
+            }
+
+            int logicalHeight = -MulDiv(FontHeightPixels, pixelsPerInch, 72);
+            _fontHandle = CreateFont(
+                logicalHeight,
+                0,
+                0,
+                0,
+                400,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                resolvedFontFamily);
+            if (_fontHandle != IntPtr.Zero)
+            {
+                SendMessage(_editHandle, WmSetFont, _fontHandle, new IntPtr(1));
+            }
         }
+
+        private void GetSelection(out int selectionStart, out int selectionEnd)
+        {
+            int packedSelection = SendMessageInt(_editHandle, EmGetSel, IntPtr.Zero, IntPtr.Zero);
+            selectionStart = packedSelection & 0xFFFF;
+            selectionEnd = (packedSelection >> 16) & 0xFFFF;
+        }
+
+        private void ReplaceSelection(string replacementText)
+        {
+            SendMessageString(_editHandle, EmReplaceSel, new IntPtr(1), replacementText ?? string.Empty);
+            SynchronizeState();
+        }
+
+        private string GetControlText()
+        {
+            if (!IsAttached)
+            {
+                return string.Empty;
+            }
+
+            int textLength = GetWindowTextLength(_editHandle);
+            StringBuilder builder = new(textLength + 1);
+            GetWindowText(_editHandle, builder, builder.Capacity);
+            return builder.ToString();
+        }
+
+        private IntPtr SubclassWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
+        {
+            if (msg == WmKeyDown && wParam.ToInt32() == VkReturn)
+            {
+                SubmitRequested?.Invoke();
+                return IntPtr.Zero;
+            }
+
+            if (msg == WmChar && wParam.ToInt32() == VkReturn)
+            {
+                return IntPtr.Zero;
+            }
+
+            IntPtr result = CallWindowProc(_originalWndProc, hWnd, msg, wParam, lParam);
+            if (msg == WmPaste)
+            {
+                SynchronizeState();
+            }
+
+            return result;
+        }
+
+        [DllImport("gdi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr CreateFont(
+            int nHeight,
+            int nWidth,
+            int nEscapement,
+            int nOrientation,
+            int fnWeight,
+            uint fdwItalic,
+            uint fdwUnderline,
+            uint fdwStrikeOut,
+            uint fdwCharSet,
+            uint fdwOutputPrecision,
+            uint fdwClipPrecision,
+            uint fdwQuality,
+            uint fdwPitchAndFamily,
+            string lpszFace);
+
+        [DllImport("gdi32.dll", SetLastError = true)]
+        private static extern bool DeleteObject(IntPtr hObject);
+
+        [DllImport("gdi32.dll")]
+        private static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
+
+        [DllImport("kernel32.dll", ExactSpelling = true)]
+        private static extern int MulDiv(int nNumber, int nNumerator, int nDenominator);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr CreateWindowEx(
+            uint dwExStyle,
+            string lpClassName,
+            string lpWindowName,
+            uint dwStyle,
+            int x,
+            int y,
+            int nWidth,
+            int nHeight,
+            IntPtr hWndParent,
+            IntPtr hMenu,
+            IntPtr hInstance,
+            IntPtr lpParam);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool DestroyWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetDC(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetFocus();
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+        [DllImport("user32.dll")]
+        private static extern int GetWindowTextLength(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr ReleaseDC(IntPtr hWnd, IntPtr hDC);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern bool SetWindowText(IntPtr hWnd, string lpString);
+
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, int uFlags);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr SetFocus(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+        private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+        private static extern IntPtr SetWindowLong32(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageW")]
+        private static extern IntPtr SendMessageString(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
+
+        [DllImport("user32.dll", EntryPoint = "SendMessageW")]
+        private static extern int SendMessageInt(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr CallWindowProc(IntPtr lpPrevWndFunc, IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+        private static IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr newLong)
+        {
+            return IntPtr.Size == 8
+                ? SetWindowLongPtr64(hWnd, nIndex, newLong)
+                : SetWindowLong32(hWnd, nIndex, newLong);
+        }
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     }
 }

@@ -121,7 +121,7 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopLocker) is CashShopStageChildWindow lockerWindow)
             {
                 lockerWindow.SetFont(_fontChat);
-                lockerWindow.SetContentProvider(cashShopWindow.DescribeLockerOwnerState);
+                lockerWindow.SetContentProvider(() => BuildCashShopLockerOwnerLines(cashShopWindow));
                 lockerWindow.SetLockerStateProvider(() =>
                 {
                     AdminShopDialogUI.LockerOwnerSnapshot snapshot = cashShopWindow.GetLockerOwnerSnapshot();
@@ -142,10 +142,17 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopInventory) is CashShopStageChildWindow inventoryWindow)
             {
                 inventoryWindow.SetFont(_fontChat);
-                inventoryWindow.SetContentProvider(cashShopWindow.DescribeInventoryOwnerState);
+                inventoryWindow.SetContentProvider(() => BuildCashShopInventoryOwnerLines(cashShopWindow));
                 inventoryWindow.SetInventoryStateProvider(() =>
                 {
                     AdminShopDialogUI.InventoryOwnerSnapshot snapshot = cashShopWindow.GetInventoryOwnerSnapshot();
+                    CashServiceStageWindow stageWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) as CashServiceStageWindow;
+                    string selectedEntryTitle = snapshot.SelectedEntryTitle;
+                    if (string.IsNullOrWhiteSpace(selectedEntryTitle))
+                    {
+                        selectedEntryTitle = stageWindow?.CashInventoryPacketEntries.FirstOrDefault()?.Title ?? string.Empty;
+                    }
+
                     return new CashShopStageChildWindow.InventoryOwnerState
                     {
                         EquipCount = snapshot.EquipCount,
@@ -156,7 +163,7 @@ namespace HaCreator.MapSimulator
                         ScrollOffset = 0,
                         WheelRange = 140,
                         HasNumberFont = true,
-                        SelectedEntryTitle = snapshot.SelectedEntryTitle
+                        SelectedEntryTitle = selectedEntryTitle
                     };
                 });
                 inventoryWindow.SetExternalAction("BtExTrunk", () =>
@@ -254,11 +261,52 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private IReadOnlyList<string> BuildCashShopLockerOwnerLines(AdminShopDialogUI cashShopWindow)
+        {
+            List<string> lines = new(cashShopWindow?.DescribeLockerOwnerState() ?? Array.Empty<string>());
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow stageWindow)
+            {
+                lines.Add(stageWindow.CashGiftLastSummary);
+                foreach (string recentPacket in stageWindow.GetRecentPacketSummaries(2))
+                {
+                    lines.Add(recentPacket);
+                }
+            }
+
+            return lines;
+        }
+
+        private IReadOnlyList<string> BuildCashShopInventoryOwnerLines(AdminShopDialogUI cashShopWindow)
+        {
+            List<string> lines = new(cashShopWindow?.DescribeInventoryOwnerState() ?? Array.Empty<string>());
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow stageWindow)
+            {
+                if (stageWindow.CashInventoryPacketEntries.Count > 0)
+                {
+                    foreach (CashServiceStageWindow.PacketCatalogEntry entry in stageWindow.CashInventoryPacketEntries.Take(2))
+                    {
+                        lines.Add(entry.Detail);
+                    }
+                }
+                else
+                {
+                    lines.Add(stageWindow.CashGiftLastSummary);
+                }
+            }
+
+            return lines;
+        }
+
         private IReadOnlyList<string> BuildCashShopListOwnerLines(AdminShopDialogUI cashShopWindow)
         {
             List<string> lines = new(cashShopWindow?.DescribeListOwnerState() ?? Array.Empty<string>());
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow stageWindow)
             {
+                if (!string.IsNullOrWhiteSpace(stageWindow.CashPurchaseRecordSummary))
+                {
+                    lines.Add(stageWindow.CashPurchaseRecordSummary);
+                }
+
                 foreach (string recentPacket in stageWindow.GetRecentPacketSummaries())
                 {
                     lines.Add(recentPacket);

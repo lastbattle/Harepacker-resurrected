@@ -183,6 +183,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly Dictionary<char, IDXObject> _scoreFont = new();
         private readonly Dictionary<char, IDXObject> _timeFont = new();
         private readonly Dictionary<string, IDXObject> _objectFrameCache = new(StringComparer.OrdinalIgnoreCase);
+        private SoundManager _soundManager;
         private IDXObject _boardBackground;
         private List<IDXObject> _activeResultFrames;
         private int _resultFrameIndex;
@@ -199,6 +200,12 @@ namespace HaCreator.MapSimulator.Fields
         private int _messageDurationMs = DefaultMessageDurationMs;
         private int _finalScoreMessageDurationMs = DefaultMessageDurationMs;
         private string _eventName = "Coconut harvest begins!";
+        private string _victoryEffectPath = "event/coconut/victory";
+        private string _loseEffectPath = "event/coconut/lose";
+        private string _victorySoundPath = "Coconut/Victory";
+        private string _loseSoundPath = "Coconut/Failed";
+        private string _victorySoundKey;
+        private string _loseSoundKey;
         // UI
         private string _currentMessage;
         private int _messageEndTime;
@@ -225,11 +232,16 @@ namespace HaCreator.MapSimulator.Fields
         internal int FinalScoreMessageDurationMs => _finalScoreMessageDurationMs;
         internal string EventName => _eventName;
         internal bool HasClientClock => _finishTick != 0;
+        internal string VictoryEffectPath => _victoryEffectPath;
+        internal string LoseEffectPath => _loseEffectPath;
+        internal string VictorySoundPath => _victorySoundPath;
+        internal string LoseSoundPath => _loseSoundPath;
         #endregion
         #region Initialization
         public void Initialize(GraphicsDevice graphicsDevice, SoundManager soundManager = null)
         {
             _graphicsDevice = graphicsDevice;
+            _soundManager = soundManager;
         }
         public void BindMap(Board board)
         {
@@ -614,7 +626,8 @@ namespace HaCreator.MapSimulator.Fields
                 : _team0Score < _team1Score
                     ? "Team Story wins!"
                     : "It's a tie!";
-            ShowMessage(winner, 5000, currentTick);
+            ShowMessage(winner, _messageDurationMs, currentTick);
+            PlayResultSound();
             System.Diagnostics.Debug.WriteLine($"[CoconutField] Game ended: {winner}");
         }
         #endregion
@@ -901,10 +914,50 @@ namespace HaCreator.MapSimulator.Fields
             LoadBitmapFont(coconutBoard?["fontTime"], _timeFont, "0123456789:");
             WzImage effectImage = global::HaCreator.Program.FindImage("Map", "Effect.img")
                 ?? global::HaCreator.Program.FindImage("Map", "effect.img");
-            WzImageProperty coconutRoot = effectImage?["event"]?["coconut"];
-            LoadAnimatedFrames(coconutRoot?["victory"], _victoryFrames);
-            LoadAnimatedFrames(coconutRoot?["lose"], _loseFrames);
+            LoadAnimatedFrames(ResolveSlashPathProperty(effectImage, _victoryEffectPath), _victoryFrames);
+            LoadAnimatedFrames(ResolveSlashPathProperty(effectImage, _loseEffectPath), _loseFrames);
+            EnsureResultSoundRegistered();
             _assetsLoaded = true;
+        }
+        private void EnsureResultSoundRegistered()
+        {
+            if (_soundManager == null)
+            {
+                return;
+            }
+
+            WzImage soundImage = global::HaCreator.Program.FindImage("Sound", "Field.img");
+            RegisterResultSound(soundImage, _victorySoundPath, ref _victorySoundKey);
+            RegisterResultSound(soundImage, _loseSoundPath, ref _loseSoundKey);
+        }
+        private void RegisterResultSound(WzImage soundImage, string soundPath, ref string soundKey)
+        {
+            if (string.IsNullOrWhiteSpace(soundPath) || !string.IsNullOrWhiteSpace(soundKey))
+            {
+                return;
+            }
+
+            if (ResolveSlashPathProperty(soundImage, soundPath) is not WzBinaryProperty sound)
+            {
+                return;
+            }
+
+            soundKey = $"CoconutField:{soundPath.Replace('/', ':')}";
+            _soundManager.RegisterSound(soundKey, sound);
+        }
+        private void PlayResultSound()
+        {
+            string soundKey = _lastRoundResult switch
+            {
+                RoundResult.Victory => _victorySoundKey,
+                RoundResult.Lose => _loseSoundKey,
+                _ => null
+            };
+
+            if (!string.IsNullOrWhiteSpace(soundKey))
+            {
+                _soundManager?.PlaySound(soundKey);
+            }
         }
         private void LoadBitmapFont(WzImageProperty source, Dictionary<char, IDXObject> target, string characters)
         {
@@ -1200,6 +1253,10 @@ namespace HaCreator.MapSimulator.Fields
             _messageDurationMs = DefaultMessageDurationMs;
             _finalScoreMessageDurationMs = DefaultMessageDurationMs;
             _eventName = "Coconut harvest begins!";
+            _victoryEffectPath = "event/coconut/victory";
+            _loseEffectPath = "event/coconut/lose";
+            _victorySoundPath = "Coconut/Victory";
+            _loseSoundPath = "Coconut/Failed";
 
             if (mapImage?["coconut"] is not WzImageProperty coconutConfig)
             {
@@ -1219,6 +1276,30 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _eventName = authoredEventName.Trim();
             }
+
+            string authoredVictoryEffect = InfoTool.GetOptionalString(coconutConfig["effectWin"]);
+            if (!string.IsNullOrWhiteSpace(authoredVictoryEffect))
+            {
+                _victoryEffectPath = authoredVictoryEffect.Trim();
+            }
+
+            string authoredLoseEffect = InfoTool.GetOptionalString(coconutConfig["effectLose"]);
+            if (!string.IsNullOrWhiteSpace(authoredLoseEffect))
+            {
+                _loseEffectPath = authoredLoseEffect.Trim();
+            }
+
+            string authoredVictorySound = InfoTool.GetOptionalString(coconutConfig["soundWin"]);
+            if (!string.IsNullOrWhiteSpace(authoredVictorySound))
+            {
+                _victorySoundPath = authoredVictorySound.Trim();
+            }
+
+            string authoredLoseSound = InfoTool.GetOptionalString(coconutConfig["soundLose"]);
+            if (!string.IsNullOrWhiteSpace(authoredLoseSound))
+            {
+                _loseSoundPath = authoredLoseSound.Trim();
+            }
         }
         internal void ConfigureAuthoredPreviewForTesting(
             int previewTreeHitCount,
@@ -1232,6 +1313,54 @@ namespace HaCreator.MapSimulator.Fields
             _messageDurationMs = Math.Max(1, messageDurationMs);
             _finalScoreMessageDurationMs = Math.Max(1, finalScoreMessageDurationMs);
             _eventName = string.IsNullOrWhiteSpace(eventName) ? "Coconut harvest begins!" : eventName.Trim();
+        }
+        internal void ConfigureAuthoredAssetsForTesting(
+            string victoryEffectPath,
+            string loseEffectPath,
+            string victorySoundPath,
+            string loseSoundPath)
+        {
+            _victoryEffectPath = string.IsNullOrWhiteSpace(victoryEffectPath) ? "event/coconut/victory" : victoryEffectPath.Trim();
+            _loseEffectPath = string.IsNullOrWhiteSpace(loseEffectPath) ? "event/coconut/lose" : loseEffectPath.Trim();
+            _victorySoundPath = string.IsNullOrWhiteSpace(victorySoundPath) ? "Coconut/Victory" : victorySoundPath.Trim();
+            _loseSoundPath = string.IsNullOrWhiteSpace(loseSoundPath) ? "Coconut/Failed" : loseSoundPath.Trim();
+        }
+        private static WzImageProperty ResolveSlashPathProperty(WzImage image, string path)
+        {
+            if (image == null || string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            string[] segments = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0)
+            {
+                return null;
+            }
+
+            WzImageProperty current = image[segments[0]];
+            for (int i = 1; i < segments.Length && current != null; i++)
+            {
+                current = current[segments[i]];
+            }
+
+            return WzInfoTools.GetRealProperty(current);
+        }
+        private static WzImageProperty ResolveSlashPathProperty(WzImageProperty property, string path)
+        {
+            if (property == null || string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            WzImageProperty current = property;
+            string[] segments = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < segments.Length && current != null; i++)
+            {
+                current = current[segments[i]];
+            }
+
+            return WzInfoTools.GetRealProperty(current);
         }
         private List<IDXObject> CreateFramesForObject(ObjectInstance instance)
         {

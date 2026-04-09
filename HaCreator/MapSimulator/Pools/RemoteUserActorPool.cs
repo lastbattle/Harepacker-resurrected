@@ -1120,17 +1120,48 @@ namespace HaCreator.MapSimulator.Pools
                 : packet.RelationshipRecord.PairCharacterId;
 
             EnsureRelationshipRecordTablesInitialized();
-            RemoteUserRelationshipRecord normalizedRecord = packet.RelationshipRecord with
+            Dictionary<int, RemoteUserRelationshipRecord> recordTable = GetRelationshipRecordTable(packet.RelationshipType);
+            RemoteUserRelationshipRecord normalizedRecord = NormalizeRelationshipRecordAdd(packet, recordTable);
+            normalizedRecord = normalizedRecord with
             {
                 PairCharacterId = pairCharacterId
             };
-            GetRelationshipRecordTable(packet.RelationshipType)[ownerCharacterId.Value] = normalizedRecord;
+            recordTable[ownerCharacterId.Value] = normalizedRecord;
             RefreshRelationshipOverlays(packet.RelationshipType, currentTime);
 
             message = _actorsById.ContainsKey(ownerCharacterId.Value)
                 ? $"Remote user {ownerCharacterId.Value} {packet.RelationshipType} relationship record applied."
                 : $"Stored remote {packet.RelationshipType} relationship record for inactive owner {ownerCharacterId.Value}.";
             return true;
+        }
+
+        private static RemoteUserRelationshipRecord NormalizeRelationshipRecordAdd(
+            RemoteUserRelationshipRecordPacket packet,
+            IReadOnlyDictionary<int, RemoteUserRelationshipRecord> recordTable)
+        {
+            RemoteUserRelationshipRecord normalizedRecord = packet.RelationshipRecord;
+            if (packet.PayloadKind != RemoteRelationshipRecordAddPayloadKind.PairLookup
+                || packet.RelationshipType is not (RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship))
+            {
+                return normalizedRecord;
+            }
+
+            int ownerCharacterId = normalizedRecord.CharacterId ?? 0;
+            if (ownerCharacterId <= 0
+                || recordTable == null
+                || !recordTable.TryGetValue(ownerCharacterId, out RemoteUserRelationshipRecord existingRecord)
+                || !existingRecord.IsActive)
+            {
+                return normalizedRecord;
+            }
+
+            return normalizedRecord with
+            {
+                ItemId = normalizedRecord.ItemId > 0 ? normalizedRecord.ItemId : existingRecord.ItemId,
+                ItemSerial = normalizedRecord.ItemSerial ?? existingRecord.ItemSerial,
+                PairItemSerial = normalizedRecord.PairItemSerial ?? existingRecord.PairItemSerial,
+                PairCharacterId = normalizedRecord.PairCharacterId ?? existingRecord.PairCharacterId
+            };
         }
 
         public bool TryApplyRelationshipRecordRemove(
@@ -5468,10 +5499,58 @@ namespace HaCreator.MapSimulator.Pools
             if (CharacterPart.TryGetActionStringFromCode(actor.BaseActionRawCode.Value, out string rawActionName))
             {
                 string normalizedRawActionName = NormalizeActionName(rawActionName, allowSitFallback: false);
-                return string.Equals(normalizedRawActionName, normalizedObservedActionName, StringComparison.OrdinalIgnoreCase);
+                if (string.Equals(normalizedRawActionName, normalizedObservedActionName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                if (ShadowPartnerHelperActionFamiliesMatch(rawActionName, observedPlayerActionName))
+                {
+                    return true;
+                }
             }
 
-            return false;
+            return ShadowPartnerHelperActionFamiliesMatch(actor.BaseActionName, observedPlayerActionName);
+        }
+
+        private static bool ShadowPartnerHelperActionFamiliesMatch(string leftActionName, string rightActionName)
+        {
+            if (string.IsNullOrWhiteSpace(leftActionName) || string.IsNullOrWhiteSpace(rightActionName))
+            {
+                return false;
+            }
+
+            string normalizedLeftActionName = NormalizeActionName(leftActionName, allowSitFallback: false);
+            string normalizedRightActionName = NormalizeActionName(rightActionName, allowSitFallback: false);
+            if (string.Equals(normalizedLeftActionName, normalizedRightActionName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var leftCandidates = CollectShadowPartnerHelperActionIdentityCandidates(leftActionName);
+            var rightCandidates = CollectShadowPartnerHelperActionIdentityCandidates(rightActionName);
+            return leftCandidates.Overlaps(rightCandidates);
+        }
+
+        private static HashSet<string> CollectShadowPartnerHelperActionIdentityCandidates(string actionName)
+        {
+            var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string normalizedActionName = NormalizeActionName(actionName, allowSitFallback: false);
+            if (!string.IsNullOrWhiteSpace(normalizedActionName))
+            {
+                candidates.Add(normalizedActionName);
+            }
+
+            foreach (string alias in ShadowPartnerClientActionResolver.EnumerateClientActionAliases(actionName))
+            {
+                string normalizedAlias = NormalizeActionName(alias, allowSitFallback: false);
+                if (!string.IsNullOrWhiteSpace(normalizedAlias))
+                {
+                    candidates.Add(normalizedAlias);
+                }
+            }
+
+            return candidates;
         }
 
         private static int ResolveRemoteShadowPartnerObservedActionTriggerTime(RemoteUserActor actor, PlayerState state)

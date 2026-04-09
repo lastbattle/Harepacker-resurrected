@@ -70,6 +70,8 @@ namespace HaCreator.MapSimulator.Entities
         private readonly ReactorInstance _reactorInstance;
         private readonly Dictionary<int, IDXObject[]> _stateFrames;
         private readonly Dictionary<int, int> _stateHitDurations;
+        private readonly Dictionary<(int State, int ProperEventIndex), int> _stateIndexedHitDurations;
+        private readonly Dictionary<int, bool> _stateRepeatModes;
         private readonly Dictionary<int, AuthoredStateTransition[]> _stateTransitions;
         private readonly int[] _availableStates;
         private readonly int _templateLayerMode;
@@ -93,6 +95,8 @@ namespace HaCreator.MapSimulator.Entities
             _reactorInstance = reactorInstance;
             _stateFrames = new Dictionary<int, IDXObject[]>();
             _stateHitDurations = new Dictionary<int, int>();
+            _stateIndexedHitDurations = new Dictionary<(int State, int ProperEventIndex), int>();
+            _stateRepeatModes = new Dictionary<int, bool>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
             _availableStates = Array.Empty<int>();
             _templateLayerMode = 0;
@@ -106,6 +110,8 @@ namespace HaCreator.MapSimulator.Entities
             _reactorInstance = reactorInstance;
             _stateFrames = new Dictionary<int, IDXObject[]>();
             _stateHitDurations = LoadStateHitDurations(reactorInstance);
+            _stateIndexedHitDurations = LoadStateIndexedHitDurations(reactorInstance);
+            _stateRepeatModes = LoadStateRepeatModes(reactorInstance);
             _stateTransitions = LoadStateTransitions(reactorInstance);
             _templateLayerMode = LoadTemplateLayerMode(reactorInstance);
             _originWorldX = reactorInstance?.X ?? 0;
@@ -132,6 +138,8 @@ namespace HaCreator.MapSimulator.Entities
             _reactorInstance = reactorInstance;
             _stateFrames = new Dictionary<int, IDXObject[]>();
             _stateHitDurations = new Dictionary<int, int>();
+            _stateIndexedHitDurations = new Dictionary<(int State, int ProperEventIndex), int>();
+            _stateRepeatModes = new Dictionary<int, bool>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
             _availableStates = Array.Empty<int>();
             _templateLayerMode = 0;
@@ -143,10 +151,10 @@ namespace HaCreator.MapSimulator.Entities
 
         public int TemplateLayerMode => _templateLayerMode;
 
-        public void SetAnimationState(int state, int tickCount)
+        public void SetAnimationState(int state, int tickCount, bool restartIfSameState = false)
         {
             int resolvedState = ResolveState(state);
-            if (resolvedState == _activeState)
+            if (resolvedState == _activeState && !restartIfSameState)
                 return;
 
             _activeState = resolvedState;
@@ -372,6 +380,30 @@ namespace HaCreator.MapSimulator.Entities
                 : 0;
         }
 
+        public bool TryGetHitAnimationDuration(int state, int properEventIndex, out int duration)
+        {
+            int resolvedState = ResolveState(state);
+            if (properEventIndex >= 0
+                && _stateIndexedHitDurations.TryGetValue((resolvedState, properEventIndex), out duration))
+            {
+                return true;
+            }
+
+            if (_stateHitDurations.TryGetValue(resolvedState, out duration))
+            {
+                return true;
+            }
+
+            duration = 0;
+            return false;
+        }
+
+        public bool IsStateRepeat(int state)
+        {
+            int resolvedState = ResolveState(state);
+            return !_stateRepeatModes.TryGetValue(resolvedState, out bool repeat) || repeat;
+        }
+
         internal bool TryResolveAutoHitEventIndex(int currentState, ReactorType reactorType, out int eventIndex)
         {
             AuthoredStateTransition[] transitions = GetAuthoredTransitions(
@@ -462,6 +494,7 @@ namespace HaCreator.MapSimulator.Entities
             if (frames.Length > 1)
             {
                 int elapsed = tickCount - _lastStateTick;
+                bool repeat = IsStateRepeat(_activeState);
                 while (elapsed > 0)
                 {
                     int currentDelay = Math.Max(1, frames[_activeFrameIndex].Delay);
@@ -469,6 +502,13 @@ namespace HaCreator.MapSimulator.Entities
                         break;
 
                     elapsed -= currentDelay;
+                    if (!repeat && _activeFrameIndex >= frames.Length - 1)
+                    {
+                        _lastStateTick = tickCount - elapsed;
+                        _activeFrameIndex = frames.Length - 1;
+                        break;
+                    }
+
                     _activeFrameIndex = (_activeFrameIndex + 1) % frames.Length;
                     _lastStateTick += currentDelay;
                 }
@@ -552,12 +592,24 @@ namespace HaCreator.MapSimulator.Entities
                 return Array.Empty<AuthoredStateTransition>();
             }
 
-            if (request.ActivationValue <= 0
-                || (request.ActivationType != ReactorActivationType.Item
-                    && request.ActivationType != ReactorActivationType.Skill
-                    && request.ActivationType != ReactorActivationType.Quest))
+            bool isSelectorDrivenActivation = request.ActivationType == ReactorActivationType.Item
+                || request.ActivationType == ReactorActivationType.Skill
+                || request.ActivationType == ReactorActivationType.Quest;
+
+            if (!isSelectorDrivenActivation)
             {
                 return transitions;
+            }
+
+            if (request.ActivationValue <= 0)
+            {
+                AuthoredStateTransition[] genericTransitions = transitions
+                    .Where(transition => transition.SelectorValues.Length == 0)
+                    .ToArray();
+
+                return genericTransitions.Length > 0
+                    ? genericTransitions
+                    : transitions;
             }
 
             AuthoredStateTransition[] filteredTransitions = transitions
@@ -571,9 +623,14 @@ namespace HaCreator.MapSimulator.Entities
 
         private static int GetSelectorPriority(AuthoredStateTransition transition, ReactorTransitionRequest request)
         {
-            if (request.ActivationValue <= 0)
+            if (transition.SelectorValues.Length == 0)
             {
                 return 0;
+            }
+
+            if (request.ActivationValue <= 0)
+            {
+                return 1;
             }
 
             if (transition.SelectorValues.Contains(request.ActivationValue))
@@ -581,7 +638,7 @@ namespace HaCreator.MapSimulator.Entities
                 return 0;
             }
 
-            return transition.SelectorValues.Length > 0 ? 2 : 1;
+            return 2;
         }
 
         private static int GetEventTypePriority(int eventType, ReactorTransitionRequest request)
@@ -718,6 +775,77 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return hitDurations;
+        }
+
+        private static Dictionary<(int State, int ProperEventIndex), int> LoadStateIndexedHitDurations(ReactorInstance reactorInstance)
+        {
+            var hitDurations = new Dictionary<(int State, int ProperEventIndex), int>();
+
+            WzImage linkedImage = reactorInstance?.ReactorInfo?.LinkedWzImage;
+            if (linkedImage == null)
+            {
+                return hitDurations;
+            }
+
+            foreach (WzImageProperty property in linkedImage.WzProperties)
+            {
+                if (!int.TryParse(property?.Name, out int stateId))
+                {
+                    continue;
+                }
+
+                WzImageProperty realStateProperty = WzInfoTools.GetRealProperty(property);
+                if (realStateProperty?.WzProperties == null)
+                {
+                    continue;
+                }
+
+                foreach (WzImageProperty child in realStateProperty.WzProperties)
+                {
+                    if (!int.TryParse(child?.Name, out int properEventIndex))
+                    {
+                        continue;
+                    }
+
+                    int duration = TryReadHitDuration(child);
+                    if (duration > 0)
+                    {
+                        hitDurations[(stateId, properEventIndex)] = duration;
+                    }
+                }
+            }
+
+            return hitDurations;
+        }
+
+        private static Dictionary<int, bool> LoadStateRepeatModes(ReactorInstance reactorInstance)
+        {
+            var repeatModes = new Dictionary<int, bool>();
+
+            WzImage linkedImage = reactorInstance?.ReactorInfo?.LinkedWzImage;
+            if (linkedImage == null)
+            {
+                return repeatModes;
+            }
+
+            foreach (WzImageProperty property in linkedImage.WzProperties)
+            {
+                if (!int.TryParse(property?.Name, out int stateId))
+                {
+                    continue;
+                }
+
+                WzImageProperty realStateProperty = WzInfoTools.GetRealProperty(property);
+                int? repeatValue =
+                    TryReadOptionalInt(WzInfoTools.GetRealProperty(realStateProperty?["repeat"])) ??
+                    TryReadOptionalInt(WzInfoTools.GetRealProperty(realStateProperty?["info"]?["repeat"]));
+                if (repeatValue.HasValue)
+                {
+                    repeatModes[stateId] = repeatValue.Value != 0;
+                }
+            }
+
+            return repeatModes;
         }
 
         private static int TryReadHitDuration(WzImageProperty property)

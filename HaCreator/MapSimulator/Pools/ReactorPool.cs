@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using HaCreator.MapSimulator.Entities;
@@ -106,6 +107,7 @@ namespace HaCreator.MapSimulator.Pools
         public int PacketStateEndTime { get; set; }
         public int PacketAnimationEndTime { get; set; }
         public int PacketAnimationSourceState { get; set; } = -1;
+        public int PacketHitAnimationState { get; set; } = -1;
         public int PacketPendingVisualState { get; set; } = -1;
         public int PacketProperEventIndex { get; set; } = -1;
         internal ReactorActivationTypeMask SupportedActivationTypes { get; set; } = ReactorActivationTypeMask.None;
@@ -128,6 +130,8 @@ namespace HaCreator.MapSimulator.Pools
         public QuestStateType? RequiredQuestState { get; init; }
         public IReadOnlyList<string> ScriptNames { get; init; } = Array.Empty<string>();
     }
+
+    public readonly record struct ReactorFootholdPlacement(int Page, int ZMass);
 
     /// <summary>
     /// Reactor Pool System - Manages reactors, spawning, and touch/skill detection
@@ -163,6 +167,8 @@ namespace HaCreator.MapSimulator.Pools
         private Action<ReactorItem, int> _onReactorTouched;  // (reactor, playerId)
         private Action<ReactorItem, int> _onReactorHit;      // (reactor, playerId)
         private Action<ReactorItem, IReadOnlyList<string>, bool, int> _onReactorScriptStateChanged;
+        private Action<string> _onReactorLayerSoundRequested;
+        private Func<int, int, ReactorFootholdPlacement?> _reactorFootholdPlacementResolver;
 
         // Factory for creating new reactor items
         private Func<ReactorSpawnPoint, GraphicsDevice, ReactorItem> _reactorFactory;
@@ -183,6 +189,21 @@ namespace HaCreator.MapSimulator.Pools
         public void SetOnReactorTouched(Action<ReactorItem, int> callback) => _onReactorTouched = callback;
         public void SetOnReactorHit(Action<ReactorItem, int> callback) => _onReactorHit = callback;
         public void SetOnReactorScriptStateChanged(Action<ReactorItem, IReadOnlyList<string>, bool, int> callback) => _onReactorScriptStateChanged = callback;
+        public void SetOnReactorLayerSoundRequested(Action<string> callback) => _onReactorLayerSoundRequested = callback;
+        public void SetReactorFootholdPlacementResolver(Func<int, int, ReactorFootholdPlacement?> callback) => _reactorFootholdPlacementResolver = callback;
+
+        public void RefreshReactorLayerPlacements()
+        {
+            if (_reactors == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _reactors.Length; i++)
+            {
+                RefreshReactorLayerPlacement(_reactors[i]);
+            }
+        }
         #endregion
 
         #region Initialization
@@ -238,6 +259,7 @@ namespace HaCreator.MapSimulator.Pools
                     PacketStateEndTime = 0,
                     PacketAnimationEndTime = 0,
                     PacketAnimationSourceState = -1,
+                    PacketHitAnimationState = -1,
                     PacketPendingVisualState = -1,
                     PacketProperEventIndex = -1,
                     RequiredItemId = interactionMetadata.RequiredItemId,
@@ -249,6 +271,7 @@ namespace HaCreator.MapSimulator.Pools
                     PreferredAuthoredActivationType = ReactorActivationType.None
                 };
                 _reactorData[i] = data;
+                RefreshReactorLayerPlacement(reactor);
 
                 // Add to name lookup
                 AddReactorNameLookup(instance.Name, i);
@@ -769,6 +792,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
 
             var request = new ReactorTransitionRequest(activationType, data.ReactorType, activationValue);
+            int previousVisualState = data.VisualState;
             if (!reactor.CanActivateFromState(data.VisualState, request))
             {
                 return false;
@@ -779,6 +803,7 @@ namespace HaCreator.MapSimulator.Pools
                 data.VisualState = nextVisualState;
                 SyncReactorVisualState(reactor, data, currentTick);
                 UpdatePreferredAuthoredOrder(data, activationType, selectedAuthoredOrder);
+                RefreshReactorLayerPlacement(reactor);
             }
             else
             {
@@ -798,6 +823,11 @@ namespace HaCreator.MapSimulator.Pools
                 _onReactorTouched?.Invoke(reactor, playerId);
             else if (activationType == ReactorActivationType.Hit || activationType == ReactorActivationType.Skill)
                 _onReactorHit?.Invoke(reactor, playerId);
+
+            if (activationType == ReactorActivationType.Hit)
+            {
+                TryPlayReactorHitSound(reactor, previousVisualState);
+            }
 
             _onReactorActivated?.Invoke(reactor, playerId);
             return true;
@@ -848,6 +878,8 @@ namespace HaCreator.MapSimulator.Pools
                         data.StateFrame = 0;
                         data.ActivatingPlayerId = playerId;
                         UpdatePreferredAuthoredOrder(data, ReactorActivationType.Hit, selectedAuthoredOrder);
+                        RefreshReactorLayerPlacement(reactor);
+                        TryPlayReactorHitSound(reactor, data.PacketHitAnimationState >= 0 ? data.PacketHitAnimationState : data.VisualState);
                     }
                     else
                     {
@@ -925,11 +957,13 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketStateEndTime = 0;
             data.PacketAnimationEndTime = 0;
             data.PacketAnimationSourceState = -1;
+            data.PacketHitAnimationState = -1;
             data.PacketPendingVisualState = -1;
             data.PacketProperEventIndex = -1;
             data.PreferredAuthoredEventOrder = -1;
             data.PreferredAuthoredActivationType = ReactorActivationType.None;
             PublishScriptState(reactor, data, isEnabled: false, currentTick);
+            RefreshReactorLayerPlacement(reactor);
         }
 
         public void RefreshQuestReactors(int currentTick)
@@ -1181,6 +1215,7 @@ namespace HaCreator.MapSimulator.Pools
                     data.ScriptStatePublished = false;
                     data.PreferredAuthoredEventOrder = -1;
                     data.PreferredAuthoredActivationType = ReactorActivationType.None;
+                    RefreshReactorLayerPlacement(newReactor);
                 }
 
                 AddReactorNameLookup(newReactor?.ReactorInstance?.Name, spawnIndex);
@@ -1338,6 +1373,7 @@ namespace HaCreator.MapSimulator.Pools
                 PacketStateEndTime = currentTick + 800,
                 PacketAnimationEndTime = 0,
                 PacketAnimationSourceState = -1,
+                PacketHitAnimationState = -1,
                 PacketPendingVisualState = -1,
                 PacketProperEventIndex = -1,
                 PreferredAuthoredEventOrder = -1,
@@ -1398,10 +1434,12 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketStateEndTime = ResolvePacketStateEndTime(currentTick, stateEndDelayTicks);
             data.PacketAnimationEndTime = 0;
             data.PacketAnimationSourceState = previousVisualState;
+            data.PacketHitAnimationState = previousVisualState;
             data.PacketPendingVisualState = state;
             data.State = ReactorState.Activated;
             data.StateStartTime = currentTick;
             SyncPacketScriptPublication(reactor, data, currentTick);
+            RefreshReactorLayerPlacement(reactor);
             message = $"Applied packet-owned reactor state {state} to object {packetObjectId} at ({x}, {y}).";
             return true;
         }
@@ -1430,6 +1468,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             data.StateStartTime = currentTick;
+            RefreshReactorLayerPlacement(reactor);
             message = $"Moved packet-owned reactor {packetObjectId} to ({x}, {y}).";
             return true;
         }
@@ -1456,6 +1495,7 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketLeavePending = true;
             data.PacketProperEventIndex = -2;
             data.PacketAnimationSourceState = previousVisualState;
+            data.PacketHitAnimationState = previousVisualState;
             bool hasAuthoredStateEvents = reactor.HasAuthoredEventInfo(state);
             data.PacketPendingVisualState = hasAuthoredStateEvents ? -1 : state;
             data.PacketHitStartTime = ResolvePacketLeaveHitStartTime(currentTick, hasAuthoredStateEvents);
@@ -1464,6 +1504,7 @@ namespace HaCreator.MapSimulator.Pools
                 : 0;
             data.PacketStateEndTime = 0;
             data.CanRespawn = false;
+            RefreshReactorLayerPlacement(reactor);
             message = $"Queued packet-owned reactor {packetObjectId} for leave-field removal from ({x}, {y}).";
             return true;
         }
@@ -1499,7 +1540,7 @@ namespace HaCreator.MapSimulator.Pools
                             ApplyPendingPacketVisualState(reactor, data, currentTick);
                             data.PacketAnimationEndTime = ResolvePacketAnimationEndTime(
                                 currentTick,
-                                ResolvePacketHitAnimationDuration(reactor, data));
+                                ResolvePacketHitAnimationDuration(reactor, data, _onReactorLayerSoundRequested));
                         }
 
                         if (data.PacketHitStartTime == 0
@@ -1519,7 +1560,7 @@ namespace HaCreator.MapSimulator.Pools
                         ApplyPendingPacketVisualState(reactor, data, currentTick);
                         data.PacketAnimationEndTime = ResolvePacketAnimationEndTime(
                             currentTick,
-                            ResolvePacketHitAnimationDuration(reactor, data));
+                            ResolvePacketHitAnimationDuration(reactor, data, _onReactorLayerSoundRequested));
 
                         if (data.PacketAnimationEndTime <= 0)
                         {
@@ -1819,7 +1860,7 @@ namespace HaCreator.MapSimulator.Pools
             reactor.SetFlipState(flip);
             if (applyAnimationState)
             {
-                reactor.SetAnimationState(state, currentTick);
+                reactor.SetAnimationState(state, currentTick, restartIfSameState: true);
             }
 
             data.VisualState = state;
@@ -1831,6 +1872,7 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketStateEndTime = 0;
             data.PacketAnimationEndTime = 0;
             data.PacketAnimationSourceState = -1;
+            data.PacketHitAnimationState = -1;
             data.PacketPendingVisualState = applyAnimationState ? -1 : state;
             ClearPreferredAuthoredOrder(data);
 
@@ -1843,6 +1885,8 @@ namespace HaCreator.MapSimulator.Pools
                 spawnPoint.IsActive = true;
                 spawnPoint.CurrentReactor = reactor;
             }
+
+            RefreshReactorLayerPlacement(reactor);
         }
 
         private static bool IsPacketAnimationClockRunning(ReactorRuntimeData data)
@@ -1853,16 +1897,17 @@ namespace HaCreator.MapSimulator.Pools
                     || data.PacketAnimationEndTime > 0);
         }
 
-        private static void ApplyPendingPacketVisualState(ReactorItem reactor, ReactorRuntimeData data, int currentTick)
+        private void ApplyPendingPacketVisualState(ReactorItem reactor, ReactorRuntimeData data, int currentTick)
         {
             if (reactor == null || data == null || data.PacketPendingVisualState < 0)
             {
                 return;
             }
 
-            reactor.SetAnimationState(data.PacketPendingVisualState, currentTick);
+            reactor.SetAnimationState(data.PacketPendingVisualState, currentTick, restartIfSameState: true);
             data.PacketAnimationSourceState = data.PacketPendingVisualState;
             data.PacketPendingVisualState = -1;
+            RefreshReactorLayerPlacement(reactor);
         }
 
         private static void SyncReactorVisualState(ReactorItem reactor, ReactorRuntimeData data, int currentTick)
@@ -1874,6 +1919,23 @@ namespace HaCreator.MapSimulator.Pools
 
             reactor.SetAnimationState(data.VisualState, currentTick);
             data.StateFrame = reactor.GetCurrentFrameIndex(currentTick);
+        }
+
+        private void RefreshReactorLayerPlacement(ReactorItem reactor)
+        {
+            if (reactor?.ReactorInstance == null)
+            {
+                return;
+            }
+
+            int x = reactor.ReactorInstance.X;
+            int y = reactor.ReactorInstance.Y;
+            ReactorFootholdPlacement placement = _reactorFootholdPlacementResolver?.Invoke(x, y)
+                ?? new ReactorFootholdPlacement(0, 0);
+            reactor.RenderSortKey = ResolveReactorRenderSortKey(
+                placement.Page,
+                placement.ZMass,
+                reactor.TemplateLayerMode);
         }
 
         private void SyncPacketScriptPublication(ReactorItem reactor, ReactorRuntimeData data, int currentTick)
@@ -2047,6 +2109,7 @@ namespace HaCreator.MapSimulator.Pools
             data.StateStartTime = currentTick;
             data.StateFrame = 0;
             UpdatePreferredAuthoredOrder(data, ReactorActivationType.Time, selectedAuthoredOrder);
+            RefreshReactorLayerPlacement(reactor);
             return true;
         }
 
@@ -2075,6 +2138,7 @@ namespace HaCreator.MapSimulator.Pools
             data.ActivatingPlayerId = 0;
             UpdatePreferredAuthoredOrder(data, ReactorActivationType.Time, selectedAuthoredOrder);
             PublishScriptState(reactor, data, isEnabled: true, currentTick);
+            RefreshReactorLayerPlacement(reactor);
             _onReactorActivated?.Invoke(reactor, 0);
             return true;
         }
@@ -2099,6 +2163,7 @@ namespace HaCreator.MapSimulator.Pools
             data.StateStartTime = currentTick;
             data.StateFrame = 0;
             UpdatePreferredAuthoredOrder(data, activationType, selectedAuthoredOrder);
+            RefreshReactorLayerPlacement(reactor);
             return true;
         }
 
@@ -2161,21 +2226,24 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static int ResolvePacketClientHitStartTime(int currentTick, int hitStartDelayMs)
         {
-            return currentTick + Math.Max(1, Math.Max(0, hitStartDelayMs));
+            int hitStartTime = currentTick + Math.Max(0, hitStartDelayMs);
+            return hitStartTime == 0 ? 1 : hitStartTime;
         }
 
         internal static int ResolvePacketLeaveHitStartTime(int currentTick, bool hasAuthoredStateEvents)
         {
-            return hasAuthoredStateEvents
-                ? 0
-                : currentTick + 400;
+            if (hasAuthoredStateEvents)
+            {
+                return 0;
+            }
+
+            int hitStartTime = currentTick + 400;
+            return hitStartTime == 0 ? 1 : hitStartTime;
         }
 
         internal static int ResolvePacketStateEndTime(int currentTick, int stateEndDelayTicks)
         {
-            return stateEndDelayTicks > 0
-                ? currentTick + (stateEndDelayTicks * 100)
-                : 0;
+            return currentTick + (Math.Max(0, stateEndDelayTicks) * 100);
         }
 
         internal static int ResolvePacketAnimationEndTime(int currentTick, int animationDurationMs)
@@ -2185,17 +2253,88 @@ namespace HaCreator.MapSimulator.Pools
                 : 0;
         }
 
-        private static int ResolvePacketHitAnimationDuration(ReactorItem reactor, ReactorRuntimeData data)
+        private static int ResolvePacketHitAnimationDuration(ReactorItem reactor, ReactorRuntimeData data, Action<string> playHitSound)
         {
             if (reactor == null || data == null)
             {
                 return 0;
             }
 
-            int sourceState = data.PacketAnimationSourceState >= 0
-                ? data.PacketAnimationSourceState
-                : data.VisualState;
-            return reactor.GetHitAnimationDuration(sourceState);
+            int sourceState = ResolvePacketHitAnimationState(data);
+            int properEventIndex = data.PacketProperEventIndex;
+            if (properEventIndex < 0
+                && reactor.TryResolveAutoHitEventIndex(sourceState, data.ReactorType, out int autoEventIndex))
+            {
+                properEventIndex = autoEventIndex;
+                data.PacketProperEventIndex = autoEventIndex;
+                UpdatePreferredAuthoredOrder(data, ReactorActivationType.Hit, autoEventIndex);
+            }
+
+            if (!reactor.TryGetHitAnimationDuration(sourceState, properEventIndex, out int duration))
+            {
+                return 0;
+            }
+
+            string descriptor = BuildReactorHitSoundDescriptor(reactor, sourceState);
+            if (!string.IsNullOrWhiteSpace(descriptor))
+            {
+                playHitSound?.Invoke(descriptor);
+            }
+
+            return duration;
+        }
+
+        internal static int ResolvePacketHitAnimationState(ReactorRuntimeData data)
+        {
+            if (data == null)
+            {
+                return 0;
+            }
+
+            return data.PacketHitAnimationState >= 0
+                ? data.PacketHitAnimationState
+                : data.PacketAnimationSourceState >= 0
+                    ? data.PacketAnimationSourceState
+                    : data.VisualState;
+        }
+
+        private static string BuildReactorHitSoundDescriptor(ReactorItem reactor, int sourceState)
+        {
+            string templateId = reactor?.ReactorInstance?.ReactorInfo?.ID;
+            if (string.IsNullOrWhiteSpace(templateId))
+            {
+                return null;
+            }
+
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                0x0849,
+                "Sound/Reactor.img/{0}/{1}",
+                2,
+                out bool _);
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                format,
+                templateId,
+                sourceState.ToString(CultureInfo.InvariantCulture));
+        }
+
+        private static int ResolveReactorRenderSortKey(int page, int zMass, int templateLayerMode)
+        {
+            return templateLayerMode switch
+            {
+                1 => 30000 * page,
+                2 => 268200,
+                _ => (30000 * page) - (10 * zMass)
+            };
+        }
+
+        private void TryPlayReactorHitSound(ReactorItem reactor, int sourceState)
+        {
+            string descriptor = BuildReactorHitSoundDescriptor(reactor, sourceState);
+            if (!string.IsNullOrWhiteSpace(descriptor))
+            {
+                _onReactorLayerSoundRequested?.Invoke(descriptor);
+            }
         }
 
         private static bool TryResolveNextVisualState(

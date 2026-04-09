@@ -64,6 +64,7 @@ namespace HaCreator.MapSimulator.UI
         private bool _drawSecondaryButtonLabel;
         private LoginUtilityDialogButtonLayout _buttonLayout = LoginUtilityDialogButtonLayout.Ok;
         private LoginUtilityDialogVisualStyle _visualStyle = LoginUtilityDialogVisualStyle.Default;
+        private LoginUtilityDialogFrameVariant _frameVariant = LoginUtilityDialogFrameVariant.Default;
         private KeyboardState _previousKeyboardState;
         private bool _inputMasked;
         private int _inputMaxLength;
@@ -179,6 +180,7 @@ namespace HaCreator.MapSimulator.UI
             _inputValue = inputValue ?? string.Empty;
             _softKeyboardType = softKeyboardType;
             _visualStyle = visualStyle;
+            _frameVariant = frameVariant;
             Frame = ResolveFrame(frameVariant);
             CenterFrame(Frame);
             _inputBoundsOverride = inputBoundsOverride;
@@ -269,7 +271,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             float y;
-            if (_noticeTextIndex.HasValue &&
+            if (UsesCompactFadeYesNoLayout)
+            {
+                y = Position.Y + 15;
+            }
+            else if (_noticeTextIndex.HasValue &&
                 _noticeTextTextures.TryGetValue(_noticeTextIndex.Value, out Texture2D noticeTextTexture) &&
                 noticeTextTexture != null)
             {
@@ -287,16 +293,23 @@ namespace HaCreator.MapSimulator.UI
             }
             else
             {
-                SelectorWindowDrawing.DrawShadowedText(
-                    sprite,
-                    _font,
-                    _title,
-                    new Vector2(Position.X + TextOffsetX, Position.Y + TextOffsetY),
-                    Color.White);
+                if (!UsesCompactFadeYesNoLayout)
+                {
+                    SelectorWindowDrawing.DrawShadowedText(
+                        sprite,
+                        _font,
+                        _title,
+                        new Vector2(Position.X + TextOffsetX, Position.Y + TextOffsetY),
+                        Color.White);
 
-                y = Position.Y + TextOffsetY + _font.LineSpacing + 6;
+                    y = Position.Y + TextOffsetY + _font.LineSpacing + 6;
+                }
+                else
+                {
+                    y = Position.Y + 15;
+                }
             }
-            foreach (string line in WrapText(_body, BodyWrapWidth))
+            foreach (string line in WrapText(_body, ResolveBodyWrapWidth()))
             {
                 SelectorWindowDrawing.DrawShadowedText(
                     sprite,
@@ -436,17 +449,27 @@ namespace HaCreator.MapSimulator.UI
             if (_activePrimaryButton != null && _activeSecondaryButton != null)
             {
                 (int primaryX, int secondaryX) = ResolveTwoButtonLayoutPositions();
-                PositionButton(_activePrimaryButton, primaryX, DialogButtonY);
-                PositionButton(_activeSecondaryButton, secondaryX, DialogButtonY);
+                PositionButton(_activePrimaryButton, primaryX, ResolveButtonY(_activePrimaryButton));
+                PositionButton(_activeSecondaryButton, secondaryX, ResolveButtonY(_activeSecondaryButton));
             }
             else if (_activePrimaryButton != null)
             {
-                PositionButton(_activePrimaryButton, ResolveSingleButtonLayoutPosition(_activePrimaryButton), DialogButtonY);
+                PositionButton(_activePrimaryButton, ResolveSingleButtonLayoutPosition(_activePrimaryButton), ResolveButtonY(_activePrimaryButton));
             }
         }
 
         private (int PrimaryX, int SecondaryX) ResolveTwoButtonLayoutPositions()
         {
+            if (UsesCompactFadeYesNoLayout)
+            {
+                int frameWidth = Frame?.Width > 0 ? Frame.Width : 206;
+                int primaryWidth = _activePrimaryButton?.CanvasSnapshotWidth > 0 ? _activePrimaryButton.CanvasSnapshotWidth : 57;
+                int secondaryWidth = _activeSecondaryButton?.CanvasSnapshotWidth > 0 ? _activeSecondaryButton.CanvasSnapshotWidth : 57;
+                const int buttonGap = 8;
+                int startX = Math.Max(0, (frameWidth - (primaryWidth + secondaryWidth + buttonGap)) / 2);
+                return (startX, startX + primaryWidth + buttonGap);
+            }
+
             return _buttonLayout switch
             {
                 LoginUtilityDialogButtonLayout.NowLater => (NowButtonX, NoButtonX),
@@ -467,9 +490,36 @@ namespace HaCreator.MapSimulator.UI
             {
                 LoginUtilityDialogButtonLayout.Nexon when Frame?.Width > 0 && button.CanvasSnapshotWidth > 0
                     => Math.Max(0, (Frame.Width - button.CanvasSnapshotWidth) / 2),
+                _ when UsesCompactFadeYesNoLayout && Frame?.Width > 0 && button.CanvasSnapshotWidth > 0
+                    => Math.Max(0, (Frame.Width - button.CanvasSnapshotWidth) / 2),
                 LoginUtilityDialogButtonLayout.Nexon => NoticeNexonButtonX,
                 _ => OkButtonX,
             };
+        }
+
+        private bool UsesCompactFadeYesNoLayout => _frameVariant == LoginUtilityDialogFrameVariant.InGameFadeYesNo;
+
+        private float ResolveBodyWrapWidth()
+        {
+            if (UsesCompactFadeYesNoLayout)
+            {
+                int frameWidth = Frame?.Width > 0 ? Frame.Width : 206;
+                return Math.Max(140f, frameWidth - 34f);
+            }
+
+            return BodyWrapWidth;
+        }
+
+        private int ResolveButtonY(UIObject button)
+        {
+            if (UsesCompactFadeYesNoLayout)
+            {
+                int frameHeight = Frame?.Height > 0 ? Frame.Height : 60;
+                int buttonHeight = button?.CanvasSnapshotHeight > 0 ? button.CanvasSnapshotHeight : 16;
+                return Math.Max(18, frameHeight - buttonHeight - 6);
+            }
+
+            return DialogButtonY;
         }
 
         private IDXObject ResolveFrame(LoginUtilityDialogFrameVariant frameVariant)

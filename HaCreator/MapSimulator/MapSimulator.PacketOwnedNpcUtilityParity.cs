@@ -75,6 +75,10 @@ namespace HaCreator.MapSimulator
                     return true;
                 }
 
+                case 366:
+                case 367:
+                    return TryApplyPacketOwnedAdminShopPacket(packetType, payload, out message);
+
                 default:
                     return false;
             }
@@ -156,7 +160,7 @@ namespace HaCreator.MapSimulator
                     return HandlePacketOwnedBattleRecordCommand(args.Skip(1).ToArray());
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|page <summary|dot|packets>|close]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|page <summary|dot|packets>|close]]");
             }
         }
 
@@ -178,11 +182,11 @@ namespace HaCreator.MapSimulator
             bool rawHex = string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase);
             if (args.Length < 2
                 || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int packetType)
-                || packetType is not (364 or 365 or 369 or 370 or 420 or 421 or 422 or 423))
+                || packetType is not (364 or 365 or 366 or 367 or 369 or 370 or 420 or 421 or 422 or 423))
             {
                 return ChatCommandHandler.CommandResult.Error(rawHex
-                    ? "Usage: /npcutility packetraw <364|365|369|370|420|421|422|423> <hex>"
-                    : "Usage: /npcutility packet <364|365|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]");
+                    ? "Usage: /npcutility packetraw <364|365|366|367|369|370|420|421|422|423> <hex>"
+                    : "Usage: /npcutility packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]");
             }
 
             byte[] payload = Array.Empty<byte>();
@@ -190,17 +194,83 @@ namespace HaCreator.MapSimulator
             {
                 if (args.Length < 3 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(2)), out payload))
                 {
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility packetraw <364|365|369|370|420|421|422|423> <hex>");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility packetraw <364|365|366|367|369|370|420|421|422|423> <hex>");
                 }
             }
             else if (args.Length >= 3 && !TryParseBinaryPayloadArgument(args[2], out payload, out string payloadError))
             {
-                return ChatCommandHandler.CommandResult.Error(payloadError ?? "Usage: /npcutility packet <364|365|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]");
+                return ChatCommandHandler.CommandResult.Error(payloadError ?? "Usage: /npcutility packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]");
             }
 
             return TryApplyPacketOwnedNpcUtilityPacket(packetType, payload, out string message)
                 ? ChatCommandHandler.CommandResult.Ok(message)
                 : ChatCommandHandler.CommandResult.Error(message);
+        }
+
+        private bool TryApplyPacketOwnedAdminShopPacket(int packetType, byte[] payload, out string message)
+        {
+            message = "Packet-owned admin-shop owner is unavailable.";
+            payload ??= Array.Empty<byte>();
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is not AdminShopDialogUI adminShopWindow)
+            {
+                return false;
+            }
+
+            if (packetType == 367)
+            {
+                if (payload.Length < sizeof(int) + sizeof(ushort))
+                {
+                    message = "Admin-shop packet 367 requires NPC template id and item-count payload fields.";
+                    return false;
+                }
+
+                int npcTemplateId = BitConverter.ToInt32(payload, 0);
+                int itemCount = BitConverter.ToUInt16(payload, sizeof(int));
+                if (itemCount > 0)
+                {
+                    message = adminShopWindow.BeginPacketOwnedAdminShopSession(npcTemplateId, itemCount);
+                    message = ShowPacketOwnedUniqueUtilityWindow(MapSimulatorWindowNames.CashShop, "Admin Shop", message);
+                    return true;
+                }
+
+                string rejectionNotice = AdminShopDialogClientParityText.GetOpenRejectedNotice();
+                message = adminShopWindow.ApplyPacketOwnedAdminShopOpenRejected(rejectionNotice);
+                HideCashShopOwnerFamilyWindows();
+                ShowPacketOwnedNoticeDialog(rejectionNotice);
+                return true;
+            }
+
+            if (payload.Length < 2)
+            {
+                message = "Admin-shop packet 366 requires subtype and result-code bytes.";
+                return false;
+            }
+
+            byte subtype = payload[0];
+            byte resultCode = payload[1];
+            bool applied = adminShopWindow.TryApplyPacketOwnedAdminShopResult(
+                subtype,
+                resultCode,
+                out message,
+                out string notice,
+                out bool reopenRequested);
+            if (!applied)
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(notice))
+            {
+                ShowPacketOwnedNoticeDialog(notice);
+            }
+
+            if (reopenRequested)
+            {
+                message = ShowPacketOwnedUniqueUtilityWindow(MapSimulatorWindowNames.CashShop, "Admin Shop", message);
+            }
+
+            return true;
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedNpcShopCommand(string[] args)

@@ -56,6 +56,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal IReadOnlyList<int> RegisteredTutorSkillIds => _registeredTutorVariants.ConvertAll(snapshot => snapshot.SkillId);
         internal IReadOnlyList<TutorVariantSnapshot> RegisteredTutorVariants => _registeredTutorVariants;
         internal bool HasRegisteredTutorVariants => _registeredTutorVariants.Count > 0;
+        internal bool HasDisplayTutorVariants => HasClientTutorSkillSlots || HasRegisteredTutorVariants;
         internal int RegisteredTutorVariantCount => _registeredTutorVariants.Count;
 
         private readonly List<TutorVariantSnapshot> _registeredTutorVariants = new();
@@ -374,6 +375,34 @@ namespace HaCreator.MapSimulator.Interaction
             return skillId > 0 && FindRegisteredTutorVariantIndex(skillId) >= 0;
         }
 
+        internal IReadOnlyList<TutorVariantSnapshot> SnapshotDisplayTutorVariants()
+        {
+            List<TutorVariantSnapshot> variants = new();
+            HashSet<int> emittedSkillIds = new();
+            IReadOnlyList<int> clientTutorSkillIds = SnapshotSharedClientTutorSkillSlots();
+            for (int i = 0; i < clientTutorSkillIds.Count; i++)
+            {
+                int slotSkillId = clientTutorSkillIds[i];
+                if (!emittedSkillIds.Add(slotSkillId))
+                {
+                    continue;
+                }
+
+                variants.Add(ResolveDisplayTutorVariant(slotSkillId));
+            }
+
+            for (int i = 0; i < _registeredTutorVariants.Count; i++)
+            {
+                TutorVariantSnapshot variant = _registeredTutorVariants[i];
+                if (emittedSkillIds.Add(variant.SkillId))
+                {
+                    variants.Add(variant);
+                }
+            }
+
+            return variants;
+        }
+
         private int FindRegisteredTutorVariantIndex(int skillId)
         {
             if (skillId <= 0)
@@ -481,6 +510,26 @@ namespace HaCreator.MapSimulator.Interaction
                     yield return DescribeRegisteredTutorVariant(variant);
                 }
             }
+        }
+
+        private TutorVariantSnapshot ResolveDisplayTutorVariant(int skillId)
+        {
+            int variantIndex = FindRegisteredTutorVariantIndex(skillId);
+            if (variantIndex >= 0)
+            {
+                return _registeredTutorVariants[variantIndex];
+            }
+
+            bool isActiveVariant = IsActive && ActiveSkillId == skillId;
+            return new TutorVariantSnapshot(
+                skillId,
+                ResolveSummonObjectId(skillId),
+                isActiveVariant ? ResolveActorHeight() : ResolveFallbackActorHeight(skillId),
+                isActiveVariant ? BoundCharacterId : 0,
+                isActiveVariant,
+                isActiveVariant ? LastHireTick : int.MinValue,
+                int.MinValue,
+                LastRegistryMutationTick);
         }
 
         private void InsertClientTutorSkillSlot(int skillId)

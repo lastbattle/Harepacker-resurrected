@@ -1091,20 +1091,25 @@ namespace HaCreator.MapSimulator.Interaction
 
             foreach (string candidateName in new[] { TextPropertyName, MessagePropertyName, MessageRectPropertyName })
             {
-                if (TryResolveLayoutRect(subProperty[candidateName], out Rectangle textRect))
+                if (TryBuildMetadataBackedTextLayout(subProperty[candidateName], texture, out layout))
                 {
-                    layout = BuildRectBackedTextLayout(texture, textRect);
                     return true;
                 }
             }
 
-            if (TryResolveLayoutRect(subProperty, out Rectangle inlineRect))
+            return TryBuildMetadataBackedTextLayout(subProperty, texture, out layout);
+        }
+
+        private static bool TryBuildMetadataBackedTextLayout(WzImageProperty property, Texture2D texture, out MessageBoxTextLayout layout)
+        {
+            layout = default;
+            if (texture == null || property is not WzSubProperty metadataProperty || !TryResolveLayoutRect(metadataProperty, out Rectangle textRect))
             {
-                layout = BuildRectBackedTextLayout(texture, inlineRect);
-                return true;
+                return false;
             }
 
-            return false;
+            layout = BuildRectBackedTextLayout(texture, textRect, metadataProperty);
+            return true;
         }
 
         private static bool TryResolveLayoutRect(WzImageProperty property, out Rectangle rect)
@@ -1140,24 +1145,104 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
-        private static MessageBoxTextLayout BuildRectBackedTextLayout(Texture2D texture, Rectangle textRect)
+        private static MessageBoxTextLayout BuildRectBackedTextLayout(Texture2D texture, Rectangle textRect, WzSubProperty metadataProperty)
         {
             int paddingLeft = Math.Clamp(textRect.Left, 0, texture.Width);
             int paddingTop = Math.Clamp(textRect.Top, 0, texture.Height);
             int paddingRight = Math.Clamp(texture.Width - textRect.Right, 0, texture.Width);
             int paddingBottom = Math.Clamp(texture.Height - textRect.Bottom, 0, texture.Height);
-            int lineCount = textRect.Height <= 0
+            int lineHeight = Math.Max(1, ResolveMetadataLineHeight(metadataProperty) ?? 14);
+            int derivedLineCount = textRect.Height <= 0
                 ? 1
-                : Math.Max(1, Math.Min(MaxBodyLineCount, textRect.Height / 14));
+                : Math.Max(1, Math.Min(MaxBodyLineCount, textRect.Height / lineHeight));
+            int lineCount = Math.Clamp(ResolveMetadataMaxLineCount(metadataProperty) ?? derivedLineCount, 1, MaxBodyLineCount);
             return new MessageBoxTextLayout(
                 paddingLeft,
                 paddingTop,
                 paddingRight,
                 paddingBottom,
-                CenterHorizontally: true,
-                CenterVertically: true,
+                CenterHorizontally: ResolveMetadataCenterHorizontally(metadataProperty),
+                CenterVertically: ResolveMetadataCenterVertically(metadataProperty),
                 MaxLineCount: lineCount,
                 TextColor: new Color(244, 246, 232));
+        }
+
+        private static bool ResolveMetadataCenterHorizontally(WzSubProperty metadataProperty)
+        {
+            string alignment = ResolveMetadataAlignment(metadataProperty);
+            if (!string.IsNullOrWhiteSpace(alignment))
+            {
+                if (alignment.Contains("center", StringComparison.OrdinalIgnoreCase) ||
+                    alignment.Contains("middle", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                if (alignment.Contains("left", StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
+
+            return TryReadBool(metadataProperty?["centerX"])
+                ?? TryReadBool(metadataProperty?["centerHorizontal"])
+                ?? TryReadBool(metadataProperty?["center"])
+                ?? TryReadBool(metadataProperty?["centerText"])
+                ?? false;
+        }
+
+        private static bool ResolveMetadataCenterVertically(WzSubProperty metadataProperty)
+        {
+            string alignment = ResolveMetadataVerticalAlignment(metadataProperty);
+            if (!string.IsNullOrWhiteSpace(alignment))
+            {
+                if (alignment.Contains("center", StringComparison.OrdinalIgnoreCase) ||
+                    alignment.Contains("middle", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                if (alignment.Contains("top", StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
+
+            return TryReadBool(metadataProperty?["centerY"])
+                ?? TryReadBool(metadataProperty?["centerVertical"])
+                ?? TryReadBool(metadataProperty?["center"])
+                ?? TryReadBool(metadataProperty?["centerText"])
+                ?? false;
+        }
+
+        private static string ResolveMetadataAlignment(WzSubProperty metadataProperty)
+        {
+            return TryReadString(metadataProperty?["textAlign"])
+                ?? TryReadString(metadataProperty?["align"])
+                ?? TryReadString(metadataProperty?["horizontalAlign"])
+                ?? TryReadString(metadataProperty?["hAlign"]);
+        }
+
+        private static string ResolveMetadataVerticalAlignment(WzSubProperty metadataProperty)
+        {
+            return TryReadString(metadataProperty?["verticalAlign"])
+                ?? TryReadString(metadataProperty?["vAlign"])
+                ?? ResolveMetadataAlignment(metadataProperty);
+        }
+
+        private static int? ResolveMetadataLineHeight(WzSubProperty metadataProperty)
+        {
+            return TryReadInt(metadataProperty?["lineHeight"])
+                ?? TryReadInt(metadataProperty?["lineSpace"])
+                ?? TryReadInt(metadataProperty?["fontHeight"]);
+        }
+
+        private static int? ResolveMetadataMaxLineCount(WzSubProperty metadataProperty)
+        {
+            return TryReadInt(metadataProperty?["maxLine"])
+                ?? TryReadInt(metadataProperty?["maxLineCount"])
+                ?? TryReadInt(metadataProperty?["lineCount"])
+                ?? TryReadInt(metadataProperty?["line"]);
         }
 
         private static bool TryReadVector(WzSubProperty property, string name, out Point point)
@@ -1312,24 +1397,63 @@ namespace HaCreator.MapSimulator.Interaction
             return (layout.PaddingLeft, layout.PaddingTop, layout.PaddingRight, layout.PaddingBottom, layout.MaxLineCount);
         }
 
-        internal static (int PaddingLeft, int PaddingTop, int PaddingRight, int PaddingBottom, int MaxLineCount) ComputeMetadataBackedTextLayoutForTest(
+        internal static (int PaddingLeft, int PaddingTop, int PaddingRight, int PaddingBottom, bool CenterHorizontally, bool CenterVertically, int MaxLineCount) ComputeMetadataBackedTextLayoutForTest(
             int textureWidth,
             int textureHeight,
             int left,
             int top,
             int right,
-            int bottom)
+            int bottom,
+            bool? centerX = null,
+            bool? centerY = null,
+            int? maxLineCount = null)
         {
             using Texture2D texture = new Texture2D(GraphicsDeviceServiceForTests.Instance, textureWidth, textureHeight);
             WzSubProperty textProperty = new(TextPropertyName);
             textProperty.AddProperty(new WzVectorProperty("lt", left, top));
             textProperty.AddProperty(new WzVectorProperty("rb", right, bottom));
+            if (centerX.HasValue)
+            {
+                textProperty.AddProperty(new WzIntProperty("centerX", centerX.Value ? 1 : 0));
+            }
+
+            if (centerY.HasValue)
+            {
+                textProperty.AddProperty(new WzIntProperty("centerY", centerY.Value ? 1 : 0));
+            }
+
+            if (maxLineCount.HasValue)
+            {
+                textProperty.AddProperty(new WzIntProperty("maxLine", maxLineCount.Value));
+            }
 
             WzSubProperty messageBoxProperty = new(ClientMessageBoxPropertyName);
             messageBoxProperty.AddProperty(textProperty);
 
             MessageBoxTextLayout layout = ResolveTextLayout(ClientMessageBoxPropertyName, texture, messageBoxProperty);
-            return (layout.PaddingLeft, layout.PaddingTop, layout.PaddingRight, layout.PaddingBottom, layout.MaxLineCount);
+            return (layout.PaddingLeft, layout.PaddingTop, layout.PaddingRight, layout.PaddingBottom, layout.CenterHorizontally, layout.CenterVertically, layout.MaxLineCount);
+        }
+
+        internal static (float AlphaBeforeUpdate, float AlphaAfterUpdateSameTick, float AlphaAtHalfFade, bool ShouldRemoveAtFadeDuration) ComputeLeaveFieldSequenceForTest()
+        {
+            LeavingMessageBoxEntry entry = new(
+                id: 1,
+                messageText: "test",
+                layerPosition: Point.Zero,
+                visual: null,
+                leaveTexture: null,
+                leaveOrigin: Point.Zero,
+                leaveStartedAt: 100,
+                source: MessageBoxEntrySource.LocalCommand,
+                snapshotTexture: null,
+                snapshotOrigin: Point.Zero);
+
+            float alphaBeforeUpdate = entry.GetAlpha(100);
+            entry.Update(100);
+            float alphaAfterUpdate = entry.GetAlpha(100);
+            float alphaAtHalfFade = entry.GetAlpha(600);
+            bool shouldRemoveAtFadeDuration = entry.ShouldRemove(1100);
+            return (alphaBeforeUpdate, alphaAfterUpdate, alphaAtHalfFade, shouldRemoveAtFadeDuration);
         }
 
         internal static (int PaddingLeft, int PaddingTop, int PaddingRight, int PaddingBottom, int MaxLineCount) ComputeUiBoardTextLayoutForTest(
@@ -1508,6 +1632,29 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        private static bool? TryReadBool(WzImageProperty property)
+        {
+            return property switch
+            {
+                WzIntProperty intProperty => intProperty.Value != 0,
+                WzShortProperty shortProperty => shortProperty.Value != 0,
+                WzFloatProperty floatProperty => Math.Abs(floatProperty.Value) > float.Epsilon,
+                WzStringProperty stringProperty when bool.TryParse(stringProperty.Value, out bool boolValue) => boolValue,
+                WzStringProperty stringProperty when int.TryParse(stringProperty.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int intValue) => intValue != 0,
+                _ => null
+            };
+        }
+
+        private static string TryReadString(WzImageProperty property)
+        {
+            return property switch
+            {
+                WzStringProperty stringProperty => stringProperty.Value,
+                WzUOLProperty uolProperty => uolProperty.Value,
+                _ => null
+            };
+        }
+
         private static IEnumerable<string> WrapText(SpriteFont font, string text, float maxWidth)
         {
             if (font == null)
@@ -1653,8 +1800,9 @@ namespace HaCreator.MapSimulator.Interaction
             private readonly Point _snapshotOrigin;
             private readonly Texture2D _leaveTexture;
             private readonly Point _leaveOrigin;
+            private int _reinsertedAt = int.MinValue;
 
-            private LeavingMessageBoxEntry(int id, string messageText, Point layerPosition, MessageBoxVisual visual, Texture2D leaveTexture, Point leaveOrigin, int leaveStartedAt, MessageBoxEntrySource source, Texture2D snapshotTexture, Point snapshotOrigin)
+            internal LeavingMessageBoxEntry(int id, string messageText, Point layerPosition, MessageBoxVisual visual, Texture2D leaveTexture, Point leaveOrigin, int leaveStartedAt, MessageBoxEntrySource source, Texture2D snapshotTexture, Point snapshotOrigin)
             {
                 Id = id;
                 MessageText = messageText;
@@ -1682,6 +1830,7 @@ namespace HaCreator.MapSimulator.Interaction
                     currentTick - _leaveStartedAt >= ClientLeaveCanvasReinsertDelayMs)
                 {
                     _canvasState = LeaveCanvasState.ReinsertedFade;
+                    _reinsertedAt = currentTick;
                 }
             }
 
@@ -1703,7 +1852,7 @@ namespace HaCreator.MapSimulator.Interaction
             public bool ShouldRemove(int currentTick)
             {
                 return _canvasState == LeaveCanvasState.ReinsertedFade &&
-                       currentTick - _leaveStartedAt >= ClientLeaveCanvasFadeDurationMs;
+                       currentTick - _reinsertedAt >= ClientLeaveCanvasFadeDurationMs;
             }
 
             public Texture2D GetDisplayTexture()
@@ -1727,10 +1876,10 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 if (_canvasState == LeaveCanvasState.Removed)
                 {
-                    return 1f;
+                    return 0f;
                 }
 
-                return ComputeLeaveFadeAlpha(currentTick - _leaveStartedAt);
+                return ComputeLeaveFadeAlpha(currentTick - _reinsertedAt);
             }
 
             public int GetVerticalFloatOffset(int currentTick)

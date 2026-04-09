@@ -1160,8 +1160,33 @@ namespace HaCreator.MapSimulator.Character
     /// <summary>
     /// Face part with expressions
     /// </summary>
+    public sealed class FaceLookFrame
+    {
+        public CharacterFrame FaceFrame { get; init; }
+        public CharacterFrame AccessoryFrame { get; init; }
+        public int Delay { get; init; }
+    }
+
+    public sealed class FaceLookEntry
+    {
+        public string ExpressionName { get; init; }
+        public SkinColor SkinColor { get; init; }
+        public int FaceItemId { get; init; }
+        public int FaceAccessoryItemId { get; init; }
+        public List<FaceLookFrame> Frames { get; } = new();
+        public int TotalDuration { get; set; }
+        public bool HasAccessory => FaceAccessoryItemId > 0;
+    }
+
     public class FacePart : CharacterPart
     {
+        private readonly record struct FaceLookCacheKey(
+            SkinColor SkinColor,
+            string ExpressionName,
+            int FaceAccessoryItemId);
+
+        private readonly Dictionary<FaceLookCacheKey, FaceLookEntry> _lookCache = new();
+
         public Dictionary<string, CharacterAnimation> Expressions { get; set; } = new();
 
         public CharacterAnimation GetExpression(string expression)
@@ -1175,6 +1200,122 @@ namespace HaCreator.MapSimulator.Character
             foreach (var kv in Expressions)
                 return kv.Value;
             return null;
+        }
+
+        public FaceLookEntry GetLook(string expression, SkinColor skinColor, CharacterPart faceAccessoryPart)
+        {
+            string normalizedExpression = string.IsNullOrWhiteSpace(expression) ? "default" : expression.Trim();
+            int faceAccessoryItemId = faceAccessoryPart?.ItemId ?? 0;
+            FaceLookCacheKey cacheKey = new(skinColor, normalizedExpression, faceAccessoryItemId);
+            if (_lookCache.TryGetValue(cacheKey, out FaceLookEntry cachedLook))
+            {
+                return cachedLook;
+            }
+
+            CharacterAnimation faceAnimation = GetExpression(normalizedExpression);
+            CharacterAnimation accessoryAnimation = ResolveAccessoryExpression(faceAccessoryPart, normalizedExpression);
+            int faceFrameCount = faceAnimation?.Frames?.Count ?? 0;
+            int accessoryFrameCount = accessoryAnimation?.Frames?.Count ?? 0;
+            int frameCount = Math.Max(faceFrameCount, accessoryFrameCount);
+            if (frameCount == 0)
+            {
+                return null;
+            }
+
+            FaceLookEntry faceLook = new()
+            {
+                ExpressionName = normalizedExpression,
+                SkinColor = skinColor,
+                FaceItemId = ItemId,
+                FaceAccessoryItemId = faceAccessoryItemId
+            };
+
+            for (int frameIndex = 0; frameIndex < frameCount; frameIndex++)
+            {
+                CharacterFrame faceFrame = GetAnimationFrame(faceAnimation, frameIndex);
+                CharacterFrame accessoryFrame = GetAnimationFrame(accessoryAnimation, frameIndex);
+                int delay = ResolveFaceLookDelay(faceFrame, accessoryFrame);
+
+                faceLook.Frames.Add(new FaceLookFrame
+                {
+                    FaceFrame = faceFrame,
+                    AccessoryFrame = accessoryFrame,
+                    Delay = delay
+                });
+
+                faceLook.TotalDuration += delay;
+            }
+
+            _lookCache[cacheKey] = faceLook;
+            return faceLook;
+        }
+
+        public bool TryGetLookDuration(string expression, SkinColor skinColor, CharacterPart faceAccessoryPart, out int durationMs)
+        {
+            durationMs = 0;
+            FaceLookEntry faceLook = GetLook(expression, skinColor, faceAccessoryPart);
+            if (faceLook == null || faceLook.TotalDuration <= 0)
+            {
+                return false;
+            }
+
+            durationMs = faceLook.TotalDuration;
+            return true;
+        }
+
+        private static CharacterAnimation ResolveAccessoryExpression(CharacterPart faceAccessoryPart, string expression)
+        {
+            if (faceAccessoryPart?.Animations == null || faceAccessoryPart.Animations.Count == 0)
+            {
+                return null;
+            }
+
+            if (faceAccessoryPart.Animations.TryGetValue(expression, out CharacterAnimation animation))
+            {
+                return animation;
+            }
+
+            if (faceAccessoryPart.Animations.TryGetValue("default", out animation))
+            {
+                return animation;
+            }
+
+            if (faceAccessoryPart.Animations.TryGetValue("blink", out animation))
+            {
+                return animation;
+            }
+
+            foreach ((_, CharacterAnimation fallbackAnimation) in faceAccessoryPart.Animations)
+            {
+                return fallbackAnimation;
+            }
+
+            return null;
+        }
+
+        private static CharacterFrame GetAnimationFrame(CharacterAnimation animation, int frameIndex)
+        {
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return null;
+            }
+
+            return animation.Frames[frameIndex % animation.Frames.Count];
+        }
+
+        private static int ResolveFaceLookDelay(CharacterFrame faceFrame, CharacterFrame accessoryFrame)
+        {
+            if (faceFrame?.Delay > 0)
+            {
+                return faceFrame.Delay;
+            }
+
+            if (accessoryFrame?.Delay > 0)
+            {
+                return accessoryFrame.Delay;
+            }
+
+            return 100;
         }
     }
 
@@ -1418,6 +1559,7 @@ namespace HaCreator.MapSimulator.Character
         public CharacterPart WeaponSticker { get; set; }
         public PortableChair ActivePortableChair { get; set; }
         public IReadOnlyList<int> RemotePetItemIds { get; set; } = Array.Empty<int>();
+        public Func<int, CharacterPart> EquipmentPartLoader { get; set; }
 
         // Equipment slots
         public Dictionary<EquipSlot, CharacterPart> Equipment { get; set; } = new();
@@ -2497,6 +2639,7 @@ namespace HaCreator.MapSimulator.Character
                 WeaponSticker = WeaponSticker,
                 ActivePortableChair = ActivePortableChair,
                 RemotePetItemIds = RemotePetItemIds != null ? new List<int>(RemotePetItemIds) : Array.Empty<int>(),
+                EquipmentPartLoader = EquipmentPartLoader,
                 Equipment = CloneEquipmentLayer(Equipment),
                 HiddenEquipment = CloneEquipmentLayer(HiddenEquipment),
                 Level = Level,
