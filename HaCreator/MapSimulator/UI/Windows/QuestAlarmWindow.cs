@@ -13,11 +13,14 @@ using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
+    internal readonly record struct QuestAlarmAnimationFrame(Texture2D Texture, Point Offset, int DelayMs);
+
     internal sealed class QuestAlarmWindow : UIWindowBase
     {
         private const int MaxVisibleEntries = 5;
         private const int DeleteButtonSize = 11;
         private const int RowDoubleClickWindowMs = 450;
+        private const int DefaultQuestButtonAnimationDelayMs = 120;
         private const int HeaderActionMargin = 6;
         private const int HeaderActionSpacing = 4;
         private const string DefaultQuestAlarmTooltipDescription = "Click on Quest Alarm button if you wish to register the current quest into the Quest Alarm. Up to 5 quests can be registered in this alarm.";
@@ -95,7 +98,7 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _deletePressedTexture;
         private Texture2D _deleteDisabledTexture;
         private Texture2D _deleteMouseOverTexture;
-        private IReadOnlyList<Texture2D> _questButtonAnimationFrames = Array.Empty<Texture2D>();
+        private IReadOnlyList<QuestAlarmAnimationFrame> _questButtonAnimationFrames = Array.Empty<QuestAlarmAnimationFrame>();
         private string _loadedStateCharacterKey = string.Empty;
         private bool _suppressStatePersistence;
         private QuestAlarmSnapshot _currentSnapshot = new();
@@ -165,7 +168,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D deletePressedTexture,
             Texture2D deleteDisabledTexture,
             Texture2D deleteMouseOverTexture,
-            IReadOnlyList<Texture2D> questButtonAnimationFrames)
+            IReadOnlyList<QuestAlarmAnimationFrame> questButtonAnimationFrames)
         {
             _selectionBarTexture = selectionBarTexture;
             _incompleteSelectionBarTexture = incompleteSelectionBarTexture;
@@ -176,7 +179,7 @@ namespace HaCreator.MapSimulator.UI
             _deletePressedTexture = deletePressedTexture;
             _deleteDisabledTexture = deleteDisabledTexture;
             _deleteMouseOverTexture = deleteMouseOverTexture;
-            _questButtonAnimationFrames = questButtonAnimationFrames ?? Array.Empty<Texture2D>();
+            _questButtonAnimationFrames = questButtonAnimationFrames ?? Array.Empty<QuestAlarmAnimationFrame>();
         }
 
         internal void InitializeControls(
@@ -869,7 +872,7 @@ namespace HaCreator.MapSimulator.UI
 
         private int DrawRequirementLine(SpriteBatch sprite, int left, int right, int y, QuestLogLineSnapshot line)
         {
-            if (line == null)
+            if (line == null || _font == null)
             {
                 return y;
             }
@@ -877,18 +880,22 @@ namespace HaCreator.MapSimulator.UI
             Texture2D rowTexture = line.IsComplete
                 ? _selectionBarTexture
                 : _incompleteSelectionBarTexture ?? _selectionBarTexture;
+            float scaledLineHeight = _font.LineSpacing * DetailScale;
+            float rowTop = y;
+            float textY = rowTop + Math.Max(0f, (ClientTitleHeight - scaledLineHeight) / 2f);
             int detailLeft = left + ClientDetailLabelWidth;
             int availableWidth = Math.Max(48, right - detailLeft);
             int stripWidth = Math.Min(availableWidth, rowTexture?.Width ?? availableWidth);
             if (rowTexture != null)
             {
-                DrawTextureStrip(sprite, rowTexture, new Rectangle(detailLeft, y + 3, stripWidth, rowTexture.Height), Color.White);
+                int stripY = (int)Math.Round(rowTop + Math.Max(0f, (ClientTitleHeight - rowTexture.Height) / 2f));
+                DrawTextureStrip(sprite, rowTexture, new Rectangle(detailLeft, stripY, stripWidth, rowTexture.Height), Color.White);
             }
 
             Color progressColor = ResolveRequirementProgressColor(line);
             Color labelColor = line.IsComplete ? progressColor : progressColor * 0.92f;
             Color textColor = line.IsComplete ? ProgressBodyColor : IncompleteBodyColor;
-            sprite.DrawString(_font, line.Label ?? string.Empty, new Vector2(left, y + 1), labelColor, 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, line.Label ?? string.Empty, new Vector2(left, textY), labelColor, 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
 
             int iconOffset = 0;
             if (line.ItemId.HasValue)
@@ -896,7 +903,8 @@ namespace HaCreator.MapSimulator.UI
                 Texture2D icon = GetItemIcon(line.ItemId.Value);
                 if (icon != null)
                 {
-                    Rectangle iconBounds = new Rectangle(detailLeft + ClientDetailTextInset, y + 2, ClientDetailIconSize, ClientDetailIconSize);
+                    int iconY = (int)Math.Round(rowTop + Math.Max(0f, (ClientTitleHeight - ClientDetailIconSize) / 2f));
+                    Rectangle iconBounds = new Rectangle(detailLeft + ClientDetailTextInset, iconY, ClientDetailIconSize, ClientDetailIconSize);
                     sprite.Draw(icon, iconBounds, Color.White);
                     iconOffset = ClientDetailIconSize + 4;
                 }
@@ -913,12 +921,12 @@ namespace HaCreator.MapSimulator.UI
                 bodyText,
                 maxBodyWidth,
                 sample => _font.MeasureString(sample).X * DetailScale);
-            sprite.DrawString(_font, bodyText, new Vector2(bodyX, y + 1), textColor, 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, bodyText, new Vector2(bodyX, textY), textColor, 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
 
             if (!string.IsNullOrWhiteSpace(line.ValueText))
             {
                 float valueX = Math.Max(bodyX, detailLeft + stripWidth - ClientDetailTextInset - valueSize.X);
-                sprite.DrawString(_font, line.ValueText, new Vector2(valueX, y + 1), progressColor, 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
+                sprite.DrawString(_font, line.ValueText, new Vector2(valueX, textY), progressColor, 0f, Vector2.Zero, DetailScale, SpriteEffects.None, 0f);
             }
 
             return y + ClientTitleHeight;
@@ -977,13 +985,57 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Texture2D frame = _questButtonAnimationFrames[(tickCount / 180) % _questButtonAnimationFrames.Count];
-            if (frame == null)
+            QuestAlarmAnimationFrame frame = ResolveQuestButtonAnimationFrame(tickCount);
+            if (frame.Texture == null)
             {
                 return;
             }
 
-            sprite.Draw(frame, new Vector2(Position.X + _questButton.X, Position.Y + _questButton.Y), Color.White);
+            sprite.Draw(
+                frame.Texture,
+                new Vector2(Position.X + _questButton.X + frame.Offset.X, Position.Y + _questButton.Y + frame.Offset.Y),
+                Color.White);
+        }
+
+        private QuestAlarmAnimationFrame ResolveQuestButtonAnimationFrame(int tickCount)
+        {
+            if (_questButtonAnimationFrames.Count == 0)
+            {
+                return default;
+            }
+
+            if (_questButtonAnimationFrames.Count == 1)
+            {
+                return _questButtonAnimationFrames[0];
+            }
+
+            int totalDuration = 0;
+            for (int i = 0; i < _questButtonAnimationFrames.Count; i++)
+            {
+                totalDuration += Math.Max(1, ResolveQuestButtonAnimationDelay(_questButtonAnimationFrames[i]));
+            }
+
+            int animationTick = totalDuration > 0
+                ? Math.Abs(tickCount) % totalDuration
+                : 0;
+            for (int i = 0; i < _questButtonAnimationFrames.Count; i++)
+            {
+                QuestAlarmAnimationFrame frame = _questButtonAnimationFrames[i];
+                int duration = Math.Max(1, ResolveQuestButtonAnimationDelay(frame));
+                if (animationTick < duration)
+                {
+                    return frame;
+                }
+
+                animationTick -= duration;
+            }
+
+            return _questButtonAnimationFrames[_questButtonAnimationFrames.Count - 1];
+        }
+
+        private static int ResolveQuestButtonAnimationDelay(QuestAlarmAnimationFrame frame)
+        {
+            return frame.DelayMs > 0 ? frame.DelayMs : DefaultQuestButtonAnimationDelayMs;
         }
 
         private int GetDeleteQuestIdAtPoint(int mouseX, int mouseY)

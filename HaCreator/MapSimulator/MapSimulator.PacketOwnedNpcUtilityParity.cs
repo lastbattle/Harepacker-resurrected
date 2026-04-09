@@ -12,6 +12,12 @@ namespace HaCreator.MapSimulator
         private readonly PacketOwnedShopDialogRuntime _packetOwnedNpcShopRuntime = new();
         private readonly PacketOwnedStoreBankDialogRuntime _packetOwnedStoreBankRuntime = new();
         private readonly PacketOwnedBattleRecordRuntime _packetOwnedBattleRecordRuntime = new();
+        private int _lastPacketOwnedNpcShopOutboundOpcode = -1;
+        private byte[] _lastPacketOwnedNpcShopOutboundPayload = Array.Empty<byte>();
+        private string _lastPacketOwnedNpcShopOutboundSummary;
+        private int _lastPacketOwnedStoreBankOutboundOpcode = -1;
+        private byte[] _lastPacketOwnedStoreBankOutboundPayload = Array.Empty<byte>();
+        private string _lastPacketOwnedStoreBankOutboundSummary;
 
         private bool TryApplyPacketOwnedNpcUtilityPacket(int packetType, byte[] payload, out string message)
         {
@@ -103,7 +109,7 @@ namespace HaCreator.MapSimulator
 
         private string BuildPacketOwnedNpcShopFooter()
         {
-            return _packetOwnedNpcShopRuntime.BuildFooter();
+            return $"{_packetOwnedNpcShopRuntime.BuildFooter()} {DescribePacketOwnedNpcUtilityOutboundStatus("shop", _lastPacketOwnedNpcShopOutboundOpcode, _lastPacketOwnedNpcShopOutboundPayload, _lastPacketOwnedNpcShopOutboundSummary)}";
         }
 
         private IReadOnlyList<string> BuildPacketOwnedStoreBankLines()
@@ -113,7 +119,7 @@ namespace HaCreator.MapSimulator
 
         private string BuildPacketOwnedStoreBankFooter()
         {
-            return _packetOwnedStoreBankRuntime.BuildFooter();
+            return $"{_packetOwnedStoreBankRuntime.BuildFooter()} {DescribePacketOwnedNpcUtilityOutboundStatus("store-bank", _lastPacketOwnedStoreBankOutboundOpcode, _lastPacketOwnedStoreBankOutboundPayload, _lastPacketOwnedStoreBankOutboundSummary)}";
         }
 
         private IReadOnlyList<string> BuildPacketOwnedBattleRecordLines()
@@ -161,8 +167,8 @@ namespace HaCreator.MapSimulator
                 new[]
                 {
                     "Packet-owned NPC utility owner family:",
-                    $"Shop: {_packetOwnedNpcShopRuntime.BuildFooter()}",
-                    $"StoreBank: {_packetOwnedStoreBankRuntime.BuildFooter()}",
+                    $"Shop: {BuildPacketOwnedNpcShopFooter()}",
+                    $"StoreBank: {BuildPacketOwnedStoreBankFooter()}",
                     $"BattleRecord: {_packetOwnedBattleRecordRuntime.BuildFooter()}"
                 });
         }
@@ -201,7 +207,7 @@ namespace HaCreator.MapSimulator
         {
             if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
-                return ChatCommandHandler.CommandResult.Info(_packetOwnedNpcShopRuntime.BuildFooter());
+                return ChatCommandHandler.CommandResult.Info(BuildPacketOwnedNpcShopFooter());
             }
 
             switch (args[0].ToLowerInvariant())
@@ -212,7 +218,7 @@ namespace HaCreator.MapSimulator
                         ShowPacketOwnedUniqueUtilityWindow(
                             MapSimulatorWindowNames.NpcShop,
                             "NPC Shop",
-                            _packetOwnedNpcShopRuntime.BuildFooter()));
+                            BuildPacketOwnedNpcShopFooter()));
 
                 case "buy":
                     if (args.Length < 2
@@ -233,8 +239,13 @@ namespace HaCreator.MapSimulator
                         return ChatCommandHandler.CommandResult.Error("NPC shop buy request requires the inventory window runtime.");
                     }
 
+                    bool hasBuyOutbound = _packetOwnedNpcShopRuntime.TryBuildBuyOutboundRequest(
+                        buyItemId,
+                        buyQuantity,
+                        out PacketOwnedNpcUtilityOutboundRequest buyRequest,
+                        out string buyOutboundError);
                     return _packetOwnedNpcShopRuntime.TryApplyLocalBuy(buyInventory, buyItemId, buyQuantity, out string buyMessage)
-                        ? ChatCommandHandler.CommandResult.Ok(buyMessage)
+                        ? ChatCommandHandler.CommandResult.Ok(DispatchPacketOwnedNpcShopOutboundRequest(hasBuyOutbound, buyRequest, buyMessage, buyOutboundError))
                         : ChatCommandHandler.CommandResult.Error(buyMessage);
 
                 case "sell":
@@ -256,8 +267,14 @@ namespace HaCreator.MapSimulator
                         return ChatCommandHandler.CommandResult.Error("NPC shop sell request requires the inventory window runtime.");
                     }
 
+                    bool hasSellOutbound = _packetOwnedNpcShopRuntime.TryBuildSellOutboundRequest(
+                        sellInventory,
+                        sellItemId,
+                        sellQuantity,
+                        out PacketOwnedNpcUtilityOutboundRequest sellRequest,
+                        out string sellOutboundError);
                     return _packetOwnedNpcShopRuntime.TryApplyLocalSell(sellInventory, sellItemId, sellQuantity, out string sellMessage)
-                        ? ChatCommandHandler.CommandResult.Ok(sellMessage)
+                        ? ChatCommandHandler.CommandResult.Ok(DispatchPacketOwnedNpcShopOutboundRequest(hasSellOutbound, sellRequest, sellMessage, sellOutboundError))
                         : ChatCommandHandler.CommandResult.Error(sellMessage);
 
                 case "recharge":
@@ -279,14 +296,19 @@ namespace HaCreator.MapSimulator
                         return ChatCommandHandler.CommandResult.Error("NPC shop recharge request requires the inventory window runtime.");
                     }
 
+                    bool hasRechargeOutbound = _packetOwnedNpcShopRuntime.TryBuildRechargeOutboundRequest(
+                        rechargeInventory,
+                        rechargeItemId,
+                        out PacketOwnedNpcUtilityOutboundRequest rechargeRequest,
+                        out string rechargeOutboundError);
                     return _packetOwnedNpcShopRuntime.TryApplyLocalRecharge(rechargeInventory, rechargeItemId, targetQuantity, out string rechargeMessage)
-                        ? ChatCommandHandler.CommandResult.Ok(rechargeMessage)
+                        ? ChatCommandHandler.CommandResult.Ok(DispatchPacketOwnedNpcShopOutboundRequest(hasRechargeOutbound, rechargeRequest, rechargeMessage, rechargeOutboundError))
                         : ChatCommandHandler.CommandResult.Error(rechargeMessage);
 
                 case "close":
                     _packetOwnedNpcShopRuntime.Close();
                     uiWindowManager?.HideWindow(MapSimulatorWindowNames.NpcShop);
-                    return ChatCommandHandler.CommandResult.Ok(_packetOwnedNpcShopRuntime.BuildFooter());
+                    return ChatCommandHandler.CommandResult.Ok(BuildPacketOwnedNpcShopFooter());
 
                 default:
                     return ChatCommandHandler.CommandResult.Error("Usage: /npcutility shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]");
@@ -297,7 +319,7 @@ namespace HaCreator.MapSimulator
         {
             if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
-                return ChatCommandHandler.CommandResult.Info(_packetOwnedStoreBankRuntime.BuildFooter());
+                return ChatCommandHandler.CommandResult.Info(BuildPacketOwnedStoreBankFooter());
             }
 
             switch (args[0].ToLowerInvariant())
@@ -308,20 +330,129 @@ namespace HaCreator.MapSimulator
                         ShowPacketOwnedUniqueUtilityWindow(
                             MapSimulatorWindowNames.StoreBank,
                             "Store Bank",
-                            _packetOwnedStoreBankRuntime.BuildFooter()));
+                            BuildPacketOwnedStoreBankFooter()));
 
                 case "getall":
                 case "accept":
-                    return ChatCommandHandler.CommandResult.Ok(_packetOwnedStoreBankRuntime.ConsumePendingGetAllRequest());
+                    bool hasGetAllOutbound = _packetOwnedStoreBankRuntime.TryBuildPendingGetAllOutboundRequest(
+                        out PacketOwnedNpcUtilityOutboundRequest getAllRequest,
+                        out string getAllOutboundError);
+                    return ChatCommandHandler.CommandResult.Ok(
+                        DispatchPacketOwnedStoreBankOutboundRequest(
+                            hasGetAllOutbound,
+                            getAllRequest,
+                            _packetOwnedStoreBankRuntime.ConsumePendingGetAllRequest(),
+                            getAllOutboundError));
 
                 case "close":
                     _packetOwnedStoreBankRuntime.Close();
                     uiWindowManager?.HideWindow(MapSimulatorWindowNames.StoreBank);
-                    return ChatCommandHandler.CommandResult.Ok(_packetOwnedStoreBankRuntime.BuildFooter());
+                    return ChatCommandHandler.CommandResult.Ok(BuildPacketOwnedStoreBankFooter());
 
                 default:
                     return ChatCommandHandler.CommandResult.Error("Usage: /npcutility storebank [status|show|getall|close]");
             }
+        }
+
+        private string DispatchPacketOwnedNpcShopOutboundRequest(
+            bool hasRequest,
+            PacketOwnedNpcUtilityOutboundRequest request,
+            string localMessage,
+            string requestError)
+        {
+            return DispatchPacketOwnedNpcUtilityOutboundRequest(
+                hasRequest,
+                request,
+                localMessage,
+                requestError,
+                ref _lastPacketOwnedNpcShopOutboundOpcode,
+                ref _lastPacketOwnedNpcShopOutboundPayload,
+                ref _lastPacketOwnedNpcShopOutboundSummary);
+        }
+
+        private string DispatchPacketOwnedStoreBankOutboundRequest(
+            bool hasRequest,
+            PacketOwnedNpcUtilityOutboundRequest request,
+            string localMessage,
+            string requestError)
+        {
+            return DispatchPacketOwnedNpcUtilityOutboundRequest(
+                hasRequest,
+                request,
+                localMessage,
+                requestError,
+                ref _lastPacketOwnedStoreBankOutboundOpcode,
+                ref _lastPacketOwnedStoreBankOutboundPayload,
+                ref _lastPacketOwnedStoreBankOutboundSummary);
+        }
+
+        private string DispatchPacketOwnedNpcUtilityOutboundRequest(
+            bool hasRequest,
+            PacketOwnedNpcUtilityOutboundRequest request,
+            string localMessage,
+            string requestError,
+            ref int lastOpcode,
+            ref byte[] lastPayload,
+            ref string lastSummary)
+        {
+            if (!hasRequest)
+            {
+                lastOpcode = -1;
+                lastPayload = Array.Empty<byte>();
+                lastSummary = string.IsNullOrWhiteSpace(requestError)
+                    ? "No outbound request was generated."
+                    : requestError;
+                return string.IsNullOrWhiteSpace(requestError)
+                    ? localMessage
+                    : $"{localMessage} {requestError}";
+            }
+
+            lastOpcode = request.Opcode;
+            lastPayload = request.Payload?.ToArray() ?? Array.Empty<byte>();
+            lastSummary = request.Summary;
+
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(request.Opcode, request.Payload, out string bridgeStatus))
+            {
+                lastSummary = $"{request.Summary} Dispatched through the live official-session bridge. {bridgeStatus}";
+                return $"{localMessage} {lastSummary}";
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(request.Opcode, request.Payload, out string outboxStatus))
+            {
+                lastSummary = $"{request.Summary} Dispatched through the generic packet outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+                return $"{localMessage} {lastSummary}";
+            }
+
+            if (_localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(request.Opcode, request.Payload, out string queuedBridgeStatus))
+            {
+                lastSummary = $"{request.Summary} Queued for deferred official-session injection after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus}";
+                return $"{localMessage} {lastSummary}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(request.Opcode, request.Payload, out string queuedOutboxStatus))
+            {
+                lastSummary = $"{request.Summary} Queued for deferred generic packet outbox delivery after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
+                return $"{localMessage} {lastSummary}";
+            }
+
+            lastSummary = $"{request.Summary} The request remained simulator-owned because neither the live bridge nor the packet outbox accepted opcode {request.Opcode}. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+            return $"{localMessage} {lastSummary}";
+        }
+
+        private static string DescribePacketOwnedNpcUtilityOutboundStatus(string ownerLabel, int opcode, byte[] payload, string summary)
+        {
+            if (opcode < 0)
+            {
+                return string.IsNullOrWhiteSpace(summary)
+                    ? $"{ownerLabel} outbound=idle."
+                    : $"{ownerLabel} outbound=idle ({summary})";
+            }
+
+            string payloadHex = Convert.ToHexString(payload ?? Array.Empty<byte>());
+            return string.IsNullOrWhiteSpace(summary)
+                ? $"{ownerLabel} outbound={opcode}[{payloadHex}]."
+                : $"{ownerLabel} outbound={opcode}[{payloadHex}] ({summary})";
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedBattleRecordCommand(string[] args)

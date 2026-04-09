@@ -993,28 +993,8 @@ namespace HaCreator.MapSimulator.UI
         private IReadOnlyList<TooltipSection> BuildEquipTooltipFooterSections(RepairEntry entry, CharacterPart part)
         {
             List<TooltipSection> sections = new();
-            if (!string.IsNullOrWhiteSpace(entry.SlotLabel))
-            {
-                sections.Add(new TooltipSection($"Slot: {entry.SlotLabel}", Color.White));
-            }
-
-            sections.Add(new TooltipSection(
-                $"Repair Fee: {entry.RepairCost.ToString("N0", CultureInfo.InvariantCulture)} mesos",
-                new Color(255, 232, 176)));
-
-            if (!string.IsNullOrWhiteSpace(entry.AvailabilityText))
-            {
-                sections.Add(new TooltipSection(
-                    entry.AvailabilityText,
-                    string.Equals(entry.AvailabilityText, "Repairable", StringComparison.OrdinalIgnoreCase)
-                        ? new Color(176, 255, 176)
-                        : new Color(255, 186, 186)));
-            }
-
-            if (entry.IsHiddenSlot)
-            {
-                sections.Add(new TooltipSection("Hidden equipped item is being repaired from its underlying slot.", new Color(181, 224, 255)));
-            }
+            // Client repair hover delegates to ShowItemToolTip with the hovered slot,
+            // so keep the sheet item-owned instead of appending repair-window-specific footer text.
 
             string summaryLine = BuildEquipmentSummaryLine(part);
             if (!string.IsNullOrWhiteSpace(summaryLine))

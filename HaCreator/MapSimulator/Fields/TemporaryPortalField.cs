@@ -1320,12 +1320,9 @@ namespace HaCreator.MapSimulator.Fields
 
             if (packetState == 0)
             {
-                // CTownPortalPool::OnTownPortalCreated keeps an already opening owner on its current cDoor run,
-                // but restarts the cDoor branch when a steady owner receives a fresh state-0 create.
-                return existingState.Value.Phase == RemoteTownPortalVisualPhase.Opening
-                    && existingState.Value.State == 0
-                    ? RemoteTownPortalVisualPhase.Opening
-                    : RemoteTownPortalVisualPhase.Opening;
+                // Once a remote owner is already active, follow-up state-0 sync packets should keep the
+                // door on the steady branch instead of replaying cDoor from the top again.
+                return RemoteTownPortalVisualPhase.Stable;
             }
 
             return RemoteTownPortalVisualPhase.Stable;

@@ -19,6 +19,7 @@ namespace HaCreator.MapSimulator
         public ConnectionNoticeWindowVariant? NoticeVariant { get; init; }
         public LoginUtilityDialogButtonLayout? ButtonLayout { get; init; }
         public LoginUtilityDialogVisualStyle VisualStyle { get; init; } = LoginUtilityDialogVisualStyle.Default;
+        public LoginUtilityDialogFrameVariant FrameVariant { get; init; } = LoginUtilityDialogFrameVariant.Default;
         public LoginUtilityDialogAction? Action { get; init; }
         public string PrimaryLabel { get; init; }
         public string SecondaryLabel { get; init; }

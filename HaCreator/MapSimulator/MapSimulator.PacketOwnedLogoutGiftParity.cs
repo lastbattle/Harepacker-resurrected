@@ -16,6 +16,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedLogoutGiftEntryCount = 3;
         private const int PacketOwnedLogoutGiftSelectionOpcode = 313;
         private const string PacketOwnedLogoutGiftUiPath = "LogoutGift/backgrnd";
+        private const int PacketOwnedLogoutGiftPredictQuitContextDwordIndex = 4137;
         private const int PacketOwnedLogoutGiftCommodityContextDwordIndex = 4138;
 
         private readonly int[] _packetOwnedLogoutGiftCommoditySerialNumbers = new int[PacketOwnedLogoutGiftEntryCount];
@@ -24,6 +25,8 @@ namespace HaCreator.MapSimulator
         private byte[] _packetOwnedLogoutGiftLeadingOpaqueBytes = Array.Empty<byte>();
         private int[] _packetOwnedLogoutGiftLeadingOpaqueInt32Values = Array.Empty<int>();
         private PacketOwnedLogoutGiftContextField[] _packetOwnedLogoutGiftLeadingContextFields = Array.Empty<PacketOwnedLogoutGiftContextField>();
+        private bool _packetOwnedLogoutGiftHasPredictQuitFlag;
+        private int _packetOwnedLogoutGiftPredictQuitRawValue;
         private int _lastPacketOwnedLogoutGiftRefreshTick = int.MinValue;
         private int _lastPacketOwnedLogoutGiftSelectionTick = int.MinValue;
         private int _lastPacketOwnedLogoutGiftSelectionRequestIndex = -1;
@@ -94,9 +97,7 @@ namespace HaCreator.MapSimulator
             }
 
             string subtitle = _packetOwnedLogoutGiftHasConfig
-                ? _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
-                    ? $"CWvsContext cached {entries.Count} logout-gift slots plus {DescribePacketOwnedLogoutGiftLeadingTail()}."
-                    : $"CWvsContext cached {entries.Count} logout-gift commodity slot(s)."
+                ? BuildPacketOwnedLogoutGiftSubtitle(entries.Count)
                 : "Waiting for logout-gift commodity data from SetField.";
             string selectionSuffix = _lastPacketOwnedLogoutGiftSelectionTick == int.MinValue
                 ? string.Empty
@@ -128,7 +129,7 @@ namespace HaCreator.MapSimulator
                 ? $" Commodity SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)} remains cached for preview."
                 : " The cached slot is empty, but the client still emits the slot index.";
             _lastPacketOwnedLogoutGiftSummary =
-                $"Simulated CUILogoutGift::OnButtonClicked outpacket {PacketOwnedLogoutGiftSelectionOpcode} with slot index {index.ToString(CultureInfo.InvariantCulture)} (button {1000 + index}).{commoditySuffix}";
+                $"Simulated CUILogoutGift::OnButtonClicked outpacket {PacketOwnedLogoutGiftSelectionOpcode} with slot index {index.ToString(CultureInfo.InvariantCulture)} (button {1000 + index}).{commoditySuffix} {DispatchPacketOwnedLogoutGiftSelectionRequest(index)}";
             return _lastPacketOwnedLogoutGiftSummary;
         }
 
@@ -213,6 +214,9 @@ namespace HaCreator.MapSimulator
             _packetOwnedLogoutGiftLeadingOpaqueBytes = leadingOpaqueBytes ?? Array.Empty<byte>();
             _packetOwnedLogoutGiftLeadingOpaqueInt32Values = leadingOpaqueInt32Values ?? Array.Empty<int>();
             _packetOwnedLogoutGiftLeadingContextFields = DecodePacketOwnedLogoutGiftLeadingContextFields(_packetOwnedLogoutGiftLeadingOpaqueInt32Values);
+            _packetOwnedLogoutGiftHasPredictQuitFlag = TryResolvePacketOwnedLogoutGiftPredictQuit(
+                _packetOwnedLogoutGiftLeadingContextFields,
+                out _packetOwnedLogoutGiftPredictQuitRawValue);
             _packetOwnedLogoutGiftHasConfig = hasCommodity;
             _packetOwnedLogoutGiftSelectedIndex = ResolveFirstPacketOwnedLogoutGiftSelection();
             _lastPacketOwnedLogoutGiftSummary = hasCommodity
@@ -263,6 +267,8 @@ namespace HaCreator.MapSimulator
                 _packetOwnedLogoutGiftLeadingOpaqueBytes = Array.Empty<byte>();
                 _packetOwnedLogoutGiftLeadingOpaqueInt32Values = Array.Empty<int>();
                 _packetOwnedLogoutGiftLeadingContextFields = Array.Empty<PacketOwnedLogoutGiftContextField>();
+                _packetOwnedLogoutGiftHasPredictQuitFlag = false;
+                _packetOwnedLogoutGiftPredictQuitRawValue = 0;
                 _lastPacketOwnedLogoutGiftSelectionRequestIndex = -1;
                 _lastPacketOwnedLogoutGiftSelectionTick = int.MinValue;
             }
@@ -316,6 +322,50 @@ namespace HaCreator.MapSimulator
                 : $"{_packetOwnedLogoutGiftLeadingOpaqueBytes.Length.ToString(CultureInfo.InvariantCulture)} adjacent trailing byte(s) [0x{hex}] / int32 [{string.Join(", ", values)}] => {contextFieldDescription}";
         }
 
+        private string BuildPacketOwnedLogoutGiftSubtitle(int entryCount)
+        {
+            string predictQuitPrefix = _packetOwnedLogoutGiftHasPredictQuitFlag
+                ? $"CWvsContext m_bPredictQuit={(_packetOwnedLogoutGiftPredictQuitRawValue != 0 ? "true" : "false")} "
+                : string.Empty;
+            return _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
+                ? $"{predictQuitPrefix}cached {entryCount} logout-gift slots plus {DescribePacketOwnedLogoutGiftLeadingTail()}."
+                : $"{predictQuitPrefix}cached {entryCount} logout-gift commodity slot(s).";
+        }
+
+        private string DispatchPacketOwnedLogoutGiftSelectionRequest(int index)
+        {
+            byte[] payload = BuildPacketOwnedLogoutGiftSelectionPayload(index);
+            string payloadHex = Convert.ToHexString(payload);
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(PacketOwnedLogoutGiftSelectionOpcode, payload, out string dispatchStatus))
+            {
+                return $"Dispatched [{payloadHex}] through the live local-utility bridge. {dispatchStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(PacketOwnedLogoutGiftSelectionOpcode, payload, out string outboxStatus))
+            {
+                return $"Dispatched [{payloadHex}] through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
+            }
+
+            string bridgeDeferredStatus = "Official-session bridge deferred delivery is disabled.";
+            if (_localUtilityOfficialSessionBridgeEnabled
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(PacketOwnedLogoutGiftSelectionOpcode, payload, out bridgeDeferredStatus))
+            {
+                return $"Queued [{payloadHex}] for deferred live official-session injection after the immediate bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(PacketOwnedLogoutGiftSelectionOpcode, payload, out string queuedStatus))
+            {
+                return $"Queued [{payloadHex}] for deferred generic local-utility outbox delivery after the immediate bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus} Deferred outbox: {queuedStatus}";
+            }
+
+            return $"Kept [{payloadHex}] simulator-local because neither the live local-utility bridge nor the generic outbox nor either deferred queue accepted opcode {PacketOwnedLogoutGiftSelectionOpcode}. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus} Deferred outbox: {queuedStatus}";
+        }
+
+        internal static byte[] BuildPacketOwnedLogoutGiftSelectionPayload(int index)
+        {
+            return BitConverter.GetBytes(index);
+        }
+
         internal static PacketOwnedLogoutGiftContextField[] DecodePacketOwnedLogoutGiftLeadingContextFields(int[] leadingOpaqueInt32Values)
         {
             if (leadingOpaqueInt32Values == null || leadingOpaqueInt32Values.Length == 0)
@@ -336,7 +386,10 @@ namespace HaCreator.MapSimulator
                 fields[i] = new PacketOwnedLogoutGiftContextField(
                     dwordIndex,
                     dwordIndex * sizeof(int),
-                    leadingOpaqueInt32Values[i]);
+                    leadingOpaqueInt32Values[i],
+                    dwordIndex == PacketOwnedLogoutGiftPredictQuitContextDwordIndex
+                        ? "CWvsContext::m_bPredictQuit"
+                        : null);
             }
 
             return fields;
@@ -353,12 +406,38 @@ namespace HaCreator.MapSimulator
             foreach (PacketOwnedLogoutGiftContextField field in fields)
             {
                 parts.Add(
-                    $"CWvsContext dword[{field.DwordIndex.ToString(CultureInfo.InvariantCulture)}]@0x{field.ByteOffset.ToString("X", CultureInfo.InvariantCulture)}={field.Value.ToString(CultureInfo.InvariantCulture)}");
+                    string.Equals(field.SemanticName, "CWvsContext::m_bPredictQuit", StringComparison.Ordinal)
+                        ? $"{field.SemanticName}@0x{field.ByteOffset.ToString("X", CultureInfo.InvariantCulture)}={field.Value.ToString(CultureInfo.InvariantCulture)} ({(field.Value != 0 ? "true" : "false")})"
+                        : $"CWvsContext dword[{field.DwordIndex.ToString(CultureInfo.InvariantCulture)}]@0x{field.ByteOffset.ToString("X", CultureInfo.InvariantCulture)}={field.Value.ToString(CultureInfo.InvariantCulture)}");
             }
 
             return string.Join(", ", parts);
         }
+
+        private static bool TryResolvePacketOwnedLogoutGiftPredictQuit(
+            IReadOnlyList<PacketOwnedLogoutGiftContextField> fields,
+            out int rawValue)
+        {
+            rawValue = 0;
+            if (fields == null)
+            {
+                return false;
+            }
+
+            foreach (PacketOwnedLogoutGiftContextField field in fields)
+            {
+                if (field.DwordIndex != PacketOwnedLogoutGiftPredictQuitContextDwordIndex)
+                {
+                    continue;
+                }
+
+                rawValue = field.Value;
+                return true;
+            }
+
+            return false;
+        }
     }
 
-    internal readonly record struct PacketOwnedLogoutGiftContextField(int DwordIndex, int ByteOffset, int Value);
+    internal readonly record struct PacketOwnedLogoutGiftContextField(int DwordIndex, int ByteOffset, int Value, string SemanticName = null);
 }

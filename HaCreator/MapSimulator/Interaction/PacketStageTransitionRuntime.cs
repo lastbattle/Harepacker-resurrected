@@ -4,6 +4,8 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Managers;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -136,6 +138,10 @@ namespace HaCreator.MapSimulator.Interaction
             int damageSeed1 = 0,
             int damageSeed2 = 0,
             int damageSeed3 = 0,
+            bool useCharacterDataDecodeLayout = false,
+            IReadOnlyDictionary<byte, int> visibleEquipmentByBodyPart = null,
+            IReadOnlyDictionary<byte, int> hiddenEquipmentByBodyPart = null,
+            int weaponStickerItemId = 0,
             byte[] characterDataTail = null,
             byte[] logoutGiftConfigPayload = null,
             long serverFileTime = 0)
@@ -151,38 +157,88 @@ namespace HaCreator.MapSimulator.Interaction
             writer.Write(damageSeed1);
             writer.Write(damageSeed2);
             writer.Write(damageSeed3);
-            WriteCharacterStatPayload(
-                writer,
-                characterId,
-                characterName,
-                gender,
-                skin,
-                faceId,
-                hairId,
-                level,
-                jobId,
-                strength,
-                dexterity,
-                intelligence,
-                luck,
-                hp,
-                maxHp,
-                mp,
-                maxMp,
-                abilityPoints,
-                skillPoints,
-                experience,
-                fame,
-                tempExperience,
-                mapId,
-                portalIndex,
-                playTime,
-                subJob);
-            writer.Write(friendMax);
-            writer.Write(!string.IsNullOrWhiteSpace(linkedCharacterName) ? (byte)1 : (byte)0);
-            if (!string.IsNullOrWhiteSpace(linkedCharacterName))
+
+            if (useCharacterDataDecodeLayout)
             {
-                WriteMapleString(writer, linkedCharacterName);
+                ulong characterDataFlags = 0x1UL;
+                if (HasAnyAvatarLookEquipment(visibleEquipmentByBodyPart, hiddenEquipmentByBodyPart, weaponStickerItemId))
+                {
+                    characterDataFlags |= 0x4UL;
+                }
+
+                writer.Write(characterDataFlags);
+                writer.Write((byte)0); // nCombatOrders
+                writer.Write((byte)0); // bBackwardUpdate
+                WriteCharacterDataStatAndTrailer(
+                    writer,
+                    mapId,
+                    portalIndex,
+                    hp,
+                    characterId,
+                    characterName,
+                    gender,
+                    skin,
+                    faceId,
+                    hairId,
+                    level,
+                    jobId,
+                    strength,
+                    dexterity,
+                    intelligence,
+                    luck,
+                    maxHp,
+                    mp,
+                    maxMp,
+                    abilityPoints,
+                    skillPoints,
+                    experience,
+                    fame,
+                    tempExperience,
+                    playTime,
+                    subJob,
+                    friendMax,
+                    linkedCharacterName);
+
+                if ((characterDataFlags & 0x4UL) != 0)
+                {
+                    WriteCharacterDataEquipInventorySection(
+                        writer,
+                        visibleEquipmentByBodyPart,
+                        hiddenEquipmentByBodyPart,
+                        weaponStickerItemId);
+                }
+            }
+            else
+            {
+                WriteCharacterDataStatAndTrailer(
+                    writer,
+                    mapId,
+                    portalIndex,
+                    hp,
+                    characterId,
+                    characterName,
+                    gender,
+                    skin,
+                    faceId,
+                    hairId,
+                    level,
+                    jobId,
+                    strength,
+                    dexterity,
+                    intelligence,
+                    luck,
+                    maxHp,
+                    mp,
+                    maxMp,
+                    abilityPoints,
+                    skillPoints,
+                    experience,
+                    fame,
+                    tempExperience,
+                    playTime,
+                    subJob,
+                    friendMax,
+                    linkedCharacterName);
             }
 
             if (characterDataTail?.Length > 0)
@@ -244,6 +300,151 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return true;
+        }
+
+        private static bool HasAnyAvatarLookEquipment(
+            IReadOnlyDictionary<byte, int> visibleEquipmentByBodyPart,
+            IReadOnlyDictionary<byte, int> hiddenEquipmentByBodyPart,
+            int weaponStickerItemId)
+        {
+            return weaponStickerItemId > 0
+                || (visibleEquipmentByBodyPart?.Any(static entry => entry.Value > 0) == true)
+                || (hiddenEquipmentByBodyPart?.Any(static entry => entry.Value > 0) == true);
+        }
+
+        private static void WriteCharacterDataStatAndTrailer(
+            BinaryWriter writer,
+            int mapId,
+            byte portalIndex,
+            int hp,
+            int characterId,
+            string characterName,
+            byte gender,
+            byte skin,
+            int faceId,
+            int hairId,
+            byte level,
+            short jobId,
+            short strength,
+            short dexterity,
+            short intelligence,
+            short luck,
+            int maxHp,
+            int mp,
+            int maxMp,
+            short abilityPoints,
+            short skillPoints,
+            int experience,
+            short fame,
+            int tempExperience,
+            int playTime,
+            short subJob,
+            byte friendMax,
+            string linkedCharacterName)
+        {
+            WriteCharacterStatPayload(
+                writer,
+                characterId,
+                characterName,
+                gender,
+                skin,
+                faceId,
+                hairId,
+                level,
+                jobId,
+                strength,
+                dexterity,
+                intelligence,
+                luck,
+                hp,
+                maxHp,
+                mp,
+                maxMp,
+                abilityPoints,
+                skillPoints,
+                experience,
+                fame,
+                tempExperience,
+                mapId,
+                portalIndex,
+                playTime,
+                subJob);
+            writer.Write(friendMax);
+            writer.Write(!string.IsNullOrWhiteSpace(linkedCharacterName) ? (byte)1 : (byte)0);
+            if (!string.IsNullOrWhiteSpace(linkedCharacterName))
+            {
+                WriteMapleString(writer, linkedCharacterName);
+            }
+        }
+
+        private static void WriteCharacterDataEquipInventorySection(
+            BinaryWriter writer,
+            IReadOnlyDictionary<byte, int> visibleEquipmentByBodyPart,
+            IReadOnlyDictionary<byte, int> hiddenEquipmentByBodyPart,
+            int weaponStickerItemId)
+        {
+            foreach (KeyValuePair<byte, int> entry in (visibleEquipmentByBodyPart ?? new Dictionary<byte, int>()).OrderBy(static entry => entry.Key))
+            {
+                if (entry.Value <= 0 || entry.Key == 0 || entry.Key > 59)
+                {
+                    continue;
+                }
+
+                writer.Write((short)(-entry.Key));
+                WriteCharacterDataEquipItem(writer, entry.Value);
+            }
+
+            foreach (KeyValuePair<byte, int> entry in (hiddenEquipmentByBodyPart ?? new Dictionary<byte, int>()).OrderBy(static entry => entry.Key))
+            {
+                if (entry.Value <= 0 || entry.Key == 0 || entry.Key > 59)
+                {
+                    continue;
+                }
+
+                writer.Write((short)(-(100 + entry.Key)));
+                WriteCharacterDataEquipItem(writer, entry.Value);
+            }
+
+            if (weaponStickerItemId > 0)
+            {
+                writer.Write((short)-111);
+                WriteCharacterDataEquipItem(writer, weaponStickerItemId);
+            }
+
+            writer.Write((short)0);
+        }
+
+        private static void WriteCharacterDataEquipItem(BinaryWriter writer, int itemId)
+        {
+            writer.Write((byte)1); // GW_ItemSlotEquip
+            writer.Write(itemId);
+            writer.Write((byte)0); // hasCashItemSN
+            writer.Write((long)0); // dateExpire
+            writer.Write((byte)0); // nRUC
+            writer.Write((byte)0); // nCUC
+
+            for (int i = 0; i < 14; i++)
+            {
+                writer.Write((short)0);
+            }
+
+            WriteMapleString(writer, string.Empty);
+            writer.Write((short)0); // nAttribute
+            writer.Write((byte)0); // nLevelUpType
+            writer.Write((byte)0); // nLevel
+            writer.Write(0); // nEXP
+            writer.Write(0); // nDurability
+            writer.Write(0); // nIUC
+            writer.Write((byte)0); // nGrade
+            writer.Write((byte)0); // nCHUC
+            writer.Write((short)0); // nOption1
+            writer.Write((short)0); // nOption2
+            writer.Write((short)0); // nOption3
+            writer.Write((short)0); // nSocket1
+            writer.Write((short)0); // nSocket2
+            writer.Write((long)0); // liSN
+            writer.Write((long)0); // ftEquipped
+            writer.Write(0); // nPrevBonusExpRate
         }
 
         private static void WriteCharacterStatPayload(
@@ -702,6 +903,11 @@ namespace HaCreator.MapSimulator.Interaction
                     snapshot = decoratedSnapshot;
                 }
 
+                if (TryDecodeCharacterDataAvatarLook(reader, characterDataFlags, snapshot, out PacketCharacterDataSnapshot avatarDecoratedSnapshot))
+                {
+                    snapshot = avatarDecoratedSnapshot;
+                }
+
                 head = new PacketCharacterDataTransferHead(snapshot.FieldId, snapshot.PortalIndex, snapshot.Hp);
                 consumedBytes = checked((int)(reader.BaseStream.Position - startPosition));
                 return true;
@@ -713,6 +919,199 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot = null;
                 characterDataFlags = 0;
                 consumedBytes = 0;
+                return false;
+            }
+        }
+
+        private static bool TryDecodeCharacterDataAvatarLook(
+            BinaryReader reader,
+            ulong characterDataFlags,
+            PacketCharacterDataSnapshot snapshot,
+            out PacketCharacterDataSnapshot decoratedSnapshot)
+        {
+            decoratedSnapshot = snapshot;
+            if ((characterDataFlags & 0x4UL) == 0)
+            {
+                return false;
+            }
+
+            long startPosition = reader.BaseStream.Position;
+            try
+            {
+                if ((characterDataFlags & 0x80UL) != 0)
+                {
+                    _ = reader.ReadByte(); // equip inventory slot count
+                }
+
+                Dictionary<byte, int> equipped = new();
+                Dictionary<byte, int> cashEquipped = new();
+                while (true)
+                {
+                    short position = reader.ReadInt16();
+                    if (position == 0)
+                    {
+                        break;
+                    }
+
+                    if (!TryDecodeCharacterDataItemSlot(reader, out PacketCharacterDataItemSlot itemSlot))
+                    {
+                        return false;
+                    }
+
+                    if (itemSlot.ItemId <= 0)
+                    {
+                        continue;
+                    }
+
+                    if (position <= -1 && position >= -59)
+                    {
+                        equipped[(byte)(-position)] = itemSlot.ItemId;
+                    }
+                    else if (position <= -101 && position >= -159)
+                    {
+                        cashEquipped[(byte)(-position - 100)] = itemSlot.ItemId;
+                    }
+                }
+
+                Dictionary<byte, int> visibleEquipment = new();
+                Dictionary<byte, int> hiddenEquipment = new();
+                for (byte bodyPart = 1; bodyPart <= 59; bodyPart++)
+                {
+                    if (bodyPart == 11)
+                    {
+                        if (equipped.TryGetValue(bodyPart, out int weaponItemId) && weaponItemId > 0)
+                        {
+                            visibleEquipment[bodyPart] = weaponItemId;
+                        }
+
+                        continue;
+                    }
+
+                    if (!LoginAvatarLookCodec.TryGetEquipSlot(bodyPart, out _))
+                    {
+                        continue;
+                    }
+
+                    if (cashEquipped.TryGetValue(bodyPart, out int cashItemId) && cashItemId > 0)
+                    {
+                        visibleEquipment[bodyPart] = cashItemId;
+                        if (equipped.TryGetValue(bodyPart, out int concealedItemId) && concealedItemId > 0)
+                        {
+                            hiddenEquipment[bodyPart] = concealedItemId;
+                        }
+                    }
+                    else if (equipped.TryGetValue(bodyPart, out int equippedItemId) && equippedItemId > 0)
+                    {
+                        visibleEquipment[bodyPart] = equippedItemId;
+                    }
+                }
+
+                int weaponStickerItemId = cashEquipped.TryGetValue(11, out int stickerItemId)
+                    ? stickerItemId
+                    : 0;
+                decoratedSnapshot = snapshot with
+                {
+                    AvatarLook = new LoginAvatarLook
+                    {
+                        Gender = Enum.IsDefined(typeof(CharacterGender), (int)snapshot.Gender)
+                            ? (CharacterGender)snapshot.Gender
+                            : CharacterGender.Male,
+                        Skin = Enum.IsDefined(typeof(SkinColor), (int)snapshot.Skin)
+                            ? (SkinColor)snapshot.Skin
+                            : SkinColor.Light,
+                        FaceId = snapshot.FaceId,
+                        HairId = snapshot.HairId,
+                        VisibleEquipmentByBodyPart = visibleEquipment,
+                        HiddenEquipmentByBodyPart = hiddenEquipment,
+                        WeaponStickerItemId = weaponStickerItemId,
+                        PetIds = Array.Empty<int>()
+                    }
+                };
+                return true;
+            }
+            catch (Exception) when (reader.BaseStream.CanSeek)
+            {
+                reader.BaseStream.Position = startPosition;
+                decoratedSnapshot = snapshot;
+                return false;
+            }
+        }
+
+        private static bool TryDecodeCharacterDataItemSlot(BinaryReader reader, out PacketCharacterDataItemSlot itemSlot)
+        {
+            itemSlot = default;
+            long startPosition = reader.BaseStream.Position;
+            try
+            {
+                byte itemType = reader.ReadByte();
+                int itemId = reader.ReadInt32();
+                bool hasCashItemSerialNumber = reader.ReadByte() != 0;
+                if (hasCashItemSerialNumber)
+                {
+                    _ = reader.ReadInt64();
+                }
+
+                _ = reader.ReadInt64(); // dateExpire
+                switch (itemType)
+                {
+                    case 1:
+                        _ = reader.ReadByte();
+                        _ = reader.ReadByte();
+                        for (int i = 0; i < 14; i++)
+                        {
+                            _ = reader.ReadInt16();
+                        }
+
+                        _ = ReadMapleString(reader);
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadByte();
+                        _ = reader.ReadByte();
+                        _ = reader.ReadInt32();
+                        _ = reader.ReadInt32();
+                        _ = reader.ReadInt32();
+                        _ = reader.ReadByte();
+                        _ = reader.ReadByte();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadInt64();
+                        _ = reader.ReadInt64();
+                        _ = reader.ReadInt32();
+                        break;
+                    case 2:
+                        _ = reader.ReadUInt16();
+                        _ = ReadMapleString(reader);
+                        _ = reader.ReadInt16();
+                        if ((itemId / 10000) is 207 or 233)
+                        {
+                            _ = reader.ReadInt64();
+                        }
+
+                        break;
+                    case 3:
+                        _ = reader.ReadBytes(13);
+                        _ = reader.ReadByte();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadByte();
+                        _ = reader.ReadInt64();
+                        _ = reader.ReadInt16();
+                        _ = reader.ReadUInt16();
+                        _ = reader.ReadInt32();
+                        _ = reader.ReadInt16();
+                        break;
+                    default:
+                        return false;
+                }
+
+                itemSlot = new PacketCharacterDataItemSlot(itemType, itemId);
+                return true;
+            }
+            catch (Exception) when (reader.BaseStream.CanSeek)
+            {
+                reader.BaseStream.Position = startPosition;
+                itemSlot = default;
                 return false;
             }
         }
@@ -969,7 +1368,10 @@ namespace HaCreator.MapSimulator.Interaction
         int PlayTime,
         short SubJob,
         byte FriendMax,
-        string LinkedCharacterName);
+        string LinkedCharacterName,
+        LoginAvatarLook AvatarLook = null);
+
+    internal readonly record struct PacketCharacterDataItemSlot(byte ItemType, int ItemId);
 
     internal readonly record struct PacketSetFieldPacket(
         IReadOnlyDictionary<uint, int> ClientOptions,

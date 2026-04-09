@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.UI
         public int OwnerSessionId { get; init; }
         public int ExpectedCharacterId { get; init; }
         public int ExpectedBuildStateToken { get; init; }
+        public int ExpectedMechanicStateToken { get; init; }
         public EquipmentChangeRequestKind Kind { get; init; }
         public InventoryType SourceInventoryType { get; init; } = InventoryType.NONE;
         public int SourceInventoryIndex { get; init; } = -1;
@@ -134,8 +135,14 @@ namespace HaCreator.MapSimulator.UI
         public int RequestedAtTick { get; init; }
         public int CompletedAtTick { get; init; }
         public int ResolvedBuildStateToken { get; init; }
+        public int ResolvedMechanicStateToken { get; init; }
 
-        internal EquipmentChangeResult WithCompletionMetadata(int requestId, int requestedAtTick, int completedAtTick, int resolvedBuildStateToken)
+        internal EquipmentChangeResult WithCompletionMetadata(
+            int requestId,
+            int requestedAtTick,
+            int completedAtTick,
+            int resolvedBuildStateToken,
+            int resolvedMechanicStateToken = 0)
         {
             return new EquipmentChangeResult
             {
@@ -148,7 +155,8 @@ namespace HaCreator.MapSimulator.UI
                 RequestId = requestId,
                 RequestedAtTick = requestedAtTick,
                 CompletedAtTick = completedAtTick,
-                ResolvedBuildStateToken = resolvedBuildStateToken
+                ResolvedBuildStateToken = resolvedBuildStateToken,
+                ResolvedMechanicStateToken = resolvedMechanicStateToken
             };
         }
     }
@@ -181,7 +189,10 @@ namespace HaCreator.MapSimulator.UI
             return hasPendingRequest || IsExclusiveRequestThrottled(currentTick, lastRequestTick, cooldownMs);
         }
 
-        public static bool IsResolvedResultStale(CharacterBuild build, EquipmentChangeResult result)
+        public static bool IsResolvedResultStale(
+            CharacterBuild build,
+            EquipmentChangeResult result,
+            Func<int> mechanicStateTokenResolver = null)
         {
             if (build == null
                 || result == null
@@ -192,7 +203,19 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            return build.ComputeEquipmentStateToken() != result.ResolvedBuildStateToken;
+            if (build.ComputeEquipmentStateToken() != result.ResolvedBuildStateToken)
+            {
+                return true;
+            }
+
+            if (result.ResolvedMechanicStateToken != 0
+                && mechanicStateTokenResolver != null
+                && mechanicStateTokenResolver.Invoke() != result.ResolvedMechanicStateToken)
+            {
+                return true;
+            }
+
+            return false;
         }
     }
 
@@ -236,7 +259,8 @@ namespace HaCreator.MapSimulator.UI
         internal static bool TryGetRequestStateRejectReason(
             EquipmentChangeRequest request,
             CharacterBuild build,
-            out string rejectReason)
+            out string rejectReason,
+            Func<int> mechanicStateTokenResolver = null)
         {
             if (request == null || build == null)
             {
@@ -256,6 +280,14 @@ namespace HaCreator.MapSimulator.UI
                 && build.ComputeEquipmentStateToken() != request.ExpectedBuildStateToken)
             {
                 rejectReason = "The equipped item state changed before the request was accepted.";
+                return true;
+            }
+
+            if (request.ExpectedMechanicStateToken != 0
+                && mechanicStateTokenResolver != null
+                && mechanicStateTokenResolver.Invoke() != request.ExpectedMechanicStateToken)
+            {
+                rejectReason = "The mechanic equipment state changed before the request was accepted.";
                 return true;
             }
 

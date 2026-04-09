@@ -70,8 +70,11 @@ namespace HaCreator.MapSimulator.Effects
         private const string WeddingMapHelperImageName = "MapHelper.img";
         private const string WeddingWeatherPath = "weather/wedding";
         private const string WeddingHeartWeatherPath = "weather/heartWedding";
-        private const int CeremonyPetalCount = 28;
-        private const int CeremonyHeartCount = 14;
+        private const int DefaultCeremonyPetalCount = 35;
+        private const int DefaultCeremonyHeartCount = 35;
+        private const int DialogMaxWidth = 560;
+        private const int DialogPadding = 20;
+        private const int DialogLineSpacing = 4;
         private const int PacketTypeUserEnterField = 179;
         private const int PacketTypeUserLeaveField = 180;
         private const int PacketTypeUserMove = 210;
@@ -160,6 +163,8 @@ namespace HaCreator.MapSimulator.Effects
         private readonly List<WeddingSceneFrame> _ceremonyHeartFrames = new();
         private readonly List<WeddingSceneParticle> _ceremonyPetals = new();
         private readonly List<WeddingSceneParticle> _ceremonyHearts = new();
+        private WeddingSceneAssetConfig _ceremonyPetalConfig = new(DefaultCeremonyPetalCount, RandomFrames: true);
+        private WeddingSceneAssetConfig _ceremonyHeartConfig = new(DefaultCeremonyHeartCount, RandomFrames: true);
         private Random _random = new();
         #endregion
 
@@ -196,6 +201,8 @@ namespace HaCreator.MapSimulator.Effects
         public WeddingPacketResponse? LastPacketResponse => _lastPacketResponse;
         public int RemoteParticipantCount => _participantActors.Count + _audienceActors.Count;
         public int AudienceParticipantCount => _audienceActors.Count;
+        public int CeremonyPetalParticleCount => _ceremonyPetals.Count;
+        public int CeremonyHeartParticleCount => _ceremonyHearts.Count;
         public int? LastPacketType => _lastPacketType;
         public bool UseExternalRemoteActorRenderer { get; set; }
         #endregion
@@ -252,6 +259,8 @@ namespace HaCreator.MapSimulator.Effects
             _ceremonyCelebrationActive = false;
             _ceremonyPetals.Clear();
             _ceremonyHearts.Clear();
+            _ceremonyPetalConfig = new WeddingSceneAssetConfig(DefaultCeremonyPetalCount, RandomFrames: true);
+            _ceremonyHeartConfig = new WeddingSceneAssetConfig(DefaultCeremonyHeartCount, RandomFrames: true);
             _currentDialog = null;
             _dialogQueue.Clear();
             LocalParticipantRole = WeddingParticipantRole.Guest;
@@ -1973,8 +1982,16 @@ namespace HaCreator.MapSimulator.Effects
             {
                 WzImage mapHelperImage = global::HaCreator.Program.FindImage("Map", WeddingMapHelperImageName);
                 mapHelperImage?.ParseImage();
-                LoadSceneFrames(mapHelperImage?.GetFromPath(WeddingWeatherPath) as WzImageProperty, _ceremonyPetalFrames, device);
-                LoadSceneFrames(mapHelperImage?.GetFromPath(WeddingHeartWeatherPath) as WzImageProperty, _ceremonyHeartFrames, device);
+                _ceremonyPetalConfig = LoadSceneFrames(
+                    mapHelperImage?.GetFromPath(WeddingWeatherPath) as WzImageProperty,
+                    _ceremonyPetalFrames,
+                    device,
+                    DefaultCeremonyPetalCount);
+                _ceremonyHeartConfig = LoadSceneFrames(
+                    mapHelperImage?.GetFromPath(WeddingHeartWeatherPath) as WzImageProperty,
+                    _ceremonyHeartFrames,
+                    device,
+                    DefaultCeremonyHeartCount);
             }
             catch (Exception ex)
             {
@@ -1983,13 +2000,22 @@ namespace HaCreator.MapSimulator.Effects
         }
 
 
-        private static void LoadSceneFrames(WzImageProperty sourceProperty, List<WeddingSceneFrame> destination, GraphicsDevice device)
+        private static WeddingSceneAssetConfig LoadSceneFrames(
+            WzImageProperty sourceProperty,
+            List<WeddingSceneFrame> destination,
+            GraphicsDevice device,
+            int defaultCount)
         {
             destination.Clear();
+            WeddingSceneAssetConfig config = new(defaultCount, RandomFrames: true);
             if (sourceProperty == null)
             {
-                return;
+                return config;
             }
+
+            int configuredCount = InfoTool.GetOptionalInt(sourceProperty["count"], defaultCount) ?? defaultCount;
+            bool randomFrames = (InfoTool.GetOptionalInt(sourceProperty["random"], 1) ?? 1) != 0;
+            config = new WeddingSceneAssetConfig(Math.Max(1, configuredCount), randomFrames);
 
 
             int frameIndex = 0;
@@ -2022,6 +2048,8 @@ namespace HaCreator.MapSimulator.Effects
                 frameIndex++;
 
             }
+
+            return config;
 
         }
 
@@ -2507,7 +2535,7 @@ namespace HaCreator.MapSimulator.Effects
             }
 
 
-            for (int i = 0; i < CeremonyPetalCount; i++)
+            for (int i = 0; i < _ceremonyPetalConfig.Count; i++)
             {
                 _ceremonyPetals.Add(new WeddingSceneParticle
                 {
@@ -2521,7 +2549,7 @@ namespace HaCreator.MapSimulator.Effects
                     Rotation = (float)(_random.NextDouble() * Math.PI * 2.0),
                     RotationSpeed = -0.7f + (float)_random.NextDouble() * 1.4f,
                     Alpha = 0.45f + (float)_random.NextDouble() * 0.35f,
-                    FrameIndex = _random.Next(_ceremonyPetalFrames.Count),
+                    FrameIndex = ResolveSceneFrameIndex(i, _ceremonyPetalFrames.Count, _ceremonyPetalConfig.RandomFrames),
                     FrameTimeMs = _random.Next(0, 300),
                     DrawAroundCouple = false
                 });
@@ -2537,9 +2565,9 @@ namespace HaCreator.MapSimulator.Effects
             }
 
 
-            for (int i = 0; i < CeremonyHeartCount; i++)
+            for (int i = 0; i < _ceremonyHeartConfig.Count; i++)
             {
-                float angle = MathHelper.TwoPi * (i / (float)CeremonyHeartCount);
+                float angle = MathHelper.TwoPi * (i / (float)_ceremonyHeartConfig.Count);
                 float radius = 18f + (float)_random.NextDouble() * 54f;
                 _ceremonyHearts.Add(new WeddingSceneParticle
                 {
@@ -2553,7 +2581,7 @@ namespace HaCreator.MapSimulator.Effects
                     Rotation = -0.15f + (float)_random.NextDouble() * 0.30f,
                     RotationSpeed = -0.5f + (float)_random.NextDouble() * 1.0f,
                     Alpha = 0.68f + (float)_random.NextDouble() * 0.22f,
-                    FrameIndex = _random.Next(_ceremonyHeartFrames.Count),
+                    FrameIndex = ResolveSceneFrameIndex(i, _ceremonyHeartFrames.Count, _ceremonyHeartConfig.RandomFrames),
                     FrameTimeMs = _random.Next(0, 900),
                     DrawAroundCouple = true
                 });
@@ -2587,7 +2615,7 @@ namespace HaCreator.MapSimulator.Effects
                         0.05f + (float)_random.NextDouble() * 0.10f);
                     petal.Scale = 0.7f + (float)_random.NextDouble() * 0.65f;
                     petal.Alpha = 0.45f + (float)_random.NextDouble() * 0.35f;
-                    petal.FrameIndex = _random.Next(_ceremonyPetalFrames.Count);
+                    petal.FrameIndex = ResolveSceneFrameIndex(i, _ceremonyPetalFrames.Count, _ceremonyPetalConfig.RandomFrames);
                     petal.FrameTimeMs = 0;
                 }
 
@@ -2627,7 +2655,7 @@ namespace HaCreator.MapSimulator.Effects
                         -18f - (float)_random.NextDouble() * 24f);
                     heart.Scale = 0.8f + (float)_random.NextDouble() * 0.55f;
                     heart.Alpha = 0.68f + (float)_random.NextDouble() * 0.22f;
-                    heart.FrameIndex = _random.Next(_ceremonyHeartFrames.Count);
+                    heart.FrameIndex = ResolveSceneFrameIndex(i, _ceremonyHeartFrames.Count, _ceremonyHeartConfig.RandomFrames);
                     heart.FrameTimeMs = 0;
                 }
 
@@ -2748,6 +2776,19 @@ namespace HaCreator.MapSimulator.Effects
 
 
 
+        private int ResolveSceneFrameIndex(int particleIndex, int frameCount, bool randomFrames)
+        {
+            if (frameCount <= 0)
+            {
+                return 0;
+            }
+
+            return randomFrames
+                ? _random.Next(frameCount)
+                : particleIndex % frameCount;
+        }
+
+
         private void DrawRemoteParticipants(
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonMeshRenderer,
@@ -2826,9 +2867,24 @@ namespace HaCreator.MapSimulator.Effects
 
 
             int screenWidth = spriteBatch.GraphicsDevice.Viewport.Width;
-            Vector2 textSize = font.MeasureString(_currentDialog.Message);
-            int boxWidth = (int)textSize.X + 40;
-            int boxHeight = (int)textSize.Y + 20;
+            int maxTextWidth = Math.Min(DialogMaxWidth, Math.Max(180, screenWidth - 80)) - (DialogPadding * 2);
+            IReadOnlyList<string> dialogLines = WrapDialogMessage(font, _currentDialog.Message, maxTextWidth);
+            if (dialogLines.Count == 0)
+            {
+                return;
+            }
+
+            float maxLineWidth = 0f;
+            foreach (string line in dialogLines)
+            {
+                maxLineWidth = Math.Max(maxLineWidth, font.MeasureString(line).X);
+            }
+
+            int lineHeight = font.LineSpacing;
+            int textHeight = (dialogLines.Count * lineHeight) + ((dialogLines.Count - 1) * DialogLineSpacing);
+            int promptHeight = _currentDialog.Mode == WeddingDialogMode.YesNo ? lineHeight + 10 : 0;
+            int boxWidth = (int)Math.Ceiling(Math.Min(maxLineWidth + (DialogPadding * 2), DialogMaxWidth));
+            int boxHeight = textHeight + promptHeight + (DialogPadding * 2);
             int boxX = (screenWidth - boxWidth) / 2;
             int boxY = 100;
 
@@ -2862,15 +2918,64 @@ namespace HaCreator.MapSimulator.Effects
 
             // Draw text
 
-            spriteBatch.DrawString(font, _currentDialog.Message, new Vector2(boxX + 20, boxY + 10), textColor);
+            Vector2 textPosition = new Vector2(boxX + DialogPadding, boxY + DialogPadding);
+            for (int i = 0; i < dialogLines.Count; i++)
+            {
+                spriteBatch.DrawString(
+                    font,
+                    dialogLines[i],
+                    textPosition + new Vector2(0f, i * (lineHeight + DialogLineSpacing)),
+                    textColor);
+            }
 
 
 
             if (_currentDialog.Mode == WeddingDialogMode.YesNo)
             {
-                Vector2 promptPosition = new Vector2(boxX + 20, boxY + boxHeight - 28);
+                Vector2 promptPosition = new Vector2(boxX + DialogPadding, boxY + boxHeight - DialogPadding - lineHeight);
                 spriteBatch.DrawString(font, "[Yes]     [No]", promptPosition, new Color(255, 235, 180, (int)(255 * alpha)));
             }
+        }
+
+        private static IReadOnlyList<string> WrapDialogMessage(SpriteFont font, string text, float maxWidth)
+        {
+            List<string> lines = new();
+            if (font == null || string.IsNullOrWhiteSpace(text) || maxWidth <= 0f)
+            {
+                return lines;
+            }
+
+            foreach (string paragraph in text.Replace("\r", string.Empty).Split('\n'))
+            {
+                if (string.IsNullOrWhiteSpace(paragraph))
+                {
+                    lines.Add(string.Empty);
+                    continue;
+                }
+
+                string currentLine = string.Empty;
+                foreach (string word in paragraph.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    string candidate = string.IsNullOrEmpty(currentLine)
+                        ? word
+                        : $"{currentLine} {word}";
+                    if (!string.IsNullOrEmpty(currentLine) && font.MeasureString(candidate).X > maxWidth)
+                    {
+                        lines.Add(currentLine);
+                        currentLine = word;
+                        continue;
+                    }
+
+                    currentLine = candidate;
+                }
+
+                if (!string.IsNullOrEmpty(currentLine))
+                {
+                    lines.Add(currentLine);
+                }
+            }
+
+            return lines;
         }
 
 
@@ -3154,6 +3259,9 @@ namespace HaCreator.MapSimulator.Effects
         public Vector2 Origin { get; }
         public int Delay { get; }
     }
+
+
+    internal readonly record struct WeddingSceneAssetConfig(int Count, bool RandomFrames);
 
 
     public struct WeddingSceneParticle

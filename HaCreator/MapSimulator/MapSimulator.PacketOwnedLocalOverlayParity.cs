@@ -103,7 +103,9 @@ namespace HaCreator.MapSimulator
         private const int FieldHazardPetAutoConsumeSyntheticAckDelayMs = 120;
         private const int FieldHazardPetAutoConsumeSyntheticResultDelayMs = 90;
         private const int FieldHazardPetAutoConsumeRemoteObservationWindowMs = 1500;
-        private const int FieldHazardPetAutoConsumeRequestIndex = 0;
+        private const int FieldHazardPetAutoConsumeDefaultRequestIndex = 0;
+        private const int FieldHazardPetAutoConsumeForceRequestIndex = 1;
+        private const int FieldHazardPetAutoConsumeBuffSkillRequestIndex = 2;
 
         private void LoadPacketOwnedLocalOverlayAssets()
         {
@@ -491,40 +493,51 @@ namespace HaCreator.MapSimulator
 
         private bool TryResolvePacketOwnedBalloonAnchorScreenPoint(LocalOverlayBalloonMessage message, int currentTickCount, int mapCenterX, int mapCenterY, out Point anchor)
         {
-            Point worldAnchor;
             if (message.AnchorMode == LocalOverlayBalloonAnchorMode.Avatar)
             {
-                if (!TryResolvePacketOwnedAvatarBalloonWorldAnchor(currentTickCount, out worldAnchor))
+                if (!TryResolvePacketOwnedAvatarOriginScreenPoint(currentTickCount, mapCenterX, mapCenterY, out Point avatarOriginScreenPoint))
                 {
                     anchor = Point.Zero;
                     return false;
                 }
-            }
-            else
-            {
-                worldAnchor = message.WorldAnchor;
+
+                anchor = new Point(
+                    avatarOriginScreenPoint.X + message.AnchorOffset.X,
+                    avatarOriginScreenPoint.Y + message.AnchorOffset.Y);
+                return true;
             }
 
             anchor = new Point(
-                worldAnchor.X - mapShiftX + mapCenterX,
-                worldAnchor.Y - mapShiftY + mapCenterY);
+                message.WorldAnchor.X - mapShiftX + mapCenterX + message.AnchorOffset.X,
+                message.WorldAnchor.Y - mapShiftY + mapCenterY + message.AnchorOffset.Y);
             return true;
         }
 
-        private bool TryResolvePacketOwnedAvatarBalloonWorldAnchor(int currentTickCount, out Point worldAnchor)
+        private bool TryResolvePacketOwnedAvatarOriginScreenPoint(int currentTickCount, int mapCenterX, int mapCenterY, out Point screenPoint)
         {
             PlayerCharacter player = _playerManager?.Player;
             if (player == null)
             {
-                worldAnchor = Point.Zero;
+                screenPoint = Point.Zero;
                 return false;
             }
 
-            int avatarHeight = player.TryGetCurrentFrameBounds(currentTickCount)?.Height ?? player.GetHitbox().Height;
-            worldAnchor = new Point(
-                (int)Math.Round(player.X),
-                (int)Math.Round(player.Y) - avatarHeight - PacketOwnedBalloonAvatarVerticalOffset);
+            screenPoint = new Point(
+                (int)Math.Round(player.X) - mapShiftX + mapCenterX,
+                (int)Math.Round(player.Y) - mapShiftY + mapCenterY);
             return true;
+        }
+
+        private Point ResolvePacketOwnedAvatarBalloonOriginOffset(int currentTickCount)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (player == null)
+            {
+                return new Point(0, -PacketOwnedBalloonAvatarVerticalOffset);
+            }
+
+            int avatarHeight = player.TryGetCurrentFrameBounds(currentTickCount)?.Height ?? player.GetHitbox().Height;
+            return new Point(0, -avatarHeight - PacketOwnedBalloonAvatarVerticalOffset);
         }
 
         private int ResolvePacketOwnedBalloonWrapWidth(int requestedWidth)
@@ -1270,14 +1283,12 @@ namespace HaCreator.MapSimulator
             int bodyWidth = contentWidth + PacketOwnedBalloonBodyExtraWidth;
             int contentAreaWidth = Math.Max(0, bodyWidth - PacketOwnedBalloonBodyExtraWidth);
             int bodyHeight = Math.Max(26, (lines.Length * lineHeight) + (PacketOwnedBalloonVerticalPadding * 2));
-            bool placeAbove = anchor.Y >= bodyHeight + PacketOwnedBalloonScreenMargin + 16;
             int canvasX = Math.Clamp(
                 anchor.X - (bodyWidth / 2),
                 PacketOwnedBalloonScreenMargin,
                 Math.Max(PacketOwnedBalloonScreenMargin, Width - bodyWidth - PacketOwnedBalloonScreenMargin));
-            PacketOwnedBalloonArrowKind arrowKind = SelectPacketOwnedBalloonArrowKind(anchor, canvasX, bodyWidth, placeAbove);
+            PacketOwnedBalloonArrowKind arrowKind = SelectPacketOwnedBalloonArrowKind(anchor, canvasX, bodyWidth);
             LocalOverlayBalloonArrowSprite arrowSprite = ResolvePacketOwnedBalloonArrowSprite(arrowKind);
-            int arrowAboveBodyExtent = ResolvePacketOwnedBalloonArrowAboveBodyExtent(bodyWidth, bodyHeight, arrowKind, arrowSprite);
             int arrowBelowBodyExtent = ResolvePacketOwnedBalloonArrowBelowBodyExtent(bodyWidth, bodyHeight, arrowKind, arrowSprite);
             Texture2D visualTexture = GetOrCreatePacketOwnedBalloonVisualTexture(
                 message,
@@ -1287,25 +1298,25 @@ namespace HaCreator.MapSimulator
                 bodyHeight,
                 arrowKind,
                 arrowSprite);
-            int desiredCanvasY = placeAbove
-                ? anchor.Y - (bodyHeight + arrowBelowBodyExtent)
-                : anchor.Y;
-            Rectangle bodyBounds = new(canvasX, desiredCanvasY, bodyWidth, bodyHeight);
-            if (!placeAbove)
-            {
-                bodyBounds.Y = desiredCanvasY + arrowAboveBodyExtent;
-            }
+            Rectangle bodyBounds = new(
+                canvasX,
+                anchor.Y - bodyHeight - arrowBelowBodyExtent,
+                bodyWidth,
+                bodyHeight);
 
             Rectangle arrowBounds = ResolvePacketOwnedBalloonArrowBounds(bodyBounds, arrowKind, arrowSprite);
             Rectangle canvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, arrowBounds);
-            Point screenShift = ResolvePacketOwnedBalloonCanvasShift(canvasBounds);
-            bodyBounds = OffsetPacketOwnedBalloonBounds(bodyBounds, screenShift);
-            arrowBounds = OffsetPacketOwnedBalloonBounds(arrowBounds, screenShift);
-            canvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, arrowBounds);
-
-            if (occupiedBounds != null)
+            if (message.AnchorMode != LocalOverlayBalloonAnchorMode.Avatar)
             {
-                ResolvePacketOwnedBalloonOverlap(occupiedBounds, placeAbove, ref bodyBounds, ref arrowBounds, ref canvasBounds);
+                Point screenShift = ResolvePacketOwnedBalloonCanvasShift(canvasBounds);
+                bodyBounds = OffsetPacketOwnedBalloonBounds(bodyBounds, screenShift);
+                arrowBounds = OffsetPacketOwnedBalloonBounds(arrowBounds, screenShift);
+                canvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, arrowBounds);
+
+                if (occupiedBounds != null)
+                {
+                    ResolvePacketOwnedBalloonOverlap(occupiedBounds, placeAbove: true, ref bodyBounds, ref arrowBounds, ref canvasBounds);
+                }
             }
 
             Rectangle contentBounds = new(
@@ -1420,7 +1431,7 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private PacketOwnedBalloonArrowKind SelectPacketOwnedBalloonArrowKind(Point anchor, int bodyX, int bodyWidth, bool placeAbove)
+        private PacketOwnedBalloonArrowKind SelectPacketOwnedBalloonArrowKind(Point anchor, int bodyX, int bodyWidth)
         {
             int bodyCenterX = bodyX + (bodyWidth / 2);
             int deltaFromCenter = anchor.X - bodyCenterX;
@@ -1428,32 +1439,17 @@ namespace HaCreator.MapSimulator
             bool nearLeft = anchor.X <= bodyX + PacketOwnedBalloonCornerThreshold;
             bool nearRight = anchor.X >= bodyX + bodyWidth - PacketOwnedBalloonCornerThreshold;
 
-            if (placeAbove)
-            {
-                if (nearLeft)
-                {
-                    return useLongArrow ? PacketOwnedBalloonArrowKind.BottomLeftLong : PacketOwnedBalloonArrowKind.BottomLeft;
-                }
-
-                if (nearRight)
-                {
-                    return useLongArrow ? PacketOwnedBalloonArrowKind.BottomRightLong : PacketOwnedBalloonArrowKind.BottomRight;
-                }
-
-                return useLongArrow ? PacketOwnedBalloonArrowKind.BottomCenterLong : PacketOwnedBalloonArrowKind.BottomCenter;
-            }
-
             if (nearLeft)
             {
-                return useLongArrow ? PacketOwnedBalloonArrowKind.TopLeftLong : PacketOwnedBalloonArrowKind.TopLeft;
+                return useLongArrow ? PacketOwnedBalloonArrowKind.BottomLeftLong : PacketOwnedBalloonArrowKind.BottomLeft;
             }
 
             if (nearRight)
             {
-                return useLongArrow ? PacketOwnedBalloonArrowKind.TopRightLong : PacketOwnedBalloonArrowKind.TopRight;
+                return useLongArrow ? PacketOwnedBalloonArrowKind.BottomRightLong : PacketOwnedBalloonArrowKind.BottomRight;
             }
 
-            return useLongArrow ? PacketOwnedBalloonArrowKind.TopCenterLong : PacketOwnedBalloonArrowKind.TopCenter;
+            return useLongArrow ? PacketOwnedBalloonArrowKind.BottomCenterLong : PacketOwnedBalloonArrowKind.BottomCenter;
         }
 
         private LocalOverlayBalloonArrowSprite ResolvePacketOwnedBalloonArrowSprite(PacketOwnedBalloonArrowKind kind)
@@ -1506,7 +1502,12 @@ namespace HaCreator.MapSimulator
             LocalOverlayBalloonMessage message;
             if (attachToAvatar)
             {
-                message = _packetOwnedBalloonState.ShowAvatar(text, requestedWidth, lifetimeMs, currentTickCount);
+                message = _packetOwnedBalloonState.ShowAvatar(
+                    text,
+                    requestedWidth,
+                    lifetimeMs,
+                    currentTickCount,
+                    ResolvePacketOwnedAvatarBalloonOriginOffset(currentTickCount));
             }
             else
             {
@@ -1551,7 +1552,13 @@ namespace HaCreator.MapSimulator
             return "Cleared the packet-authored damage meter timer.";
         }
 
-        private string ApplyFieldHazardNotice(int damage, int currentTickCount, string message = null, int? durationMs = null)
+        private string ApplyFieldHazardNotice(
+            int damage,
+            int currentTickCount,
+            string message = null,
+            int? durationMs = null,
+            bool forceRequest = false,
+            bool buffSkillRequest = false)
         {
             StampPacketOwnedUtilityRequestState();
             string resolvedMessage = BuildFieldHazardNoticeMessage(damage, message);
@@ -1561,7 +1568,11 @@ namespace HaCreator.MapSimulator
                 resolvedMessage,
                 durationMs ?? Managers.LocalOverlayRuntime.DefaultFieldHazardNoticeDurationMs);
 
-            string followUpDetail = TryApplyFieldHazardPetAutoConsume(damage, currentTickCount);
+            string followUpDetail = TryApplyFieldHazardPetAutoConsume(
+                damage,
+                currentTickCount,
+                forceRequest,
+                buffSkillRequest);
             return string.IsNullOrWhiteSpace(followUpDetail)
                 ? $"Applied packet-authored field hazard notice for {Math.Max(0, damage)} HP."
                 : $"Applied packet-authored field hazard notice for {Math.Max(0, damage)} HP. {followUpDetail}";
@@ -1595,7 +1606,11 @@ namespace HaCreator.MapSimulator
                 "You are lacking the HP Potion that your pet is supposed to use.");
         }
 
-        private string TryApplyFieldHazardPetAutoConsume(int damage, int currentTickCount)
+        private string TryApplyFieldHazardPetAutoConsume(
+            int damage,
+            int currentTickCount,
+            bool forceRequest,
+            bool buffSkillRequest)
         {
             PlayerCharacter player = _playerManager?.Player;
             if (damage <= 0 || player?.Build == null || !player.IsAlive)
@@ -1635,6 +1650,7 @@ namespace HaCreator.MapSimulator
 
             string petLabel = DescribeFieldHazardAutoConsumePet(target.PetSlotIndex, target.PetName);
             string requestMode = DescribeFieldHazardSharedPetConsumeMode(target.SharedSource);
+            string requestVariant = DescribeFieldHazardRequestVariant(forceRequest, buffSkillRequest);
             int requestId = GetNextFieldHazardPetAutoConsumeRequestId();
             PetRuntime requestPet = GetFieldHazardAutoConsumePetBySlot(target.PetSlotIndex);
             if (!TryResolveFieldHazardItemSlotIndices(
@@ -1669,10 +1685,11 @@ namespace HaCreator.MapSimulator
                 return pendingDetail;
             }
 
-            if (_lastFieldHazardPetAutoConsumeRequestTick != int.MinValue
+            if (!forceRequest
+                && _lastFieldHazardPetAutoConsumeRequestTick != int.MinValue
                 && unchecked(currentTickCount - _lastFieldHazardPetAutoConsumeRequestTick) < FieldHazardPetAutoConsumeRequestThrottleMs)
             {
-                string throttledDetail = $"{petLabel} {requestMode} request for {target.Candidate.ItemName} is waiting on the client request cooldown.";
+                string throttledDetail = $"{petLabel} {requestMode} {requestVariant} for {target.Candidate.ItemName} is waiting on the client request cooldown.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(throttledDetail, FieldHazardFollowUpKind.Throttled, currentTickCount);
                 return throttledDetail;
             }
@@ -1681,6 +1698,8 @@ namespace HaCreator.MapSimulator
                     requestPet,
                     target.Candidate,
                     inventoryClientSlotIndex,
+                    forceRequest,
+                    buffSkillRequest,
                     currentTickCount,
                     out ulong petSerial,
                     out int requestIndex,
@@ -1693,8 +1712,8 @@ namespace HaCreator.MapSimulator
                     ? FieldHazardFollowUpKind.Pending
                     : FieldHazardFollowUpKind.Throttled;
                 string blockedDetail = outboundExclusivePending
-                    ? $"{petLabel} {requestMode} request for {target.Candidate.ItemName} is still waiting on the packet-owned SendStatChangeItemUseRequestByPetQ gate."
-                    : $"{petLabel} {requestMode} request for {target.Candidate.ItemName} is waiting on the packet-owned SendStatChangeItemUseRequestByPetQ resend cooldown.";
+                    ? $"{petLabel} {requestMode} {requestVariant} for {target.Candidate.ItemName} is still waiting on the packet-owned SendStatChangeItemUseRequestByPetQ gate."
+                    : $"{petLabel} {requestMode} {requestVariant} for {target.Candidate.ItemName} is waiting on the packet-owned SendStatChangeItemUseRequestByPetQ resend cooldown.";
                 if (!string.IsNullOrWhiteSpace(transportDisposition))
                 {
                     blockedDetail = $"{blockedDetail} {transportDisposition}";
@@ -1716,8 +1735,8 @@ namespace HaCreator.MapSimulator
                 target.PetName,
                 target.Candidate,
                 target.SharedSource,
-                ForceRequest: false,
-                BuffSkillRequest: false,
+                ForceRequest: forceRequest,
+                BuffSkillRequest: buffSkillRequest,
                 PetSerial: petSerial,
                 RequestIndex: requestIndex,
                 InventoryRuntimeSlotIndex: inventoryRuntimeSlotIndex,
@@ -1734,7 +1753,7 @@ namespace HaCreator.MapSimulator
             _lastFieldHazardPetAutoConsumeRequestTick = currentTickCount;
             _petHpPotionFailureSpeechCount = 0;
 
-            string requestDetail = $"{petLabel} {requestMode} sent pet item-use request #{requestId} for {target.Candidate.ItemName} on {target.Candidate.InventoryType} slot {inventoryClientSlotIndex}.";
+            string requestDetail = $"{petLabel} {requestMode} sent {requestVariant} #{requestId} for {target.Candidate.ItemName} on {target.Candidate.InventoryType} slot {inventoryClientSlotIndex}.";
             if (!string.IsNullOrWhiteSpace(transportDisposition))
             {
                 requestDetail = $"{requestDetail} {transportDisposition}";
@@ -1759,13 +1778,14 @@ namespace HaCreator.MapSimulator
 
             string petLabel = DescribeFieldHazardAutoConsumePet(request.PetSlotIndex, request.PetName);
             string requestMode = DescribeFieldHazardSharedPetConsumeMode(request.SharedSource);
+            string requestVariant = DescribeFieldHazardRequestVariant(request.ForceRequest, request.BuffSkillRequest);
             PlayerCharacter player = _playerManager?.Player;
             if (player?.Build == null || !player.IsAlive)
             {
                 ClearFieldHazardPendingInventoryRequest();
                 _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
                 _pendingFieldHazardPetAutoConsumeRequest = null;
-                string cancelledDetail = $"{petLabel} {requestMode} request #{request.RequestId} for {request.Candidate.ItemName} expired before the client could acknowledge it.";
+                string cancelledDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} for {request.Candidate.ItemName} expired before the client could acknowledge it.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(cancelledDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
                 return;
             }
@@ -1803,7 +1823,7 @@ namespace HaCreator.MapSimulator
                 _pendingFieldHazardPetAutoConsumeRequest = null;
                 TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
                 _chat?.AddSystemMessage(GetFieldHazardNoHpPotionChatNoticeText(), currentTickCount);
-                string slotExpiredDetail = $"{petLabel} {requestMode} request #{request.RequestId} for {request.Candidate.ItemName} lost {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} before the synthetic ack arrived.";
+                string slotExpiredDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} for {request.Candidate.ItemName} lost {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} before the synthetic ack arrived.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(slotExpiredDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
                 return;
             }
@@ -1811,8 +1831,8 @@ namespace HaCreator.MapSimulator
             if (!request.Acknowledged)
             {
                 string ackDetail = request.ResolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved
-                    ? $"{petLabel} {requestMode} request #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} and is awaiting remote packet/result ownership."
-                    : $"{petLabel} {requestMode} request #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
+                    ? $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} and is awaiting remote packet/result ownership."
+                    : $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(ackDetail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
                 request = request with { Acknowledged = true };
                 _pendingFieldHazardPetAutoConsumeRequest = request;
@@ -1826,7 +1846,7 @@ namespace HaCreator.MapSimulator
             {
                 if (unchecked(currentTickCount - request.RemoteResultDeadlineAt) < 0)
                 {
-                    string pendingRemoteDetail = $"{petLabel} {requestMode} request #{request.RequestId} is still awaiting remote packet/result ownership for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
+                    string pendingRemoteDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} is still awaiting remote packet/result ownership for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
                     _localOverlayRuntime.SetFieldHazardFollowUp(pendingRemoteDetail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
                     return;
                 }
@@ -1834,7 +1854,7 @@ namespace HaCreator.MapSimulator
                 ClearFieldHazardPendingInventoryRequest();
                 _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
                 _pendingFieldHazardPetAutoConsumeRequest = null;
-                string remoteUnresolvedDetail = $"{petLabel} {requestMode} request #{request.RequestId} remained externally owned after the simulator observation window; waiting for a real server/inventory result for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
+                string remoteUnresolvedDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} remained externally owned after the simulator observation window; waiting for a real server/inventory result for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(remoteUnresolvedDetail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
                 return;
             }
@@ -1845,7 +1865,7 @@ namespace HaCreator.MapSimulator
 
             if (player.HP >= player.MaxHP)
             {
-                string ackOnlyDetail = $"{petLabel} {requestMode} request #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} without consuming {request.Candidate.ItemName}.";
+                string ackOnlyDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} without consuming {request.Candidate.ItemName}.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(ackOnlyDetail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
                 return;
             }
@@ -1856,14 +1876,14 @@ namespace HaCreator.MapSimulator
                     request.InventoryRuntimeSlotIndex,
                     currentTickCount))
             {
-                string successDetail = $"{petLabel} {requestMode} request #{request.RequestId} acknowledged {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} and consumed it.";
+                string successDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} acknowledged {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} and consumed it.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(successDetail, FieldHazardFollowUpKind.Consumed, currentTickCount);
                 return;
             }
 
             TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
             _chat?.AddSystemMessage(GetFieldHazardNoHpPotionChatNoticeText(), currentTickCount);
-            string failureDetail = $"{petLabel} {requestMode} request #{request.RequestId} for {request.Candidate.ItemName} failed after the synthetic ack arrived but before the client could consume locked slot {request.InventoryClientSlotIndex}.";
+            string failureDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} for {request.Candidate.ItemName} failed after the synthetic ack arrived but before the client could consume locked slot {request.InventoryClientSlotIndex}.";
             _localOverlayRuntime.SetFieldHazardFollowUp(failureDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
         }
 
@@ -2056,6 +2076,8 @@ namespace HaCreator.MapSimulator
             PetRuntime requestPet,
             FieldHazardHpPotionCandidate candidate,
             int inventoryClientSlotIndex,
+            bool forceRequest,
+            bool buffSkillRequest,
             int currentTickCount,
             out ulong petSerial,
             out int requestIndex,
@@ -2065,7 +2087,7 @@ namespace HaCreator.MapSimulator
             out bool exclusivePending)
         {
             petSerial = ResolveFieldHazardPetAutoConsumeSerial(requestPet);
-            requestIndex = FieldHazardPetAutoConsumeRequestIndex;
+            requestIndex = ResolveFieldHazardPetAutoConsumeRequestIndex(forceRequest, buffSkillRequest);
             payloadHex = string.Empty;
             transportDisposition = string.Empty;
             resolutionMode = FieldHazardPetConsumeResolutionMode.SimulatorOwned;
@@ -2078,7 +2100,7 @@ namespace HaCreator.MapSimulator
                     (ushort)Math.Max(0, inventoryClientSlotIndex),
                     candidate.ItemId,
                     consumeMp: false,
-                    buffSkill: false,
+                    buffSkill: buffSkillRequest,
                     requestIndex,
                     out PacketOwnedLocalUtilityOutboundRequest request))
             {
@@ -2441,6 +2463,38 @@ namespace HaCreator.MapSimulator
             };
         }
 
+        private static string DescribeFieldHazardRequestVariant(bool forceRequest, bool buffSkillRequest)
+        {
+            if (forceRequest && buffSkillRequest)
+            {
+                return "forced buff-skill request";
+            }
+
+            if (buffSkillRequest)
+            {
+                return "buff-skill request";
+            }
+
+            if (forceRequest)
+            {
+                return "forced request";
+            }
+
+            return "request";
+        }
+
+        private static int ResolveFieldHazardPetAutoConsumeRequestIndex(bool forceRequest, bool buffSkillRequest)
+        {
+            if (buffSkillRequest)
+            {
+                return FieldHazardPetAutoConsumeBuffSkillRequestIndex;
+            }
+
+            return forceRequest
+                ? FieldHazardPetAutoConsumeForceRequestIndex
+                : FieldHazardPetAutoConsumeDefaultRequestIndex;
+        }
+
         private static string DescribeFieldHazardSharedPetConsumeSource(FieldHazardSharedPetConsumeSource source)
         {
             return source switch
@@ -2645,7 +2699,7 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                        "Usage: /localoverlay [status|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [message]|hazardclear|packet <fade|balloon|damagemeter|hpdec> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon|damagemeter|hpdec> <hex>|inbox [status|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]]");
+                        "Usage: /localoverlay [status|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [force] [buffskill] [message]|hazardclear|packet <fade|balloon|damagemeter|hpdec> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon|damagemeter|hpdec> <hex>|inbox [status|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]]");
             }
         }
 
@@ -2724,11 +2778,43 @@ namespace HaCreator.MapSimulator
         {
             if (args.Length < 2 || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int damage))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /localoverlay hazard <damage> [message]");
+                return ChatCommandHandler.CommandResult.Error("Usage: /localoverlay hazard <damage> [force] [buffskill] [message]");
             }
 
-            string message = args.Length > 2 ? string.Join(" ", args.Skip(2)) : null;
-            return ChatCommandHandler.CommandResult.Ok(ApplyFieldHazardNotice(damage, currTickCount, message));
+            bool forceRequest = false;
+            bool buffSkillRequest = false;
+            int messageStartIndex = 2;
+            while (messageStartIndex < args.Length)
+            {
+                string token = args[messageStartIndex];
+                if (token.Equals("force", StringComparison.OrdinalIgnoreCase)
+                    || token.Equals("forced", StringComparison.OrdinalIgnoreCase))
+                {
+                    forceRequest = true;
+                    messageStartIndex++;
+                    continue;
+                }
+
+                if (token.Equals("buffskill", StringComparison.OrdinalIgnoreCase)
+                    || token.Equals("buff", StringComparison.OrdinalIgnoreCase))
+                {
+                    buffSkillRequest = true;
+                    messageStartIndex++;
+                    continue;
+                }
+
+                break;
+            }
+
+            string message = args.Length > messageStartIndex ? string.Join(" ", args.Skip(messageStartIndex)) : null;
+            return ChatCommandHandler.CommandResult.Ok(
+                ApplyFieldHazardNotice(
+                    damage,
+                    currTickCount,
+                    message,
+                    durationMs: null,
+                    forceRequest,
+                    buffSkillRequest));
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedLocalOverlayPacketCommand(string[] args, bool rawHex)

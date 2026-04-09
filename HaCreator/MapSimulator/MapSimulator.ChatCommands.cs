@@ -1578,6 +1578,47 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Info(DescribeLoginPacketTransportStatus());
                         }
 
+                        if (string.Equals(args[1], "map", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 4
+                                || !int.TryParse(args[2], out int opcode)
+                                || opcode <= 0
+                                || !LoginRuntimeManager.TryParsePacketType(args[3], out LoginPacketType mappedPacketType))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket session map <opcode> <checkpassword|guestlogin|accountinfo|checkuserlimit|setaccount|eula|checkpin|updatepin|viewallchar|vac|worldinfo|selectworld|selectchar|checkduplicatedid|newcharresult|deletechar|enablespw|latestworld|recommendworld|extracharinfo|checkspw|setfield|setitc|setcashshop|setbackeffect|setmapobjectvisible|clearbackeffect>");
+                            }
+
+                            return _loginOfficialSessionBridge.TryConfigurePacketMapping(opcode, mappedPacketType, out string mapStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(mapStatus)
+                                : ChatCommandHandler.CommandResult.Error(mapStatus);
+                        }
+
+                        if (string.Equals(args[1], "unmap", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 3
+                                || !int.TryParse(args[2], out int opcode)
+                                || opcode <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket session unmap <opcode>");
+                            }
+
+                            return _loginOfficialSessionBridge.RemovePacketMapping(opcode, out string unmapStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(unmapStatus)
+                                : ChatCommandHandler.CommandResult.Error(unmapStatus);
+                        }
+
+                        if (string.Equals(args[1], "clearmap", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _loginOfficialSessionBridge.ClearPacketMappings();
+                            return ChatCommandHandler.CommandResult.Ok(DescribeLoginOfficialSessionBridgeStatus());
+                        }
+
+                        if (string.Equals(args[1], "recent", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Info(
+                                $"Login session recent packets: {_loginOfficialSessionBridge.DescribeRecentPackets()}");
+                        }
+
                         if (string.Equals(args[1], "discover", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 3
@@ -1680,7 +1721,7 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(DescribeLoginOfficialSessionBridgeStatus());
                         }
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /loginpacket session [status|map <opcode> <packet>|unmap <opcode>|clearmap|recent|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
                     }
 
 
@@ -2707,10 +2748,10 @@ namespace HaCreator.MapSimulator
                 "/sociallist [status|open [friend|party|guild|alliance|blacklist]|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet ...|packetraw ...]",
                 args =>
                 {
-                    const string usage = "/sociallist [status|open [friend|party|guild|alliance|blacklist]|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet ...|packetraw ...]";
+                    const string usage = "/sociallist [status|open [friend|party|guild|alliance|blacklist]|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet [session ...|...]|packetraw ...]";
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
-                        return ChatCommandHandler.CommandResult.Info(_socialListRuntime.DescribeStatus());
+                        return ChatCommandHandler.CommandResult.Info($"{_socialListRuntime.DescribeStatus()}{Environment.NewLine}{DescribeSocialListOfficialSessionBridgeStatus()}");
                     }
 
                     if (string.Equals(args[0], "open", StringComparison.OrdinalIgnoreCase))
@@ -2799,7 +2840,12 @@ namespace HaCreator.MapSimulator
                     {
                         if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
                         {
-                            return ChatCommandHandler.CommandResult.Info(_socialListRuntime.DescribeStatus());
+                            return ChatCommandHandler.CommandResult.Info($"{_socialListRuntime.DescribeStatus()}{Environment.NewLine}{DescribeSocialListOfficialSessionBridgeStatus()}");
+                        }
+
+                        if (string.Equals(args[1], "session", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return HandleSocialListSessionCommand(args.Skip(2).ToArray());
                         }
 
                         string packetAction = args[1].ToLowerInvariant();
@@ -7938,7 +7984,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localoverlay",
                 "Inspect or drive packet-authored local overlays, damage-meter timing, and field-hazard notices",
-                "/localoverlay [status|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [message]|hazardclear|packet <fade|balloon|damagemeter|hpdec> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon|damagemeter|hpdec> <hex>]",
+                "/localoverlay [status|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [force] [buffskill] [message]|hazardclear|packet <fade|balloon|damagemeter|hpdec> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon|damagemeter|hpdec> <hex>]",
                 HandlePacketOwnedLocalOverlayCommand);
             _chat.CommandHandler.RegisterCommand(
                 "localoverlaypacket",
@@ -7955,7 +8001,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localutility",
                 "Inspect or drive packet-authored local utility and event dispatch handlers",
-                "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|release|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]",
+                "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|193|231|232|242|243|246|247|250|251|252|258|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|release|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|232|242|243|246|247|250|251|252|258|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]",
                 HandlePacketOwnedUtilityCommand);
             _chat.CommandHandler.RegisterCommand(
                 "expedition",
@@ -8599,6 +8645,12 @@ namespace HaCreator.MapSimulator
                 "/petfeed <variant 1-4> <success|fail> [slot 1-3]",
                 args =>
                 {
+                    string petRestrictionMessage = GetPetFieldRestrictionMessage();
+                    if (!string.IsNullOrWhiteSpace(petRestrictionMessage))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(petRestrictionMessage);
+                    }
+
                     if (args.Length < 2)
                     {
                         return ChatCommandHandler.CommandResult.Error("Usage: /petfeed <variant 1-4> <success|fail> [slot 1-3]");

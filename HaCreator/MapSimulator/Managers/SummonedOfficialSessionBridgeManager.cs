@@ -22,12 +22,28 @@ namespace HaCreator.MapSimulator.Managers
         public const int DefaultListenPort = 18486;
         private const string DefaultProcessName = "MapleStory";
         private const int MaxRecentOutboundPackets = 32;
+        private const int MaxRecentSg88ManualAttackRequests = 16;
+        private const int Sg88ManualAttackCaptureGraceMs = 120;
         private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket);
+        private sealed class Sg88ManualAttackCapture
+        {
+            public int SummonObjectId { get; init; }
+            public int RequestedAt { get; init; }
+            public int PrimaryTargetMobId { get; init; }
+            public int[] TargetMobIds { get; init; } = Array.Empty<int>();
+            public int BaseDelayMs { get; init; }
+            public int FollowUpDelayMs { get; init; }
+            public int CaptureWindowEndAt { get; init; }
+            public List<OutboundPacketTrace> ObservedPackets { get; } = new();
+            public string ResolutionSource { get; set; }
+        }
 
         private readonly ConcurrentQueue<SummonedPacketInboxMessage> _pendingMessages = new();
         private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
         private readonly object _sync = new();
         private readonly Queue<OutboundPacketTrace> _recentOutboundPackets = new();
+        private readonly List<Sg88ManualAttackCapture> _pendingSg88ManualAttackCaptures = new();
+        private readonly Queue<Sg88ManualAttackCapture> _recentSg88ManualAttackCaptures = new();
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
@@ -43,7 +59,10 @@ namespace HaCreator.MapSimulator.Managers
             int Opcode,
             int PayloadLength,
             string PayloadHex,
-            string Source);
+            string Source,
+            int ObservedAt,
+            int? BoundSg88SummonObjectId,
+            int? BoundSg88RequestedAt);
 
         private sealed class BridgePair
         {
@@ -117,7 +136,7 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued=0x{LastQueuedOpcode:X}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Summoned official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=0x116-0x11B; outbound=raw passthrough plus live capture history.{lastOutbound}{lastQueued} {LastStatus}";
+            return $"Summoned official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; sg88Pending={_pendingSg88ManualAttackCaptures.Count}; sg88Recent={_recentSg88ManualAttackCaptures.Count}; inbound opcodes=0x116-0x11B; outbound=raw passthrough plus live capture history.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public string DescribeRecentOutboundPackets(int maxCount = 10)
@@ -139,7 +158,30 @@ namespace HaCreator.MapSimulator.Managers
                     + string.Join(
                         Environment.NewLine,
                         entries.Select(entry =>
-                            $"opcode=0x{entry.Opcode:X} payloadLen={entry.PayloadLength} source={entry.Source} payloadHex={entry.PayloadHex}"));
+                            $"opcode=0x{entry.Opcode:X} payloadLen={entry.PayloadLength} observedAt={entry.ObservedAt} source={entry.Source}{FormatBoundSg88Request(entry)} payloadHex={entry.PayloadHex}"));
+            }
+        }
+
+        public string DescribeRecentSg88ManualAttackRequests(int maxCount = 10)
+        {
+            int normalizedCount = Math.Clamp(maxCount, 1, MaxRecentSg88ManualAttackRequests);
+            lock (_sync)
+            {
+                IEnumerable<Sg88ManualAttackCapture> entries = _recentSg88ManualAttackCaptures
+                    .Reverse()
+                    .Concat(_pendingSg88ManualAttackCaptures.AsEnumerable().Reverse())
+                    .Take(normalizedCount);
+                if (!entries.Any())
+                {
+                    return "Summoned official-session bridge SG-88 request history is empty.";
+                }
+
+                return "Summoned official-session bridge SG-88 request history:"
+                    + Environment.NewLine
+                    + string.Join(
+                        Environment.NewLine,
+                        entries.Select(entry =>
+                            $"summon={entry.SummonObjectId} requestedAt={entry.RequestedAt} primaryTarget={entry.PrimaryTargetMobId} targetCount={entry.TargetMobIds.Length} baseDelay={entry.BaseDelayMs} followUpDelay={entry.FollowUpDelayMs} captureWindowEndAt={entry.CaptureWindowEndAt} resolution={entry.ResolutionSource ?? "pending"} observedPackets={FormatObservedPacketList(entry.ObservedPackets)}"));
             }
         }
 
@@ -148,9 +190,11 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 _recentOutboundPackets.Clear();
+                _recentSg88ManualAttackCaptures.Clear();
+                _pendingSg88ManualAttackCaptures.Clear();
             }
 
-            LastStatus = "Summoned official-session bridge outbound history cleared.";
+            LastStatus = "Summoned official-session bridge outbound and SG-88 request history cleared.";
             return LastStatus;
         }
 
@@ -357,12 +401,82 @@ namespace HaCreator.MapSimulator.Managers
 
             lock (_sync)
             {
+                trace = TryBindSg88ManualAttackCapture(trace);
                 while (_recentOutboundPackets.Count >= MaxRecentOutboundPackets)
                 {
                     _recentOutboundPackets.Dequeue();
                 }
 
                 _recentOutboundPackets.Enqueue(trace);
+            }
+        }
+
+        internal void TrackSg88ManualAttackRequest(
+            int summonObjectId,
+            int requestedAt,
+            int primaryTargetMobId,
+            IReadOnlyList<int> targetMobIds,
+            int baseDelayMs,
+            int followUpDelayMs)
+        {
+            if (summonObjectId <= 0 || requestedAt == int.MinValue)
+            {
+                return;
+            }
+
+            int[] resolvedTargetMobIds = targetMobIds?
+                .Where(static mobId => mobId > 0)
+                .Distinct()
+                .ToArray() ?? Array.Empty<int>();
+            int captureWindowEndAt = CalculateCaptureWindowEndAt(requestedAt, baseDelayMs, followUpDelayMs);
+            lock (_sync)
+            {
+                for (int i = _pendingSg88ManualAttackCaptures.Count - 1; i >= 0; i--)
+                {
+                    Sg88ManualAttackCapture pendingCapture = _pendingSg88ManualAttackCaptures[i];
+                    if (pendingCapture.SummonObjectId != summonObjectId)
+                    {
+                        continue;
+                    }
+
+                    ArchiveSg88ManualAttackCapture(pendingCapture, "superseded");
+                    _pendingSg88ManualAttackCaptures.RemoveAt(i);
+                }
+
+                _pendingSg88ManualAttackCaptures.Add(new Sg88ManualAttackCapture
+                {
+                    SummonObjectId = summonObjectId,
+                    RequestedAt = requestedAt,
+                    PrimaryTargetMobId = primaryTargetMobId,
+                    TargetMobIds = resolvedTargetMobIds,
+                    BaseDelayMs = Math.Max(0, baseDelayMs),
+                    FollowUpDelayMs = Math.Max(0, followUpDelayMs),
+                    CaptureWindowEndAt = captureWindowEndAt
+                });
+            }
+        }
+
+        internal void ResolveSg88ManualAttackRequest(int summonObjectId, int requestedAt, string resolutionSource)
+        {
+            if (summonObjectId <= 0 || requestedAt == int.MinValue)
+            {
+                return;
+            }
+
+            lock (_sync)
+            {
+                for (int i = _pendingSg88ManualAttackCaptures.Count - 1; i >= 0; i--)
+                {
+                    Sg88ManualAttackCapture pendingCapture = _pendingSg88ManualAttackCaptures[i];
+                    if (pendingCapture.SummonObjectId != summonObjectId || pendingCapture.RequestedAt != requestedAt)
+                    {
+                        continue;
+                    }
+
+                    ArchiveSg88ManualAttackCapture(pendingCapture, string.IsNullOrWhiteSpace(resolutionSource) ? "resolved" : resolutionSource.Trim());
+                    _pendingSg88ManualAttackCaptures.RemoveAt(i);
+                    break;
+                }
             }
         }
 
@@ -628,6 +742,8 @@ namespace HaCreator.MapSimulator.Managers
                 ReceivedCount = 0;
                 ForwardedOutboundCount = 0;
                 _recentOutboundPackets.Clear();
+                _pendingSg88ManualAttackCaptures.Clear();
+                _recentSg88ManualAttackCaptures.Clear();
                 while (_pendingOutboundPackets.TryDequeue(out _))
                 {
                 }
@@ -695,8 +811,85 @@ namespace HaCreator.MapSimulator.Managers
                 opcode,
                 payload.Length,
                 Convert.ToHexString(payload),
-                string.IsNullOrWhiteSpace(source) ? "unknown-source" : source.Trim());
+                string.IsNullOrWhiteSpace(source) ? "unknown-source" : source.Trim(),
+                Environment.TickCount,
+                null,
+                null);
             return true;
+        }
+
+        private OutboundPacketTrace TryBindSg88ManualAttackCapture(OutboundPacketTrace trace)
+        {
+            for (int i = _pendingSg88ManualAttackCaptures.Count - 1; i >= 0; i--)
+            {
+                Sg88ManualAttackCapture capture = _pendingSg88ManualAttackCaptures[i];
+                if (trace.ObservedAt < capture.RequestedAt || trace.ObservedAt > capture.CaptureWindowEndAt)
+                {
+                    continue;
+                }
+
+                OutboundPacketTrace boundTrace = trace with
+                {
+                    BoundSg88SummonObjectId = capture.SummonObjectId,
+                    BoundSg88RequestedAt = capture.RequestedAt
+                };
+                capture.ObservedPackets.Add(boundTrace);
+                return boundTrace;
+            }
+
+            return trace;
+        }
+
+        private void ArchiveSg88ManualAttackCapture(Sg88ManualAttackCapture capture, string resolutionSource)
+        {
+            if (capture == null)
+            {
+                return;
+            }
+
+            capture.ResolutionSource = string.IsNullOrWhiteSpace(resolutionSource) ? "resolved" : resolutionSource.Trim();
+            while (_recentSg88ManualAttackCaptures.Count >= MaxRecentSg88ManualAttackRequests)
+            {
+                _recentSg88ManualAttackCaptures.Dequeue();
+            }
+
+            _recentSg88ManualAttackCaptures.Enqueue(capture);
+        }
+
+        private static int CalculateCaptureWindowEndAt(int requestedAt, int baseDelayMs, int followUpDelayMs)
+        {
+            long totalDelay = (long)Math.Max(0, baseDelayMs) + Math.Max(0, followUpDelayMs) + Sg88ManualAttackCaptureGraceMs;
+            long captureWindowEndAt = (long)requestedAt + totalDelay;
+            if (captureWindowEndAt > int.MaxValue)
+            {
+                return int.MaxValue;
+            }
+
+            if (captureWindowEndAt < int.MinValue)
+            {
+                return int.MinValue;
+            }
+
+            return (int)captureWindowEndAt;
+        }
+
+        private static string FormatBoundSg88Request(OutboundPacketTrace trace)
+        {
+            return trace.BoundSg88SummonObjectId.HasValue && trace.BoundSg88RequestedAt.HasValue
+                ? $" sg88Summon={trace.BoundSg88SummonObjectId.Value} sg88RequestedAt={trace.BoundSg88RequestedAt.Value}"
+                : string.Empty;
+        }
+
+        private static string FormatObservedPacketList(IReadOnlyList<OutboundPacketTrace> observedPackets)
+        {
+            if (observedPackets == null || observedPackets.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(
+                ",",
+                observedPackets.Select(packet => $"0x{packet.Opcode:X}@{packet.ObservedAt}[{packet.PayloadLength}]"));
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

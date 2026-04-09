@@ -55,7 +55,9 @@ namespace HaCreator.MapSimulator.Interaction
     {
         Ranking = 76,
         RankTitles = 68,
-        Notice = 71
+        Notice = 71,
+        Mark = 69,
+        PointsAndLevel = 75
     }
 
     internal readonly record struct SocialListClientGuildResultPacket(
@@ -63,7 +65,10 @@ namespace HaCreator.MapSimulator.Interaction
         int GuildId,
         IReadOnlyList<GuildRankingSeedEntry> RankingEntries,
         IReadOnlyList<string> RankTitles,
-        string Notice);
+        string Notice,
+        GuildMarkSelection? MarkSelection,
+        int GuildPoints,
+        int GuildLevel);
 
     internal enum SocialListClientAllianceResultKind : byte
     {
@@ -272,7 +277,7 @@ namespace HaCreator.MapSimulator.Interaction
                                 IsPacketOwned: true));
                         }
 
-                        packet = new SocialListClientGuildResultPacket(kind, guildId, rankingEntries, Array.Empty<string>(), null);
+                        packet = new SocialListClientGuildResultPacket(kind, guildId, rankingEntries, Array.Empty<string>(), null, null, 0, 0);
                         return true;
                     }
 
@@ -285,7 +290,7 @@ namespace HaCreator.MapSimulator.Interaction
                             titles[i] = NormalizeRoleLabel(reader.ReadString16(), $"Rank {i + 1}");
                         }
 
-                        packet = new SocialListClientGuildResultPacket(kind, guildId, Array.Empty<GuildRankingSeedEntry>(), titles, null);
+                        packet = new SocialListClientGuildResultPacket(kind, guildId, Array.Empty<GuildRankingSeedEntry>(), titles, null, null, 0, 0);
                         return true;
                     }
 
@@ -297,7 +302,48 @@ namespace HaCreator.MapSimulator.Interaction
                             guildId,
                             Array.Empty<GuildRankingSeedEntry>(),
                             Array.Empty<string>(),
-                            reader.ReadString16().Trim());
+                            reader.ReadString16().Trim(),
+                            null,
+                            0,
+                            0);
+                        return true;
+                    }
+
+                    case SocialListClientGuildResultKind.Mark:
+                    {
+                        int guildId = reader.ReadInt32();
+                        GuildMarkSelection selection = new(
+                            reader.ReadUInt16(),
+                            reader.ReadByte(),
+                            reader.ReadUInt16(),
+                            reader.ReadByte(),
+                            0);
+                        packet = new SocialListClientGuildResultPacket(
+                            kind,
+                            guildId,
+                            Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<string>(),
+                            null,
+                            selection,
+                            0,
+                            0);
+                        return true;
+                    }
+
+                    case SocialListClientGuildResultKind.PointsAndLevel:
+                    {
+                        int guildId = reader.ReadInt32();
+                        int guildPoints = reader.ReadInt32();
+                        int guildLevel = reader.ReadInt32();
+                        packet = new SocialListClientGuildResultPacket(
+                            kind,
+                            guildId,
+                            Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<string>(),
+                            null,
+                            null,
+                            guildPoints,
+                            guildLevel);
                         return true;
                     }
 

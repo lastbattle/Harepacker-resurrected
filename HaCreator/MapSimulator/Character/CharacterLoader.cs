@@ -307,20 +307,50 @@ namespace HaCreator.MapSimulator.Character
         {
             var seen = new HashSet<int>();
 
-            foreach (int candidate in EnumerateMorphLinkChain(morphTemplateId, exactMorphImage, seen))
+            foreach (int rootCandidate in EnumerateMorphTemplateRootCandidates(morphTemplateId))
             {
-                yield return candidate;
-            }
+                WzImage rootImage = rootCandidate == morphTemplateId
+                    ? exactMorphImage
+                    : null;
 
-            foreach (int candidate in EnumeratePairedMorphTemplateCandidates(morphTemplateId))
-            {
-                if (seen.Add(candidate))
+                foreach (int candidate in EnumerateMorphLinkChain(rootCandidate, rootImage, seen))
                 {
                     yield return candidate;
                 }
             }
+        }
+
+        internal static IReadOnlyList<int> EnumerateMorphTemplateCandidatesForTesting(
+            int morphTemplateId,
+            Func<int, int> linkedTemplateResolver)
+        {
+            var seen = new HashSet<int>();
+            var candidates = new List<int>();
+
+            foreach (int rootCandidate in EnumerateMorphTemplateRootCandidates(morphTemplateId))
+            {
+                foreach (int candidate in EnumerateMorphLinkChain(rootCandidate, linkedTemplateResolver, seen))
+                {
+                    candidates.Add(candidate);
+                }
+            }
+
+            return candidates;
+        }
+
+        private static IEnumerable<int> EnumerateMorphTemplateRootCandidates(int morphTemplateId)
+        {
+            if (morphTemplateId <= 0)
+            {
+                yield break;
+            }
 
             yield return morphTemplateId;
+
+            foreach (int candidate in EnumeratePairedMorphTemplateCandidates(morphTemplateId))
+            {
+                yield return candidate;
+            }
 
             int[] familyBases =
             {
@@ -331,7 +361,7 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (int candidate in familyBases)
             {
-                if (candidate > 0 && seen.Add(candidate))
+                if (candidate > 0)
                 {
                     yield return candidate;
                 }
@@ -355,6 +385,30 @@ namespace HaCreator.MapSimulator.Character
             }
 
             foreach (int linkedCandidate in EnumerateMorphLinkChain(linkedTemplateId, exactMorphImage: null, seen))
+            {
+                yield return linkedCandidate;
+            }
+        }
+
+        private static IEnumerable<int> EnumerateMorphLinkChain(
+            int morphTemplateId,
+            Func<int, int> linkedTemplateResolver,
+            HashSet<int> seen)
+        {
+            if (morphTemplateId <= 0 || seen == null || !seen.Add(morphTemplateId))
+            {
+                yield break;
+            }
+
+            yield return morphTemplateId;
+
+            int linkedTemplateId = linkedTemplateResolver?.Invoke(morphTemplateId) ?? 0;
+            if (linkedTemplateId <= 0 || linkedTemplateId == morphTemplateId)
+            {
+                yield break;
+            }
+
+            foreach (int linkedCandidate in EnumerateMorphLinkChain(linkedTemplateId, linkedTemplateResolver, seen))
             {
                 yield return linkedCandidate;
             }

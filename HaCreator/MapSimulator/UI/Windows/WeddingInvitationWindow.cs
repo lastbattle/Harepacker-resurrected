@@ -196,8 +196,11 @@ namespace HaCreator.MapSimulator.UI
                 return _basicBlackTextRasterizer;
             }
 
+            string requestedFamily = string.IsNullOrWhiteSpace(_lastSnapshot.NameFontFaceName)
+                ? WeddingInvitationDialogText.GetBasicBlackFontFaceName()
+                : _lastSnapshot.NameFontFaceName;
             string resolvedFamily = ClientTextRasterizer.ResolvePreferredFontFamily(
-                requestedFamily: null,
+                requestedFamily,
                 fontPathEnvironmentVariable: BasicBlackFontPathEnvironmentVariable,
                 fontFaceEnvironmentVariable: BasicBlackFontFaceEnvironmentVariable,
                 preferredPrivateFontFamilyCandidates: BasicBlackFontFamilyCandidates,

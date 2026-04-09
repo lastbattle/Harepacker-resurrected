@@ -59,7 +59,9 @@ namespace HaCreator.MapSimulator.Pools
         int EncodedLength,
         int[] MaskWords,
         byte[] RawPayload,
-        RemoteUserTemporaryStatKnownState KnownState)
+        RemoteUserTemporaryStatKnownState KnownState,
+        bool HasWeaponCharge,
+        int WeaponChargePayloadOffset)
     {
         public bool HasPayload => RawPayload != null && RawPayload.Length > 0;
 
@@ -728,7 +730,9 @@ namespace HaCreator.MapSimulator.Pools
                         encodedLength,
                         maskWords,
                         remainingPayload.AsSpan(0, encodedLength).ToArray(),
-                        DecodeKnownTemporaryStatState(remainingPayload.AsSpan(0, encodedLength))),
+                        DecodeKnownTemporaryStatState(remainingPayload.AsSpan(0, encodedLength), out bool hasWeaponCharge, out int weaponChargePayloadOffset),
+                        hasWeaponCharge,
+                        weaponChargePayloadOffset),
                     delay);
                 return true;
             }
@@ -1574,7 +1578,9 @@ namespace HaCreator.MapSimulator.Pools
                 encodedLength,
                 maskWords,
                 rawPayload,
-                DecodeKnownTemporaryStatState(rawPayload));
+                DecodeKnownTemporaryStatState(rawPayload, out bool hasWeaponCharge, out int weaponChargePayloadOffset),
+                hasWeaponCharge,
+                weaponChargePayloadOffset);
         }
 
         private static int[] DecodeTemporaryStatMaskWords(ReadOnlySpan<byte> maskPayload)
@@ -1593,8 +1599,13 @@ namespace HaCreator.MapSimulator.Pools
             return maskWords;
         }
 
-        private static RemoteUserTemporaryStatKnownState DecodeKnownTemporaryStatState(ReadOnlySpan<byte> rawPayload)
+        private static RemoteUserTemporaryStatKnownState DecodeKnownTemporaryStatState(
+            ReadOnlySpan<byte> rawPayload,
+            out bool hasWeaponCharge,
+            out int weaponChargePayloadOffset)
         {
+            hasWeaponCharge = false;
+            weaponChargePayloadOffset = -1;
             if (rawPayload.Length < sizeof(int) * 4)
             {
                 return default;
@@ -1635,8 +1646,10 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.WeaponCharge))
                 {
+                    hasWeaponCharge = true;
                     int weaponChargeValue = reader.ReadInt32();
                     weaponChargeMetadataOffset = reader.Offset;
+                    weaponChargePayloadOffset = weaponChargeMetadataOffset;
                     if (AfterImageChargeSkillResolver.IsKnownChargeSkillId(weaponChargeValue))
                     {
                         chargeSkillId = weaponChargeValue;
@@ -1929,7 +1942,11 @@ namespace HaCreator.MapSimulator.Pools
             return snapshot with
             {
                 MaskWords = remainingMaskWords,
-                KnownState = maskedKnownState
+                KnownState = maskedKnownState,
+                HasWeaponCharge = IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.WeaponCharge) && snapshot.HasWeaponCharge,
+                WeaponChargePayloadOffset = IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.WeaponCharge)
+                    ? snapshot.WeaponChargePayloadOffset
+                    : -1
             };
         }
 

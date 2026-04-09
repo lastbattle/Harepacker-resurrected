@@ -160,7 +160,8 @@ namespace HaCreator.MapSimulator
                     out int[] regularFields,
                     out int[] continentFields,
                     out int matchedOffset,
-                    out bool ignoredTrailingLogoutGiftConfig))
+                    out bool ignoredTrailingLogoutGiftConfig,
+                    out bool matchedExactTailBoundary))
             {
                 _lastAuthoritativeMapTransferBootstrapSummary =
                     $"CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} exposed the client-owned map-transfer branch, but no authoritative 5+10 slot array could be recovered from the remaining {trailingPayload.Length.ToString(CultureInfo.InvariantCulture)} byte payload tail.";
@@ -172,8 +173,11 @@ namespace HaCreator.MapSimulator
             string logoutGiftSuffix = ignoredTrailingLogoutGiftConfig
                 ? " after preserving the client 12-byte logout-gift cache that follows CharacterData::Decode in CStage::OnSetField"
                 : string.Empty;
+            string tailBoundarySuffix = matchedExactTailBoundary
+                ? " using the exact payload-tail boundary the client keeps after CharacterData::Decode"
+                : string.Empty;
             _lastAuthoritativeMapTransferBootstrapSummary =
-                $"Hydrated authoritative map-transfer books for {build.Name ?? "Character"} from CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} at payload offset {matchedOffset.ToString(CultureInfo.InvariantCulture)}{logoutGiftSuffix}.";
+                $"Hydrated authoritative map-transfer books for {build.Name ?? "Character"} from CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} at payload offset {matchedOffset.ToString(CultureInfo.InvariantCulture)}{logoutGiftSuffix}{tailBoundarySuffix}.";
         }
 
         private bool IsPlausibleAuthoritativeMapTransferMapId(int mapId)

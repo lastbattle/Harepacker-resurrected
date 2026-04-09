@@ -21,14 +21,30 @@ namespace HaCreator.MapSimulator.Managers
         public const int DefaultListenPort = 18503;
         public const ushort DefaultInboundResultOpcode = 64;
         private const string DefaultProcessName = "MapleStory";
+        private const int MaxRecentOutboundPackets = 32;
 
         private readonly ConcurrentQueue<ExpeditionIntermediaryPacketInboxMessage> _pendingMessages = new();
         private readonly object _sync = new();
+        private readonly List<RecentOutboundPacket> _recentOutboundPackets = new();
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
         private Task _listenerTask;
         private BridgePair _activePair;
+
+        public sealed class RecentOutboundPacket
+        {
+            public RecentOutboundPacket(int opcode, int payloadLength, string rawPacketHex)
+            {
+                Opcode = opcode;
+                PayloadLength = payloadLength;
+                RawPacketHex = rawPacketHex ?? string.Empty;
+            }
+
+            public int Opcode { get; }
+            public int PayloadLength { get; }
+            public string RawPacketHex { get; }
+        }
 
         private sealed class BridgePair
         {
@@ -80,6 +96,7 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
+        public int ForwardedOutboundCount { get; private set; }
         public int LastSentOpcode { get; private set; } = -1;
         public int LastSentPayloadLength { get; private set; }
         public string LastStatus { get; private set; } = "Expedition intermediary official-session bridge inactive.";
@@ -95,10 +112,13 @@ namespace HaCreator.MapSimulator.Managers
             string opcodeText = ExpeditionOpcode > 0
                 ? $"opcode={ExpeditionOpcode}"
                 : "opcode unset";
+            string outboundObserved = _recentOutboundPackets.Count == 0
+                ? "no outbound history"
+                : $"{_recentOutboundPackets.Count} captured outbound packet(s)";
             string lastSent = LastSentOpcode >= 0
                 ? $"; last outbound opcode={LastSentOpcode} payload={LastSentPayloadLength} byte(s)"
                 : string.Empty;
-            return $"Expedition intermediary official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; {opcodeText}{lastSent}. {LastStatus}";
+            return $"Expedition intermediary official-session bridge {lifecycle}; {session}; received={ReceivedCount}; injected={SentCount}; forwarded={ForwardedOutboundCount}; {outboundObserved}; {opcodeText}{lastSent}. {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort, ushort expeditionOpcode)
@@ -261,6 +281,35 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public string DescribeRecentOutboundPackets(int count)
+        {
+            lock (_sync)
+            {
+                if (_recentOutboundPackets.Count == 0)
+                {
+                    return "No expedition outbound client packets have been captured from the live session.";
+                }
+
+                int takeCount = Math.Max(1, count);
+                return string.Join(
+                    Environment.NewLine,
+                    _recentOutboundPackets
+                        .TakeLast(takeCount)
+                        .Select((packet, index) =>
+                            $"[{index + 1}] opcode={packet.Opcode} payload={packet.PayloadLength} byte(s) raw={packet.RawPacketHex}"));
+            }
+        }
+
+        public string ClearRecentOutboundPackets()
+        {
+            lock (_sync)
+            {
+                _recentOutboundPackets.Clear();
+            }
+
+            return "Cleared captured expedition outbound client packet history.";
+        }
+
         public void Dispose()
         {
             lock (_sync)
@@ -407,7 +456,10 @@ namespace HaCreator.MapSimulator.Managers
                     return;
                 }
 
-                pair.ServerSession.SendPacket(packet.ToArray());
+                byte[] rawPacket = packet.ToArray();
+                pair.ServerSession.SendPacket((byte[])rawPacket.Clone());
+                ForwardedOutboundCount++;
+                RecordObservedOutboundPacket(rawPacket);
             }
             catch (Exception ex)
             {
@@ -485,8 +537,34 @@ namespace HaCreator.MapSimulator.Managers
         {
             ReceivedCount = 0;
             SentCount = 0;
+            ForwardedOutboundCount = 0;
             LastSentOpcode = -1;
             LastSentPayloadLength = 0;
+            lock (_sync)
+            {
+                _recentOutboundPackets.Clear();
+            }
+        }
+
+        private void RecordObservedOutboundPacket(byte[] rawPacket)
+        {
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                return;
+            }
+
+            int opcode = BitConverter.ToUInt16(rawPacket, 0);
+            int payloadLength = Math.Max(0, rawPacket.Length - sizeof(ushort));
+            string rawPacketHex = Convert.ToHexString(rawPacket);
+
+            lock (_sync)
+            {
+                _recentOutboundPackets.Add(new RecentOutboundPacket(opcode, payloadLength, rawPacketHex));
+                if (_recentOutboundPackets.Count > MaxRecentOutboundPackets)
+                {
+                    _recentOutboundPackets.RemoveAt(0);
+                }
+            }
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

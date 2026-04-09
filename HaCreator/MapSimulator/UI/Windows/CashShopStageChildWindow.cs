@@ -78,6 +78,16 @@ namespace HaCreator.MapSimulator.UI
             public bool IsPending { get; init; }
             public string NoticeState { get; init; } = string.Empty;
             public int SelectorIndex { get; init; }
+            public int SelectorCount { get; init; } = 2;
+            public int SelectorStartX { get; init; } = 2;
+            public int SelectorStartY { get; init; } = 2;
+            public bool HasKeyFocusCanvas { get; init; }
+            public bool HasPlateCanvas { get; init; }
+            public bool HasPlateBigCanvas { get; init; }
+            public int NumberCanvasCount { get; init; }
+            public int PlateCount { get; init; } = 3;
+            public string PlateCanvasBaseName { get; init; } = "NoItem";
+            public string ShortcutHelpCanvasName { get; init; } = "ShortcutHelp";
             public int Hour { get; init; }
             public int Minute { get; init; }
             public int Second { get; init; }
@@ -134,6 +144,10 @@ namespace HaCreator.MapSimulator.UI
         private string _statusActionState = "Status strip idle.";
         private int _oneADaySelectorIndex;
         private int _oneADayPlateFocusIndex;
+        private bool _oneADayShortcutHelpActive;
+        private bool _oneADayPending;
+        private int _oneADayRemainingSeconds;
+        private int _oneADayCountdownDeadlineTick = int.MinValue;
         private string _oneADaySessionState = "Reward session idle.";
 
         public CashShopStageChildWindow(IDXObject frame, string windowName, string title)
@@ -269,6 +283,10 @@ namespace HaCreator.MapSimulator.UI
             base.Show();
             _previousKeyboardState = Keyboard.GetState();
             _previousMouseState = Mouse.GetState();
+            if (_windowName == MapSimulatorWindowNames.CashShopOneADay)
+            {
+                SyncOneADayOwnerState(force: true);
+            }
         }
 
         public override void Update(GameTime gameTime)
@@ -284,6 +302,10 @@ namespace HaCreator.MapSimulator.UI
             }
 
             HandleOwnerKeyboard(keyboardState);
+            if (_windowName == MapSimulatorWindowNames.CashShopOneADay)
+            {
+                UpdateOneADaySessionTimer();
+            }
             _previousKeyboardState = keyboardState;
             _previousMouseState = Mouse.GetState();
         }
@@ -542,6 +564,8 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            SyncOneADayOwnerState();
+
             float lineY = titleOrigin.Y + _font.LineSpacing + 4f;
             Color detailColor = new(225, 225, 225);
             Color accentColor = new(255, 223, 149);
@@ -553,13 +577,19 @@ namespace HaCreator.MapSimulator.UI
             lineY += _font.LineSpacing;
             sprite.DrawString(
                 _font,
-                $"Selector {Math.Max(state.SelectorIndex, _oneADaySelectorIndex).ToString(CultureInfo.InvariantCulture)}  Plate NoItem{(_oneADayPlateFocusIndex == 0 ? string.Empty : _oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture))}",
+                $"Selector {_oneADaySelectorIndex.ToString(CultureInfo.InvariantCulture)}/{Math.Max(0, state.SelectorCount - 1).ToString(CultureInfo.InvariantCulture)} @ {state.SelectorStartX.ToString(CultureInfo.InvariantCulture)},{state.SelectorStartY.ToString(CultureInfo.InvariantCulture)}  Plate {ResolveOneADayPlateName(state)}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 accentColor);
             lineY += _font.LineSpacing;
             sprite.DrawString(
                 _font,
-                $"Remain {state.Hour.ToString("00", CultureInfo.InvariantCulture)}:{state.Minute.ToString("00", CultureInfo.InvariantCulture)}:{state.Second.ToString("00", CultureInfo.InvariantCulture)}",
+                $"Remain {(_oneADayRemainingSeconds / 3600).ToString("00", CultureInfo.InvariantCulture)}:{((_oneADayRemainingSeconds / 60) % 60).ToString("00", CultureInfo.InvariantCulture)}:{(_oneADayRemainingSeconds % 60).ToString("00", CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
+            lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                $"KeyFocus {(state.HasKeyFocusCanvas ? "on" : "off")}  Plate {(state.HasPlateCanvas ? "small" : "off")}/{(state.HasPlateBigCanvas ? "big" : "off")}  Digits {state.NumberCanvasCount.ToString(CultureInfo.InvariantCulture)}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
             lineY += _font.LineSpacing;
@@ -774,9 +804,16 @@ namespace HaCreator.MapSimulator.UI
 
         private bool HandleOneADayOwnerSurfaceMouse(MouseState mouseState, MouseCursorItem mouseCursor, Rectangle absoluteBounds, int wheelDelta, bool leftJustPressed)
         {
+            OneADayOwnerState state = _oneADayStateProvider?.Invoke();
+            if (state == null)
+            {
+                return false;
+            }
+
+            SyncOneADayOwnerState();
             if (wheelDelta != 0)
             {
-                CycleOneADayPlate(wheelDelta > 0 ? -1 : 1);
+                StepOneADayPlate(state, wheelDelta > 0 ? -1 : 1);
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
                 return true;
             }
@@ -792,7 +829,21 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            CycleOneADayPlate(1);
+            int relativeY = mouseState.Y - rowsBounds.Y;
+            if (relativeY < Math.Max(18, (_font?.LineSpacing ?? 16) + 2))
+            {
+                SelectOneADaySelector(mouseState.X < rowsBounds.Center.X ? 0 : 1, state);
+            }
+            else if (_oneADaySelectorIndex == 1)
+            {
+                ApplyOneADayButtonState("BtShortcut");
+                ApplyStatusMessage(InvokeExternalAction("BtShortcut"));
+            }
+            else
+            {
+                StepOneADayPlate(state, 1);
+            }
+
             mouseCursor?.SetMouseCursorMovedToClickableItem();
             return true;
         }
@@ -904,20 +955,29 @@ namespace HaCreator.MapSimulator.UI
 
         private void ApplyOneADayButtonState(string actionKey)
         {
+            OneADayOwnerState state = _oneADayStateProvider?.Invoke();
             switch (actionKey)
             {
                 case "BtJoin":
-                    _oneADaySelectorIndex = 0;
-                    _oneADaySessionState = "CCSWnd_OneADay joined the pending reward session.";
+                    SelectOneADaySelector(0, state);
+                    if (!_oneADayPending)
+                    {
+                        _oneADaySessionState = "CCSWnd_OneADay kept the selector on the join owner but no packet-armed reward session is pending.";
+                        break;
+                    }
+
+                    _oneADayShortcutHelpActive = false;
+                    _oneADaySessionState = "CCSWnd_OneADay joined the packet-armed reward session and kept the plate owner on NoItem.";
                     break;
                 case "BtShortcut":
-                    _oneADaySelectorIndex = 1;
-                    _oneADayPlateFocusIndex = (_oneADayPlateFocusIndex + 1) % 3;
-                    _oneADaySessionState = "CCSWnd_OneADay cycled the plate focus through the NoItem canvases.";
+                    SelectOneADaySelector(1, state);
+                    _oneADayShortcutHelpActive = true;
+                    _oneADaySessionState = "CCSWnd_OneADay switched from the reward plate to the ShortcutHelp owner canvas.";
                     break;
                 case "BtClose":
+                    _oneADayShortcutHelpActive = false;
                     _oneADaySelectorIndex = 0;
-                    _oneADaySessionState = "CCSWnd_OneADay dismissed the current reward plate focus.";
+                    _oneADaySessionState = "CCSWnd_OneADay dismissed the current reward preview while keeping the owner shell alive.";
                     break;
             }
         }
@@ -1080,18 +1140,56 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleOneADayKeyboard(KeyboardState keyboardState)
         {
-            if (WasPressed(keyboardState, Keys.Left))
+            OneADayOwnerState state = _oneADayStateProvider?.Invoke();
+            if (state == null)
             {
-                CycleOneADayPlate(-1);
+                return;
+            }
+
+            SyncOneADayOwnerState();
+            if (WasPressed(keyboardState, Keys.Up))
+            {
+                SelectOneADaySelector(_oneADaySelectorIndex - 1, state);
+            }
+            else if (WasPressed(keyboardState, Keys.Down) || WasPressed(keyboardState, Keys.Tab))
+            {
+                SelectOneADaySelector(_oneADaySelectorIndex + 1, state);
+            }
+            else if (WasPressed(keyboardState, Keys.Left))
+            {
+                StepOneADayPlate(state, -1);
             }
             else if (WasPressed(keyboardState, Keys.Right))
             {
-                CycleOneADayPlate(1);
+                StepOneADayPlate(state, 1);
+            }
+            else if (WasPressed(keyboardState, Keys.PageUp))
+            {
+                StepOneADayPlate(state, -1);
+            }
+            else if (WasPressed(keyboardState, Keys.PageDown))
+            {
+                StepOneADayPlate(state, 1);
+            }
+            else if (WasPressed(keyboardState, Keys.Home))
+            {
+                _oneADayShortcutHelpActive = false;
+                _oneADayPlateFocusIndex = 0;
+                _oneADaySessionState = $"CCSWnd_OneADay snapped the plate owner back to {ResolveOneADayPlateName(state)}.";
+                _statusMessage = _oneADaySessionState;
+            }
+            else if (WasPressed(keyboardState, Keys.End))
+            {
+                _oneADayShortcutHelpActive = false;
+                _oneADayPlateFocusIndex = Math.Max(0, state.PlateCount - 1);
+                _oneADaySessionState = $"CCSWnd_OneADay advanced the plate owner to {ResolveOneADayPlateName(state)}.";
+                _statusMessage = _oneADaySessionState;
             }
             else if (WasPressed(keyboardState, Keys.Enter))
             {
-                ApplyOneADayButtonState("BtJoin");
-                ApplyStatusMessage(InvokeExternalAction("BtJoin"));
+                string actionKey = _oneADaySelectorIndex == 0 ? "BtJoin" : "BtShortcut";
+                ApplyOneADayButtonState(actionKey);
+                ApplyStatusMessage(InvokeExternalAction(actionKey));
             }
             else if (WasPressed(keyboardState, Keys.Escape))
             {
@@ -1163,12 +1261,96 @@ namespace HaCreator.MapSimulator.UI
             _statusMessage = _inventoryActionState;
         }
 
-        private void CycleOneADayPlate(int delta)
+        private void StepOneADayPlate(OneADayOwnerState state, int delta)
         {
-            _oneADaySelectorIndex = Math.Clamp(_oneADaySelectorIndex + Math.Sign(delta), 0, 1);
-            _oneADayPlateFocusIndex = (_oneADayPlateFocusIndex + 3 + Math.Sign(delta)) % 3;
-            _oneADaySessionState = "CCSWnd_OneADay rotated the NoItem plate focus through the dedicated reward owner.";
+            if (state == null)
+            {
+                return;
+            }
+
+            _oneADayShortcutHelpActive = false;
+            int plateCount = Math.Max(1, state.PlateCount);
+            int step = delta == 0 ? 0 : Math.Sign(delta);
+            _oneADayPlateFocusIndex = (_oneADayPlateFocusIndex + plateCount + step) % plateCount;
+            _oneADaySessionState = $"CCSWnd_OneADay rotated the reward owner to {ResolveOneADayPlateName(state)}.";
             _statusMessage = _oneADaySessionState;
+        }
+
+        private void SelectOneADaySelector(int selectorIndex, OneADayOwnerState state)
+        {
+            int selectorCount = Math.Max(1, state?.SelectorCount ?? 2);
+            _oneADaySelectorIndex = Math.Clamp(selectorIndex, 0, selectorCount - 1);
+            _oneADayShortcutHelpActive = _oneADaySelectorIndex == 1;
+            _oneADaySessionState = _oneADaySelectorIndex == 0
+                ? "CCSWnd_OneADay moved keyboard focus to the join selector."
+                : "CCSWnd_OneADay moved keyboard focus to the shortcut-help selector.";
+            _statusMessage = _oneADaySessionState;
+        }
+
+        private void SyncOneADayOwnerState(bool force = false)
+        {
+            OneADayOwnerState state = _oneADayStateProvider?.Invoke();
+            if (state == null)
+            {
+                return;
+            }
+
+            int nextRemainingSeconds = Math.Max(0, (state.Hour * 3600) + (state.Minute * 60) + state.Second);
+            if (!force
+                && state.IsPending == _oneADayPending
+                && nextRemainingSeconds == _oneADayRemainingSeconds)
+            {
+                return;
+            }
+
+            _oneADayPending = state.IsPending;
+            _oneADaySelectorIndex = Math.Clamp(state.SelectorIndex, 0, Math.Max(0, state.SelectorCount - 1));
+            _oneADayShortcutHelpActive = _oneADaySelectorIndex == 1 && !state.IsPending;
+            _oneADayPlateFocusIndex = Math.Clamp(_oneADayPlateFocusIndex, 0, Math.Max(0, state.PlateCount - 1));
+            _oneADayRemainingSeconds = nextRemainingSeconds;
+            _oneADayCountdownDeadlineTick = nextRemainingSeconds > 0
+                ? Environment.TickCount + (nextRemainingSeconds * 1000)
+                : int.MinValue;
+            _oneADaySessionState = state.IsPending
+                ? "CCSWnd_OneADay::ChangeState(0,1) armed the pending reward selector, key-focus, and plate canvases."
+                : "CCSWnd_OneADay::ChangeState(0,1) left the owner idle while keeping the selector seam alive.";
+            _statusMessage = _oneADaySessionState;
+        }
+
+        private void UpdateOneADaySessionTimer()
+        {
+            if (!_oneADayPending || _oneADayCountdownDeadlineTick == int.MinValue || _oneADayShortcutHelpActive)
+            {
+                return;
+            }
+
+            int remainingMilliseconds = _oneADayCountdownDeadlineTick - Environment.TickCount;
+            int nextRemainingSeconds = Math.Max(0, (int)Math.Ceiling(remainingMilliseconds / 1000d));
+            if (nextRemainingSeconds == _oneADayRemainingSeconds)
+            {
+                return;
+            }
+
+            _oneADayRemainingSeconds = nextRemainingSeconds;
+            if (_oneADayRemainingSeconds == 0)
+            {
+                _oneADayPending = false;
+                _oneADaySessionState = "CCSWnd_OneADay exhausted the current reward countdown and returned to the idle owner state.";
+                _statusMessage = _oneADaySessionState;
+            }
+        }
+
+        private string ResolveOneADayPlateName(OneADayOwnerState state)
+        {
+            if (_oneADayShortcutHelpActive)
+            {
+                return string.IsNullOrWhiteSpace(state?.ShortcutHelpCanvasName) ? "ShortcutHelp" : state.ShortcutHelpCanvasName;
+            }
+
+            string baseName = string.IsNullOrWhiteSpace(state?.PlateCanvasBaseName) ? "NoItem" : state.PlateCanvasBaseName;
+            return _oneADayPlateFocusIndex == 0
+                ? baseName
+                : $"{baseName}{_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)}";
         }
 
         private bool IsKeyboardOwnerWindow()

@@ -240,9 +240,10 @@ namespace HaCreator.MapSimulator.Core
         public const int CHAT_MAX_INPUT_LENGTH = 100;
 
         /// <summary>
-        /// Maximum stored chat messages
+        /// Maximum stored chat log entries.
+        /// Client CUIStatusBar::ChatLogAdd trims once the wrapped log exceeds 0x40 entries.
         /// </summary>
-        public const int CHAT_MAX_MESSAGES = 50;
+        public const int CHAT_MAX_MESSAGES = 64;
 
         /// <summary>
         /// Chat message display time before fade (ms)

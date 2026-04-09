@@ -538,13 +538,19 @@ namespace HaCreator.MapSimulator
 
         private string ResolvePacketOwnedDynamicPlatformSnapshotName(int platformId)
         {
+            if (_dynamicFootholdField.TryResolvePacketOwnedSnapshotDynamicObjectName(platformId, out string authoredName)
+                && !string.IsNullOrWhiteSpace(authoredName))
+            {
+                return authoredName;
+            }
+
             if (_packetFieldUtilityFootholdNamesBySerial.TryGetValue(platformId, out string packetName)
                 && !string.IsNullOrWhiteSpace(packetName))
             {
                 return packetName;
             }
 
-            if (_dynamicFootholdField.TryResolveAuthoredDynamicObjectName(platformId, out string authoredName)
+            if (_dynamicFootholdField.TryResolveAuthoredDynamicObjectName(platformId, out authoredName)
                 && !string.IsNullOrWhiteSpace(authoredName))
             {
                 return authoredName;

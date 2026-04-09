@@ -104,6 +104,7 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _fullMarkTexture;
         private Texture2D _inactivePageMarkerTexture;
         private Texture2D _activePageMarkerTexture;
+        private Texture2D _pageRuleTexture;
         private Texture2D _contextMenuTopTexture;
         private Texture2D _contextMenuCenterTexture;
         private Texture2D _contextMenuBottomTexture;
@@ -254,6 +255,7 @@ namespace HaCreator.MapSimulator.UI
 
         public void SetMonsterBookContextMenuArt(Texture2D topTexture, Texture2D centerTexture, Texture2D bottomTexture) { _contextMenuTopTexture = topTexture; _contextMenuCenterTexture = centerTexture; _contextMenuBottomTexture = bottomTexture; }
         public void SetPageMarkerTextures(Texture2D inactiveMarkerTexture, Texture2D activeMarkerTexture) { _inactivePageMarkerTexture = inactiveMarkerTexture; _activePageMarkerTexture = activeMarkerTexture; }
+        public void SetPageRuleTexture(Texture2D ruleTexture) => _pageRuleTexture = ruleTexture;
 
         public void InitializeButtons(UIObject prevButton, UIObject nextButton, UIObject closeButton, UIObject searchButton = null)
         {
@@ -1199,6 +1201,12 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawRule(SpriteBatch sprite, Rectangle bounds)
         {
+            if (_pageRuleTexture != null)
+            {
+                sprite.Draw(_pageRuleTexture, bounds, Color.White);
+                return;
+            }
+
             sprite.Draw(_pixel, bounds, PageRuleColor);
             sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y + 1, bounds.Width, 1), PageShadowColor);
         }

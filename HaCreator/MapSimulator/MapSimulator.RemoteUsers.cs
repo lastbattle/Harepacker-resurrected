@@ -958,9 +958,12 @@ namespace HaCreator.MapSimulator
                     }
 
                     PreparedSkillHudRules.PreparedSkillHudProfile hudProfile = PreparedSkillHudRules.ResolveProfile(preparePacket.SkillId);
+                    bool resolvedIsKeydownSkill = PreparedSkillHudRules.ResolveKeyDownSkillState(
+                        preparePacket.SkillId,
+                        preparePacket.IsKeydownSkill);
                     PreparedSkillHudRules.ResolveRemotePreparedSkillPhases(
                         preparePacket.SkillId,
-                        preparePacket.IsKeydownSkill,
+                        resolvedIsKeydownSkill,
                         preparePacket.IsHolding,
                         preparePacket.DurationMs,
                         preparePacket.MaxHoldDurationMs,
@@ -974,7 +977,7 @@ namespace HaCreator.MapSimulator
                         preparePacket.SkillName,
                         activeDurationMs,
                         string.IsNullOrWhiteSpace(preparePacket.SkinKey) ? hudProfile.SkinKey : preparePacket.SkinKey,
-                        preparePacket.IsKeydownSkill,
+                        resolvedIsKeydownSkill,
                         preparePacket.IsHolding,
                         PreparedSkillHudRules.ResolvePreparedGaugeDuration(
                             preparePacket.SkillId,
@@ -1195,8 +1198,17 @@ namespace HaCreator.MapSimulator
                     => ResolveRemotePetPickupActorName(actorId, fallbackOwnerId, remoteUserPool, itemNameResolver),
                 DropPickupActorKind.Mob when actorId > 0 && mobNameResolver != null
                     => mobNameResolver(actorId),
+                DropPickupActorKind.Other
+                    => FormatOtherPickupActorLabel(actorId),
                 _ => null
             };
+        }
+
+        internal static string FormatOtherPickupActorLabel(int actorId)
+        {
+            return actorId > 0
+                ? $"Actor {actorId}"
+                : null;
         }
 
         internal static string ResolveRemotePetPickupActorName(

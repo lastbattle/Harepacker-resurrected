@@ -36,9 +36,10 @@ namespace HaCreator.MapSimulator.Interaction
         private const int MaxWishListEntryCount = 10;
         private const int ConfirmWishListInputStringPoolId = 0x1097;
         private const int WishListGiftAlreadySentStringPoolId = 0x1098;
-        private const int ConfirmWishListGiftClaimStringPoolId = 0x1099;
-        private const int PutQuantityPromptStringPoolId = 0x0F63;
-        private const int WishListFullStringPoolId = 0x18E1;
+        private const int ConfirmWishListGiftClaimStringPoolId = 0x036C;
+        private const int PutQuantityPromptStringPoolId = 0x0370;
+        private const int ConfirmWishListGiftSendStringPoolId = 0x10C0;
+        private const int WishListFullStringPoolId = 0x10BE;
 
         private static readonly InventoryType[] TabInventoryTypes =
         {
@@ -78,9 +79,13 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _hasPendingTransferRequest;
         private bool _isGetConfirmationArmed;
         private bool _isPutQuantityPromptOpen;
+        private bool _isPutConfirmationArmed;
         private int _putQuantityPromptWishItemId;
         private InventorySlotData _putQuantityPromptSourceItem;
         private int _putQuantityPromptQuantity = 1;
+        private int _pendingPutWishItemId;
+        private InventorySlotData _pendingPutSourceItem;
+        private int _pendingPutQuantity = 1;
         private bool _inputConfirmationArmed;
         private bool _isOpen;
         private string _statusMessage = "Wedding wish-list dialog is idle.";
@@ -286,9 +291,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return GetTransferPendingText();
             }
 
-            if (_isPutQuantityPromptOpen)
+            if (_isPutConfirmationArmed)
             {
                 return CommitPendingPutItem();
+            }
+
+            if (_isPutQuantityPromptOpen)
+            {
+                return BeginPendingPutConfirmation();
             }
 
             InventorySlotData selectedWish = GetSelectedWishEntry();
@@ -314,13 +324,14 @@ namespace HaCreator.MapSimulator.Interaction
                 _putQuantityPromptWishItemId = selectedWish.ItemId;
                 _putQuantityPromptQuantity = 1;
                 _isPutQuantityPromptOpen = true;
+                _isPutConfirmationArmed = false;
                 _isGetConfirmationArmed = false;
                 _inputConfirmationArmed = false;
                 UpdatePutQuantityPromptStatus();
                 return _statusMessage;
             }
 
-            return TryCommitGiftPut(selectedWish, source, 1);
+            return ArmPendingPutConfirmation(selectedWish, source, 1);
         }
 
         internal string TryGetSelectedItem()
@@ -504,6 +515,23 @@ namespace HaCreator.MapSimulator.Interaction
                 return _statusMessage;
             }
 
+            if (_isPutConfirmationArmed)
+            {
+                _isPutConfirmationArmed = false;
+                _pendingPutWishItemId = 0;
+                _pendingPutSourceItem = null;
+                _pendingPutQuantity = 1;
+                _statusMessage = "Cancelled the pending wedding gift send confirmation.";
+                return _statusMessage;
+            }
+
+            if (_inputConfirmationArmed)
+            {
+                _inputConfirmationArmed = false;
+                _statusMessage = "Cancelled the pending wedding wish-list registration confirmation.";
+                return _statusMessage;
+            }
+
             return string.Empty;
         }
 
@@ -617,6 +645,8 @@ namespace HaCreator.MapSimulator.Interaction
                 CandidateQuery = _candidateQuery,
                 IsGetConfirmationArmed = _isGetConfirmationArmed,
                 IsPutQuantityPromptOpen = _isPutQuantityPromptOpen,
+                IsPutConfirmationArmed = _isPutConfirmationArmed,
+                IsInputConfirmationArmed = _inputConfirmationArmed,
                 PutQuantityPromptText = _isPutQuantityPromptOpen ? GetPutQuantityPromptText() : string.Empty,
                 PutQuantityPromptItemLabel = _isPutQuantityPromptOpen ? ResolveItemLabel(_putQuantityPromptSourceItem) : string.Empty,
                 PutQuantityPromptQuantity = _isPutQuantityPromptOpen ? _putQuantityPromptQuantity : 0,
@@ -1078,6 +1108,14 @@ namespace HaCreator.MapSimulator.Interaction
                 appendFallbackSuffix: true);
         }
 
+        private static string GetPutConfirmationText()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ConfirmWishListGiftSendStringPoolId,
+                "Once the gift is sent, it cannot be canceled. Do you still want to send it?",
+                appendFallbackSuffix: true);
+        }
+
         private static string GetWishListFullText()
         {
             return MapleStoryStringPool.GetOrFallback(
@@ -1104,7 +1142,7 @@ namespace HaCreator.MapSimulator.Interaction
             return _statusMessage;
         }
 
-        private string CommitPendingPutItem()
+        private string BeginPendingPutConfirmation()
         {
             if (!_isPutQuantityPromptOpen || _putQuantityPromptSourceItem == null)
             {
@@ -1127,7 +1165,51 @@ namespace HaCreator.MapSimulator.Interaction
                 return _statusMessage;
             }
 
-            return TryCommitGiftPut(selectedWish, _putQuantityPromptSourceItem, _putQuantityPromptQuantity);
+            return ArmPendingPutConfirmation(selectedWish, _putQuantityPromptSourceItem, _putQuantityPromptQuantity);
+        }
+
+        private string ArmPendingPutConfirmation(InventorySlotData selectedWish, InventorySlotData source, int quantity)
+        {
+            if (selectedWish == null || source == null)
+            {
+                return string.Empty;
+            }
+
+            _pendingPutWishItemId = selectedWish.ItemId;
+            _pendingPutSourceItem = CloneForDialog(source, ResolveInventoryTypeForSlot(source, ResolveSelectedInventoryType()), quantity);
+            _pendingPutQuantity = Math.Max(1, quantity);
+            _isPutConfirmationArmed = true;
+            _isPutQuantityPromptOpen = false;
+            _isGetConfirmationArmed = false;
+            _inputConfirmationArmed = false;
+            _statusMessage = GetPutConfirmationText();
+            return _statusMessage;
+        }
+
+        private string CommitPendingPutItem()
+        {
+            if (!_isPutConfirmationArmed || _pendingPutSourceItem == null)
+            {
+                return string.Empty;
+            }
+
+            InventorySlotData selectedWish = _wishListEntries.FirstOrDefault(entry => entry.ItemId == _pendingPutWishItemId);
+            if (selectedWish == null)
+            {
+                ClearTransientActionState();
+                _statusMessage = "The selected wedding wish-list row is no longer available.";
+                return _statusMessage;
+            }
+
+            InventoryType type = ResolveInventoryTypeForSlot(_pendingPutSourceItem, ResolveSelectedInventoryType());
+            if (_inventory == null || _inventory.GetItemCount(type, _pendingPutSourceItem.ItemId) < _pendingPutQuantity)
+            {
+                ClearTransientActionState();
+                _statusMessage = $"Unable to move {_pendingPutQuantity} of {ResolveItemLabel(_pendingPutSourceItem)} out of the local inventory.";
+                return _statusMessage;
+            }
+
+            return TryCommitGiftPut(selectedWish, _pendingPutSourceItem, _pendingPutQuantity);
         }
 
         private int GetPendingPutQuantityMax()
@@ -1145,9 +1227,13 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _isGetConfirmationArmed = false;
             _isPutQuantityPromptOpen = false;
+            _isPutConfirmationArmed = false;
             _putQuantityPromptWishItemId = 0;
             _putQuantityPromptSourceItem = null;
             _putQuantityPromptQuantity = 1;
+            _pendingPutWishItemId = 0;
+            _pendingPutSourceItem = null;
+            _pendingPutQuantity = 1;
             _inputConfirmationArmed = false;
         }
     }
@@ -1175,6 +1261,8 @@ namespace HaCreator.MapSimulator.Interaction
         public string CandidateQuery { get; init; } = string.Empty;
         public bool IsGetConfirmationArmed { get; init; }
         public bool IsPutQuantityPromptOpen { get; init; }
+        public bool IsPutConfirmationArmed { get; init; }
+        public bool IsInputConfirmationArmed { get; init; }
         public string PutQuantityPromptText { get; init; } = string.Empty;
         public string PutQuantityPromptItemLabel { get; init; } = string.Empty;
         public int PutQuantityPromptQuantity { get; init; }

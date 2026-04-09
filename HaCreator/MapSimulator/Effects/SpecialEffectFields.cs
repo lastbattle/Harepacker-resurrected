@@ -109,8 +109,11 @@ namespace HaCreator.MapSimulator.Effects
         /// <summary>
         /// Detect and enable appropriate field type based on map ID
         /// </summary>
-        public void DetectFieldType(int mapId, FieldType? fieldType = null)
+        public void DetectFieldType(MapInfo mapInfo)
         {
+            int mapId = mapInfo?.id ?? 0;
+            FieldType? fieldType = mapInfo?.fieldType;
+
             // Wedding maps: 680000110 (Cathedral), 680000210 (Chapel)
             if (fieldType == FieldType.FIELDTYPE_WEDDING || mapId == 680000110 || mapId == 680000210)
             {
@@ -128,8 +131,9 @@ namespace HaCreator.MapSimulator.Effects
                 _battlefield.Enable();
                 System.Diagnostics.Debug.WriteLine($"[SpecialEffectFields] Battlefield field detected: {mapId}");
             }
-            // Guild boss maps (e.g., Ergoth, Shao maps)
-            else if (IsGuildBossMap(mapId, fieldType))
+            // Guild boss maps are identified by their map-root healer/pulley contract
+            // before falling back to the legacy field-type and id-range heuristics.
+            else if (IsGuildBossMap(mapInfo))
             {
                 _guildBoss.Enable();
                 System.Diagnostics.Debug.WriteLine($"[SpecialEffectFields] GuildBoss field detected: {mapId}");
@@ -194,10 +198,21 @@ namespace HaCreator.MapSimulator.Effects
         }
 
 
-        private static bool IsGuildBossMap(int mapId, FieldType? fieldType)
+        private static bool IsGuildBossMap(MapInfo mapInfo)
         {
-            // Guild boss maps (Ergoth, Shao, etc.)
-            // Examples: 610030000 series, 673000000 series
+            if (mapInfo == null)
+            {
+                return false;
+            }
+
+            if (GuildBossField.TryBuildMapContract(mapInfo, out _))
+            {
+                return true;
+            }
+
+            int mapId = mapInfo.id;
+            FieldType? fieldType = mapInfo.fieldType;
+
             return fieldType == FieldType.FIELDTYPE_GUILDBOSS
                 || (mapId >= 610030000 && mapId <= 610030099)
                 || (mapId >= 673000000 && mapId <= 673000099);

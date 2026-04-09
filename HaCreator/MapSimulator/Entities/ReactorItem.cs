@@ -69,6 +69,7 @@ namespace HaCreator.MapSimulator.Entities
 
         private readonly ReactorInstance _reactorInstance;
         private readonly Dictionary<int, IDXObject[]> _stateFrames;
+        private readonly Dictionary<int, int> _stateHitDurations;
         private readonly Dictionary<int, AuthoredStateTransition[]> _stateTransitions;
         private readonly int[] _availableStates;
         private readonly int _originWorldX;
@@ -90,6 +91,7 @@ namespace HaCreator.MapSimulator.Entities
         {
             _reactorInstance = reactorInstance;
             _stateFrames = new Dictionary<int, IDXObject[]>();
+            _stateHitDurations = new Dictionary<int, int>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
             _availableStates = Array.Empty<int>();
             _originWorldX = reactorInstance?.X ?? 0;
@@ -101,6 +103,7 @@ namespace HaCreator.MapSimulator.Entities
         {
             _reactorInstance = reactorInstance;
             _stateFrames = new Dictionary<int, IDXObject[]>();
+            _stateHitDurations = LoadStateHitDurations(reactorInstance);
             _stateTransitions = LoadStateTransitions(reactorInstance);
             _originWorldX = reactorInstance?.X ?? 0;
             _originWorldY = reactorInstance?.Y ?? 0;
@@ -125,6 +128,7 @@ namespace HaCreator.MapSimulator.Entities
         {
             _reactorInstance = reactorInstance;
             _stateFrames = new Dictionary<int, IDXObject[]>();
+            _stateHitDurations = new Dictionary<int, int>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
             _availableStates = Array.Empty<int>();
             _originWorldX = reactorInstance?.X ?? 0;
@@ -331,6 +335,33 @@ namespace HaCreator.MapSimulator.Entities
 
             GetStateFrame(tickCount, out int frameIndex);
             return frameIndex;
+        }
+
+        public int GetRemainingAnimationDuration(int tickCount)
+        {
+            if (!_stateFrames.TryGetValue(_activeState, out IDXObject[] frames) || frames.Length == 0)
+            {
+                return 0;
+            }
+
+            GetStateFrame(tickCount, out int frameIndex);
+            int elapsedWithinFrame = Math.Max(0, tickCount - _lastStateTick);
+            int remainingDuration = Math.Max(0, Math.Max(1, frames[frameIndex].Delay) - elapsedWithinFrame);
+
+            for (int i = frameIndex + 1; i < frames.Length; i++)
+            {
+                remainingDuration += Math.Max(1, frames[i].Delay);
+            }
+
+            return remainingDuration;
+        }
+
+        public int GetHitAnimationDuration(int state)
+        {
+            int resolvedState = ResolveState(state);
+            return _stateHitDurations.TryGetValue(resolvedState, out int duration)
+                ? duration
+                : 0;
         }
 
         public Rectangle GetCurrentBounds(int tickCount)
@@ -637,6 +668,64 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return transitions;
+        }
+
+        private static Dictionary<int, int> LoadStateHitDurations(ReactorInstance reactorInstance)
+        {
+            var hitDurations = new Dictionary<int, int>();
+
+            WzImage linkedImage = reactorInstance?.ReactorInfo?.LinkedWzImage;
+            if (linkedImage == null)
+            {
+                return hitDurations;
+            }
+
+            foreach (WzImageProperty property in linkedImage.WzProperties)
+            {
+                if (!int.TryParse(property?.Name, out int stateId))
+                {
+                    continue;
+                }
+
+                int duration = TryReadHitDuration(WzInfoTools.GetRealProperty(property)?["hit"]);
+                if (duration > 0)
+                {
+                    hitDurations[stateId] = duration;
+                }
+            }
+
+            return hitDurations;
+        }
+
+        private static int TryReadHitDuration(WzImageProperty property)
+        {
+            WzImageProperty realProperty = WzInfoTools.GetRealProperty(property);
+            if (realProperty == null)
+            {
+                return 0;
+            }
+
+            if (realProperty is WzCanvasProperty canvasProperty)
+            {
+                return Math.Max(1, TryReadOptionalInt(WzInfoTools.GetRealProperty(canvasProperty["delay"])) ?? 0);
+            }
+
+            if (realProperty is not WzSubProperty hitProperty)
+            {
+                return 0;
+            }
+
+            int totalDuration = 0;
+            foreach (WzImageProperty frameProperty in hitProperty.WzProperties.Where(child => int.TryParse(child?.Name, out _)))
+            {
+                WzImageProperty resolvedFrameProperty = WzInfoTools.GetRealProperty(frameProperty);
+                if (resolvedFrameProperty is WzCanvasProperty frameCanvas)
+                {
+                    totalDuration += Math.Max(1, TryReadOptionalInt(WzInfoTools.GetRealProperty(frameCanvas["delay"])) ?? 0);
+                }
+            }
+
+            return totalDuration;
         }
 
         private static AuthoredStateTransition? TryCreateTransition(WzSubProperty eventNode, int order)

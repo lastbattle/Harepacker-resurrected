@@ -197,6 +197,8 @@ namespace HaCreator.MapSimulator.Effects
         private int _missGaugePenalty;
         private int _mapDistance;
         private float _displayGauge;
+        private int _gaugeDepletion;
+        private float _displayGaugeDepletion;
         private int _killCount;
         private int _comboCount;
         private int _lastKillTime = int.MinValue;
@@ -254,6 +256,7 @@ namespace HaCreator.MapSimulator.Effects
         private int _resultMissRate;
         public bool IsActive => _isActive;
         public int CurrentGauge => _currentGauge;
+        public int GaugeDepletion => _gaugeDepletion;
         public int MaxGauge => _maxGauge;
         public int GaugeDecreasePerSecond => _gaugeDec;
         public int DefaultGaugeIncrease => _defaultGaugeIncrease;
@@ -380,7 +383,9 @@ namespace HaCreator.MapSimulator.Effects
                     _countEffects.Sort(static (left, right) => left.Threshold.CompareTo(right.Threshold));
                 }
                 _currentGauge = Math.Clamp(_currentGauge, 0, _maxGauge);
+                _gaugeDepletion = Math.Clamp(_maxGauge - _currentGauge, 0, _maxGauge);
                 _displayGauge = Math.Clamp(_displayGauge, 0f, _maxGauge);
+                _displayGaugeDepletion = Math.Clamp(_displayGaugeDepletion, 0f, _maxGauge);
                 if (_disableSkill)
                 {
                     _keyAnimationStage = -1;
@@ -400,7 +405,9 @@ namespace HaCreator.MapSimulator.Effects
             _maxGauge = Math.Max(1, maxGauge);
             _gaugeDec = Math.Max(0, gaugeDec);
             _currentGauge = Math.Clamp(_currentGauge, 0, _maxGauge);
+            _gaugeDepletion = Math.Clamp(_maxGauge - _currentGauge, 0, _maxGauge);
             _displayGauge = Math.Clamp(_displayGauge, 0f, _maxGauge);
+            _displayGaugeDepletion = Math.Clamp(_displayGaugeDepletion, 0f, _maxGauge);
         }
         public void ResetRoundState()
         {
@@ -409,8 +416,10 @@ namespace HaCreator.MapSimulator.Effects
             _missCount = 0;
             _coolCount = 0;
             _skillCount = 0;
-            _currentGauge = 0;
-            _displayGauge = 0f;
+            _currentGauge = _maxGauge;
+            _gaugeDepletion = 0;
+            _displayGauge = _maxGauge;
+            _displayGaugeDepletion = 0f;
             _killCount = 0;
             _comboCount = 0;
             _lastKillTime = int.MinValue;
@@ -513,16 +522,21 @@ namespace HaCreator.MapSimulator.Effects
             if (_timeOverTick != int.MinValue && _lastClockUpdateTick != int.MinValue)
             {
                 int elapsedSeconds = Math.Max(0, _timerDurationSec - remainingSeconds);
-                int decayAmount = _gaugeDec * elapsedSeconds;
-                _currentGauge = Math.Clamp(_incGauge - decayAmount, 0, _maxGauge);
+                int depletionAmount = Math.Clamp((_gaugeDec * elapsedSeconds) - _incGauge, 0, _maxGauge);
+                _gaugeDepletion = depletionAmount;
+                _currentGauge = _maxGauge - depletionAmount;
             }
             else
             {
-                _currentGauge = Math.Clamp(_incGauge, 0, _maxGauge);
+                _gaugeDepletion = 0;
+                _currentGauge = _maxGauge;
             }
-            float targetGauge = _currentGauge;
-            float diff = targetGauge - _displayGauge;
-            _displayGauge = Math.Clamp(_displayGauge + (diff * MathF.Min(1f, 8f * deltaSeconds)), 0f, _maxGauge);
+            float gaugeTarget = _currentGauge;
+            float gaugeDiff = gaugeTarget - _displayGauge;
+            _displayGauge = Math.Clamp(_displayGauge + (gaugeDiff * MathF.Min(1f, 8f * deltaSeconds)), 0f, _maxGauge);
+            float depletionTarget = _gaugeDepletion;
+            float depletionDiff = depletionTarget - _displayGaugeDepletion;
+            _displayGaugeDepletion = Math.Clamp(_displayGaugeDepletion + (depletionDiff * MathF.Min(1f, 8f * deltaSeconds)), 0f, _maxGauge);
             UpdateKeyAnimation(currentTimeMs);
             if (!_showedClearEffect && _timeOverTick != int.MinValue && remainingSeconds <= 1)
             {
@@ -595,6 +609,7 @@ namespace HaCreator.MapSimulator.Effects
                 : string.Empty;
             string disableSkillText = _disableSkill ? ", skills=disabled" : string.Empty;
             string countBoardText = $", point={_hitCount}/{_coolCount}/{_missCount}/{_skillCount}";
+            string depletionText = $", depletion={_gaugeDepletion}/{_maxGauge}";
             string countEffectText = HasCountEffectPresentation ? $", countFx=stage{_countEffectPresentationStage}" : string.Empty;
             string bonusText = HasBonusPresentation ? ", bonusFx=active" : string.Empty;
             string resultText = HasResultPresentation
@@ -617,7 +632,7 @@ namespace HaCreator.MapSimulator.Effects
                     $"{ResultEffectRootPath} (rank fx)",
                     FormatResultRankEvidence()
                 });
-            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{countBoardText}{disableSkillText}{nextCountEffect}{countEffectText}{bonusText}{resultText}, evidence=[{evidenceText}]";
+            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{depletionText}{countBoardText}{disableSkillText}{nextCountEffect}{countEffectText}{bonusText}{resultText}, evidence=[{evidenceText}]";
         }
         public void Reset()
         {
@@ -795,12 +810,12 @@ namespace HaCreator.MapSimulator.Effects
                 Rectangle fallbackBounds = new(gaugeX, GaugeY, GaugeWidth + (GaugeFillOffsetX * 2), GaugeHeight + GaugeFillOffsetY);
                 spriteBatch.Draw(pixelTexture, fallbackBounds, new Color(25, 18, 16, 224));
             }
-            int fillWidth = GetGaugeFillWidth();
-            if (fillWidth > 0)
+            Rectangle maskBounds = GetGaugeMaskBounds(fillBounds);
+            if (maskBounds.Width > 0)
             {
                 Texture2D gaugeFillTexture = _gaugePixelTexture ?? pixelTexture;
-                Color fillColor = _gaugePixelTexture != null ? Color.White : GetGaugeColor(GaugeProgress);
-                spriteBatch.Draw(gaugeFillTexture, new Rectangle(fillBounds.X, fillBounds.Y, fillWidth, fillBounds.Height), fillColor);
+                Color fillColor = _gaugePixelTexture != null ? Color.White : GetGaugeColor(1f - GaugeProgress);
+                spriteBatch.Draw(gaugeFillTexture, maskBounds, fillColor);
             }
             if (ShouldDrawDangerOverlay())
             {
@@ -1583,12 +1598,22 @@ namespace HaCreator.MapSimulator.Effects
             {
                 return false;
             }
-            float depletion = 1f - Math.Clamp(_currentGauge / (float)_maxGauge, 0f, 1f);
+            float depletion = Math.Clamp(_gaugeDepletion / (float)_maxGauge, 0f, 1f);
             return depletion >= DangerDepletionThreshold;
         }
-        private int GetGaugeFillWidth()
+        private Rectangle GetGaugeMaskBounds(Rectangle fillBounds)
         {
-            return Math.Clamp((int)MathF.Round(GaugeFillWidth * GaugeProgress), 0, GaugeFillWidth);
+            int maskWidth = GetGaugeMaskWidth();
+            return new Rectangle(fillBounds.Right - maskWidth, fillBounds.Y, maskWidth, fillBounds.Height);
+        }
+        private int GetGaugeMaskWidth()
+        {
+            if (_maxGauge <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Clamp((int)MathF.Round(GaugeFillWidth * (_displayGaugeDepletion / _maxGauge)), 0, GaugeFillWidth);
         }
         private char ComputeResultRank()
         {

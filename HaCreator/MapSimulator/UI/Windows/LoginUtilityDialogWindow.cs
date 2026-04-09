@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.UI
         private const int SecurityQuestionYesButtonX = 59;
         private const int NoButtonX = 129;
         private const int NowButtonX = 59;
+        private const int NoticeNexonButtonX = 89;
         private const int InputPaddingX = 4;
         private const int InputPaddingY = 1;
 
@@ -45,6 +46,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _nexonButton;
         private readonly IReadOnlyDictionary<int, Texture2D> _noticeTextTextures;
         private readonly Texture2D _pixelTexture;
+        private readonly int _screenWidth;
+        private readonly int _screenHeight;
         private SpriteFont _font;
         private string _title = "Login Utility";
         private string _body = string.Empty;
@@ -87,7 +90,9 @@ namespace HaCreator.MapSimulator.UI
             UIObject restartButton,
             UIObject exitButton,
             UIObject nexonButton,
-            IReadOnlyDictionary<int, Texture2D> noticeTextTextures)
+            IReadOnlyDictionary<int, Texture2D> noticeTextTextures,
+            int screenWidth,
+            int screenHeight)
             : base(framesByVariant != null &&
                    framesByVariant.TryGetValue(LoginUtilityDialogFrameVariant.Default, out IDXObject defaultFrame) &&
                    defaultFrame != null
@@ -107,6 +112,8 @@ namespace HaCreator.MapSimulator.UI
             _exitButton = RegisterButton(exitButton, false);
             _nexonButton = RegisterButton(nexonButton, true);
             _noticeTextTextures = noticeTextTextures ?? new Dictionary<int, Texture2D>();
+            _screenWidth = screenWidth;
+            _screenHeight = screenHeight;
             if (defaultFrame?.Texture?.GraphicsDevice != null)
             {
                 _pixelTexture = new Texture2D(defaultFrame.Texture.GraphicsDevice, 1, 1);
@@ -173,6 +180,7 @@ namespace HaCreator.MapSimulator.UI
             _softKeyboardType = softKeyboardType;
             _visualStyle = visualStyle;
             Frame = ResolveFrame(frameVariant);
+            CenterFrame(Frame);
             _inputBoundsOverride = inputBoundsOverride;
             _inputFocused = HasInputField;
             if (!HasInputField)
@@ -433,7 +441,7 @@ namespace HaCreator.MapSimulator.UI
             }
             else if (_activePrimaryButton != null)
             {
-                PositionButton(_activePrimaryButton, OkButtonX, DialogButtonY);
+                PositionButton(_activePrimaryButton, ResolveSingleButtonLayoutPosition(_activePrimaryButton), DialogButtonY);
             }
         }
 
@@ -445,6 +453,22 @@ namespace HaCreator.MapSimulator.UI
                 LoginUtilityDialogButtonLayout.EnableDisableSpw => (YesButtonX, NoButtonX),
                 LoginUtilityDialogButtonLayout.YesNo when _visualStyle == LoginUtilityDialogVisualStyle.SecurityYesNo => (SecurityQuestionYesButtonX, NoButtonX),
                 _ => (YesButtonX, NoButtonX),
+            };
+        }
+
+        private int ResolveSingleButtonLayoutPosition(UIObject button)
+        {
+            if (button == null)
+            {
+                return OkButtonX;
+            }
+
+            return _buttonLayout switch
+            {
+                LoginUtilityDialogButtonLayout.Nexon when Frame?.Width > 0 && button.CanvasSnapshotWidth > 0
+                    => Math.Max(0, (Frame.Width - button.CanvasSnapshotWidth) / 2),
+                LoginUtilityDialogButtonLayout.Nexon => NoticeNexonButtonX,
+                _ => OkButtonX,
             };
         }
 
@@ -465,6 +489,15 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return Frame;
+        }
+
+        private void CenterFrame(IDXObject frame)
+        {
+            int width = frame?.Width > 0 ? frame.Width : 312;
+            int height = frame?.Height > 0 ? frame.Height : 132;
+            Position = new Point(
+                Math.Max(24, (_screenWidth / 2) - (width / 2)),
+                Math.Max(24, (_screenHeight / 2) - (height / 2)));
         }
 
         private static void HideButton(UIObject button)
@@ -710,6 +743,11 @@ namespace HaCreator.MapSimulator.UI
         void ISoftKeyboardHost.OnSoftKeyboardClosed()
         {
             _softKeyboardActive = false;
+        }
+
+        void ISoftKeyboardHost.SetSoftKeyboardCompositionText(string text)
+        {
+            HandleCompositionText(text);
         }
 
         private void ClearInputFocus()

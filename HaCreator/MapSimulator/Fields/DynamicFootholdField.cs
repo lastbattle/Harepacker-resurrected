@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator.Fields
         private int _dynamicObjectCount;
         private int _dynamicEnabledObjectCount;
         private readonly List<string> _authoredDynamicObjectNames = new();
+        private readonly List<string> _packetOwnedSnapshotDynamicObjectNames = new();
         private readonly Dictionary<string, int> _authoredDynamicObjectPlatformByName = new(StringComparer.OrdinalIgnoreCase);
 
         public bool IsActive => _isActive;
@@ -106,6 +107,7 @@ namespace HaCreator.MapSimulator.Fields
             _dynamicObjectCount = 0;
             _dynamicEnabledObjectCount = 0;
             _authoredDynamicObjectNames.Clear();
+            _packetOwnedSnapshotDynamicObjectNames.Clear();
             _authoredDynamicObjectPlatformByName.Clear();
         }
 
@@ -118,6 +120,18 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             name = _authoredDynamicObjectNames[platformId];
+            return !string.IsNullOrWhiteSpace(name);
+        }
+
+        public bool TryResolvePacketOwnedSnapshotDynamicObjectName(int platformId, out string name)
+        {
+            name = null;
+            if (platformId < 0 || platformId >= _packetOwnedSnapshotDynamicObjectNames.Count)
+            {
+                return false;
+            }
+
+            name = _packetOwnedSnapshotDynamicObjectNames[platformId];
             return !string.IsNullOrWhiteSpace(name);
         }
 
@@ -236,7 +250,9 @@ namespace HaCreator.MapSimulator.Fields
                     _dynamicObjectCount++;
                     int platformId = _authoredDynamicObjectNames.Count;
                     string resolvedName = ResolveDynamicObjectName(rootChild, mapObject, platformId);
+                    string packetOwnedSnapshotName = ResolvePacketOwnedSnapshotDynamicObjectName(rootChild, mapObject, resolvedName);
                     _authoredDynamicObjectNames.Add(resolvedName);
+                    _packetOwnedSnapshotDynamicObjectNames.Add(packetOwnedSnapshotName);
                     RegisterDynamicObjectAliases(rootChild, mapObject, resolvedName, platformId);
 
                     if (TryReadDynamicFlag(dynamicProperty, out int dynamicFlag) && dynamicFlag != 0)
@@ -439,6 +455,31 @@ namespace HaCreator.MapSimulator.Fields
             return $"dynamic-{layerName}-{objectName}";
         }
 
+        private static string ResolvePacketOwnedSnapshotDynamicObjectName(WzImageProperty layer, WzImageProperty mapObject, string fallbackName)
+        {
+            if (TryResolveObjectKeyName(mapObject, out string objectKeyName))
+            {
+                int? piece = TryReadIntProperty(mapObject, "piece", out int pieceValue)
+                    ? pieceValue
+                    : null;
+                int? x = TryReadIntProperty(mapObject, "x", out int xValue)
+                    ? xValue
+                    : null;
+                int? y = TryReadIntProperty(mapObject, "y", out int yValue)
+                    ? yValue
+                    : null;
+                string packetOwnedName = BuildPacketOwnedSnapshotObjectKeyName(objectKeyName, piece, x, y);
+                if (!string.IsNullOrWhiteSpace(packetOwnedName))
+                {
+                    return packetOwnedName;
+                }
+            }
+
+            return string.IsNullOrWhiteSpace(fallbackName)
+                ? ResolveDynamicObjectName(layer, mapObject, fallbackIndex: 0)
+                : fallbackName;
+        }
+
         private static string BuildCanonicalObjectKeyName(string objectKeyName, int? piece, int? x, int? y)
         {
             string canonicalName = NormalizeDynamicObjectKey(objectKeyName);
@@ -458,6 +499,27 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return canonicalName;
+        }
+
+        internal static string BuildPacketOwnedSnapshotObjectKeyName(string objectKeyName, int? piece, int? x, int? y)
+        {
+            string packetOwnedName = NormalizeDynamicObjectKey(objectKeyName);
+            if (packetOwnedName.Length == 0)
+            {
+                return packetOwnedName;
+            }
+
+            if (piece is int pieceValue && pieceValue > 0)
+            {
+                packetOwnedName = $"{packetOwnedName}/{pieceValue.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            if (x is int xValue && y is int yValue)
+            {
+                packetOwnedName = $"{packetOwnedName}/{xValue.ToString(CultureInfo.InvariantCulture)},{yValue.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            return packetOwnedName;
         }
 
         private static bool TryResolveObjectKeyName(WzImageProperty mapObject, out string name)

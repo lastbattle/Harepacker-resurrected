@@ -21,5 +21,9 @@ namespace HaCreator.MapSimulator
         ConfirmApspEvent = 14,
         ConfirmFollowCharacterRequest = 15,
         ConfirmUtilityQuit = 18,
+        VerifyTrunkPic = 19,
+        VerifyTrunkSpw = 20,
+        RetryTrunkPic = 21,
+        RetryTrunkSpw = 22,
     }
 }

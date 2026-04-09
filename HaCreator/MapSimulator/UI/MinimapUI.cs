@@ -17,6 +17,7 @@ namespace HaCreator.MapSimulator.UI
     {
         internal readonly record struct ClientStateTransition(int CurrentOption, int PreviousExpandedOption, bool IsCollapsed);
         internal readonly record struct ClientButtonVisibility(bool MinVisible, bool MaxVisible, bool BigVisible, bool SmallVisible);
+        internal readonly record struct ClientButtonPlacement(int X, int Y, bool Visible);
 
         public enum HelperMarkerType
         {
@@ -106,6 +107,10 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientOptionCollapsed = 0;
         private const int ClientOptionCompact = 1;
         private const int ClientOptionExpanded = 2;
+        private const int ClientTopRowButtonTop = 4;
+        private const int ClientTopRowButtonRightPadding = 6;
+        private const int ClientOptionButtonBottomPadding = 4;
+        private const int ClientOptionButtonRightPadding = 17;
 
         // Player position on minimap (in minimap coordinates, not world coordinates)
         private int _playerMinimapX = 0;
@@ -807,9 +812,35 @@ namespace HaCreator.MapSimulator.UI
             _btnSmall?.SetVisible(buttonVisibility.SmallVisible);
 
             int frameWidth = GetVisibleFrame()?.Frame0?.Width ?? Frame0?.Width ?? 0;
-            int rightEdge = frameWidth - 8;
+            int frameHeight = GetVisibleFrame()?.Frame0?.Height ?? Frame0?.Height ?? 0;
+            bool supportsExpandedOption = _btnSmall != null && _expandedFrame != null;
+            int mapButtonX = ResolveTopRowButtonX(frameWidth, _btnMap.CanvasSnapshotWidth);
 
-            rightEdge = PositionButtonFromRight(_btnMap, rightEdge);
+            _btnMap.X = mapButtonX;
+            _btnMap.Y = ClientTopRowButtonTop;
+
+            UIObject visibleStateButton = _btnMax.ButtonVisible ? _btnMax : _btnMin;
+            UIObject hiddenStateButton = ReferenceEquals(visibleStateButton, _btnMax) ? _btnMin : _btnMax;
+            int stateButtonX = ResolveAdjacentLeftButtonX(mapButtonX, visibleStateButton?.CanvasSnapshotWidth ?? 0);
+            if (visibleStateButton != null)
+            {
+                visibleStateButton.X = stateButtonX;
+                visibleStateButton.Y = ClientTopRowButtonTop;
+            }
+
+            if (hiddenStateButton != null)
+            {
+                hiddenStateButton.X = stateButtonX;
+                hiddenStateButton.Y = ClientTopRowButtonTop;
+            }
+
+            int nextTopRowX = stateButtonX;
+            if (_btnNpc?.ButtonVisible == true)
+            {
+                _btnNpc.X = ResolveAdjacentLeftButtonX(nextTopRowX, _btnNpc.CanvasSnapshotWidth);
+                _btnNpc.Y = ClientTopRowButtonTop;
+                nextTopRowX = _btnNpc.X;
+            }
 
             UIObject sizeToggleButton = _btnSmall?.ButtonVisible == true
                 ? _btnSmall
@@ -818,27 +849,25 @@ namespace HaCreator.MapSimulator.UI
                     : null;
             if (sizeToggleButton != null)
             {
-                rightEdge = PositionButtonFromRight(sizeToggleButton, rightEdge);
+                ClientButtonPlacement optionPlacement = ResolveOptionButtonPlacementForTesting(
+                    frameWidth,
+                    frameHeight,
+                    sizeToggleButton.CanvasSnapshotWidth,
+                    sizeToggleButton.CanvasSnapshotHeight,
+                    supportsExpandedOption);
+                sizeToggleButton.X = optionPlacement.X;
+                sizeToggleButton.Y = optionPlacement.Y;
             }
-
-            if (_btnNpc?.ButtonVisible == true)
-            {
-                rightEdge = PositionButtonFromRight(_btnNpc, rightEdge);
-            }
-
-            rightEdge = PositionButtonFromRight(_btnMax, rightEdge);
-            PositionButtonFromRight(_btnMin, rightEdge);
         }
 
-        private static int PositionButtonFromRight(UIObject button, int rightEdge)
+        private static int ResolveTopRowButtonX(int frameWidth, int buttonWidth)
         {
-            if (button == null)
-            {
-                return rightEdge;
-            }
+            return Math.Max(0, frameWidth - buttonWidth - ClientTopRowButtonRightPadding);
+        }
 
-            button.X = rightEdge - button.CanvasSnapshotWidth;
-            return button.X;
+        private static int ResolveAdjacentLeftButtonX(int anchorX, int buttonWidth)
+        {
+            return Math.Max(0, anchorX - buttonWidth);
         }
 
         private void AdvanceToggleCycle()
@@ -1060,6 +1089,60 @@ namespace HaCreator.MapSimulator.UI
                 MaxVisible: false,
                 BigVisible: supportsExpandedOption && normalizedCurrentOption == ClientOptionCompact,
                 SmallVisible: supportsExpandedOption && normalizedCurrentOption >= ClientOptionExpanded);
+        }
+
+        internal static ClientButtonPlacement ResolveMapButtonPlacementForTesting(int frameWidth, int buttonWidth)
+        {
+            return new ClientButtonPlacement(
+                ResolveTopRowButtonX(frameWidth, buttonWidth),
+                ClientTopRowButtonTop,
+                Visible: true);
+        }
+
+        internal static ClientButtonPlacement ResolveStateButtonPlacementForTesting(
+            int frameWidth,
+            int mapButtonWidth,
+            int stateButtonWidth)
+        {
+            int mapButtonX = ResolveTopRowButtonX(frameWidth, mapButtonWidth);
+            return new ClientButtonPlacement(
+                ResolveAdjacentLeftButtonX(mapButtonX, stateButtonWidth),
+                ClientTopRowButtonTop,
+                Visible: true);
+        }
+
+        internal static ClientButtonPlacement ResolveOptionButtonPlacementForTesting(
+            int frameWidth,
+            int frameHeight,
+            int optionButtonWidth,
+            int optionButtonHeight,
+            bool supportsExpandedOption)
+        {
+            if (!supportsExpandedOption || optionButtonWidth <= 0 || optionButtonHeight <= 0)
+            {
+                return new ClientButtonPlacement(0, 0, Visible: false);
+            }
+
+            return new ClientButtonPlacement(
+                Math.Max(0, frameWidth - optionButtonWidth - ClientOptionButtonRightPadding),
+                Math.Max(0, frameHeight - optionButtonHeight - ClientOptionButtonBottomPadding),
+                Visible: true);
+        }
+
+        internal static Rectangle ResolveCollapsedHoverBoundsForTesting(Rectangle bounds, bool isCollapsed)
+        {
+            if (!isCollapsed || bounds.IsEmpty)
+            {
+                return bounds;
+            }
+
+            int horizontalInflation = bounds.Width / 2;
+            int verticalInflation = bounds.Height / 2;
+            return new Rectangle(
+                bounds.X - horizontalInflation,
+                bounds.Y - verticalInflation,
+                bounds.Width + (horizontalInflation * 2),
+                bounds.Height + (verticalInflation * 2));
         }
 
         private void DrawNpcMarkers(
@@ -1437,7 +1520,7 @@ namespace HaCreator.MapSimulator.UI
                 frame.Width,
                 frame.Height);
 
-            return rect;
+            return ResolveCollapsedHoverBoundsForTesting(rect, _bIsCollapsedState);
         }
 
         private void ResetHoverTargets()

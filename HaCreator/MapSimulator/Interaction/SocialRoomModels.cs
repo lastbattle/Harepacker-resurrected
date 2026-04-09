@@ -327,6 +327,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const byte MiniRoomBaseEnterPacketSubType = 4;
         private const byte MiniRoomBaseEnterResultPacketSubType = 5;
         private const byte MiniRoomBaseUpdatePacketSubType = 6;
+        private const byte MiniRoomBaseChatPacketSubType = 7;
+        private const byte MiniRoomBaseChatAltPacketSubType = 8;
         private const byte MiniRoomBaseAvatarPacketSubType = 9;
         private const byte MiniRoomBaseLeavePacketSubType = 10;
         private const byte MiniRoomBaseCheckSsnPacketSubType = 14;
@@ -2508,6 +2510,9 @@ namespace HaCreator.MapSimulator.Interaction
                     return TryApplyMiniRoomBaseEnterResultPacket(reader, out message);
                 case MiniRoomBaseUpdatePacketSubType:
                     return TryDispatchMiniRoomBaseTypeSpecificPacket(reader, out message);
+                case MiniRoomBaseChatPacketSubType:
+                case MiniRoomBaseChatAltPacketSubType:
+                    return TryApplyMiniRoomBaseChatPacket(packetSubType, reader, out message);
                 case MiniRoomBaseAvatarPacketSubType:
                     return TryApplyMiniRoomBaseAvatarPacket(reader, out message);
                 case MiniRoomBaseLeavePacketSubType:
@@ -2527,6 +2532,56 @@ namespace HaCreator.MapSimulator.Interaction
             int invitationSerial = reader.ReadInt();
             RoomState = "Invite received";
             StatusMessage = $"{inviterName} sent a {ResolveMiniRoomTypeLabel(roomType)} invite (serial {invitationSerial}) through CMiniRoomBaseDlg::OnInviteStatic.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyMiniRoomBaseChatPacket(byte packetSubType, PacketReader reader, out string message)
+        {
+            int chatType = reader.ReadByte();
+            if (chatType == 7)
+            {
+                return TryApplyMiniRoomBaseGameMessagePacket(packetSubType, reader, out message);
+            }
+
+            return TryApplyMiniRoomBaseSpeakerChatPacket(packetSubType, chatType, reader, out message);
+        }
+
+        private bool TryApplyMiniRoomBaseGameMessagePacket(byte packetSubType, PacketReader reader, out string message)
+        {
+            int messageCode = reader.ReadByte();
+            string characterName = NormalizeName(reader.ReadMapleString());
+            int? stringPoolId = ResolveMiniRoomGameMessageStringPoolId(messageCode);
+            string chatText = ResolveMiniRoomBaseGameMessageText(messageCode, characterName, stringPoolId);
+            AppendSocialRoomChatEntry(chatText, SocialRoomChatTone.System, persistState: false);
+            RoomState = "Chat update";
+            StatusMessage = stringPoolId.HasValue
+                ? $"CMiniRoomBaseDlg::OnChat applied shared base subtype {packetSubType} game message code {messageCode} through StringPool id 0x{stringPoolId.Value:X}."
+                : $"CMiniRoomBaseDlg::OnChat applied shared base subtype {packetSubType} game message code {messageCode} without a recovered StringPool id.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyMiniRoomBaseSpeakerChatPacket(byte packetSubType, int seatIndex, PacketReader reader, out string message)
+        {
+            string text = reader.ReadMapleString()?.Trim();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                message = $"Mini-room base chat subtype {packetSubType} did not include a room-chat line.";
+                return false;
+            }
+
+            AppendSocialRoomChatEntry(text, ResolveMiniRoomBaseSpeakerChatTone(seatIndex), persistState: false);
+            string observedText = ExtractObservedChatMessage(text);
+            if (!string.IsNullOrWhiteSpace(observedText))
+            {
+                NotifySocialChatObserved(observedText);
+            }
+
+            RoomState = "Chat update";
+            StatusMessage = $"CMiniRoomBaseDlg::OnChat appended shared base subtype {packetSubType} room chat from seat {Math.Max(0, seatIndex)}.";
             PersistState();
             message = StatusMessage;
             return true;
@@ -2656,7 +2711,7 @@ namespace HaCreator.MapSimulator.Interaction
             _chatEntries.Clear();
             foreach (SocialRoomChatEntry entry in decodedChatEntries)
             {
-                AddMiniRoomChatEntry(entry.Text, entry.Tone);
+                AppendSocialRoomChatEntry(entry.Text, entry.Tone, persistState: false);
             }
 
             if (decodedOwnerLedger)
@@ -2816,6 +2871,66 @@ namespace HaCreator.MapSimulator.Interaction
                 25 => "Mini-room enter result code 25 followed the client notice branch for StringPool id 0x116.",
                 _ => $"Mini-room enter result code {resultCode} reached the shared enter-result seam without a named client notice branch."
             };
+        }
+
+        private static int? ResolveMiniRoomGameMessageStringPoolId(int messageCode)
+        {
+            return messageCode switch
+            {
+                0 => 0x1C8,
+                1 => 0x1CD,
+                2 => 0x1CA,
+                3 => 0x1CB,
+                4 => 0x1C5,
+                5 => 0x1C6,
+                6 => 0x1C7,
+                7 => 0x1C4,
+                8 => 0x1CF,
+                9 => 0x1CE,
+                101 => 0x1D2,
+                102 => 0x1D0,
+                103 => 0x1D1,
+                _ => null
+            };
+        }
+
+        private static string ResolveMiniRoomBaseGameMessageText(int messageCode, string characterName, int? stringPoolId)
+        {
+            string trimmedName = string.IsNullOrWhiteSpace(characterName) ? "Unknown" : characterName.Trim();
+            return messageCode switch
+            {
+                101 or 102 or 103 => stringPoolId.HasValue
+                    ? $"CMiniRoomBaseDlg::MakeGameMessage code {messageCode} followed StringPool id 0x{stringPoolId.Value:X}."
+                    : $"CMiniRoomBaseDlg::MakeGameMessage code {messageCode} reached an unmapped shared chat branch.",
+                _ => stringPoolId.HasValue
+                    ? $"{trimmedName} triggered CMiniRoomBaseDlg::MakeGameMessage code {messageCode} (StringPool id 0x{stringPoolId.Value:X})."
+                    : $"{trimmedName} triggered CMiniRoomBaseDlg::MakeGameMessage code {messageCode} without a recovered StringPool id."
+            };
+        }
+
+        private SocialRoomChatTone ResolveMiniRoomBaseSpeakerChatTone(int seatIndex)
+        {
+            if (seatIndex <= 0)
+            {
+                return SocialRoomChatTone.LocalSpeaker;
+            }
+
+            return Kind == SocialRoomKind.MiniRoom
+                ? SocialRoomChatTone.RemoteSpeaker
+                : SocialRoomChatTone.Neutral;
+        }
+
+        private static string ExtractObservedChatMessage(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return null;
+            }
+
+            int separatorIndex = text.IndexOf(" : ", StringComparison.Ordinal);
+            return separatorIndex >= 0 && separatorIndex + 3 < text.Length
+                ? text[(separatorIndex + 3)..].Trim()
+                : text.Trim();
         }
 
         private bool TryDecodeEntrustedShopOwnerEnterLedger(
@@ -3307,19 +3422,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public void AddMiniRoomChatEntry(string text, SocialRoomChatTone tone = SocialRoomChatTone.Neutral)
         {
-            if (Kind != SocialRoomKind.MiniRoom || string.IsNullOrWhiteSpace(text))
-            {
-                return;
-            }
-
-            _chatEntries.Add(new SocialRoomChatEntry(text, tone));
-            const int maxChatEntries = 48;
-            if (_chatEntries.Count > maxChatEntries)
-            {
-                _chatEntries.RemoveRange(0, _chatEntries.Count - maxChatEntries);
-            }
-
-            PersistState();
+            AppendSocialRoomChatEntry(text, tone, persistState: true);
         }
 
         public void AddMiniRoomSpeakerMessage(string speakerName, string message, bool isLocalSpeaker)
@@ -3349,6 +3452,26 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             SocialChatObserved?.Invoke(message.Trim(), Environment.TickCount);
+        }
+
+        private void AppendSocialRoomChatEntry(string text, SocialRoomChatTone tone, bool persistState)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            _chatEntries.Add(new SocialRoomChatEntry(text.Trim(), tone));
+            const int maxChatEntries = 48;
+            if (_chatEntries.Count > maxChatEntries)
+            {
+                _chatEntries.RemoveRange(0, _chatEntries.Count - maxChatEntries);
+            }
+
+            if (persistState)
+            {
+                PersistState();
+            }
         }
 
         private void SetMiniRoomGuestReady(bool isReady, bool persistState)
@@ -6086,6 +6209,51 @@ namespace HaCreator.MapSimulator.Interaction
         private bool TryGetVisibleEmployeePoolEntry(out SocialRoomEmployeePoolEntryState state)
         {
             return _employeePoolRuntime.TryGetPrimaryEntry(out state) && state != null && state.IsVisible;
+        }
+
+        internal void ApplyPacketOwnedEmployeePoolState(
+            IReadOnlyList<SocialRoomEmployeePoolEntrySnapshot> snapshots,
+            int preferredEmployerId,
+            bool hasPacketState,
+            int lastKnownEmployerId,
+            string statusMessage,
+            bool persistState)
+        {
+            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
+            {
+                return;
+            }
+
+            SocialRoomEmployeeLegacyPacketState legacyState = new(
+                _employeeHasPacketData,
+                _employeePacketActorHidden,
+                _employeePacketEmployerId,
+                _employeePacketFootholdId,
+                _employeePacketNameTag,
+                _employeePacketMiniRoomType,
+                _employeePacketMiniRoomSerial,
+                _employeePacketBalloonTitle,
+                _employeePacketBalloonByte0,
+                _employeePacketBalloonByte1,
+                _employeePacketBalloonByte2,
+                _employeeTemplateId,
+                _employeeWorldX,
+                _employeeWorldY,
+                _employeeHasWorldPosition);
+            _employeePoolRuntime.Restore(snapshots, legacyState);
+            _employeePoolRuntime.SetPreferredEmployerId(Math.Max(0, preferredEmployerId));
+            _employeeHasPacketData = hasPacketState || (snapshots?.Count > 0);
+            SyncLegacyEmployeePacketStateFromPool(Math.Max(lastKnownEmployerId, preferredEmployerId));
+
+            if (!string.IsNullOrWhiteSpace(statusMessage))
+            {
+                StatusMessage = statusMessage;
+            }
+
+            if (persistState)
+            {
+                PersistState();
+            }
         }
 
         private void SyncLegacyEmployeePacketStateFromPool(int fallbackEmployerId = 0)

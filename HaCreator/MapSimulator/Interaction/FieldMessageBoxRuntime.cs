@@ -19,6 +19,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int DefaultItemId = 5370000;
         private const int DefaultFrameDelayMs = 100;
         private const int ClientLeaveCanvasFadeDurationMs = 1000;
+        private const int ClientLeaveCanvasReinsertDelayMs = 0;
         private const int DefaultBoxOffsetX = -3;
         private const int DefaultBoxOffsetY = -100;
         private const float DefaultBobAmplitude = 3f;
@@ -197,6 +198,11 @@ namespace HaCreator.MapSimulator.Interaction
             foreach (FieldMessageBoxEntry entry in _entries.Values)
             {
                 entry.Update(currentTick);
+            }
+
+            foreach (LeavingMessageBoxEntry leavingEntry in _leavingEntries)
+            {
+                leavingEntry.Update(currentTick);
             }
 
             int removedLeavingCount = _leavingEntries.RemoveAll(leaving => leaving.ShouldRemove(currentTick));
@@ -384,7 +390,8 @@ namespace HaCreator.MapSimulator.Interaction
         private void DrawBoardText(SpriteBatch spriteBatch, SpriteFont font, Rectangle boardBounds, IMessageBoxDrawableEntry entry, float alpha)
         {
             MessageBoxTextLayout layout = entry.Visual?.TextLayout ?? MessageBoxTextLayout.Default;
-            int textRegionWidth = Math.Max(MinBoardWidth, boardBounds.Width - layout.PaddingLeft - layout.PaddingRight);
+            Rectangle textBounds = layout.GetContentBounds(boardBounds);
+            int textRegionWidth = Math.Max(MinBoardWidth, textBounds.Width);
             string[] bodyLines = WrapText(font, entry.MessageText, textRegionWidth).Take(layout.MaxLineCount).ToArray();
             if (bodyLines.Length == 0)
             {
@@ -392,8 +399,8 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int totalHeight = bodyLines.Length * font.LineSpacing;
-            float startY = boardBounds.Y + layout.PaddingTop;
-            int availableHeight = Math.Max(font.LineSpacing, boardBounds.Height - layout.PaddingTop - layout.PaddingBottom);
+            float startY = textBounds.Y;
+            int availableHeight = Math.Max(font.LineSpacing, textBounds.Height);
             if (layout.CenterVertically && totalHeight < availableHeight)
             {
                 startY += (availableHeight - totalHeight) * 0.5f;
@@ -405,8 +412,8 @@ namespace HaCreator.MapSimulator.Interaction
                 string line = bodyLines[i];
                 Vector2 size = font.MeasureString(line);
                 float x = layout.CenterHorizontally
-                    ? boardBounds.X + (boardBounds.Width - size.X) * 0.5f
-                    : boardBounds.X + layout.PaddingLeft;
+                    ? textBounds.X + (textBounds.Width - size.X) * 0.5f
+                    : textBounds.X;
                 float y = startY + (i * font.LineSpacing);
                 spriteBatch.DrawString(font, line, new Vector2((float)Math.Round(x), (float)Math.Round(y)), textColor);
             }
@@ -1264,6 +1271,26 @@ namespace HaCreator.MapSimulator.Interaction
             return ComputeLeaveFadeAlpha(elapsedMs);
         }
 
+        internal static Rectangle ComputeTextBoundsForTest(
+            int boardWidth,
+            int boardHeight,
+            int paddingLeft,
+            int paddingTop,
+            int paddingRight,
+            int paddingBottom)
+        {
+            MessageBoxTextLayout layout = new(
+                paddingLeft,
+                paddingTop,
+                paddingRight,
+                paddingBottom,
+                CenterHorizontally: true,
+                CenterVertically: true,
+                MaxLineCount: MaxBodyLineCount,
+                TextColor: Color.White);
+            return layout.GetContentBounds(new Rectangle(0, 0, boardWidth, boardHeight));
+        }
+
         internal static (int PaddingLeft, int PaddingTop, int PaddingRight, int PaddingBottom, int MaxLineCount) ComputeMetadataBackedTextLayoutWithParentFallbackForTest(
             int textureWidth,
             int textureHeight,
@@ -1614,6 +1641,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private sealed class LeavingMessageBoxEntry : IMessageBoxDrawableEntry
         {
+            private LeaveCanvasState _canvasState;
             private readonly int _leaveStartedAt;
             private readonly Texture2D _snapshotTexture;
             private readonly Point _snapshotOrigin;
@@ -1632,6 +1660,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Source = source;
                 _snapshotTexture = snapshotTexture;
                 _snapshotOrigin = snapshotOrigin;
+                _canvasState = LeaveCanvasState.Removed;
             }
 
             public int Id { get; }
@@ -1640,6 +1669,15 @@ namespace HaCreator.MapSimulator.Interaction
             public MessageBoxVisual Visual { get; }
             public MessageBoxEntrySource Source { get; }
             public bool ShouldDrawText => _snapshotTexture == null;
+
+            public void Update(int currentTick)
+            {
+                if (_canvasState == LeaveCanvasState.Removed &&
+                    currentTick - _leaveStartedAt >= ClientLeaveCanvasReinsertDelayMs)
+                {
+                    _canvasState = LeaveCanvasState.ReinsertedFade;
+                }
+            }
 
             public static LeavingMessageBoxEntry FromEntry(FieldMessageBoxEntry entry, int currentTick, Texture2D snapshotTexture, Point snapshotOrigin)
             {
@@ -1658,7 +1696,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             public bool ShouldRemove(int currentTick)
             {
-                return currentTick - _leaveStartedAt >= ClientLeaveCanvasFadeDurationMs;
+                return _canvasState == LeaveCanvasState.ReinsertedFade &&
+                       currentTick - _leaveStartedAt >= ClientLeaveCanvasFadeDurationMs;
             }
 
             public Texture2D GetDisplayTexture()
@@ -1675,6 +1714,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             public float GetAlpha(int currentTick)
             {
+                if (_canvasState == LeaveCanvasState.Removed)
+                {
+                    return 1f;
+                }
+
                 return ComputeLeaveFadeAlpha(currentTick - _leaveStartedAt);
             }
 
@@ -1746,6 +1790,15 @@ namespace HaCreator.MapSimulator.Interaction
                 CenterVertically: false,
                 MaxLineCount: MaxBodyLineCount,
                 TextColor: Color.White);
+
+            public Rectangle GetContentBounds(Rectangle boardBounds)
+            {
+                int left = Math.Clamp(boardBounds.X + PaddingLeft, boardBounds.Left, boardBounds.Right);
+                int top = Math.Clamp(boardBounds.Y + PaddingTop, boardBounds.Top, boardBounds.Bottom);
+                int right = Math.Clamp(boardBounds.Right - PaddingRight, left, boardBounds.Right);
+                int bottom = Math.Clamp(boardBounds.Bottom - PaddingBottom, top, boardBounds.Bottom);
+                return new Rectangle(left, top, Math.Max(1, right - left), Math.Max(1, bottom - top));
+            }
         }
 
         private static float ComputeLeaveFadeAlpha(int elapsedMs)
@@ -1759,6 +1812,12 @@ namespace HaCreator.MapSimulator.Interaction
         {
             LocalCommand,
             PacketEnterField
+        }
+
+        private enum LeaveCanvasState
+        {
+            Removed,
+            ReinsertedFade
         }
     }
 

@@ -24,7 +24,7 @@ namespace HaCreator.MapSimulator.UI
                 return new[] { string.Empty };
             }
 
-            string remaining = text;
+            string remaining = TrimClientChatBuffer(text);
             if (string.IsNullOrWhiteSpace(remaining))
             {
                 return new[] { string.Empty };
@@ -39,7 +39,7 @@ namespace HaCreator.MapSimulator.UI
                 string line = remaining.Substring(0, fitLength);
                 lines.Add(line);
 
-                remaining = remaining.Substring(fitLength).TrimStart();
+                remaining = TrimClientChatBuffer(remaining.Substring(fitLength), trimRight: false);
                 if (!string.IsNullOrEmpty(remaining) && ShouldIndentWrappedContinuation(chatLogType))
                 {
                     remaining = new string(' ', ChatWrapIndentSpaces) + remaining;
@@ -108,6 +108,17 @@ namespace HaCreator.MapSimulator.UI
                 || chatLogType == 16
                 || chatLogType == 19
                 || chatLogType == 20;
+        }
+
+        private static string TrimClientChatBuffer(string text, bool trimRight = true)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            string trimmed = trimRight ? text.TrimEnd() : text;
+            return trimmed.TrimStart();
         }
     }
 }

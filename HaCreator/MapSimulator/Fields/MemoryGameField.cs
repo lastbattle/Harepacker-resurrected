@@ -1127,6 +1127,10 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            if (_pendingPrompt.IsActive)
+            {
+                return HandlePromptMouseClick(mousePosition, outer, tickCount, out message);
+            }
 
             for (int i = 0; i < buttonRects.Length; i++)
             {
@@ -1166,6 +1170,28 @@ namespace HaCreator.MapSimulator.Fields
 
             return true;
 
+        }
+
+        private bool HandlePromptMouseClick(Point mousePosition, Rectangle outer, int tickCount, out string message)
+        {
+            message = null;
+            if (!_pendingPrompt.IsActive)
+            {
+                return false;
+            }
+
+            GetPromptLayout(outer, out Rectangle promptBox, out Rectangle yesRect, out Rectangle noRect);
+            if (yesRect.Contains(mousePosition))
+            {
+                return TryConfirmPrompt(tickCount, out message);
+            }
+
+            if (noRect.Contains(mousePosition))
+            {
+                return TryCancelPrompt(out message);
+            }
+
+            return promptBox.Contains(mousePosition) || outer.Contains(mousePosition);
         }
 
 
@@ -2632,9 +2658,9 @@ namespace HaCreator.MapSimulator.Fields
                 _ => $"Match Cards prompt 0x{stringPoolId:X}."
             };
 
-            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(stringPoolId, fallbackText, 1, out _);
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(stringPoolId, fallbackText, 1, out bool usedResolvedText);
             string text = string.Format(CultureInfo.InvariantCulture, format, resolvedName);
-            return $"{text} [StringPool 0x{stringPoolId:X}]";
+            return usedResolvedText ? text : $"{text} [StringPool 0x{stringPoolId:X}]";
         }
 
 

@@ -549,16 +549,12 @@ namespace HaCreator.MapSimulator
                 cashAvatarPreviewReload.CharacterBuild = _playerManager.Player.Build;
                 cashAvatarPreviewReload.SetFont(_fontChat);
                 cashAvatarPreviewReload.EquipmentLoader = _playerManager.Loader != null ? _playerManager.Loader.LoadEquipment : null;
-                cashAvatarPreviewReload.PersonalShopRequested = () =>
-                {
-                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.PersonalShop);
-                    return "CCSWnd_Char::ShowPersonalShop opened the dedicated personal-shop owner.";
-                };
-                cashAvatarPreviewReload.EntrustedShopRequested = () =>
-                {
-                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.EntrustedShop);
-                    return "CCSWnd_Char::ShowEntrustedShop opened the dedicated entrusted-shop owner.";
-                };
+                cashAvatarPreviewReload.PersonalShopRequested = () => ShowSocialRoomWindowForCallback(
+                    SocialRoomKind.PersonalShop,
+                    "CCSWnd_Char::ShowPersonalShop opened the dedicated personal-shop owner.");
+                cashAvatarPreviewReload.EntrustedShopRequested = () => ShowSocialRoomWindowForCallback(
+                    SocialRoomKind.EntrustedShop,
+                    "CCSWnd_Char::ShowEntrustedShop opened the dedicated entrusted-shop owner.");
                 cashAvatarPreviewReload.TradingRoomRequested = () =>
                 {
                     ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.CashTradingRoom);
@@ -920,12 +916,15 @@ namespace HaCreator.MapSimulator
                 inventoryWindow.SetCharacterLoader(_playerManager.Loader);
                 inventoryWindow.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
             }
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Trunk) is TrunkUI trunkWindow
-                && _playerManager?.Player?.Build != null)
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Trunk) is TrunkUI trunkWindow)
             {
-                trunkWindow.SetFont(_fontChat);
-                trunkWindow.CharacterBuild = _playerManager.Player.Build;
-                trunkWindow.SetCharacterLoader(_playerManager.Loader);
+                WireTrunkSecurityWindow();
+                if (_playerManager?.Player?.Build != null)
+                {
+                    trunkWindow.SetFont(_fontChat);
+                    trunkWindow.CharacterBuild = _playerManager.Player.Build;
+                    trunkWindow.SetCharacterLoader(_playerManager.Loader);
+                }
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow && _playerManager?.Player?.Build != null)
@@ -967,16 +966,12 @@ namespace HaCreator.MapSimulator
                 cashAvatarPreviewRebuild.CharacterBuild = _playerManager.Player.Build;
                 cashAvatarPreviewRebuild.SetFont(_fontChat);
                 cashAvatarPreviewRebuild.EquipmentLoader = _playerManager.Loader != null ? _playerManager.Loader.LoadEquipment : null;
-                cashAvatarPreviewRebuild.PersonalShopRequested = () =>
-                {
-                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.PersonalShop);
-                    return "CCSWnd_Char::ShowPersonalShop opened the dedicated personal-shop owner.";
-                };
-                cashAvatarPreviewRebuild.EntrustedShopRequested = () =>
-                {
-                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.EntrustedShop);
-                    return "CCSWnd_Char::ShowEntrustedShop opened the dedicated entrusted-shop owner.";
-                };
+                cashAvatarPreviewRebuild.PersonalShopRequested = () => ShowSocialRoomWindowForCallback(
+                    SocialRoomKind.PersonalShop,
+                    "CCSWnd_Char::ShowPersonalShop opened the dedicated personal-shop owner.");
+                cashAvatarPreviewRebuild.EntrustedShopRequested = () => ShowSocialRoomWindowForCallback(
+                    SocialRoomKind.EntrustedShop,
+                    "CCSWnd_Char::ShowEntrustedShop opened the dedicated entrusted-shop owner.");
                 cashAvatarPreviewRebuild.TradingRoomRequested = () =>
                 {
                     ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.CashTradingRoom);
@@ -1766,16 +1761,12 @@ namespace HaCreator.MapSimulator
                 cashAvatarPreviewWindow.CharacterBuild = _playerManager.Player.Build;
                 cashAvatarPreviewWindow.SetFont(_fontChat);
                 cashAvatarPreviewWindow.EquipmentLoader = _playerManager.Loader != null ? _playerManager.Loader.LoadEquipment : null;
-                cashAvatarPreviewWindow.PersonalShopRequested = () =>
-                {
-                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.PersonalShop);
-                    return "CCSWnd_Char::ShowPersonalShop opened the dedicated personal-shop owner.";
-                };
-                cashAvatarPreviewWindow.EntrustedShopRequested = () =>
-                {
-                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.EntrustedShop);
-                    return "CCSWnd_Char::ShowEntrustedShop opened the dedicated entrusted-shop owner.";
-                };
+                cashAvatarPreviewWindow.PersonalShopRequested = () => ShowSocialRoomWindowForCallback(
+                    SocialRoomKind.PersonalShop,
+                    "CCSWnd_Char::ShowPersonalShop opened the dedicated personal-shop owner.");
+                cashAvatarPreviewWindow.EntrustedShopRequested = () => ShowSocialRoomWindowForCallback(
+                    SocialRoomKind.EntrustedShop,
+                    "CCSWnd_Char::ShowEntrustedShop opened the dedicated entrusted-shop owner.");
                 cashAvatarPreviewWindow.TradingRoomRequested = () =>
                 {
                     ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.CashTradingRoom);

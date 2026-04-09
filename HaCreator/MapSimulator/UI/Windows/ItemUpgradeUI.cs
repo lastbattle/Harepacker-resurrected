@@ -1846,6 +1846,41 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        public bool TryGetVegaRequestPreview(EquipSlot slot, int modifierItemId, out VegaRequestPreview preview)
+        {
+            preview = default;
+            if (_characterBuild?.Equipment == null ||
+                !_characterBuild.Equipment.TryGetValue(slot, out CharacterPart part) ||
+                !CanUpgrade(slot, part) ||
+                !TryGetConsumableDefinition(modifierItemId, out EnhancementConsumableDefinition modifierDefinition) ||
+                modifierDefinition.EffectType != ConsumableEffectType.Modifier)
+            {
+                return false;
+            }
+
+            UpgradeState state = GetOrCreateState(slot, part);
+            EnhancementConsumable consumable = ResolveConsumableForModifier(state, part, modifierDefinition);
+            if (consumable == null)
+            {
+                return false;
+            }
+
+            EnhancementConsumable modifier = new EnhancementConsumable(modifierDefinition);
+            if (!IsModifierCompatible(modifier, consumable))
+            {
+                return false;
+            }
+
+            preview = new VegaRequestPreview(
+                consumable.ItemId,
+                consumable.Name,
+                GetConsumableCount(consumable.ItemId),
+                ResolveSuccessRate(consumable, state, null),
+                ResolveSuccessRate(consumable, state, modifier),
+                MathHelper.Clamp(consumable.Definition.DestroyChanceOnFailure, 0f, 1.0f) > 0f);
+            return true;
+        }
+
         private EnhancementConsumable ResolveModifier(EnhancementConsumable consumable)
         {
             if (_inventory == null || !_preferredModifierItemId.HasValue || consumable == null)
@@ -3437,6 +3472,32 @@ namespace HaCreator.MapSimulator.UI
             public int ConsumableCount { get; }
             public float BaseSuccessRate { get; }
             public float ModifiedSuccessRate { get; }
+        }
+
+        public readonly struct VegaRequestPreview
+        {
+            public VegaRequestPreview(
+                int consumableItemId,
+                string consumableName,
+                int consumableCount,
+                float baseSuccessRate,
+                float modifiedSuccessRate,
+                bool requiresDestroyWarning)
+            {
+                ConsumableItemId = consumableItemId;
+                ConsumableName = consumableName ?? string.Empty;
+                ConsumableCount = Math.Max(0, consumableCount);
+                BaseSuccessRate = MathHelper.Clamp(baseSuccessRate, 0f, 1.0f);
+                ModifiedSuccessRate = MathHelper.Clamp(modifiedSuccessRate, 0f, 1.0f);
+                RequiresDestroyWarning = requiresDestroyWarning;
+            }
+
+            public int ConsumableItemId { get; }
+            public string ConsumableName { get; }
+            public int ConsumableCount { get; }
+            public float BaseSuccessRate { get; }
+            public float ModifiedSuccessRate { get; }
+            public bool RequiresDestroyWarning { get; }
         }
 
         internal static bool TryResolveVegaModifierRatePreview(int itemId, out int requiredBasePercent, out int modifiedPercent)

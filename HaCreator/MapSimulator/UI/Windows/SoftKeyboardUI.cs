@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator.UI
         bool TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage);
         bool TryBackspaceSoftKeyboard(out string errorMessage);
         bool TrySubmitSoftKeyboard(out string errorMessage);
+        void SetSoftKeyboardCompositionText(string text);
         void OnSoftKeyboardClosed();
     }
 
@@ -207,6 +208,7 @@ namespace HaCreator.MapSimulator.UI
             bool hostChanged = !ReferenceEquals(_host, host);
             if (hostChanged)
             {
+                _host?.SetSoftKeyboardCompositionText(string.Empty);
                 _host = host;
                 _statusMessage = string.Empty;
                 ResetVisualState();
@@ -254,6 +256,7 @@ namespace HaCreator.MapSimulator.UI
         public void Dismiss()
         {
             base.Hide();
+            _host?.SetSoftKeyboardCompositionText(string.Empty);
             _host = null;
             _statusMessage = string.Empty;
             _isExpandedLayout = false;
@@ -1234,14 +1237,26 @@ namespace HaCreator.MapSimulator.UI
             {
                 ClearSwitchingCharacter();
                 char value = GetCharacterForKey(keyIndex);
-                return _host.TryInsertSoftKeyboardCharacter(value, out errorMessage);
+                bool inserted = _host.TryInsertSoftKeyboardCharacter(value, out errorMessage);
+                if (inserted)
+                {
+                    _host.SetSoftKeyboardCompositionText(string.Empty);
+                }
+
+                return inserted;
             }
 
             if (_tabMode == SoftKeyboardTabMode.Numeric)
             {
                 ClearSwitchingCharacter();
                 char digit = (char)('0' + _digitOrder[keyIndex]);
-                return _host.TryInsertSoftKeyboardCharacter(digit, out errorMessage);
+                bool inserted = _host.TryInsertSoftKeyboardCharacter(digit, out errorMessage);
+                if (inserted)
+                {
+                    _host.SetSoftKeyboardCompositionText(string.Empty);
+                }
+
+                return inserted;
             }
 
             if (keyIndex == ExpandedAlphabeticCommitKeyIndex)
@@ -1332,6 +1347,7 @@ namespace HaCreator.MapSimulator.UI
             _switchingTabMode = SoftKeyboardTabMode.Numeric;
             _switchingTextLength = -1;
             _switchingStartedTick = 0;
+            _host?.SetSoftKeyboardCompositionText(string.Empty);
         }
 
         private void BeginSwitchingCharacter(int keyIndex, char character, int offset)
@@ -1342,6 +1358,7 @@ namespace HaCreator.MapSimulator.UI
             _switchingTabMode = _tabMode;
             _switchingTextLength = _host?.SoftKeyboardTextLength ?? -1;
             _switchingStartedTick = Environment.TickCount;
+            _host?.SetSoftKeyboardCompositionText(character.ToString());
         }
 
         private bool IsSwitchingKeyActive(int keyIndex)

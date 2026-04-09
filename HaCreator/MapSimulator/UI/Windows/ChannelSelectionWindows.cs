@@ -10,6 +10,19 @@ using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
+    public readonly struct SelectorOverlayFrame
+    {
+        public SelectorOverlayFrame(Texture2D texture, Point offset)
+        {
+            Texture = texture;
+            Offset = offset;
+        }
+
+        public Texture2D Texture { get; }
+        public Point Offset { get; }
+        public bool IsEmpty => Texture == null;
+    }
+
     public enum SelectorAvailability
     {
         Available = 0,
@@ -117,16 +130,18 @@ namespace HaCreator.MapSimulator.UI
 
         private sealed class WorldButtonEntry
         {
-            public WorldButtonEntry(int worldId, UIObject button, Texture2D icon)
+            public WorldButtonEntry(int worldId, UIObject button, Texture2D icon, SelectorOverlayFrame keyFocusedFrame)
             {
                 WorldId = worldId;
                 Button = button;
                 Icon = icon;
+                KeyFocusedFrame = keyFocusedFrame;
             }
 
             public int WorldId { get; }
             public UIObject Button { get; }
             public Texture2D Icon { get; }
+            public SelectorOverlayFrame KeyFocusedFrame { get; }
         }
 
         private readonly List<WorldButtonEntry> _worldButtons = new List<WorldButtonEntry>();
@@ -138,6 +153,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _highlightTexture;
         private readonly UIObject _viewChoiceButton;
         private readonly UIObject _viewAllButton;
+        private readonly SelectorOverlayFrame _viewAllKeyFocusedFrame;
         private SpriteFont _font;
         private int _currentWorldId;
         private int _selectedWorldId;
@@ -153,10 +169,11 @@ namespace HaCreator.MapSimulator.UI
             Texture2D frameOverlayTexture,
             Point frameOverlayOffset,
             Texture2D highlightTexture,
-            IEnumerable<(int worldId, UIObject button, Texture2D icon)> worldButtons,
+            IEnumerable<(int worldId, UIObject button, Texture2D icon, SelectorOverlayFrame keyFocusedFrame)> worldButtons,
             IEnumerable<UIObject> emptySlotButtons = null,
             UIObject viewChoiceButton = null,
-            UIObject viewAllButton = null)
+            UIObject viewAllButton = null,
+            SelectorOverlayFrame viewAllKeyFocusedFrame = default)
             : base(frame)
         {
             _frameOverlayTexture = frameOverlayTexture;
@@ -164,8 +181,9 @@ namespace HaCreator.MapSimulator.UI
             _highlightTexture = highlightTexture;
             _viewChoiceButton = viewChoiceButton;
             _viewAllButton = viewAllButton;
+            _viewAllKeyFocusedFrame = viewAllKeyFocusedFrame;
 
-            foreach ((int worldId, UIObject button, Texture2D icon) in worldButtons ?? Enumerable.Empty<(int, UIObject, Texture2D)>())
+            foreach ((int worldId, UIObject button, Texture2D icon, SelectorOverlayFrame keyFocusedFrame) in worldButtons ?? Enumerable.Empty<(int, UIObject, Texture2D, SelectorOverlayFrame)>())
             {
                 if (button == null || icon == null)
                 {
@@ -175,7 +193,7 @@ namespace HaCreator.MapSimulator.UI
                 int capturedWorldId = worldId;
                 button.ButtonClickReleased += _ => SelectWorld(capturedWorldId);
                 AddButton(button);
-                _worldButtons.Add(new WorldButtonEntry(worldId, button, icon));
+                _worldButtons.Add(new WorldButtonEntry(worldId, button, icon, keyFocusedFrame));
             }
 
             foreach (UIObject button in emptySlotButtons ?? Enumerable.Empty<UIObject>())
@@ -375,6 +393,9 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            DrawFocusedWorldOverlay(sprite);
+            DrawViewAllFocusOverlay(sprite);
+
             if (_font == null)
             {
                 return;
@@ -443,6 +464,49 @@ namespace HaCreator.MapSimulator.UI
             _focusViewAllButton = false;
             UpdateButtonStates();
             WorldSelected?.Invoke(worldId);
+        }
+
+        private void DrawFocusedWorldOverlay(SpriteBatch sprite)
+        {
+            if (_focusViewAllButton)
+            {
+                return;
+            }
+
+            WorldButtonEntry focusedEntry = _worldButtons.FirstOrDefault(entry =>
+                entry.WorldId == _selectedWorldId &&
+                entry.Button.ButtonVisible &&
+                !entry.KeyFocusedFrame.IsEmpty);
+            if (focusedEntry == null)
+            {
+                return;
+            }
+
+            sprite.Draw(
+                focusedEntry.KeyFocusedFrame.Texture,
+                new Vector2(
+                    Position.X + focusedEntry.Button.X + focusedEntry.KeyFocusedFrame.Offset.X,
+                    Position.Y + focusedEntry.Button.Y + focusedEntry.KeyFocusedFrame.Offset.Y),
+                Color.White);
+        }
+
+        private void DrawViewAllFocusOverlay(SpriteBatch sprite)
+        {
+            if (!_focusViewAllButton ||
+                !_viewAllEnabled ||
+                _viewAllButton == null ||
+                !_viewAllButton.ButtonVisible ||
+                _viewAllKeyFocusedFrame.IsEmpty)
+            {
+                return;
+            }
+
+            sprite.Draw(
+                _viewAllKeyFocusedFrame.Texture,
+                new Vector2(
+                    Position.X + _viewAllButton.X + _viewAllKeyFocusedFrame.Offset.X,
+                    Position.Y + _viewAllButton.Y + _viewAllKeyFocusedFrame.Offset.Y),
+                Color.White);
         }
 
         private Color GetWorldFillColor(int worldId)

@@ -7,7 +7,10 @@ using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
+using SD = System.Drawing;
+using SDG = System.Drawing.Graphics;
 
 namespace HaCreator.MapSimulator.Companions
 {
@@ -60,7 +63,7 @@ namespace HaCreator.MapSimulator.Companions
         private readonly record struct PetAnimationCacheKey(int PetItemId, int PetWearItemId);
         private readonly record struct PetActionCacheKey(int PetItemId, int PetWearItemId, string ActionName);
 
-        private static readonly string[] SupportedActions =
+        private static readonly string[] ClientPreferredActions =
         {
             "stand0",
             "stand1",
@@ -76,7 +79,9 @@ namespace HaCreator.MapSimulator.Companions
             "stretch",
             "prone",
             "hungry",
-            "poor"
+            "poor",
+            "rise",
+            "dung"
         };
 
         private static readonly IReadOnlyDictionary<string, string[]> ActionLookupCandidates =
@@ -96,7 +101,9 @@ namespace HaCreator.MapSimulator.Companions
                 ["stretch"] = new[] { "stretch", "love" },
                 ["prone"] = new[] { "prone", "nap", "rest0" },
                 ["hungry"] = new[] { "hungry" },
-                ["poor"] = new[] { "poor", "dung" }
+                ["poor"] = new[] { "poor", "dung" },
+                ["rise"] = new[] { "rise" },
+                ["dung"] = new[] { "dung", "poor" }
             };
 
         private static readonly string[] RandomIdleActionCandidates =
@@ -192,7 +199,7 @@ namespace HaCreator.MapSimulator.Companions
 
             petImage.ParseImage();
             var animations = new PetAnimationSet();
-            foreach (string action in SupportedActions)
+            foreach (string action in EnumerateActionLoadOrder(petImage, petItemId, cacheKey.PetWearItemId))
             {
                 List<IDXObject> frames = LoadActionFrames(petImage, petItemId, action, cacheKey.PetWearItemId);
                 if (frames.Count > 0)
@@ -617,7 +624,7 @@ namespace HaCreator.MapSimulator.Companions
             {
                 IDXObject baseFrame = baseFrames[i];
                 IDXObject overlayFrame = i < overlayFrames.Count ? overlayFrames[i] : null;
-                composedFrames.Add(overlayFrame == null ? baseFrame : new CompositePetFrame(baseFrame, overlayFrame));
+                composedFrames.Add(overlayFrame == null ? baseFrame : ComposePetWearFrame(baseFrame, overlayFrame));
             }
 
             _actionCache[cacheKey] = composedFrames;
@@ -663,6 +670,87 @@ namespace HaCreator.MapSimulator.Companions
             }
         }
 
+        private IEnumerable<string> EnumerateActionLoadOrder(WzImage petImage, int petItemId, int petWearItemId)
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string action in ClientPreferredActions)
+            {
+                if (seen.Add(action))
+                {
+                    yield return action;
+                }
+            }
+
+            foreach (string action in EnumerateRenderableActionNames(petImage))
+            {
+                if (seen.Add(action))
+                {
+                    yield return action;
+                }
+            }
+
+            foreach (string action in EnumerateRenderableActionNames(ResolvePetWearRoot(petWearItemId, petItemId)))
+            {
+                if (seen.Add(action))
+                {
+                    yield return action;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateRenderableActionNames(WzImage image)
+        {
+            if (image == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in image.WzProperties)
+            {
+                if (child == null ||
+                    string.IsNullOrWhiteSpace(child.Name) ||
+                    !HasRenderableFrames(ResolveActionProperty(child)))
+                {
+                    continue;
+                }
+
+                yield return child.Name;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateRenderableActionNames(WzImageProperty actionRoot)
+        {
+            if (actionRoot == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in actionRoot.WzProperties)
+            {
+                if (child == null ||
+                    string.IsNullOrWhiteSpace(child.Name) ||
+                    !HasRenderableFrames(ResolveActionProperty(child)))
+                {
+                    continue;
+                }
+
+                yield return child.Name;
+            }
+        }
+
+        private static bool HasRenderableFrames(WzImageProperty property)
+        {
+            if (property is WzCanvasProperty)
+            {
+                return true;
+            }
+
+            return property != null &&
+                   property.WzProperties != null &&
+                   property.WzProperties.Any(child => ResolveCanvasProperty(child) != null);
+        }
+
         private static WzImageProperty ResolveActionProperty(WzImageProperty property)
         {
             if (property is WzUOLProperty uol)
@@ -685,15 +773,7 @@ namespace HaCreator.MapSimulator.Companions
                 return null;
             }
 
-            WzImage petWearImage = global::HaCreator.Program.FindImage("Character", $"PetEquip/{petWearItemId:D8}.img");
-            if (petWearImage == null)
-            {
-                return null;
-            }
-
-            petWearImage.ParseImage();
-            WzSubProperty resolvedRoot = petWearImage[petItemId.ToString("D7")] as WzSubProperty
-                ?? petWearImage[petItemId.ToString("D8")] as WzSubProperty;
+            WzSubProperty resolvedRoot = ResolvePetWearRoot(petWearItemId, petItemId);
             if (resolvedRoot == null)
             {
                 return null;
@@ -709,6 +789,23 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return null;
+        }
+
+        private WzSubProperty ResolvePetWearRoot(int petWearItemId, int petItemId)
+        {
+            if (petWearItemId <= 0 || petItemId <= 0)
+            {
+                return null;
+            }
+
+            WzImage petWearImage = global::HaCreator.Program.FindImage("Character", $"PetEquip/{petWearItemId:D8}.img");
+            if (petWearImage == null)
+            {
+                return null;
+            }
+
+            petWearImage.ParseImage();
+            return ResolveActionProperty(petWearImage[petItemId.ToString("D7")] ?? petWearImage[petItemId.ToString("D8")]) as WzSubProperty;
         }
 
         private List<IDXObject> LoadActionFrames(WzImageProperty actionNode, int defaultDelay)
@@ -849,36 +946,75 @@ namespace HaCreator.MapSimulator.Companions
             };
         }
 
-        private sealed class CompositePetFrame : IDXObject
+        private IDXObject ComposePetWearFrame(IDXObject baseFrame, IDXObject overlayFrame)
         {
-            private readonly IDXObject _baseFrame;
-            private readonly IDXObject _overlayFrame;
-
-            public CompositePetFrame(IDXObject baseFrame, IDXObject overlayFrame)
+            if (baseFrame?.Tag is not WzCanvasProperty baseCanvas ||
+                overlayFrame?.Tag is not WzCanvasProperty overlayCanvas)
             {
-                _baseFrame = baseFrame ?? throw new ArgumentNullException(nameof(baseFrame));
-                _overlayFrame = overlayFrame ?? throw new ArgumentNullException(nameof(overlayFrame));
+                return baseFrame;
             }
 
-            public int Delay => _overlayFrame.Delay > 0 ? _overlayFrame.Delay : _baseFrame.Delay;
-            public int X => Math.Min(_baseFrame.X, _overlayFrame.X);
-            public int Y => Math.Min(_baseFrame.Y, _overlayFrame.Y);
-            public int Width => Math.Max(_baseFrame.X + _baseFrame.Width, _overlayFrame.X + _overlayFrame.Width) - X;
-            public int Height => Math.Max(_baseFrame.Y + _baseFrame.Height, _overlayFrame.Y + _overlayFrame.Height) - Y;
-            public object Tag { get; set; }
-            public Texture2D Texture => _baseFrame.Texture;
-
-            public void DrawObject(SpriteBatch sprite, SkeletonMeshRenderer meshRenderer, Microsoft.Xna.Framework.GameTime gameTime, int mapShiftX, int mapShiftY, bool flip, ReflectionDrawableBoundary drawReflectionInfo)
+            try
             {
-                _baseFrame.DrawObject(sprite, meshRenderer, gameTime, mapShiftX, mapShiftY, flip, drawReflectionInfo);
-                _overlayFrame.DrawObject(sprite, meshRenderer, gameTime, mapShiftX, mapShiftY, flip, drawReflectionInfo);
-            }
+                using SD.Bitmap baseBitmap = baseCanvas.GetLinkedWzCanvasBitmap();
+                using SD.Bitmap overlayBitmap = overlayCanvas.GetLinkedWzCanvasBitmap();
+                if (!TryGetBitmapDimensions(baseBitmap, out int baseWidth, out int baseHeight) ||
+                    !TryGetBitmapDimensions(overlayBitmap, out int overlayWidth, out int overlayHeight))
+                {
+                    return baseFrame;
+                }
 
-            public void DrawBackground(SpriteBatch sprite, SkeletonMeshRenderer meshRenderer, Microsoft.Xna.Framework.GameTime gameTime, int x, int y, Microsoft.Xna.Framework.Color color, bool flip, ReflectionDrawableBoundary drawReflectionInfo)
-            {
-                _baseFrame.DrawBackground(sprite, meshRenderer, gameTime, x, y, color, flip, drawReflectionInfo);
-                _overlayFrame.DrawBackground(sprite, meshRenderer, gameTime, x, y, color, flip, drawReflectionInfo);
+                Rectangle baseBounds = ResolveCanvasBounds(baseCanvas, baseWidth, baseHeight);
+                Rectangle overlayBounds = ResolveCanvasBounds(overlayCanvas, overlayWidth, overlayHeight);
+                Rectangle composedBounds = Rectangle.FromLTRB(
+                    Math.Min(baseBounds.Left, overlayBounds.Left),
+                    Math.Min(baseBounds.Top, overlayBounds.Top),
+                    Math.Max(baseBounds.Right, overlayBounds.Right),
+                    Math.Max(baseBounds.Bottom, overlayBounds.Bottom));
+
+                using var composedBitmap = new SD.Bitmap(Math.Max(1, composedBounds.Width), Math.Max(1, composedBounds.Height));
+                using (SDG graphics = SDG.FromImage(composedBitmap))
+                {
+                    graphics.Clear(SD.Color.Transparent);
+                    graphics.DrawImage(baseBitmap, baseBounds.X - composedBounds.X, baseBounds.Y - composedBounds.Y);
+                    graphics.DrawImage(overlayBitmap, overlayBounds.X - composedBounds.X, overlayBounds.Y - composedBounds.Y);
+                }
+
+                Texture2D texture = composedBitmap.ToTexture2DAndDispose(_device);
+                if (texture == null)
+                {
+                    return baseFrame;
+                }
+
+                int delay = overlayFrame.Delay > 0 ? overlayFrame.Delay : baseFrame.Delay;
+                return new DXObject(new PointF(-composedBounds.X, -composedBounds.Y), texture, delay)
+                {
+                    Tag = baseCanvas
+                };
             }
+            catch
+            {
+                return baseFrame;
+            }
+        }
+
+        private static Rectangle ResolveCanvasBounds(WzCanvasProperty canvas, int width, int height)
+        {
+            Point canvasOrigin = ResolveCanvasOrigin(canvas);
+            return new Rectangle(-canvasOrigin.X, -canvasOrigin.Y, width, height);
+        }
+
+        private static Point ResolveCanvasOrigin(WzCanvasProperty canvas)
+        {
+            System.Drawing.PointF canvasOrigin = canvas?.GetCanvasOriginPosition() ?? default;
+            return new Point((int)Math.Round(canvasOrigin.X), (int)Math.Round(canvasOrigin.Y));
+        }
+
+        private static bool TryGetBitmapDimensions(SD.Bitmap bitmap, out int width, out int height)
+        {
+            width = bitmap?.Width ?? 0;
+            height = bitmap?.Height ?? 0;
+            return width > 0 && height > 0;
         }
     }
 }

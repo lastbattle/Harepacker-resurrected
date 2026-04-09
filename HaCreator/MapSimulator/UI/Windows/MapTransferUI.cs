@@ -1388,6 +1388,11 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
+        void ISoftKeyboardHost.SetSoftKeyboardCompositionText(string text)
+        {
+            HandleCompositionText(text);
+        }
+
         private bool WasPressed(KeyboardState keyboardState, Keys key)
         {
             return keyboardState.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);

@@ -38,7 +38,10 @@ namespace HaCreator.MapSimulator.UI
         private readonly string _windowName;
         private readonly Dictionary<string, Action> _actions = new Dictionary<string, Action>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Func<StatusBarPopupCursorHint>> _cursorHints = new Dictionary<string, Func<StatusBarPopupCursorHint>>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> _tooltips = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private readonly List<PopupEntry> _entries = new List<PopupEntry>();
+        private string _hoveredEntryName = string.Empty;
+        private Texture2D _tooltipPixel;
 
         public StatusBarPopupMenuWindow(IDXObject frame, string windowName, Point position)
             : base(frame, position)
@@ -112,13 +115,36 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public void SetEntryTooltip(string entryName, string tooltipText)
+        {
+            if (string.IsNullOrWhiteSpace(entryName))
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(tooltipText))
+            {
+                _tooltips.Remove(entryName);
+                if (string.Equals(_hoveredEntryName, entryName, StringComparison.OrdinalIgnoreCase))
+                {
+                    _hoveredEntryName = string.Empty;
+                }
+
+                return;
+            }
+
+            _tooltips[entryName] = tooltipText.Trim();
+        }
+
         public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
         {
             if (!IsVisible)
             {
+                _hoveredEntryName = string.Empty;
                 return false;
             }
 
+            _hoveredEntryName = TryResolveHoveredEntryName(mouseState.X, mouseState.Y);
             foreach (PopupEntry entry in _entries)
             {
                 bool handled = entry.Button.CheckMouseEvent(shiftCenteredX, shiftCenteredY, Position.X, Position.Y, mouseState);
@@ -150,6 +176,37 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
+        }
+
+        protected override void DrawOverlay(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            base.DrawOverlay(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, centerX, centerY, drawReflectionInfo, renderParameters, TickCount);
+
+            if (!CanDrawWindowText
+                || string.IsNullOrWhiteSpace(_hoveredEntryName)
+                || !_tooltips.TryGetValue(_hoveredEntryName, out string tooltipText)
+                || string.IsNullOrWhiteSpace(tooltipText))
+            {
+                return;
+            }
+
+            Rectangle? entryBounds = TryGetEntryBounds(_hoveredEntryName);
+            if (!entryBounds.HasValue)
+            {
+                return;
+            }
+
+            DrawShortcutTooltip(sprite, entryBounds.Value, tooltipText, renderParameters.RenderWidth, renderParameters.RenderHeight);
         }
 
         private void OnEntryClicked(string entryName)
@@ -191,6 +248,110 @@ namespace HaCreator.MapSimulator.UI
                     mouseCursor.SetMouseCursorMovedToClickableItem();
                     break;
             }
+        }
+
+        private string TryResolveHoveredEntryName(int mouseX, int mouseY)
+        {
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                PopupEntry entry = _entries[i];
+                Rectangle? bounds = TryGetEntryBounds(entry.EntryName);
+                if (bounds.HasValue && bounds.Value.Contains(mouseX, mouseY))
+                {
+                    return entry.EntryName;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private Rectangle? TryGetEntryBounds(string entryName)
+        {
+            if (string.IsNullOrWhiteSpace(entryName))
+            {
+                return null;
+            }
+
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                PopupEntry entry = _entries[i];
+                if (!string.Equals(entry.EntryName, entryName, StringComparison.OrdinalIgnoreCase)
+                    || entry.Button == null
+                    || !entry.Button.ButtonVisible)
+                {
+                    continue;
+                }
+
+                int width = entry.Button.CanvasSnapshotWidth;
+                int height = entry.Button.CanvasSnapshotHeight;
+                if (width <= 0 || height <= 0)
+                {
+                    BaseDXDrawableItem drawable = entry.Button.GetBaseDXDrawableItemByState();
+                    width = drawable?.LastFrameDrawn?.Width ?? 0;
+                    height = drawable?.LastFrameDrawn?.Height ?? 0;
+                }
+
+                if (width <= 0 || height <= 0)
+                {
+                    return null;
+                }
+
+                return new Rectangle(Position.X + entry.Button.X, Position.Y + entry.Button.Y, width, height);
+            }
+
+            return null;
+        }
+
+        private void DrawShortcutTooltip(SpriteBatch sprite, Rectangle anchorBounds, string tooltipText, int renderWidth, int renderHeight)
+        {
+            Vector2 textSize = MeasureWindowText(sprite, tooltipText, 0.75f);
+            int paddingX = 6;
+            int paddingY = 4;
+            int width = Math.Max(22, (int)Math.Ceiling(textSize.X) + (paddingX * 2));
+            int height = Math.Max(16, (int)Math.Ceiling(textSize.Y) + (paddingY * 2));
+            int x = anchorBounds.Right + 8;
+            int y = anchorBounds.Center.Y - (height / 2);
+
+            if (x + width > renderWidth)
+            {
+                x = anchorBounds.Left - width - 8;
+            }
+
+            if (x < 8)
+            {
+                x = Math.Max(8, Math.Min(anchorBounds.Left, renderWidth - width - 8));
+                y = anchorBounds.Top - height - 6;
+            }
+
+            if (y + height > renderHeight - 8)
+            {
+                y = renderHeight - height - 8;
+            }
+
+            if (y < 8)
+            {
+                y = Math.Min(renderHeight - height - 8, anchorBounds.Bottom + 6);
+            }
+
+            Rectangle background = new Rectangle(x, y, width, height);
+            Texture2D pixel = EnsureTooltipPixel(sprite.GraphicsDevice);
+            sprite.Draw(pixel, background, new Color(24, 28, 37, 220));
+            sprite.Draw(pixel, new Rectangle(background.X, background.Y, background.Width, 1), new Color(255, 238, 155, 210));
+            sprite.Draw(pixel, new Rectangle(background.X, background.Bottom - 1, background.Width, 1), new Color(255, 238, 155, 210));
+            sprite.Draw(pixel, new Rectangle(background.X, background.Y, 1, background.Height), new Color(255, 238, 155, 210));
+            sprite.Draw(pixel, new Rectangle(background.Right - 1, background.Y, 1, background.Height), new Color(255, 238, 155, 210));
+            DrawWindowText(sprite, tooltipText, new Vector2(background.X + paddingX, background.Y + paddingY), new Color(255, 238, 155), 0.75f);
+        }
+
+        private Texture2D EnsureTooltipPixel(GraphicsDevice device)
+        {
+            if (_tooltipPixel == null)
+            {
+                _tooltipPixel = new Texture2D(device ?? throw new ArgumentNullException(nameof(device)), 1, 1);
+                _tooltipPixel.SetData(new[] { Color.White });
+            }
+
+            return _tooltipPixel;
         }
     }
 }

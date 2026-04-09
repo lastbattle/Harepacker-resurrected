@@ -35,6 +35,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly IReadOnlyDictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>> _animationFramesByVariant;
         private readonly IReadOnlyDictionary<int, Texture2D> _noticeTextTextures;
         private readonly UIObject _cancelButton;
+        private readonly int _screenWidth;
+        private readonly int _screenHeight;
         private string _title = "Connection Notice";
         private string _body = string.Empty;
         private float _progress;
@@ -47,7 +49,9 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyDictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>> progressFramesByVariant,
             IReadOnlyDictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>> animationFramesByVariant,
             IReadOnlyDictionary<int, Texture2D> noticeTextTextures,
-            UIObject cancelButton)
+            UIObject cancelButton,
+            int screenWidth,
+            int screenHeight)
             : base((framesByVariant != null && framesByVariant.TryGetValue(ConnectionNoticeWindowVariant.Notice, out IDXObject frame))
                 ? frame
                 : null)
@@ -57,6 +61,8 @@ namespace HaCreator.MapSimulator.UI
             _animationFramesByVariant = animationFramesByVariant ?? new Dictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>>();
             _noticeTextTextures = noticeTextTextures ?? new Dictionary<int, Texture2D>();
             _cancelButton = RegisterButton(cancelButton);
+            _screenWidth = screenWidth;
+            _screenHeight = screenHeight;
         }
 
         public override string WindowName => MapSimulatorWindowNames.ConnectionNotice;
@@ -91,6 +97,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Frame = frame;
+            CenterFrame(frame);
             ConfigureButtons();
         }
 
@@ -256,6 +263,15 @@ namespace HaCreator.MapSimulator.UI
             _cancelButton.Y = CancelButtonOffsetY;
             _cancelButton.SetVisible(showCancelButton);
             _cancelButton.SetEnabled(showCancelButton);
+        }
+
+        private void CenterFrame(IDXObject frame)
+        {
+            int width = frame?.Width > 0 ? frame.Width : 249;
+            int height = frame?.Height > 0 ? frame.Height : 142;
+            Position = new Point(
+                Math.Max(24, (_screenWidth / 2) - (width / 2)),
+                Math.Max(24, (_screenHeight / 2) - (height / 2)));
         }
     }
 }

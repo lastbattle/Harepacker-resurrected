@@ -1521,15 +1521,15 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             if (entry.Tab == MonsterCarnivalTab.Guardian
-                && _occupiedGuardianSlots.Contains(entry.Index))
+                && _definition?.GuardianGenMax > 0
+                && GetTotalCount(_guardianCounts) >= _definition.GuardianGenMax)
             {
                 reasonCode = 5;
                 return false;
             }
 
             if (entry.Tab == MonsterCarnivalTab.Guardian
-                && _definition?.GuardianGenMax > 0
-                && GetTotalCount(_guardianCounts) >= _definition.GuardianGenMax)
+                && _occupiedGuardianSlots.Contains(entry.Index))
             {
                 reasonCode = 4;
                 return false;

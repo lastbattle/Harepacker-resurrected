@@ -257,8 +257,7 @@ namespace HaCreator.MapSimulator.UI
                 ? $"Calendar view groups simulator event entries by day for {_calendarMonth:MMMM yyyy}."
                 : snapshot.Subtitle;
 
-            sprite.DrawString(_font, snapshot.Title, new Vector2(Position.X + 18, Position.Y + 20), Color.White);
-            DrawWrappedText(sprite, subtitle, Position.X + 18, Position.Y + 44, Math.Max(240f, (CurrentFrame?.Width ?? 323) - 36f), new Color(220, 220, 220));
+            DrawWrappedText(sprite, subtitle, Position.X + 18, Position.Y + 52, Math.Max(240f, (CurrentFrame?.Width ?? 323) - 36f), new Color(220, 220, 220));
             int contentOffsetY = DrawAlarmFeed(sprite, snapshot);
 
             if (_showCalendar)
@@ -450,7 +449,48 @@ namespace HaCreator.MapSimulator.UI
                 _filteredEntriesBuffer.Add(entry);
             }
 
+            _filteredEntriesBuffer.Sort(CompareEventEntries);
             return _filteredEntriesBuffer;
+        }
+
+        private static int CompareEventEntries(EventEntrySnapshot left, EventEntrySnapshot right)
+        {
+            if (ReferenceEquals(left, right))
+            {
+                return 0;
+            }
+
+            if (left is null)
+            {
+                return 1;
+            }
+
+            if (right is null)
+            {
+                return -1;
+            }
+
+            int dateComparison = left.ScheduledAt.Date.CompareTo(right.ScheduledAt.Date);
+            if (dateComparison != 0)
+            {
+                return dateComparison;
+            }
+
+            int leftTick = left.SourceTick == int.MinValue ? int.MinValue : left.SourceTick;
+            int rightTick = right.SourceTick == int.MinValue ? int.MinValue : right.SourceTick;
+            int tickComparison = rightTick.CompareTo(leftTick);
+            if (tickComparison != 0)
+            {
+                return tickComparison;
+            }
+
+            int statusComparison = left.Status.CompareTo(right.Status);
+            if (statusComparison != 0)
+            {
+                return statusComparison;
+            }
+
+            return left.SortOrder.CompareTo(right.SortOrder);
         }
 
         private void MovePreviousPage()
@@ -750,19 +790,26 @@ namespace HaCreator.MapSimulator.UI
         {
             DateTime selectedDate = _selectedCalendarDate?.Date ?? _calendarMonth;
             _calendarSummaryTitlesBuffer.Clear();
-            for (int i = 0; i < entries.Count && _calendarSummaryTitlesBuffer.Count < 2; i++)
+            int totalMatches = 0;
+            for (int i = 0; i < entries.Count; i++)
             {
                 if (entries[i].ScheduledAt.Date != selectedDate)
                 {
                     continue;
                 }
 
-                _calendarSummaryTitlesBuffer.Add(entries[i].Title);
+                totalMatches++;
+                if (_calendarSummaryTitlesBuffer.Count < 3)
+                {
+                    _calendarSummaryTitlesBuffer.Add(entries[i].Title);
+                }
             }
 
-            string summary = _calendarSummaryTitlesBuffer.Count == 0
+            string summary = totalMatches == 0
                 ? $"{selectedDate:MMM d}: no simulator event entries are scheduled for this day."
-                : $"{selectedDate:MMM d}: {string.Join(" / ", _calendarSummaryTitlesBuffer)}";
+                : totalMatches > _calendarSummaryTitlesBuffer.Count
+                    ? $"{selectedDate:MMM d}: {string.Join(" / ", _calendarSummaryTitlesBuffer)} (+{totalMatches - _calendarSummaryTitlesBuffer.Count} more)"
+                    : $"{selectedDate:MMM d}: {string.Join(" / ", _calendarSummaryTitlesBuffer)}";
 
             DrawWrappedText(
                 sprite,

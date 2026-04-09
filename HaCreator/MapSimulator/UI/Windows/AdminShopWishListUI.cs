@@ -10,7 +10,7 @@ using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
-    public sealed class AdminShopWishListUI : UIWindowBase
+    public sealed class AdminShopWishListUI : UIWindowBase, ISoftKeyboardHost
     {
         private sealed class CategoryDisplayRow
         {
@@ -30,6 +30,7 @@ namespace HaCreator.MapSimulator.UI
         private const int SearchTextX = 82;
         private const int SearchTextY = 24;
         private const int SearchTextWidth = 160;
+        private const int SearchFieldHeight = 14;
         private const int CategoryTextX = 82;
         private const int CategoryTextY = 54;
         private const int PriceTextX = 82;
@@ -80,10 +81,13 @@ namespace HaCreator.MapSimulator.UI
         private readonly HashSet<string> _expandedCategoryKeys = new(StringComparer.OrdinalIgnoreCase);
         private string _searchQuery = string.Empty;
         private string _compositionText = string.Empty;
+        private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
         private string _statusMessage = "Type an item name, then submit through SearchItemName.";
         private KeyboardState _previousKeyboardState;
         private MouseState _previousMouseState;
         private Point? _dragStartOffset;
+        private bool _searchFieldFocused;
+        private bool _softKeyboardActive;
         private string _selectedCategoryKey = "all";
         private int _selectedPriceRangeIndex;
         private int _categoryScrollOffset;
@@ -192,7 +196,12 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public override string WindowName => MapSimulatorWindowNames.AdminShopWishList;
-        public override bool CapturesKeyboardInput => IsVisible;
+        public override bool CapturesKeyboardInput => IsVisible && _searchFieldFocused;
+        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _searchFieldFocused && _softKeyboardActive;
+        SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => SoftKeyboardKeyboardType.AlphaNumeric;
+        int ISoftKeyboardHost.SoftKeyboardTextLength => _searchQuery?.Length ?? 0;
+        int ISoftKeyboardHost.SoftKeyboardMaxLength => SearchMaxLength;
+        bool ISoftKeyboardHost.CanSubmitSoftKeyboard => _searchFieldFocused && !string.IsNullOrWhiteSpace(_searchQuery);
         public Action<AdminShopWishListUI> ShowCategoryAddOnRequested { get; set; }
         public Action HideCategoryAddOnRequested { get; set; }
         public Func<bool> IsCategoryAddOnVisible { get; set; }
@@ -305,6 +314,9 @@ namespace HaCreator.MapSimulator.UI
             _resultScrollOffset = 0;
             _selectedResultIndex = 0;
             _compositionText = string.Empty;
+            _candidateListState = ImeCandidateListState.Empty;
+            _searchFieldFocused = true;
+            _softKeyboardActive = false;
             _popupMode = PopupMode.None;
             _statusMessage = $"CUIAdminShopWishList::OnCreate focused the search edit for {sourceDialog?.GetWishlistServiceName() ?? "cash-service"} browsing.";
             HideCategoryAddOnRequested?.Invoke();
@@ -328,8 +340,11 @@ namespace HaCreator.MapSimulator.UI
             HideSearchResultAddOnRequested?.Invoke();
             base.Hide();
             _compositionText = string.Empty;
+            _candidateListState = ImeCandidateListState.Empty;
             _popupMode = PopupMode.None;
             _dragStartOffset = null;
+            _searchFieldFocused = false;
+            _softKeyboardActive = false;
             _searchResults.Clear();
             _categoryRows.Clear();
             _expandedCategoryKeys.Clear();
@@ -339,6 +354,29 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+        }
+
+        public override void HandleCompositionState(ImeCompositionState state)
+        {
+            if (!CapturesKeyboardInput)
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            string text = state?.Text ?? string.Empty;
+            if (string.IsNullOrEmpty(text))
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            int remainingLength = Math.Max(0, SearchMaxLength - _searchQuery.Length);
+            _compositionText = remainingLength <= 0
+                ? string.Empty
+                : text.Length > remainingLength
+                    ? text[..remainingLength]
+                    : text;
         }
 
         public override void HandleCommittedText(string text)
@@ -362,16 +400,25 @@ namespace HaCreator.MapSimulator.UI
 
         public override void HandleCompositionText(string text)
         {
-            _compositionText = string.IsNullOrEmpty(text)
-                ? string.Empty
-                : text.Length > SearchMaxLength
-                    ? text[..SearchMaxLength]
-                    : text;
+            HandleCompositionState(new ImeCompositionState(text ?? string.Empty, Array.Empty<int>(), -1));
         }
 
         public override void ClearCompositionText()
         {
             _compositionText = string.Empty;
+            ClearImeCandidateList();
+        }
+
+        public override void HandleImeCandidateList(ImeCandidateListState state)
+        {
+            _candidateListState = CapturesKeyboardInput && state != null && state.HasCandidates
+                ? state
+                : ImeCandidateListState.Empty;
+        }
+
+        public override void ClearImeCandidateList()
+        {
+            _candidateListState = ImeCandidateListState.Empty;
         }
 
         public override void Update(GameTime gameTime)
@@ -427,6 +474,15 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            bool leftClicked = mouseState.LeftButton == ButtonState.Pressed;
+            if (leftClicked && GetSearchFieldBounds().Contains(mouseState.Position))
+            {
+                _searchFieldFocused = true;
+                _softKeyboardActive = true;
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
             foreach (UIObject button in uiButtons)
             {
                 if (!button.ButtonVisible)
@@ -468,6 +524,13 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _dragStartOffset = null;
+            if (leftClicked && ContainsPoint(mouseState.X, mouseState.Y))
+            {
+                _searchFieldFocused = false;
+                _softKeyboardActive = false;
+                ClearCompositionText();
+            }
+
             return dragBounds.Contains(mouseState.Position);
         }
 
@@ -497,6 +560,7 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(_font, TrimToWidth(GetSelectedCategoryLabel(), 172f), new Vector2(Position.X + CategoryTextX, Position.Y + CategoryTextY), new Color(50, 56, 94));
             sprite.DrawString(_font, TrimToWidth(GetSelectedPriceRangeLabel(), 172f), new Vector2(Position.X + PriceTextX, Position.Y + PriceTextY), new Color(50, 56, 94));
             sprite.DrawString(_font, TrimToWidth(_statusMessage, 224f), new Vector2(Position.X + StatusTextX, Position.Y + StatusTextY), new Color(255, 233, 160));
+            DrawImeCandidateWindow(sprite);
 
             if (_popupMode == PopupMode.Results)
             {
@@ -510,6 +574,12 @@ namespace HaCreator.MapSimulator.UI
             if (_popupMode == PopupMode.Results)
             {
                 yield return GetPopupBounds();
+            }
+
+            Rectangle candidateBounds = GetImeCandidateWindowBounds();
+            if (!candidateBounds.IsEmpty)
+            {
+                yield return candidateBounds;
             }
         }
 
@@ -1279,6 +1349,135 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return string.IsNullOrEmpty(rendered) ? "Search item name" : rendered;
+        }
+
+        Rectangle ISoftKeyboardHost.GetSoftKeyboardAnchorBounds() => GetSearchFieldBounds();
+
+        bool ISoftKeyboardHost.TryInsertSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            if (!TryAppendSearchCharacter(character))
+            {
+                errorMessage = "The wish-list search field cannot accept that character.";
+                return false;
+            }
+
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            if (!string.IsNullOrEmpty(_searchQuery))
+            {
+                _searchQuery = _searchQuery[..^1];
+            }
+
+            if (!TryAppendSearchCharacter(character))
+            {
+                errorMessage = "The wish-list search field cannot accept that character.";
+                return false;
+            }
+
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
+        {
+            if (string.IsNullOrEmpty(_searchQuery))
+            {
+                errorMessage = "The wish-list search field is already empty.";
+                return false;
+            }
+
+            _searchQuery = _searchQuery[..^1];
+            ClearCompositionText();
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TrySubmitSoftKeyboard(out string errorMessage)
+        {
+            if (string.IsNullOrWhiteSpace(_searchQuery))
+            {
+                errorMessage = "Type an item name before searching.";
+                return false;
+            }
+
+            ExecuteSearch();
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        void ISoftKeyboardHost.OnSoftKeyboardClosed()
+        {
+            _softKeyboardActive = false;
+        }
+
+        void ISoftKeyboardHost.SetSoftKeyboardCompositionText(string text)
+        {
+            HandleCompositionText(text);
+        }
+
+        private Rectangle GetSearchFieldBounds()
+        {
+            return new Rectangle(Position.X + SearchTextX, Position.Y + SearchTextY, SearchTextWidth, SearchFieldHeight);
+        }
+
+        private bool TryAppendSearchCharacter(char character)
+        {
+            if (!_searchFieldFocused
+                || char.IsControl(character)
+                || !SoftKeyboardUI.CanAcceptCharacter(SoftKeyboardKeyboardType.AlphaNumeric, _searchQuery.Length, SearchMaxLength, character))
+            {
+                return false;
+            }
+
+            ClearCompositionText();
+            _searchQuery += character;
+            return true;
+        }
+
+        private Rectangle GetImeCandidateWindowBounds()
+        {
+            if (!_candidateListState.HasCandidates || _font == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            int visibleCount = Math.Max(1, Math.Min(_candidateListState.PageSize > 0 ? _candidateListState.PageSize : _candidateListState.Candidates.Count, _candidateListState.Candidates.Count));
+            return new Rectangle(
+                GetSearchFieldBounds().X,
+                GetSearchFieldBounds().Bottom + 2,
+                188,
+                6 + (visibleCount * (_font.LineSpacing + 2)));
+        }
+
+        private void DrawImeCandidateWindow(SpriteBatch sprite)
+        {
+            Rectangle bounds = GetImeCandidateWindowBounds();
+            if (bounds.IsEmpty || _font == null)
+            {
+                return;
+            }
+
+            sprite.Draw(_pixelTexture, bounds, new Color(32, 49, 77, 232));
+            int pageStart = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int visibleCount = Math.Max(1, Math.Min(_candidateListState.PageSize > 0 ? _candidateListState.PageSize : _candidateListState.Candidates.Count, _candidateListState.Candidates.Count - pageStart));
+            for (int i = 0; i < visibleCount; i++)
+            {
+                int candidateIndex = pageStart + i;
+                if (candidateIndex >= _candidateListState.Candidates.Count)
+                {
+                    break;
+                }
+
+                bool selected = candidateIndex == _candidateListState.Selection;
+                Rectangle rowBounds = new(bounds.X + 2, bounds.Y + 2 + (i * (_font.LineSpacing + 2)), bounds.Width - 4, _font.LineSpacing + 2);
+                sprite.Draw(_pixelTexture, rowBounds, selected ? new Color(255, 255, 255, 56) : Color.Transparent);
+                string text = $"{i + 1}. {_candidateListState.Candidates[candidateIndex]}";
+                sprite.DrawString(_font, TrimToWidth(text, rowBounds.Width - 6), new Vector2(rowBounds.X + 3, rowBounds.Y + 1), Color.White);
+            }
         }
 
         private bool WasPressed(KeyboardState keyboardState, Keys key)

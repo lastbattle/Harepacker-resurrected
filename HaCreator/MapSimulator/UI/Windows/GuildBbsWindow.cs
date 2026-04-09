@@ -26,6 +26,9 @@ namespace HaCreator.MapSimulator.UI
         private const int DetailTop = 30;
         private const int DetailWidth = 314;
         private const int DetailHeight = 430;
+        private const int DetailBodyVisibleLineCount = 15;
+        private const int DetailBodyLineHeight = 12;
+        private const int DetailBodyClientMaxLineWidth = 240;
         private const int TitleInputHeight = 16;
         private const int ReplyInputHeight = 22;
         private const int BasicEmoticonSize = 18;
@@ -64,10 +67,14 @@ namespace HaCreator.MapSimulator.UI
         private int _cursorPosition;
         private int _cursorBlinkTimer;
         private int _composeBodyScrollLine;
+        private int _detailBodyScrollLine;
         private bool _isDraggingComposeScrollBar;
         private int _composeScrollDragOffsetY;
+        private bool _isDraggingDetailBodyScrollBar;
+        private int _detailBodyScrollDragOffsetY;
         private bool _isDraggingCommentScrollBar;
         private int _commentScrollDragOffsetY;
+        private int _lastDetailThreadId = -1;
 
         private Func<GuildBbsSnapshot> _snapshotProvider;
         private Action<int> _selectThreadHandler;
@@ -79,6 +86,7 @@ namespace HaCreator.MapSimulator.UI
         private Func<string> _toggleNoticeHandler;
         private Func<string> _replyHandler;
         private Func<string> _replyDeleteHandler;
+        private Func<int, string> _deleteReplyAtVisibleIndexHandler;
         private Action<string> _setComposeTitleHandler;
         private Action<string> _setComposeBodyHandler;
         private Action<string> _setReplyDraftHandler;
@@ -100,6 +108,7 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _quitButton;
         private UIObject _replyButton;
         private UIObject _replyDeleteButton;
+        private readonly UIObject[] _commentDeleteButtons = new UIObject[4];
         private UIObject _emoticonLeftButton;
         private UIObject _emoticonRightButton;
         private GuildBbsSnapshot _currentSnapshot = new();
@@ -211,6 +220,7 @@ namespace HaCreator.MapSimulator.UI
             Func<string> toggleNoticeHandler,
             Func<string> replyHandler,
             Func<string> replyDeleteHandler,
+            Func<int, string> deleteReplyAtVisibleIndexHandler,
             Action<string> setComposeTitleHandler,
             Action<string> setComposeBodyHandler,
             Action<string> setReplyDraftHandler,
@@ -232,6 +242,7 @@ namespace HaCreator.MapSimulator.UI
             _toggleNoticeHandler = toggleNoticeHandler;
             _replyHandler = replyHandler;
             _replyDeleteHandler = replyDeleteHandler;
+            _deleteReplyAtVisibleIndexHandler = deleteReplyAtVisibleIndexHandler;
             _setComposeTitleHandler = setComposeTitleHandler;
             _setComposeBodyHandler = setComposeBodyHandler;
             _setReplyDraftHandler = setReplyDraftHandler;
@@ -255,6 +266,7 @@ namespace HaCreator.MapSimulator.UI
             UIObject quitButton,
             UIObject replyButton,
             UIObject replyDeleteButton,
+            UIObject[] commentDeleteButtons,
             UIObject emoticonLeftButton,
             UIObject emoticonRightButton)
         {
@@ -267,6 +279,13 @@ namespace HaCreator.MapSimulator.UI
             _quitButton = quitButton;
             _replyButton = replyButton;
             _replyDeleteButton = replyDeleteButton;
+            if (commentDeleteButtons != null)
+            {
+                for (int index = 0; index < Math.Min(_commentDeleteButtons.Length, commentDeleteButtons.Length); index++)
+                {
+                    _commentDeleteButtons[index] = commentDeleteButtons[index];
+                }
+            }
             _emoticonLeftButton = emoticonLeftButton;
             _emoticonRightButton = emoticonRightButton;
 
@@ -279,6 +298,11 @@ namespace HaCreator.MapSimulator.UI
             ConfigureButton(_quitButton, Hide);
             ConfigureButton(_replyButton, HandleSubmitReply);
             ConfigureButton(_replyDeleteButton, () => ShowFeedback(_replyDeleteHandler?.Invoke()));
+            for (int index = 0; index < _commentDeleteButtons.Length; index++)
+            {
+                int visibleIndex = index;
+                ConfigureButton(_commentDeleteButtons[index], () => ShowFeedback(_deleteReplyAtVisibleIndexHandler?.Invoke(visibleIndex)));
+            }
             ConfigureButton(_emoticonLeftButton, () => MoveCashEmoticonPage(-1));
             ConfigureButton(_emoticonRightButton, () => MoveCashEmoticonPage(1));
 
@@ -299,15 +323,17 @@ namespace HaCreator.MapSimulator.UI
             MouseState mouseState = Mouse.GetState();
             HandleScroll(snapshot, mouseState);
             HandleComposeScrollDrag(snapshot, mouseState);
+            HandleDetailBodyScrollDrag(snapshot, mouseState);
             HandleCommentScrollDrag(snapshot, mouseState);
 
             bool leftReleased = mouseState.LeftButton == ButtonState.Released
                 && _previousMouseState.LeftButton == ButtonState.Pressed;
             bool releasedComposeDrag = _isDraggingComposeScrollBar && leftReleased;
+            bool releasedDetailBodyDrag = _isDraggingDetailBodyScrollBar && leftReleased;
             bool releasedCommentDrag = _isDraggingCommentScrollBar && leftReleased;
             if (leftReleased && ContainsPoint(mouseState.X, mouseState.Y))
             {
-                if (!releasedComposeDrag && !releasedCommentDrag)
+                if (!releasedComposeDrag && !releasedDetailBodyDrag && !releasedCommentDrag)
                 {
                     HandleMouseClick(snapshot, mouseState.Position);
                 }
@@ -316,6 +342,7 @@ namespace HaCreator.MapSimulator.UI
             if (leftReleased)
             {
                 _isDraggingComposeScrollBar = false;
+                _isDraggingDetailBodyScrollBar = false;
                 _isDraggingCommentScrollBar = false;
             }
 
@@ -392,6 +419,15 @@ namespace HaCreator.MapSimulator.UI
         private GuildBbsSnapshot RefreshSnapshot()
         {
             _currentSnapshot = _snapshotProvider?.Invoke() ?? new GuildBbsSnapshot();
+            int selectedThreadId = _currentSnapshot.SelectedThread?.ThreadId ?? -1;
+            if (_lastDetailThreadId != selectedThreadId)
+            {
+                _detailBodyScrollLine = 0;
+                _lastDetailThreadId = selectedThreadId;
+            }
+
+            ScrollMetrics detailBodyMetrics = BuildDetailBodyScrollMetrics(_currentSnapshot.SelectedThread?.Body);
+            _detailBodyScrollLine = Math.Clamp(_detailBodyScrollLine, 0, detailBodyMetrics.MaxScrollLine);
             return _currentSnapshot;
         }
 
@@ -478,6 +514,11 @@ namespace HaCreator.MapSimulator.UI
             }
             else
             {
+                if (snapshot.SelectedThread != null && TryHandleDetailBodyScrollClick(snapshot, mousePosition))
+                {
+                    return;
+                }
+
                 if (snapshot.SelectedThread != null && TryHandleCommentScrollClick(snapshot, mousePosition))
                 {
                     return;
@@ -604,6 +645,12 @@ namespace HaCreator.MapSimulator.UI
             if (snapshot.IsWriteMode && GetComposeBodyBounds().Contains(mouseState.Position))
             {
                 ScrollComposeBody(direction);
+                return;
+            }
+
+            if (!snapshot.IsWriteMode && snapshot.SelectedThread != null && GetDetailBodyBounds().Contains(mouseState.Position))
+            {
+                ScrollDetailBody(direction);
                 return;
             }
 
@@ -915,6 +962,17 @@ namespace HaCreator.MapSimulator.UI
             _quitButton?.SetVisible(true);
             _emoticonLeftButton?.SetVisible(writeMode || hasSelectedThread);
             _emoticonRightButton?.SetVisible(writeMode || hasSelectedThread);
+            for (int index = 0; index < _commentDeleteButtons.Length; index++)
+            {
+                UIObject button = _commentDeleteButtons[index];
+                bool hasCommentSlot = !writeMode
+                    && hasSelectedThread
+                    && snapshot.SelectedThread?.Comments != null
+                    && index < snapshot.SelectedThread.Comments.Count;
+                bool canDeleteComment = hasCommentSlot && snapshot.SelectedThread.Comments[index].CanDelete;
+                button?.SetVisible(canDeleteComment);
+                button?.SetButtonState(canDeleteComment ? UIObjectState.Normal : UIObjectState.Disabled);
+            }
 
             _registerButton?.SetButtonState(writeMode && permission.CanWrite ? UIObjectState.Normal : UIObjectState.Disabled);
             _cancelButton?.SetButtonState(writeMode ? UIObjectState.Normal : UIObjectState.Disabled);
@@ -957,6 +1015,19 @@ namespace HaCreator.MapSimulator.UI
             {
                 _emoticonRightButton.X = Position.X + 704;
                 _emoticonRightButton.Y = Position.Y + 243;
+            }
+
+            int[] commentDeleteYs = { 331, 362, 393, 424 };
+            for (int index = 0; index < _commentDeleteButtons.Length; index++)
+            {
+                UIObject button = _commentDeleteButtons[index];
+                if (button == null)
+                {
+                    continue;
+                }
+
+                button.X = Position.X + 690;
+                button.Y = Position.Y + commentDeleteYs[index];
             }
         }
 
@@ -1122,22 +1193,23 @@ namespace HaCreator.MapSimulator.UI
             DrawString(sprite, thread.DateText, detailBounds.X + 242, detailBounds.Y + 20, new Color(101, 106, 115), 0.36f);
             sprite.Draw(_pixel, new Rectangle(detailBounds.X, detailBounds.Y + 38, detailBounds.Width, 1), new Color(204, 208, 216, 200));
 
-            Rectangle bodyBounds = new Rectangle(detailBounds.X, detailBounds.Y + 48, detailBounds.Width, 106);
-            DrawWrappedText(sprite, thread.Body, bodyBounds, 0.41f, new Color(78, 82, 91), 7);
+            Rectangle bodyBounds = GetDetailBodyBounds();
+            DrawReadOnlyMultilineText(sprite, thread.Body, bodyBounds, 0.37f, new Color(78, 82, 91), DetailBodyVisibleLineCount);
+            DrawDetailBodyScrollBar(sprite, thread.Body);
 
             DrawString(sprite, $"Replies ({thread.TotalCommentCount})", detailBounds.X, detailBounds.Y + 164, new Color(69, 74, 83), 0.42f);
             Rectangle commentPaneBounds = GetCommentPaneBounds();
             int drawY = commentPaneBounds.Y;
             foreach (GuildBbsCommentSnapshot comment in thread.Comments)
             {
-                Rectangle commentBounds = new Rectangle(commentPaneBounds.X, drawY, commentPaneBounds.Width, 34);
+                Rectangle commentBounds = new Rectangle(commentPaneBounds.X, drawY, commentPaneBounds.Width, 31);
                 sprite.Draw(_pixel, commentBounds, new Color(255, 255, 255, 28));
-                DrawInlineEmoticon(sprite, comment.Emoticon, new Point(commentBounds.X + 4, commentBounds.Y + 8), isSmall: true);
+                DrawString(sprite, Truncate(comment.Author, 14), commentBounds.X + 4, commentBounds.Y + 2, new Color(61, 70, 87), 0.36f);
+                DrawString(sprite, comment.DateText, commentBounds.X + 146, commentBounds.Y + 2, new Color(111, 116, 126), 0.29f);
+                DrawInlineEmoticon(sprite, comment.Emoticon, new Point(commentBounds.X + 4, commentBounds.Y + 14), isSmall: true);
                 int bodyX = comment.Emoticon == null ? commentBounds.X + 4 : commentBounds.X + 24;
-                DrawString(sprite, Truncate(comment.Author, 14), commentBounds.X + 4, commentBounds.Y + 3, new Color(61, 70, 87), 0.38f);
-                DrawString(sprite, comment.DateText, commentBounds.X + 250, commentBounds.Y + 3, new Color(111, 116, 126), 0.31f);
-                DrawString(sprite, Truncate(comment.Body, 36), bodyX, commentBounds.Y + 16, new Color(87, 91, 99), 0.36f);
-                drawY += 38;
+                DrawString(sprite, Truncate(comment.Body, 32), bodyX, commentBounds.Y + 14, new Color(87, 91, 99), 0.34f);
+                drawY += 31;
             }
 
             DrawString(
@@ -1157,6 +1229,25 @@ namespace HaCreator.MapSimulator.UI
             {
                 DrawString(sprite, DescribePermissions(snapshot.Permission, snapshot.SelectedThread), detailBounds.X, detailBounds.Bottom - 10, new Color(111, 117, 127), 0.33f);
             }
+        }
+
+        private void DrawDetailBodyScrollBar(SpriteBatch sprite, string text)
+        {
+            ScrollMetrics metrics = BuildDetailBodyScrollMetrics(text);
+            if (metrics.MaxScrollLine <= 0)
+            {
+                return;
+            }
+
+            DrawScrollbar(
+                sprite,
+                GetDetailBodyScrollBarPrevBounds(),
+                GetDetailBodyScrollBarNextBounds(),
+                metrics.TrackBounds,
+                metrics.ThumbBounds,
+                canMovePrev: _detailBodyScrollLine > 0,
+                canMoveNext: _detailBodyScrollLine < metrics.MaxScrollLine,
+                draggingThumb: _isDraggingDetailBodyScrollBar);
         }
 
         private void DrawComposeScrollBar(SpriteBatch sprite, string text, Rectangle bodyBounds)
@@ -1345,6 +1436,24 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_pixel, new Rectangle((int)cursorX, cursorY, 1, 12), new Color(66, 76, 94));
         }
 
+        private void DrawReadOnlyMultilineText(SpriteBatch sprite, string text, Rectangle bounds, float scale, Color color, int maxLines)
+        {
+            IReadOnlyList<TextLineLayout> lines = BuildTextLines(text ?? string.Empty, DetailBodyClientMaxLineWidth, scale);
+            if (lines.Count == 0)
+            {
+                lines = new[] { new TextLineLayout { StartIndex = 0, EndIndex = 0, Text = string.Empty } };
+            }
+
+            int startLine = Math.Clamp(_detailBodyScrollLine, 0, Math.Max(0, lines.Count - maxLines));
+            int visibleLineCount = Math.Min(maxLines, lines.Count - startLine);
+            float y = bounds.Y + 2;
+            for (int index = 0; index < visibleLineCount; index++)
+            {
+                sprite.DrawString(_font, lines[startLine + index].Text, new Vector2(bounds.X + 2, y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+                y += DetailBodyLineHeight;
+            }
+        }
+
         private void DrawWrappedText(SpriteBatch sprite, string text, Rectangle bounds, float scale, Color color, int maxLines)
         {
             float y = bounds.Y;
@@ -1408,14 +1517,18 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle GetComposeTitleBounds() => new(Position.X + 449, Position.Y + 30, 256, TitleInputHeight);
         private Rectangle GetComposeBodyBounds() => new(Position.X + 449, Position.Y + 56, 250, 180);
         private Rectangle GetComposeScrollBarBounds() => new(Position.X + 706, Position.Y + 53, _scrollbarSkin?.Width ?? ComposeScrollBarWidth, 187);
-        private Rectangle GetCommentPaneBounds() => new(GetDetailBounds().X, GetDetailBounds().Y + 186, DetailWidth - 4, 148);
+        private Rectangle GetDetailBodyBounds() => new(Position.X + 424, Position.Y + 83, 250, 180);
+        private Rectangle GetDetailBodyScrollBarBounds() => new(Position.X + 704, Position.Y + 78, _scrollbarSkin?.Width ?? ComposeScrollBarWidth, 190);
+        private Rectangle GetCommentPaneBounds() => new(Position.X + 424, Position.Y + 326, 258, 124);
         private Rectangle GetCommentScrollBarBounds() => new(Position.X + 710, Position.Y + 326, _scrollbarSkin?.Width ?? CommentScrollBarWidth, 125);
-        private Rectangle GetReplyInputBounds() => new(GetDetailBounds().X, GetDetailBounds().Bottom - 74, DetailWidth - 6, ReplyInputHeight);
+        private Rectangle GetReplyInputBounds() => new(Position.X + 424, Position.Y + 459, 256, 16);
         private Rectangle GetBasicEmoticonBounds(int index) => new(Position.X + 426 + (index * BasicEmoticonSpacing), Position.Y + 246, BasicEmoticonSize, BasicEmoticonSize);
         private Rectangle GetCashEmoticonBounds(int index) => new(Position.X + 495 + (index * CashEmoticonSpacing), Position.Y + 246, CashEmoticonSize, CashEmoticonSize);
         private Rectangle GetCashEmoticonRowBounds() => new(Position.X + 495, Position.Y + 246, (VisibleCashEmoticonCount * CashEmoticonSpacing), CashEmoticonSize);
         private Rectangle GetComposeScrollBarPrevBounds() => BuildScrollBarPrevBounds(GetComposeScrollBarBounds());
         private Rectangle GetComposeScrollBarNextBounds() => BuildScrollBarNextBounds(GetComposeScrollBarBounds());
+        private Rectangle GetDetailBodyScrollBarPrevBounds() => BuildScrollBarPrevBounds(GetDetailBodyScrollBarBounds());
+        private Rectangle GetDetailBodyScrollBarNextBounds() => BuildScrollBarNextBounds(GetDetailBodyScrollBarBounds());
         private Rectangle GetCommentScrollBarPrevBounds() => BuildScrollBarPrevBounds(GetCommentScrollBarBounds());
         private Rectangle GetCommentScrollBarNextBounds() => BuildScrollBarNextBounds(GetCommentScrollBarBounds());
 
@@ -1646,6 +1759,61 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        private bool TryHandleDetailBodyScrollClick(GuildBbsSnapshot snapshot, Point mousePosition)
+        {
+            if (snapshot.SelectedThread == null)
+            {
+                return false;
+            }
+
+            Rectangle scrollBounds = GetDetailBodyScrollBarBounds();
+            if (!scrollBounds.Contains(mousePosition))
+            {
+                return false;
+            }
+
+            ScrollMetrics metrics = BuildDetailBodyScrollMetrics(snapshot.SelectedThread.Body);
+            if (metrics.MaxScrollLine <= 0)
+            {
+                return true;
+            }
+
+            if (GetDetailBodyScrollBarPrevBounds().Contains(mousePosition))
+            {
+                ScrollDetailBody(-1);
+                return true;
+            }
+
+            if (GetDetailBodyScrollBarNextBounds().Contains(mousePosition))
+            {
+                ScrollDetailBody(1);
+                return true;
+            }
+
+            if (metrics.ThumbBounds.Contains(mousePosition))
+            {
+                _isDraggingDetailBodyScrollBar = true;
+                _detailBodyScrollDragOffsetY = mousePosition.Y - metrics.ThumbBounds.Y;
+                return true;
+            }
+
+            if (mousePosition.Y < metrics.ThumbBounds.Top)
+            {
+                ScrollDetailBody(-DetailBodyVisibleLineCount);
+                return true;
+            }
+
+            if (mousePosition.Y > metrics.ThumbBounds.Bottom)
+            {
+                ScrollDetailBody(DetailBodyVisibleLineCount);
+                return true;
+            }
+
+            float relative = (mousePosition.Y - scrollBounds.Y) / (float)Math.Max(1, scrollBounds.Height - metrics.ThumbBounds.Height);
+            _detailBodyScrollLine = Math.Clamp((int)Math.Round(relative * metrics.MaxScrollLine), 0, metrics.MaxScrollLine);
+            return true;
+        }
+
         private bool TryHandleCommentScrollClick(GuildBbsSnapshot snapshot, Point mousePosition)
         {
             if (snapshot.SelectedThread == null)
@@ -1705,6 +1873,12 @@ namespace HaCreator.MapSimulator.UI
             _composeBodyScrollLine = Math.Clamp(_composeBodyScrollLine + deltaLines, 0, metrics.MaxScrollLine);
         }
 
+        private void ScrollDetailBody(int deltaLines)
+        {
+            ScrollMetrics metrics = BuildDetailBodyScrollMetrics(_currentSnapshot?.SelectedThread?.Body);
+            _detailBodyScrollLine = Math.Clamp(_detailBodyScrollLine + deltaLines, 0, metrics.MaxScrollLine);
+        }
+
         private void HandleComposeScrollDrag(GuildBbsSnapshot snapshot, MouseState mouseState)
         {
             if (!snapshot.IsWriteMode || snapshot.Compose == null)
@@ -1736,6 +1910,39 @@ namespace HaCreator.MapSimulator.UI
             int thumbTop = Math.Clamp(mouseState.Y - _composeScrollDragOffsetY, trackBounds.Y, trackBounds.Bottom - thumbHeight);
             float relative = (thumbTop - trackBounds.Y) / (float)travel;
             _composeBodyScrollLine = Math.Clamp((int)Math.Round(relative * metrics.MaxScrollLine), 0, metrics.MaxScrollLine);
+        }
+
+        private void HandleDetailBodyScrollDrag(GuildBbsSnapshot snapshot, MouseState mouseState)
+        {
+            if (snapshot.IsWriteMode || snapshot.SelectedThread == null)
+            {
+                _isDraggingDetailBodyScrollBar = false;
+                return;
+            }
+
+            if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
+            {
+                TryHandleDetailBodyScrollClick(snapshot, mouseState.Position);
+            }
+
+            if (!_isDraggingDetailBodyScrollBar || mouseState.LeftButton != ButtonState.Pressed)
+            {
+                return;
+            }
+
+            ScrollMetrics metrics = BuildDetailBodyScrollMetrics(snapshot.SelectedThread.Body);
+            if (metrics.MaxScrollLine <= 0)
+            {
+                _isDraggingDetailBodyScrollBar = false;
+                return;
+            }
+
+            Rectangle trackBounds = metrics.TrackBounds;
+            int thumbHeight = metrics.ThumbBounds.Height;
+            int travel = Math.Max(1, trackBounds.Height - thumbHeight);
+            int thumbTop = Math.Clamp(mouseState.Y - _detailBodyScrollDragOffsetY, trackBounds.Y, trackBounds.Bottom - thumbHeight);
+            float relative = (thumbTop - trackBounds.Y) / (float)travel;
+            _detailBodyScrollLine = Math.Clamp((int)Math.Round(relative * metrics.MaxScrollLine), 0, metrics.MaxScrollLine);
         }
 
         private void HandleCommentScrollDrag(GuildBbsSnapshot snapshot, MouseState mouseState)
@@ -1822,6 +2029,38 @@ namespace HaCreator.MapSimulator.UI
             int thumbHeight = Math.Max(18, (int)Math.Round(trackBounds.Height * (visibleLines / (float)totalLines)));
             int travel = Math.Max(1, trackBounds.Height - thumbHeight);
             int thumbTop = trackBounds.Y + (int)Math.Round((_composeBodyScrollLine / (float)maxScrollLine) * travel);
+            return new ScrollMetrics
+            {
+                TotalLines = totalLines,
+                VisibleLines = visibleLines,
+                MaxScrollLine = maxScrollLine,
+                TrackBounds = trackBounds,
+                ThumbBounds = new Rectangle(trackBounds.X, thumbTop, trackBounds.Width, thumbHeight)
+            };
+        }
+
+        private ScrollMetrics BuildDetailBodyScrollMetrics(string text)
+        {
+            IReadOnlyList<TextLineLayout> lines = BuildTextLines(text ?? string.Empty, DetailBodyClientMaxLineWidth, 0.37f);
+            int totalLines = Math.Max(1, lines.Count);
+            int visibleLines = Math.Min(DetailBodyVisibleLineCount, totalLines);
+            int maxScrollLine = Math.Max(0, totalLines - visibleLines);
+            Rectangle trackBounds = BuildScrollBarTrackBounds(GetDetailBodyScrollBarBounds());
+            if (maxScrollLine <= 0)
+            {
+                return new ScrollMetrics
+                {
+                    TotalLines = totalLines,
+                    VisibleLines = visibleLines,
+                    MaxScrollLine = 0,
+                    TrackBounds = trackBounds,
+                    ThumbBounds = trackBounds
+                };
+            }
+
+            int thumbHeight = Math.Max(18, (int)Math.Round(trackBounds.Height * (visibleLines / (float)totalLines)));
+            int travel = Math.Max(1, trackBounds.Height - thumbHeight);
+            int thumbTop = trackBounds.Y + (int)Math.Round((_detailBodyScrollLine / (float)maxScrollLine) * travel);
             return new ScrollMetrics
             {
                 TotalLines = totalLines,

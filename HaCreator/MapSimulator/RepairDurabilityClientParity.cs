@@ -15,9 +15,7 @@ namespace HaCreator.MapSimulator
         {
             "shop",
             "say",
-            "speak",
-            "stand1",
-            AnimationKeys.Stand
+            "speak"
         };
 
         internal static IEnumerable<string> EnumerateNpcActionCandidates(int? shopActionId)

@@ -1,7 +1,9 @@
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Pools;
+using HaCreator.MapSimulator.Character.Skills;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Linq;
 
@@ -275,6 +277,7 @@ namespace HaCreator.MapSimulator
         internal static int RouteLocalPacketOwnedSummonExpiryBatchToClientCancel(
             PacketOwnedSummonTimerExpiration[] expirations,
             Action<int, int> primeLocalNaturalExpirySummon,
+            Func<int, IReadOnlyList<int>> resolveCancelRequestSkillIds,
             Func<int, int, bool> requestClientSkillCancel)
         {
             if (expirations == null
@@ -285,7 +288,7 @@ namespace HaCreator.MapSimulator
             }
 
             int routedCount = 0;
-            bool[] shouldRouteCancel = new bool[expirations.Length];
+            HashSet<int> routedCancelFamilies = new();
             foreach (PacketOwnedSummonTimerExpiration expiration in expirations)
             {
                 if (!expiration.OwnerIsLocal || expiration.SkillId <= 0)
@@ -304,29 +307,14 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                bool alreadyQueued = false;
-                for (int priorIndex = 0; priorIndex < i; priorIndex++)
-                {
-                    if (!shouldRouteCancel[priorIndex])
-                    {
-                        continue;
-                    }
-
-                    PacketOwnedSummonTimerExpiration priorExpiration = expirations[priorIndex];
-                    if (priorExpiration.SkillId == expiration.SkillId
-                        && priorExpiration.CurrentTime == expiration.CurrentTime)
-                    {
-                        alreadyQueued = true;
-                        break;
-                    }
-                }
-
-                if (alreadyQueued)
+                int cancelFamilyKey = SkillManager.ResolveClientCancelFamilyBatchKey(
+                    expiration.SkillId,
+                    resolveCancelRequestSkillIds);
+                if (!routedCancelFamilies.Add(cancelFamilyKey))
                 {
                     continue;
                 }
 
-                shouldRouteCancel[i] = true;
                 if (requestClientSkillCancel(expiration.SkillId, expiration.CurrentTime))
                 {
                     routedCount++;

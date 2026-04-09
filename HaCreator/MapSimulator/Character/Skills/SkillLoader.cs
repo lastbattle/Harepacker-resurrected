@@ -20,6 +20,8 @@ namespace HaCreator.MapSimulator.Character.Skills
     /// </summary>
     public class SkillLoader
     {
+        private readonly record struct SummonActionCacheKey(int SkillId, int SkillLevel, string ActionKey);
+
         private static readonly string[] PreferredSummonAnimationBranches =
         {
             "stand",
@@ -108,6 +110,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly HashSet<string> _missingCharacterChargeAfterImageKeys = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, SkillAnimation> _itemBulletAnimationCache = new();
         private readonly HashSet<int> _itemsWithoutBulletAnimation = new();
+        private readonly Dictionary<SummonActionCacheKey, SkillAnimation> _summonActionCache = new();
         private WzImage _skillSoundImage;
         private WzImage _skillStringImage;
 
@@ -2299,20 +2302,75 @@ namespace HaCreator.MapSimulator.Character.Skills
             string animationName = null)
         {
             string normalizedKey = string.IsNullOrWhiteSpace(actionKey) ? animationName : actionKey;
+            if (TryGetCachedSummonActionAnimation(skill, normalizedKey, out SkillAnimation cachedAnimation))
+            {
+                return cachedAnimation;
+            }
+
             if (skill?.SummonActionAnimations != null
                 && !string.IsNullOrWhiteSpace(normalizedKey)
-                && skill.SummonActionAnimations.TryGetValue(normalizedKey, out SkillAnimation cachedAnimation))
+                && skill.SummonActionAnimations.TryGetValue(normalizedKey, out cachedAnimation))
             {
                 return cachedAnimation;
             }
 
             SkillAnimation animation = LoadSummonActionAnimation(node, animationName ?? normalizedKey ?? "summon");
-            if (skill?.SummonActionAnimations != null && !string.IsNullOrWhiteSpace(normalizedKey))
-            {
-                skill.SummonActionAnimations[normalizedKey] = animation;
-            }
+            CacheSummonActionAnimation(skill, normalizedKey, animation);
 
             return animation;
+        }
+
+        private bool TryGetCachedSummonActionAnimation(SkillData skill, string actionKey, out SkillAnimation animation)
+        {
+            animation = null;
+            if (skill == null || string.IsNullOrWhiteSpace(actionKey))
+            {
+                return false;
+            }
+
+            foreach (int level in EnumerateSummonActionCacheLevels(skill))
+            {
+                if (_summonActionCache.TryGetValue(new SummonActionCacheKey(skill.SkillId, level, actionKey), out animation))
+                {
+                    skill.SummonActionAnimations[actionKey] = animation;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void CacheSummonActionAnimation(SkillData skill, string actionKey, SkillAnimation animation)
+        {
+            if (skill == null || string.IsNullOrWhiteSpace(actionKey) || animation == null)
+            {
+                return;
+            }
+
+            skill.SummonActionAnimations[actionKey] = animation;
+            foreach (int level in EnumerateSummonActionCacheLevels(skill))
+            {
+                _summonActionCache[new SummonActionCacheKey(skill.SkillId, level, actionKey)] = animation;
+            }
+        }
+
+        private static IEnumerable<int> EnumerateSummonActionCacheLevels(SkillData skill)
+        {
+            if (skill?.Levels?.Count > 0)
+            {
+                return skill.Levels.Keys
+                    .Where(level => level > 0)
+                    .Distinct()
+                    .OrderBy(level => level);
+            }
+
+            int maxLevel = skill?.MaxLevel ?? 0;
+            if (maxLevel > 0)
+            {
+                return Enumerable.Range(1, maxLevel);
+            }
+
+            return new[] { 1 };
         }
 
         private SkillAnimation LoadSummonActionAnimation(WzImageProperty node, string name)
@@ -3690,6 +3748,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.IgnoreDefenseRate = PreferPrimaryStat(
                 GetInt(node, "ignoreMobpdpR", levelData.IgnoreDefenseRate, level),
                 GetInt(node, "ignoreMobDamR", 0, level));
+            levelData.AttackPercent = PreferPrimaryStat(levelData.AttackPercent, ResolveDescriptionBackedAttackPercentAlias(skill, node, level));
+            levelData.MagicAttackPercent = PreferPrimaryStat(levelData.MagicAttackPercent, ResolveDescriptionBackedMagicAttackPercentAlias(skill, node, level));
         }
 
         private static int PreferPrimaryStat(int currentValue, int aliasValue)
@@ -3719,6 +3779,34 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || description.Contains("att,")
                    || description.Contains("att ")
                    || description.Contains("attack power");
+        }
+
+        internal static int ResolveDescriptionBackedAttackPercentAlias(SkillData skill, WzImageProperty node, int level)
+        {
+            return UsesEchoOfHeroAttackPercentAlias(skill, node)
+                ? Math.Max(0, GetInt(node, "x", 0, level))
+                : 0;
+        }
+
+        internal static int ResolveDescriptionBackedMagicAttackPercentAlias(SkillData skill, WzImageProperty node, int level)
+        {
+            return UsesEchoOfHeroAttackPercentAlias(skill, node)
+                ? Math.Max(0, GetInt(node, "x", 0, level))
+                : 0;
+        }
+
+        internal static bool UsesEchoOfHeroAttackPercentAlias(SkillData skill, WzImageProperty node)
+        {
+            if (node?["x"] == null)
+            {
+                return false;
+            }
+
+            string name = (skill?.Name ?? string.Empty).Trim();
+            string description = (skill?.Description ?? string.Empty).Trim();
+            return name.Equals("Echo of Hero", StringComparison.OrdinalIgnoreCase)
+                   || (description.Contains("weapon attack", StringComparison.OrdinalIgnoreCase)
+                       && description.Contains("magic attack", StringComparison.OrdinalIgnoreCase));
         }
 
         private static void PopulateSkillLevelRequirements(SkillLevelData levelData, WzImageProperty node)

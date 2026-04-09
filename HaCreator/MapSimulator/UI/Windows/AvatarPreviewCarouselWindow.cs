@@ -55,6 +55,7 @@ namespace HaCreator.MapSimulator.UI
 
         private SpriteFont _font;
         private int _selectedIndex = -1;
+        private int _selectedDisplayIndex = -1;
         private int _pageIndex;
         private int _slotCount;
         private int _buyCharacterCount;
@@ -96,7 +97,8 @@ namespace HaCreator.MapSimulator.UI
                 _nameTagTextRasterizer = new ClientTextRasterizer(
                     graphicsDevice,
                     resolvedFontFamily,
-                    basePointSize: 12f);
+                    basePointSize: 12f,
+                    preferEmbeddedPrivateFontSources: true);
             }
 
             int slotIndex = 0;
@@ -132,6 +134,7 @@ namespace HaCreator.MapSimulator.UI
         public event Action<int> CharacterSelected;
         public event Action<int> PageRequested;
         public event Action EnterRequested;
+        public event Action NewCharacterRequested;
 
         public override void SetFont(SpriteFont font)
         {
@@ -164,6 +167,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _selectedIndex = selectedIndex;
+            _selectedDisplayIndex = ResolveDisplaySelectionIndex(selectedIndex);
             _slotCount = Math.Max(0, slotCount);
             _buyCharacterCount = Math.Max(0, buyCharacterCount);
             _pageIndex = Math.Clamp(pageIndex, 0, Math.Max(0, GetPageCount() - 1));
@@ -174,8 +178,8 @@ namespace HaCreator.MapSimulator.UI
                 LoginCharacterRosterSlotKind slotKind = GetSlotKind(displaySlotIndex);
                 bool visible = slotKind != LoginCharacterRosterSlotKind.Hidden;
                 _cardButtons[i].SetVisible(visible);
-                _cardButtons[i].SetEnabled(slotKind == LoginCharacterRosterSlotKind.Character);
-                _cardButtons[i].SetButtonState(displaySlotIndex == _selectedIndex ? UIObjectState.Pressed : UIObjectState.Normal);
+                _cardButtons[i].SetEnabled(visible);
+                _cardButtons[i].SetButtonState(displaySlotIndex == _selectedDisplayIndex ? UIObjectState.Pressed : UIObjectState.Normal);
             }
 
             bool hasMultiplePages = GetPageCount() > 1;
@@ -212,7 +216,7 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 Rectangle cardBounds = GetCardBounds(slotIndex);
-                bool isSelected = displaySlotIndex == _selectedIndex;
+                bool isSelected = displaySlotIndex == _selectedDisplayIndex;
                 Point slotAnchor = GetSlotAnchor(slotIndex);
                 DrawCard(sprite, slotAnchor, isSelected);
 
@@ -253,7 +257,7 @@ namespace HaCreator.MapSimulator.UI
                     }
                 }
 
-                if (_font != null)
+                if (_nameTagTextRasterizer != null || _font != null)
                 {
                     DrawNameTag(sprite, build.Name, isSelected, avatarAnchorX, cardBounds.Y + NameTagBaselineOffsetY);
                 }
@@ -262,24 +266,39 @@ namespace HaCreator.MapSimulator.UI
 
         private void ActivateCard(int visibleSlotIndex)
         {
-            int entryIndex = GetDisplaySlotIndexForVisibleSlot(visibleSlotIndex);
-            if (GetSlotKind(entryIndex) != LoginCharacterRosterSlotKind.Character ||
-                entryIndex < 0 ||
-                entryIndex >= _entries.Count)
+            int displaySlotIndex = GetDisplaySlotIndexForVisibleSlot(visibleSlotIndex);
+            LoginCharacterRosterSlotKind slotKind = GetSlotKind(displaySlotIndex);
+            if (slotKind == LoginCharacterRosterSlotKind.Hidden)
             {
                 return;
             }
 
+            _selectedDisplayIndex = displaySlotIndex;
             int currentTick = Environment.TickCount;
-            bool isDoubleClick = entryIndex == _lastActivatedEntryIndex &&
+            bool isDoubleClick = displaySlotIndex == _lastActivatedEntryIndex &&
                                  unchecked(currentTick - _lastActivationTick) <= DoubleClickThresholdMs;
-            _lastActivatedEntryIndex = entryIndex;
+            _lastActivatedEntryIndex = displaySlotIndex;
             _lastActivationTick = currentTick;
 
-            CharacterSelected?.Invoke(entryIndex);
+            if (slotKind == LoginCharacterRosterSlotKind.Character)
+            {
+                if (displaySlotIndex < 0 || displaySlotIndex >= _entries.Count)
+                {
+                    return;
+                }
+
+                CharacterSelected?.Invoke(displaySlotIndex);
+                if (isDoubleClick)
+                {
+                    EnterRequested?.Invoke();
+                }
+
+                return;
+            }
+
             if (isDoubleClick)
             {
-                EnterRequested?.Invoke();
+                NewCharacterRequested?.Invoke();
             }
         }
 
@@ -331,6 +350,16 @@ namespace HaCreator.MapSimulator.UI
         private int GetDisplaySlotCount()
         {
             return Math.Max(_entries.Count, _slotCount + _buyCharacterCount);
+        }
+
+        private int ResolveDisplaySelectionIndex(int selectedIndex)
+        {
+            if (selectedIndex >= 0 && selectedIndex < GetDisplaySlotCount())
+            {
+                return selectedIndex;
+            }
+
+            return GetDisplaySlotCount() > 0 ? 0 : -1;
         }
 
         private LoginCharacterRosterSlotKind GetSlotKind(int displaySlotIndex)

@@ -16,6 +16,7 @@ namespace HaCreator.MapSimulator.Interaction
         public QuestRewardRaiseSourceKind Source { get; init; }
         public QuestRewardChoicePrompt Prompt { get; init; }
         public int GroupIndex { get; set; }
+        public int ManagerSessionId { get; init; }
         public int RequestId { get; init; }
         public int OwnerItemId { get; init; }
         public int QrData { get; set; }

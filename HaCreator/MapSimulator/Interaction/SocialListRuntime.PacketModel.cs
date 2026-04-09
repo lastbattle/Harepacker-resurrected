@@ -9,6 +9,8 @@ namespace HaCreator.MapSimulator.Interaction
         private PacketGuildAuthorityState? _packetGuildAuthority;
         private PacketAllianceAuthorityState? _packetAllianceAuthority;
         private PacketGuildUiState? _packetGuildUiState;
+        private GuildMarkSelection? _packetGuildMarkSelection;
+        private int _packetGuildPoints;
         private readonly List<GuildRankingSeedEntry> _packetGuildRankingEntries = [];
 
         internal string DescribeStatus()
@@ -27,11 +29,14 @@ namespace HaCreator.MapSimulator.Interaction
             string guildRankingContext = _packetGuildRankingEntries.Count > 0
                 ? $"Guild ranking packet-owned rivals={_packetGuildRankingEntries.Count}"
                 : "Guild ranking awaiting packet-owned rivals";
+            string guildMarkContext = _packetGuildMarkSelection.HasValue
+                ? $"Guild mark shared bg={_packetGuildMarkSelection.Value.MarkBackground}:{_packetGuildMarkSelection.Value.MarkBackgroundColor}, mark={_packetGuildMarkSelection.Value.Mark}:{_packetGuildMarkSelection.Value.MarkColor}, points={_packetGuildPoints}"
+                : "Guild mark awaiting guild-result emblem sync";
             string allianceAuthority = _packetAllianceAuthority.HasValue
                 ? $"Alliance authority packet-owned ({_packetAllianceAuthority.Value.RoleLabel}: rank={FormatOnOff(_packetAllianceAuthority.Value.CanEditRanks)}, notice={FormatOnOff(_packetAllianceAuthority.Value.CanEditNotice)})"
                 : $"Alliance authority local-role ({GetLocalAllianceRoleLabel()})";
 
-            return string.Join(Environment.NewLine, tabLines.Concat(new[] { guildAuthority, guildUiContext, guildRankingContext, allianceAuthority }));
+            return string.Join(Environment.NewLine, tabLines.Concat(new[] { guildAuthority, guildUiContext, guildRankingContext, guildMarkContext, allianceAuthority }));
         }
 
         private string DescribeTabStatusLine(SocialListTab tab)
@@ -66,6 +71,8 @@ namespace HaCreator.MapSimulator.Interaction
                 if (tab == SocialListTab.Guild)
                 {
                     _packetGuildUiState = null;
+                    _packetGuildMarkSelection = null;
+                    _packetGuildPoints = 0;
                 }
             }
 
@@ -271,6 +278,11 @@ namespace HaCreator.MapSimulator.Interaction
             return "Guild UI returned to the local build seam.";
         }
 
+        internal GuildMarkSelection? GetEffectiveGuildMarkSelection()
+        {
+            return _packetGuildMarkSelection;
+        }
+
         internal string ClearPacketGuildRankingEntries()
         {
             _packetGuildRankingEntries.Clear();
@@ -359,6 +371,37 @@ namespace HaCreator.MapSimulator.Interaction
             string resolvedRole = string.IsNullOrWhiteSpace(roleLabel) ? GetLocalGuildRoleLabel() : roleLabel.Trim();
             _packetGuildAuthority = new PacketGuildAuthorityState(resolvedRole, canManageRanks, canToggleAdmission, canEditNotice);
             return $"Guild authority now follows packet-owned role {resolvedRole} (rank={FormatOnOff(canManageRanks)}, admission={FormatOnOff(canToggleAdmission)}, notice={FormatOnOff(canEditNotice)}).";
+        }
+
+        internal string SetPacketGuildMarkSelection(GuildMarkSelection selection, int guildId)
+        {
+            _packetGuildMarkSelection = selection with { ComboIndex = ResolveGuildMarkComboIndex(selection.Mark) };
+            _lastPacketSyncSummaryByTab[SocialListTab.Guild] =
+                $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.Mark}) refreshed emblem bg={selection.MarkBackground}:{selection.MarkBackgroundColor}, mark={selection.Mark}:{selection.MarkColor}.";
+            return $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.Mark}) refreshed the shared guild emblem for guild {guildId}.";
+        }
+
+        internal string SetPacketGuildPointsAndLevel(int guildPoints, int guildLevel, int guildId)
+        {
+            _packetGuildPoints = Math.Max(0, guildPoints);
+            if (_packetGuildUiState.HasValue)
+            {
+                PacketGuildUiState guildUi = _packetGuildUiState.Value;
+                _packetGuildUiState = guildUi with { GuildLevel = Math.Max(0, guildLevel) };
+            }
+
+            _lastPacketSyncSummaryByTab[SocialListTab.Guild] =
+                $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.PointsAndLevel}) refreshed guild points={_packetGuildPoints}, level={Math.Max(0, guildLevel)}.";
+            return $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.PointsAndLevel}) refreshed guild {guildId} to Lv. {Math.Max(0, guildLevel)} with {_packetGuildPoints} point(s).";
+        }
+
+        internal string ApplyLocalGuildMarkSelection(GuildMarkSelection selection)
+        {
+            _packetGuildMarkSelection = selection with { ComboIndex = ResolveGuildMarkComboIndex(selection.Mark) };
+            string guildName = ResolveEffectiveGuildName(null, ResolveEffectiveGuildMembership(null));
+            _lastPacketSyncSummaryByTab[SocialListTab.Guild] =
+                $"Local guild-mark commit mirrored the shared guild emblem for {guildName}.";
+            return $"Local guild-mark commit now updates the shared guild seam for {guildName}: bg={selection.MarkBackground}:{selection.MarkBackgroundColor}, mark={selection.Mark}:{selection.MarkColor}.";
         }
 
         private IReadOnlyList<GuildRankingSeedEntry> GetPacketGuildRankingEntries(string localGuildName)
@@ -530,6 +573,24 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return string.Equals(role, "Representative", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(role, "Leader", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static int ResolveGuildMarkComboIndex(int mark)
+        {
+            if (mark < 1000)
+            {
+                return 0;
+            }
+
+            return mark / 1000 switch
+            {
+                2 => 0,
+                3 => 1,
+                4 => 2,
+                5 => 3,
+                9 => 4,
+                _ => 0
+            };
         }
 
         private static string FormatOnOff(bool value)

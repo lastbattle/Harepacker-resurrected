@@ -595,15 +595,14 @@ namespace HaCreator.MapSimulator.Managers
 
                 if (frame.Texture != null)
                 {
-                    int width = Math.Max(1, (int)MathF.Round(frame.Width * layerState.Scale));
-                    int height = Math.Max(1, (int)MathF.Round(frame.Height * layerState.Scale));
                     context.SpriteBatch.Draw(
                         frame.Texture,
-                        new Rectangle(drawX, drawY, width, height),
+                        new Vector2(drawX, drawY),
                         null,
                         Color.White * layerState.Alpha,
                         0f,
-                        Vector2.Zero,
+                        new Vector2(frame.X, frame.Y),
+                        layerState.Scale,
                         SpriteEffects.None,
                         0f);
                 }
@@ -613,8 +612,8 @@ namespace HaCreator.MapSimulator.Managers
                         context.SpriteBatch,
                         context.SkeletonMeshRenderer,
                         null,
-                        drawX,
-                        drawY,
+                        drawX - frame.X,
+                        drawY - frame.Y,
                         Color.White * layerState.Alpha,
                         false,
                         null);

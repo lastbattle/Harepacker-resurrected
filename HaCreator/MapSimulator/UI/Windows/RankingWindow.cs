@@ -170,7 +170,9 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawWrappedText(sprite, snapshot.NavigationSeedText, bounds.X + 10, bounds.Y + 18, bounds.Width - 20f, Color.White, maxLines: 1);
-            DrawWrappedText(sprite, snapshot.NavigationStateText, bounds.X + 10, bounds.Y + 31, bounds.Width - 20f, new Color(215, 215, 215), maxLines: 2);
+            DrawWrappedText(sprite, snapshot.NavigationHostText, bounds.X + 10, bounds.Y + 31, bounds.Width - 20f, new Color(215, 215, 215), maxLines: 1);
+            DrawWrappedText(sprite, snapshot.NavigationRequestText, bounds.X + 10, bounds.Y + 44, bounds.Width - 20f, new Color(215, 215, 215), maxLines: 1);
+            DrawWrappedText(sprite, snapshot.NavigationStateText, bounds.X + 10, bounds.Y + 57, bounds.Width - 20f, new Color(215, 215, 215), maxLines: 1);
         }
 
         private void DrawLoadingLayer(SpriteBatch sprite, RankingWindowSnapshot snapshot, int tickCount)
@@ -196,13 +198,13 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle GetNavigationBounds()
         {
             int width = Math.Max(240, (CurrentFrame?.Width ?? 303) - 24);
-            return new Rectangle(Position.X + 12, Position.Y + 74, width, 52);
+            return new Rectangle(Position.X + 12, Position.Y + 74, width, 74);
         }
 
         private Rectangle GetEntryBounds(int index)
         {
             int width = Math.Max(240, (CurrentFrame?.Width ?? 303) - 24);
-            return new Rectangle(Position.X + 12, Position.Y + 132 + (index * 34), width, 32);
+            return new Rectangle(Position.X + 12, Position.Y + 154 + (index * 34), width, 32);
         }
 
         private void DrawTrimmedText(SpriteBatch sprite, string text, int x, int y, float maxWidth, Color color)

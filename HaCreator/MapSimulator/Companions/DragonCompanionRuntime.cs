@@ -90,6 +90,7 @@ namespace HaCreator.MapSimulator.Companions
         };
         private Func<MapInfo> _currentMapInfoProvider;
         private Func<int?> _questInfoStateProvider;
+        private Func<bool> _dragonFuryVisibleProvider;
         private DragonAnimationSet _currentSet;
         private string _currentActionName;
         private int _currentActionStartTime;
@@ -158,6 +159,11 @@ namespace HaCreator.MapSimulator.Companions
         public void SetQuestInfoStateProvider(Func<int?> questInfoStateProvider)
         {
             _questInfoStateProvider = questInfoStateProvider;
+        }
+
+        public void SetDragonFuryVisibleProvider(Func<bool> dragonFuryVisibleProvider)
+        {
+            _dragonFuryVisibleProvider = dragonFuryVisibleProvider;
         }
 
         public void Update(PlayerCharacter owner, int currentTime)
@@ -331,7 +337,7 @@ namespace HaCreator.MapSimulator.Companions
                 _ => "hidden"
             };
 
-            return $"Dragon action: {_currentActionName ?? "none"}, follow: {(_isFollowActive ? "active" : "passive")}, suppressed: {_isSuppressed}, quest info: {questInfoLabel}, owner: {ownerName ?? "Unknown"}";
+            return $"Dragon action: {_currentActionName ?? "none"}, follow: {(_isFollowActive ? "active" : "passive")}, fury: {IsDragonFuryVisible()}, suppressed: {_isSuppressed}, quest info: {questInfoLabel}, owner: {ownerName ?? "Unknown"}";
         }
 
         private DragonAnimationSet GetOrLoadAnimationSet(int dragonJob)
@@ -1312,12 +1318,18 @@ namespace HaCreator.MapSimulator.Companions
         private bool ShouldShowDragonFury(PlayerCharacter owner)
         {
             if (_dragonFuryAnimation == null
+                || !IsDragonFuryVisible()
                 || !ShouldShowAuxiliaryLayer(_isSuppressed, _alpha, HasMountedVehicle(owner), _currentActionName))
             {
                 return false;
             }
 
             return true;
+        }
+
+        private bool IsDragonFuryVisible()
+        {
+            return _dragonFuryVisibleProvider?.Invoke() == true;
         }
 
         private void DrawLayerAnimationSequence(

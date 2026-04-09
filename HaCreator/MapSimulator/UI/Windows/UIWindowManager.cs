@@ -855,6 +855,17 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (GetWindow(MapSimulatorWindowNames.MemoMailbox) is MemoMailboxWindow memoMailboxWindow
+                && memoMailboxWindow.TryHandleInventoryDrop(
+                    mouseX,
+                    mouseY,
+                    inventoryWindow.DraggedInventoryType,
+                    inventoryWindow.DraggedSlotIndex,
+                    inventoryWindow.DraggedSlotData))
+            {
+                return true;
+            }
+
             if (GetWindow(MapSimulatorWindowNames.QuestRewardRaise) is QuestRewardRaiseWindow raiseWindow
                 && raiseWindow.TryHandleInventoryDrop(
                     mouseX,

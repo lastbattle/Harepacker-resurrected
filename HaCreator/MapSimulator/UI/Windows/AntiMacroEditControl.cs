@@ -601,13 +601,6 @@ namespace HaCreator.MapSimulator.UI
 
         private string BuildVisibleInputText()
         {
-            if (_compositionText.Length == 0 && HasSelection)
-            {
-                int selectionStart = GetSelectionStart();
-                int selectionLength = GetSelectionLength();
-                return _inputText.Remove(selectionStart, selectionLength);
-            }
-
             if (_compositionText.Length == 0)
             {
                 return _inputText;
@@ -863,9 +856,14 @@ namespace HaCreator.MapSimulator.UI
             int visibleSelectionLength = 0;
             if (selectionStart >= 0)
             {
+                int selectionEnd = Math.Min(displayText.Length, selectionStart + GetSelectionLength());
                 int clampedVisibleSelectionStart = Math.Clamp(selectionStart - visibleStart, 0, visibleText.Length);
-                visibleSelectionStart = clampedVisibleSelectionStart;
-                visibleSelectionLength = visibleSelectionStart < visibleText.Length ? visibleText.Length - visibleSelectionStart : 0;
+                int clampedVisibleSelectionEnd = Math.Clamp(selectionEnd - visibleStart, 0, visibleText.Length);
+                if (clampedVisibleSelectionEnd > clampedVisibleSelectionStart)
+                {
+                    visibleSelectionStart = clampedVisibleSelectionStart;
+                    visibleSelectionLength = clampedVisibleSelectionEnd - clampedVisibleSelectionStart;
+                }
             }
 
             int visibleCompositionStart = -1;
@@ -894,7 +892,7 @@ namespace HaCreator.MapSimulator.UI
 
         private int ResolveCaretIndexFromMouseX(int mouseX, Rectangle ownerBounds)
         {
-            if (_font == null || string.IsNullOrEmpty(_inputText))
+            if ((_font == null && _clientTextRasterizer == null) || string.IsNullOrEmpty(_inputText))
             {
                 Rectangle emptyInputBounds = GetBounds(ownerBounds);
                 return Math.Clamp(mouseX < emptyInputBounds.Center.X ? 0 : _inputText.Length, 0, _inputText.Length);
@@ -930,11 +928,6 @@ namespace HaCreator.MapSimulator.UI
 
         private int ResolveDisplayCaretIndex()
         {
-            if (_compositionText.Length == 0 && HasSelection)
-            {
-                return GetSelectionStart();
-            }
-
             if (_compositionText.Length == 0)
             {
                 return Math.Clamp(_caretIndex, 0, _inputText.Length);

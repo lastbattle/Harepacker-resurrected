@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Effects;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
@@ -68,16 +69,12 @@ namespace HaCreator.MapSimulator
                 cashAvatarPreviewWindow.CharacterBuild = _playerManager.Player.Build;
                 cashAvatarPreviewWindow.SetFont(_fontChat);
                 cashAvatarPreviewWindow.EquipmentLoader = _playerManager.Loader != null ? _playerManager.Loader.LoadEquipment : null;
-                cashAvatarPreviewWindow.PersonalShopRequested = () =>
-                {
-                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.PersonalShop);
-                    return "CCSWnd_Char::ShowPersonalShop opened the dedicated personal-shop owner.";
-                };
-                cashAvatarPreviewWindow.EntrustedShopRequested = () =>
-                {
-                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.EntrustedShop);
-                    return "CCSWnd_Char::ShowEntrustedShop opened the dedicated entrusted-shop owner.";
-                };
+                cashAvatarPreviewWindow.PersonalShopRequested = () => ShowSocialRoomWindowForCallback(
+                    SocialRoomKind.PersonalShop,
+                    "CCSWnd_Char::ShowPersonalShop opened the dedicated personal-shop owner.");
+                cashAvatarPreviewWindow.EntrustedShopRequested = () => ShowSocialRoomWindowForCallback(
+                    SocialRoomKind.EntrustedShop,
+                    "CCSWnd_Char::ShowEntrustedShop opened the dedicated entrusted-shop owner.");
                 cashAvatarPreviewWindow.TradingRoomRequested = () =>
                 {
                     ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.CashTradingRoom);

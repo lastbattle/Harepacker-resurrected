@@ -18,8 +18,9 @@ namespace HaCreator.MapSimulator.UI
         // The in-field layer keeps that same 240px media surface centered while the
         // WZ-authored chat overlays are allowed to overhang from their own origins.
         private const int WorldOverlayTopMargin = 20;
-        private static readonly Rectangle SelfMessageTextBounds = new(18, 113, 180, 75);
-        private static readonly Rectangle ReceiverMessageTextBounds = new(40, 113, 135, 75);
+        // UIWindow.img/MapleTV/backgrnd2 and backgrnd4 ship the same full note field.
+        // Dedication mode only adds the receiver strip at y=65; it does not narrow the note box.
+        private static readonly Rectangle DraftMessageTextBounds = new(12, 112, 186, 79);
         private static readonly Rectangle ReceiverNameBounds = new(46, 68, 146, 14);
         // The MapleTV chat and media canvases carry non-zero WZ origins, so these bounds stay
         // frame-local and are resolved from the selected frame's actual top-left at draw time.
@@ -564,7 +565,7 @@ namespace HaCreator.MapSimulator.UI
 
         private static Rectangle ResolveMessageTextBounds(MapleTvSnapshot snapshot)
         {
-            return snapshot.UseReceiver ? ReceiverMessageTextBounds : SelfMessageTextBounds;
+            return DraftMessageTextBounds;
         }
 
         private static string ResolveReceiverLabel(MapleTvSnapshot snapshot)

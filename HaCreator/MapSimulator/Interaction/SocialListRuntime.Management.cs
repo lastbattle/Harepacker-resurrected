@@ -162,10 +162,12 @@ namespace HaCreator.MapSimulator.Interaction
             if (_guildManageCurrentTab == GuildManageTab.Position)
             {
                 _guildRankTitles[_guildManageSelectedRankIndex] = committedValue;
+                NotifySocialTextEditCommitted(committedValue);
             }
             else if (_guildManageCurrentTab == GuildManageTab.Change)
             {
                 _guildNoticeText = committedValue;
+                NotifySocialTextEditCommitted(committedValue);
             }
 
             _guildManageEditing = false;
@@ -196,6 +198,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _guildManageRequiresApproval = requiresApproval;
+            NotifySocialTextEditCommitted(requiresApproval ? "Approval required." : "Open enrollment.");
             return requiresApproval
                 ? "Guild admission now requires approval."
                 : "Guild admission now accepts open enrollment.";
@@ -289,10 +292,12 @@ namespace HaCreator.MapSimulator.Interaction
             if (_allianceEditorFocus == AllianceEditorFocus.Notice)
             {
                 _allianceNoticeText = committedValue;
+                NotifySocialTextEditCommitted(committedValue);
             }
             else
             {
                 _allianceRankTitles[_allianceSelectedRankIndex] = committedValue;
+                NotifySocialTextEditCommitted(committedValue);
             }
 
             _allianceEditorEditing = false;
@@ -399,6 +404,14 @@ namespace HaCreator.MapSimulator.Interaction
                     $"{GetGuildAuthoritySummary()}. {(CanEditGuildNotice() ? "Use EDIT then SAVE to commit the notice draft." : "Notice editing stays read-only.")}"
                 }
             };
+        }
+
+        private void NotifySocialTextEditCommitted(string text)
+        {
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                NotifySocialChatObserved(text.Trim());
+            }
         }
 
         private IReadOnlyList<string> BuildAllianceEditorSummary(string selectedTitle)

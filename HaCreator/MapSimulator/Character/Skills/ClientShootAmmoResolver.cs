@@ -172,6 +172,8 @@ public static class ClientShootAmmoResolver
         IReadOnlyList<InventorySlotData> cashSlots,
         int weaponCode,
         int weaponItemId,
+        int requiredAmmoCount,
+        int requiredSkillAmmoItemId,
         bool requiresUseAmmo,
         out ShootAmmoSelection refreshedSelection)
     {
@@ -181,8 +183,43 @@ public static class ClientShootAmmoResolver
             cashSlots,
             weaponCode,
             weaponItemId);
+        if (queuedSelection == null)
+        {
+            return !requiresUseAmmo;
+        }
 
-        return !requiresUseAmmo || refreshedSelection?.HasUseAmmo == true;
+        int normalizedRequiredAmmoCount = requiredAmmoCount > 0 ? requiredAmmoCount : 1;
+        if (requiresUseAmmo)
+        {
+            if (!TryResolveUseAmmoSlotByItemId(
+                    useSlots,
+                    weaponCode,
+                    weaponItemId,
+                    queuedSelection.UseItemId,
+                    normalizedRequiredAmmoCount,
+                    requiredSkillAmmoItemId,
+                    out int refreshedUseSlotIndex))
+            {
+                refreshedSelection = new ShootAmmoSelection
+                {
+                    UseSlotIndex = -1,
+                    UseItemId = queuedSelection.UseItemId,
+                    CashSlotIndex = refreshedSelection?.CashSlotIndex ?? -1,
+                    CashItemId = refreshedSelection?.CashItemId ?? queuedSelection.CashItemId
+                };
+                return false;
+            }
+
+            refreshedSelection = new ShootAmmoSelection
+            {
+                UseSlotIndex = refreshedUseSlotIndex,
+                UseItemId = queuedSelection.UseItemId,
+                CashSlotIndex = refreshedSelection?.CashSlotIndex ?? -1,
+                CashItemId = refreshedSelection?.CashItemId ?? queuedSelection.CashItemId
+            };
+        }
+
+        return true;
     }
 
     private static int ResolveActiveBulletItemId(IReadOnlyList<InventorySlotData> useSlots)

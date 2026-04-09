@@ -67,11 +67,11 @@ namespace HaCreator.MapSimulator.Interaction
                     9 => CreateDecodedResult(DecodeAskAvatar(reader, speaker, param, true)),
                     10 => DecodeAskPet(reader, speaker, param, false, resolveSelectablePet),
                     11 => DecodeAskPet(reader, speaker, param, true, resolveSelectablePet),
-                    12 => CreateDecodedResult(DecodeUnsupported(reader, speaker, messageType, param)),
+                    12 => DecodeIgnoredUnsupportedMessage(reader, speaker, messageType, param),
                     13 => CreateDecodedResult(DecodeAskYesNo(reader, speaker, param, true)),
                     14 => CreateDecodedResult(DecodeAskBoxText(reader, speaker, param)),
                     15 => DecodeAskSlideMenu(reader, speaker, param),
-                    _ => CreateDecodedResult(DecodeUnsupported(reader, speaker, messageType, param))
+                    _ => DecodeIgnoredUnsupportedMessage(reader, speaker, messageType, param)
                 };
                 NpcInteractionEntry entry = decoded.Entry;
                 PacketScriptResponsePacket autoResponse = decoded.AutoResponse;
@@ -866,20 +866,18 @@ namespace HaCreator.MapSimulator.Interaction
             return new PacketScriptDecodeResult(entry, autoResponse, closeExistingDialog, suppressDialogMutation, statusMessage);
         }
 
-        private static NpcInteractionEntry DecodeUnsupported(BinaryReader reader, PacketScriptSpeaker speaker, int messageType, byte param)
+        private static PacketScriptDecodeResult DecodeIgnoredUnsupportedMessage(BinaryReader reader, PacketScriptSpeaker speaker, int messageType, byte param)
         {
             string remainingHex = reader.BaseStream.Position >= reader.BaseStream.Length
                 ? "none"
                 : BitConverter.ToString(reader.ReadBytes((int)(reader.BaseStream.Length - reader.BaseStream.Position))).Replace("-", string.Empty, StringComparison.Ordinal);
-            return CreateEntry(
-                $"Message Type {messageType}",
-                BuildSpeakerSubtitle(speaker, "Unsupported", param),
-                string.Empty,
-                AppendMetadata(
-                    $"Packet-authored script message type {messageType} is not decoded by the simulator yet.",
+            return CreateDecodedResult(
+                null,
+                suppressDialogMutation: true,
+                statusMessage: AppendMetadata(
+                    $"Ignored packet-authored script message type {messageType} for {speaker.DisplayName}: client `CScriptMan::OnScriptMessage` falls through without opening a dialog for this message id.",
                     $"Remaining payload: {remainingHex}",
-                    "The client routes this through dedicated CScriptMan handlers and UI assets."),
-                null);
+                    $"Header: template={speaker.TemplateId}, param=0x{param:X2}."));
         }
 
         private static NpcInteractionEntry AppendTrailingByteNotice(NpcInteractionEntry entry, int trailingBytes)
@@ -1378,7 +1376,6 @@ namespace HaCreator.MapSimulator.Interaction
 
                 case 5:
                 case 7:
-                case 12:
                 case 15:
                 {
                     if (!submission.NumericValue.HasValue)

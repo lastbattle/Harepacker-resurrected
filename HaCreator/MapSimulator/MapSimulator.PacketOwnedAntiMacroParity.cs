@@ -299,7 +299,9 @@ namespace HaCreator.MapSimulator
                 : $"baseFolder={_lastPacketOwnedAntiMacroScreenshotBaseFolder}";
             string noticeState = string.IsNullOrWhiteSpace(_lastPacketOwnedAntiMacroNotice)
                 ? "no notice"
-                : $"notice=\"{_lastPacketOwnedAntiMacroNotice}\"";
+                : IsPacketOwnedAntiMacroNoticeVisible()
+                    ? $"notice active=\"{_lastPacketOwnedAntiMacroNotice}\""
+                    : $"lastNotice=\"{_lastPacketOwnedAntiMacroNotice}\" (closed)";
             return $"Anti-macro mode={_lastPacketOwnedAntiMacroMode}, type={_lastPacketOwnedAntiMacroType}, comboHeld={_packetOwnedAntiMacroComboHeld}, {ownerState}, {noticeState}, {screenshotState}, {screenshotBaseFolderState}. {_lastPacketOwnedAntiMacroSummary}";
         }
 
@@ -326,6 +328,8 @@ namespace HaCreator.MapSimulator
             }
 
             _packetOwnedAntiMacroAwaitingResult = false;
+            _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
+            _lastPacketOwnedAntiMacroSubmittedRemainingMs = -1;
             _lastPacketOwnedAntiMacroSummary = "Closed packet-owned anti-macro owner.";
             return _lastPacketOwnedAntiMacroSummary;
         }
@@ -360,8 +364,10 @@ namespace HaCreator.MapSimulator
                     answerCount == 1 ? string.Empty : "s")
                 : "Packet-authored challenge; Ctrl combo input is held.";
             challengeWindow.Configure(challengeTexture, expiresAt, answerCount, statusText);
-            challengeWindow.Show();
-            uiWindowManager.BringToFront(challengeWindow);
+            ShowWindow(
+                windowName,
+                challengeWindow,
+                trackDirectionModeOwner: ShouldTrackInheritedDirectionModeOwner());
 
             SetPacketOwnedAntiMacroComboHold(true);
             _packetOwnedAntiMacroAwaitingResult = false;
@@ -407,8 +413,10 @@ namespace HaCreator.MapSimulator
                     LoadUiCanvasTexture(ResolvePacketOwnedAntiMacroCanvas(definition.AvatarCanvasPath)),
                     CreatePacketOwnedAntiMacroButton(ResolvePacketOwnedAntiMacroSubProperty(PacketOwnedAntiMacroPopupOkButtonPath)),
                     CreatePacketOwnedAntiMacroButton(ResolvePacketOwnedAntiMacroSubProperty(PacketOwnedAntiMacroPopupCancelButtonPath)));
-                noticeWindow.Show();
-                uiWindowManager.BringToFront(noticeWindow);
+                ShowWindow(
+                    MapSimulatorWindowNames.AntiMacroNotice,
+                    noticeWindow,
+                    trackDirectionModeOwner: ShouldTrackInheritedDirectionModeOwner());
             }
 
             _lastPacketOwnedAntiMacroSummary = $"Opened anti-macro notice owner for type {noticeType} / mode {antiMacroType}.";
@@ -587,17 +595,34 @@ namespace HaCreator.MapSimulator
             byte[] payload = BuildPacketOwnedAntiMacroAnswerPayload(submittedAnswer);
             payloadHex = BitConverter.ToString(payload).Replace("-", string.Empty);
 
+            if (_localUtilityOfficialSessionBridge.HasConnectedSession)
+            {
+                status = $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms.";
+                return _localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    payload,
+                    out status);
+            }
+
+            if (_localUtilityOfficialSessionBridge.HasAttachedClient
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    payload,
+                    out string queuedStatus))
+            {
+                status =
+                    $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms and queued opcode {PacketOwnedAntiMacroAnswerSubmitOpcode} until the attached Maple session finishes init. {queuedStatus}";
+                return true;
+            }
+
             if (!_localUtilityOfficialSessionBridge.HasConnectedSession)
             {
                 status = "Local utility official-session bridge has no connected Maple session for anti-macro outbound injection.";
                 return false;
             }
 
-            status = $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms.";
-            return _localUtilityOfficialSessionBridge.TrySendOutboundPacket(
-                PacketOwnedAntiMacroAnswerSubmitOpcode,
-                payload,
-                out status);
+            status = "Local utility official-session bridge could not inject or queue the anti-macro outbound packet.";
+            return false;
         }
 
         private static byte[] BuildPacketOwnedAntiMacroAnswerPayload(string submittedAnswer)
@@ -888,6 +913,12 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedAntiMacroSummary = responseCode == 2
                 ? "Dismissed anti-macro notice with Cancel."
                 : "Dismissed anti-macro notice with OK.";
+        }
+
+        private bool IsPacketOwnedAntiMacroNoticeVisible()
+        {
+            return uiWindowManager?.GetWindow(MapSimulatorWindowNames.AntiMacroNotice) is AntiMacroNoticeWindow noticeWindow
+                && noticeWindow.IsVisible;
         }
     }
 }

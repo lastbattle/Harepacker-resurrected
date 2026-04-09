@@ -8,10 +8,16 @@ using System.Text;
 
 namespace HaCreator.MapSimulator.Interaction
 {
+    internal readonly record struct PacketOwnedNpcUtilityOutboundRequest(
+        int Opcode,
+        IReadOnlyList<byte> Payload,
+        string Summary);
+
     internal sealed class PacketOwnedShopDialogRuntime
     {
         private sealed class ShopItemEntry
         {
+            public int PacketIndex { get; init; }
             public int ItemId { get; init; }
             public string ItemName { get; init; } = string.Empty;
             public InventoryType InventoryType { get; init; }
@@ -98,6 +104,38 @@ namespace HaCreator.MapSimulator.Interaction
         internal string BuildFooter()
         {
             return StatusMessage;
+        }
+
+        internal bool TryBuildBuyOutboundRequest(int itemId, int quantity, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
+            request = default;
+            message = null;
+            if (!IsOpen)
+            {
+                message = "NPC shop buy outbound request was ignored because the packet-owned CShopDlg owner is not open.";
+                return false;
+            }
+
+            if (quantity <= 0)
+            {
+                message = "NPC shop buy outbound request requires a positive quantity.";
+                return false;
+            }
+
+            ShopItemEntry entry = FindBuyEntry(itemId);
+            if (entry == null)
+            {
+                message = $"NPC shop buy outbound request could not find item {itemId.ToString(CultureInfo.InvariantCulture)} in the decoded buy list.";
+                return false;
+            }
+
+            int encodedPrice = ResolveEncodedBuyPrice(entry);
+            byte[] payload = BuildShopBuyPayload(entry.PacketIndex, entry.ItemId, quantity, encodedPrice);
+            request = new PacketOwnedNpcUtilityOutboundRequest(
+                66,
+                payload,
+                $"Mirrored CShopDlg::SendBuyRequest row {entry.PacketIndex.ToString(CultureInfo.InvariantCulture)} for {entry.ItemName} x{quantity.ToString(CultureInfo.InvariantCulture)} (opcode 66, mode 0, price {encodedPrice.ToString(CultureInfo.InvariantCulture)}).");
+            return true;
         }
 
         internal bool TryApplyLocalBuy(IInventoryRuntime inventory, int itemId, int quantity, out string message)
@@ -219,6 +257,52 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryBuildSellOutboundRequest(IInventoryRuntime inventory, int itemId, int quantity, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
+            request = default;
+            message = null;
+            if (!IsOpen)
+            {
+                message = "NPC shop sell outbound request was ignored because the packet-owned CShopDlg owner is not open.";
+                return false;
+            }
+
+            if (inventory == null)
+            {
+                message = "NPC shop sell outbound request requires a live inventory runtime.";
+                return false;
+            }
+
+            if (itemId <= 0 || quantity <= 0)
+            {
+                message = "NPC shop sell outbound request requires a positive item id and quantity.";
+                return false;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            if (inventoryType == InventoryType.NONE)
+            {
+                message = $"NPC shop sell outbound request could not resolve inventory type for item {itemId.ToString(CultureInfo.InvariantCulture)}.";
+                return false;
+            }
+
+            if (!TryResolveInventorySlotIndex(inventory, inventoryType, itemId, quantity, out int slotIndex))
+            {
+                message = $"NPC shop sell outbound request could not resolve a live slot for item {itemId.ToString(CultureInfo.InvariantCulture)} x{quantity.ToString(CultureInfo.InvariantCulture)}.";
+                return false;
+            }
+
+            string itemName = InventoryItemMetadataResolver.TryResolveItemName(itemId, out string resolvedName)
+                ? resolvedName
+                : $"Item {itemId.ToString(CultureInfo.InvariantCulture)}";
+            byte[] payload = BuildShopSellPayload(slotIndex, itemId, quantity);
+            request = new PacketOwnedNpcUtilityOutboundRequest(
+                66,
+                payload,
+                $"Mirrored CShopDlg::SendSellRequest slot {slotIndex.ToString(CultureInfo.InvariantCulture)} for {itemName} x{quantity.ToString(CultureInfo.InvariantCulture)} (opcode 66, mode 1).");
+            return true;
+        }
+
         internal bool TryApplyLocalRecharge(IInventoryRuntime inventory, int itemId, int targetQuantity, out string message)
         {
             message = null;
@@ -273,6 +357,43 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryBuildRechargeOutboundRequest(IInventoryRuntime inventory, int itemId, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
+            request = default;
+            message = null;
+            if (!IsOpen)
+            {
+                message = "NPC shop recharge outbound request was ignored because the packet-owned CShopDlg owner is not open.";
+                return false;
+            }
+
+            if (inventory == null)
+            {
+                message = "NPC shop recharge outbound request requires a live inventory runtime.";
+                return false;
+            }
+
+            ShopItemEntry entry = FindRechargeEntry(itemId);
+            if (entry == null)
+            {
+                message = $"NPC shop recharge outbound request could not find item {itemId.ToString(CultureInfo.InvariantCulture)} in the decoded recharge list.";
+                return false;
+            }
+
+            if (!TryResolveInventorySlotIndex(inventory, entry.InventoryType, itemId, 1, out int slotIndex))
+            {
+                message = $"NPC shop recharge outbound request could not resolve a live slot for {entry.ItemName}.";
+                return false;
+            }
+
+            byte[] payload = BuildShopRechargePayload(slotIndex);
+            request = new PacketOwnedNpcUtilityOutboundRequest(
+                66,
+                payload,
+                $"Mirrored CShopDlg::SendRechargeRequest slot {slotIndex.ToString(CultureInfo.InvariantCulture)} for {entry.ItemName} (opcode 66, mode 2).");
+            return true;
+        }
+
         private bool TryApplyOpenPacket(byte[] payload, out string message)
         {
             IsOpen = true;
@@ -316,7 +437,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             for (int i = 0; i < count; i++)
             {
-                if (!TryReadShopItem(reader, out ShopItemEntry entry))
+                if (!TryReadShopItem(reader, i, out ShopItemEntry entry))
                 {
                     return false;
                 }
@@ -345,7 +466,7 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private bool TryReadShopItem(BinaryReader reader, out ShopItemEntry entry)
+        private bool TryReadShopItem(BinaryReader reader, int packetIndex, out ShopItemEntry entry)
         {
             entry = null;
             Stream stream = reader.BaseStream;
@@ -398,6 +519,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             entry = new ShopItemEntry
             {
+                PacketIndex = packetIndex,
                 ItemId = itemId,
                 ItemName = itemName,
                 InventoryType = inventoryType,
@@ -603,6 +725,89 @@ namespace HaCreator.MapSimulator.Interaction
             return null;
         }
 
+        private static int ResolveEncodedBuyPrice(ShopItemEntry entry)
+        {
+            if (entry == null)
+            {
+                return 0;
+            }
+
+            int discountedByRate = 0;
+            if (entry.DiscountRate > 0 && entry.Price > 0)
+            {
+                double value = (100d - entry.DiscountRate) * entry.Price / 100d;
+                discountedByRate = ((int)(value * 10d)) % 10 >= 5
+                    ? (int)(value + 1d)
+                    : (int)value;
+            }
+
+            return discountedByRate > 0 ? discountedByRate : Math.Max(0, entry.Price);
+        }
+
+        private static byte[] BuildShopBuyPayload(int packetIndex, int itemId, int quantity, int encodedPrice)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.ASCII, leaveOpen: true);
+            writer.Write((byte)0);
+            writer.Write((short)Math.Clamp(packetIndex, 0, ushort.MaxValue));
+            writer.Write(itemId);
+            writer.Write((short)Math.Clamp(quantity, 1, ushort.MaxValue));
+            writer.Write(encodedPrice);
+            return stream.ToArray();
+        }
+
+        private static byte[] BuildShopSellPayload(int slotIndex, int itemId, int quantity)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.ASCII, leaveOpen: true);
+            writer.Write((byte)1);
+            writer.Write((short)Math.Clamp(slotIndex, 1, ushort.MaxValue));
+            writer.Write(itemId);
+            writer.Write((short)Math.Clamp(quantity, 1, ushort.MaxValue));
+            return stream.ToArray();
+        }
+
+        private static byte[] BuildShopRechargePayload(int slotIndex)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.ASCII, leaveOpen: true);
+            writer.Write((byte)2);
+            writer.Write((short)Math.Clamp(slotIndex, 1, ushort.MaxValue));
+            return stream.ToArray();
+        }
+
+        private static bool TryResolveInventorySlotIndex(IInventoryRuntime inventory, InventoryType inventoryType, int itemId, int minimumQuantity, out int slotIndex)
+        {
+            slotIndex = -1;
+            if (inventory == null)
+            {
+                return false;
+            }
+
+            IReadOnlyList<InventorySlotData> slots = inventory.GetSlots(inventoryType);
+            if (slots == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < slots.Count; i++)
+            {
+                InventorySlotData slot = slots[i];
+                if (slot == null
+                    || slot.ItemId != itemId
+                    || slot.IsDisabled
+                    || slot.Quantity < Math.Max(1, minimumQuantity))
+                {
+                    continue;
+                }
+
+                slotIndex = i + 1;
+                return true;
+            }
+
+            return false;
+        }
+
         private static int ResolveSellPrice(int itemId)
         {
             InventoryItemTooltipMetadata metadata = InventoryItemMetadataResolver.ResolveTooltipMetadata(itemId);
@@ -685,6 +890,7 @@ namespace HaCreator.MapSimulator.Interaction
             internal long ItemSerialNumber { get; init; }
             internal long CashSerialNumber { get; init; }
             internal bool IsRechargeBundle { get; init; }
+            internal string MetadataSummary { get; init; } = string.Empty;
         }
 
         private readonly struct StoreInventoryGroup
@@ -751,6 +957,23 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"Accepted packet-authored store-bank get-all request for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with the zero-fee StringPool 0xDC5 branch.";
             AppendNote(StatusMessage);
             return StatusMessage;
+        }
+
+        internal bool TryBuildPendingGetAllOutboundRequest(out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
+            request = default;
+            message = null;
+            if (!HasPendingGetAllRequest)
+            {
+                message = "Store-bank get-all outbound request was ignored because no packet-authored prompt is waiting.";
+                return false;
+            }
+
+            request = new PacketOwnedNpcUtilityOutboundRequest(
+                69,
+                new byte[] { 27 },
+                $"Mirrored CStoreBankDlg::SendGetAllRequest for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) and fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)} (opcode 69, mode 27).");
+            return true;
         }
 
         internal bool TryApplyPacket(int packetType, byte[] payload, out string message)
@@ -1058,7 +1281,10 @@ namespace HaCreator.MapSimulator.Interaction
                     string quantitySuffix = item.Quantity > 1
                         ? $" x{item.Quantity.ToString(CultureInfo.InvariantCulture)}"
                         : string.Empty;
-                    names.Add($"{item.ItemName}{quantitySuffix}{BuildDecodedItemMarker(item)}{BuildDecodedItemSerialMarker(item)}");
+                    string metadataSuffix = string.IsNullOrWhiteSpace(item.MetadataSummary)
+                        ? string.Empty
+                        : $" | {item.MetadataSummary}";
+                    names.Add($"{item.ItemName}{quantitySuffix}{BuildDecodedItemMarker(item)}{BuildDecodedItemSerialMarker(item)}{metadataSuffix}");
                     if (names.Count >= 4)
                     {
                         break;
@@ -1183,10 +1409,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             int quantity = 1;
             string title = string.Empty;
+            string metadataSummary = string.Empty;
             switch (slotType)
             {
                 case 1:
-                    if (!TryReadEquipBody(reader, hasCashSerialNumber, out title))
+                    if (!TryReadEquipBody(reader, hasCashSerialNumber, out title, out metadataSummary))
                     {
                         return false;
                     }
@@ -1194,7 +1421,7 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
 
                 case 2:
-                    if (!TryReadBundleBody(reader, itemId, out quantity, out title))
+                    if (!TryReadBundleBody(reader, itemId, out quantity, out title, out metadataSummary))
                     {
                         return false;
                     }
@@ -1202,7 +1429,7 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
 
                 case 3:
-                    if (!TryReadPetBody(reader, out title))
+                    if (!TryReadPetBody(reader, out title, out metadataSummary))
                     {
                         return false;
                     }
@@ -1235,14 +1462,16 @@ namespace HaCreator.MapSimulator.Interaction
                 HasCashSerialNumber = hasCashSerialNumber,
                 ItemSerialNumber = itemSerialNumber,
                 CashSerialNumber = cashSerialNumber,
-                IsRechargeBundle = slotType == 2 && itemId / 10000 is 207 or 233
+                IsRechargeBundle = slotType == 2 && itemId / 10000 is 207 or 233,
+                MetadataSummary = metadataSummary
             };
             return true;
         }
 
-        private static bool TryReadEquipBody(BinaryReader reader, bool hasCashSerialNumber, out string title)
+        private static bool TryReadEquipBody(BinaryReader reader, bool hasCashSerialNumber, out string title, out string metadataSummary)
         {
             title = string.Empty;
+            metadataSummary = string.Empty;
             Stream stream = reader.BaseStream;
             const int equipStatsByteLength = (sizeof(byte) * 2) + (sizeof(short) * 15);
             if (stream.Length - stream.Position < equipStatsByteLength)
@@ -1250,7 +1479,23 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            stream.Position += equipStatsByteLength;
+            short remainingUpgradeCount = reader.ReadInt16();
+            byte upgradeCount = reader.ReadByte();
+            short strength = reader.ReadInt16();
+            short dexterity = reader.ReadInt16();
+            short intelligence = reader.ReadInt16();
+            short luck = reader.ReadInt16();
+            short hp = reader.ReadInt16();
+            short mp = reader.ReadInt16();
+            short weaponAttack = reader.ReadInt16();
+            short magicAttack = reader.ReadInt16();
+            short weaponDefense = reader.ReadInt16();
+            short magicDefense = reader.ReadInt16();
+            short accuracy = reader.ReadInt16();
+            short avoidability = reader.ReadInt16();
+            short hands = reader.ReadInt16();
+            short speed = reader.ReadInt16();
+            short jump = reader.ReadInt16();
             if (!TryReadMapleString(reader, out title))
             {
                 return false;
@@ -1262,7 +1507,19 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            stream.Position += tailLength;
+            short attribute = reader.ReadInt16();
+            byte levelUpType = reader.ReadByte();
+            byte level = reader.ReadByte();
+            int experience = reader.ReadInt32();
+            int durability = reader.ReadInt32();
+            int itemUpgradeCount = reader.ReadInt32();
+            byte grade = reader.ReadByte();
+            byte bonusUpgradeCount = reader.ReadByte();
+            short option1 = reader.ReadInt16();
+            short option2 = reader.ReadInt16();
+            short option3 = reader.ReadInt16();
+            short socket1 = reader.ReadInt16();
+            short socket2 = reader.ReadInt16();
             if (!hasCashSerialNumber)
             {
                 if (stream.Length - stream.Position < sizeof(long))
@@ -1274,13 +1531,45 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             stream.Position += sizeof(long) + sizeof(int);
+            metadataSummary = BuildEquipMetadataSummary(
+                remainingUpgradeCount,
+                upgradeCount,
+                strength,
+                dexterity,
+                intelligence,
+                luck,
+                hp,
+                mp,
+                weaponAttack,
+                magicAttack,
+                weaponDefense,
+                magicDefense,
+                accuracy,
+                avoidability,
+                hands,
+                speed,
+                jump,
+                attribute,
+                levelUpType,
+                level,
+                experience,
+                durability,
+                itemUpgradeCount,
+                grade,
+                bonusUpgradeCount,
+                option1,
+                option2,
+                option3,
+                socket1,
+                socket2);
             return true;
         }
 
-        private static bool TryReadBundleBody(BinaryReader reader, int itemId, out int quantity, out string title)
+        private static bool TryReadBundleBody(BinaryReader reader, int itemId, out int quantity, out string title, out string metadataSummary)
         {
             quantity = 1;
             title = string.Empty;
+            metadataSummary = string.Empty;
             Stream stream = reader.BaseStream;
             if (stream.Length - stream.Position < sizeof(ushort))
             {
@@ -1298,7 +1587,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            _ = reader.ReadInt16();
+            short attribute = reader.ReadInt16();
             if (itemId / 10000 is 207 or 233)
             {
                 if (stream.Length - stream.Position < sizeof(long))
@@ -1306,15 +1595,19 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
-                _ = reader.ReadInt64();
+                long rechargeableSerialNumber = reader.ReadInt64();
+                metadataSummary = BuildBundleMetadataSummary(attribute, rechargeableSerialNumber);
+                return true;
             }
 
+            metadataSummary = BuildBundleMetadataSummary(attribute, rechargeableSerialNumber: 0);
             return true;
         }
 
-        private static bool TryReadPetBody(BinaryReader reader, out string title)
+        private static bool TryReadPetBody(BinaryReader reader, out string title, out string metadataSummary)
         {
             title = string.Empty;
+            metadataSummary = string.Empty;
             Stream stream = reader.BaseStream;
             const int petNameLength = 13;
             const int petTailLength = sizeof(byte) + sizeof(short) + sizeof(byte) + sizeof(long) + sizeof(short) + sizeof(ushort) + sizeof(int) + sizeof(short);
@@ -1325,8 +1618,188 @@ namespace HaCreator.MapSimulator.Interaction
 
             byte[] petNameBytes = reader.ReadBytes(petNameLength);
             title = Encoding.ASCII.GetString(petNameBytes).TrimEnd('\0', ' ');
-            stream.Position += petTailLength;
+            byte level = reader.ReadByte();
+            short closeness = reader.ReadInt16();
+            byte fullness = reader.ReadByte();
+            _ = reader.ReadInt64();
+            short attribute = reader.ReadInt16();
+            ushort skill = reader.ReadUInt16();
+            int remainingLife = reader.ReadInt32();
+            short fatigue = reader.ReadInt16();
+            metadataSummary = BuildPetMetadataSummary(level, closeness, fullness, attribute, skill, remainingLife, fatigue);
             return true;
+        }
+
+        private static string BuildEquipMetadataSummary(
+            short remainingUpgradeCount,
+            byte upgradeCount,
+            short strength,
+            short dexterity,
+            short intelligence,
+            short luck,
+            short hp,
+            short mp,
+            short weaponAttack,
+            short magicAttack,
+            short weaponDefense,
+            short magicDefense,
+            short accuracy,
+            short avoidability,
+            short hands,
+            short speed,
+            short jump,
+            short attribute,
+            byte levelUpType,
+            byte level,
+            int experience,
+            int durability,
+            int itemUpgradeCount,
+            byte grade,
+            byte bonusUpgradeCount,
+            short option1,
+            short option2,
+            short option3,
+            short socket1,
+            short socket2)
+        {
+            List<string> parts = new()
+            {
+                $"RUC {remainingUpgradeCount}"
+            };
+            if (upgradeCount > 0)
+            {
+                parts.Add($"CUC {upgradeCount}");
+            }
+
+            AppendMetadataPart(parts, "STR", strength);
+            AppendMetadataPart(parts, "DEX", dexterity);
+            AppendMetadataPart(parts, "INT", intelligence);
+            AppendMetadataPart(parts, "LUK", luck);
+            AppendMetadataPart(parts, "HP", hp);
+            AppendMetadataPart(parts, "MP", mp);
+            AppendMetadataPart(parts, "PAD", weaponAttack);
+            AppendMetadataPart(parts, "MAD", magicAttack);
+            AppendMetadataPart(parts, "PDD", weaponDefense);
+            AppendMetadataPart(parts, "MDD", magicDefense);
+            AppendMetadataPart(parts, "ACC", accuracy);
+            AppendMetadataPart(parts, "EVA", avoidability);
+            AppendMetadataPart(parts, "Hands", hands);
+            AppendMetadataPart(parts, "Speed", speed);
+            AppendMetadataPart(parts, "Jump", jump);
+
+            if (attribute != 0)
+            {
+                parts.Add($"Attr 0x{(ushort)attribute:X4}");
+            }
+
+            if (levelUpType > 0)
+            {
+                parts.Add($"LvType {levelUpType}");
+            }
+
+            if (level > 0)
+            {
+                parts.Add($"Lv {level}");
+            }
+
+            if (experience > 0)
+            {
+                parts.Add($"EXP {experience}");
+            }
+
+            if (durability > 0)
+            {
+                parts.Add($"Dur {durability}");
+            }
+
+            if (itemUpgradeCount > 0)
+            {
+                parts.Add($"IUC {itemUpgradeCount}");
+            }
+
+            if (grade > 0)
+            {
+                parts.Add($"Grade {grade}");
+            }
+
+            if (bonusUpgradeCount > 0)
+            {
+                parts.Add($"CHUC {bonusUpgradeCount}");
+            }
+
+            if (option1 != 0 || option2 != 0 || option3 != 0)
+            {
+                parts.Add($"Opt {option1}/{option2}/{option3}");
+            }
+
+            if (socket1 != 0 || socket2 != 0)
+            {
+                parts.Add($"Socket {socket1}/{socket2}");
+            }
+
+            return string.Join(", ", parts);
+        }
+
+        private static string BuildBundleMetadataSummary(short attribute, long rechargeableSerialNumber)
+        {
+            List<string> parts = new();
+            if (attribute != 0)
+            {
+                parts.Add($"Attr 0x{(ushort)attribute:X4}");
+            }
+
+            if (rechargeableSerialNumber > 0)
+            {
+                parts.Add($"RechargeSN {rechargeableSerialNumber}");
+            }
+
+            return string.Join(", ", parts);
+        }
+
+        private static string BuildPetMetadataSummary(
+            byte level,
+            short closeness,
+            byte fullness,
+            short attribute,
+            ushort skill,
+            int remainingLife,
+            short fatigue)
+        {
+            List<string> parts = new()
+            {
+                $"PetLv {level}",
+                $"Closeness {closeness}",
+                $"Fullness {fullness}"
+            };
+            if (attribute != 0)
+            {
+                parts.Add($"Attr 0x{(ushort)attribute:X4}");
+            }
+
+            if (skill > 0)
+            {
+                parts.Add($"Skill 0x{skill:X4}");
+            }
+
+            if (remainingLife > 0)
+            {
+                parts.Add($"Life {remainingLife}");
+            }
+
+            if (fatigue > 0)
+            {
+                parts.Add($"Fatigue {fatigue}");
+            }
+
+            return string.Join(", ", parts);
+        }
+
+        private static void AppendMetadataPart(List<string> parts, string label, short value)
+        {
+            if (value != 0)
+            {
+                parts.Add($"{label} {value:+#;-#;0}");
+            }
         }
 
         private static bool TryReadMapleString(BinaryReader reader, out string value)

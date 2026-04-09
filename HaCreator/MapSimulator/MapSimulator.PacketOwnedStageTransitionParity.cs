@@ -199,6 +199,25 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (snapshot.AvatarLook != null)
+            {
+                CharacterBuild avatarLookBuild = loader.LoadFromAvatarLook(LoginAvatarLookCodec.CloneLook(snapshot.AvatarLook), targetBuild);
+                if (avatarLookBuild != null)
+                {
+                    targetBuild.Gender = avatarLookBuild.Gender;
+                    targetBuild.Skin = avatarLookBuild.Skin;
+                    targetBuild.Body = avatarLookBuild.Body ?? targetBuild.Body;
+                    targetBuild.Head = avatarLookBuild.Head ?? targetBuild.Head;
+                    targetBuild.Face = avatarLookBuild.Face ?? targetBuild.Face;
+                    targetBuild.Hair = avatarLookBuild.Hair ?? targetBuild.Hair;
+                    targetBuild.WeaponSticker = avatarLookBuild.WeaponSticker;
+                    targetBuild.Equipment = avatarLookBuild.Equipment ?? new Dictionary<EquipSlot, CharacterPart>();
+                    targetBuild.HiddenEquipment = avatarLookBuild.HiddenEquipment ?? new Dictionary<EquipSlot, CharacterPart>();
+                    targetBuild.RemotePetItemIds = avatarLookBuild.RemotePetItemIds ?? Array.Empty<int>();
+                    return;
+                }
+            }
+
             targetBuild.Body = loader.LoadBody(targetBuild.Skin) ?? targetBuild.Body;
             targetBuild.Head = loader.LoadHead(targetBuild.Skin) ?? targetBuild.Head;
             if (snapshot.FaceId > 0)

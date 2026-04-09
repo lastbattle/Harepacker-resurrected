@@ -119,6 +119,9 @@ namespace HaCreator.MapSimulator.UI
         private int _hoveredStorageIndex = -1;
         private int _hoveredInventoryIndex = -1;
 
+        internal Func<TrunkAccountSecurityPromptKind, bool> AccountSecurityPromptRequested { get; set; }
+        internal Action<TrunkUI> WindowHidden { get; set; }
+
         private readonly struct TooltipSection
         {
             public TooltipSection(string text, Color color)
@@ -237,9 +240,11 @@ namespace HaCreator.MapSimulator.UI
             _storageRuntime?.BeginAccessSession();
             CancelMesoEntry();
             UpdateAccessStatusMessage();
+            TryRequestExternalAccountSecurityPrompt();
             _previousScrollWheelValue = Mouse.GetState().ScrollWheelValue;
             _previousKeyboardState = Keyboard.GetState();
             _previousMouseState = Mouse.GetState();
+            UpdateButtonStates();
         }
 
         public override void Hide()
@@ -250,6 +255,7 @@ namespace HaCreator.MapSimulator.UI
             UpdateAccessStatusMessage();
             _previousMouseState = Mouse.GetState();
             UpdateButtonStates();
+            WindowHidden?.Invoke(this);
         }
 
         public override void SetFont(SpriteFont font)
@@ -330,6 +336,33 @@ namespace HaCreator.MapSimulator.UI
         public void ConfigureStorageLoginSecurity(string picCode, bool secondaryPasswordEnabled, string secondaryPassword)
         {
             _storageRuntime?.ConfigureLoginAccountSecurity(picCode, secondaryPasswordEnabled, secondaryPassword);
+            UpdateAccessStatusMessage();
+            UpdateButtonStates();
+        }
+
+        public void ResumeSecurityUnlockFlow()
+        {
+            CancelMesoEntry();
+            UpdateAccessStatusMessage();
+            if (!IsVisible || _storageRuntime == null || !_storageRuntime.CanCurrentCharacterAccess)
+            {
+                UpdateButtonStates();
+                return;
+            }
+
+            if (!_storageRuntime.IsClientAccountAuthorityVerified || !_storageRuntime.IsSecondaryPasswordVerified)
+            {
+                BeginSecondaryPasswordEntry();
+            }
+            else
+            {
+                UpdateButtonStates();
+            }
+        }
+
+        public void RefreshSecurityStatus()
+        {
+            CancelMesoEntry();
             UpdateAccessStatusMessage();
             UpdateButtonStates();
         }
@@ -1493,6 +1526,32 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
+        private bool TryRequestExternalAccountSecurityPrompt()
+        {
+            if (_storageRuntime == null || !_storageRuntime.CanCurrentCharacterAccess)
+            {
+                return false;
+            }
+
+            if (_storageRuntime.HasAccountPic &&
+                !_storageRuntime.IsAccountPicVerified &&
+                AccountSecurityPromptRequested?.Invoke(TrunkAccountSecurityPromptKind.VerifyPic) == true)
+            {
+                _statusMessage = "Waiting for simulator account PIC verification.";
+                return true;
+            }
+
+            if (_storageRuntime.HasAccountSecondaryPassword &&
+                !_storageRuntime.IsAccountSecondaryPasswordVerified &&
+                AccountSecurityPromptRequested?.Invoke(TrunkAccountSecurityPromptKind.VerifySecondaryPassword) == true)
+            {
+                _statusMessage = "Waiting for simulator account secondary-password verification.";
+                return true;
+            }
+
+            return false;
+        }
+
         private void BeginSecondaryPasswordEntry()
         {
             if (_storageRuntime == null || !_storageRuntime.CanCurrentCharacterAccess)
@@ -1503,6 +1562,13 @@ namespace HaCreator.MapSimulator.UI
 
             if (_storageRuntime.HasAccountPic && !_storageRuntime.IsAccountPicVerified)
             {
+                if (TryRequestExternalAccountSecurityPrompt())
+                {
+                    CancelMesoEntry();
+                    UpdateButtonStates();
+                    return;
+                }
+
                 BeginMesoEntry(MesoEntryMode.VerifyAccountPic);
                 _statusMessage = "Storage access is account-locked. Enter the configured PIC first.";
                 return;
@@ -1510,6 +1576,13 @@ namespace HaCreator.MapSimulator.UI
 
             if (_storageRuntime.HasAccountSecondaryPassword && !_storageRuntime.IsAccountSecondaryPasswordVerified)
             {
+                if (TryRequestExternalAccountSecurityPrompt())
+                {
+                    CancelMesoEntry();
+                    UpdateButtonStates();
+                    return;
+                }
+
                 BeginMesoEntry(MesoEntryMode.VerifyAccountSecondaryPassword);
                 _statusMessage = "Storage access is account-locked. Enter the account secondary password.";
                 return;
@@ -1808,6 +1881,11 @@ namespace HaCreator.MapSimulator.UI
         void ISoftKeyboardHost.OnSoftKeyboardClosed()
         {
             _softKeyboardActive = false;
+        }
+
+        void ISoftKeyboardHost.SetSoftKeyboardCompositionText(string text)
+        {
+            HandleCompositionText(text);
         }
 
         private static SoftKeyboardKeyboardType GetSoftKeyboardType(MesoEntryMode mode)

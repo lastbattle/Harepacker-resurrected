@@ -17,6 +17,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             2121001,
             2221001,
             2321001,
+            3221001,
             22121000,
             22151001,
             4341002,
@@ -24,11 +25,34 @@ namespace HaCreator.MapSimulator.Character.Skills
             MonkeyWaveSkillId,
             WildHunterSwallowSkillId
         };
+        private static readonly HashSet<int> SupportedKeyDownSkillIds = new()
+        {
+            4341002,
+            5101004,
+            15101003,
+            14111006,
+            2121001,
+            2221001,
+            2321001,
+            3121004,
+            3221001,
+            4341003,
+            MonkeyWaveSkillId,
+            5201002,
+            13111002,
+            22121000,
+            22151001,
+            WildHunterSwallowSkillId,
+            33121009,
+            35001001,
+            35101009
+        };
         private static readonly HashSet<int> ReleaseArmedTextSkillIds = new()
         {
             2121001,
             2221001,
             2321001,
+            3221001,
             4341002,
             4341003,
             MonkeyWaveSkillId,
@@ -93,6 +117,15 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
 
         public static bool UsesReleaseTriggeredExecution(int skillId) => ReleaseTriggeredSkillIds.Contains(skillId);
+
+        public static bool IsSupportedKeyDownSkill(int skillId) => SupportedKeyDownSkillIds.Contains(skillId);
+
+        public static bool ResolveKeyDownSkillState(int skillId, bool isKeydownSkill)
+        {
+            return isKeydownSkill
+                || UsesReleaseTriggeredExecution(skillId)
+                || IsSupportedKeyDownSkill(skillId);
+        }
 
         public static bool UsesRemoteReleaseFollowUpPayload(int skillId)
         {
@@ -175,10 +208,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             int normalizedDurationMs = Math.Max(0, durationMs);
             int normalizedMaxHoldDurationMs = Math.Max(0, maxHoldDurationMs);
+            bool normalizedIsKeydownSkill = ResolveKeyDownSkillState(skillId, isKeydownSkill);
             bool usesReleaseTriggeredExecution = UsesReleaseTriggeredExecution(skillId);
 
             autoEnterHold = !isHolding
-                && isKeydownSkill
+                && normalizedIsKeydownSkill
                 && normalizedDurationMs > 0
                 && (explicitAutoEnterHold
                     || usesReleaseTriggeredExecution
@@ -195,7 +229,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             activeDurationMs = normalizedDurationMs;
         }
 
-        public static bool UsesChargeDamageScaling(int skillId) => skillId is 22121000 or 22151001 or MonkeyWaveSkillId;
+        public static bool UsesChargeDamageScaling(int skillId) => skillId is 3221001 or 22121000 or 22151001 or MonkeyWaveSkillId;
 
         public static bool ArmsAtFullStrengthOnCriticalHit(int skillId) => skillId == MonkeyWaveSkillId;
 

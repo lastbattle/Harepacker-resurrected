@@ -2866,6 +2866,12 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadButton(userInfoProperty?["pet"] as WzSubProperty, "BtException", clickSound, overSound, device),
                 LoadButton(userInfoProperty?["collect"] as WzSubProperty, "BtArrayName", clickSound, overSound, device),
                 LoadButton(userInfoProperty?["collect"] as WzSubProperty, "BtArrayGet", clickSound, overSound, device));
+            window.InitializePetTabButtons(new[]
+            {
+                LoadCanvasStateTabButton(userInfoProperty?["pet"]?["Tab"] as WzSubProperty, "0", device),
+                LoadCanvasStateTabButton(userInfoProperty?["pet"]?["Tab"] as WzSubProperty, "1", device),
+                LoadCanvasStateTabButton(userInfoProperty?["pet"]?["Tab"] as WzSubProperty, "2", device)
+            });
 
 
             RegisterUserInfoSubPage(window, "ride", userInfoProperty?["ride"] as WzSubProperty, device);

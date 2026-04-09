@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Character.Skills;
 using Microsoft.Xna.Framework;
 using System;
@@ -252,6 +253,47 @@ namespace HaCreator.MapSimulator.Pools
             return new Rectangle(x, y, width, height);
         }
 
+        internal static Vector2 ResolvePacketOwnedMobAttackHitAnchor(
+            Rectangle hitbox,
+            Vector2 summonPosition,
+            MobAnimationSet.AttackInfoMetadata attackInfo,
+            bool facingRight,
+            Random random)
+        {
+            if (attackInfo?.HitAttach == true)
+            {
+                return summonPosition + ResolvePacketOwnedAttachedHitOffset(attackInfo, facingRight);
+            }
+
+            if (!hitbox.IsEmpty)
+            {
+                return new Vector2(
+                    hitbox.Left + random.Next(Math.Max(1, hitbox.Width)),
+                    hitbox.Top + random.Next(Math.Max(1, hitbox.Height)));
+            }
+
+            if (attackInfo?.HasRangeOrigin == true)
+            {
+                return summonPosition + ResolvePacketOwnedAttachedHitOffset(attackInfo, facingRight);
+            }
+
+            return summonPosition;
+        }
+
+        internal static Vector2 ResolvePacketOwnedAttachedHitPosition(
+            Vector2 summonPosition,
+            Vector2 authoredOffset,
+            bool mirrorOffsetWithFacing,
+            bool facingRight)
+        {
+            if (!mirrorOffsetWithFacing || facingRight)
+            {
+                return summonPosition + authoredOffset;
+            }
+
+            return summonPosition + new Vector2(-authoredOffset.X, authoredOffset.Y);
+        }
+
         public static int ClearAttachedHitEffects<T>(
             IList<T> hitEffects,
             int summonObjectId,
@@ -298,6 +340,24 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return skillData.Projectile?.Animation?.Frames.Count > 0;
+        }
+
+        private static Vector2 ResolvePacketOwnedAttachedHitOffset(
+            MobAnimationSet.AttackInfoMetadata attackInfo,
+            bool facingRight)
+        {
+            if (attackInfo?.HasRangeOrigin != true)
+            {
+                return Vector2.Zero;
+            }
+
+            int offsetX = attackInfo.RangeOrigin.X;
+            if (attackInfo.FacingAttach && !facingRight)
+            {
+                offsetX = -offsetX;
+            }
+
+            return new Vector2(offsetX, attackInfo.RangeOrigin.Y);
         }
 
         private static bool IsSpawnAnimationActive(ActiveSummon summon, int currentTime)

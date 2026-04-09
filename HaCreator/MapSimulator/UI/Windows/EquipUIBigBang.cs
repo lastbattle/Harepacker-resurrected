@@ -615,6 +615,11 @@ namespace HaCreator.MapSimulator.UI
             _mechanicEquipmentController = mechanicEquipmentController;
         }
 
+        private int ComputeCurrentMechanicEquipmentStateToken()
+        {
+            return _mechanicEquipmentController?.ComputeStateToken() ?? 0;
+        }
+
         public void SetMechanicPaneAvailable(bool available)
         {
             if (!available && _currentTab == TAB_MECHANIC)
@@ -811,7 +816,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (EquipmentChangeClientParity.IsResolvedResultStale(_characterBuild, result))
+            if (EquipmentChangeClientParity.IsResolvedResultStale(_characterBuild, result, ComputeCurrentMechanicEquipmentStateToken))
             {
                 if (pendingChange.SourceInventoryLocked && inventoryWindow != null)
                 {
@@ -931,7 +936,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (EquipmentChangeClientParity.IsResolvedResultStale(_characterBuild, result))
+            if (EquipmentChangeClientParity.IsResolvedResultStale(_characterBuild, result, ComputeCurrentMechanicEquipmentStateToken))
             {
                 if (pendingChange.SourceInventoryLocked && inventoryWindow != null)
                 {
@@ -1013,6 +1018,9 @@ namespace HaCreator.MapSimulator.UI
                 OwnerSessionId = _equipmentRequestSessionId,
                 ExpectedCharacterId = _characterBuild?.Id ?? 0,
                 ExpectedBuildStateToken = _characterBuild?.ComputeEquipmentStateToken() ?? 0,
+                ExpectedMechanicStateToken = targetKind == EquipmentChangeCompanionKind.Mechanic
+                    ? ComputeCurrentMechanicEquipmentStateToken()
+                    : 0,
                 Kind = EquipmentChangeRequestKind.InventoryToCompanion,
                 SourceInventoryType = sourceInventoryType,
                 SourceInventoryIndex = sourceInventoryIndex,
@@ -1103,14 +1111,18 @@ namespace HaCreator.MapSimulator.UI
                 return null;
             }
 
+            EquipmentChangeCompanionKind sourceKind = ResolveDraggedCompanionRequestKind();
             EquipmentChangeRequest request = new EquipmentChangeRequest
             {
                 OwnerKind = EquipmentChangeOwnerKind.BigBangWindow,
                 OwnerSessionId = _equipmentRequestSessionId,
                 ExpectedCharacterId = _characterBuild?.Id ?? 0,
                 ExpectedBuildStateToken = _characterBuild?.ComputeEquipmentStateToken() ?? 0,
+                ExpectedMechanicStateToken = sourceKind == EquipmentChangeCompanionKind.Mechanic
+                    ? ComputeCurrentMechanicEquipmentStateToken()
+                    : 0,
                 Kind = EquipmentChangeRequestKind.CompanionToInventory,
-                SourceCompanionKind = ResolveDraggedCompanionRequestKind(),
+                SourceCompanionKind = sourceKind,
                 SourcePetRuntimeId = _draggedPetRuntimeId,
                 SourceDragonSlot = _draggedDragonSlot,
                 SourceMechanicSlot = _draggedMechanicSlot,
@@ -5348,7 +5360,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (EquipmentChangeClientParity.IsResolvedResultStale(_characterBuild, result))
+            if (EquipmentChangeClientParity.IsResolvedResultStale(_characterBuild, result, ComputeCurrentMechanicEquipmentStateToken))
             {
                 NotifyEquipmentEquipBlocked(EquipmentChangeClientParity.StaleCompletionMessage);
                 return;

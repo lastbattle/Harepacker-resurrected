@@ -113,7 +113,8 @@ namespace HaCreator.MapSimulator.Character
                 Frames = new List<SkillFrame>(animation.Frames),
                 Loop = true,
                 Origin = animation.Origin,
-                ZOrder = animation.ZOrder
+                ZOrder = animation.ZOrder,
+                PositionCode = animation.PositionCode
             };
         }
 

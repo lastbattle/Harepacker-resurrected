@@ -50,6 +50,8 @@ namespace HaCreator.MapSimulator.Interaction
         private int _channel = 1;
         private bool _friendOnlineOnly;
         private bool _hasGuildMembership;
+        private bool _forceNoGuildMembership;
+        private bool _forceNoAllianceMembership;
         private int _nextFriendGroupNumber = 1;
         private SocialListTab _currentTab = SocialListTab.Friend;
 
@@ -66,6 +68,30 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return _entriesByTab.TryGetValue(SocialListTab.Party, out List<SocialEntryState> entries)
                 && entries.Any(entry => entry.IsLocalPlayer && entry.IsLeader);
+        }
+
+        internal bool TryGetSelectedEntrySnapshot(SocialListTab tab, out SocialTrackedEntrySnapshot snapshot)
+        {
+            snapshot = null;
+            SocialEntryState entry = GetSelectedEntry(tab);
+            if (entry == null)
+            {
+                return false;
+            }
+
+            snapshot = new SocialTrackedEntrySnapshot
+            {
+                Tab = tab,
+                Name = entry.Name,
+                PrimaryText = entry.PrimaryText,
+                SecondaryText = entry.SecondaryText,
+                LocationSummary = entry.LocationSummary,
+                Channel = entry.Channel,
+                IsOnline = entry.IsOnline,
+                IsLeader = entry.IsLeader,
+                IsLocalPlayer = entry.IsLocalPlayer
+            };
+            return true;
         }
 
         internal bool TryFindTrackedEntry(string characterName, out SocialTrackedEntrySnapshot snapshot)
@@ -115,7 +141,8 @@ namespace HaCreator.MapSimulator.Interaction
             _locationSummary = string.IsNullOrWhiteSpace(locationSummary) ? "Field" : locationSummary.Trim();
             _hasGuildMembership = ResolveEffectiveGuildMembership(build);
             _guildName = ResolveEffectiveGuildName(build, _hasGuildMembership);
-            _allianceName = string.IsNullOrWhiteSpace(build?.AllianceDisplayText) ? "Maple Union" : build.AllianceDisplayText.Trim();
+            bool hasAllianceMembership = ResolveEffectiveAllianceMembership(build);
+            _allianceName = ResolveEffectiveAllianceName(build, hasAllianceMembership);
             _channel = Math.Max(1, channel);
             string localGuildRoleLabel = ResolveUpdatedLocalGuildRoleLabel();
 
@@ -131,18 +158,33 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     IsLocalPlayer = true
                 });
-            UpdateOrInsertLocalEntry(
-                SocialListTab.Guild,
-                new SocialEntryState(_playerName, localGuildRoleLabel, _guildName, _locationSummary, _channel, true, IsGuildLeaderRole(localGuildRoleLabel), false)
-                {
-                    IsLocalPlayer = true
-                });
-            UpdateOrInsertLocalEntry(
-                SocialListTab.Alliance,
-                new SocialEntryState(_playerName, "Representative", _allianceName, _guildName, _channel, true, true, false)
-                {
-                    IsLocalPlayer = true
-                });
+            if (_hasGuildMembership)
+            {
+                UpdateOrInsertLocalEntry(
+                    SocialListTab.Guild,
+                    new SocialEntryState(_playerName, localGuildRoleLabel, _guildName, _locationSummary, _channel, true, IsGuildLeaderRole(localGuildRoleLabel), false)
+                    {
+                        IsLocalPlayer = true
+                    });
+            }
+            else
+            {
+                RemoveLocalEntry(SocialListTab.Guild);
+            }
+
+            if (hasAllianceMembership)
+            {
+                UpdateOrInsertLocalEntry(
+                    SocialListTab.Alliance,
+                    new SocialEntryState(_playerName, "Representative", _allianceName, _guildName, _channel, true, true, false)
+                    {
+                        IsLocalPlayer = true
+                    });
+            }
+            else
+            {
+                RemoveLocalEntry(SocialListTab.Alliance);
+            }
         }
 
         internal GuildSkillUiContext BuildGuildSkillUiContext(CharacterBuild build)
@@ -645,6 +687,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool ResolveEffectiveGuildMembership(CharacterBuild build)
         {
+            if (_forceNoGuildMembership)
+            {
+                return false;
+            }
+
             return _packetGuildUiState?.HasGuildMembership ?? GuildSkillRuntime.HasGuildMembership(build);
         }
 
@@ -665,6 +712,26 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return string.IsNullOrWhiteSpace(build?.GuildName) ? "No Guild" : build.GuildName.Trim();
+        }
+
+        private bool ResolveEffectiveAllianceMembership(CharacterBuild build)
+        {
+            if (_forceNoAllianceMembership || !ResolveEffectiveGuildMembership(build))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static string ResolveEffectiveAllianceName(CharacterBuild build, bool hasAllianceMembership)
+        {
+            if (!hasAllianceMembership)
+            {
+                return "No Alliance";
+            }
+
+            return string.IsNullOrWhiteSpace(build?.AllianceDisplayText) ? "Maple Union" : build.AllianceDisplayText.Trim();
         }
 
         private int ResolveEffectiveGuildLevel()
@@ -1330,12 +1397,37 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (selectedEntry.IsLocalPlayer)
             {
-                return $"{owner} withdrawal remains a placeholder until the surrounding server-authored flow exists.";
+                return tab == SocialListTab.Guild
+                    ? LeaveLocalGuild()
+                    : LeaveLocalAlliance();
             }
 
             _entriesByTab[tab].RemoveAll(entry => string.Equals(entry.Name, selectedEntry.Name, StringComparison.OrdinalIgnoreCase));
             ResetSelectionAfterMutation(tab);
             return $"{selectedEntry.Name} was removed from the {owner} roster.";
+        }
+
+        private string LeaveLocalGuild()
+        {
+            _forceNoGuildMembership = true;
+            _forceNoAllianceMembership = true;
+            _hasGuildMembership = false;
+            _guildName = "No Guild";
+            _allianceName = "No Alliance";
+            _entriesByTab[SocialListTab.Guild].Clear();
+            _entriesByTab[SocialListTab.Alliance].Clear();
+            ResetSelectionAfterMutation(SocialListTab.Guild);
+            ResetSelectionAfterMutation(SocialListTab.Alliance);
+            return "Local guild membership was cleared, and the alliance roster was closed with it.";
+        }
+
+        private string LeaveLocalAlliance()
+        {
+            _forceNoAllianceMembership = true;
+            _allianceName = "No Alliance";
+            _entriesByTab[SocialListTab.Alliance].Clear();
+            ResetSelectionAfterMutation(SocialListTab.Alliance);
+            return "Local alliance membership was cleared from the union roster.";
         }
 
         private string LocateSelected(string owner)

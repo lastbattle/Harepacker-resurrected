@@ -30,7 +30,7 @@ namespace HaCreator.MapSimulator.UI
     /// - Macros stored as triplets of skill IDs with associated name
     /// - Maximum 5 macro slots available
     /// </summary>
-    public class SkillMacroUI : UIWindowBase
+    public class SkillMacroUI : UIWindowBase, ISoftKeyboardHost
     {
         private const uint CandidateWindowStyleRect = 0x0001;
         private const uint CandidateWindowStylePoint = 0x0002;
@@ -160,6 +160,7 @@ namespace HaCreator.MapSimulator.UI
         private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
         private SkillMacroSoftKeyboardSkin _softKeyboardSkin;
         private bool _softKeyboardVisible;
+        private bool _softKeyboardActive;
         private bool _softKeyboardMinimized;
         private bool _softKeyboardShift;
         private bool _softKeyboardCapsLock;
@@ -184,6 +185,11 @@ namespace HaCreator.MapSimulator.UI
         #region Properties
         public override string WindowName => "SkillMacro";
         public override bool CapturesKeyboardInput => IsVisible && _editingMacroIndex >= 0 && _nameFieldFocused;
+        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _editingMacroIndex >= 0 && _nameFieldFocused && _softKeyboardActive;
+        SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => SoftKeyboardKeyboardType.AlphaNumeric;
+        int ISoftKeyboardHost.SoftKeyboardTextLength => _editingMacroName?.Length ?? 0;
+        int ISoftKeyboardHost.SoftKeyboardMaxLength => SkillMacroNameRules.MaxNameBytes;
+        bool ISoftKeyboardHost.CanSubmitSoftKeyboard => CanSaveCurrentMacro();
         public bool IsDraggingSkillSlot => _dragMode == MacroDragMode.Skill;
         public bool IsDraggingMacroBinding => _dragMode == MacroDragMode.MacroBinding;
         public int DraggedMacroIndex => IsDraggingMacroBinding ? _dragMacroIndex : -1;
@@ -1090,22 +1096,18 @@ namespace HaCreator.MapSimulator.UI
 
         private void ShowSoftKeyboard(bool resetDismissedState = false)
         {
-            if (_softKeyboardSkin == null && resetDismissedState)
-            {
-                return;
-            }
-
             SetNameFieldFocus(true);
-            _softKeyboardVisible = true;
-            if (resetDismissedState)
-            {
-                _softKeyboardMinimized = false;
-            }
+            _softKeyboardActive = true;
+            _softKeyboardVisible = false;
+            _softKeyboardMinimized = false;
+            ResetSoftKeyboardTransientState();
         }
 
         private void HideSoftKeyboard()
         {
+            _softKeyboardActive = false;
             _softKeyboardVisible = false;
+            _softKeyboardMinimized = false;
             ResetSoftKeyboardTransientState();
         }
 
@@ -1139,6 +1141,7 @@ namespace HaCreator.MapSimulator.UI
             _caretBlinkTick = Environment.TickCount;
             if (!focused)
             {
+                _softKeyboardActive = false;
                 ClearCompositionText();
             }
         }
@@ -1169,7 +1172,7 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetSoftKeyboardConstraintLength()
         {
-            return (_editingMacroName ?? string.Empty).Length;
+            return SkillMacroNameRules.GetByteCount(_editingMacroName);
         }
 
         private int GetSoftKeyboardConstraintMaxLength()
@@ -2004,6 +2007,84 @@ namespace HaCreator.MapSimulator.UI
         public override void ClearImeCandidateList()
         {
             _candidateListState = ImeCandidateListState.Empty;
+        }
+
+        Rectangle ISoftKeyboardHost.GetSoftKeyboardAnchorBounds() => GetNameFieldBounds();
+
+        bool ISoftKeyboardHost.TryInsertSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            ClearOwnerNotice();
+            if (!TryInsertSoftKeyboardText(character.ToString()))
+            {
+                errorMessage = string.IsNullOrWhiteSpace(_validationMessage)
+                    ? "The macro name cannot accept that character."
+                    : _validationMessage;
+                return false;
+            }
+
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            if (string.IsNullOrEmpty(_editingMacroName))
+            {
+                return ((ISoftKeyboardHost)this).TryInsertSoftKeyboardCharacter(character, out errorMessage);
+            }
+
+            ClearCompositionText();
+            ClearOwnerNotice();
+            RemoveCharacterBeforeCursor();
+            if (!TryInsertSoftKeyboardText(character.ToString()))
+            {
+                errorMessage = string.IsNullOrWhiteSpace(_validationMessage)
+                    ? "The macro name cannot accept that character."
+                    : _validationMessage;
+                return false;
+            }
+
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
+        {
+            if (string.IsNullOrEmpty(_editingMacroName))
+            {
+                errorMessage = "The macro name is already empty.";
+                return false;
+            }
+
+            ClearCompositionText();
+            ClearOwnerNotice();
+            RemoveCharacterBeforeCursor();
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TrySubmitSoftKeyboard(out string errorMessage)
+        {
+            if (!CanSaveCurrentMacro())
+            {
+                errorMessage = "The selected macro is not ready to save.";
+                return false;
+            }
+
+            SaveCurrentMacro();
+            errorMessage = string.Empty;
+            return true;
+        }
+
+        void ISoftKeyboardHost.OnSoftKeyboardClosed()
+        {
+            _softKeyboardActive = false;
+            ResetSoftKeyboardTransientState();
+        }
+
+        void ISoftKeyboardHost.SetSoftKeyboardCompositionText(string text)
+        {
+            HandleCompositionText(text);
         }
 
         private void HandleKeyboardInput(KeyboardState keyboardState)

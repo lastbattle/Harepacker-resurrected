@@ -25,6 +25,7 @@ namespace HaCreator.MapSimulator
         {
             message = null;
             _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
+            IReadOnlyList<int> availableQuestIdsBeforePacket = _questRuntime.CaptureAvailableQuestIds(_playerManager?.Player?.Build);
 
             try
             {
@@ -59,6 +60,11 @@ namespace HaCreator.MapSimulator
                 {
                     message = $"Quest-result payload has {stream.Length - stream.Position} trailing byte(s).";
                     return false;
+                }
+
+                if (applied)
+                {
+                    AppendPacketOwnedQuestAvailabilityRefreshSummary(ref message, availableQuestIdsBeforePacket);
                 }
 
                 return applied;
@@ -273,6 +279,35 @@ namespace HaCreator.MapSimulator
             _chat?.AddSystemMessage(noticeText, currTickCount);
             message = $"Displayed the packet-owned fixed quest-result notice for subtype {resultType} (StringPool 0x{stringPoolId:X}).";
             return true;
+        }
+
+        private void AppendPacketOwnedQuestAvailabilityRefreshSummary(ref string message, IReadOnlyList<int> availableQuestIdsBeforePacket)
+        {
+            IReadOnlyList<int> newlyAvailableQuestIds = _questRuntime.RefreshPacketOwnedQuestAvailability(
+                _playerManager?.Player?.Build,
+                availableQuestIdsBeforePacket);
+            if (newlyAvailableQuestIds == null || newlyAvailableQuestIds.Count == 0)
+            {
+                return;
+            }
+
+            string summary;
+            if (newlyAvailableQuestIds.Count == 1)
+            {
+                int questId = newlyAvailableQuestIds[0];
+                string questName = _questRuntime.TryGetQuestName(questId, out string resolvedQuestName)
+                    ? resolvedQuestName
+                    : $"Quest #{questId}";
+                summary = $"Refreshed packet-owned quest availability and flagged {questName} as newly available.";
+            }
+            else
+            {
+                summary = $"Refreshed packet-owned quest availability and flagged {newlyAvailableQuestIds.Count} newly available quest(s).";
+            }
+
+            message = string.IsNullOrWhiteSpace(message)
+                ? summary
+                : $"{message} {summary}";
         }
 
         private void OpenPacketOwnedQuestResultModal(int speakerNpcId, PacketQuestResultPresentation presentation)

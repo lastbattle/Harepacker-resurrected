@@ -104,6 +104,8 @@ namespace HaCreator.MapSimulator.Pools
         public bool PacketLeavePending { get; set; }
         public int PacketHitStartTime { get; set; }
         public int PacketStateEndTime { get; set; }
+        public int PacketAnimationEndTime { get; set; }
+        public int PacketAnimationSourceState { get; set; } = -1;
         public int PacketProperEventIndex { get; set; } = -1;
         internal ReactorActivationTypeMask SupportedActivationTypes { get; set; } = ReactorActivationTypeMask.None;
         public int? RequiredItemId { get; set; }
@@ -233,6 +235,8 @@ namespace HaCreator.MapSimulator.Pools
                     PacketLeavePending = false,
                     PacketHitStartTime = 0,
                     PacketStateEndTime = 0,
+                    PacketAnimationEndTime = 0,
+                    PacketAnimationSourceState = -1,
                     PacketProperEventIndex = -1,
                     RequiredItemId = interactionMetadata.RequiredItemId,
                     RequiredQuestId = interactionMetadata.RequiredQuestId,
@@ -914,6 +918,8 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketLeavePending = false;
             data.PacketHitStartTime = 0;
             data.PacketStateEndTime = 0;
+            data.PacketAnimationEndTime = 0;
+            data.PacketAnimationSourceState = -1;
             data.PacketProperEventIndex = -1;
             data.PreferredAuthoredEventOrder = -1;
             data.PreferredAuthoredActivationType = ReactorActivationType.None;
@@ -960,8 +966,10 @@ namespace HaCreator.MapSimulator.Pools
             int? requiredQuestId = TryGetOptionalInt(infoProperty?["quest"])
                 ?? TryGetOptionalInt(infoProperty?["reqQuest"])
                 ?? TryInferRequiredQuestIdFromStateEvents(reactorInfo?.LinkedWzImage);
+            HashSet<int> authoredEventTypes = GetStateEventTypes(reactorInfo?.LinkedWzImage);
             QuestStateType? requiredQuestState = TryGetOptionalQuestState(infoProperty?["state"])
-                ?? TryGetOptionalQuestState(infoProperty?["questState"]);
+                ?? TryGetOptionalQuestState(infoProperty?["questState"])
+                ?? TryResolveDefaultQuestState(requiredQuestId, authoredEventTypes);
             IReadOnlyList<string> scriptNames = QuestRuntimeManager.ParseScriptNames(infoProperty?["script"]);
             ReactorType reactorType = TryGetOptionalReactorType(infoProperty?["reactorType"])
                 ?? TryGetOptionalReactorType(infoProperty?["type"])
@@ -990,10 +998,10 @@ namespace HaCreator.MapSimulator.Pools
                             };
 
             ReactorActivationTypeMask supportedActivationTypes = ResolveSupportedActivationTypes(
-                reactorInfo?.LinkedWzImage,
                 activationType,
                 requiredItemId,
-                requiredQuestId);
+                requiredQuestId,
+                authoredEventTypes);
 
             return new ReactorInteractionMetadata
             {
@@ -1160,6 +1168,8 @@ namespace HaCreator.MapSimulator.Pools
                     data.PacketLeavePending = false;
                     data.PacketHitStartTime = 0;
                     data.PacketStateEndTime = 0;
+                    data.PacketAnimationEndTime = 0;
+                    data.PacketAnimationSourceState = -1;
                     data.PacketProperEventIndex = -1;
                     data.ScriptStatePublished = false;
                     data.PreferredAuthoredEventOrder = -1;
@@ -1319,6 +1329,8 @@ namespace HaCreator.MapSimulator.Pools
                 PacketLeavePending = false,
                 PacketHitStartTime = 0,
                 PacketStateEndTime = currentTick + 800,
+                PacketAnimationEndTime = 0,
+                PacketAnimationSourceState = -1,
                 PacketProperEventIndex = -1,
                 PreferredAuthoredEventOrder = -1,
                 PreferredAuthoredActivationType = ReactorActivationType.None
@@ -1366,11 +1378,14 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            int previousVisualState = data.VisualState;
             ApplyPacketReactorState(index, state, x, y, reactor.ReactorInstance?.Flip ?? false, currentTick);
-            data.PacketHitStartTime = hitStartDelayMs > 0 ? currentTick + hitStartDelayMs : 0;
+            data.PacketHitStartTime = ResolvePacketClientHitStartTime(currentTick, hitStartDelayMs);
             ApplyPacketProperEventIndexPreference(data, properEventIndex);
-            data.PacketStateEndTime = stateEndDelayTicks > 0 ? currentTick + (stateEndDelayTicks * 100) : 0;
-            data.State = hitStartDelayMs > 0 ? ReactorState.Activated : ReactorState.Active;
+            data.PacketStateEndTime = ResolvePacketStateEndTime(currentTick, stateEndDelayTicks);
+            data.PacketAnimationEndTime = 0;
+            data.PacketAnimationSourceState = previousVisualState;
+            data.State = ReactorState.Activated;
             data.StateStartTime = currentTick;
             SyncPacketScriptPublication(reactor, data, currentTick);
             message = $"Applied packet-owned reactor state {state} to object {packetObjectId} at ({x}, {y}).";
@@ -1421,10 +1436,16 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            int previousVisualState = data.VisualState;
+            int remainingCurrentAnimationDuration = reactor.GetRemainingAnimationDuration(currentTick);
             ApplyPacketReactorState(index, state, x, y, reactor.ReactorInstance?.Flip ?? false, currentTick);
             data.PacketLeavePending = true;
             data.PacketProperEventIndex = -2;
-            data.PacketHitStartTime = reactor.HasAuthoredEventInfo(state) ? currentTick : currentTick + 400;
+            data.PacketAnimationSourceState = previousVisualState;
+            data.PacketHitStartTime = ResolvePacketLeaveHitStartTime(currentTick, reactor.HasAuthoredEventInfo(state));
+            data.PacketAnimationEndTime = data.PacketHitStartTime == 0
+                ? ResolvePacketAnimationEndTime(currentTick, remainingCurrentAnimationDuration)
+                : 0;
             data.PacketStateEndTime = 0;
             data.CanRespawn = false;
             message = $"Queued packet-owned reactor {packetObjectId} for leave-field removal from ({x}, {y}).";
@@ -1456,7 +1477,16 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     if (data.PacketLeavePending)
                     {
-                        if (currentTick >= data.PacketHitStartTime)
+                        if (data.PacketHitStartTime > 0 && currentTick >= data.PacketHitStartTime)
+                        {
+                            data.PacketHitStartTime = 0;
+                            data.PacketAnimationEndTime = ResolvePacketAnimationEndTime(
+                                currentTick,
+                                ResolvePacketHitAnimationDuration(reactor, data));
+                        }
+
+                        if (data.PacketHitStartTime == 0
+                            && (data.PacketAnimationEndTime <= 0 || currentTick >= data.PacketAnimationEndTime))
                         {
                             DestroyReactor(index, playerId: 0, currentTick);
                         }
@@ -1468,17 +1498,38 @@ namespace HaCreator.MapSimulator.Pools
                         && data.PacketHitStartTime > 0
                         && currentTick >= data.PacketHitStartTime)
                     {
+                        data.PacketHitStartTime = 0;
+                        data.PacketAnimationEndTime = ResolvePacketAnimationEndTime(
+                            currentTick,
+                            ResolvePacketHitAnimationDuration(reactor, data));
+
+                        if (data.PacketAnimationEndTime <= 0)
+                        {
+                            data.State = ReactorState.Active;
+                            data.StateStartTime = currentTick;
+                        }
+                    }
+
+                    if (data.State == ReactorState.Activated
+                        && data.PacketAnimationEndTime > 0
+                        && currentTick >= data.PacketAnimationEndTime)
+                    {
+                        data.PacketAnimationEndTime = 0;
                         data.State = ReactorState.Active;
                         data.StateStartTime = currentTick;
                     }
 
                     if (data.PacketStateEndTime > 0
                         && currentTick >= data.PacketStateEndTime
-                        && data.State == ReactorState.Activated)
+                        && data.State == ReactorState.Activated
+                        && data.PacketHitStartTime <= 0
+                        && data.PacketAnimationEndTime <= 0)
                     {
                         data.State = ReactorState.Active;
                         data.StateStartTime = currentTick;
                     }
+
+                    continue;
                 }
 
                 switch (data.State)
@@ -1754,6 +1805,10 @@ namespace HaCreator.MapSimulator.Pools
             data.StateStartTime = currentTick;
             data.Alpha = 1f;
             data.PacketLeavePending = false;
+            data.PacketHitStartTime = 0;
+            data.PacketStateEndTime = 0;
+            data.PacketAnimationEndTime = 0;
+            data.PacketAnimationSourceState = -1;
             ClearPreferredAuthoredOrder(data);
 
             if (index < _spawnPoints.Count)
@@ -1883,13 +1938,13 @@ namespace HaCreator.MapSimulator.Pools
         }
 
         private static ReactorActivationTypeMask ResolveSupportedActivationTypes(
-            WzImage linkedReactorImage,
             ReactorActivationType primaryActivationType,
             int? requiredItemId,
-            int? requiredQuestId)
+            int? requiredQuestId,
+            HashSet<int> authoredEventTypes = null)
         {
             ReactorActivationTypeMask supportedTypes = ToActivationMask(primaryActivationType);
-            HashSet<int> authoredEventTypes = GetStateEventTypes(linkedReactorImage);
+            authoredEventTypes ??= new HashSet<int>();
 
             foreach (int eventType in authoredEventTypes)
             {
@@ -2047,6 +2102,45 @@ namespace HaCreator.MapSimulator.Pools
             data.PreferredAuthoredEventOrder = -1;
         }
 
+        internal static int ResolvePacketClientHitStartTime(int currentTick, int hitStartDelayMs)
+        {
+            return currentTick + Math.Max(1, Math.Max(0, hitStartDelayMs));
+        }
+
+        internal static int ResolvePacketLeaveHitStartTime(int currentTick, bool hasAuthoredStateEvents)
+        {
+            return hasAuthoredStateEvents
+                ? 0
+                : currentTick + 400;
+        }
+
+        internal static int ResolvePacketStateEndTime(int currentTick, int stateEndDelayTicks)
+        {
+            return stateEndDelayTicks > 0
+                ? currentTick + (stateEndDelayTicks * 100)
+                : 0;
+        }
+
+        internal static int ResolvePacketAnimationEndTime(int currentTick, int animationDurationMs)
+        {
+            return animationDurationMs > 0
+                ? currentTick + animationDurationMs
+                : 0;
+        }
+
+        private static int ResolvePacketHitAnimationDuration(ReactorItem reactor, ReactorRuntimeData data)
+        {
+            if (reactor == null || data == null)
+            {
+                return 0;
+            }
+
+            int sourceState = data.PacketAnimationSourceState >= 0
+                ? data.PacketAnimationSourceState
+                : data.VisualState;
+            return reactor.GetHitAnimationDuration(sourceState);
+        }
+
         private static bool TryResolveNextVisualState(
             ReactorItem reactor,
             ReactorRuntimeData data,
@@ -2142,6 +2236,25 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return eventTypes;
+        }
+
+        private static QuestStateType? TryResolveDefaultQuestState(
+            int? requiredQuestId,
+            HashSet<int> authoredEventTypes)
+        {
+            if (!requiredQuestId.HasValue)
+            {
+                return null;
+            }
+
+            if (authoredEventTypes != null && authoredEventTypes.Contains(100))
+            {
+                // Sparse quest reactors often omit info/state while still behaving like
+                // active-progress perform-state reactors through their authored quest event.
+                return QuestStateType.Started;
+            }
+
+            return null;
         }
 
         private static int? TryInferRequiredQuestIdFromStateEvents(WzImage linkedReactorImage)

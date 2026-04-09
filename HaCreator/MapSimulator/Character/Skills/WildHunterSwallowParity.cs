@@ -31,6 +31,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             return BufferedAbsorbOutcomeLifetimeMs;
         }
 
+        public static bool CanFallbackConfirmWithoutAuthoritativeResult()
+        {
+            return false;
+        }
+
         public static int AdvanceWriggleSchedule(
             int nextWriggleTime,
             int digestCompleteTime,

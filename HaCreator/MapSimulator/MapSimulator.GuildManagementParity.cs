@@ -12,7 +12,7 @@ namespace HaCreator.MapSimulator
                 uiWindowManager,
                 _playerManager?.Player?.Build,
                 dialogContext,
-                _guildMarkController.GetCommittedSelection(),
+                ResolveEffectiveGuildMarkSelection(),
                 _fontChat,
                 ShowUtilityFeedbackMessage,
                 () => ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.GuildRank));
@@ -23,6 +23,7 @@ namespace HaCreator.MapSimulator
             return _guildMarkController.Open(
                 uiWindowManager,
                 _fontChat,
+                _socialListRuntime.ApplyLocalGuildMarkSelection,
                 ShowUtilityFeedbackMessage,
                 () => ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.GuildMark));
         }
@@ -48,7 +49,7 @@ namespace HaCreator.MapSimulator
                 uiWindowManager,
                 _playerManager?.Player?.Build,
                 dialogContext,
-                _guildMarkController.GetCommittedSelection(),
+                ResolveEffectiveGuildMarkSelection(),
                 _fontChat,
                 ShowUtilityFeedbackMessage);
         }
@@ -58,6 +59,7 @@ namespace HaCreator.MapSimulator
             _guildMarkController.WireWindow(
                 uiWindowManager,
                 _fontChat,
+                _socialListRuntime.ApplyLocalGuildMarkSelection,
                 ShowUtilityFeedbackMessage);
         }
 
@@ -68,6 +70,11 @@ namespace HaCreator.MapSimulator
                 _fontChat,
                 _socialListRuntime.ApplyGuildCreateAgreementAcceptance,
                 ShowUtilityFeedbackMessage);
+        }
+
+        private GuildMarkSelection? ResolveEffectiveGuildMarkSelection()
+        {
+            return _guildMarkController.GetCommittedSelection() ?? _socialListRuntime.GetEffectiveGuildMarkSelection();
         }
     }
 }

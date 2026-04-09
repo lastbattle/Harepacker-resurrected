@@ -439,19 +439,51 @@ namespace HaCreator.MapSimulator.Fields
         }
         #endregion
         #region Simulation (for testing)
-        public void StartGame(int durationSeconds = 120)
+        public bool TryStartGame(int currentTick, out string message)
         {
+            return TryStartGame(currentTick, null, out message);
+        }
+        public bool TryStartGame(int currentTick, int? durationSeconds, out string message)
+        {
+            if (!_runtimeActive)
+            {
+                message = "Coconut runtime is inactive.";
+                return false;
+            }
+
+            int resolvedDurationSeconds = durationSeconds.GetValueOrDefault();
+            if (!durationSeconds.HasValue || resolvedDurationSeconds <= 0)
+            {
+                resolvedDurationSeconds = _defaultRoundDurationSeconds;
+            }
+
+            if (resolvedDurationSeconds < 0)
+            {
+                message = "Coconut round duration must be zero or greater.";
+                return false;
+            }
+
+            StartGame(resolvedDurationSeconds, currentTick);
+            message = DescribeStatus();
+            return true;
+        }
+        public void StartGame(int durationSeconds = 0, int? currentTick = null)
+        {
+            int startTick = currentTick ?? Environment.TickCount;
+            int resolvedDurationSeconds = durationSeconds > 0
+                ? durationSeconds
+                : _defaultRoundDurationSeconds;
             _gameActive = true;
             _runtimeActive = true;
-            _timeRemaining = durationSeconds;
-            _finishTick = Environment.TickCount + Math.Max(0, durationSeconds) * 1000;
-            _lastUpdateTime = Environment.TickCount;
+            _timeRemaining = resolvedDurationSeconds;
+            _finishTick = startTick + Math.Max(0, resolvedDurationSeconds) * 1000;
+            _lastUpdateTime = startTick;
             _awaitingFinalScore = false;
             _lastScorePacketTick = null;
             _hitQueue.Clear();
             _pendingAttackPacketRequests.Clear();
             ClearRoundResult();
-            ShowMessage(_eventName, _messageDurationMs, _lastUpdateTime);
+            ShowMessage(_eventName, _messageDurationMs, startTick);
         }
         public void SimulateHit(int coconutId, int byTeam)
         {

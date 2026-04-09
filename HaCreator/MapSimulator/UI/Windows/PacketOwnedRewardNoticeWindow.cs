@@ -10,7 +10,8 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class PacketOwnedRewardNoticeWindow : UIWindowBase
     {
-        private const float BodyWrapWidth = 250f;
+        private const float NormalBodyWrapWidth = 200f;
+        private const float TightLineBodyWrapWidth = 234f;
         private const float BodyTopY = 40f;
         private const float BodyLeftX = 18f;
         private const float BodyCenterX = 156f;
@@ -20,6 +21,8 @@ namespace HaCreator.MapSimulator.UI
         private string _title = string.Empty;
         private string _body = string.Empty;
         private UIObject _okButton;
+        private bool _autoSeparated = true;
+        private bool _tightLine = false;
 
         public PacketOwnedRewardNoticeWindow(IDXObject frame)
             : base(frame)
@@ -29,10 +32,12 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.PacketOwnedRewardResultNotice;
         public override bool SupportsDragging => false;
 
-        public void Configure(string title, string body)
+        public void Configure(string title, string body, bool autoSeparated = true, bool tightLine = false)
         {
             _title = title?.Trim() ?? string.Empty;
             _body = body?.Trim() ?? string.Empty;
+            _autoSeparated = autoSeparated;
+            _tightLine = tightLine;
         }
 
         public void InitializeButtons(UIObject okButton, UIObject closeButton)
@@ -70,7 +75,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            List<string> lines = new(WrapText(_body, BodyWrapWidth));
+            List<string> lines = new(BuildBodyLines());
             float y = Position.Y + BodyTopY;
             if (!string.IsNullOrWhiteSpace(_title))
             {
@@ -95,6 +100,29 @@ namespace HaCreator.MapSimulator.UI
                     new Vector2(x, y),
                     new Color(232, 232, 232));
                 y += WindowLineSpacing;
+            }
+        }
+
+        private IEnumerable<string> BuildBodyLines()
+        {
+            if (!_autoSeparated)
+            {
+                string[] manualLines = _body.Replace("\r", string.Empty, StringComparison.Ordinal).Split('\n');
+                foreach (string line in manualLines)
+                {
+                    if (!string.IsNullOrWhiteSpace(line))
+                    {
+                        yield return line.Trim();
+                    }
+                }
+
+                yield break;
+            }
+
+            float wrapWidth = _tightLine ? TightLineBodyWrapWidth : NormalBodyWrapWidth;
+            foreach (string line in WrapText(_body, wrapWidth))
+            {
+                yield return line;
             }
         }
 

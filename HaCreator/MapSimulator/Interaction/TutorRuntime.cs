@@ -10,6 +10,16 @@ namespace HaCreator.MapSimulator.Interaction
         Text = 2
     }
 
+    internal readonly record struct TutorVariantSnapshot(
+        int SkillId,
+        int SummonObjectId,
+        int ActorHeight,
+        int BoundCharacterId,
+        bool IsActive,
+        int LastHireTick,
+        int LastRemovalTick,
+        int LastMutationTick);
+
     internal sealed class TutorRuntime
     {
         internal const int CygnusTutorSkillId = 10001013;
@@ -41,11 +51,12 @@ namespace HaCreator.MapSimulator.Interaction
         internal int ActiveMessageExpiresAt { get; private set; } = int.MinValue;
         internal int MessageSequenceId { get; private set; }
         internal string StatusMessage { get; private set; } = "Tutor runtime idle.";
-        internal IReadOnlyList<int> RegisteredTutorSkillIds => _registeredTutorSkillIds;
-        internal bool HasRegisteredTutorVariants => _registeredTutorSkillIds.Count > 0;
-        internal int RegisteredTutorVariantCount => _registeredTutorSkillIds.Count;
+        internal IReadOnlyList<int> RegisteredTutorSkillIds => _registeredTutorVariants.ConvertAll(snapshot => snapshot.SkillId);
+        internal IReadOnlyList<TutorVariantSnapshot> RegisteredTutorVariants => _registeredTutorVariants;
+        internal bool HasRegisteredTutorVariants => _registeredTutorVariants.Count > 0;
+        internal int RegisteredTutorVariantCount => _registeredTutorVariants.Count;
 
-        private readonly List<int> _registeredTutorSkillIds = new();
+        private readonly List<TutorVariantSnapshot> _registeredTutorVariants = new();
 
         internal bool HasVisibleMessage(int currentTick)
         {
@@ -133,7 +144,18 @@ namespace HaCreator.MapSimulator.Interaction
             ActiveActorHeight = 0;
             LastHireTick = int.MinValue;
             ClearMessage();
-            if (_registeredTutorSkillIds.Count == 0)
+            for (int i = 0; i < _registeredTutorVariants.Count; i++)
+            {
+                TutorVariantSnapshot variant = _registeredTutorVariants[i];
+                _registeredTutorVariants[i] = variant with
+                {
+                    BoundCharacterId = BoundCharacterId,
+                    IsActive = false,
+                    LastMutationTick = currentTick
+                };
+            }
+
+            if (_registeredTutorVariants.Count == 0)
             {
                 LastRegistryMutationTick = currentTick;
                 StatusMessage = BoundCharacterId > 0
@@ -157,6 +179,17 @@ namespace HaCreator.MapSimulator.Interaction
             ActiveActorHeight = 0;
             LastHireTick = int.MinValue;
             ClearMessage();
+            for (int i = 0; i < _registeredTutorVariants.Count; i++)
+            {
+                TutorVariantSnapshot variant = _registeredTutorVariants[i];
+                _registeredTutorVariants[i] = variant with
+                {
+                    BoundCharacterId = BoundCharacterId,
+                    IsActive = false,
+                    LastMutationTick = currentTick
+                };
+            }
+
             StatusMessage = hadActor
                 ? BoundCharacterId > 0
                     ? $"Tutor actor reset for runtime character {BoundCharacterId}; registered variants preserved: {DescribeActiveTutorVariants()}."
@@ -172,9 +205,13 @@ namespace HaCreator.MapSimulator.Interaction
             int normalizedSkillId = NormalizeTutorSkillId(requestedSkillId);
             if (normalizedSkillId > 0)
             {
-                RemoveRegisteredTutorVariant(normalizedSkillId);
-                _registeredTutorSkillIds.Add(normalizedSkillId);
-                LastRegistryMutationTick = currentTick;
+                UpsertRegisteredTutorVariant(
+                    normalizedSkillId,
+                    actorHeight,
+                    runtimeCharacterId,
+                    currentTick,
+                    isActive: true,
+                    markRemoval: false);
             }
 
             IsActive = true;
@@ -193,11 +230,21 @@ namespace HaCreator.MapSimulator.Interaction
         internal void ApplyRemovalRequest(int requestedSkillId, int currentTick, string reason = null)
         {
             int normalizedSkillId = NormalizeTutorSkillId(requestedSkillId);
+            if (normalizedSkillId <= 0)
+            {
+                normalizedSkillId = ActiveSkillId;
+            }
+
             bool hadActor = IsActive;
             if (normalizedSkillId > 0)
             {
-                RemoveRegisteredTutorVariant(normalizedSkillId);
-                LastRegistryMutationTick = currentTick;
+                UpsertRegisteredTutorVariant(
+                    normalizedSkillId,
+                    ActiveActorHeight,
+                    BoundCharacterId,
+                    currentTick,
+                    isActive: false,
+                    markRemoval: true);
             }
 
             IsActive = false;
@@ -215,7 +262,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal IReadOnlyList<int> SnapshotRegisteredTutorVariants()
         {
-            return _registeredTutorSkillIds.ToArray();
+            return _registeredTutorVariants.ConvertAll(snapshot => snapshot.SkillId).ToArray();
         }
 
         internal void ApplyIndexedMessage(int index, int durationMs, int currentTick)
@@ -275,31 +322,111 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string DescribeActiveTutorVariants()
         {
-            if (_registeredTutorSkillIds.Count == 0)
+            if (_registeredTutorVariants.Count == 0)
             {
                 return "none";
             }
 
-            return string.Join(", ", _registeredTutorSkillIds);
+            return string.Join(", ", _registeredTutorVariants.ConvertAll(DescribeRegisteredTutorVariant));
         }
 
         internal bool HasRegisteredTutorVariant(int skillId)
         {
-            return skillId > 0 && _registeredTutorSkillIds.Contains(skillId);
+            return skillId > 0 && FindRegisteredTutorVariantIndex(skillId) >= 0;
         }
 
-        private void RemoveRegisteredTutorVariant(int skillId)
+        private int FindRegisteredTutorVariantIndex(int skillId)
+        {
+            if (skillId <= 0)
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < _registeredTutorVariants.Count; i++)
+            {
+                if (_registeredTutorVariants[i].SkillId == skillId)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private void UpsertRegisteredTutorVariant(
+            int skillId,
+            int actorHeight,
+            int runtimeCharacterId,
+            int currentTick,
+            bool isActive,
+            bool markRemoval)
         {
             if (skillId <= 0)
             {
                 return;
             }
 
-            int index = _registeredTutorSkillIds.IndexOf(skillId);
+            int index = FindRegisteredTutorVariantIndex(skillId);
+            TutorVariantSnapshot nextSnapshot = new(
+                skillId,
+                ResolveSummonObjectId(skillId),
+                actorHeight > 0 ? actorHeight : ResolveFallbackActorHeight(skillId),
+                Math.Max(0, runtimeCharacterId),
+                isActive,
+                isActive ? currentTick : int.MinValue,
+                markRemoval ? currentTick : int.MinValue,
+                currentTick);
+
             if (index >= 0)
             {
-                _registeredTutorSkillIds.RemoveAt(index);
+                TutorVariantSnapshot currentSnapshot = _registeredTutorVariants[index];
+                nextSnapshot = nextSnapshot with
+                {
+                    LastHireTick = isActive
+                        ? currentTick
+                        : currentSnapshot.LastHireTick,
+                    LastRemovalTick = markRemoval
+                        ? currentTick
+                        : currentSnapshot.LastRemovalTick,
+                    BoundCharacterId = Math.Max(
+                        0,
+                        runtimeCharacterId > 0 ? runtimeCharacterId : currentSnapshot.BoundCharacterId),
+                    ActorHeight = actorHeight > 0 ? actorHeight : currentSnapshot.ActorHeight
+                };
+                _registeredTutorVariants[index] = nextSnapshot;
             }
+            else
+            {
+                _registeredTutorVariants.Add(nextSnapshot);
+            }
+
+            for (int i = 0; i < _registeredTutorVariants.Count; i++)
+            {
+                TutorVariantSnapshot variant = _registeredTutorVariants[i];
+                if (variant.SkillId == skillId)
+                {
+                    continue;
+                }
+
+                _registeredTutorVariants[i] = variant with
+                {
+                    IsActive = false,
+                    BoundCharacterId = Math.Max(variant.BoundCharacterId, Math.Max(0, runtimeCharacterId))
+                };
+            }
+
+            LastRegistryMutationTick = currentTick;
+        }
+
+        private static int ResolveFallbackActorHeight(int skillId)
+        {
+            return skillId == CygnusTutorSkillId ? CygnusTutorHeight : AranTutorHeight;
+        }
+
+        private static string DescribeRegisteredTutorVariant(TutorVariantSnapshot variant)
+        {
+            string state = variant.IsActive ? "active" : "listed";
+            return $"{variant.SkillId} ({state})";
         }
 
         private static int ClampDuration(int durationMs)

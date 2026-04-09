@@ -70,6 +70,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _hasGuildMembership = true;
             _guildName = acceptedGuildName;
+            _packetGuildPoints = 0;
             _packetGuildUiState = new PacketGuildUiState(true, acceptedGuildName, Math.Max(1, _packetGuildUiState?.GuildLevel ?? 1));
 
             UpdateOrInsertLocalEntry(
@@ -93,7 +94,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (_packetOwnedRosterByTab[SocialListTab.Guild])
             {
                 _lastPacketSyncSummaryByTab[SocialListTab.Guild] =
-                    $"Guild creation agreement accepted for {acceptedGuildName}; local guild row now mirrors the new master-owned guild.";
+                    $"Guild creation agreement accepted for {acceptedGuildName}; local guild row now mirrors the new master-owned guild and seeds guild points={_packetGuildPoints}.";
             }
 
             return $"{acceptedMasterName} guild agreement now updates the shared guild seam: guild={acceptedGuildName}, role=Master, Guild Lv. {_packetGuildUiState.Value.GuildLevel}.";

@@ -13,7 +13,8 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
-        private const string AnimationDisplayerNewYearEffectUol = "Effect/ItemEff.img/4300000";
+        private static readonly string AnimationDisplayerNewYearEffectUol =
+            RelationshipOverlayClientStringPoolText.ResolveNewYearCardEffectPath();
         private const string AnimationDisplayerFireCrackerEffectUol = "Effect/OnUserEff.img/itemEffect/firework/5680024";
         private const string AnimationDisplayerGenericUserStateEffectUol = "Effect/OnUserEff.img/character";
         private const string AnimationDisplayerQuestDeliveryEffectBaseUol = "Effect/OnUserEff.img/itemEffect/quest";

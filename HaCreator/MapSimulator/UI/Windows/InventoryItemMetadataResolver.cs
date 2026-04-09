@@ -1381,6 +1381,22 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add($"Bonus EXP Rate {FormatSignedValue(bonusExpRate)}%");
             }
 
+            if (GetIntValue(infoProperty["cashExpTicketOn"]) == 1)
+            {
+                metadataLines.Add("Cash EXP Ticket: Enabled");
+            }
+
+            if (GetIntValue(infoProperty["partyExpOn"]) == 1)
+            {
+                metadataLines.Add("Party EXP: Enabled");
+            }
+
+            int maxExp = GetIntOrStringValue(infoProperty["maxExp"]);
+            if (maxExp > 0)
+            {
+                metadataLines.Add($"Max EXP: {maxExp.ToString("N0", CultureInfo.InvariantCulture)}");
+            }
+
             int nickSkillId = GetIntOrStringValue(infoProperty["nickSkill"]);
             if (nickSkillId > 0)
             {

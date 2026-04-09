@@ -52,6 +52,7 @@ namespace HaCreator.MapSimulator.Interaction
             Action showWindow)
         {
             string message = _runtime.OpenInvitation(groomName, brideName, style, clientDialogType, sourceDescription);
+            PrepareForOpen(windowManager);
             WireWindow(windowManager, build, font, feedbackHandler);
             showWindow?.Invoke();
             return message;
@@ -73,6 +74,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            PrepareForOpen(windowManager);
             WireWindow(windowManager, build, font, feedbackHandler);
             showWindow?.Invoke();
             return true;
@@ -101,6 +103,11 @@ namespace HaCreator.MapSimulator.Interaction
             string message = _runtime.Clear();
             windowManager?.HideWindow(MapSimulatorWindowNames.WeddingInvitation);
             return message;
+        }
+
+        private static void PrepareForOpen(UIWindowManager windowManager)
+        {
+            windowManager?.HideWindow(MapSimulatorWindowNames.EngagementProposal);
         }
     }
 }

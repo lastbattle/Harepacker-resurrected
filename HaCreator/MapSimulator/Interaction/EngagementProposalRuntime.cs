@@ -280,7 +280,7 @@ namespace HaCreator.MapSimulator.Interaction
                 RequestMessage = _outgoingRequestMessage,
                 CustomMessage = _customMessage
             };
-            _statusMessage = $"Accepted the engagement request from {_proposerName}. Sent client packet {AcceptPacketType} [02 01] with requester {_proposerName} and ring {_ringItemId}, and primed the wedding handoff state.";
+            _statusMessage = $"Accepted the engagement request from {_proposerName}. {EngagementProposalDialogText.GetAcceptedText()} Sent client packet {AcceptPacketType} [02 01] with requester {_proposerName} and ring {_ringItemId}, and primed the wedding handoff state.";
             message = _statusMessage;
             return true;
         }
@@ -469,7 +469,8 @@ namespace HaCreator.MapSimulator.Interaction
             string clientEvidence =
                 $" Client owner {snapshot.ClientOwnerTypeName} uses {snapshot.PrimaryDialogAssetPath} with fallback {snapshot.FallbackDialogAssetPath}; " +
                 $"StringPool top/center/textbox/bottom/text ids 0x{snapshot.TopBandStringPoolId:X}/0x{snapshot.CenterBandStringPoolId:X}/0x{snapshot.TextBoxStringPoolId:X}/0x{snapshot.BottomBandStringPoolId:X}/0x{snapshot.TextCanvasStringPoolId:X}, " +
-                $"{snapshot.AcceptButtonAssetName} UOL id 0x{snapshot.AcceptButtonUolStringPoolId:X}.";
+                $"{snapshot.AcceptButtonAssetName} UOL id 0x{snapshot.AcceptButtonUolStringPoolId:X}. " +
+                $"Recovered engagement text: accept=\"{EngagementProposalDialogText.GetAcceptedText()}\", partnerEtcFull=\"{EngagementProposalDialogText.GetPartnerEtcSlotFullText()}\", sameGender=\"{EngagementProposalDialogText.GetSameGenderText()}\", alreadyEngaged=\"{EngagementProposalDialogText.GetAlreadyEngagedText()}\", partnerAlreadyEngaged=\"{EngagementProposalDialogText.GetPartnerAlreadyEngagedText()}\", requesterBusy=\"{EngagementProposalDialogText.GetRequesterBusyText()}\", partnerBusy=\"{EngagementProposalDialogText.GetPartnerBusyText()}\", withdrawn=\"{EngagementProposalDialogText.GetWithdrawnRequestText()}\".";
             return $"Engagement proposal {state} ({snapshot.Mode}): {snapshot.ProposerName} -> {snapshot.PartnerName}. {snapshot.StatusMessage}{requestState}{packetState}{handoffState}{clientEvidence}";
         }
 

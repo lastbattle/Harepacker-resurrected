@@ -1,4 +1,5 @@
 using System;
+using System;
 using System.Linq;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
@@ -6,6 +7,7 @@ using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary;
+using HaSharedLibrary.Util;
 using HaSharedLibrary.Wz;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
@@ -39,6 +41,19 @@ namespace HaCreator.MapSimulator.Loaders
             public List<IDXObject> AngerGaugeEffect;
         }
 
+        private sealed class CachedMobActionAssets
+        {
+            public readonly Dictionary<string, CachedMobActionEntry> ActionEntries = new(StringComparer.OrdinalIgnoreCase);
+        }
+
+        private sealed class CachedMobActionEntry
+        {
+            public List<WzCanvasProperty> FrameCanvases { get; init; }
+            public List<int> FrameDelays { get; init; }
+            public List<MobAnimationSet.FrameMetadata> FrameMetadata { get; init; }
+        }
+
+        private static readonly ConditionalWeakTable<GraphicsDevice, ConcurrentDictionary<string, Lazy<CachedMobActionAssets>>> _cachedMobActionAssetsByDevice = new();
         private static readonly ConditionalWeakTable<GraphicsDevice, ConcurrentDictionary<string, Lazy<CachedMobAttackAssets>>> _cachedMobAttackAssetsByDevice = new();
         private sealed class CachedDoomMobAssets
         {
@@ -68,73 +83,10 @@ namespace HaCreator.MapSimulator.Loaders
             // Create animation set to store frames per action
             MobAnimationSet animationSet = new MobAnimationSet();
             CachedDoomMobAssets doomAssets = GetOrBuildDoomMobAssets(texturePool, device, usedProps);
+            CachedMobActionAssets cachedActionAssets = GetOrBuildCachedMobActionAssets(texturePool, mobInfo, source, device, usedProps);
             CachedMobAttackAssets cachedAttackAssets = GetOrBuildCachedMobAttackAssets(texturePool, mobInfo, source, device, usedProps);
+            ApplyCachedMobActionAssets(animationSet, cachedActionAssets, texturePool, mobInstance.X, mobInstance.Y, device);
             ApplyCachedMobAttackAssets(animationSet, cachedAttackAssets);
-
-            foreach (WzImageProperty childProperty in source.WzProperties)
-            {
-                if (childProperty is WzSubProperty mobStateProperty) // issue with 867119250, Eluna map mobs
-                {
-                    string actionName = mobStateProperty.Name.ToLower();
-
-                    switch (actionName)
-                    {
-                        case "info": // info/speak/0 WzStringProperty - skip info node
-                            break;
-
-                        case "angergaugeeffect":
-                            break;
-
-                        case "angergaugeanimation":
-                            break;
-
-                        case "stand":
-                        case "move":
-                        case "walk":
-                        case "fly":
-                        case "jump":
-                        case "hit":
-                        case "hit1":
-                        case "die":
-                        case "die1":
-                        case "die2":
-                        case "attack1":
-                        case "attack2":
-                        case "attack3":
-                        case "skill1":
-                        case "skill2":
-                        case "skill3":
-                        case "chase":
-                        case "regen":
-                            {
-                                // Load frames for this specific action
-                                List<IDXObject> actionFrames = MapSimulatorLoader.LoadFrames(texturePool, mobStateProperty, mobInstance.X, mobInstance.Y, device, usedProps);
-                                if (actionFrames.Count > 0)
-                                {
-                                    animationSet.AddAnimation(actionName, actionFrames);
-                                }
-
-                                // Load hit effect frames for attack actions (attack1/info/hit, attack2/info/hit, etc.)
-                                if (actionName.StartsWith("attack"))
-                                {
-                                    // Attack support assets are cached per mob ID and applied above.
-                                }
-                                break;
-                            }
-
-                        default:
-                            {
-                                // For unknown actions, still load them in case they're needed
-                                List<IDXObject> actionFrames = MapSimulatorLoader.LoadFrames(texturePool, mobStateProperty, mobInstance.X, mobInstance.Y, device, usedProps);
-                                if (actionFrames.Count > 0)
-                                {
-                                    animationSet.AddAnimation(actionName, actionFrames);
-                                }
-                                break;
-                            }
-                    }
-                }
-            }
 
             System.Drawing.Color color_foreGround = System.Drawing.Color.White; // mob foreground color
             NameTooltipItem nameTooltip = null;
@@ -157,6 +109,30 @@ namespace HaCreator.MapSimulator.Loaders
             LoadMobSounds(mobItem, mobInfo.ID, soundManager);
 
             return mobItem;
+        }
+
+        private static CachedMobActionAssets GetOrBuildCachedMobActionAssets(
+            TexturePool texturePool,
+            MobInfo mobInfo,
+            WzImage source,
+            GraphicsDevice device,
+            ConcurrentBag<WzObject> usedProps)
+        {
+            if (mobInfo == null || source == null || device == null)
+            {
+                return null;
+            }
+
+            ConcurrentDictionary<string, Lazy<CachedMobActionAssets>> cacheByMobId =
+                _cachedMobActionAssetsByDevice.GetValue(device, _ => new ConcurrentDictionary<string, Lazy<CachedMobActionAssets>>(StringComparer.Ordinal));
+
+            Lazy<CachedMobActionAssets> lazyAssets = cacheByMobId.GetOrAdd(
+                mobInfo.ID,
+                _ => new Lazy<CachedMobActionAssets>(
+                    () => BuildCachedMobActionAssets(texturePool, source, device, usedProps),
+                    System.Threading.LazyThreadSafetyMode.ExecutionAndPublication));
+
+            return lazyAssets.Value;
         }
 
         private static CachedMobAttackAssets GetOrBuildCachedMobAttackAssets(
@@ -278,6 +254,55 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return new Point(fallbackX, fallbackY);
+        }
+
+        private static CachedMobActionAssets BuildCachedMobActionAssets(
+            TexturePool texturePool,
+            WzImage source,
+            GraphicsDevice device,
+            ConcurrentBag<WzObject> usedProps)
+        {
+            var cached = new CachedMobActionAssets();
+            foreach (WzImageProperty childProperty in source.WzProperties)
+            {
+                if (childProperty is not WzSubProperty mobStateProperty)
+                {
+                    continue;
+                }
+
+                string actionName = mobStateProperty.Name.ToLowerInvariant();
+                if (!ShouldLoadMobActionFrames(actionName))
+                {
+                    continue;
+                }
+
+                List<WzCanvasProperty> frameCanvases = BuildMobActionFrameCanvases(mobStateProperty);
+                if (frameCanvases.Count <= 0)
+                {
+                    continue;
+                }
+
+                List<MobAnimationSet.FrameMetadata> frameMetadata = BuildMobActionFrameMetadata(mobStateProperty);
+                List<int> frameDelays = BuildMobActionFrameDelays(frameCanvases);
+                if (frameMetadata.Count != frameCanvases.Count)
+                {
+                    frameMetadata = AlignFrameMetadataToFrames(frameCanvases.Count, frameMetadata);
+                }
+
+                if (ShouldAppendReversePlayback(mobStateProperty))
+                {
+                    AppendReversePlayback(frameCanvases, frameDelays, frameMetadata);
+                }
+
+                cached.ActionEntries[actionName] = new CachedMobActionEntry
+                {
+                    FrameCanvases = frameCanvases,
+                    FrameDelays = frameDelays,
+                    FrameMetadata = frameMetadata
+                };
+            }
+
+            return cached;
         }
 
         private static CachedMobAttackAssets BuildCachedMobAttackAssets(
@@ -423,6 +448,43 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return cached;
+        }
+
+        private static void ApplyCachedMobActionAssets(
+            MobAnimationSet animationSet,
+            CachedMobActionAssets cachedAssets,
+            TexturePool texturePool,
+            int x,
+            int y,
+            GraphicsDevice device)
+        {
+            if (animationSet == null || cachedAssets == null || texturePool == null || device == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<string, CachedMobActionEntry> entry in cachedAssets.ActionEntries)
+            {
+                var actionEntry = entry.Value;
+                if (actionEntry?.FrameCanvases == null || actionEntry.FrameCanvases.Count == 0)
+                {
+                    continue;
+                }
+
+                List<IDXObject> actionFrames = InstantiateMobActionFrames(
+                    texturePool,
+                    actionEntry.FrameCanvases,
+                    actionEntry.FrameDelays,
+                    x,
+                    y,
+                    device);
+                animationSet.AddAnimation(entry.Key, actionFrames);
+
+                if (actionEntry.FrameMetadata != null && actionEntry.FrameMetadata.Count > 0)
+                {
+                    animationSet.SetFrameMetadata(entry.Key, actionEntry.FrameMetadata);
+                }
+            }
         }
 
         private static void ApplyCachedMobAttackAssets(MobAnimationSet animationSet, CachedMobAttackAssets cachedAssets)
@@ -754,6 +816,387 @@ namespace HaCreator.MapSimulator.Loaders
             foreach (WzImageProperty frameHitNode in EnumerateAttackFrameHitNodes(attackStateProperty))
             {
                 yield return frameHitNode;
+            }
+        }
+
+        private static bool ShouldLoadMobActionFrames(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName) &&
+                   !string.Equals(actionName, "info", StringComparison.OrdinalIgnoreCase) &&
+                   !string.Equals(actionName, "angergaugeeffect", StringComparison.OrdinalIgnoreCase) &&
+                   !string.Equals(actionName, "angergaugeanimation", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static List<MobAnimationSet.FrameMetadata> BuildMobActionFrameMetadata(WzImageProperty source)
+        {
+            var metadata = new List<MobAnimationSet.FrameMetadata>();
+            AppendMobActionFrameMetadata(source, metadata);
+            return metadata;
+        }
+
+        private static void AppendMobActionFrameMetadata(WzImageProperty source, List<MobAnimationSet.FrameMetadata> metadata)
+        {
+            if (source == null || metadata == null)
+            {
+                return;
+            }
+
+            source = WzInfoTools.GetRealProperty(source);
+            if (source is WzSubProperty property1 && property1.WzProperties.Count == 1)
+            {
+                source = property1.WzProperties[0];
+            }
+
+            if (source is WzCanvasProperty canvasProperty)
+            {
+                metadata.Add(BuildMobFrameMetadata(canvasProperty));
+                return;
+            }
+
+            if (source is not WzSubProperty)
+            {
+                return;
+            }
+
+            int index = 0;
+            while (WzInfoTools.GetRealProperty(source[(index++).ToString()]) is WzImageProperty frameProperty)
+            {
+                if (frameProperty is WzSubProperty)
+                {
+                    AppendMobActionFrameMetadata(frameProperty, metadata);
+                    continue;
+                }
+
+                if (TryResolveCanvasProperty(frameProperty, out WzCanvasProperty resolvedCanvas))
+                {
+                    metadata.Add(BuildMobFrameMetadata(resolvedCanvas));
+                }
+            }
+        }
+
+        internal static MobAnimationSet.FrameMetadata BuildMobFrameMetadataForTests(WzCanvasProperty canvasProperty)
+        {
+            return BuildMobFrameMetadata(canvasProperty);
+        }
+
+        private static MobAnimationSet.FrameMetadata BuildMobFrameMetadata(WzCanvasProperty canvasProperty)
+        {
+            System.Drawing.PointF originPoint = canvasProperty?.GetCanvasOriginPosition() ?? System.Drawing.PointF.Empty;
+            Point origin = new Point((int)originPoint.X, (int)originPoint.Y);
+            Rectangle fallbackBounds = new Rectangle(
+                -origin.X,
+                -origin.Y,
+                Math.Max(1, canvasProperty?.PngProperty?.Width ?? 1),
+                Math.Max(1, canvasProperty?.PngProperty?.Height ?? 1));
+
+            Rectangle frameBounds = TryBuildRect(canvasProperty?["lt"], canvasProperty?["rb"], out Rectangle authoredBounds)
+                ? authoredBounds
+                : fallbackBounds;
+
+            Point? headAnchor = TryGetVector(canvasProperty?["head"]);
+            List<Rectangle> multiBodyBounds = TryGetMultiBodyBounds(canvasProperty);
+
+            return new MobAnimationSet.FrameMetadata
+            {
+                FrameBounds = frameBounds,
+                HasHeadAnchor = headAnchor.HasValue,
+                HeadAnchor = headAnchor ?? Point.Zero,
+                MultiBodyBounds = multiBodyBounds
+            };
+        }
+
+        private static List<MobAnimationSet.FrameMetadata> AlignFrameMetadataToFrames(
+            int frameCount,
+            List<MobAnimationSet.FrameMetadata> frameMetadata)
+        {
+            var aligned = new List<MobAnimationSet.FrameMetadata>(frameCount);
+            if (frameCount <= 0)
+            {
+                return aligned;
+            }
+
+            if (frameMetadata == null || frameMetadata.Count == 0)
+            {
+                for (int i = 0; i < frameCount; i++)
+                {
+                    aligned.Add(CreateFallbackFrameMetadata());
+                }
+
+                return aligned;
+            }
+
+            for (int i = 0; i < frameCount; i++)
+            {
+                aligned.Add(i < frameMetadata.Count ? frameMetadata[i] : frameMetadata[^1]);
+            }
+
+            return aligned;
+        }
+
+        private static MobAnimationSet.FrameMetadata CreateFallbackFrameMetadata()
+        {
+            return new MobAnimationSet.FrameMetadata
+            {
+                FrameBounds = new Rectangle(0, 0, 1, 1),
+                HasHeadAnchor = false,
+                HeadAnchor = Point.Zero,
+                MultiBodyBounds = null
+            };
+        }
+
+        private static bool TryResolveCanvasProperty(WzImageProperty frameProperty, out WzCanvasProperty canvasProperty)
+        {
+            canvasProperty = frameProperty as WzCanvasProperty;
+            if (canvasProperty != null)
+            {
+                return true;
+            }
+
+            if (frameProperty is WzUOLProperty uolProperty && uolProperty.LinkValue is WzCanvasProperty linkedCanvas)
+            {
+                canvasProperty = linkedCanvas;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static Point? TryGetVector(WzImageProperty property)
+        {
+            if (property is WzVectorProperty vectorProperty)
+            {
+                return new Point(vectorProperty.X.Value, vectorProperty.Y.Value);
+            }
+
+            return null;
+        }
+
+        private static bool TryBuildRect(WzImageProperty ltProperty, WzImageProperty rbProperty, out Rectangle rectangle)
+        {
+            Point? lt = TryGetVector(ltProperty);
+            Point? rb = TryGetVector(rbProperty);
+            if (!lt.HasValue || !rb.HasValue)
+            {
+                rectangle = Rectangle.Empty;
+                return false;
+            }
+
+            int left = Math.Min(lt.Value.X, rb.Value.X);
+            int top = Math.Min(lt.Value.Y, rb.Value.Y);
+            int right = Math.Max(lt.Value.X, rb.Value.X);
+            int bottom = Math.Max(lt.Value.Y, rb.Value.Y);
+            rectangle = new Rectangle(left, top, Math.Max(1, right - left), Math.Max(1, bottom - top));
+            return true;
+        }
+
+        private static List<Rectangle> TryGetMultiBodyBounds(WzCanvasProperty canvasProperty)
+        {
+            if (canvasProperty?["multiRect"] is not WzSubProperty multiRectProperty)
+            {
+                return null;
+            }
+
+            var bounds = new List<Rectangle>();
+            foreach (WzImageProperty childProperty in multiRectProperty.WzProperties)
+            {
+                WzImageProperty resolvedProperty = WzInfoTools.GetRealProperty(childProperty);
+                if (resolvedProperty is not WzSubProperty rectProperty)
+                {
+                    continue;
+                }
+
+                if (TryBuildRect(rectProperty["lt"], rectProperty["rb"], out Rectangle rect))
+                {
+                    bounds.Add(rect);
+                }
+            }
+
+            return bounds.Count > 0 ? bounds : null;
+        }
+
+        private static bool ShouldAppendReversePlayback(WzSubProperty mobStateProperty)
+        {
+            WzImageProperty infoProperty = WzInfoTools.GetRealProperty(mobStateProperty?["info"]);
+            WzSubProperty infoNode = infoProperty as WzSubProperty;
+            int reverseFlag = (int)InfoTool.GetOptionalInt(mobStateProperty?["reverse"], 0);
+            reverseFlag = Math.Max(reverseFlag, (int)InfoTool.GetOptionalInt(infoNode?["reverse"], 0));
+            reverseFlag = Math.Max(reverseFlag, (int)InfoTool.GetOptionalInt(infoNode?["range"]?["reverse"], 0));
+            return reverseFlag != 0;
+        }
+
+        internal static void AppendReversePlaybackForTests<T>(List<T> items)
+        {
+            AppendReversePlayback(items, null);
+        }
+
+        private static List<WzCanvasProperty> BuildMobActionFrameCanvases(WzImageProperty source)
+        {
+            var frameCanvases = new List<WzCanvasProperty>();
+            AppendMobActionFrameCanvases(source, frameCanvases);
+            return frameCanvases;
+        }
+
+        private static void AppendMobActionFrameCanvases(WzImageProperty source, List<WzCanvasProperty> frameCanvases)
+        {
+            if (source == null || frameCanvases == null)
+            {
+                return;
+            }
+
+            source = WzInfoTools.GetRealProperty(source);
+            if (source is WzSubProperty property1 && property1.WzProperties.Count == 1)
+            {
+                source = property1.WzProperties[0];
+            }
+
+            if (TryResolveCanvasProperty(source, out WzCanvasProperty canvasProperty))
+            {
+                frameCanvases.Add(canvasProperty);
+                return;
+            }
+
+            if (source is not WzSubProperty)
+            {
+                return;
+            }
+
+            int index = 0;
+            while (WzInfoTools.GetRealProperty(source[(index++).ToString()]) is WzImageProperty frameProperty)
+            {
+                if (frameProperty is WzSubProperty)
+                {
+                    AppendMobActionFrameCanvases(frameProperty, frameCanvases);
+                    continue;
+                }
+
+                if (TryResolveCanvasProperty(frameProperty, out WzCanvasProperty resolvedCanvas))
+                {
+                    frameCanvases.Add(resolvedCanvas);
+                }
+            }
+        }
+
+        private static List<int> BuildMobActionFrameDelays(IReadOnlyList<WzCanvasProperty> frameCanvases, int fallbackDelay = 100)
+        {
+            var frameDelays = new List<int>(frameCanvases?.Count ?? 0);
+            if (frameCanvases == null)
+            {
+                return frameDelays;
+            }
+
+            for (int i = 0; i < frameCanvases.Count; i++)
+            {
+                frameDelays.Add((int)InfoTool.GetOptionalInt(frameCanvases[i]?["delay"], fallbackDelay));
+            }
+
+            return frameDelays;
+        }
+
+        private static List<IDXObject> InstantiateMobActionFrames(
+            TexturePool texturePool,
+            IReadOnlyList<WzCanvasProperty> frameCanvases,
+            IReadOnlyList<int> frameDelays,
+            int x,
+            int y,
+            GraphicsDevice device)
+        {
+            var frames = new List<IDXObject>(frameCanvases?.Count ?? 0);
+            if (frameCanvases == null)
+            {
+                return frames;
+            }
+
+            for (int i = 0; i < frameCanvases.Count; i++)
+            {
+                WzCanvasProperty canvasProperty = frameCanvases[i];
+                if (canvasProperty == null)
+                {
+                    continue;
+                }
+
+                EnsureMobCanvasTextureLoaded(texturePool, canvasProperty, device);
+                System.Drawing.PointF origin = canvasProperty.GetCanvasOriginPosition();
+                Texture2D texture = canvasProperty.MSTag as Texture2D;
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                int delay = i < (frameDelays?.Count ?? 0) ? frameDelays[i] : 100;
+                frames.Add(new DXObject(
+                    x - (int)origin.X,
+                    y - (int)origin.Y,
+                    texture,
+                    delay));
+            }
+
+            return frames;
+        }
+
+        private static void EnsureMobCanvasTextureLoaded(TexturePool texturePool, WzCanvasProperty canvasProperty, GraphicsDevice device)
+        {
+            if (canvasProperty?.MSTag != null)
+            {
+                return;
+            }
+
+            string canvasBitmapPath = canvasProperty.FullPath;
+            Texture2D textureFromCache = texturePool.GetTexture(canvasBitmapPath);
+            if (textureFromCache != null)
+            {
+                canvasProperty.MSTag = textureFromCache;
+                return;
+            }
+
+            using var bitmap = canvasProperty.GetLinkedWzCanvasBitmap();
+            if (bitmap != null)
+            {
+                canvasProperty.MSTag = bitmap.ToTexture2D(device);
+            }
+
+            if (canvasProperty.MSTag is Texture2D texture)
+            {
+                texturePool.AddTextureToPool(canvasBitmapPath, texture);
+            }
+        }
+
+        private static void AppendReversePlayback(
+            List<WzCanvasProperty> frames,
+            List<int> frameDelays,
+            List<MobAnimationSet.FrameMetadata> frameMetadata)
+        {
+            if (frames == null || frames.Count <= 2)
+            {
+                return;
+            }
+
+            int originalCount = frames.Count;
+            for (int i = originalCount - 2; i >= 1; i--)
+            {
+                frames.Add(frames[i]);
+                if (frameDelays != null && i < frameDelays.Count)
+                {
+                    frameDelays.Add(frameDelays[i]);
+                }
+
+                if (frameMetadata != null && i < frameMetadata.Count)
+                {
+                    frameMetadata.Add(frameMetadata[i]);
+                }
+            }
+        }
+
+        private static void AppendReversePlayback<T>(List<T> items, List<MobAnimationSet.FrameMetadata> _)
+        {
+            if (items == null || items.Count <= 2)
+            {
+                return;
+            }
+
+            int originalCount = items.Count;
+            for (int i = originalCount - 2; i >= 1; i--)
+            {
+                items.Add(items[i]);
             }
         }
 

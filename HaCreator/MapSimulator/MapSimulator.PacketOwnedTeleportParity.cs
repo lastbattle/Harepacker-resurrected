@@ -401,16 +401,12 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            string[] candidateNames = target.TargetPortalNameCandidates;
-            if (candidateNames != null)
+            if (TryResolvePacketOwnedTeleportUniqueCandidatePortalName(
+                target.TargetPortalNameCandidates,
+                out string uniqueCandidatePortalName)
+                && TryResolvePacketOwnedTeleportPortalIndexByName(_portalPool, uniqueCandidatePortalName, out portalIndex))
             {
-                foreach (string candidateName in candidateNames)
-                {
-                    if (TryResolvePacketOwnedTeleportPortalIndexByName(_portalPool, candidateName, out portalIndex))
-                    {
-                        return true;
-                    }
-                }
+                return true;
             }
 
             if (target.HasFallbackCoordinates
@@ -635,14 +631,16 @@ namespace HaCreator.MapSimulator
             {
                 Tuple<Board, string> targetMap = _loadMapCallback(sourcePortal.tm);
                 IEnumerable<PortalInstance> targetPortals = targetMap?.Item1?.BoardItems?.Portals;
-                if (TryResolvePacketOwnedPortalRequestTargetByReciprocalLink(
+                if (TryCollectPacketOwnedPortalRequestTargetNamesByReciprocalLink(
                     targetPortals,
                     currentMapId,
                     sourcePortal.pn,
-                    out PortalInstance reciprocalPortal))
+                    out string[] reciprocalCandidateNames))
                 {
-                    AddPacketOwnedTeleportCandidateName(candidates, reciprocalPortal.pn);
-                    targetPortalName ??= reciprocalPortal.pn;
+                    foreach (string reciprocalCandidateName in reciprocalCandidateNames)
+                    {
+                        AddPacketOwnedTeleportCandidateName(candidates, reciprocalCandidateName);
+                    }
                 }
 
                 if (TryResolvePacketOwnedPortalRequestTargetByMapOnlyReturn(
@@ -651,11 +649,16 @@ namespace HaCreator.MapSimulator
                     out PortalInstance mapOnlyPortal))
                 {
                     AddPacketOwnedTeleportCandidateName(candidates, mapOnlyPortal.pn);
-                    targetPortalName ??= mapOnlyPortal.pn;
                 }
             }
 
             candidatePortalNames = candidates.ToArray();
+            if (string.IsNullOrWhiteSpace(targetPortalName)
+                && TryResolvePacketOwnedTeleportUniqueCandidatePortalName(candidatePortalNames, out string uniqueCandidatePortalName))
+            {
+                targetPortalName = uniqueCandidatePortalName;
+            }
+
             return !string.IsNullOrWhiteSpace(targetPortalName) || candidatePortalNames.Length > 0;
         }
 
@@ -691,15 +694,20 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (TryResolvePacketOwnedPortalRequestTargetByReciprocalLink(
+            if (TryCollectPacketOwnedPortalRequestTargetNamesByReciprocalLink(
                 targetPortals,
                 currentMapId,
                 sourcePortalName,
-                out PortalInstance reciprocalPortal))
+                out string[] reciprocalCandidateNames))
             {
-                AddPacketOwnedTeleportCandidateName(candidateNames, reciprocalPortal.pn);
-                targetPortalName ??= reciprocalPortal.pn;
-                resolutionSummary = $"reciprocal target-map portal '{reciprocalPortal.pn}' linked back to source portal '{sourcePortalName}'";
+                foreach (string reciprocalCandidateName in reciprocalCandidateNames)
+                {
+                    AddPacketOwnedTeleportCandidateName(candidateNames, reciprocalCandidateName);
+                }
+
+                resolutionSummary = reciprocalCandidateNames.Length == 1
+                    ? $"reciprocal target-map portal '{reciprocalCandidateNames[0]}' linked back to source portal '{sourcePortalName}'"
+                    : $"reciprocal target-map portals linked back to source portal '{sourcePortalName}'";
             }
 
             if (TryResolvePacketOwnedPortalRequestTargetByMapOnlyReturn(
@@ -708,12 +716,17 @@ namespace HaCreator.MapSimulator
                 out PortalInstance mapOnlyPortal))
             {
                 AddPacketOwnedTeleportCandidateName(candidateNames, mapOnlyPortal.pn);
-                targetPortalName ??= mapOnlyPortal.pn;
                 resolutionSummary = $"single target-map portal '{mapOnlyPortal.pn}' that returns to map {currentMapId}";
             }
 
             candidatePortalNames = candidateNames.ToArray();
-            return !string.IsNullOrWhiteSpace(targetPortalName);
+            if (string.IsNullOrWhiteSpace(targetPortalName)
+                && TryResolvePacketOwnedTeleportUniqueCandidatePortalName(candidatePortalNames, out string uniqueCandidatePortalName))
+            {
+                targetPortalName = uniqueCandidatePortalName;
+            }
+
+            return !string.IsNullOrWhiteSpace(targetPortalName) || candidatePortalNames.Length > 0;
         }
 
         private static void AddPacketOwnedTeleportCandidateName(List<string> candidates, string portalName)
@@ -734,6 +747,70 @@ namespace HaCreator.MapSimulator
             candidates.Add(portalName);
         }
 
+        internal static bool TryResolvePacketOwnedTeleportUniqueCandidatePortalName(
+            IEnumerable<string> candidatePortalNames,
+            out string uniquePortalName)
+        {
+            uniquePortalName = null;
+            if (candidatePortalNames == null)
+            {
+                return false;
+            }
+
+            foreach (string candidatePortalName in candidatePortalNames)
+            {
+                if (string.IsNullOrWhiteSpace(candidatePortalName))
+                {
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(uniquePortalName))
+                {
+                    uniquePortalName = candidatePortalName;
+                    continue;
+                }
+
+                if (!string.Equals(uniquePortalName, candidatePortalName, StringComparison.OrdinalIgnoreCase))
+                {
+                    uniquePortalName = null;
+                    return false;
+                }
+            }
+
+            return !string.IsNullOrWhiteSpace(uniquePortalName);
+        }
+
+        internal static bool TryCollectPacketOwnedPortalRequestTargetNamesByReciprocalLink(
+            IEnumerable<PortalInstance> portals,
+            int sourceMapId,
+            string sourcePortalName,
+            out string[] portalNames)
+        {
+            portalNames = Array.Empty<string>();
+            if (portals == null
+                || sourceMapId <= 0
+                || string.IsNullOrWhiteSpace(sourcePortalName))
+            {
+                return false;
+            }
+
+            var names = new List<string>();
+            foreach (PortalInstance portal in portals)
+            {
+                if (portal == null
+                    || portal.tm != sourceMapId
+                    || !string.Equals(portal.tn, sourcePortalName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                AddPacketOwnedTeleportCandidateName(names, portal.pn);
+            }
+
+            portalNames = names.ToArray();
+            return portalNames.Length > 0;
+        }
+
         internal static string ResolvePacketOwnedTeleportFallbackHandoffTargetPortalNameForTesting(
             string targetPortalName,
             IEnumerable<string> targetPortalNameCandidates)
@@ -750,17 +827,9 @@ namespace HaCreator.MapSimulator
                 return targetPortalName;
             }
 
-            if (targetPortalNameCandidates == null)
+            if (TryResolvePacketOwnedTeleportUniqueCandidatePortalName(targetPortalNameCandidates, out string uniqueCandidateName))
             {
-                return null;
-            }
-
-            foreach (string candidateName in targetPortalNameCandidates)
-            {
-                if (!string.IsNullOrWhiteSpace(candidateName))
-                {
-                    return candidateName;
-                }
+                return uniqueCandidateName;
             }
 
             return null;
@@ -954,15 +1023,26 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (TryResolvePacketOwnedPortalRequestTargetByReciprocalLink(
+            if (TryCollectPacketOwnedPortalRequestTargetNamesByReciprocalLink(
                 targetPortals,
                 currentMapId,
                 sourcePortal.pn,
-                out PortalInstance reciprocalPortal))
+                out string[] reciprocalCandidateNames))
             {
-                target = new PacketOwnedTeleportPortalRequestTarget(reciprocalPortal.X, reciprocalPortal.Y);
-                summary = $"reciprocal target-map portal '{reciprocalPortal.pn}' linked back to source portal '{sourcePortal.pn}'";
-                return true;
+                if (TryResolvePacketOwnedTeleportUniqueCandidatePortalName(
+                    reciprocalCandidateNames,
+                    out string uniqueReciprocalTargetName)
+                    && TryResolvePacketOwnedPortalRequestTargetFromBoardPortals(
+                        targetPortals,
+                        uniqueReciprocalTargetName,
+                        out PortalInstance reciprocalPortal))
+                {
+                    target = new PacketOwnedTeleportPortalRequestTarget(reciprocalPortal.X, reciprocalPortal.Y);
+                    summary = $"reciprocal target-map portal '{reciprocalPortal.pn}' linked back to source portal '{sourcePortal.pn}'";
+                    return true;
+                }
+
+                summary = $"reciprocal target-map portals linked back to source portal '{sourcePortal.pn}'";
             }
 
             if (TryResolvePacketOwnedPortalRequestTargetByMapOnlyReturn(
@@ -978,36 +1058,6 @@ namespace HaCreator.MapSimulator
             summary = string.IsNullOrWhiteSpace(sourcePortal.tn)
                 ? $"destination portal linked to source portal '{sourcePortal.pn}' in map {sourcePortal.tm}"
                 : $"destination portal '{sourcePortal.tn}' in map {sourcePortal.tm}";
-            return false;
-        }
-
-        private static bool TryResolvePacketOwnedPortalRequestTargetByReciprocalLink(
-            IEnumerable<PortalInstance> portals,
-            int sourceMapId,
-            string sourcePortalName,
-            out PortalInstance portalInstance)
-        {
-            portalInstance = null;
-            if (portals == null
-                || sourceMapId <= 0
-                || string.IsNullOrWhiteSpace(sourcePortalName))
-            {
-                return false;
-            }
-
-            foreach (PortalInstance portal in portals)
-            {
-                if (portal == null
-                    || portal.tm != sourceMapId
-                    || !string.Equals(portal.tn, sourcePortalName, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                portalInstance = portal;
-                return true;
-            }
-
             return false;
         }
 

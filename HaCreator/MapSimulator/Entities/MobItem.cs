@@ -273,7 +273,10 @@ namespace HaCreator.MapSimulator.Entities
             float? attackerX,
             float? attackerY,
             bool originatedFromPlayer = true,
-            MobDamageType damageType = MobDamageType.Physical)
+            MobDamageType damageType = MobDamageType.Physical,
+            int attackerId = 0,
+            MobTargetType attackerTargetType = MobTargetType.Player,
+            MobExternalTargetSource attackerExternalTargetSource = MobExternalTargetSource.None)
         {
             if (AI == null)
                 return false;
@@ -281,7 +284,16 @@ namespace HaCreator.MapSimulator.Entities
             if (IsProtectedFromPlayerDamage && originatedFromPlayer)
                 return false;
 
-            bool died = AI.TakeDamage(damage, currentTick, isCritical, attackerX, attackerY, damageType);
+            bool died = AI.TakeDamage(
+                damage,
+                currentTick,
+                isCritical,
+                attackerX,
+                attackerY,
+                damageType,
+                attackerId,
+                attackerTargetType,
+                attackerExternalTargetSource);
 
             // Play damage sound on hit
             PlayDamageSound();
@@ -341,6 +353,26 @@ namespace HaCreator.MapSimulator.Entities
                 return Rectangle.Empty;
             }
 
+            MobAnimationSet.FrameMetadata frameMetadata = GetCurrentAnimationFrameMetadata();
+            if (frameMetadata != null)
+            {
+                Rectangle bodyBounds = frameMetadata.EffectiveBodyBounds;
+                if (flip)
+                {
+                    bodyBounds = new Rectangle(
+                        -(bodyBounds.X + bodyBounds.Width),
+                        bodyBounds.Y,
+                        bodyBounds.Width,
+                        bodyBounds.Height);
+                }
+
+                return new Rectangle(
+                    CurrentX + bodyBounds.X,
+                    CurrentY + bodyBounds.Y,
+                    bodyBounds.Width,
+                    bodyBounds.Height);
+            }
+
             int positionOffsetX = 0;
             int positionOffsetY = 0;
             if (MovementEnabled && MovementInfo != null)
@@ -351,7 +383,6 @@ namespace HaCreator.MapSimulator.Entities
 
             int worldX = frame.X + positionOffsetX;
             int worldY = frame.Y + positionOffsetY;
-
             // Match the draw-time normalization for flipped mobs so contact checks align with the sprite.
             var currentFrames = _animationController?.CurrentFrames;
             if (flip && currentFrames != null && currentFrames.Count > 0)
@@ -376,6 +407,23 @@ namespace HaCreator.MapSimulator.Entities
         /// </summary>
         public Vector2 GetDamageNumberAnchor(int verticalPadding = 12)
         {
+            MobAnimationSet.FrameMetadata frameMetadata = GetCurrentAnimationFrameMetadata();
+            if (frameMetadata?.HasHeadAnchor == true)
+            {
+                int headOffsetX = flip ? -frameMetadata.HeadAnchor.X : frameMetadata.HeadAnchor.X;
+                return new Vector2(
+                    CurrentX + headOffsetX,
+                    CurrentY + frameMetadata.HeadAnchor.Y - verticalPadding);
+            }
+
+            Rectangle bodyHitbox = GetBodyHitbox(Environment.TickCount);
+            if (bodyHitbox != Rectangle.Empty)
+            {
+                return new Vector2(
+                    bodyHitbox.Center.X,
+                    bodyHitbox.Top - verticalPadding);
+            }
+
             float x = CurrentX;
             float y = CurrentY - GetVisualHeight() - verticalPadding;
             return new Vector2(x, y);
@@ -1418,6 +1466,18 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return _animationController?.CurrentFrames;
+        }
+
+        private MobAnimationSet.FrameMetadata GetCurrentAnimationFrameMetadata()
+        {
+            if (AI?.IsDoomed == true || _animationController == null)
+            {
+                return null;
+            }
+
+            return _animationSet?.GetFrameMetadata(
+                _animationController.CurrentAction,
+                _animationController.CurrentFrameIndex);
         }
 
         private IReadOnlyList<IDXObject> ResolveDoomAnimationFrames()

@@ -87,7 +87,12 @@ namespace HaCreator.MapSimulator.Pools
         internal readonly record struct PortableChairPairRecord(
             int CharacterId,
             int ItemId,
-            int? PreferredPairCharacterId);
+            int? PreferredPairCharacterId,
+            int? PairCharacterId = null,
+            int Status = 0)
+        {
+            public bool IsActive => Status != 0 && PairCharacterId.HasValue && PairCharacterId.Value > 0;
+        }
 
         private readonly record struct PortableChairPairCandidate(
             PortableChairPairParticipant Left,
@@ -4311,17 +4316,9 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            int? resolvedChargeSkillId = knownState.ChargeSkillId;
-            if (!resolvedChargeSkillId.HasValue
-                && actor?.TemporaryStats.RawPayload is byte[] rawPayload
-                && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
-                    rawPayload,
-                    0,
-                    ResolvePreferredRemoteWeaponChargeSkillId(actor?.Build?.Job ?? 0),
-                    out int payloadChargeSkillId))
-            {
-                resolvedChargeSkillId = payloadChargeSkillId;
-            }
+            int? resolvedChargeSkillId = ResolveChargeSkillIdFromTemporaryStats(
+                actor?.TemporaryStats ?? default,
+                ResolvePreferredRemoteWeaponChargeSkillId(actor?.Build?.Job ?? 0));
 
             if (!resolvedChargeSkillId.HasValue)
             {
@@ -5631,14 +5628,40 @@ namespace HaCreator.MapSimulator.Pools
                 return knownStateChargeElement;
             }
 
-            byte[] temporaryStatPayload = actor?.TemporaryStats.RawPayload;
-            return temporaryStatPayload != null
-                && AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatPayload(
-                    temporaryStatPayload,
-                    ResolvePreferredRemoteWeaponChargeSkillId(actor?.Build?.Job ?? 0),
+            int? resolvedChargeSkillId = ResolveChargeSkillIdFromTemporaryStats(
+                actor?.TemporaryStats ?? default,
+                ResolvePreferredRemoteWeaponChargeSkillId(actor?.Build?.Job ?? 0));
+            return resolvedChargeSkillId.HasValue
+                && AfterImageChargeSkillResolver.TryGetChargeElement(
+                    resolvedChargeSkillId.Value,
                     out int payloadChargeElement)
                 ? payloadChargeElement
                 : 0;
+        }
+
+        internal static int? ResolveChargeSkillIdFromTemporaryStats(
+            RemoteUserTemporaryStatSnapshot snapshot,
+            int preferredSkillId)
+        {
+            if (snapshot.KnownState.ChargeSkillId.HasValue)
+            {
+                return snapshot.KnownState.ChargeSkillId;
+            }
+
+            if (!snapshot.HasWeaponCharge
+                || snapshot.RawPayload == null
+                || snapshot.WeaponChargePayloadOffset < 0)
+            {
+                return null;
+            }
+
+            return AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
+                snapshot.RawPayload,
+                snapshot.WeaponChargePayloadOffset,
+                preferredSkillId,
+                out int payloadChargeSkillId)
+                ? payloadChargeSkillId
+                : null;
         }
 
         private static int ResolvePreferredRemoteWeaponChargeSkillId(int jobId)

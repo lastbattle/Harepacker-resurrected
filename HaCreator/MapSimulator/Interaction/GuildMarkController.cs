@@ -21,11 +21,12 @@ namespace HaCreator.MapSimulator.Interaction
         internal string Open(
             UIWindowManager windowManager,
             SpriteFont font,
+            Func<GuildMarkSelection, string> commitHandler,
             Action<string> feedbackHandler,
             Action showWindow)
         {
             string message = _runtime.Open();
-            WireWindow(windowManager, font, feedbackHandler);
+            WireWindow(windowManager, font, commitHandler, feedbackHandler);
             showWindow?.Invoke();
             return message;
         }
@@ -33,6 +34,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal void WireWindow(
             UIWindowManager windowManager,
             SpriteFont font,
+            Func<GuildMarkSelection, string> commitHandler,
             Action<string> feedbackHandler)
         {
             if (windowManager?.GetWindow(MapSimulatorWindowNames.GuildMark) is not GuildMarkWindow window)
@@ -43,7 +45,19 @@ namespace HaCreator.MapSimulator.Interaction
             window.SetSnapshotProvider(_runtime.BuildSnapshot);
             window.SetActionHandlers(
                 elapsedMs => _runtime.Advance(elapsedMs),
-                () => feedbackHandler?.Invoke(Close(windowManager, _runtime.Confirm)),
+                () =>
+                {
+                    feedbackHandler?.Invoke(Close(windowManager, _runtime.Confirm));
+                    GuildMarkSelection? selection = _runtime.GetCommittedSelection();
+                    if (selection.HasValue)
+                    {
+                        string message = commitHandler?.Invoke(selection.Value);
+                        if (!string.IsNullOrWhiteSpace(message))
+                        {
+                            feedbackHandler?.Invoke(message);
+                        }
+                    }
+                },
                 () => feedbackHandler?.Invoke(Close(windowManager, _runtime.Cancel)),
                 delta => feedbackHandler?.Invoke(_runtime.MoveBackground(delta)),
                 delta => feedbackHandler?.Invoke(_runtime.MoveMark(delta)),

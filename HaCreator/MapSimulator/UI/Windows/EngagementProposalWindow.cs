@@ -236,10 +236,21 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawOutlinedText(SpriteBatch sprite, string text, Vector2 position, Color fillColor, Color outlineColor)
         {
-            sprite.DrawString(_font, text, position + new Vector2(-1f, 0f), outlineColor);
-            sprite.DrawString(_font, text, position + new Vector2(1f, 0f), outlineColor);
-            sprite.DrawString(_font, text, position + new Vector2(0f, -1f), outlineColor);
-            sprite.DrawString(_font, text, position + new Vector2(0f, 1f), outlineColor);
+            ReadOnlySpan<Vector2> outlineOffsets =
+            [
+                new Vector2(-1f, 1f),
+                new Vector2(-1f, 2f),
+                new Vector2(0f, 1f),
+                new Vector2(0f, 2f),
+                new Vector2(1f, 1f),
+                new Vector2(1f, 2f)
+            ];
+
+            for (int i = 0; i < outlineOffsets.Length; i++)
+            {
+                sprite.DrawString(_font, text, position + outlineOffsets[i], outlineColor);
+            }
+
             sprite.DrawString(_font, text, position, fillColor);
         }
 

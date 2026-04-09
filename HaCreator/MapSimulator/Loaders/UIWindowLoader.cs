@@ -210,6 +210,44 @@ namespace HaCreator.MapSimulator.Loaders
             }
         }
 
+        private static UIObject LoadCanvasStateTabButton(
+            WzSubProperty tabProperty,
+            string tabIndex,
+            GraphicsDevice device)
+        {
+            WzCanvasProperty enabledCanvas = tabProperty?["enabled"]?[tabIndex] as WzCanvasProperty;
+            WzCanvasProperty disabledCanvas = tabProperty?["disabled"]?[tabIndex] as WzCanvasProperty;
+            if (enabledCanvas == null || disabledCanvas == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                Texture2D enabledTexture = enabledCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+                Texture2D disabledTexture = disabledCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+                if (enabledTexture == null || disabledTexture == null)
+                {
+                    return null;
+                }
+
+                Point enabledOffset = ResolveCanvasOffset(enabledCanvas, Point.Zero);
+                Point disabledOffset = ResolveCanvasOffset(disabledCanvas, Point.Zero);
+                BaseDXDrawableItem normalState = new BaseDXDrawableItem(new DXObject(disabledOffset.X, disabledOffset.Y, disabledTexture), false);
+                BaseDXDrawableItem pressedState = new BaseDXDrawableItem(new DXObject(enabledOffset.X, enabledOffset.Y, enabledTexture), false);
+                UIObject button = new UIObject(normalState, normalState, pressedState, pressedState)
+                {
+                    X = disabledOffset.X,
+                    Y = disabledOffset.Y
+                };
+                return button;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
 
         private static Texture2D[] LoadInventoryMarkerTextures(WzSubProperty itemProperty, string markerFamilyName, GraphicsDevice device)
         {
@@ -313,6 +351,131 @@ namespace HaCreator.MapSimulator.Loaders
             System.Drawing.PointF origin = canvas.GetCanvasOriginPosition();
             offset = new Point(-(int)origin.X, -(int)origin.Y);
             return new DXObject(0, 0, texture, 0);
+        }
+
+        private static IDXObject LoadWindowCanvasLayerFromClientUiStringPoolPath(
+            int stringPoolId,
+            string fallbackFormatPath,
+            int formatValue,
+            WzImage primaryImage,
+            WzImage secondaryImage,
+            GraphicsDevice device,
+            out Point offset)
+        {
+            string resolvedPath = ResolveClientUiStringPoolPath(stringPoolId, fallbackFormatPath, formatValue);
+            return LoadWindowCanvasLayerFromClientUiPath(resolvedPath, primaryImage, secondaryImage, device, out offset);
+        }
+
+        private static IDXObject LoadWindowCanvasLayerFromClientUiStringPoolPath(
+            int stringPoolId,
+            string fallbackPath,
+            WzImage primaryImage,
+            WzImage secondaryImage,
+            GraphicsDevice device,
+            out Point offset)
+        {
+            string resolvedPath = MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackPath);
+            return LoadWindowCanvasLayerFromClientUiPath(resolvedPath, primaryImage, secondaryImage, device, out offset);
+        }
+
+        private static string ResolveClientUiStringPoolPath(int stringPoolId, string fallbackFormatPath, int formatValue)
+        {
+            string resolvedFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                stringPoolId,
+                fallbackFormatPath,
+                1,
+                out _);
+
+            try
+            {
+                return string.Format(CultureInfo.InvariantCulture, resolvedFormat, formatValue);
+            }
+            catch (FormatException)
+            {
+                return string.Format(CultureInfo.InvariantCulture, fallbackFormatPath, formatValue);
+            }
+        }
+
+        private static IDXObject LoadWindowCanvasLayerFromClientUiPath(
+            string clientUiPath,
+            WzImage primaryImage,
+            WzImage secondaryImage,
+            GraphicsDevice device,
+            out Point offset)
+        {
+            offset = Point.Zero;
+
+            if (string.IsNullOrWhiteSpace(clientUiPath) || device == null)
+            {
+                return null;
+            }
+
+            WzCanvasProperty canvas = ResolveCanvasFromClientUiPath(clientUiPath, primaryImage, secondaryImage);
+            if (canvas == null)
+            {
+                return null;
+            }
+
+            Texture2D texture = canvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            if (texture == null)
+            {
+                return null;
+            }
+
+            System.Drawing.PointF origin = canvas.GetCanvasOriginPosition();
+            offset = new Point(-(int)origin.X, -(int)origin.Y);
+            return new DXObject(0, 0, texture, 0);
+        }
+
+        private static WzCanvasProperty ResolveCanvasFromClientUiPath(
+            string clientUiPath,
+            WzImage primaryImage,
+            WzImage secondaryImage)
+        {
+            if (string.IsNullOrWhiteSpace(clientUiPath))
+            {
+                return null;
+            }
+
+            string[] segments = clientUiPath
+                .Replace('\\', '/')
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            int imageSegmentIndex = Array.FindIndex(
+                segments,
+                segment => segment.EndsWith(".img", StringComparison.OrdinalIgnoreCase));
+            if (imageSegmentIndex < 0 || imageSegmentIndex >= segments.Length - 1)
+            {
+                return null;
+            }
+
+            string imageName = segments[imageSegmentIndex];
+            string innerPath = string.Join("/", segments.Skip(imageSegmentIndex + 1));
+            foreach (WzImage image in EnumerateClientUiImages(imageName, primaryImage, secondaryImage))
+            {
+                WzCanvasProperty canvas = ResolveCanvasProperty(image, innerPath);
+                if (canvas != null)
+                {
+                    return canvas;
+                }
+            }
+
+            return null;
+        }
+
+        private static IEnumerable<WzImage> EnumerateClientUiImages(string imageName, WzImage primaryImage, WzImage secondaryImage)
+        {
+            WzImage[] ordered = string.Equals(imageName, secondaryImage?.Name, StringComparison.OrdinalIgnoreCase)
+                ? new[] { secondaryImage, primaryImage }
+                : new[] { primaryImage, secondaryImage };
+
+            HashSet<WzImage> yielded = new();
+            foreach (WzImage image in ordered)
+            {
+                if (image != null && yielded.Add(image))
+                {
+                    yield return image;
+                }
+            }
         }
 
 
@@ -1222,7 +1385,9 @@ namespace HaCreator.MapSimulator.Loaders
                 progressFramesByVariant,
                 animationFramesByVariant,
                 noticeTextTextures,
-                cancelButton)
+                cancelButton,
+                screenWidth,
+                screenHeight)
             {
                 Position = new Point(
                     Math.Max(24, (screenWidth / 2) - ((noticeFrame.Width > 0 ? noticeFrame.Width : 249) / 2)),
@@ -1311,7 +1476,9 @@ namespace HaCreator.MapSimulator.Loaders
                 restartButton,
                 exitButton,
                 nexonButton,
-                noticeTextTextures)
+                noticeTextTextures,
+                screenWidth,
+                screenHeight)
             {
                 Position = new Point(Math.Max(24, (screenWidth / 2) - (frameTexture.Width / 2)), Math.Max(24, (screenHeight / 2) - (frameTexture.Height / 2)))
 
@@ -2162,7 +2329,7 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D overlayTexture = LoadCanvasTexture(worldScrollProperty, "0", device);
             Point overlayOffset = ResolveCanvasOffset(worldScrollProperty, "0", Point.Zero);
             WzSubProperty worldButtonProperty = loginWorldSelectProperty?["BtWorld"] as WzSubProperty;
-            List<(int worldId, UIObject button, Texture2D icon)> worldButtons = new List<(int, UIObject, Texture2D)>();
+            List<(int worldId, UIObject button, Texture2D icon, SelectorOverlayFrame keyFocusedFrame)> worldButtons = new List<(int, UIObject, Texture2D, SelectorOverlayFrame)>();
             foreach (KeyValuePair<int, Texture2D> badge in worldBadges.OrderBy(pair => pair.Key))
             {
                 UIObject button = LoadButton(worldButtonProperty, badge.Key.ToString(CultureInfo.InvariantCulture), clickSound, overSound, device)
@@ -2171,7 +2338,7 @@ namespace HaCreator.MapSimulator.Loaders
                 {
                     continue;
                 }
-                worldButtons.Add((badge.Key, button, badge.Value));
+                worldButtons.Add((badge.Key, button, badge.Value, default));
 
             }
 
@@ -4159,6 +4326,7 @@ namespace HaCreator.MapSimulator.Loaders
             bookCollection.SetPageMarkerTextures(
                 LoadCanvasTexture(utilDialogProperty, "dot0", device),
                 LoadCanvasTexture(utilDialogProperty, "dot1", device));
+            bookCollection.SetPageRuleTexture(LoadCanvasTexture(utilDialogProperty, "line", device));
 
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
@@ -4364,7 +4532,7 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadButtonStateTexture(sourceProperty?["BtDelete"] as WzSubProperty, "pressed", device),
                 LoadButtonStateTexture(sourceProperty?["BtDelete"] as WzSubProperty, "disabled", device),
                 LoadButtonStateTexture(sourceProperty?["BtDelete"] as WzSubProperty, "mouseOver", device),
-                LoadButtonAnimationTextures(sourceProperty?["BtQ"] as WzSubProperty, device));
+                LoadQuestAlarmAnimationFrames(sourceProperty?["BtQ"] as WzSubProperty, device));
 
 
             window.InitializeControls(
@@ -4391,6 +4559,28 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 return null;
             }
+        }
+
+        private static IReadOnlyList<QuestAlarmAnimationFrame> LoadQuestAlarmAnimationFrames(
+            WzSubProperty buttonProperty,
+            GraphicsDevice device)
+        {
+            LoadIndexedCanvasSequence(buttonProperty?["ani"] as WzSubProperty, device, out Texture2D[] textures, out Point[] offsets, out int[] delays);
+            if (textures.Length == 0)
+            {
+                return Array.Empty<QuestAlarmAnimationFrame>();
+            }
+
+            List<QuestAlarmAnimationFrame> frames = new(textures.Length);
+            for (int i = 0; i < textures.Length; i++)
+            {
+                frames.Add(new QuestAlarmAnimationFrame(
+                    textures[i],
+                    i < offsets.Length ? offsets[i] : Point.Zero,
+                    i < delays.Length ? delays[i] : 0));
+            }
+
+            return frames;
         }
 
 
@@ -4990,6 +5180,10 @@ namespace HaCreator.MapSimulator.Loaders
             GraphicsDevice device,
             Point position)
         {
+            const int ClientFamilyTreeLeaderPlateStringPoolId = 0x11F4;
+            const int ClientFamilyTreeMemberPlateStringPoolId = 0x11F5;
+            const int ClientFamilyTreeSelectedOverlayStringPoolId = 0x11F8;
+
             WzSubProperty sourceProperty = uiWindow2Image?["FamilyTree"] as WzSubProperty
                 ?? uiWindow1Image?["FamilyTree"] as WzSubProperty;
             WzCanvasProperty backgroundProperty = sourceProperty?["backgrnd"] as WzCanvasProperty;
@@ -5013,12 +5207,51 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty memberPlateProperty = sourceProperty?["PlateOthers"] as WzSubProperty;
             FamilyTreeWindow window = new FamilyTreeWindow(
                 new DXObject(0, 0, frameTexture, 0),
-                LoadWindowCanvasLayerWithOffset(sourceProperty, "selected", device, out Point selectedOffset),
+                LoadWindowCanvasLayerFromClientUiStringPoolPath(
+                    ClientFamilyTreeSelectedOverlayStringPoolId,
+                    "UI/UIWindow.img/FamilyTree/selected",
+                    uiWindow2Image,
+                    uiWindow1Image,
+                    device,
+                    out Point selectedOffset)
+                    ?? LoadWindowCanvasLayerWithOffset(sourceProperty, "selected", device, out selectedOffset),
                 selectedOffset,
-                LoadWindowCanvasLayerWithOffset(leaderPlateProperty, "0", device, out Point _),
-                LoadWindowCanvasLayerWithOffset(leaderPlateProperty, "1", device, out Point _),
-                LoadWindowCanvasLayerWithOffset(memberPlateProperty, "0", device, out Point _),
-                LoadWindowCanvasLayerWithOffset(memberPlateProperty, "1", device, out Point _),
+                LoadWindowCanvasLayerFromClientUiStringPoolPath(
+                    ClientFamilyTreeLeaderPlateStringPoolId,
+                    "UI/UIWindow.img/FamilyTree/PlateLeader/{0}",
+                    0,
+                    uiWindow2Image,
+                    uiWindow1Image,
+                    device,
+                    out Point _)
+                    ?? LoadWindowCanvasLayerWithOffset(leaderPlateProperty, "0", device, out Point _),
+                LoadWindowCanvasLayerFromClientUiStringPoolPath(
+                    ClientFamilyTreeLeaderPlateStringPoolId,
+                    "UI/UIWindow.img/FamilyTree/PlateLeader/{0}",
+                    1,
+                    uiWindow2Image,
+                    uiWindow1Image,
+                    device,
+                    out Point _)
+                    ?? LoadWindowCanvasLayerWithOffset(leaderPlateProperty, "1", device, out Point _),
+                LoadWindowCanvasLayerFromClientUiStringPoolPath(
+                    ClientFamilyTreeMemberPlateStringPoolId,
+                    "UI/UIWindow.img/FamilyTree/PlateOthers/{0}",
+                    0,
+                    uiWindow2Image,
+                    uiWindow1Image,
+                    device,
+                    out Point _)
+                    ?? LoadWindowCanvasLayerWithOffset(memberPlateProperty, "0", device, out Point _),
+                LoadWindowCanvasLayerFromClientUiStringPoolPath(
+                    ClientFamilyTreeMemberPlateStringPoolId,
+                    "UI/UIWindow.img/FamilyTree/PlateOthers/{0}",
+                    1,
+                    uiWindow2Image,
+                    uiWindow1Image,
+                    device,
+                    out Point _)
+                    ?? LoadWindowCanvasLayerWithOffset(memberPlateProperty, "1", device, out Point _),
                 device)
             {
                 Position = position
@@ -6663,6 +6896,7 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadButton(sourceProperty, "BtQuit", btClickSound, btOverSound, device),
                 LoadButton(sourceProperty, "BtReply", btClickSound, btOverSound, device),
                 LoadButton(sourceProperty, "BtReplyDelete", btClickSound, btOverSound, device),
+                Array.Empty<UIObject>(),
                 LoadButton(sourceProperty["MoveEmoticon"] as WzSubProperty, "BtLeft", btClickSound, btOverSound, device),
                 LoadButton(sourceProperty["MoveEmoticon"] as WzSubProperty, "BtRight", btClickSound, btOverSound, device));
 

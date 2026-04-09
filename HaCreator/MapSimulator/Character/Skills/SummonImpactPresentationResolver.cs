@@ -6,6 +6,7 @@ namespace HaCreator.MapSimulator.Character.Skills;
 public static class SummonImpactPresentationResolver
 {
     private const float SourceVerticalOffset = 25f;
+    private const float MinimumFallbackTargetHeightOffset = 20f;
     private const float TargetEdgeInset = 10f;
     private const float MaxTargetDistance = 600f;
     private const int SourceAnchorPositionCode = 2;
@@ -22,26 +23,24 @@ public static class SummonImpactPresentationResolver
             return source;
         }
 
+        Vector2 sourceAnchor = new(source.X, source.Y - SourceVerticalOffset);
         if (targetHitbox.IsEmpty)
         {
-            return fallbackTargetPosition;
+            return ApplyDistanceCap(sourceAnchor, fallbackTargetPosition);
         }
 
-        Vector2 sourceAnchor = new(source.X, source.Y - SourceVerticalOffset);
         float centerX = targetHitbox.Left + targetHitbox.Width * 0.5f;
         float clampedY = MathHelper.Clamp(sourceAnchor.Y, targetHitbox.Top, targetHitbox.Bottom);
         float targetX = ResolveTargetAnchorX(presentation?.PositionCode, targetHitbox, source.X, centerX);
 
-        Vector2 resolved = new(targetX, clampedY);
-        Vector2 delta = resolved - sourceAnchor;
-        float maxDistanceSq = MaxTargetDistance * MaxTargetDistance;
-        float distanceSq = delta.LengthSquared();
-        if (distanceSq <= 0f || distanceSq <= maxDistanceSq)
-        {
-            return resolved;
-        }
+        return ApplyDistanceCap(sourceAnchor, new Vector2(targetX, clampedY));
+    }
 
-        return sourceAnchor + Vector2.Normalize(delta) * MaxTargetDistance;
+    public static Vector2 ResolveFallbackTargetPosition(Vector2 targetPosition, float visualHeight)
+    {
+        return new Vector2(
+            targetPosition.X,
+            targetPosition.Y - Math.Max(MinimumFallbackTargetHeightOffset, visualHeight * 0.5f));
     }
 
     private static float ResolveTargetAnchorX(int? positionCode, Rectangle targetHitbox, float sourceX, float centerX)
@@ -55,5 +54,18 @@ public static class SummonImpactPresentationResolver
         return sourceX > centerX
             ? Math.Max(centerX, targetHitbox.Right - inset)
             : Math.Min(centerX, targetHitbox.Left + inset);
+    }
+
+    private static Vector2 ApplyDistanceCap(Vector2 sourceAnchor, Vector2 resolvedTarget)
+    {
+        Vector2 delta = resolvedTarget - sourceAnchor;
+        float maxDistanceSq = MaxTargetDistance * MaxTargetDistance;
+        float distanceSq = delta.LengthSquared();
+        if (distanceSq <= 0f || distanceSq <= maxDistanceSq)
+        {
+            return resolvedTarget;
+        }
+
+        return sourceAnchor + Vector2.Normalize(delta) * MaxTargetDistance;
     }
 }

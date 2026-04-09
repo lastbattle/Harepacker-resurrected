@@ -32,6 +32,8 @@ namespace HaCreator.MapSimulator.Fields
         public const string ClientOwnerName = "CField_PartyRaid";
         public const string ClientBossOwnerName = "CField_PartyRaidBoss";
         public const string ClientResultOwnerName = "CField_PartyRaidResult";
+        public const int ClientHuntingAdballoonFieldSetVariableAddress = 0x552050;
+        public const string ClientHuntingAdballoonOwnerName = "CField_HuntingAdballoon";
 
         private readonly record struct ClientStringPoolEvidence(
             int Id,
@@ -185,13 +187,13 @@ namespace HaCreator.MapSimulator.Fields
             0x84,
             "84 1F 82 3C 3B 25 22 56 6C E9 02",
             "red_Charge",
-            "CField_PartyRaidBoss::OnFieldSetVariable");
+            "CField_HuntingAdballoon::OnFieldSetVariable");
         private static readonly ClientStringPoolEvidence PartyRaidBossBlueChargeStringPoolEvidence = new(
             HuntingAdballoonBlueChargeStringId,
             0x85,
             "85 B9 A2 C5 AD 93 D7 06 5C 6E A8 1F",
             "blue_Charge",
-            "CField_PartyRaidBoss::OnFieldSetVariable");
+            "CField_HuntingAdballoon::OnFieldSetVariable");
 
         private bool _isActive;
         private bool _assetsLoaded;
@@ -819,7 +821,7 @@ namespace HaCreator.MapSimulator.Fields
             string updateEvidence = _mode switch
             {
                 PartyRaidFieldMode.Field => $"{ClientOwnerName}::Update",
-                PartyRaidFieldMode.Boss => $"{ClientBossOwnerName}::OnFieldSetVariable / {ClientBossOwnerName}::OnPartyValue",
+                PartyRaidFieldMode.Boss => $"{ClientBossOwnerName}::OnFieldSetVariable / {ClientBossOwnerName}::OnPartyValue, auxiliaryChargeOwner={DescribeBossChargeOwnership()}",
                 PartyRaidFieldMode.Result => $"{ClientResultOwnerName}::OnSessionValue",
                 _ => null
             };
@@ -856,7 +858,7 @@ namespace HaCreator.MapSimulator.Fields
             return _mode switch
             {
                 PartyRaidFieldMode.Field => $"{wrapperPrefix}{GetActiveRuntimeOwnerName()} map {_mapId}: team {GetTeamLabel(_teamColor)}, stage {_mineStage}{DescribeOtherStageStatus()}, point {_point}{DescribeBatteryStatus()}{timerText}, client point key {FormatClientStringPoolLiteral(PartyRaidPointStringPoolEvidence, PartyRaidPointClientStringPoolSource)}.",
-                PartyRaidFieldMode.Boss => $"{wrapperPrefix}{GetActiveRuntimeOwnerName()} map {_mapId}: point {_point}, red damage {_redDamage}, blue damage {_blueDamage}, charge {_redCharge}/{_blueCharge}, gauge cap {_gaugeCapacity}, layout={DescribeBossLayoutOwnership()}, assets=[{PartyRaidBossGaugeBackgroundClientAsset}, {PartyRaidBossGaugeTextClientAsset}, {PartyRaidBossGaugeFillClientAsset}, {PartyRaidBossGaugeIconClientAsset}, {PartyRaidBossPointBoardClientAsset}], keys=[{FormatClientStringPoolLiteral(PartyRaidBossRedDamageStringPoolEvidence, PartyRaidBossRedDamageClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBossBlueDamageStringPoolEvidence, PartyRaidBossBlueDamageClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBossRedChargeStringPoolEvidence, PartyRaidBossRedChargeClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBossBlueChargeStringPoolEvidence, PartyRaidBossBlueChargeClientStringPoolSource)}]{timerText}.",
+                PartyRaidFieldMode.Boss => $"{wrapperPrefix}{GetActiveRuntimeOwnerName()} map {_mapId}: point {_point}, red damage {_redDamage}, blue damage {_blueDamage}, charge {_redCharge}/{_blueCharge}, gauge cap {_gaugeCapacity}, layout={DescribeBossLayoutOwnership()}, chargeOwner={DescribeBossChargeOwnership()}, assets=[{PartyRaidBossGaugeBackgroundClientAsset}, {PartyRaidBossGaugeTextClientAsset}, {PartyRaidBossGaugeFillClientAsset}, {PartyRaidBossGaugeIconClientAsset}, {PartyRaidBossPointBoardClientAsset}], keys=[{FormatClientStringPoolLiteral(PartyRaidBossRedDamageStringPoolEvidence, PartyRaidBossRedDamageClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBossBlueDamageStringPoolEvidence, PartyRaidBossBlueDamageClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBossRedChargeStringPoolEvidence, PartyRaidBossRedChargeClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBossBlueChargeStringPoolEvidence, PartyRaidBossBlueChargeClientStringPoolSource)}]{timerText}.",
                 PartyRaidFieldMode.Result => $"{wrapperPrefix}{GetActiveRuntimeOwnerName()} map {_mapId}: point {_resultPoint}, bonus {_resultBonus}, total {_resultTotal}, outcome {GetOutcomeLabel(_resultOutcome)}, keys=[{FormatClientStringPoolLiteral(PartyRaidPointStringPoolEvidence, PartyRaidPointClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBonusStringPoolEvidence, PartyRaidBonusClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidTotalStringPoolEvidence, PartyRaidTotalClientStringPoolSource)}]{timerText}.",
                 _ => "Party Raid runtime inactive."
             };
@@ -2109,6 +2111,8 @@ namespace HaCreator.MapSimulator.Fields
         {
             return $"0x{evidence.Id:X}={evidence.DecodedValue} (seed=0x{evidence.Seed:X2}, via {clientStringPoolSource})";
         }
+
+        private static string DescribeBossChargeOwnership() => $"{ClientHuntingAdballoonOwnerName}::OnFieldSetVariable@0x{ClientHuntingAdballoonFieldSetVariableAddress:X}";
 
         private static string NormalizeKey(string key) => key.Replace("_", string.Empty).Replace("-", string.Empty).Trim().ToLowerInvariant();
 

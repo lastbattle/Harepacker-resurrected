@@ -207,6 +207,7 @@ namespace HaCreator.MapSimulator
                 EnsureLocalUtilityOfficialSessionBridgeState(shouldRun: false);
                 EnsureExpeditionIntermediaryPacketInboxState(shouldRun: false);
                 EnsureExpeditionIntermediaryOfficialSessionBridgeState(shouldRun: false);
+                EnsureSocialListOfficialSessionBridgeState(shouldRun: false);
                 EnsureEngagementProposalInboxState(shouldRun: false);
                 EnsureStageTransitionPacketInboxState(shouldRun: false);
                 EnsureReactorPoolPacketInboxState(shouldRun: false);
@@ -279,10 +280,10 @@ namespace HaCreator.MapSimulator
             }
             if (!_gameState.PendingMapChange)
             {
-                int specialFieldTransferMapId = _specialFieldRuntime.ConsumePendingTransferMapId();
-                if (specialFieldTransferMapId > 0)
+                if (_specialFieldRuntime.TryConsumePendingTransfer(out int specialFieldTransferMapId, out string specialFieldTransferPortalName)
+                    && specialFieldTransferMapId > 0)
                 {
-                    QueueFieldTransfer(specialFieldTransferMapId);
+                    QueueFieldTransfer(specialFieldTransferMapId, specialFieldTransferPortalName);
                 }
             }
             SyncBattlefieldLocalAppearance();
@@ -311,10 +312,13 @@ namespace HaCreator.MapSimulator
             EnsureExpeditionIntermediaryPacketInboxState(shouldRun: true);
             EnsureExpeditionIntermediaryOfficialSessionBridgeState(shouldRun: true);
             RefreshExpeditionIntermediaryOfficialSessionBridgeDiscovery(currTickCount);
+            EnsureSocialListOfficialSessionBridgeState(shouldRun: true);
+            RefreshSocialListOfficialSessionBridgeDiscovery(currTickCount);
             DrainLocalUtilityPacketInbox();
             DrainLocalUtilityOfficialSessionBridge();
             DrainExpeditionIntermediaryPacketInbox();
             DrainExpeditionIntermediaryOfficialSessionBridge();
+            DrainSocialListOfficialSessionBridge();
             EnsureMapTransferOfficialSessionBridgeState(shouldRun: _mapBoard?.MapInfo != null);
             RefreshMapTransferOfficialSessionBridgeDiscovery(currTickCount);
             DrainMapTransferOfficialSessionBridge();

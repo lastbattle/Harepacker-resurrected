@@ -1099,6 +1099,11 @@ namespace HaCreator.MapSimulator.UI
             _softKeyboardActive = false;
         }
 
+        void ISoftKeyboardHost.SetSoftKeyboardCompositionText(string text)
+        {
+            HandleCompositionText(text);
+        }
+
         private void AppendNameCharacter(char character)
         {
             if (!IsNameInputEditable)

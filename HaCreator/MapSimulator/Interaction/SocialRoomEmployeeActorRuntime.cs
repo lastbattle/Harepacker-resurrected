@@ -39,7 +39,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         private readonly Dictionary<string, NpcItem> _actorCache = new(StringComparer.Ordinal);
         private readonly Dictionary<string, EmployeeTemplateProfile> _cashProfileCache = new(StringComparer.Ordinal);
-        private readonly Dictionary<(int TemplateId, string ActionName), List<IDXObject>> _cashActionCache = new();
+        private readonly Dictionary<int, EmployeeActionCatalog> _cashActionCatalogCache = new();
+        private readonly Dictionary<(int TemplateId, int ActionIndex), List<IDXObject>> _cashActionCache = new();
         private readonly Dictionary<string, int> _actionCursorByActorKey = new(StringComparer.Ordinal);
         private readonly ConcurrentBag<WzObject> _usedProps = new();
         private readonly Random _random = new();
@@ -222,13 +223,13 @@ namespace HaCreator.MapSimulator.Interaction
             GraphicsDevice device,
             float userScreenScaleFactor)
         {
-            WzImageProperty employeeRoot = ResolveEmployeeProperty(templateId);
-            if (employeeRoot == null)
+            EmployeeActionCatalog actionCatalog = ResolveEmployeeActionCatalog(templateId);
+            if (actionCatalog == null || actionCatalog.Actions.Count == 0)
             {
                 return null;
             }
 
-            _cashProfileCache[actorKey] = EmployeeTemplateProfile.CreateCashEmployee(employeeRoot.WzProperties.Select(property => property?.Name));
+            _cashProfileCache[actorKey] = EmployeeTemplateProfile.CreateCashEmployee(actionCatalog.OrderedActionNames);
 
             NpcInfo fallbackNpcInfo = NpcInfo.Get(MerchantNpcId);
             if (fallbackNpcInfo == null)
@@ -251,17 +252,12 @@ namespace HaCreator.MapSimulator.Interaction
                 null);
 
             NpcAnimationSet animationSet = new();
-            foreach (WzImageProperty childProperty in employeeRoot.WzProperties)
+            foreach (EmployeeActionCatalog.Entry actionEntry in actionCatalog.Actions)
             {
-                if (childProperty == null)
-                {
-                    continue;
-                }
-
-                List<IDXObject> actionFrames = LoadEmployeeActionFrames(templateId, childProperty.Name, childProperty, texturePool, device);
+                List<IDXObject> actionFrames = LoadEmployeeActionFrames(templateId, actionEntry, texturePool, device);
                 if (actionFrames.Count > 0)
                 {
-                    animationSet.AddAnimation(childProperty.Name, actionFrames);
+                    animationSet.AddAnimation(actionEntry.ActionName, actionFrames);
                 }
             }
 
@@ -275,6 +271,28 @@ namespace HaCreator.MapSimulator.Interaction
                 animationSet,
                 null,
                 null);
+        }
+
+        private EmployeeActionCatalog ResolveEmployeeActionCatalog(int templateId)
+        {
+            if (templateId <= 0)
+            {
+                return null;
+            }
+
+            if (_cashActionCatalogCache.TryGetValue(templateId, out EmployeeActionCatalog cachedCatalog))
+            {
+                return cachedCatalog;
+            }
+
+            WzImageProperty employeeRoot = ResolveEmployeeProperty(templateId);
+            EmployeeActionCatalog catalog = EmployeeActionCatalog.Create(employeeRoot);
+            if (catalog != null)
+            {
+                _cashActionCatalogCache[templateId] = catalog;
+            }
+
+            return catalog;
         }
 
         private void SyncActorPosition(PlayerCharacter player, NpcItem actor, SocialRoomFieldActorSnapshot snapshot)
@@ -495,24 +513,23 @@ namespace HaCreator.MapSimulator.Interaction
 
         private List<IDXObject> LoadEmployeeActionFrames(
             int templateId,
-            string actionName,
-            WzImageProperty actionProperty,
+            EmployeeActionCatalog.Entry actionEntry,
             TexturePool texturePool,
             GraphicsDevice device)
         {
-            if (templateId <= 0 || string.IsNullOrWhiteSpace(actionName) || actionProperty == null)
+            if (templateId <= 0 || actionEntry == null || string.IsNullOrWhiteSpace(actionEntry.ActionName) || actionEntry.ActionProperty == null)
             {
                 return new List<IDXObject>();
             }
 
-            (int TemplateId, string ActionName) cacheKey = (templateId, actionName.ToLowerInvariant());
+            (int TemplateId, int ActionIndex) cacheKey = (templateId, actionEntry.ClientActionIndex);
             if (_cashActionCache.TryGetValue(cacheKey, out List<IDXObject> cachedFrames))
             {
                 return cachedFrames;
             }
 
             var frames = new List<IDXObject>();
-            foreach (WzImageProperty childProperty in actionProperty.WzProperties.OrderBy(GetFrameOrder))
+            foreach (WzImageProperty childProperty in actionEntry.ActionProperty.WzProperties.OrderBy(GetFrameOrder))
             {
                 WzCanvasProperty canvas = ResolveCanvasProperty(childProperty);
                 if (canvas == null)
@@ -1142,6 +1159,70 @@ namespace HaCreator.MapSimulator.Interaction
             public string[] RestockActions { get; }
             public string[] LedgerActions { get; }
             public string[] ExpiredActions { get; }
+        }
+
+        private sealed class EmployeeActionCatalog
+        {
+            private const string BaseActionName = AnimationKeys.Stand;
+
+            private EmployeeActionCatalog(IReadOnlyList<Entry> actions, IReadOnlyList<string> orderedActionNames)
+            {
+                Actions = actions ?? Array.Empty<Entry>();
+                OrderedActionNames = orderedActionNames ?? Array.Empty<string>();
+            }
+
+            internal static EmployeeActionCatalog Create(WzImageProperty employeeRoot)
+            {
+                if (employeeRoot == null)
+                {
+                    return null;
+                }
+
+                List<Entry> actions = new();
+                List<string> orderedActionNames = new();
+                HashSet<string> seenActionNames = new(StringComparer.Ordinal);
+                int nextTemplateActionIndex = 1;
+                foreach (WzImageProperty childProperty in employeeRoot.WzProperties)
+                {
+                    if (childProperty == null || string.IsNullOrWhiteSpace(childProperty.Name))
+                    {
+                        continue;
+                    }
+
+                    string normalizedActionName = childProperty.Name.Trim().ToLowerInvariant();
+                    if (!seenActionNames.Add(normalizedActionName))
+                    {
+                        continue;
+                    }
+
+                    int clientActionIndex = string.Equals(normalizedActionName, BaseActionName, StringComparison.Ordinal)
+                        ? 0
+                        : nextTemplateActionIndex++;
+                    actions.Add(new Entry(normalizedActionName, clientActionIndex, childProperty));
+                    orderedActionNames.Add(normalizedActionName);
+                }
+
+                return actions.Count == 0
+                    ? null
+                    : new EmployeeActionCatalog(actions, orderedActionNames);
+            }
+
+            internal IReadOnlyList<Entry> Actions { get; }
+            internal IReadOnlyList<string> OrderedActionNames { get; }
+
+            internal sealed class Entry
+            {
+                internal Entry(string actionName, int clientActionIndex, WzImageProperty actionProperty)
+                {
+                    ActionName = actionName ?? string.Empty;
+                    ClientActionIndex = Math.Max(0, clientActionIndex);
+                    ActionProperty = actionProperty;
+                }
+
+                internal string ActionName { get; }
+                internal int ClientActionIndex { get; }
+                internal WzImageProperty ActionProperty { get; }
+            }
         }
 
         private sealed class MiniRoomBalloonAssets

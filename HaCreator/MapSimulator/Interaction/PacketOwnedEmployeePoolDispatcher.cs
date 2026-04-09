@@ -8,6 +8,8 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private readonly SocialRoomEmployeePoolRuntime _poolRuntime = new();
         private SocialRoomKind? _activeKind;
+        private bool _hasPacketState;
+        private int _lastKnownEmployerId;
         private string _lastDispatchSummary = "Packet-owned employee pool idle.";
 
         internal SocialRoomKind? ActiveKind => _activeKind;
@@ -30,6 +32,12 @@ namespace HaCreator.MapSimulator.Interaction
             _poolRuntime.Restore(snapshot.EmployeePoolEntries, CreateLegacyEmployeePacketState(snapshot));
             _poolRuntime.SetPreferredEmployerId(snapshot.EmployeePreferredEmployerId);
             _activeKind = snapshot.Kind;
+            _hasPacketState = snapshot.EmployeeHasPacketData || snapshot.EmployeePoolEntries?.Count > 0;
+            _lastKnownEmployerId = Math.Max(
+                0,
+                snapshot.EmployeePacketEmployerId > 0
+                    ? snapshot.EmployeePacketEmployerId
+                    : snapshot.EmployeePreferredEmployerId);
             _lastDispatchSummary = $"Restored packet-owned employee pool state from {snapshot.Kind}.";
         }
 
@@ -65,8 +73,10 @@ namespace HaCreator.MapSimulator.Interaction
                     && employerId > 0)
                 {
                     _poolRuntime.SetPreferredEmployerId(employerId);
+                    _lastKnownEmployerId = employerId;
                 }
 
+                _hasPacketState = true;
                 _activeKind = kind;
             }
 
@@ -81,6 +91,20 @@ namespace HaCreator.MapSimulator.Interaction
         internal IReadOnlyList<SocialRoomEmployeePoolEntrySnapshot> BuildSnapshots()
         {
             return _poolRuntime.BuildSnapshots();
+        }
+
+        internal void SyncRuntime(
+            SocialRoomRuntime runtime,
+            string statusMessage = null,
+            bool persistState = false)
+        {
+            runtime?.ApplyPacketOwnedEmployeePoolState(
+                _poolRuntime.BuildSnapshots(),
+                _poolRuntime.PreferredEmployerId,
+                _hasPacketState,
+                _lastKnownEmployerId,
+                statusMessage,
+                persistState);
         }
 
         internal SocialRoomFieldActorSnapshot GetFieldActorSnapshot(
@@ -116,6 +140,11 @@ namespace HaCreator.MapSimulator.Interaction
                 || pooledEmployee == null
                 || !pooledEmployee.IsVisible)
             {
+                if (_hasPacketState)
+                {
+                    return $"Packet-owned employee pool hidden. Entries={EntryCount}, lastEmployer={_lastKnownEmployerId}. Last dispatch: {_lastDispatchSummary}";
+                }
+
                 return $"Packet-owned employee pool idle. Entries={EntryCount}. Last dispatch: {_lastDispatchSummary}";
             }
 

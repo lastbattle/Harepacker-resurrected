@@ -8,7 +8,6 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
@@ -727,58 +726,11 @@ namespace HaCreator.MapSimulator.UI
         private List<string> BuildTooltipLines(GuildSkillEntrySnapshot entry)
         {
             List<string> lines = new();
-            if (entry == null)
+            IReadOnlyList<string> rawLines = GuildSkillTooltipContentBuilder.BuildLines(entry);
+            for (int i = 0; i < rawLines.Count; i++)
             {
-                return lines;
+                AddWrappedLine(lines, rawLines[i]);
             }
-
-            lines.Add(entry.SkillName);
-            lines.Add($"Lv. {entry.CurrentLevel}/{entry.MaxLevel}");
-
-            string currentEffect = string.IsNullOrWhiteSpace(entry.CurrentEffectDescription)
-                ? entry.Description
-                : entry.CurrentEffectDescription;
-            AddWrappedLine(lines, $"Current: {currentEffect}");
-
-            if (!string.IsNullOrWhiteSpace(entry.NextEffectDescription) && entry.CurrentLevel < entry.MaxLevel)
-            {
-                AddWrappedLine(lines, $"Next: {entry.NextEffectDescription}");
-            }
-
-            if (entry.RequiredGuildLevel > 0 && entry.CurrentLevel < entry.MaxLevel)
-            {
-                lines.Add($"Next req: Guild Lv. {entry.RequiredGuildLevel}");
-            }
-
-            if (entry.DurationMinutes > 0)
-            {
-                lines.Add($"Duration: {FormatDuration(entry.DurationMinutes)}");
-                if (entry.RemainingDurationMinutes > 0)
-                {
-                    lines.Add($"Remaining: {FormatDuration(entry.RemainingDurationMinutes)}");
-                }
-            }
-
-            if (entry.ActivationCost > 0)
-            {
-                lines.Add($"Learn: {FormatMeso(entry.ActivationCost)}");
-            }
-
-            if (entry.RenewalCost > 0)
-            {
-                lines.Add($"Renew: {FormatMeso(entry.RenewalCost)}");
-            }
-
-            if (entry.GuildPriceUnit > 1 && (entry.ActivationCost > 0 || entry.RenewalCost > 0))
-            {
-                lines.Add($"Cost unit: {FormatMeso(entry.GuildPriceUnit)}");
-            }
-
-            if (entry.CurrentLevel > 0 && entry.DurationMinutes > 0 && entry.RemainingDurationMinutes <= 0)
-            {
-                lines.Add(entry.CanManageSkills ? "State: Inactive" : "State: View only");
-            }
-
             return lines;
         }
 
@@ -802,55 +754,106 @@ namespace HaCreator.MapSimulator.UI
                 yield break;
             }
 
-            string[] words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            if (words.Length == 0)
+            string normalized = text
+                .Replace("\r\n", "\n")
+                .Replace('\r', '\n');
+
+            string[] paragraphs = normalized.Split('\n');
+            for (int paragraphIndex = 0; paragraphIndex < paragraphs.Length; paragraphIndex++)
+            {
+                string paragraph = paragraphs[paragraphIndex].Trim();
+                if (paragraph.Length == 0)
+                {
+                    continue;
+                }
+
+                string[] words = paragraph.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                if (words.Length == 0)
+                {
+                    continue;
+                }
+
+                string line = words[0];
+                if (ClientTextDrawing.Measure(graphicsDevice, line, scale, _font).X > maxWidth)
+                {
+                    foreach (string fragment in SplitOverlongToken(line, maxWidth, scale, graphicsDevice))
+                    {
+                        yield return fragment;
+                    }
+
+                    line = string.Empty;
+                }
+
+                for (int i = 1; i < words.Length; i++)
+                {
+                    string word = words[i];
+                    if (ClientTextDrawing.Measure(graphicsDevice, word, scale, _font).X > maxWidth)
+                    {
+                        if (!string.IsNullOrWhiteSpace(line))
+                        {
+                            yield return line;
+                            line = string.Empty;
+                        }
+
+                        foreach (string fragment in SplitOverlongToken(word, maxWidth, scale, graphicsDevice))
+                        {
+                            yield return fragment;
+                        }
+
+                        continue;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(line))
+                    {
+                        line = word;
+                        continue;
+                    }
+
+                    string candidate = line + " " + word;
+                    if (ClientTextDrawing.Measure(graphicsDevice, candidate, scale, _font).X <= maxWidth)
+                    {
+                        line = candidate;
+                        continue;
+                    }
+
+                    yield return line;
+                    line = word;
+                }
+
+                if (!string.IsNullOrWhiteSpace(line))
+                {
+                    yield return line;
+                }
+            }
+        }
+
+        private IEnumerable<string> SplitOverlongToken(string text, int maxWidth, float scale, GraphicsDevice graphicsDevice)
+        {
+            if (string.IsNullOrWhiteSpace(text))
             {
                 yield break;
             }
 
-            string line = words[0];
-            for (int i = 1; i < words.Length; i++)
+            int start = 0;
+            while (start < text.Length)
             {
-                string candidate = line + " " + words[i];
-                if (ClientTextDrawing.Measure(graphicsDevice, candidate, scale, _font).X <= maxWidth)
+                int length = 1;
+                int bestLength = 1;
+                while (start + length <= text.Length)
                 {
-                    line = candidate;
-                    continue;
+                    string candidate = text.Substring(start, length);
+                    if (ClientTextDrawing.Measure(graphicsDevice, candidate, scale, _font).X > maxWidth)
+                    {
+                        break;
+                    }
+
+                    bestLength = length;
+                    length++;
                 }
 
-                yield return line;
-                line = words[i];
+                yield return text.Substring(start, bestLength);
+                start += bestLength;
             }
-
-            if (!string.IsNullOrWhiteSpace(line))
-            {
-                yield return line;
-            }
-        }
-
-        private static string FormatDuration(int durationMinutes)
-        {
-            if (durationMinutes <= 0)
-            {
-                return string.Empty;
-            }
-
-            if (durationMinutes % (60 * 24) == 0)
-            {
-                return $"{durationMinutes / (60 * 24)}d";
-            }
-
-            if (durationMinutes % 60 == 0)
-            {
-                return $"{durationMinutes / 60}h";
-            }
-
-            return $"{durationMinutes}m";
-        }
-
-        private static string FormatMeso(int amount)
-        {
-            return $"{Math.Max(0, amount).ToString("N0", CultureInfo.InvariantCulture)} meso";
         }
 
         private void DrawScrollTexture(SpriteBatch sprite, Texture2D texture, Rectangle bounds)

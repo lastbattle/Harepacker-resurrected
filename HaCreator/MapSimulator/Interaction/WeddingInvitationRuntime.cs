@@ -23,12 +23,14 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int AcceptStringPoolId = AcceptButtonUolStringPoolId;
         internal const int DefaultDialogUolStringPoolId = WeddingInvitationDialogText.DefaultDialogUolStringPoolId;
         internal const int AlternateDialogUolStringPoolId = WeddingInvitationDialogText.AlternateDialogUolStringPoolId;
+        internal const int BasicBlackFontFaceStringPoolId = WeddingInvitationDialogText.BasicBlackFontFaceStringPoolId;
         internal const string NameFontToken = "FONT_BASIC_BLACK";
         internal const int GroomNameX = 50;
         internal const int BrideNameX = 131;
         internal const int ParticipantNameY = 105;
         internal const int AcceptButtonX = 87;
         internal const int AcceptButtonY = 206;
+        internal const string PriorOwnerTypeName = EngagementProposalRuntime.ClientOwnerTypeName;
 
         private const string DefaultGroomName = "Groom";
         private const string DefaultBrideName = "Bride";
@@ -42,6 +44,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string _sourceDescription = DefaultSourceDescription;
         private string _acceptButtonUolText = WeddingInvitationDialogText.GetAcceptButtonUolText();
         private string _dialogUolText = WeddingInvitationDialogText.ResolveDialogUolText(DefaultClientDialogType);
+        private string _basicBlackFontFaceName = WeddingInvitationDialogText.GetBasicBlackFontFaceName();
         private WeddingInvitationStyle _style = WeddingInvitationStyle.Neat;
         private int? _clientDialogType;
         private byte[] _lastMarriageResultPacketPayload = Array.Empty<byte>();
@@ -70,6 +73,7 @@ namespace HaCreator.MapSimulator.Interaction
             _clientDialogType = NormalizeClientDialogType(clientDialogType);
             _acceptButtonUolText = WeddingInvitationDialogText.GetAcceptButtonUolText();
             _dialogUolText = WeddingInvitationDialogText.ResolveDialogUolText(NormalizeClientDialogType(_clientDialogType));
+            _basicBlackFontFaceName = WeddingInvitationDialogText.GetBasicBlackFontFaceName();
             _isOpen = true;
             _lastAccepted = false;
             _lastOpenUsedMarriageResultPacket = false;
@@ -77,7 +81,7 @@ namespace HaCreator.MapSimulator.Interaction
             _sourceDescription = string.IsNullOrWhiteSpace(sourceDescription)
                 ? DefaultSourceDescription
                 : sourceDescription.Trim();
-            _statusMessage = $"Opened {ClientOwnerTypeName}-style dialog for {_groomName} and {_brideName} using the {ResolveBackgroundAssetPath(style)} surface. Client owner path={ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} -> {ClientPresentationMode}; title StringPool 0x{ResolveDialogTitleStringPoolId(_clientDialogType):X} => {_dialogUolText}; accept UOL 0x{AcceptButtonUolStringPoolId:X} => {_acceptButtonUolText}.";
+            _statusMessage = $"Opened {ClientOwnerTypeName}-style dialog for {_groomName} and {_brideName} using the {ResolveBackgroundAssetPath(style)} surface. Client owner path={ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} -> {ClientPresentationMode}; closes active {PriorOwnerTypeName} before opening; CreateDlg StringPool 0x{ResolveDialogTitleStringPoolId(_clientDialogType):X} => {_dialogUolText}; accept UOL 0x{AcceptButtonUolStringPoolId:X} => {_acceptButtonUolText}; name font {NameFontToken} StringPool 0x{BasicBlackFontFaceStringPoolId:X} => {_basicBlackFontFaceName}.";
             return _statusMessage;
         }
 
@@ -142,6 +146,7 @@ namespace HaCreator.MapSimulator.Interaction
             _clientDialogType = null;
             _acceptButtonUolText = WeddingInvitationDialogText.GetAcceptButtonUolText();
             _dialogUolText = WeddingInvitationDialogText.ResolveDialogUolText(DefaultClientDialogType);
+            _basicBlackFontFaceName = WeddingInvitationDialogText.GetBasicBlackFontFaceName();
             _lastMarriageResultPacketPayload = Array.Empty<byte>();
             _lastOpenUsedMarriageResultPacket = false;
             _sourceDescription = DefaultSourceDescription;
@@ -175,11 +180,15 @@ namespace HaCreator.MapSimulator.Interaction
                 AcceptButtonUolStringPoolId = AcceptButtonUolStringPoolId,
                 AcceptStringPoolId = AcceptStringPoolId,
                 NameFontToken = NameFontToken,
+                NameFontFaceStringPoolId = BasicBlackFontFaceStringPoolId,
                 InvitationAssetPath = ResolveBackgroundAssetPath(_style),
                 AcceptButtonAssetPath = _acceptButtonUolText,
                 FallbackInvitationAssetPath = ResolveFallbackBackgroundAssetPath(_style),
                 DialogUolText = _dialogUolText,
                 AcceptButtonUolText = _acceptButtonUolText,
+                NameFontFaceName = _basicBlackFontFaceName,
+                ClosesPriorOwnerOnOpen = true,
+                PriorOwnerTypeName = PriorOwnerTypeName,
                 LastMarriageResultPacketPayload = Array.AsReadOnly((byte[])_lastMarriageResultPacketPayload.Clone()),
                 SourceDescription = _sourceDescription,
                 GroomNamePosition = (GroomNameX, ParticipantNameY),
@@ -350,6 +359,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int DefaultDialogUolStringPoolId { get; init; }
         public int AlternateDialogUolStringPoolId { get; init; }
         public int AcceptStringPoolId { get; init; }
+        public int NameFontFaceStringPoolId { get; init; }
         public string GroomName { get; init; } = string.Empty;
         public string BrideName { get; init; } = string.Empty;
         public string AcceptButtonLabel { get; init; } = string.Empty;
@@ -362,9 +372,12 @@ namespace HaCreator.MapSimulator.Interaction
         public string DialogUolText { get; init; } = string.Empty;
         public string AcceptButtonUolText { get; init; } = string.Empty;
         public string NameFontToken { get; init; } = string.Empty;
+        public string NameFontFaceName { get; init; } = string.Empty;
+        public string PriorOwnerTypeName { get; init; } = string.Empty;
         public string SourceDescription { get; init; } = string.Empty;
         public string StatusMessage { get; init; } = string.Empty;
         public IReadOnlyList<byte> LastMarriageResultPacketPayload { get; init; } = Array.Empty<byte>();
+        public bool ClosesPriorOwnerOnOpen { get; init; }
         public WeddingInvitationStyle Style { get; init; }
         public (int X, int Y) GroomNamePosition { get; init; }
         public (int X, int Y) BrideNamePosition { get; init; }

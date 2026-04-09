@@ -4,6 +4,7 @@ using MapleLib.WzLib.WzStructure;
 using System;
 using System.Collections.Generic;
 using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 
 namespace HaCreator.MapSimulator.Fields
 {
@@ -295,21 +296,27 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (TryReadInt(property, out int directValue) && directValue == expectedValue)
+            Stack<WzImageProperty> pending = new Stack<WzImageProperty>();
+            pending.Push(property);
+            while (pending.Count > 0)
             {
-                return true;
-            }
-
-            if (property.WzProperties == null)
-            {
-                return false;
-            }
-
-            for (int i = 0; i < property.WzProperties.Count; i++)
-            {
-                if (TryReadInt(property.WzProperties[i], out int value) && value == expectedValue)
+                WzImageProperty current = pending.Pop();
+                if (TryReadInt(current, out int value) && value == expectedValue)
                 {
                     return true;
+                }
+
+                if (current.WzProperties == null)
+                {
+                    continue;
+                }
+
+                for (int i = 0; i < current.WzProperties.Count; i++)
+                {
+                    if (current.WzProperties[i] != null)
+                    {
+                        pending.Push(current.WzProperties[i]);
+                    }
                 }
             }
 
@@ -331,6 +338,12 @@ namespace HaCreator.MapSimulator.Fields
             }
             catch
             {
+                if (property is WzStringProperty stringProperty
+                    && int.TryParse(stringProperty.Value, out value))
+                {
+                    return true;
+                }
+
                 return false;
             }
         }

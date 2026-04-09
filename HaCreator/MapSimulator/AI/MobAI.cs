@@ -950,6 +950,29 @@ namespace HaCreator.MapSimulator.AI
         /// <returns>True if mob died from this damage</returns>
         public bool TakeDamage(int damage, int currentTick, bool isCritical, float? attackerX, float? attackerY, MobDamageType damageType = MobDamageType.Physical)
         {
+            return TakeDamage(
+                damage,
+                currentTick,
+                isCritical,
+                attackerX,
+                attackerY,
+                damageType,
+                attackerId: 0,
+                attackerTargetType: MobTargetType.Player,
+                attackerExternalTargetSource: MobExternalTargetSource.None);
+        }
+
+        public bool TakeDamage(
+            int damage,
+            int currentTick,
+            bool isCritical,
+            float? attackerX,
+            float? attackerY,
+            MobDamageType damageType,
+            int attackerId,
+            MobTargetType attackerTargetType,
+            MobExternalTargetSource attackerExternalTargetSource)
+        {
             if (IsDead)
                 return false;
 
@@ -961,16 +984,22 @@ namespace HaCreator.MapSimulator.AI
             AddDamageDisplay(damage, currentTick, isCritical);
 
             // AGGRO: When hit, the mob should chase the attacker (unless boss aggro timed out)
-            if (CanTargetPlayerNow && attackerX.HasValue && attackerY.HasValue && !_bossAggroTimedOut)
+            bool canAggroToAttacker = attackerTargetType == MobTargetType.Player
+                ? CanTargetPlayerNow
+                : attackerTargetType == MobTargetType.Mob || attackerTargetType == MobTargetType.Summoned;
+
+            if (canAggroToAttacker && attackerX.HasValue && attackerY.HasValue && !_bossAggroTimedOut)
             {
                 // Set/update target to attacker position - this triggers aggro
                 _target.TargetX = attackerX.Value;
                 _target.TargetY = attackerY.Value;
                 _target.IsValid = true;
-                _target.TargetId = 0;
-                _target.TargetType = MobTargetType.Player;
+                _target.TargetId = Math.Max(0, attackerId);
+                _target.TargetType = attackerTargetType;
                 _target.LastSeenTime = currentTick;
-                _externalTargetSource = MobExternalTargetSource.None;
+                _externalTargetSource = attackerTargetType == MobTargetType.Player
+                    ? MobExternalTargetSource.None
+                    : attackerExternalTargetSource;
 
                 // Force aggro state - mob will chase after hit stun ends
                 _isAggroed = true;
@@ -987,7 +1016,7 @@ namespace HaCreator.MapSimulator.AI
             {
                 SetState(MobAIState.Hit, currentTick);
             }
-            else if (CanTargetPlayerNow && _isBoss && attackerX.HasValue && !_bossAggroTimedOut)
+            else if (canAggroToAttacker && _isBoss && attackerX.HasValue && !_bossAggroTimedOut)
             {
                 // Bosses don't stun but still aggro - go straight to chase
                 if (_state == MobAIState.Idle || _state == MobAIState.Patrol)
@@ -1089,6 +1118,25 @@ namespace HaCreator.MapSimulator.AI
             if (_state != MobAIState.Attack || _currentAttackIndex < 0 || _currentAttackIndex >= _attacks.Count)
                 return null;
             return _attacks[_currentAttackIndex];
+        }
+
+        public MobAttackEntry GetAttackById(int attackId)
+        {
+            if (attackId <= 0)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < _attacks.Count; i++)
+            {
+                MobAttackEntry attack = _attacks[i];
+                if (attack?.AttackId == attackId)
+                {
+                    return attack;
+                }
+            }
+
+            return null;
         }
 
         /// <summary>

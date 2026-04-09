@@ -52,6 +52,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int FollowCharacterPromptPacketType = 1022;
         public const int FollowCharacterClientPacketType = 193;
         public const int SitResultPacketType = 231;
+        public const int EmotionPacketType = 232;
         public const int MesoGiveSucceededPacketType = 236;
         public const int MesoGiveFailedPacketType = 237;
         public const int RandomMesobagSucceededPacketType = 238;
@@ -67,6 +68,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int SetStandAloneModeClientPacketType = 254;
         public const int HireTutorClientPacketType = 255;
         public const int TutorMsgClientPacketType = 256;
+        public const int RandomEmotionPacketType = 258;
         public const int ResignQuestReturnClientPacketType = 259;
         public const int PassMateNameClientPacketType = 260;
         public const int EngagementRequestPacketType = 161;
@@ -400,6 +402,21 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("onsitresult", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = SitResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("emotion", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onemotion", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = EmotionPacketType;
+                return true;
+            }
+
+            if (token.Equals("randomemotion", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("randemotion", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onrandomemotion", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RandomEmotionPacketType;
                 return true;
             }
 
@@ -744,10 +761,12 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == SetStandAloneModeClientPacketType
                 || packetType == FollowCharacterClientPacketType
                 || packetType == SitResultPacketType
+                || packetType == EmotionPacketType
                 || packetType == MesoGiveSucceededPacketType
                 || packetType == MesoGiveFailedPacketType
                 || packetType == RandomMesobagSucceededPacketType
                 || packetType == RandomMesobagFailedPacketType
+                || packetType == RandomEmotionPacketType
                 || packetType == RadioSchedulePacketType
                 || packetType == RadioScheduleClientPacketType
                 || packetType == LogoutGiftClientPacketType
@@ -890,6 +909,7 @@ namespace HaCreator.MapSimulator.Managers
             return packetType switch
             {
                 SitResultPacketType => "OnSitResult(231)",
+                EmotionPacketType => "OnEmotion(232)",
                 OpenUiPacketType => "OpenUI(1000)",
                 OpenUiWithOptionPacketType => "OpenUIWithOption(1001)",
                 GoToCommoditySnPacketType => "GoToCommoditySN(1002)",
@@ -925,6 +945,7 @@ namespace HaCreator.MapSimulator.Managers
                 SetStandAloneModeClientPacketType => "SetStandAloneMode(254)",
                 HireTutorClientPacketType => "HireTutor(255)",
                 TutorMsgClientPacketType => "TutorMsg(256)",
+                RandomEmotionPacketType => "OnRandomEmotion(258)",
                 ResignQuestReturnClientPacketType => "OnResignQuestReturn(259)",
                 PassMateNameClientPacketType => "OnPassMateName(260)",
                 EngagementRequestPacketType => "SendEngagementRequest(161)",

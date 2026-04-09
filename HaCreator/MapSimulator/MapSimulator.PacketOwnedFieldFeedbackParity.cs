@@ -227,6 +227,8 @@ namespace HaCreator.MapSimulator
 
         private bool TryShowPacketOwnedRewardRouletteEffect(int rewardJobIndex, int rewardPartIndex, int rewardLevelIndex)
         {
+            const string animationKey = "reward-roulette";
+            ClearPacketOwnedUiAnimations(animationKey);
             bool shownAnyLayer = false;
             foreach (string propertyPath in EnumeratePacketOwnedRewardRouletteLayerSourcePaths(
                 rewardJobIndex,
@@ -246,7 +248,8 @@ namespace HaCreator.MapSimulator
                     frames,
                     _renderParams.RenderWidth / 2,
                     Math.Max(0, Height / 2 - 24),
-                    currTickCount);
+                    currTickCount,
+                    animationKey);
                 shownAnyLayer = true;
             }
 
@@ -318,12 +321,27 @@ namespace HaCreator.MapSimulator
 
         private void EnqueuePacketOwnedUiAnimation(List<IDXObject> frames, int anchorX, int anchorY, int currentTickCount)
         {
+            EnqueuePacketOwnedUiAnimation(frames, anchorX, anchorY, currentTickCount, key: null);
+        }
+
+        private void EnqueuePacketOwnedUiAnimation(List<IDXObject> frames, int anchorX, int anchorY, int currentTickCount, string key)
+        {
             if (frames == null || frames.Count == 0)
             {
                 return;
             }
 
-            _packetFieldFeedbackUiAnimations.Add(new PacketOwnedUiAnimation(frames, anchorX, anchorY, currentTickCount));
+            _packetFieldFeedbackUiAnimations.Add(new PacketOwnedUiAnimation(frames, anchorX, anchorY, currentTickCount, key));
+        }
+
+        private void ClearPacketOwnedUiAnimations(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return;
+            }
+
+            _packetFieldFeedbackUiAnimations.RemoveAll(animation => string.Equals(animation.Key, key, StringComparison.Ordinal));
         }
 
         private bool TryGetOrCreatePacketOwnedAnimationFrames(string cacheKey, Func<List<IDXObject>> loader, out List<IDXObject> frames)
@@ -1032,18 +1050,20 @@ namespace HaCreator.MapSimulator
             private readonly IReadOnlyList<IDXObject> _frames;
             private readonly int _durationMs;
 
-            public PacketOwnedUiAnimation(IReadOnlyList<IDXObject> frames, int anchorX, int anchorY, int startedAtTick)
+            public PacketOwnedUiAnimation(IReadOnlyList<IDXObject> frames, int anchorX, int anchorY, int startedAtTick, string key)
             {
                 _frames = frames ?? Array.Empty<IDXObject>();
                 AnchorX = anchorX;
                 AnchorY = anchorY;
                 StartedAtTick = startedAtTick;
+                Key = key ?? string.Empty;
                 _durationMs = _frames.Sum(static frame => Math.Max(1, frame?.Delay ?? 1));
             }
 
             public int AnchorX { get; }
             public int AnchorY { get; }
             public int StartedAtTick { get; }
+            public string Key { get; }
 
             public bool IsComplete(int currentTickCount)
             {

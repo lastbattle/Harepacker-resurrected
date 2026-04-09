@@ -33,6 +33,33 @@ namespace HaCreator.MapSimulator.Animation
     /// </summary>
     public class MobAnimationSet : AnimationSetBase
     {
+        public sealed class FrameMetadata
+        {
+            public Rectangle FrameBounds { get; init; }
+            public bool HasHeadAnchor { get; init; }
+            public Point HeadAnchor { get; init; }
+            public IReadOnlyList<Rectangle> MultiBodyBounds { get; init; }
+
+            public Rectangle EffectiveBodyBounds
+            {
+                get
+                {
+                    if (MultiBodyBounds == null || MultiBodyBounds.Count == 0)
+                    {
+                        return FrameBounds;
+                    }
+
+                    Rectangle union = MultiBodyBounds[0];
+                    for (int i = 1; i < MultiBodyBounds.Count; i++)
+                    {
+                        union = Rectangle.Union(union, MultiBodyBounds[i]);
+                    }
+
+                    return union;
+                }
+            }
+        }
+
         public sealed class AttackInfoMetadata
         {
             public int AttackType { get; set; } = -1;
@@ -87,8 +114,42 @@ namespace HaCreator.MapSimulator.Animation
         private readonly Dictionary<string, List<IDXObject>> _attackWarningEffects = new();
         private readonly Dictionary<string, List<AttackEffectNode>> _attackExtraEffects = new();
         private readonly Dictionary<string, AttackInfoMetadata> _attackMetadata = new();
+        private readonly Dictionary<string, List<FrameMetadata>> _frameMetadata = new();
         private readonly Dictionary<int, List<IDXObject>> _angerGaugeAnimations = new();
         private List<IDXObject> _angerGaugeEffect;
+
+        public void SetFrameMetadata(string action, List<FrameMetadata> frameMetadata)
+        {
+            if (string.IsNullOrWhiteSpace(action) || frameMetadata == null || frameMetadata.Count == 0)
+            {
+                return;
+            }
+
+            _frameMetadata[action.ToLowerInvariant()] = frameMetadata;
+        }
+
+        public FrameMetadata GetFrameMetadata(string action, int frameIndex)
+        {
+            string key = action?.ToLowerInvariant() ?? string.Empty;
+            if (!_frameMetadata.TryGetValue(key, out List<FrameMetadata> frameMetadata) ||
+                frameMetadata == null ||
+                frameMetadata.Count == 0)
+            {
+                return null;
+            }
+
+            if (frameIndex < 0)
+            {
+                frameIndex = 0;
+            }
+
+            if (frameIndex >= frameMetadata.Count)
+            {
+                frameIndex = frameMetadata.Count - 1;
+            }
+
+            return frameMetadata[frameIndex];
+        }
 
         /// <summary>
         /// Add hit effect frames for a specific attack action.

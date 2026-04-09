@@ -125,13 +125,7 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
-            bool hasGuildBossRuntimeNodes = HasGuildBossRuntimeNodes(board);
-            _specialEffects.DetectFieldType(mapInfo.id, mapInfo.fieldType);
-            if (!_specialEffects.GuildBoss.IsActive && hasGuildBossRuntimeNodes)
-            {
-                _specialEffects.GuildBoss.Enable();
-            }
-
+            _specialEffects.DetectFieldType(mapInfo);
             _specialEffects.ConfigureMap(board);
             _minigames.BindMap(board);
             _partyRaid.BindMap(mapInfo);
@@ -146,12 +140,6 @@ namespace HaCreator.MapSimulator.Fields
             if (IsCookieHouseMap(mapInfo))
             {
                 _cookieHouse.Enable(mapInfo.id, _cookieHousePointProvider);
-            }
-
-            if (_specialEffects.GuildBoss.IsActive && (hasGuildBossRuntimeNodes || IsGuildBossMap(mapInfo)))
-            {
-                ActiveArea = SpecialFieldBacklogArea.GuildBossEventFields;
-                return;
             }
 
             for (int i = 0; i < _catalog.Count; i++)
@@ -216,14 +204,19 @@ namespace HaCreator.MapSimulator.Fields
 
         public int ConsumePendingTransferMapId()
         {
-            int battlefieldTransferMapId = _specialEffects.Battlefield.ConsumePendingTransferMapId();
-            if (battlefieldTransferMapId > 0)
+            return TryConsumePendingTransfer(out int mapId, out _) ? mapId : -1;
+        }
+
+        public bool TryConsumePendingTransfer(out int mapId, out string portalName)
+        {
+            mapId = _specialEffects.Battlefield.ConsumePendingTransferMapId();
+            portalName = null;
+            if (mapId > 0)
             {
-                return battlefieldTransferMapId;
+                return true;
             }
 
-            int dojoTransferMapId = _specialEffects.Dojo.ConsumePendingTransferMapId();
-            return dojoTransferMapId > 0 ? dojoTransferMapId : -1;
+            return _specialEffects.Dojo.TryConsumePendingTransfer(out mapId, out portalName);
         }
 
         public void Draw(
@@ -325,24 +318,7 @@ namespace HaCreator.MapSimulator.Fields
             return mapInfo.fieldType == FieldType.FIELDTYPE_GUILDBOSS
                 || (mapInfo.id >= 610030000 && mapInfo.id <= 610030099)
                 || (mapInfo.id >= 673000000 && mapInfo.id <= 673000099)
-                || mapInfo.id == 990000900;
-        }
-
-        private static bool HasGuildBossRuntimeNodes(Board board)
-        {
-            WzImage mapImage = board?.MapInfo?.Image;
-            if (mapImage == null)
-            {
-                return false;
-            }
-
-            if (!mapImage.Parsed)
-            {
-                mapImage.ParseImage();
-            }
-
-            return mapImage["healer"] is WzSubProperty
-                && mapImage["pulley"] is WzSubProperty;
+                || GuildBossField.TryBuildMapContract(mapInfo, out _);
         }
 
         private static bool IsMassacreMap(MapInfo mapInfo)

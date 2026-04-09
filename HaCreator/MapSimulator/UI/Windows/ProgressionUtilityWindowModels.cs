@@ -462,6 +462,11 @@ namespace HaCreator.MapSimulator.UI
 
         private static IReadOnlyList<CollectionBookRecordSnapshot> BuildPageRecords(CollectionBookPageSnapshot page)
         {
+            if (string.Equals(page?.Title, "Overview", StringComparison.Ordinal))
+            {
+                return BuildOverviewPageRecords(page);
+            }
+
             List<CollectionBookRecordSnapshot> records = new()
             {
                 CreateTextRecord(page?.Title, 16, 14, 164, 0, CollectionBookTextAlignment.Center),
@@ -490,6 +495,59 @@ namespace HaCreator.MapSimulator.UI
             records.Add(CreateRuleRecord(15, 220, 166));
             records.Add(CreateTextRecord(page?.Footer, 16, 227, 164, 11, CollectionBookTextAlignment.Center));
             return records;
+        }
+
+        private static IReadOnlyList<CollectionBookRecordSnapshot> BuildOverviewPageRecords(CollectionBookPageSnapshot page)
+        {
+            List<CollectionBookRecordSnapshot> records = new()
+            {
+                CreateTextRecord(page?.Title, 16, 14, 164, 0, CollectionBookTextAlignment.Center),
+                CreateTextRecord(page?.Subtitle, 16, 34, 164, 10, CollectionBookTextAlignment.Center),
+                CreateRuleRecord(15, 56, 166),
+            };
+
+            IReadOnlyList<CollectionBookEntrySnapshot> entries = page?.Entries ?? Array.Empty<CollectionBookEntrySnapshot>();
+            CollectionBookEntrySnapshot characterEntry = entries.Count > 0 ? entries[0] : null;
+            CollectionBookEntrySnapshot targetEntry = entries.Count > 1 ? entries[1] : null;
+            AddOverviewIdentityEntryRecords(records, characterEntry, 68);
+            AddOverviewIdentityEntryRecords(records, targetEntry, 98);
+
+            int metricRowCount = Math.Min(5, Math.Max(0, entries.Count - 2));
+            for (int row = 0; row < metricRowCount; row++)
+            {
+                int rowTop = 128 + (row * 19);
+                AddOverviewMetricEntryRecords(records, entries[row + 2], rowTop);
+            }
+
+            records.Add(CreateRuleRecord(15, 221, 166));
+            records.Add(CreateTextRecord(page?.Footer, 16, 227, 164, 11, CollectionBookTextAlignment.Center));
+            return records;
+        }
+
+        private static void AddOverviewIdentityEntryRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top)
+        {
+            if (entry == null)
+            {
+                return;
+            }
+
+            records.Add(CreateTextRecord(entry.Label, 16, top, 44, 2, CollectionBookTextAlignment.Left));
+            records.Add(CreateTextRecord(entry.Value, 60, top, 120, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Left));
+            records.Add(CreateTextRecord(entry.Detail, 22, top + 11, 158, 10, CollectionBookTextAlignment.Left));
+            records.Add(CreateRuleRecord(15, top + 25, 166));
+        }
+
+        private static void AddOverviewMetricEntryRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top)
+        {
+            if (entry == null)
+            {
+                return;
+            }
+
+            records.Add(CreateTextRecord(entry.Label, 16, top, 98, 2, CollectionBookTextAlignment.Left));
+            records.Add(CreateTextRecord(entry.Value, 106, top, 76, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Right));
+            records.Add(CreateTextRecord(entry.Detail, 22, top + 10, 160, 10, CollectionBookTextAlignment.Left));
+            records.Add(CreateRuleRecord(15, top + 17, 166));
         }
 
         private static CollectionBookRecordSnapshot CreateTextRecord(string text, int left, int top, int width, int styleIndex, CollectionBookTextAlignment alignment)
@@ -793,6 +851,8 @@ namespace HaCreator.MapSimulator.UI
         public string StatusText { get; init; } = string.Empty;
         public string NavigationCaption { get; init; } = string.Empty;
         public string NavigationSeedText { get; init; } = string.Empty;
+        public string NavigationHostText { get; init; } = string.Empty;
+        public string NavigationRequestText { get; init; } = string.Empty;
         public string NavigationStateText { get; init; } = string.Empty;
         public bool IsLoading { get; init; }
         public IReadOnlyList<RankingEntrySnapshot> Entries { get; init; } = Array.Empty<RankingEntrySnapshot>();
@@ -813,6 +873,8 @@ namespace HaCreator.MapSimulator.UI
         public string StatusText { get; init; } = string.Empty;
         public EventEntryStatus Status { get; init; }
         public DateTime ScheduledAt { get; init; } = DateTime.Today;
+        public int SourceTick { get; init; } = int.MinValue;
+        public int SortOrder { get; init; }
     }
 
     internal sealed class EventAlarmLineSnapshot

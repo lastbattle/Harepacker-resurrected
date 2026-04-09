@@ -237,6 +237,7 @@ namespace HaCreator.MapSimulator.Interaction
             public string Name { get; init; } = string.Empty;
             public int AreaCode { get; init; }
             public string AreaName { get; init; } = string.Empty;
+            public string StoredLevelLimitText { get; init; } = string.Empty;
             public string Summary { get; init; } = string.Empty;
             public string DemandSummary { get; init; } = string.Empty;
             public string RewardSummary { get; init; } = string.Empty;
@@ -1550,6 +1551,28 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        internal IReadOnlyList<int> CaptureAvailableQuestIds(CharacterBuild build)
+        {
+            return BuildQuestLogSnapshot(QuestLogTabType.Available, build, showAllLevels: true)
+                .Entries
+                .Select(entry => entry.QuestId)
+                .Where(questId => questId > 0)
+                .ToArray();
+        }
+
+        internal IReadOnlyList<int> RefreshPacketOwnedQuestAvailability(CharacterBuild build, IEnumerable<int> previousAvailableQuestIds)
+        {
+            IReadOnlyList<int> newlyAvailableQuestIds = PacketQuestResultClientSemantics.GetNewlyAvailableQuestIds(
+                previousAvailableQuestIds,
+                CaptureAvailableQuestIds(build));
+            for (int i = 0; i < newlyAvailableQuestIds.Count; i++)
+            {
+                MarkQuestAlarmUpdated(newlyAvailableQuestIds[i]);
+            }
+
+            return newlyAvailableQuestIds;
+        }
+
         internal bool TryGetQuestName(int questId, out string questName)
         {
             EnsureDefinitionsLoaded();
@@ -2564,7 +2587,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return fallbackPages;
             }
 
-            IReadOnlyList<NpcInteractionPage> selectedPages = ParseConversationPages(selectedProperty);
+            IReadOnlyList<NpcInteractionPage> selectedPages = ParseConversationVariantPages(sayProperty, selectedProperty);
             return selectedPages.Count > 0 ? selectedPages : fallbackPages;
         }
 
@@ -3277,6 +3300,16 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
+            if (definition.EndActions.BuffItemId <= 0 && definition.EndActions.BuffItemMapIds.Count > 0)
+            {
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Map",
+                    Text = FormatMapIdList(definition.EndActions.BuffItemMapIds),
+                    IsComplete = true
+                });
+            }
+
             if (!string.IsNullOrWhiteSpace(definition.EndActions.NpcActionName))
             {
                 lines.Add(new QuestLogLineSnapshot
@@ -3295,6 +3328,17 @@ namespace HaCreator.MapSimulator.Interaction
                     Label = "Trait",
                     Text = FormatTraitName(reward.Trait),
                     ValueText = reward.Amount.ToString("+#;-#;0", CultureInfo.InvariantCulture),
+                    IsComplete = true
+                });
+            }
+
+            for (int i = 0; i < definition.EndActions.QuestMutations.Count; i++)
+            {
+                QuestStateMutation mutation = definition.EndActions.QuestMutations[i];
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Quest",
+                    Text = $"{GetQuestName(mutation.QuestId)}: {FormatQuestState(mutation.State)}",
                     IsComplete = true
                 });
             }
@@ -3342,6 +3386,16 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     Label = "SP",
                     Text = GetSpRewardText(definition.EndActions.SpRewards[i]),
+                    IsComplete = true
+                });
+            }
+
+            if (definition.EndActions.NextQuestId.HasValue && definition.EndActions.NextQuestId.Value > 0)
+            {
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Quest",
+                    Text = $"Next quest: {GetQuestName(definition.EndActions.NextQuestId.Value)}",
                     IsComplete = true
                 });
             }
@@ -4061,9 +4115,25 @@ namespace HaCreator.MapSimulator.Interaction
                 details.Add(GetPetSpeedRewardText(actions.PetSpeedReward));
             }
 
+            if (actions.BuffItemId <= 0 && actions.BuffItemMapIds.Count > 0)
+            {
+                details.Add($"Maps: {FormatMapIdList(actions.BuffItemMapIds)}");
+            }
+
             if (!string.IsNullOrWhiteSpace(actions.NpcActionName))
             {
                 details.Add(QuestNpcActionResolver.FormatActionDetail(actions.NpcActionName));
+            }
+
+            for (int i = 0; i < actions.QuestMutations.Count; i++)
+            {
+                QuestStateMutation mutation = actions.QuestMutations[i];
+                details.Add($"Quest state: {GetQuestName(mutation.QuestId)} -> {FormatQuestState(mutation.State)}");
+            }
+
+            if (actions.NextQuestId.HasValue && actions.NextQuestId.Value > 0)
+            {
+                details.Add($"Next quest: {GetQuestName(actions.NextQuestId.Value)}");
             }
 
             for (int i = 0; i < actions.Messages.Count; i++)
@@ -4810,21 +4880,44 @@ namespace HaCreator.MapSimulator.Interaction
                 return string.Empty;
             }
 
+            return BuildQuestDetailEligibilityText(
+                definition.StoredLevelLimitText,
+                definition.MinLevel,
+                definition.MaxLevel,
+                definition.AllowedJobs,
+                definition.StartSubJobFlagsRequirement);
+        }
+
+        internal static string BuildQuestDetailEligibilityText(
+            string storedLevelLimitText,
+            int? minLevel,
+            int? maxLevel,
+            IReadOnlyList<int> allowedJobs,
+            int startSubJobFlagsRequirement)
+        {
+            string authoredText = storedLevelLimitText?.Trim() ?? string.Empty;
+            if (authoredText.Length > 0)
+            {
+                return authoredText;
+            }
+
             var segments = new List<string>();
 
-            string levelLimitText = BuildLevelLimitText(definition);
+            string levelLimitText = BuildLevelLimitText(minLevel, maxLevel);
             if (!string.IsNullOrWhiteSpace(levelLimitText))
             {
                 segments.Add(levelLimitText);
             }
 
-            string jobLimitText = BuildQuestDetailJobLimitText(definition);
+            string jobLimitText = BuildQuestDetailJobLimitText(allowedJobs, startSubJobFlagsRequirement);
             if (!string.IsNullOrWhiteSpace(jobLimitText))
             {
                 segments.Add(jobLimitText);
             }
 
-            return string.Join(" / ", segments);
+            return segments.Count > 0
+                ? string.Join(" / ", segments)
+                : MapleStoryStringPool.GetOrFallback(3283, "No limit");
         }
 
         private static string BuildLevelLimitText(QuestDefinition definition)
@@ -4834,7 +4927,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return string.Empty;
             }
 
-            if (definition.MinLevel.HasValue && definition.MaxLevel.HasValue)
+            return BuildLevelLimitText(definition.MinLevel, definition.MaxLevel);
+        }
+
+        private static string BuildLevelLimitText(int? minLevel, int? maxLevel)
+        {
+            if (minLevel.HasValue && maxLevel.HasValue)
             {
                 bool usedResolvedText;
                 string maxLevelFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
@@ -4845,16 +4943,16 @@ namespace HaCreator.MapSimulator.Interaction
                 return string.Format(
                     CultureInfo.InvariantCulture,
                     maxLevelFormat,
-                    FormatQuestMinimumLevelText(definition.MinLevel.Value),
-                    definition.MaxLevel.Value);
+                    FormatQuestMinimumLevelText(minLevel.Value),
+                    maxLevel.Value);
             }
 
-            if (definition.MinLevel.HasValue)
+            if (minLevel.HasValue)
             {
-                return FormatQuestMinimumLevelText(definition.MinLevel.Value);
+                return FormatQuestMinimumLevelText(minLevel.Value);
             }
 
-            if (definition.MaxLevel.HasValue)
+            if (maxLevel.HasValue)
             {
                 bool usedResolvedText;
                 string maxLevelFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
@@ -4866,7 +4964,7 @@ namespace HaCreator.MapSimulator.Interaction
                     CultureInfo.InvariantCulture,
                     maxLevelFormat,
                     string.Empty,
-                    definition.MaxLevel.Value).Trim();
+                    maxLevel.Value).Trim();
             }
 
             return string.Empty;
@@ -4879,17 +4977,22 @@ namespace HaCreator.MapSimulator.Interaction
                 return string.Empty;
             }
 
+            return BuildQuestDetailJobLimitText(definition.AllowedJobs, definition.StartSubJobFlagsRequirement);
+        }
+
+        private static string BuildQuestDetailJobLimitText(IReadOnlyList<int> allowedJobs, int startSubJobFlagsRequirement)
+        {
             var segments = new List<string>();
 
-            string allowedJobText = BuildAllowedJobDisplayText(definition.AllowedJobs);
+            string allowedJobText = BuildAllowedJobDisplayText(allowedJobs);
             if (!string.IsNullOrWhiteSpace(allowedJobText))
             {
                 segments.Add(allowedJobText);
             }
 
-            if (definition.StartSubJobFlagsRequirement > 0)
+            if (startSubJobFlagsRequirement > 0)
             {
-                segments.Add(FormatQuestSubJobFlagsText(definition.StartSubJobFlagsRequirement));
+                segments.Add(FormatQuestSubJobFlagsText(startSubJobFlagsRequirement));
             }
 
             return string.Join(", ", segments);
@@ -5177,6 +5280,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Name = (questInfo["name"] as WzStringProperty)?.Value ?? $"Quest #{questId}",
                 AreaCode = ParseInt(questInfo["area"]).GetValueOrDefault(),
                 AreaName = ResolveQuestAreaName(ParseInt(questInfo["area"]).GetValueOrDefault()),
+                StoredLevelLimitText = ResolveStoredQuestDetailEligibilityText(questInfo),
                 Summary = (questInfo["summary"] as WzStringProperty)?.Value ?? string.Empty,
                 DemandSummary = (questInfo["demandSummary"] as WzStringProperty)?.Value ?? string.Empty,
                 RewardSummary = (questInfo["rewardSummary"] as WzStringProperty)?.Value ?? string.Empty,
@@ -5233,6 +5337,34 @@ namespace HaCreator.MapSimulator.Interaction
                 StartActions = ParseActions(startAct),
                 EndActions = ParseActions(endAct)
             };
+        }
+
+        private static string ResolveStoredQuestDetailEligibilityText(WzImageProperty questInfoProperty)
+        {
+            if (questInfoProperty == null)
+            {
+                return string.Empty;
+            }
+
+            string[] candidateNames =
+            {
+                "sLevelLimit",
+                "levelLimit",
+                "levelLimitText",
+                "lvLimit",
+                "sLvLimit"
+            };
+
+            for (int i = 0; i < candidateNames.Length; i++)
+            {
+                if (questInfoProperty[candidateNames[i]] is WzStringProperty candidate &&
+                    !string.IsNullOrWhiteSpace(candidate.Value))
+                {
+                    return candidate.Value.Trim();
+                }
+            }
+
+            return string.Empty;
         }
 
         private static string ResolveQuestAreaName(int areaCode)
@@ -5444,6 +5576,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return names.Count == 0 ? Array.Empty<string>() : names.ToArray();
+        }
+
+        internal static IReadOnlyList<string> ParseScriptNames(string value)
+        {
+            return ParseDelimitedStrings(value);
         }
 
         private static IReadOnlyList<string> ParseDelimitedStrings(string value)
@@ -5952,33 +6089,61 @@ namespace HaCreator.MapSimulator.Interaction
                 return Array.Empty<NpcInteractionPage>();
             }
 
-            var numberedPages = new List<(int PageIndex, WzImageProperty Property)>();
-            if (property.WzProperties != null)
-            {
-                for (int i = 0; i < property.WzProperties.Count; i++)
-                {
-                    WzImageProperty child = property.WzProperties[i];
-                    if (!int.TryParse(child.Name, out int pageIndex) || pageIndex >= 200)
-                    {
-                        continue;
-                    }
-
-                    numberedPages.Add((pageIndex, child));
-                }
-            }
-
+            List<WzImageProperty> numberedPages = CollectConversationNumberedPages(property);
             if (numberedPages.Count == 0)
             {
                 NpcInteractionPage page = CreateConversationPage(property);
                 return page != null ? new[] { page } : Array.Empty<NpcInteractionPage>();
             }
 
+            return ParseConversationPageSequence(numberedPages, property, property["stop"]);
+        }
+
+        internal static IReadOnlyList<NpcInteractionPage> ParseConversationVariantPages(
+            WzImageProperty containerProperty,
+            WzImageProperty selectedProperty)
+        {
+            if (selectedProperty == null)
+            {
+                return Array.Empty<NpcInteractionPage>();
+            }
+
+            if (ReferenceEquals(containerProperty, selectedProperty))
+            {
+                return ParseConversationPages(selectedProperty);
+            }
+
+            if (!HasConversationVariantMetadata(selectedProperty) || HasRenderableConversationContent(selectedProperty))
+            {
+                return ParseConversationPages(selectedProperty);
+            }
+
+            List<WzImageProperty> siblingPages = CollectConversationVariantSiblingPages(containerProperty, selectedProperty);
+            return siblingPages.Count > 0
+                ? ParseConversationPageSequence(siblingPages, rootChoiceProperty: null, rootStopProperty: containerProperty?["stop"])
+                : ParseConversationPages(selectedProperty);
+        }
+
+        private static IReadOnlyList<NpcInteractionPage> ParseConversationPageSequence(
+            IReadOnlyList<WzImageProperty> numberedPages,
+            WzImageProperty rootChoiceProperty,
+            WzImageProperty rootStopProperty)
+        {
+            if (numberedPages == null || numberedPages.Count == 0)
+            {
+                return Array.Empty<NpcInteractionPage>();
+            }
+
             var pages = new NpcInteractionPage[numberedPages.Count];
-            WzImageProperty rootStopProperty = property["stop"];
 
             for (int i = numberedPages.Count - 1; i >= 0; i--)
             {
-                (int pageIndex, WzImageProperty pageProperty) = numberedPages[i];
+                WzImageProperty pageProperty = numberedPages[i];
+                if (!int.TryParse(pageProperty?.Name, out int pageIndex))
+                {
+                    continue;
+                }
+
                 string rawText = ExtractConversationText(pageProperty);
                 string text = NpcDialogueTextFormatter.Format(rawText);
                 var choices = new List<NpcInteractionChoice>();
@@ -5986,9 +6151,9 @@ namespace HaCreator.MapSimulator.Interaction
                 AppendConversationChoices(pageProperty, choices);
                 AppendInlineSelectionChoices(rawText, pageIndex, rootStopProperty, GetRemainingPages(pages, i + 1), choices);
 
-                if (i == numberedPages.Count - 1)
+                if (i == numberedPages.Count - 1 && rootChoiceProperty != null)
                 {
-                    AppendConversationChoices(property, choices);
+                    AppendConversationChoices(rootChoiceProperty, choices);
                 }
 
                 if (!string.IsNullOrWhiteSpace(text) || choices.Count > 0)
@@ -6003,6 +6168,106 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return pages.Where(page => page != null).ToArray();
+        }
+
+        private static List<WzImageProperty> CollectConversationNumberedPages(WzImageProperty property)
+        {
+            var numberedPages = new List<WzImageProperty>();
+            if (property?.WzProperties == null)
+            {
+                return numberedPages;
+            }
+
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                WzImageProperty child = property.WzProperties[i];
+                if (!int.TryParse(child?.Name, out int pageIndex) || pageIndex >= 200)
+                {
+                    continue;
+                }
+
+                numberedPages.Add(child);
+            }
+
+            return numberedPages;
+        }
+
+        private static List<WzImageProperty> CollectConversationVariantSiblingPages(
+            WzImageProperty containerProperty,
+            WzImageProperty selectedProperty)
+        {
+            var siblingPages = new List<WzImageProperty>();
+            if (containerProperty?.WzProperties == null || selectedProperty == null)
+            {
+                return siblingPages;
+            }
+
+            int selectedIndex = -1;
+            for (int i = 0; i < containerProperty.WzProperties.Count; i++)
+            {
+                if (ReferenceEquals(containerProperty.WzProperties[i], selectedProperty))
+                {
+                    selectedIndex = i;
+                    break;
+                }
+            }
+
+            if (selectedIndex < 0)
+            {
+                return siblingPages;
+            }
+
+            for (int i = selectedIndex + 1; i < containerProperty.WzProperties.Count; i++)
+            {
+                WzImageProperty sibling = containerProperty.WzProperties[i];
+                if (!int.TryParse(sibling?.Name, out int pageIndex) || pageIndex >= 200)
+                {
+                    continue;
+                }
+
+                if (HasConversationVariantMetadata(sibling))
+                {
+                    break;
+                }
+
+                siblingPages.Add(sibling);
+            }
+
+            return siblingPages;
+        }
+
+        private static bool HasRenderableConversationContent(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(NpcDialogueTextFormatter.Format(ExtractConversationText(property))))
+            {
+                return true;
+            }
+
+            if (property["yes"] != null || property["no"] != null)
+            {
+                return true;
+            }
+
+            if (property.WzProperties == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                WzImageProperty child = property.WzProperties[i];
+                if (ShouldExposeConversationBranchChoice(child))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> ParseConversationStopPages(WzImageProperty property)
@@ -7718,6 +7983,16 @@ namespace HaCreator.MapSimulator.Interaction
                 rewards.Add(GetPetSpeedRewardText(definition.EndActions.PetSpeedReward));
             }
 
+            if (definition.EndActions.BuffItemId <= 0 && definition.EndActions.BuffItemMapIds.Count > 0)
+            {
+                rewards.Add($"Maps: {FormatMapIdList(definition.EndActions.BuffItemMapIds)}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(definition.EndActions.NpcActionName))
+            {
+                rewards.Add(QuestNpcActionResolver.FormatActionDetail(definition.EndActions.NpcActionName));
+            }
+
             for (int i = 0; i < definition.EndActions.TraitRewards.Count; i++)
             {
                 QuestTraitReward reward = definition.EndActions.TraitRewards[i];
@@ -7743,9 +8018,20 @@ namespace HaCreator.MapSimulator.Interaction
                 rewards.Add(GetPetSkillRewardText(definition.EndActions.PetSkillRewardMask));
             }
 
+            for (int i = 0; i < definition.EndActions.QuestMutations.Count; i++)
+            {
+                QuestStateMutation mutation = definition.EndActions.QuestMutations[i];
+                rewards.Add($"Quest state: {GetQuestName(mutation.QuestId)} -> {FormatQuestState(mutation.State)}");
+            }
+
             for (int i = 0; i < definition.EndActions.SpRewards.Count; i++)
             {
                 rewards.Add($"SP {GetSpRewardText(definition.EndActions.SpRewards[i])}");
+            }
+
+            if (definition.EndActions.NextQuestId.HasValue && definition.EndActions.NextQuestId.Value > 0)
+            {
+                rewards.Add($"Next quest: {GetQuestName(definition.EndActions.NextQuestId.Value)}");
             }
 
             for (int i = 0; i < definition.EndActions.Messages.Count; i++)
@@ -7943,6 +8229,26 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add($"Buff {GetBuffItemRewardText(actions)}");
             }
 
+            if (actions.PetTamenessReward != 0)
+            {
+                lines.Add(GetPetTamenessRewardText(actions.PetTamenessReward));
+            }
+
+            if (actions.PetSpeedReward != 0)
+            {
+                lines.Add(GetPetSpeedRewardText(actions.PetSpeedReward));
+            }
+
+            if (actions.BuffItemId <= 0 && actions.BuffItemMapIds.Count > 0)
+            {
+                lines.Add($"Maps: {FormatMapIdList(actions.BuffItemMapIds)}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(actions.NpcActionName))
+            {
+                lines.Add(QuestNpcActionResolver.FormatActionDetail(actions.NpcActionName));
+            }
+
             for (int i = 0; i < actions.TraitRewards.Count; i++)
             {
                 QuestTraitReward reward = actions.TraitRewards[i];
@@ -7991,6 +8297,12 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add(GetPetSkillRewardText(actions.PetSkillRewardMask));
             }
 
+            for (int i = 0; i < actions.QuestMutations.Count; i++)
+            {
+                QuestStateMutation mutation = actions.QuestMutations[i];
+                lines.Add($"Quest state: {GetQuestName(mutation.QuestId)} -> {FormatQuestState(mutation.State)}");
+            }
+
             for (int i = 0; i < actions.SpRewards.Count; i++)
             {
                 QuestSpReward reward = actions.SpRewards[i];
@@ -8000,6 +8312,11 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 lines.Add($"SP {GetSpRewardText(reward)}");
+            }
+
+            if (actions.NextQuestId.HasValue && actions.NextQuestId.Value > 0)
+            {
+                lines.Add($"Next quest: {GetQuestName(actions.NextQuestId.Value)}");
             }
 
             for (int i = 0; i < actions.Messages.Count; i++)

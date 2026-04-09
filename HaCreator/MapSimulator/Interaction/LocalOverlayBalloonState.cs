@@ -37,7 +37,7 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
-        public LocalOverlayBalloonMessage ShowAvatar(string text, int requestedWidth, int lifetimeMs, int currentTickCount)
+        public LocalOverlayBalloonMessage ShowAvatar(string text, int requestedWidth, int lifetimeMs, int currentTickCount, Point avatarOriginOffset)
         {
             DisposeMessage(_avatarMessage);
             _avatarMessage = CreateMessage(
@@ -46,7 +46,8 @@ namespace HaCreator.MapSimulator.Interaction
                 lifetimeMs,
                 currentTickCount,
                 LocalOverlayBalloonAnchorMode.Avatar,
-                Point.Zero);
+                Point.Zero,
+                avatarOriginOffset);
             return _avatarMessage;
         }
 
@@ -58,7 +59,8 @@ namespace HaCreator.MapSimulator.Interaction
                 lifetimeMs,
                 currentTickCount,
                 LocalOverlayBalloonAnchorMode.World,
-                worldAnchor);
+                worldAnchor,
+                Point.Zero);
             if (message == null)
             {
                 return null;
@@ -131,7 +133,8 @@ namespace HaCreator.MapSimulator.Interaction
             int lifetimeMs,
             int currentTickCount,
             LocalOverlayBalloonAnchorMode anchorMode,
-            Point worldAnchor)
+            Point worldAnchor,
+            Point anchorOffset)
         {
             string sanitizedText = SanitizeText(text);
             int expiresAt = currentTickCount + Math.Max(0, lifetimeMs);
@@ -142,7 +145,8 @@ namespace HaCreator.MapSimulator.Interaction
                     Math.Max(0, requestedWidth),
                     expiresAt,
                     anchorMode,
-                    worldAnchor);
+                    worldAnchor,
+                    anchorOffset);
         }
 
         private static string SanitizeText(string text)
@@ -165,13 +169,14 @@ namespace HaCreator.MapSimulator.Interaction
         private int _cachedBodyWidth;
         private int _cachedBodyHeight;
 
-        public LocalOverlayBalloonMessage(string text, int requestedWidth, int expiresAt, LocalOverlayBalloonAnchorMode anchorMode, Point worldAnchor)
+        public LocalOverlayBalloonMessage(string text, int requestedWidth, int expiresAt, LocalOverlayBalloonAnchorMode anchorMode, Point worldAnchor, Point anchorOffset)
         {
             Text = text ?? string.Empty;
             RequestedWidth = requestedWidth;
             ExpiresAt = expiresAt;
             AnchorMode = anchorMode;
             WorldAnchor = worldAnchor;
+            AnchorOffset = anchorOffset;
         }
 
         public string Text { get; }
@@ -179,6 +184,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int ExpiresAt { get; }
         public LocalOverlayBalloonAnchorMode AnchorMode { get; }
         public Point WorldAnchor { get; }
+        public Point AnchorOffset { get; }
         public Texture2D CachedBodyTexture => _cachedBodyTexture != null && !_cachedBodyTexture.IsDisposed ? _cachedBodyTexture : null;
 
         public bool IsActive(int currentTickCount) =>

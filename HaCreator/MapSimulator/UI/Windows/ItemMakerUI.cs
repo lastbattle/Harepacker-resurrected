@@ -215,7 +215,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             ApplyPacketOwnedResult(message, packetResult.ResetItemSlot);
-            return packetResult.ResultCode <= 1;
+            return true;
         }
 
         internal bool TryResolvePacketOwnedHiddenUnlockEntries(

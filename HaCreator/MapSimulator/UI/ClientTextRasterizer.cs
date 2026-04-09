@@ -76,6 +76,22 @@ namespace HaCreator.MapSimulator.UI
             ".exe",
             ".dll"
         };
+        private static readonly string[] PreferredFontContainerFileNames =
+        {
+            "MapleStory.exe",
+            "MapleStoryT.exe",
+            "MapleStory.dll"
+        };
+        private static readonly string[] PreferredFontContainerDirectoryNameFragments =
+        {
+            "maple",
+            "wizet",
+            "nexon",
+            "client",
+            "game",
+            "bin"
+        };
+        private const int PreferredFontContainerSearchDepth = 2;
         private static readonly string[] PreferredFontFileNameFragments =
         {
             "DotumChe",
@@ -1032,36 +1048,122 @@ namespace HaCreator.MapSimulator.UI
             }
 
             HashSet<string> yieldedPaths = new(StringComparer.OrdinalIgnoreCase);
+            List<(string Path, int Score)> scoredPaths = new();
 
-            foreach (string preferredFileName in new[] { "MapleStory.exe", "MapleStory.dll" })
+            foreach (string candidateDirectory in EnumerateCandidateFontContainerDirectories(rootDirectory))
             {
-                string directCandidatePath = Path.Combine(rootDirectory, preferredFileName);
-                if (File.Exists(directCandidatePath) && yieldedPaths.Add(directCandidatePath))
+                foreach (string preferredFileName in PreferredFontContainerFileNames)
                 {
-                    yield return directCandidatePath;
+                    string directCandidatePath = Path.Combine(candidateDirectory, preferredFileName);
+                    if (File.Exists(directCandidatePath))
+                    {
+                        scoredPaths.Add((directCandidatePath, ScoreDiscoveredFontContainerPath(directCandidatePath)));
+                    }
+                }
+
+                IEnumerable<string> files;
+                try
+                {
+                    files = Directory.EnumerateFiles(candidateDirectory, "*", SearchOption.TopDirectoryOnly);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                foreach (string candidatePath in files.Where(static path => IsFontContainerExtension(Path.GetExtension(path))))
+                {
+                    int score = ScoreDiscoveredFontContainerPath(candidatePath);
+                    if (score >= 0)
+                    {
+                        scoredPaths.Add((candidatePath, score));
+                    }
                 }
             }
 
-            IEnumerable<string> files;
-            try
+            foreach ((string path, _) in scoredPaths
+                .OrderByDescending(static entry => entry.Score)
+                .ThenBy(static entry => entry.Path, StringComparer.OrdinalIgnoreCase))
             {
-                files = Directory.EnumerateFiles(rootDirectory, "*", SearchOption.TopDirectoryOnly);
+                if (yieldedPaths.Add(path))
+                {
+                    yield return path;
+                }
             }
-            catch
+        }
+
+        private static IEnumerable<string> EnumerateCandidateFontContainerDirectories(string rootDirectory)
+        {
+            yield return rootDirectory;
+
+            if (!ShouldRecurseCandidateFontContainerDirectories(rootDirectory))
             {
                 yield break;
             }
 
-            foreach (string candidatePath in files
-                .Where(static path => IsFontContainerExtension(Path.GetExtension(path)))
-                .OrderByDescending(static path => ScoreDiscoveredFontContainerPath(path))
-                .ThenBy(static path => path, StringComparer.OrdinalIgnoreCase))
+            Queue<(string Directory, int Depth)> pendingDirectories = new();
+            HashSet<string> seenDirectories = new(StringComparer.OrdinalIgnoreCase)
             {
-                if (yieldedPaths.Add(candidatePath))
+                rootDirectory
+            };
+
+            pendingDirectories.Enqueue((rootDirectory, 0));
+
+            while (pendingDirectories.Count > 0)
+            {
+                (string currentDirectory, int depth) = pendingDirectories.Dequeue();
+                if (depth >= PreferredFontContainerSearchDepth)
                 {
-                    yield return candidatePath;
+                    continue;
+                }
+
+                IEnumerable<string> childDirectories;
+                try
+                {
+                    childDirectories = Directory.EnumerateDirectories(currentDirectory, "*", SearchOption.TopDirectoryOnly);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                foreach (string childDirectory in childDirectories)
+                {
+                    if (!seenDirectories.Add(childDirectory))
+                    {
+                        continue;
+                    }
+
+                    pendingDirectories.Enqueue((childDirectory, depth + 1));
+                    yield return childDirectory;
                 }
             }
+        }
+
+        private static bool ShouldRecurseCandidateFontContainerDirectories(string rootDirectory)
+        {
+            string normalizedPath = NormalizeCandidateFontContainerPath(rootDirectory);
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                return false;
+            }
+
+            return PreferredFontContainerDirectoryNameFragments.Any(
+                fragment => normalizedPath.Contains(fragment, StringComparison.Ordinal));
+        }
+
+        private static string NormalizeCandidateFontContainerPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return string.Empty;
+            }
+
+            return new string(path
+                .Trim()
+                .ToLowerInvariant()
+                .Where(static character => character != Path.DirectorySeparatorChar && character != Path.AltDirectorySeparatorChar)
+                .ToArray());
         }
 
         private static int ScoreDiscoveredFontPath(string candidatePath)
@@ -1127,6 +1229,14 @@ namespace HaCreator.MapSimulator.UI
             if (string.Equals(fileName, "MapleStory.exe", StringComparison.OrdinalIgnoreCase))
             {
                 score += 1000;
+            }
+            else if (string.Equals(fileName, "MapleStoryT.exe", StringComparison.OrdinalIgnoreCase))
+            {
+                score += 950;
+            }
+            else if (string.Equals(fileName, "MapleStory.dll", StringComparison.OrdinalIgnoreCase))
+            {
+                score += 900;
             }
             else if (fileName.IndexOf("Maple", StringComparison.OrdinalIgnoreCase) >= 0)
             {

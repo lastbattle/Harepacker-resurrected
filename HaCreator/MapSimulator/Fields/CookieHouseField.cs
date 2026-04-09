@@ -26,6 +26,10 @@ namespace HaCreator.MapSimulator.Fields
             string InferredDecodedValue,
             string ClientSource);
 
+        private readonly record struct ClientResourcePathResolution(
+            string ResourcePath,
+            bool UsedResolvedStringPoolEntry);
+
         private sealed class CookieBitmapNumberStyle
         {
             public Texture2D[] Digits { get; } = new Texture2D[10];
@@ -436,7 +440,8 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool TryLoadClientBackgroundCanvas()
         {
-            if (TryResolveClientMapProperty(ResolveClientBackgroundPath(), out WzImageProperty property, out string sourcePath))
+            ClientResourcePathResolution resolution = ResolveClientBackgroundPath();
+            if (TryResolveClientMapProperty(resolution.ResourcePath, out WzImageProperty property, out string sourcePath))
             {
                 CookieCanvasSprite backgroundCanvas = LoadCanvas(property);
                 if (backgroundCanvas.IsLoaded)
@@ -453,7 +458,8 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool TryLoadClientBitmapNumberRoot()
         {
-            if (TryResolveClientMapProperty(ResolveClientBitmapRootPath(), out WzImageProperty property, out string sourcePath)
+            ClientResourcePathResolution resolution = ResolveClientBitmapRootPath();
+            if (TryResolveClientMapProperty(resolution.ResourcePath, out WzImageProperty property, out string sourcePath)
                 && TryLoadBitmapNumberStyles(property))
             {
                 _bitmapNumberSourcePath = sourcePath;
@@ -945,18 +951,28 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
-        private static string ResolveClientBackgroundPath()
+        private static ClientResourcePathResolution ResolveClientBackgroundPath()
         {
-            return MapleStoryStringPool.GetOrFallback(
+            return ResolveClientResourcePath(
                 ClientBackgroundStringPoolId,
                 BackgroundStringPoolEvidence.InferredDecodedValue);
         }
 
-        private static string ResolveClientBitmapRootPath()
+        private static ClientResourcePathResolution ResolveClientBitmapRootPath()
         {
-            return MapleStoryStringPool.GetOrFallback(
+            return ResolveClientResourcePath(
                 ClientBitmapRootStringPoolId,
                 BitmapRootStringPoolEvidence.InferredDecodedValue);
+        }
+
+        private static ClientResourcePathResolution ResolveClientResourcePath(int stringPoolId, string fallbackPath)
+        {
+            if (MapleStoryStringPool.TryGet(stringPoolId, out string resolvedPath))
+            {
+                return new ClientResourcePathResolution(resolvedPath, UsedResolvedStringPoolEntry: true);
+            }
+
+            return new ClientResourcePathResolution(fallbackPath, UsedResolvedStringPoolEntry: false);
         }
 
         private static bool TryResolveClientMapProperty(string resourcePath, out WzImageProperty property, out string resolvedSourcePath)
@@ -1350,25 +1366,29 @@ namespace HaCreator.MapSimulator.Fields
 
         private string DescribeBackgroundSource()
         {
+            ClientResourcePathResolution resolution = ResolveClientBackgroundPath();
             if (string.IsNullOrWhiteSpace(_backgroundSourcePath))
             {
-                return $"background=unresolved [{FormatStringPoolEntry(BackgroundStringPoolEvidence, ClientBackgroundClientStringPoolSource)}]";
+                return $"background=unresolved [{FormatStringPoolEntry(BackgroundStringPoolEvidence, ClientBackgroundClientStringPoolSource, resolution)}]";
             }
 
             if (_usesFallbackBackgroundSource)
             {
-                return $"background=fallback:{_backgroundSourcePath} [{FormatStringPoolEntry(BackgroundStringPoolEvidence, ClientBackgroundClientStringPoolSource)}]";
+                return $"background=fallback:{_backgroundSourcePath} [{FormatStringPoolEntry(BackgroundStringPoolEvidence, ClientBackgroundClientStringPoolSource, resolution)}]";
             }
 
-            return $"background={_backgroundSourcePath} [{FormatStringPoolEntry(BackgroundStringPoolEvidence, ClientBackgroundClientStringPoolSource)}]";
+            return $"background={_backgroundSourcePath} [{FormatStringPoolEntry(BackgroundStringPoolEvidence, ClientBackgroundClientStringPoolSource, resolution)}]";
         }
 
         private string DescribeBitmapSource()
         {
-            string signEvidence = $"{FormatStringPoolEntry(BitmapPlusStringPoolEvidence, ClientBitmapPlusClientStringPoolSource)}; {FormatStringPoolEntry(BitmapMinusStringPoolEvidence, ClientBitmapMinusClientStringPoolSource)}";
+            ClientResourcePathResolution bitmapResolution = ResolveClientBitmapRootPath();
+            ClientResourcePathResolution plusResolution = ResolveClientResourcePath(ClientBitmapPlusStringPoolId, BitmapPlusStringPoolEvidence.InferredDecodedValue);
+            ClientResourcePathResolution minusResolution = ResolveClientResourcePath(ClientBitmapMinusStringPoolId, BitmapMinusStringPoolEvidence.InferredDecodedValue);
+            string signEvidence = $"{FormatStringPoolEntry(BitmapPlusStringPoolEvidence, ClientBitmapPlusClientStringPoolSource, plusResolution)}; {FormatStringPoolEntry(BitmapMinusStringPoolEvidence, ClientBitmapMinusClientStringPoolSource, minusResolution)}";
             if (string.IsNullOrWhiteSpace(_bitmapNumberSourcePath))
             {
-                return $"bitmap=unresolved [constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}; {FormatStringPoolEntry(BitmapRootStringPoolEvidence, ClientBitmapRootClientStringPoolSource)}; {signEvidence}]";
+                return $"bitmap=unresolved [constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}; {FormatStringPoolEntry(BitmapRootStringPoolEvidence, ClientBitmapRootClientStringPoolSource, bitmapResolution)}; {signEvidence}]";
             }
 
             string sourceLabel = _bitmapRootResolutionKind switch
@@ -1382,28 +1402,42 @@ namespace HaCreator.MapSimulator.Fields
 
             if (_usesFallbackBitmapSource)
             {
-                return $"bitmap={sourceLabel}-alt:{_bitmapNumberSourcePath} [constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}; {FormatStringPoolEntry(BitmapRootStringPoolEvidence, ClientBitmapRootClientStringPoolSource)}; {signEvidence}]";
+                return $"bitmap={sourceLabel}-alt:{_bitmapNumberSourcePath} [constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}; {FormatStringPoolEntry(BitmapRootStringPoolEvidence, ClientBitmapRootClientStringPoolSource, bitmapResolution)}; {signEvidence}]";
             }
 
-            return $"bitmap={sourceLabel}:{_bitmapNumberSourcePath} [constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}; {FormatStringPoolEntry(BitmapRootStringPoolEvidence, ClientBitmapRootClientStringPoolSource)}; {signEvidence}]";
+            return $"bitmap={sourceLabel}:{_bitmapNumberSourcePath} [constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}; {FormatStringPoolEntry(BitmapRootStringPoolEvidence, ClientBitmapRootClientStringPoolSource, bitmapResolution)}; {signEvidence}]";
         }
 
-        private static string FormatStringPoolEntry(ClientStringPoolEvidence evidence, string clientStringPoolSource)
+        private static string FormatStringPoolEntry(
+            ClientStringPoolEvidence evidence,
+            string clientStringPoolSource,
+            ClientResourcePathResolution resolution)
         {
-            string decodedText = string.IsNullOrWhiteSpace(evidence.InferredDecodedValue)
-                ? "decoded=unresolved"
-                : $"decoded={evidence.InferredDecodedValue}";
+            string decodedText;
+            if (string.IsNullOrWhiteSpace(resolution.ResourcePath))
+            {
+                decodedText = "decoded=unresolved";
+            }
+            else if (resolution.UsedResolvedStringPoolEntry)
+            {
+                decodedText = $"resolved={resolution.ResourcePath}";
+            }
+            else
+            {
+                decodedText = $"fallback={resolution.ResourcePath}";
+            }
+
             return $"StringPool 0x{evidence.Id:X} seed=0x{evidence.Seed:X2} raw={evidence.RawHex} {decodedText} via {clientStringPoolSource} / {evidence.ClientSource}";
         }
 
         internal static string GetClientBackgroundPathForTesting()
         {
-            return ResolveClientBackgroundPath();
+            return ResolveClientBackgroundPath().ResourcePath;
         }
 
         internal static string GetClientBitmapRootPathForTesting()
         {
-            return ResolveClientBitmapRootPath();
+            return ResolveClientBitmapRootPath().ResourcePath;
         }
     }
 }

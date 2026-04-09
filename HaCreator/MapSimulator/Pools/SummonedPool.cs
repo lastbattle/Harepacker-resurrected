@@ -137,6 +137,8 @@ namespace HaCreator.MapSimulator.Pools
             public int AttachedSummonObjectId { get; init; }
             public bool FollowSummon { get; init; }
             public bool FollowSummonFacing { get; init; }
+            public bool MirrorOffsetWithSummonFacing { get; init; }
+            public Vector2 AttachedOffset { get; init; }
             public List<IDXObject> Frames { get; init; }
             public int CurrentFrame { get; set; }
             public int LastFrameTime { get; set; }
@@ -3316,6 +3318,7 @@ namespace HaCreator.MapSimulator.Pools
             MobAnimationSet.AttackInfoMetadata attackInfo = mob?.GetAttackInfo(attackAction);
             Vector2 hitPosition = ResolvePacketHitEffectPosition(summon, attackInfo, currentTime);
             bool followSummon = attackInfo?.HitAttach == true;
+            Vector2 summonPosition = new(summon.PositionX, summon.PositionY);
             bool followSummonFacing = followSummon || attackInfo?.FacingAttach == true;
             _mobAttackHitEffects.Add(new PacketOwnedMobAttackHitEffectDisplay
             {
@@ -3324,6 +3327,8 @@ namespace HaCreator.MapSimulator.Pools
                 AttachedSummonObjectId = summon.ObjectId,
                 FollowSummon = followSummon,
                 FollowSummonFacing = followSummonFacing,
+                MirrorOffsetWithSummonFacing = followSummon && attackInfo?.FacingAttach == true,
+                AttachedOffset = followSummon ? hitPosition - summonPosition : Vector2.Zero,
                 Frames = frames,
                 CurrentFrame = 0,
                 LastFrameTime = currentTime,
@@ -3335,35 +3340,22 @@ namespace HaCreator.MapSimulator.Pools
         {
             Rectangle hitbox = GetSummonHitbox(summon, currentTime);
             Vector2 summonPosition = new(summon.PositionX, summon.PositionY);
-            return ResolvePacketHitEffectPosition(hitbox, summonPosition, attackInfo, _random);
+            return ResolvePacketHitEffectPosition(hitbox, summonPosition, attackInfo, summon.FacingRight, _random);
         }
 
         private static Vector2 ResolvePacketHitEffectPosition(
             Rectangle hitbox,
             Vector2 summonPosition,
             MobAnimationSet.AttackInfoMetadata attackInfo,
+            bool facingRight,
             Random random)
         {
-            if (attackInfo?.HitAttach == true)
-            {
-                return summonPosition;
-            }
-
-            if (!hitbox.IsEmpty)
-            {
-                return new Vector2(
-                    hitbox.Left + random.Next(Math.Max(1, hitbox.Width)),
-                    hitbox.Top + random.Next(Math.Max(1, hitbox.Height)));
-            }
-
-            if (attackInfo?.HasRangeOrigin == true)
-            {
-                return new Vector2(
-                    summonPosition.X + attackInfo.RangeOrigin.X,
-                    summonPosition.Y + attackInfo.RangeOrigin.Y);
-            }
-
-            return summonPosition;
+            return PacketOwnedSummonUpdateRules.ResolvePacketOwnedMobAttackHitAnchor(
+                hitbox,
+                summonPosition,
+                attackInfo,
+                facingRight,
+                random);
         }
 
         private static void PlayPacketMobAttackSound(MobItem mob, sbyte attackIndex)
@@ -3474,7 +3466,11 @@ namespace HaCreator.MapSimulator.Pools
             if (_summonsByObjectId.TryGetValue(hitEffect.AttachedSummonObjectId, out PacketOwnedSummonState state)
                 && state?.Summon != null)
             {
-                return new Vector2(state.Summon.PositionX, state.Summon.PositionY);
+                return PacketOwnedSummonUpdateRules.ResolvePacketOwnedAttachedHitPosition(
+                    new Vector2(state.Summon.PositionX, state.Summon.PositionY),
+                    hitEffect.AttachedOffset,
+                    hitEffect.MirrorOffsetWithSummonFacing,
+                    state.Summon.FacingRight);
             }
 
             return new Vector2(hitEffect.X, hitEffect.Y);
@@ -3716,9 +3712,11 @@ namespace HaCreator.MapSimulator.Pools
                 return new Vector2(hitbox.Center.X, hitbox.Center.Y);
             }
 
-            return new Vector2(
-                mob.MovementInfo?.X ?? 0f,
-                mob.MovementInfo?.Y ?? 0f);
+            return SummonImpactPresentationResolver.ResolveFallbackTargetPosition(
+                new Vector2(
+                    mob.MovementInfo?.X ?? mob.CurrentX,
+                    mob.MovementInfo?.Y ?? mob.CurrentY),
+                mob.GetVisualHeight());
         }
 
         private static SkillAnimation ResolveSummonAnimation(ActiveSummon summon, int currentTime, int elapsedTime, out int animationTime)

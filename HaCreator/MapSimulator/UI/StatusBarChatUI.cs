@@ -1156,27 +1156,6 @@ namespace HaCreator.MapSimulator.UI
             int chatLogType,
             bool indentWrappedContinuation)
         {
-            if (!indentWrappedContinuation && !string.IsNullOrEmpty(text))
-            {
-                bool isFirstLine = true;
-                string remaining = text;
-                while (!string.IsNullOrWhiteSpace(remaining))
-                {
-                    float currentMaxWidth = ResolveLineMaxWidth(maxWidth, chatLogType, isFirstLine);
-                    int length = ResolveLongestFittingPrefixLength(remaining, currentMaxWidth);
-                    yield return remaining.Substring(0, length);
-                    remaining = remaining.Substring(length).TrimStart();
-                    isFirstLine = false;
-                }
-
-                if (string.IsNullOrWhiteSpace(text))
-                {
-                    yield return string.Empty;
-                }
-
-                yield break;
-            }
-
             foreach (string line in StatusBarChatLayoutRules.WrapClientChatText(
                 text,
                 maxWidth,

@@ -420,6 +420,11 @@ namespace HaCreator.MapSimulator.UI
             _softKeyboardActive = false;
         }
 
+        void ISoftKeyboardHost.SetSoftKeyboardCompositionText(string text)
+        {
+            HandleCompositionText(text);
+        }
+
         private void DrawChallengeTexture(SpriteBatch sprite, Rectangle bounds)
         {
             if (_challengeTexture != null)

@@ -9,7 +9,7 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
-        private bool TryShowMiniRoomWindow(out string restrictionMessage)
+        private bool TryShowMiniRoomWindow(out string restrictionMessage, bool inheritDirectionModeOwner = false)
         {
             restrictionMessage = GetSocialRoomRestrictionMessage(SocialRoomKind.MiniRoom);
             if (!string.IsNullOrWhiteSpace(restrictionMessage))
@@ -19,11 +19,18 @@ namespace HaCreator.MapSimulator
             }
 
             WireMiniRoomWindowData();
-            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.MiniRoom);
+            if (inheritDirectionModeOwner)
+            {
+                ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.MiniRoom);
+            }
+            else
+            {
+                ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.MiniRoom);
+            }
             return true;
         }
 
-        private bool TryShowSocialRoomWindow(SocialRoomKind kind, out string restrictionMessage)
+        private bool TryShowSocialRoomWindow(SocialRoomKind kind, out string restrictionMessage, bool inheritDirectionModeOwner = false)
         {
             restrictionMessage = GetSocialRoomRestrictionMessage(kind);
             if (!string.IsNullOrWhiteSpace(restrictionMessage))
@@ -40,12 +47,26 @@ namespace HaCreator.MapSimulator
 
             if (kind == SocialRoomKind.MiniRoom)
             {
-                return TryShowMiniRoomWindow(out restrictionMessage);
+                return TryShowMiniRoomWindow(out restrictionMessage, inheritDirectionModeOwner);
             }
 
             WireSocialRoomWindow(windowName, uiWindowManager?.InventoryWindow as InventoryUI);
-            ShowDirectionModeOwnedWindow(windowName);
+            if (inheritDirectionModeOwner)
+            {
+                ShowWindowWithInheritedDirectionModeOwner(windowName);
+            }
+            else
+            {
+                ShowDirectionModeOwnedWindow(windowName);
+            }
             return true;
+        }
+
+        private string ShowSocialRoomWindowForCallback(SocialRoomKind kind, string openedMessage)
+        {
+            return TryShowSocialRoomWindow(kind, out string restrictionMessage, inheritDirectionModeOwner: true)
+                ? openedMessage
+                : restrictionMessage;
         }
 
         private string GetSocialRoomRestrictionMessage(SocialRoomKind kind)
@@ -75,6 +96,26 @@ namespace HaCreator.MapSimulator
 
             PushFieldRuleMessage(restrictionMessage, Environment.TickCount, showOverlay: false);
             return false;
+        }
+
+        private bool TryOpenFieldRestrictedWindow(string windowName, bool inheritDirectionModeOwner = false, Action beforeShow = null)
+        {
+            if (!TryShowFieldRestrictedWindow(windowName))
+            {
+                return false;
+            }
+
+            beforeShow?.Invoke();
+            if (inheritDirectionModeOwner)
+            {
+                ShowWindowWithInheritedDirectionModeOwner(windowName);
+            }
+            else
+            {
+                ShowDirectionModeOwnedWindow(windowName);
+            }
+
+            return true;
         }
 
         private string GetFieldWindowRestrictionMessage(string windowName)

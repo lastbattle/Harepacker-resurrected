@@ -1612,9 +1612,9 @@ namespace HaCreator.MapSimulator.Character
         public int TotalHP => Math.Clamp(HP + SumEquipmentBonus(part => part.BonusHP), 0, TotalMaxHP);
         public int TotalMP => Math.Clamp(MP + SumEquipmentBonus(part => part.BonusMP), 0, TotalMaxMP);
         public int TotalMastery => Math.Clamp(SkillMasteryProvider?.Invoke() ?? MinimumMasteryPercent, MinimumMasteryPercent, 100);
-        public int TotalWeaponAttackStat => Math.Max(0, Math.Max(0, Attack - DefaultAttackValue) + SumEquipmentBonus(part => part.BonusWeaponAttack) + GetSkillStatBonus(BuffStatType.Attack));
+        public int TotalWeaponAttackStat => Math.Max(0, ApplyRateBonus(Math.Max(0, Attack - DefaultAttackValue) + SumEquipmentBonus(part => part.BonusWeaponAttack) + GetSkillStatBonus(BuffStatType.Attack), GetSkillStatBonus(BuffStatType.AttackPercent)));
         public int TotalWeaponDefenseStat => Math.Max(0, ApplyRateBonus(Math.Max(0, Defense - DefaultDefenseValue) + SumEquipmentBonus(part => part.BonusWeaponDefense) + GetSkillStatBonus(BuffStatType.Defense), GetSkillStatBonus(BuffStatType.DefensePercent)));
-        public int TotalMagicAttackStat => Math.Max(0, Math.Max(0, MagicAttack - DefaultMagicAttackValue) + SumEquipmentBonus(part => part.BonusMagicAttack) + GetSkillStatBonus(BuffStatType.MagicAttack));
+        public int TotalMagicAttackStat => Math.Max(0, ApplyRateBonus(Math.Max(0, MagicAttack - DefaultMagicAttackValue) + SumEquipmentBonus(part => part.BonusMagicAttack) + GetSkillStatBonus(BuffStatType.MagicAttack), GetSkillStatBonus(BuffStatType.MagicAttackPercent)));
         public int TotalMagicDefenseStat => Math.Max(0, ApplyRateBonus(Math.Max(0, MagicDefense - DefaultMagicDefenseValue) + SumEquipmentBonus(part => part.BonusMagicDefense) + GetSkillStatBonus(BuffStatType.MagicDefense), GetSkillStatBonus(BuffStatType.MagicDefensePercent)));
         public int TotalAttack => ComputeDisplayedPhysicalAttack();
         public int TotalDefense => ComputeDisplayedPhysicalDefense();
@@ -1625,7 +1625,7 @@ namespace HaCreator.MapSimulator.Character
         public int TotalAvoidability => Math.Max(0, ApplyRateBonus(GetBaseAvoidability() + Avoidability + SumEquipmentBonus(part => part.BonusAvoidability) + GetSkillStatBonus(BuffStatType.Avoidability), GetSkillStatBonus(BuffStatType.AvoidabilityPercent)));
         public int TotalHands => Math.Max(0, Hands + TotalDEX + TotalINT + TotalLUK + SumEquipmentBonus(part => part.BonusHands));
         public int TotalCriticalRate => Math.Max(0, CriticalRate + GetSkillStatBonus(BuffStatType.CriticalRate));
-        public float TotalSpeed => Math.Max(0f, Speed + SumEquipmentBonus(part => part.BonusSpeed) + GetSkillStatBonus(BuffStatType.Speed));
+        public float TotalSpeed => Math.Max(0f, ApplyRateBonus(Speed + SumEquipmentBonus(part => part.BonusSpeed) + GetSkillStatBonus(BuffStatType.Speed), GetSkillStatBonus(BuffStatType.SpeedPercent)));
         public float TotalJumpPower => Math.Max(0f, JumpPower + SumEquipmentBonus(part => part.BonusJump) + GetSkillStatBonus(BuffStatType.Jump));
 
         public bool CanIncreaseMaxHp()
@@ -2139,6 +2139,16 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return (int)MathF.Floor(value * (100f + percent) / 100f);
+        }
+
+        private static float ApplyRateBonus(float value, int percent)
+        {
+            if (percent == 0)
+            {
+                return value;
+            }
+
+            return MathF.Floor(value * (100f + percent) / 100f);
         }
 
         private int SumEquipmentBonus(Func<CharacterPart, int> selector)

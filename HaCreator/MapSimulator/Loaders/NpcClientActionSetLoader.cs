@@ -19,7 +19,7 @@ namespace HaCreator.MapSimulator.Loaders
         internal const int AutomaticClientActionSetIndex = -2;
         internal const int DefaultNpcFrameDelay = 180;
 
-        private static readonly ConcurrentDictionary<NpcActionCacheKey, NpcActionDescriptor> ActionCache = new();
+        private static readonly ConcurrentDictionary<NpcActionCacheKey, List<IDXObject>> ActionFrameCache = new();
 
         internal static NpcAnimationSet LoadAnimationSet(
             TexturePool texturePool,
@@ -29,6 +29,7 @@ namespace HaCreator.MapSimulator.Loaders
             int requestedClientActionSetIndex = AutomaticClientActionSetIndex)
         {
             WzImage source = npcInstance?.NpcInfo?.LinkedWzImage;
+            int templateId = ResolveTemplateId(source);
             List<NpcClientActionSetDefinition> actionSets = GetClientActionSets(source);
 
             var animationSet = new NpcAnimationSet
@@ -38,19 +39,28 @@ namespace HaCreator.MapSimulator.Loaders
 
             foreach (NpcActionDescriptor action in EnumerateActionsForIndex(actionSets, animationSet.ClientActionSetIndex))
             {
-                List<IDXObject> frames = MapSimulatorLoader.LoadFrames(
-                    texturePool,
-                    action.Property,
-                    npcInstance.X,
-                    npcInstance.Y,
-                    device,
-                    usedProps,
-                    fallbackDelay: DefaultNpcFrameDelay);
+                List<IDXObject> frames = GetOrLoadActionFrames(
+                    templateId,
+                    animationSet.ClientActionSetIndex,
+                    action.ActionName,
+                    () =>
+                    {
+                        List<IDXObject> loadedFrames = MapSimulatorLoader.LoadFrames(
+                            texturePool,
+                            action.Property,
+                            npcInstance.X,
+                            npcInstance.Y,
+                            device,
+                            usedProps,
+                            fallbackDelay: DefaultNpcFrameDelay);
 
-                if (action.ZigZag)
-                {
-                    AppendReversedInteriorFrames(frames);
-                }
+                        if (action.ZigZag)
+                        {
+                            AppendReversedInteriorFrames(loadedFrames);
+                        }
+
+                        return loadedFrames;
+                    });
 
                 if (frames.Count > 0)
                 {
@@ -104,6 +114,31 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 frames.Add(frames[i]);
             }
+        }
+
+        internal static List<IDXObject> GetOrLoadActionFrames(
+            int templateId,
+            int clientActionSetIndex,
+            string actionName,
+            Func<List<IDXObject>> loader)
+        {
+            if (templateId <= 0 || string.IsNullOrWhiteSpace(actionName) || loader == null)
+            {
+                return loader?.Invoke() ?? new List<IDXObject>();
+            }
+
+            return ActionFrameCache.GetOrAdd(
+                new NpcActionCacheKey(templateId, clientActionSetIndex, actionName),
+                _ =>
+                {
+                    List<IDXObject> frames = loader();
+                    return frames ?? new List<IDXObject>();
+                });
+        }
+
+        internal static void ClearCaches()
+        {
+            ActionFrameCache.Clear();
         }
 
         internal static List<NpcClientActionSetDefinition> GetClientActionSets(WzImage source)
@@ -162,14 +197,10 @@ namespace HaCreator.MapSimulator.Loaders
                     continue;
                 }
 
-                string actionName = actionProperty.Name;
-                NpcActionCacheKey cacheKey = new(ResolveTemplateId(actionProperty), selected.Index, actionName);
-                yield return ActionCache.GetOrAdd(
-                    cacheKey,
-                    _ => new NpcActionDescriptor(
-                        actionName,
-                        actionProperty,
-                        GetZigZagFlag(actionProperty)));
+                yield return new NpcActionDescriptor(
+                    actionProperty.Name,
+                    actionProperty,
+                    GetZigZagFlag(actionProperty));
             }
         }
 

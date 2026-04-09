@@ -3010,6 +3010,11 @@ namespace HaCreator.MapSimulator.Combat
 
         private static bool ApplyMobDamage(MobItem sourceMob, MobAttackEntry attack, MobItem targetMob, int currentTime)
         {
+            if (ShouldMobAttackMissTarget(sourceMob?.AI, targetMob?.AI, Random.Shared.NextDouble()))
+            {
+                return false;
+            }
+
             int baseDamage = attack?.Damage ?? 0;
             int damage = sourceMob?.AI?.CalculateOutgoingDamage(baseDamage, MobDamageType.Physical) ?? Math.Max(1, baseDamage);
             damage = Math.Max(1, damage);
@@ -3020,7 +3025,27 @@ namespace HaCreator.MapSimulator.Combat
                 false,
                 sourceMob?.CurrentX,
                 sourceMob?.CurrentY,
-                originatedFromPlayer: false);
+                originatedFromPlayer: false,
+                damageType: MobDamageType.Physical,
+                attackerId: sourceMob?.PoolId ?? 0,
+                attackerTargetType: MobTargetType.Mob,
+                attackerExternalTargetSource: MobExternalTargetSource.Encounter);
+
+            int reflectedDamage = ResolveMobReflectDamage(targetMob?.AI, targetMob?.AI?.LastDamageTaken ?? 0, MobDamageType.Physical);
+            if (reflectedDamage > 0 && sourceMob?.AI != null && !sourceMob.AI.IsDead)
+            {
+                sourceMob.ApplyDamage(
+                    reflectedDamage,
+                    currentTime,
+                    false,
+                    targetMob?.CurrentX,
+                    targetMob?.CurrentY,
+                    originatedFromPlayer: false,
+                    damageType: MobDamageType.Physical,
+                    attackerId: targetMob?.PoolId ?? 0,
+                    attackerTargetType: MobTargetType.Mob,
+                    attackerExternalTargetSource: MobExternalTargetSource.Encounter);
+            }
 
             if (!died && targetMob.MovementInfo != null && sourceMob != null)
             {
@@ -3030,6 +3055,51 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             return true;
+        }
+
+        internal static bool ShouldMobAttackMissTarget(MobAI sourceMobAI, MobAI targetMobAI, double roll)
+        {
+            float hitChance = ResolveMobHitChanceAgainstMob(sourceMobAI, targetMobAI);
+            return roll > hitChance;
+        }
+
+        internal static float ResolveMobHitChanceAgainstMob(MobAI sourceMobAI, MobAI targetMobAI)
+        {
+            if (sourceMobAI == null)
+            {
+                return 0.95f;
+            }
+
+            if (sourceMobAI.HasStatusEffect(MobStatusEffect.Blind))
+            {
+                return 0f;
+            }
+
+            float hitChance = 0.95f;
+            hitChance += Math.Clamp(sourceMobAI.GetStatusEffectValue(MobStatusEffect.ACC) / 100f, -0.35f, 0.35f);
+
+            if (sourceMobAI.HasStatusEffect(MobStatusEffect.Darkness))
+            {
+                int darknessPenalty = sourceMobAI.GetStatusEffectValue(MobStatusEffect.Darkness);
+                if (darknessPenalty <= 0)
+                {
+                    darknessPenalty = 20;
+                }
+
+                hitChance -= Math.Min(0.85f, darknessPenalty / 100f);
+            }
+
+            if (targetMobAI != null)
+            {
+                hitChance -= Math.Clamp(targetMobAI.GetStatusEffectValue(MobStatusEffect.EVA) / 100f, -0.2f, 0.3f);
+            }
+
+            return Math.Clamp(hitChance, 0.05f, 0.99f);
+        }
+
+        internal static int ResolveMobReflectDamage(MobAI targetMobAI, int inflictedDamage, MobDamageType damageType)
+        {
+            return targetMobAI?.CalculateReflectedDamageToAttacker(inflictedDamage, damageType) ?? 0;
         }
 
         private PuppetInfo FindTargetPuppet(MobTargetInfo targetInfo)

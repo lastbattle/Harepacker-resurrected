@@ -54,9 +54,9 @@ namespace HaCreator.MapSimulator.Interaction
             [NoticeAdminThanksStringPoolId] = new(NoticeAdminThanksStringPoolId, 0x9B, "9B 66 5B 44 75 E4 67 4A B1 EC B9 E1 56 04 96 8A C3 47 41 05 78 E0 28 43 BB EB F8 F3 50 19 D8 DD", "Thank you for your cooperation.", "CWvsContext::ShowAntiMacroNotice / MapleStory.exe v95 StringPool::GetString"),
         };
 
-        // `CUIAntiMacro::Draw` formats StringPool 0x1A15 (6677) with a single integer argument,
-        // but the localized entry recovered in this workspace is only `%d`, so the owner still
-        // keeps the established simulator fallback wording around the decoded attempt count.
+        // `CUIAntiMacro::Draw` formats StringPool 0x1A15 (6677) with a single integer argument.
+        // The live simulator string pool now carries the recovered `%d` entry, while the
+        // fallback keeps the prior "Attempt %d of 2" wording for data sets that still lack it.
         private const string AttemptMessageFallback = "Attempt %d of 2";
 
         public static string GetAttemptMessageFormat(bool appendFallbackSuffix = true)

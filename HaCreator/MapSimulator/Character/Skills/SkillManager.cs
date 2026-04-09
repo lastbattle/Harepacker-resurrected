@@ -23,6 +23,32 @@ namespace HaCreator.MapSimulator.Character.Skills
     /// </summary>
     public class SkillManager
     {
+        internal enum CooldownUiPresentationKind
+        {
+            Default,
+            VehicleDurability
+        }
+
+        internal readonly record struct CooldownUiState(
+            int RemainingMs,
+            int DurationMs,
+            float Progress,
+            string CounterText,
+            string TooltipStateText,
+            bool DisplayInCooldownUi,
+            bool SuppressProgressOverlay,
+            bool SuppressCounterText,
+            CooldownUiPresentationKind PresentationKind,
+            int CurrentValue,
+            int MaxValue);
+
+        private sealed class CooldownUiPresentationState
+        {
+            public CooldownUiPresentationKind Kind { get; init; }
+            public int CurrentValue { get; set; }
+            public int MaxValue { get; set; }
+        }
+
         private sealed class SkillMountState
         {
             public int SkillId { get; init; }
@@ -309,6 +335,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int MovingShootActionSpeedMinDegree = 2;
         private const int MovingShootActionSpeedMaxDegree = 10;
         private const int ClientMovingShootBaseSpeedOffsetSkillId = 4001334;
+        private const int ClientMovingShootAntiRepeatBypassSkillId = 33121009;
         private static readonly (string ActionName, int RawActionCode)[] ClientRandomMovingShootShootFamilyActions =
         {
             ("shoot1", 22),
@@ -568,12 +595,28 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static readonly IReadOnlyDictionary<string, string> AuthoredPropertyFamilyDisplayNameOverrides =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
+                ["mhpR"] = "Max HP",
+                ["indieMhpR"] = "Max HP",
+                ["mmpR"] = "Max MP",
+                ["indieMmpR"] = "Max MP",
+                ["pddR"] = "Physical Defense",
+                ["mddR"] = "Magic Defense",
+                ["accR"] = "Accuracy",
+                ["evaR"] = "Avoidability",
+                ["asrR"] = "Abnormal Status Resistance",
+                ["indieAsrR"] = "Abnormal Status Resistance",
+                ["terR"] = "Elemental Resistance",
+                ["indieTerR"] = "Elemental Resistance",
                 ["criticaldamageMin"] = "Critical Damage (Min)",
                 ["criticalDamageMin"] = "Critical Damage (Min)",
                 ["criticaldamageMax"] = "Critical Damage (Max)",
                 ["criticalDamageMax"] = "Critical Damage (Max)",
+                ["damR"] = "Damage Reduction",
                 ["indieDamR"] = "Independent Damage Reduction",
                 ["expR"] = "Bonus EXP",
+                ["dropR"] = "Drop Rate",
+                ["mesoR"] = "Meso Rate",
+                ["bdR"] = "Boss Damage",
                 ["ignoreMobpdpR"] = "Ignore Enemy DEF",
                 ["ignoreMobDamR"] = "Ignore Enemy Damage Reduction"
             };
@@ -618,6 +661,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly Dictionary<int, int> _serverCooldownExpireTimes = new(); // skillId -> absolute expire tick
         private readonly HashSet<int> _pendingCooldownCompletionNotifications = new();
         private readonly HashSet<int> _expiredAuthoritativeCooldowns = new();
+        private readonly Dictionary<int, CooldownUiPresentationState> _cooldownUiPresentations = new();
         private EnergyChargeRuntimeState _activeEnergyChargeRuntime;
         private PreparedSkill _preparedSkill;
         private int _lastPreparedSkillExclusiveRequestTime = int.MinValue;
@@ -901,6 +945,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 _serverCooldownExpireTimes.Remove(cooldownSkillId);
                 _pendingCooldownCompletionNotifications.Remove(cooldownSkillId);
                 _expiredAuthoritativeCooldowns.Remove(cooldownSkillId);
+                _cooldownUiPresentations.Remove(cooldownSkillId);
             }
 
             // Initialize skill levels to 0 (unlearned)
@@ -1466,6 +1511,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int BEHOLDER_SUMMON_SKILL_ID = 1321007;
         private const int BEHOLDER_HEAL_SKILL_ID = 1320008;
         private const int BEHOLDER_BUFF_SKILL_ID = 1320009;
+        private const int BEHOLDER_BUFF_PDD_ID = -13200090;
+        private const int BEHOLDER_BUFF_MDD_ID = -13200091;
+        private const int BEHOLDER_BUFF_ACC_ID = -13200092;
+        private const int BEHOLDER_BUFF_EVA_ID = -13200093;
+        private const int BEHOLDER_BUFF_PAD_ID = -13200094;
         private const float TeslaTriangleMinimumEdgeLengthSq = 16f;
         private static readonly int[] WildHunterJaguarTamingMobCandidateIds =
         {
@@ -2093,6 +2143,84 @@ namespace HaCreator.MapSimulator.Character.Skills
             return Math.Max(0, levelData?.Cooldown ?? 0);
         }
 
+        internal bool TryGetCooldownUiState(int skillId, int currentTime, out CooldownUiState state)
+        {
+            state = default;
+
+            int remainingMs = GetCooldownRemaining(skillId, currentTime);
+            if (remainingMs <= 0)
+            {
+                return false;
+            }
+
+            int durationMs = Math.Max(remainingMs, GetCooldownDuration(skillId, currentTime));
+            if (_cooldownUiPresentations.TryGetValue(skillId, out CooldownUiPresentationState presentation)
+                && presentation?.Kind == CooldownUiPresentationKind.VehicleDurability)
+            {
+                int currentValue = Math.Max(0, presentation.CurrentValue);
+                int maxValue = Math.Max(currentValue, presentation.MaxValue);
+                float progress = maxValue > 0
+                    ? Math.Clamp(currentValue / (float)maxValue, 0f, 1f)
+                    : 0f;
+                string tooltipStateText = maxValue > 0
+                    ? $"Durability: {currentValue}/{maxValue}"
+                    : $"Durability: {currentValue}";
+                state = new CooldownUiState(
+                    remainingMs,
+                    durationMs,
+                    progress,
+                    currentValue.ToString(),
+                    tooltipStateText,
+                    DisplayInCooldownUi: false,
+                    SuppressProgressOverlay: true,
+                    SuppressCounterText: false,
+                    PresentationKind: CooldownUiPresentationKind.VehicleDurability,
+                    CurrentValue: currentValue,
+                    MaxValue: maxValue);
+                return true;
+            }
+
+            string counterText = Math.Max(1, (int)Math.Ceiling(remainingMs / 1000f)).ToString();
+            state = new CooldownUiState(
+                remainingMs,
+                durationMs,
+                durationMs > 0 ? Math.Clamp(remainingMs / (float)durationMs, 0f, 1f) : 1f,
+                counterText,
+                null,
+                DisplayInCooldownUi: true,
+                SuppressProgressOverlay: false,
+                SuppressCounterText: false,
+                PresentationKind: CooldownUiPresentationKind.Default,
+                CurrentValue: 0,
+                MaxValue: 0);
+            return true;
+        }
+
+        public void SetAuthoritativeVehicleDurabilityPresentation(int skillId, int currentValue, int maxValue)
+        {
+            if (skillId <= 0)
+            {
+                return;
+            }
+
+            _cooldownUiPresentations[skillId] = new CooldownUiPresentationState
+            {
+                Kind = CooldownUiPresentationKind.VehicleDurability,
+                CurrentValue = Math.Max(0, currentValue),
+                MaxValue = Math.Max(0, maxValue)
+            };
+        }
+
+        public void ClearAuthoritativeCooldownPresentation(int skillId)
+        {
+            if (skillId <= 0)
+            {
+                return;
+            }
+
+            _cooldownUiPresentations.Remove(skillId);
+        }
+
         /// <summary>
         /// Get the tick count when the current cooldown started.
         /// </summary>
@@ -2161,6 +2289,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             _serverCooldownExpireTimes.Remove(skillId);
             _pendingCooldownCompletionNotifications.Remove(skillId);
             _expiredAuthoritativeCooldowns.Remove(skillId);
+            _cooldownUiPresentations.Remove(skillId);
             _cooldowns.Remove(skillId);
 
             if (!hadActiveCooldown)
@@ -4020,6 +4149,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             return resolvedSkillIds.ToArray();
         }
 
+        internal IReadOnlyList<int> ResolveClientCancelRequestSkillIdsForParity(int skillId)
+        {
+            return ResolveClientCancelRequestSkillIds(skillId);
+        }
+
         private static bool PreservesPrepareAnimationOnClientCancel(int skillId)
         {
             return skillId == 3121004
@@ -5578,7 +5712,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 HudSurface = hudProfile.Surface,
                 SkillData = skill,
                 LevelData = levelData,
-                IsKeydownSkill = skill.IsKeydownSkill || usesReleaseTriggeredKeydown
+                IsKeydownSkill = PreparedSkillHudRules.ResolveKeyDownSkillState(
+                    skill.SkillId,
+                    skill.IsKeydownSkill || usesReleaseTriggeredKeydown)
             };
 
             if (!_preparedSkill.IsKeydownSkill && _preparedSkill.Duration > 0)
@@ -6912,11 +7048,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                     RegisterDeferredMovingShootExecution(pending, currentTime);
                 }
 
+                if (!TryRefreshDeferredQueuedShootAttackExecutionSelection(
+                        pending,
+                        pendingLevel,
+                        out ShootAmmoSelection refreshedQueuedSelection))
+                {
+                    continue;
+                }
+
                 ShootAmmoSelection previousResolvedShootAmmoSelection = LastResolvedShootAmmoSelection?.Snapshot();
                 bool? previousShootAmmoBypassOverride = _shootAmmoBypassTemporaryStatOverride;
                 try
                 {
-                    LastResolvedShootAmmoSelection = pending.ResolvedShootAmmoSelection?.Snapshot();
+                    LastResolvedShootAmmoSelection = refreshedQueuedSelection?.Snapshot();
                     _shootAmmoBypassTemporaryStatOverride = pending.ShootAmmoBypassActive;
                     ExecuteSkillPayload(
                         pending.Skill,
@@ -7215,11 +7359,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                 : actionName.Trim();
         }
 
+        internal static int ResolveMovingShootAntiRepeatCountLimit(SkillData skill)
+        {
+            // `CUserLocal::TryDoingSmoothingMovingShootAttack` bypasses `CAntiRepeat::TryRepeat`
+            // entirely for skill 33121009 before the repeated-position gate runs. WZ still
+            // authors that skill as `info/movingAttack=1` plus `info/rapidAttack=1`, but the
+            // confirmed client bypass is skill-owned rather than a generic rapid-attack rule.
+            return skill?.SkillId == ClientMovingShootAntiRepeatBypassSkillId
+                ? int.MaxValue
+                : 0;
+        }
+
         private static int ResolveMovingShootAntiRepeatCountLimit(DeferredSkillPayload pending)
         {
-            // Keep the client's count-limit branch explicit in the seam even while the exact
-            // moving-shoot entry initialization table remains unresolved.
-            return 0;
+            return ResolveMovingShootAntiRepeatCountLimit(pending?.Skill);
         }
 
         private Point ResolveDeferredMovingShootLiveWorldPosition()
@@ -12410,7 +12563,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            BeholderBuffCandidate? selectedBuff = SelectBeholderBuffCandidate(buffLevelData);
+            BeholderBuffCandidate? selectedBuff = SelectBeholderBuffCandidate(
+                summon,
+                buffLevelData,
+                Random.Next());
             if (!selectedBuff.HasValue)
             {
                 return false;
@@ -12929,11 +13085,39 @@ namespace HaCreator.MapSimulator.Character.Skills
             string AnimationBranchName,
             SkillLevelData LevelData);
 
-        private BeholderBuffCandidate? SelectBeholderBuffCandidate(SkillLevelData buffLevelData)
+        private BeholderBuffCandidate? SelectBeholderBuffCandidate(
+            ActiveSummon summon,
+            SkillLevelData buffLevelData,
+            int randomValue)
         {
             if (buffLevelData == null)
             {
                 return null;
+            }
+
+            string preferredBranchName = ResolveBeholderPreferredBranchName(
+                summon?.SkillData,
+                buffLevelData,
+                _buffs,
+                randomValue);
+            if (!string.IsNullOrWhiteSpace(preferredBranchName))
+            {
+                foreach (BeholderBuffCandidate candidate in EnumerateBeholderBuffCandidates(buffLevelData))
+                {
+                    if (string.Equals(candidate.AnimationBranchName, preferredBranchName, StringComparison.OrdinalIgnoreCase)
+                        && !HasActiveBuff(candidate.BuffId))
+                    {
+                        return candidate;
+                    }
+                }
+
+                foreach (BeholderBuffCandidate candidate in EnumerateBeholderBuffCandidates(buffLevelData))
+                {
+                    if (string.Equals(candidate.AnimationBranchName, preferredBranchName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return candidate;
+                    }
+                }
             }
 
             foreach (BeholderBuffCandidate candidate in EnumerateBeholderBuffCandidates(buffLevelData))
@@ -12952,12 +13136,60 @@ namespace HaCreator.MapSimulator.Character.Skills
             return null;
         }
 
+        internal static string ResolveBeholderPreferredBranchName(
+            SkillData summonSkill,
+            SkillLevelData buffLevelData,
+            IEnumerable<ActiveBuff> activeBuffs,
+            int randomValue)
+        {
+            if (buffLevelData == null)
+            {
+                return null;
+            }
+
+            return SummonRuntimeRules.ResolveBeholderBuffBranchName(
+                summonSkill,
+                buffLevelData,
+                ResolveActiveBeholderBuffMagnitude(activeBuffs, BEHOLDER_BUFF_PAD_ID, static levelData => levelData.PAD),
+                ResolveActiveBeholderBuffMagnitude(activeBuffs, BEHOLDER_BUFF_PDD_ID, static levelData => levelData.PDD),
+                ResolveActiveBeholderBuffMagnitude(activeBuffs, BEHOLDER_BUFF_MDD_ID, static levelData => levelData.MDD),
+                ResolveActiveBeholderBuffMagnitude(activeBuffs, BEHOLDER_BUFF_ACC_ID, static levelData => levelData.ACC),
+                ResolveActiveBeholderBuffMagnitude(activeBuffs, BEHOLDER_BUFF_EVA_ID, static levelData => levelData.EVA),
+                randomValue);
+        }
+
+        private static int ResolveActiveBeholderBuffMagnitude(
+            IEnumerable<ActiveBuff> activeBuffs,
+            int buffId,
+            Func<SkillLevelData, int> magnitudeSelector)
+        {
+            if (activeBuffs == null
+                || buffId == 0
+                || magnitudeSelector == null)
+            {
+                return 0;
+            }
+
+            int magnitude = 0;
+            foreach (ActiveBuff activeBuff in activeBuffs)
+            {
+                if (activeBuff?.SkillId != buffId || activeBuff.LevelData == null)
+                {
+                    continue;
+                }
+
+                magnitude = Math.Max(magnitude, Math.Max(0, magnitudeSelector(activeBuff.LevelData)));
+            }
+
+            return magnitude;
+        }
+
         private IEnumerable<BeholderBuffCandidate> EnumerateBeholderBuffCandidates(SkillLevelData buffLevelData)
         {
             if (buffLevelData.PDD > 0)
             {
                 yield return new BeholderBuffCandidate(
-                    BuffId: -13200090,
+                    BuffId: BEHOLDER_BUFF_PDD_ID,
                     Name: "Beholder Buff (PDD)",
                     AnimationBranchName: "skill2",
                     LevelData: new SkillLevelData { Level = buffLevelData.Level, Time = buffLevelData.Time, PDD = buffLevelData.PDD });
@@ -12966,7 +13198,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (buffLevelData.MDD > 0)
             {
                 yield return new BeholderBuffCandidate(
-                    BuffId: -13200091,
+                    BuffId: BEHOLDER_BUFF_MDD_ID,
                     Name: "Beholder Buff (MDD)",
                     AnimationBranchName: "skill3",
                     LevelData: new SkillLevelData { Level = buffLevelData.Level, Time = buffLevelData.Time, MDD = buffLevelData.MDD });
@@ -12975,7 +13207,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (buffLevelData.ACC > 0)
             {
                 yield return new BeholderBuffCandidate(
-                    BuffId: -13200092,
+                    BuffId: BEHOLDER_BUFF_ACC_ID,
                     Name: "Beholder Buff (ACC)",
                     AnimationBranchName: "skill4",
                     LevelData: new SkillLevelData { Level = buffLevelData.Level, Time = buffLevelData.Time, ACC = buffLevelData.ACC });
@@ -12984,7 +13216,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (buffLevelData.EVA > 0)
             {
                 yield return new BeholderBuffCandidate(
-                    BuffId: -13200093,
+                    BuffId: BEHOLDER_BUFF_EVA_ID,
                     Name: "Beholder Buff (EVA)",
                     AnimationBranchName: "skill5",
                     LevelData: new SkillLevelData { Level = buffLevelData.Level, Time = buffLevelData.Time, EVA = buffLevelData.EVA });
@@ -12993,7 +13225,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (buffLevelData.PAD > 0)
             {
                 yield return new BeholderBuffCandidate(
-                    BuffId: -13200094,
+                    BuffId: BEHOLDER_BUFF_PAD_ID,
                     Name: "Beholder Buff (PAD)",
                     AnimationBranchName: "skill6",
                     LevelData: new SkillLevelData { Level = buffLevelData.Level, Time = buffLevelData.Time, PAD = buffLevelData.PAD });
@@ -13776,14 +14008,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
+            int activeSkillMountSkillId = _activeSkillMount?.SkillId ?? 0;
+            int activeSkillMountItemId = _activeSkillMount?.MountItemId ?? 0;
+            int equippedMountItemId = GetEquippedTamingMobPart()?.ItemId ?? 0;
             bool jaguarRideOwnershipActive = HasActiveClientOwnedVehicleTrackingOwner(WildHunterJaguarRiderSkillId)
-                || (_activeSkillMount != null && IsWildHunterJaguarTamingMobItemId(_activeSkillMount.MountItemId))
+                || IsActiveWildHunterJaguarRiderMount(activeSkillMountSkillId, activeSkillMountItemId)
                 || (IsClientVehicleOwnershipGraceWindowActive(currentTime)
                     && _lastClientVehicleValidSkillId == WildHunterJaguarRiderSkillId);
             return CanAutoDeployWildHunterMineWithoutVisibleMountedAction(
                 _player?.CurrentActionName,
                 jaguarRideOwnershipActive,
-                ResolveWildHunterJaguarMountItemId());
+                ResolveWildHunterMineHiddenFallbackMountItemId(
+                    activeSkillMountSkillId,
+                    activeSkillMountItemId,
+                    equippedMountItemId));
         }
 
         internal static bool CanAutoDeployWildHunterMine(CharacterPart mountedStatePart, string actionName)
@@ -13807,6 +14045,27 @@ namespace HaCreator.MapSimulator.Character.Skills
             return string.IsNullOrWhiteSpace(actionName)
                    && jaguarRideOwnershipActive
                    && IsWildHunterJaguarTamingMobItemId(jaguarMountItemId);
+        }
+
+        internal static int ResolveWildHunterMineHiddenFallbackMountItemId(
+            int activeSkillMountSkillId,
+            int activeSkillMountItemId,
+            int equippedMountItemId)
+        {
+            if (IsActiveWildHunterJaguarRiderMount(activeSkillMountSkillId, activeSkillMountItemId))
+            {
+                return activeSkillMountItemId;
+            }
+
+            return IsWildHunterJaguarTamingMobItemId(equippedMountItemId)
+                ? equippedMountItemId
+                : 0;
+        }
+
+        internal static bool IsActiveWildHunterJaguarRiderMount(int activeSkillMountSkillId, int activeSkillMountItemId)
+        {
+            return activeSkillMountSkillId == WildHunterJaguarRiderSkillId
+                   && IsWildHunterJaguarTamingMobItemId(activeSkillMountItemId);
         }
 
         private void UpdateMineMovementState(int moveDirection, int currentTime)
@@ -14268,7 +14527,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool hasTemporaryStats =
                 levelData.X != 0 ||
                 levelData.PAD != 0 ||
+                levelData.AttackPercent != 0 ||
                 levelData.MAD != 0 ||
+                levelData.MagicAttackPercent != 0 ||
                 levelData.PDD != 0 ||
                 levelData.MDD != 0 ||
                 levelData.DefensePercent != 0 ||
@@ -14278,6 +14539,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 levelData.AccuracyPercent != 0 ||
                 levelData.AvoidabilityPercent != 0 ||
                 levelData.Speed != 0 ||
+                levelData.SpeedPercent != 0 ||
                 levelData.Jump != 0 ||
                 levelData.HP != 0 ||
                 levelData.MP != 0 ||
@@ -15089,7 +15351,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                     BuffStatType.Intelligence => data.INT + data.AllStat,
                     BuffStatType.Luck => data.LUK + data.AllStat,
                     BuffStatType.Attack => data.PAD + ResolveEnhancedStatBonus(buff.SkillData, data.EnhancedPAD),
+                    BuffStatType.AttackPercent => data.AttackPercent,
                     BuffStatType.MagicAttack => data.MAD + ResolveEnhancedStatBonus(buff.SkillData, data.EnhancedMAD),
+                    BuffStatType.MagicAttackPercent => data.MagicAttackPercent,
                     BuffStatType.Defense => data.PDD + ResolveEnhancedStatBonus(buff.SkillData, data.EnhancedPDD),
                     BuffStatType.MagicDefense => data.MDD + ResolveEnhancedStatBonus(buff.SkillData, data.EnhancedMDD),
                     BuffStatType.DefensePercent => data.DefensePercent,
@@ -15099,18 +15363,77 @@ namespace HaCreator.MapSimulator.Character.Skills
                     BuffStatType.Avoidability => data.EVA,
                     BuffStatType.AvoidabilityPercent => data.AvoidabilityPercent,
                     BuffStatType.Speed => data.Speed,
+                    BuffStatType.SpeedPercent => data.SpeedPercent,
                     BuffStatType.Jump => data.Jump,
                     BuffStatType.MaxHP => ResolveEnhancedStatBonus(buff.SkillData, data.EnhancedMaxHP) + data.IndieMaxHP,
                     BuffStatType.MaxMP => ResolveEnhancedStatBonus(buff.SkillData, data.EnhancedMaxMP) + data.IndieMaxMP,
                     BuffStatType.MaxHPPercent => data.MaxHPPercent,
                     BuffStatType.MaxMPPercent => data.MaxMPPercent,
                     BuffStatType.CriticalRate => data.CriticalRate,
-                    BuffStatType.Booster => data.X,
+                    BuffStatType.Booster => ResolveBoosterStatBonus(buff.SkillData, data),
                     _ => 0
                 };
+
+                total += ResolveDescriptionBackedBuffStatBonus(_player?.Build, buff?.SkillData, data, stat);
             }
             return total;
         }
+
+        internal static int ResolveDescriptionBackedBuffStatBonus(
+            CharacterBuild build,
+            SkillData skill,
+            SkillLevelData levelData,
+            BuffStatType stat)
+        {
+            if (build == null || levelData == null)
+            {
+                return 0;
+            }
+
+            if (IsMapleWarriorLikeBasicStatPercentBuff(skill, levelData))
+            {
+                int percent = Math.Max(0, levelData.X);
+                return stat switch
+                {
+                    BuffStatType.Strength => build.STR * percent / 100,
+                    BuffStatType.Dexterity => build.DEX * percent / 100,
+                    BuffStatType.Intelligence => build.INT * percent / 100,
+                    BuffStatType.Luck => build.LUK * percent / 100,
+                    _ => 0
+                };
+            }
+
+            return 0;
+        }
+
+        private static bool IsMapleWarriorLikeBasicStatPercentBuff(SkillData skill, SkillLevelData levelData)
+        {
+            if (skill == null || levelData == null || levelData.X <= 0)
+            {
+                return false;
+            }
+
+            return string.Equals(skill.Name?.Trim(), "Maple Warrior", StringComparison.OrdinalIgnoreCase)
+                   && !HasAllPrimaryStatBonus(levelData)
+                   && levelData.AllStat == 0;
+        }
+
+        private static int ResolveBoosterStatBonus(SkillData skill, SkillLevelData levelData)
+        {
+            if (levelData == null || levelData.X == 0 || skill == null)
+            {
+                return 0;
+            }
+
+            return ContainsAny(
+                    $"{skill.Name} {skill.Description}",
+                    "booster",
+                    "attack speed",
+                    "weapon speed")
+                ? levelData.X
+                : 0;
+        }
+
 
         /// <summary>
         /// Check if buff type is active
@@ -15159,10 +15482,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 Track(levelData.EVA, "EVA");
                 Track(levelData.Speed, "Speed");
                 Track(levelData.Jump, "Jump");
+                TrackIfMissing(temporaryStats, levelData.AttackPercent > 0, "PAD");
+                TrackIfMissing(temporaryStats, levelData.MagicAttackPercent > 0, "MAD");
                 TrackIfMissing(temporaryStats, levelData.DefensePercent > 0, "PDD");
                 TrackIfMissing(temporaryStats, levelData.MagicDefensePercent > 0, "MDD");
                 TrackIfMissing(temporaryStats, levelData.AccuracyPercent > 0, "ACC");
                 TrackIfMissing(temporaryStats, levelData.AvoidabilityPercent > 0, "EVA");
+                TrackIfMissing(temporaryStats, levelData.SpeedPercent > 0, "Speed");
                 TrackIfMissing(temporaryStats, ShouldTrackIndividualPrimaryStats(levelData) && levelData.STR > 0, StrengthBuffLabel);
                 TrackIfMissing(temporaryStats, ShouldTrackIndividualPrimaryStats(levelData) && levelData.DEX > 0, DexterityBuffLabel);
                 TrackIfMissing(temporaryStats, ShouldTrackIndividualPrimaryStats(levelData) && levelData.INT > 0, IntelligenceBuffLabel);
@@ -15468,6 +15794,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
+            string resolvedDisplayName = null;
             foreach (string propertyName in levelData.AuthoredPropertyOrder)
             {
                 if (string.IsNullOrWhiteSpace(propertyName)
@@ -15481,11 +15808,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (AuthoredPropertyFamilyDisplayNameOverrides.TryGetValue(propertyName, out string displayName)
                     && !string.IsNullOrWhiteSpace(displayName))
                 {
-                    return displayName;
+                    resolvedDisplayName = displayName;
                 }
             }
 
-            return null;
+            return resolvedDisplayName;
         }
 
         private static BuffTemporaryStatPresentation CreateTemporaryStatPresentation(
@@ -16244,7 +16571,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 BuffStatType.Intelligence => levelData.INT + levelData.AllStat,
                 BuffStatType.Luck => levelData.LUK + levelData.AllStat,
                 BuffStatType.Attack => levelData.PAD,
+                BuffStatType.AttackPercent => levelData.AttackPercent,
                 BuffStatType.MagicAttack => levelData.MAD,
+                BuffStatType.MagicAttackPercent => levelData.MagicAttackPercent,
                 BuffStatType.Defense => levelData.PDD,
                 BuffStatType.MagicDefense => levelData.MDD,
                 BuffStatType.DefensePercent => levelData.DefensePercent,
@@ -16254,6 +16583,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 BuffStatType.Avoidability => levelData.EVA,
                 BuffStatType.AvoidabilityPercent => levelData.AvoidabilityPercent,
                 BuffStatType.Speed => levelData.Speed,
+                BuffStatType.SpeedPercent => levelData.SpeedPercent,
                 BuffStatType.Jump => levelData.Jump,
                 BuffStatType.MaxHPPercent => levelData.MaxHPPercent,
                 BuffStatType.MaxMPPercent => levelData.MaxMPPercent,
@@ -16505,7 +16835,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return left.PAD == right.PAD
+                   && left.AttackPercent == right.AttackPercent
                    && left.MAD == right.MAD
+                   && left.MagicAttackPercent == right.MagicAttackPercent
                    && left.PDD == right.PDD
                    && left.MDD == right.MDD
                    && left.DefensePercent == right.DefensePercent
@@ -16515,6 +16847,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && left.AccuracyPercent == right.AccuracyPercent
                    && left.AvoidabilityPercent == right.AvoidabilityPercent
                    && left.Speed == right.Speed
+                   && left.SpeedPercent == right.SpeedPercent
                    && left.Jump == right.Jump
                    && left.STR == right.STR
                    && left.DEX == right.DEX
@@ -17327,6 +17660,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (!TryRefreshQueuedShootAttackExecutionSelection(
                     skill,
+                    level,
                     queuedAttack.ResolvedShootAmmoSelection,
                     queuedAttack.ShootAmmoBypassActive,
                     out ShootAmmoSelection refreshedSelection))
@@ -17374,6 +17708,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (!TryRefreshQueuedShootAttackExecutionSelection(
                     skill,
+                    level,
                     queuedAttack.ResolvedShootAmmoSelection,
                     queuedAttack.ShootAmmoBypassActive,
                     out ShootAmmoSelection refreshedSelection))
@@ -17422,6 +17757,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private bool TryRefreshQueuedShootAttackExecutionSelection(
             SkillData skill,
+            int level,
             ShootAmmoSelection queuedSelection,
             bool shootAmmoBypassActive,
             out ShootAmmoSelection refreshedSelection)
@@ -17447,13 +17783,37 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            SkillLevelData levelData = skill.GetLevel(level);
+            int requiredAmmoCount = ResolveRequiredShootAmmoCount(levelData);
+            int requiredAmmoItemId = ResolveSkillSpecificShootAmmoItemId(skill.SkillId, levelData);
             return ClientShootAmmoResolver.TryRefreshQueuedSelectionForExecution(
                 queuedSelection,
                 _inventoryRuntime.GetSlots(InventoryType.USE),
                 _inventoryRuntime.GetSlots(InventoryType.CASH),
                 weaponCode,
                 weaponItemId,
+                requiredAmmoCount,
+                requiredAmmoItemId,
                 requiresUseAmmo: true,
+                out refreshedSelection);
+        }
+
+        private bool TryRefreshDeferredQueuedShootAttackExecutionSelection(
+            DeferredSkillPayload pending,
+            int level,
+            out ShootAmmoSelection refreshedSelection)
+        {
+            refreshedSelection = pending?.ResolvedShootAmmoSelection?.Snapshot();
+            if (pending == null || (!pending.IsQueuedFinalAttack && !pending.IsQueuedSparkAttack))
+            {
+                return true;
+            }
+
+            return TryRefreshQueuedShootAttackExecutionSelection(
+                pending.Skill,
+                level,
+                pending.ResolvedShootAmmoSelection,
+                pending.ShootAmmoBypassActive,
                 out refreshedSelection);
         }
 
@@ -18668,6 +19028,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             _serverCooldownExpireTimes.Clear();
             _pendingCooldownCompletionNotifications.Clear();
             _expiredAuthoritativeCooldowns.Clear();
+            _cooldownUiPresentations.Clear();
             _currentCast = null;
             _skillLevels.Clear();
             _skillHotkeys.Clear();

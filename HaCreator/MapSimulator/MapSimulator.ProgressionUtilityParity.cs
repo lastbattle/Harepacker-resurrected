@@ -104,8 +104,12 @@ namespace HaCreator.MapSimulator
             int currentMapId = _mapBoard?.MapInfo?.id ?? 0;
             int readyQuestCount = questSnapshot.Entries.Count(entry => entry.IsReadyToComplete);
             int worldId = Math.Max(0, _simulatorWorldId);
+            int worldRequestId = worldId + 1;
+            int characterId = build?.Id ?? 0;
             string landingUrl = BuildRankingLandingUrl(build, worldId, out bool usedResolvedTemplate);
             string webSeedText = BuildRankingLandingSeed(build, worldId, out _);
+            string requestShapeText = ProgressionUtilityParityRules.FormatRankingRequestParameters(worldRequestId, characterId);
+            string hostText = $"get_server_string_0 => {RankingServerHost}";
             string launchSource = string.IsNullOrWhiteSpace(_lastRankingLaunchSource) ? "status-bar owner" : _lastRankingLaunchSource;
             bool hasActiveRequest = _lastRankingOpenTick != int.MinValue;
             bool requestPending = hasActiveRequest && _lastRankingNavigateTick == int.MinValue;
@@ -179,7 +183,7 @@ namespace HaCreator.MapSimulator
 
             string subtitle = build == null
                 ? "UIWindow2.img/Ranking stays the owner seam while the recovered CWebWnd request shape remains unresolved."
-                : $"UIWindow2.img/Ranking stays the owner seam while the recovered CWebWnd request queues NavigateUrl for {build.Name}, world {worldId + 1}, then swaps from loading into simulator-local ladder context.";
+                : $"UIWindow2.img/Ranking stays the owner seam while the recovered CWebWnd request queues NavigateUrl for {build.Name}, world {worldRequestId}, then swaps from loading into simulator-local ladder context.";
 
             return new RankingWindowSnapshot
             {
@@ -188,6 +192,8 @@ namespace HaCreator.MapSimulator
                 StatusText = "BtRank now mirrors the client owner lifecycle more closely: loading-layer request first, navigated local world/job/popularity/combat cards second. StringPool[0xAA2] now resolves the full gamerank.maplestory NavigateUrl target, but remote ladders, returned page payloads, and packet-fed ranking pages are still outside this board.",
                 NavigationCaption = usedResolvedTemplate ? "StringPool[0xAA2] NavigateUrl" : "NavigateUrl fallback",
                 NavigationSeedText = landingUrl,
+                NavigationHostText = hostText,
+                NavigationRequestText = requestShapeText,
                 NavigationStateText = BuildRankingOwnerLifecycleDetail(build, launchSource, webSeedText, usedResolvedTemplate),
                 IsLoading = isLoading,
                 Entries = entries
@@ -201,6 +207,7 @@ namespace HaCreator.MapSimulator
             QuestAlarmSnapshot questSnapshot = _questRuntime.BuildQuestAlarmSnapshot(build);
             List<EventEntrySnapshot> entries = new();
             AppendPacketOwnedEventAlarmEntries(entries, currentTick);
+            int nextSortOrder = entries.Count;
 
             if (_lastEventOpenTick != int.MinValue)
             {
@@ -213,7 +220,9 @@ namespace HaCreator.MapSimulator
                     Detail = $"{lifecycleDetail} The client-observed 8 second auto-dismiss remains armed until the user touches the filter or calendar controls.",
                     StatusText = "Running",
                     Status = EventEntryStatus.InProgress,
-                    ScheduledAt = DateTime.Today
+                    ScheduledAt = DateTime.Today,
+                    SourceTick = _lastEventOpenTick,
+                    SortOrder = nextSortOrder++
                 });
             }
 
@@ -224,7 +233,8 @@ namespace HaCreator.MapSimulator
                 Detail = $"{_loginRuntime.CurrentStep} step. {loginStatus}",
                 StatusText = _loginRuntime.HasWorldInformation ? "Clear" : (_loginRuntime.LastPacketType.HasValue ? "Running" : "Start"),
                 Status = _loginRuntime.HasWorldInformation ? EventEntryStatus.Clear : (_loginRuntime.LastPacketType.HasValue ? EventEntryStatus.InProgress : EventEntryStatus.Start),
-                ScheduledAt = DateTime.Today
+                ScheduledAt = DateTime.Today,
+                SortOrder = nextSortOrder++
             });
 
             string packetFieldState = _packetFieldStateRuntime.DescribeStatus(currentTick);
@@ -234,7 +244,8 @@ namespace HaCreator.MapSimulator
                 Detail = packetFieldState,
                 StatusText = packetFieldState.Contains("idle", StringComparison.OrdinalIgnoreCase) ? "Start" : "Running",
                 Status = packetFieldState.Contains("idle", StringComparison.OrdinalIgnoreCase) ? EventEntryStatus.Start : EventEntryStatus.InProgress,
-                ScheduledAt = DateTime.Today
+                ScheduledAt = DateTime.Today,
+                SortOrder = nextSortOrder++
             });
 
             string overlayStatus = DescribePacketOwnedFieldFadeAndBalloonStatus(currentTick);
@@ -244,7 +255,8 @@ namespace HaCreator.MapSimulator
                 Detail = overlayStatus,
                 StatusText = overlayStatus.Contains("idle", StringComparison.OrdinalIgnoreCase) ? "Start" : "Running",
                 Status = overlayStatus.Contains("idle", StringComparison.OrdinalIgnoreCase) ? EventEntryStatus.Start : EventEntryStatus.InProgress,
-                ScheduledAt = DateTime.Today
+                ScheduledAt = DateTime.Today,
+                SortOrder = nextSortOrder++
             });
 
             string guideDetail = _packetQuestGuideQuestId > 0
@@ -256,7 +268,8 @@ namespace HaCreator.MapSimulator
                 Detail = guideDetail,
                 StatusText = _packetQuestGuideQuestId > 0 ? "Running" : "Start",
                 Status = _packetQuestGuideQuestId > 0 ? EventEntryStatus.InProgress : EventEntryStatus.Start,
-                ScheduledAt = DateTime.Today
+                ScheduledAt = DateTime.Today,
+                SortOrder = nextSortOrder++
             });
 
             if (_lastDeliveryQuestId > 0)
@@ -267,7 +280,8 @@ namespace HaCreator.MapSimulator
                     Detail = $"Quest #{_lastDeliveryQuestId} delivery owner is primed for item #{_lastDeliveryItemId}.",
                     StatusText = "Running",
                     Status = EventEntryStatus.InProgress,
-                    ScheduledAt = DateTime.Today
+                    ScheduledAt = DateTime.Today,
+                    SortOrder = nextSortOrder++
                 });
             }
 
@@ -279,7 +293,9 @@ namespace HaCreator.MapSimulator
                     Detail = "Packet-owned class competition launch has been routed into the named utility owner.",
                     StatusText = "Clear",
                     Status = EventEntryStatus.Clear,
-                    ScheduledAt = DateTime.Today
+                    ScheduledAt = DateTime.Today,
+                    SourceTick = _lastClassCompetitionOpenTick,
+                    SortOrder = nextSortOrder++
                 });
             }
 
@@ -294,13 +310,23 @@ namespace HaCreator.MapSimulator
                         : $"{questSnapshot.Entries.Count} tracked quest entry{(questSnapshot.Entries.Count == 1 ? " is" : "ies are")} still in progress.",
                     StatusText = readyCount > 0 ? "Clear" : "Running",
                     Status = readyCount > 0 ? EventEntryStatus.Clear : EventEntryStatus.InProgress,
-                    ScheduledAt = DateTime.Today
+                    ScheduledAt = DateTime.Today,
+                    SortOrder = nextSortOrder++
                 });
             }
 
             foreach (EventEntrySnapshot fieldEntry in BuildSpecialFieldEventEntries())
             {
-                entries.Add(fieldEntry);
+                entries.Add(new EventEntrySnapshot
+                {
+                    Title = fieldEntry.Title,
+                    Detail = fieldEntry.Detail,
+                    StatusText = fieldEntry.StatusText,
+                    Status = fieldEntry.Status,
+                    ScheduledAt = fieldEntry.ScheduledAt,
+                    SourceTick = fieldEntry.SourceTick,
+                    SortOrder = nextSortOrder++
+                });
             }
 
             if (!entries.Any(entry => entry.Status == EventEntryStatus.Upcoming))
@@ -311,7 +337,8 @@ namespace HaCreator.MapSimulator
                     Detail = "UIWindow2.img/EventList art is active, but attendance packets and the official event-feed model are still pending deeper client dispatch work.",
                     StatusText = "Will",
                     Status = EventEntryStatus.Upcoming,
-                    ScheduledAt = DateTime.Today.AddDays(1)
+                    ScheduledAt = DateTime.Today.AddDays(1),
+                    SortOrder = nextSortOrder++
                 });
             }
 
@@ -440,12 +467,12 @@ namespace HaCreator.MapSimulator
         {
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedNoticeMessage))
             {
-                entries.Add(CreatePacketOwnedEventEntry("Notice Alarm", _lastPacketOwnedNoticeMessage, EventEntryStatus.Clear, "Clear"));
+                entries.Add(CreatePacketOwnedEventEntry("Notice Alarm", _lastPacketOwnedNoticeMessage, EventEntryStatus.Clear, "Clear", _lastPacketOwnedNoticeTick));
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedBuffzoneMessage))
             {
-                entries.Add(CreatePacketOwnedEventEntry("Buffzone Alarm", _lastPacketOwnedBuffzoneMessage, EventEntryStatus.InProgress, "Running"));
+                entries.Add(CreatePacketOwnedEventEntry("Buffzone Alarm", _lastPacketOwnedBuffzoneMessage, EventEntryStatus.InProgress, "Running", _lastPacketOwnedBuffzoneTick));
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedAskApspMessage) || _packetOwnedApspPromptActive)
@@ -453,23 +480,28 @@ namespace HaCreator.MapSimulator
                 string apspDetail = _packetOwnedApspPromptActive
                     ? $"{_lastPacketOwnedAskApspMessage} Prompt is still active for context {_packetOwnedApspPromptContextToken} / event {_packetOwnedApspPromptEventType}."
                     : _lastPacketOwnedAskApspMessage;
-                entries.Add(CreatePacketOwnedEventEntry("AP/SP Event Prompt", apspDetail, _packetOwnedApspPromptActive ? EventEntryStatus.InProgress : EventEntryStatus.Clear, _packetOwnedApspPromptActive ? "Running" : "Clear"));
+                entries.Add(CreatePacketOwnedEventEntry("AP/SP Event Prompt", apspDetail, _packetOwnedApspPromptActive ? EventEntryStatus.InProgress : EventEntryStatus.Clear, _packetOwnedApspPromptActive ? "Running" : "Clear", _lastPacketOwnedAskApspTick));
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedSkillGuideMessage))
             {
-                entries.Add(CreatePacketOwnedEventEntry("Skill Guide Launch", _lastPacketOwnedSkillGuideMessage, EventEntryStatus.Clear, "Clear"));
+                entries.Add(CreatePacketOwnedEventEntry("Skill Guide Launch", _lastPacketOwnedSkillGuideMessage, EventEntryStatus.Clear, "Clear", _lastPacketOwnedSkillGuideTick));
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedFollowFailureMessage))
             {
-                entries.Add(CreatePacketOwnedEventEntry("Follow Failure", _lastPacketOwnedFollowFailureMessage, EventEntryStatus.Start, "Start"));
+                entries.Add(CreatePacketOwnedEventEntry("Follow Failure", _lastPacketOwnedFollowFailureMessage, EventEntryStatus.Start, "Start", _lastPacketOwnedFollowFailureTick));
             }
 
             string tutorStatus = DescribePacketOwnedTutorStatus(currentTick);
-            if (_packetOwnedTutorRuntime.IsActive)
+            if (_packetOwnedTutorRuntime.IsActive || _packetOwnedTutorRuntime.HasRegisteredTutorVariants)
             {
-                entries.Add(CreatePacketOwnedEventEntry("Tutor Alarm", tutorStatus, EventEntryStatus.InProgress, "Running"));
+                entries.Add(CreatePacketOwnedEventEntry(
+                    "Tutor Alarm",
+                    tutorStatus,
+                    _packetOwnedTutorRuntime.IsActive ? EventEntryStatus.InProgress : EventEntryStatus.Clear,
+                    _packetOwnedTutorRuntime.IsActive ? "Running" : "Clear",
+                    _packetOwnedTutorRuntime.ActiveMessageStartedAt));
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedRadioStatusMessage)
@@ -480,21 +512,27 @@ namespace HaCreator.MapSimulator
                     "Radio Schedule",
                     _lastPacketOwnedRadioStatusMessage,
                     IsPacketOwnedRadioPlaying() ? EventEntryStatus.InProgress : EventEntryStatus.Clear,
-                    IsPacketOwnedRadioPlaying() ? "Running" : "Clear"));
+                    IsPacketOwnedRadioPlaying() ? "Running" : "Clear",
+                    _lastPacketOwnedRadioLastPollTick != int.MinValue ? _lastPacketOwnedRadioLastPollTick : _lastPacketOwnedRadioStartTick));
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedEventSoundDescriptor))
             {
-                entries.Add(CreatePacketOwnedEventEntry("Event Sound", $"Last event sound resolved through {_lastPacketOwnedEventSoundDescriptor}.", EventEntryStatus.Clear, "Clear"));
+                entries.Add(CreatePacketOwnedEventEntry("Event Sound", $"Last event sound resolved through {_lastPacketOwnedEventSoundDescriptor}.", EventEntryStatus.Clear, "Clear", _lastPacketOwnedEventSoundTick));
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedMinigameSoundDescriptor))
             {
-                entries.Add(CreatePacketOwnedEventEntry("Minigame Sound", $"Last minigame sound resolved through {_lastPacketOwnedMinigameSoundDescriptor}.", EventEntryStatus.Clear, "Clear"));
+                entries.Add(CreatePacketOwnedEventEntry("Minigame Sound", $"Last minigame sound resolved through {_lastPacketOwnedMinigameSoundDescriptor}.", EventEntryStatus.Clear, "Clear", _lastPacketOwnedMinigameSoundTick));
             }
         }
 
         private static EventEntrySnapshot CreatePacketOwnedEventEntry(string title, string detail, EventEntryStatus status, string statusText)
+        {
+            return CreatePacketOwnedEventEntry(title, detail, status, statusText, int.MinValue);
+        }
+
+        private static EventEntrySnapshot CreatePacketOwnedEventEntry(string title, string detail, EventEntryStatus status, string statusText, int sourceTick)
         {
             return new EventEntrySnapshot
             {
@@ -502,7 +540,8 @@ namespace HaCreator.MapSimulator
                 Detail = detail ?? string.Empty,
                 Status = status,
                 StatusText = statusText,
-                ScheduledAt = DateTime.Today
+                ScheduledAt = DateTime.Today,
+                SourceTick = sourceTick
             };
         }
 
@@ -536,7 +575,7 @@ namespace HaCreator.MapSimulator
                     false));
             }
 
-            if (_packetOwnedTutorRuntime.IsActive)
+            if (_packetOwnedTutorRuntime.IsActive || _packetOwnedTutorRuntime.HasRegisteredTutorVariants)
             {
                 candidates.Add((TruncatePacketOwnedUtilityText(DescribePacketOwnedTutorStatus(currentTick), 70), _packetOwnedTutorRuntime.ActiveMessageStartedAt, false));
             }

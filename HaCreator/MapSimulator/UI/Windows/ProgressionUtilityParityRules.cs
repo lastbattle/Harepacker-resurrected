@@ -39,6 +39,15 @@ namespace HaCreator.MapSimulator.UI
                 resolvedUrl);
         }
 
+        internal static string FormatRankingRequestParameters(int worldId, int characterId)
+        {
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "webclient/totpersonrank worldid={0}, characterid={1}",
+                Math.Max(0, worldId),
+                Math.Max(0, characterId));
+        }
+
         internal static int ResolveCalendarBackgroundVariant(DateTime month)
         {
             return GetCalendarWeekRowCount(month) >= 6 ? 1 : 0;

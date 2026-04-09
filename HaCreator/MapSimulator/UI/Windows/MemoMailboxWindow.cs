@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -86,6 +87,8 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _quickTaxCloseButton;
         private ComposeInputField _activeInputField;
 
+        internal Func<InventoryType, int, InventorySlotData, bool> InventoryDropRequested { private get; set; }
+
         private enum ComposeInputField
         {
             None,
@@ -159,6 +162,38 @@ namespace HaCreator.MapSimulator.UI
             base.Hide();
             DeactivateInput();
             _isDraggingReceiveScrollThumb = false;
+        }
+
+        internal bool TryHandleInventoryDrop(
+            int mouseX,
+            int mouseY,
+            InventoryType sourceInventoryType,
+            int sourceSlotIndex,
+            InventorySlotData draggedSlotData)
+        {
+            if (!IsVisible
+                || draggedSlotData == null
+                || draggedSlotData.IsDisabled)
+            {
+                return false;
+            }
+
+            MemoMailboxSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
+            if (snapshot.ActiveTab == ParcelDialogTab.Receive)
+            {
+                return false;
+            }
+
+            Rectangle contentBounds = GetContentBounds();
+            bool quickMode = snapshot.ActiveTab == ParcelDialogTab.QuickSend;
+            Rectangle iconBounds = GetComposeItemIconBounds(contentBounds, quickMode);
+            Rectangle textBounds = GetComposeItemTextBounds(contentBounds, quickMode);
+            if (!iconBounds.Contains(mouseX, mouseY) && !textBounds.Contains(mouseX, mouseY))
+            {
+                return false;
+            }
+
+            return InventoryDropRequested?.Invoke(sourceInventoryType, sourceSlotIndex, draggedSlotData.Clone()) == true;
         }
 
         public override void SetFont(SpriteFont font)
