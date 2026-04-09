@@ -129,6 +129,7 @@ namespace HaCreator.MapSimulator.UI
 
         internal event Action<int> QuestRequested;
         internal event Action<int, bool> QuestLogRequested;
+        internal event Action<int> QuestRecentUpdateAcknowledged;
         internal event Action<string> StatusMessageRequested;
         internal event Action QuestDeleted;
         internal event Action TrackerCleared;
@@ -497,6 +498,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleRowSelection(int mouseX, int mouseY)
         {
+            QuestAlarmSnapshot snapshot = _currentSnapshot ?? RefreshFilteredSnapshot();
             for (int i = 0; i < _rowLayouts.Count; i++)
             {
                 RowLayout row = _rowLayouts[i];
@@ -512,8 +514,21 @@ namespace HaCreator.MapSimulator.UI
                 _selectedQuestId = row.QuestId;
                 _lastRowClickQuestId = row.QuestId;
                 _lastRowClickTick = Environment.TickCount64;
-                EnsureSelectionVisible(_currentSnapshot ?? RefreshFilteredSnapshot());
+                EnsureSelectionVisible(snapshot);
                 UpdateButtonStates();
+
+                QuestAlarmEntrySnapshot clickedEntry = snapshot?.Entries?.FirstOrDefault(entry => entry.QuestId == row.QuestId);
+                if (clickedEntry?.IsRecentlyUpdated == true)
+                {
+                    QuestRecentUpdateAcknowledged?.Invoke(row.QuestId);
+                    snapshot = RefreshFilteredSnapshot();
+                    HandleEmptySnapshotVisibility(snapshot);
+                    EnsureSelection(snapshot);
+                    EnsureSelectionVisible(snapshot);
+                    ClampScrollOffset(snapshot);
+                    RefreshFrame(snapshot);
+                    UpdateButtonStates();
+                }
 
                 if (repeatedClick)
                 {

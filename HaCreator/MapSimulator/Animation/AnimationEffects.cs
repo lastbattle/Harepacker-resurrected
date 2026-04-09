@@ -29,9 +29,14 @@ namespace HaCreator.MapSimulator.Animation
             public int UpdateIntervalMs { get; init; }
             public IReadOnlyList<List<IDXObject>> SpawnFrameVariants { get; init; }
             public bool SpawnRelativeToTarget { get; init; } = true;
+            public bool SpawnUsesEmissionBox { get; init; }
             public int SpawnDurationMs { get; init; }
             public float SpawnTravelDistanceMin { get; init; }
             public float SpawnTravelDistanceMax { get; init; }
+            public float SpawnVerticalEmissionBias { get; init; }
+            public Point SpawnOffsetMin { get; init; }
+            public Point SpawnOffsetMax { get; init; }
+            public Rectangle SpawnArea { get; init; }
         }
 
         private readonly List<OneTimeAnimation> _oneTimeAnimations = new();
@@ -738,27 +743,76 @@ namespace HaCreator.MapSimulator.Animation
             return NormalizeFollowAngleDegrees(angleDegrees);
         }
 
+        internal static int ResolveFollowRandomOffsetComponent(int startInclusive, int endExclusive, Random random)
+        {
+            int resolvedMin = Math.Min(startInclusive, endExclusive);
+            int resolvedMax = Math.Max(startInclusive, endExclusive);
+            int delta = resolvedMax - resolvedMin;
+            if (delta <= 0)
+            {
+                return resolvedMin;
+            }
+
+            return resolvedMin + (random?.Next(delta) ?? 0);
+        }
+
+        internal static Vector2 ResolveFollowRandomOffset(Point startInclusive, Point endExclusive, Random random)
+        {
+            return new Vector2(
+                ResolveFollowRandomOffsetComponent(startInclusive.X, endExclusive.X, random),
+                ResolveFollowRandomOffsetComponent(startInclusive.Y, endExclusive.Y, random));
+        }
+
+        internal static Vector2 ResolveFollowEmissionStartOffset(Rectangle area, Random random)
+        {
+            int x = ResolveFollowRandomOffsetComponent(area.Left, area.Right, random);
+            int y = ResolveFollowRandomOffsetComponent(area.Top, area.Bottom, random);
+            return new Vector2(x, y);
+        }
+
+        internal static Vector2 ResolveFollowParticleEndOffset(
+            Vector2 emissionOffset,
+            int angleDegrees,
+            Vector2 randomOffset,
+            bool useEmissionBox)
+        {
+            if (!useEmissionBox)
+            {
+                return emissionOffset + randomOffset;
+            }
+
+            float radialDistance = Math.Max(Math.Abs(randomOffset.X), Math.Abs(randomOffset.Y));
+            if (radialDistance <= float.Epsilon)
+            {
+                return emissionOffset;
+            }
+
+            return emissionOffset + ResolvePolarFollowOffset(radialDistance, angleDegrees);
+        }
+
+        internal static Vector2 ResolveFollowParticleEndOffset(
+            Vector2 emissionOffset,
+            int angleDegrees,
+            float radialDistance)
+        {
+            if (radialDistance <= float.Epsilon)
+            {
+                return emissionOffset;
+            }
+
+            return emissionOffset + ResolvePolarFollowOffset(radialDistance, angleDegrees);
+        }
+
         internal static float ResolveFollowParticleTravelDistance(float minDistance, float maxDistance, Random random)
         {
             float resolvedMin = Math.Max(0f, Math.Min(minDistance, maxDistance));
-            float resolvedMax = Math.Max(resolvedMin, Math.Max(minDistance, maxDistance));
+            float resolvedMax = Math.Max(0f, Math.Max(minDistance, maxDistance));
             if (resolvedMax <= resolvedMin + float.Epsilon)
             {
                 return resolvedMin;
             }
 
-            float t = (float)(random?.NextDouble() ?? 0d);
-            return MathHelper.Lerp(resolvedMin, resolvedMax, t);
-        }
-
-        internal static Vector2 ResolveFollowParticleEndOffset(Vector2 emissionOffset, int angleDegrees, float travelDistance)
-        {
-            if (travelDistance <= 0f)
-            {
-                return emissionOffset;
-            }
-
-            return emissionOffset + ResolvePolarFollowOffset(travelDistance, angleDegrees);
+            return resolvedMin + ((float)(random?.NextDouble() ?? 0d) * (resolvedMax - resolvedMin));
         }
 
         internal static Vector2 ResolveFollowSpawnAnchorPosition(
@@ -772,6 +826,7 @@ namespace HaCreator.MapSimulator.Animation
         public int UserStateCount => _userStateAnimations.Count;
         public int AreaAnimationCount => _areaAnimations.Count;
         public int FollowAnimationCount => _followAnimations.Count;
+        public int FollowParticleCount => _followParticleAnimations.Count;
 
         #endregion
     }

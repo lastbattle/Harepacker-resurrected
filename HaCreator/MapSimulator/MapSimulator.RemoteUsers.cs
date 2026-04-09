@@ -769,7 +769,7 @@ namespace HaCreator.MapSimulator
                     }
 
                     CharacterBuild template = _playerManager?.Player?.Build?.Clone();
-                    bool created = _remoteUserPool.TryAddOrUpdateAvatarLook(
+                    bool applied = _remoteUserPool.TryAddOrUpdateAvatarLook(
                         enterPacket.CharacterId,
                         enterPacket.Name,
                         enterPacket.AvatarLook,
@@ -780,7 +780,7 @@ namespace HaCreator.MapSimulator
                         enterPacket.ActionName,
                         "packet",
                         enterPacket.IsVisibleInWorld);
-                    if (created)
+                    if (applied)
                     {
                         _remoteUserPool.TryApplyProfileMetadata(
                             enterPacket.CharacterId,
@@ -790,12 +790,12 @@ namespace HaCreator.MapSimulator
                             out _);
                     }
 
-                    if (created && enterPacket.PortableChairItemId.HasValue)
+                    if (applied && enterPacket.PortableChairItemId.HasValue)
                     {
                         _remoteUserPool.TrySetPortableChair(enterPacket.CharacterId, enterPacket.PortableChairItemId, out _);
                     }
 
-                    if (created && enterPacket.TemporaryStats.HasPayload)
+                    if (applied && enterPacket.TemporaryStats.HasPayload)
                     {
                         _remoteUserPool.TryApplyTemporaryStatSnapshot(
                             enterPacket.CharacterId,
@@ -805,10 +805,10 @@ namespace HaCreator.MapSimulator
                         SyncAnimationDisplayerRemoteUserState(enterPacket.CharacterId);
                     }
 
-                    result = created
+                    result = applied
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {enterPacket.Name} ({enterPacket.CharacterId})."
                         : enterMessage;
-                    if (created)
+                    if (applied)
                     {
                         RememberRemoteTownPortalOwnerFieldObservation(
                             (uint)enterPacket.CharacterId,
@@ -816,7 +816,7 @@ namespace HaCreator.MapSimulator
                             TemporaryPortalField.RemoteTownPortalObservationSource.EnterField);
                     }
 
-                    return created;
+                    return applied;
 
                 case RemoteUserPacketType.UserLeaveField:
                     if (!RemoteUserPacketCodec.TryParseLeaveField(payload, out RemoteUserLeaveFieldPacket leavePacket, out string leaveError))

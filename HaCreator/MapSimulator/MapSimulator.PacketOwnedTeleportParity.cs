@@ -425,6 +425,17 @@ namespace HaCreator.MapSimulator
             }
 
             if (target.HasFallbackCoordinates
+                && TryResolvePacketOwnedTeleportPortalIndexByCandidateNamesAndPosition(
+                    _portalPool,
+                    target.TargetPortalNameCandidates,
+                    target.FallbackX.Value,
+                    target.FallbackY.Value,
+                    out portalIndex))
+            {
+                return true;
+            }
+
+            if (target.HasFallbackCoordinates
                 && TryResolvePacketOwnedTeleportPortalByPosition(
                     target.FallbackX.Value,
                     target.FallbackY.Value,
@@ -483,6 +494,141 @@ namespace HaCreator.MapSimulator
 
             portalIndex = resolvedPortalIndex;
             return portalIndex >= 0;
+        }
+
+        internal static bool TryResolvePacketOwnedTeleportPortalIndexByCandidateNamesAndPosition(
+            PortalPool portalPool,
+            IEnumerable<string> candidatePortalNames,
+            float targetX,
+            float targetY,
+            out int portalIndex)
+        {
+            portalIndex = -1;
+            if (!TryCollectPacketOwnedTeleportPortalIndexesByCandidateNames(
+                portalPool,
+                candidatePortalNames,
+                out int[] candidatePortalIndexes))
+            {
+                return false;
+            }
+
+            return TryResolvePacketOwnedTeleportPortalIndexByCandidatePosition(
+                portalPool,
+                candidatePortalIndexes,
+                targetX,
+                targetY,
+                out portalIndex);
+        }
+
+        private static bool TryCollectPacketOwnedTeleportPortalIndexesByCandidateNames(
+            PortalPool portalPool,
+            IEnumerable<string> candidatePortalNames,
+            out int[] portalIndexes)
+        {
+            portalIndexes = Array.Empty<int>();
+            if (portalPool == null || candidatePortalNames == null)
+            {
+                return false;
+            }
+
+            var resolvedIndexes = new List<int>();
+            foreach (string candidatePortalName in candidatePortalNames)
+            {
+                if (!TryResolvePacketOwnedTeleportPortalIndexByName(portalPool, candidatePortalName, out int candidatePortalIndex))
+                {
+                    continue;
+                }
+
+                if (!resolvedIndexes.Contains(candidatePortalIndex))
+                {
+                    resolvedIndexes.Add(candidatePortalIndex);
+                }
+            }
+
+            portalIndexes = resolvedIndexes.ToArray();
+            return portalIndexes.Length > 0;
+        }
+
+        private static bool TryResolvePacketOwnedTeleportPortalIndexByCandidatePosition(
+            PortalPool portalPool,
+            IEnumerable<int> candidatePortalIndexes,
+            float targetX,
+            float targetY,
+            out int portalIndex)
+        {
+            portalIndex = -1;
+            if (portalPool == null || candidatePortalIndexes == null)
+            {
+                return false;
+            }
+
+            foreach (int candidatePortalIndex in candidatePortalIndexes)
+            {
+                PortalInstance instance = portalPool.GetPortal(candidatePortalIndex)?.PortalInstance;
+                if (instance == null)
+                {
+                    continue;
+                }
+
+                if (Math.Abs(instance.X - targetX) > PacketOwnedTeleportPortalExactTolerance
+                    || Math.Abs(instance.Y - targetY) > PacketOwnedTeleportPortalExactTolerance)
+                {
+                    continue;
+                }
+
+                if (portalIndex >= 0 && portalIndex != candidatePortalIndex)
+                {
+                    portalIndex = -1;
+                    return false;
+                }
+
+                portalIndex = candidatePortalIndex;
+            }
+
+            if (portalIndex >= 0)
+            {
+                return true;
+            }
+
+            float bestDistanceSquared = float.MaxValue;
+            bool ambiguous = false;
+            foreach (int candidatePortalIndex in candidatePortalIndexes)
+            {
+                PortalInstance instance = portalPool.GetPortal(candidatePortalIndex)?.PortalInstance;
+                if (instance == null)
+                {
+                    continue;
+                }
+
+                float dx = instance.X - targetX;
+                float dy = instance.Y - targetY;
+                if (Math.Abs(dx) > PacketOwnedTeleportPortalNearestTolerance
+                    || Math.Abs(dy) > PacketOwnedTeleportPortalNearestTolerance)
+                {
+                    continue;
+                }
+
+                float distanceSquared = dx * dx + dy * dy;
+                if (distanceSquared + 0.01f < bestDistanceSquared)
+                {
+                    bestDistanceSquared = distanceSquared;
+                    portalIndex = candidatePortalIndex;
+                    ambiguous = false;
+                }
+                else if (Math.Abs(distanceSquared - bestDistanceSquared) <= 0.01f
+                    && portalIndex != candidatePortalIndex)
+                {
+                    ambiguous = true;
+                }
+            }
+
+            if (portalIndex >= 0 && !ambiguous)
+            {
+                return true;
+            }
+
+            portalIndex = -1;
+            return false;
         }
 
         private static bool TryResolvePacketOwnedTeleportPortalByPosition(

@@ -293,6 +293,8 @@ namespace HaCreator.MapSimulator
             UpdateDirectionModeState(currTickCount);
 
             UpdateWorldChannelSelectorRequestState();
+            EnsureContextOwnedStagePeriodInboxState(shouldRun: _mapBoard?.MapInfo != null);
+            DrainContextOwnedStagePeriodInbox();
             EnsureStageTransitionPacketInboxState(shouldRun: _mapBoard?.MapInfo != null);
             DrainStageTransitionPacketInbox();
             EnsureReactorPoolPacketInboxState(shouldRun: _mapBoard?.MapInfo != null);
@@ -324,7 +326,9 @@ namespace HaCreator.MapSimulator
             DrainMapTransferOfficialSessionBridge();
             SyncUtilityChannelSelectorAvailability();
             UpdateInitialQuizOwner(currTickCount);
+            UpdateSpeedQuizOwner(currTickCount);
             UpdatePacketOwnedTutorRuntime(currTickCount);
+            UpdateVegaSpellOwnerState();
             UpdatePacketOwnedRadioSchedule(currTickCount);
             UpdateUtilityAudioMix(currTickCount);
 
@@ -332,6 +336,7 @@ namespace HaCreator.MapSimulator
             if (isWindowActive)
             {
                 bool initialQuizMouseConsumed = HandleInitialQuizOwnerMouse(newMouseState, _oldMouseState, currTickCount);
+                bool speedQuizMouseConsumed = HandleSpeedQuizOwnerMouse(newMouseState, _oldMouseState, currTickCount);
                 NpcInteractionOverlayResult npcOverlayResult = _npcInteractionOverlay != null
                     ? _npcInteractionOverlay.HandleMouse(newMouseState, _oldMouseState, _renderParams.RenderWidth, _renderParams.RenderHeight)
                     : default;
@@ -346,6 +351,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 if (!initialQuizMouseConsumed &&
+                    !speedQuizMouseConsumed &&
                     !npcOverlayResult.Consumed &&
                     uiWindowManager?.ContainsPoint(newMouseState.X, newMouseState.Y) != true &&
                     _specialFieldRuntime.Minigames.Tournament.HandleMatchTableDialogMouse(
@@ -365,6 +371,7 @@ namespace HaCreator.MapSimulator
 
 
                 if (!initialQuizMouseConsumed &&
+                    !speedQuizMouseConsumed &&
                     !npcOverlayResult.Consumed &&
                     !tournamentMatchTableMouseConsumed &&
                     newMouseState.LeftButton == ButtonState.Released &&
@@ -464,9 +471,11 @@ namespace HaCreator.MapSimulator
             }
 
             bool initialQuizKeyboardConsumed = isWindowActive && HandleInitialQuizOwnerKeyboard(newKeyboardState, _oldKeyboardState, currTickCount);
+            bool speedQuizKeyboardConsumed = isWindowActive && HandleSpeedQuizOwnerKeyboard(newKeyboardState, _oldKeyboardState, currTickCount);
             bool uiCapturesKeyboard = uiWindowManager?.CapturesKeyboardInput == true
                 || _npcInteractionOverlay?.CapturesKeyboardInput == true
-                || initialQuizKeyboardConsumed;
+                || initialQuizKeyboardConsumed
+                || speedQuizKeyboardConsumed;
             bool chatConsumedInput = isWindowActive &&
 
                                      !uiCapturesKeyboard &&

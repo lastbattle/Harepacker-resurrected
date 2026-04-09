@@ -25,8 +25,7 @@ namespace HaCreator.MapSimulator.UI
         private const int PageTextX = 122;
         private const int PageTextY = 74;
         private const int MoneyRightX = 170;
-        private const int MoneyY = 281;
-        private const int MoneyIconSpacing = 6;
+        private const int MoneyY = 304;
         private const int FooterX = 12;
         private const int FooterY = 308;
         private const int FooterWidth = 182;
@@ -322,34 +321,26 @@ namespace HaCreator.MapSimulator.UI
             int drawX = Position.X + MoneyRightX;
             int drawY = Position.Y + MoneyY;
 
-            if (_moneyDigits.Length >= 10 && _moneyDigits.Any(static texture => texture != null))
-            {
-                int totalWidth = GetBitmapTextWidth(moneyText);
-                int x = drawX - totalWidth;
-                if (_cashIconTexture != null)
-                {
-                    sprite.Draw(_cashIconTexture, new Vector2(x - _cashIconTexture.Width - MoneyIconSpacing, drawY - 3), Color.White);
-                }
-
-                DrawBitmapNumber(sprite, moneyText, x, drawY);
-                return;
-            }
-
             if (_font != null)
             {
                 Vector2 size = _font.MeasureString(moneyText) * 0.62f;
-                if (_cashIconTexture != null)
-                {
-                    sprite.Draw(_cashIconTexture, new Vector2(drawX - size.X - _cashIconTexture.Width - MoneyIconSpacing, drawY - 3), Color.White);
-                }
-
-                InventoryRenderUtil.DrawOutlinedText(
-                    sprite,
+                sprite.DrawString(
                     _font,
                     moneyText,
                     new Vector2(drawX - size.X, drawY),
-                    new Color(255, 228, 151),
-                    0.62f);
+                    Color.Black,
+                    0f,
+                    Vector2.Zero,
+                    0.62f,
+                    SpriteEffects.None,
+                    0f);
+                return;
+            }
+
+            if (_moneyDigits.Length >= 10 && _moneyDigits.Any(static texture => texture != null))
+            {
+                int totalWidth = GetBitmapTextWidth(moneyText);
+                DrawBitmapNumber(sprite, moneyText, drawX - totalWidth, drawY);
             }
         }
 
@@ -499,7 +490,7 @@ namespace HaCreator.MapSimulator.UI
 
         private bool IsGetButtonEnabled()
         {
-            if (!IsVisible || _runtime == null || !_runtime.IsOpen)
+            if (!IsVisible || _runtime == null || !_runtime.IsOwnerGetButtonEnabled)
             {
                 return false;
             }

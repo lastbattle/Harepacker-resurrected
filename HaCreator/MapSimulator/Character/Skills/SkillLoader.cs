@@ -324,6 +324,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     result.Add(skill);
             }
 
+            MarkSwallowFamilySkills(result);
             return result;
         }
 
@@ -1793,7 +1794,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return frameSet;
             }
 
-            foreach (WzImageProperty child in frameSetNode.WzProperties)
+            foreach (WzImageProperty child in EnumerateAfterImageFrameChildrenInClientOrder(frameSetNode))
             {
                 if (child == null)
                 {
@@ -1808,6 +1809,42 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return frameSet;
+        }
+
+        internal static IReadOnlyList<WzImageProperty> EnumerateAfterImageFrameChildrenInClientOrder(WzImageProperty frameSetNode)
+        {
+            if (frameSetNode == null)
+            {
+                return Array.Empty<WzImageProperty>();
+            }
+
+            if (frameSetNode is WzCanvasProperty)
+            {
+                return new[] { frameSetNode };
+            }
+
+            if (frameSetNode.WzProperties == null || frameSetNode.WzProperties.Count == 0)
+            {
+                return Array.Empty<WzImageProperty>();
+            }
+
+            List<(int Index, WzImageProperty Property)> orderedFrames = new();
+            foreach (WzImageProperty child in frameSetNode.WzProperties)
+            {
+                if (child != null
+                    && int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int frameIndex))
+                {
+                    orderedFrames.Add((frameIndex, child));
+                }
+            }
+
+            if (orderedFrames.Count == 0)
+            {
+                return Array.Empty<WzImageProperty>();
+            }
+
+            orderedFrames.Sort(static (left, right) => left.Index.CompareTo(right.Index));
+            return orderedFrames.Select(static entry => entry.Property).ToArray();
         }
 
         private static int GetWeaponAfterImageMasteryIndex(int masteryPercent)
@@ -1942,7 +1979,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            WzImageProperty specialNode = skillNode["special"];
+            WzImageProperty specialNode = ResolveShadowPartnerSourcePropertyFromSkillNode(skillNode);
             if (specialNode == null)
             {
                 return;
@@ -1980,12 +2017,16 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private SkillAnimation LoadShadowPartnerActionAnimation(WzImageProperty actionNode, string actionKey)
         {
-            SkillAnimation animation = LoadSkillAnimation(
-                actionNode,
-                actionKey,
-                frameNode => LoadShadowPartnerActionFrame(frameNode));
+            var animation = new SkillAnimation { Name = actionKey };
+            foreach (WzImageProperty frameNode in EnumerateShadowPartnerActionFrameChildrenInClientOrder(actionNode))
+            {
+                SkillFrame frame = LoadShadowPartnerActionFrame(frameNode);
+                if (frame != null)
+                {
+                    animation.Frames.Add(frame);
+                }
+            }
 
-            animation.Name = actionKey;
             animation.Loop = ShouldLoopShadowPartnerAction(actionKey);
             if (ShouldAppendReversedShadowPartnerFrames(actionKey))
             {
@@ -2019,6 +2060,54 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return storagePlan;
+        }
+
+        internal static WzImageProperty ResolveShadowPartnerSourcePropertyFromSkillNode(WzImageProperty skillNode)
+        {
+            return ResolveLinkedProperty(skillNode?["special"]);
+        }
+
+        internal static IReadOnlyList<WzImageProperty> EnumerateShadowPartnerActionFrameChildrenInClientOrder(WzImageProperty actionNode)
+        {
+            if (actionNode == null)
+            {
+                return Array.Empty<WzImageProperty>();
+            }
+
+            if (actionNode is WzCanvasProperty)
+            {
+                return new[] { actionNode };
+            }
+
+            if (actionNode.WzProperties == null || actionNode.WzProperties.Count == 0)
+            {
+                return Array.Empty<WzImageProperty>();
+            }
+
+            List<(int Index, WzImageProperty Property)> orderedFrames = new();
+            foreach (WzImageProperty child in actionNode.WzProperties)
+            {
+                if (child == null
+                    || !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int frameIndex))
+                {
+                    continue;
+                }
+
+                if (child is not WzCanvasProperty && child.GetLinkedWzImageProperty() is not WzCanvasProperty)
+                {
+                    continue;
+                }
+
+                orderedFrames.Add((frameIndex, child));
+            }
+
+            if (orderedFrames.Count == 0)
+            {
+                return Array.Empty<WzImageProperty>();
+            }
+
+            orderedFrames.Sort(static (left, right) => left.Index.CompareTo(right.Index));
+            return orderedFrames.Select(static entry => entry.Property).ToArray();
         }
 
         internal static string ResolveShadowPartnerActionStorageKey(string sourceActionKey)
@@ -3663,9 +3752,27 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            return skillNode.WzProperties.Any(child =>
-                child != null
-                && IsStandaloneSummonSignatureBranchName(child.Name));
+            return skillNode.WzProperties.Any(IsStandaloneSummonSignatureBranch);
+        }
+
+        private static bool IsStandaloneSummonSignatureBranch(WzImageProperty child)
+        {
+            if (child == null || string.IsNullOrWhiteSpace(child.Name))
+            {
+                return false;
+            }
+
+            if (IsStandaloneSummonSignatureBranchName(child.Name))
+            {
+                return true;
+            }
+
+            if (IsStandaloneSummonWrapperBranchName(child.Name))
+            {
+                return false;
+            }
+
+            return IsSummonActionBranchProperty(child);
         }
 
         internal static bool HasPotentialSummonOwnerMetadata(WzImageProperty skillNode)
@@ -3760,6 +3867,27 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || string.Equals(branchName, "die", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(branchName, "die1", StringComparison.OrdinalIgnoreCase)
                    || IsRepeatStyleSummonBranchName(branchName);
+        }
+
+        private static bool IsStandaloneSummonWrapperBranchName(string branchName)
+        {
+            if (string.IsNullOrWhiteSpace(branchName))
+            {
+                return true;
+            }
+
+            return string.Equals(branchName, "action", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "effect", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "effect0", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "icon", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "iconMouseOver", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "iconDisabled", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "common", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "PVPcommon", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "info", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "invisible", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "weapon", StringComparison.OrdinalIgnoreCase)
+                   || NonActionSummonBranchNames.Contains(branchName);
         }
 
         private SkillFrame LoadSkillFrame(WzImageProperty frameNode)
@@ -4038,6 +4166,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             // Load ball animation
             projectile.Animation = LoadSkillAnimation(ballNode, "ball");
+            projectile.VariantAnimations = LoadSummonIndexedAnimations(ballNode, "ball");
+            if (projectile.Animation?.Frames.Count <= 0)
+            {
+                projectile.Animation = projectile.ResolveAnimationVariant(level: 1);
+            }
 
             // Load hit animation
             var hitNode = ballNode["hit"] ?? skillNode["hit"];
@@ -4207,7 +4340,51 @@ namespace HaCreator.MapSimulator.Character.Skills
                     result.Add(s);
             }
 
+            MarkSwallowFamilySkills(result);
             return result;
+        }
+
+        internal static void MarkSwallowFamilySkills(IList<SkillData> skills)
+        {
+            if (skills == null || skills.Count == 0)
+            {
+                return;
+            }
+
+            Dictionary<int, SkillData> skillsById = skills
+                .Where(static skill => skill != null)
+                .GroupBy(static skill => skill.SkillId)
+                .ToDictionary(static group => group.Key, static group => group.First());
+            Queue<SkillData> pending = new(skillsById.Values.Where(static skill => skill.IsSwallowSkill));
+            HashSet<int> swallowSkillIds = new(pending.Select(static skill => skill.SkillId));
+
+            while (pending.Count > 0)
+            {
+                SkillData parent = pending.Dequeue();
+                foreach (SkillData candidate in skillsById.Values)
+                {
+                    if (candidate == null
+                        || swallowSkillIds.Contains(candidate.SkillId)
+                        || candidate.DummySkillParents == null
+                        || candidate.DummySkillParents.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    if (Array.IndexOf(candidate.DummySkillParents, parent.SkillId) < 0)
+                    {
+                        continue;
+                    }
+
+                    swallowSkillIds.Add(candidate.SkillId);
+                    pending.Enqueue(candidate);
+                }
+            }
+
+            foreach (SkillData skill in skillsById.Values)
+            {
+                skill.IsSwallowFamilySkill = swallowSkillIds.Contains(skill.SkillId);
+            }
         }
 
         private static IReadOnlyList<int> GetSkillBookJobIdsForJob(int jobId)
@@ -4560,6 +4737,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.AuthoredPropertyOrder = GetDirectPropertyOrder(node);
 
             levelData.Damage = GetInt(node, "damage", 0, level);
+            levelData.DotDamage = GetInt(node, "dot", 0, level);
+            levelData.DotInterval = GetInt(node, "dotInterval", 0, level);
+            levelData.DotTime = GetInt(node, "dotTime", 0, level);
             levelData.AttackCount = GetInt(node, "attackCount", 1, level);
             levelData.MobCount = GetInt(node, "mobCount", 1, level);
 
@@ -4801,10 +4981,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                 levelData.ACC,
                 vValue,
                 PlaceholderMatchesHintLabel(normalizedSurface, "#v", "accuracy"));
+            levelData.ACC = ApplyDescriptionBackedAliasValue(
+                levelData.ACC,
+                zValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#z", "accuracy"));
             levelData.EVA = ApplyDescriptionBackedAliasValue(
                 levelData.EVA,
                 wValue,
                 PlaceholderMatchesHintLabel(normalizedSurface, "#w", "avoidability"));
+            levelData.EVA = ApplyDescriptionBackedAliasValue(
+                levelData.EVA,
+                zValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#z", "avoidability"));
             levelData.Speed = ApplyDescriptionBackedAliasValue(
                 levelData.Speed,
                 xValue,

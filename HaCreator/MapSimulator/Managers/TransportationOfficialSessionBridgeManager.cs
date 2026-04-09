@@ -655,26 +655,12 @@ namespace HaCreator.MapSimulator.Managers
                     : Array.Empty<byte>();
 
                 pair.ServerSession.SendPacket(clonedPacket);
-                if (countAsTypedSend)
-                {
-                    SentCount++;
-                    LastSentOpcode = opcode;
-                    LastSentRawPacket = clonedPacket;
-                }
-
-                ForwardedOutboundCount++;
-                if (opcode == TransportationPacketInboxManager.PacketTypeContiMove
-                    || opcode == TransportationPacketInboxManager.PacketTypeContiState)
-                {
-                    ForwardedOutboundTransportCount++;
-                }
-
-                RecordOutboundPacket(new OutboundPacketTrace(
+                RecordSentOutboundPacket(
                     opcode,
-                    payload.Length,
-                    BuildPayloadPreview(payload),
-                    Convert.ToHexString(clonedPacket),
-                    "transport-replay"));
+                    clonedPacket,
+                    payload,
+                    "transport-replay",
+                    countAsTypedSend);
 
                 status = $"Replayed outbound {DescribeOutboundPacket(opcode, clonedPacket)} to live session {pair.RemoteEndpoint}.";
                 LastStatus = status;
@@ -763,19 +749,56 @@ namespace HaCreator.MapSimulator.Managers
             int flushed = 0;
             while (_pendingOutboundPackets.TryPeek(out PendingOutboundPacket pending))
             {
-                pair.ServerSession.SendPacket((byte[])pending.RawPacket.Clone());
+                byte[] clonedPacket = (byte[])pending.RawPacket.Clone();
+                pair.ServerSession.SendPacket(clonedPacket);
                 if (!_pendingOutboundPackets.TryDequeue(out PendingOutboundPacket dequeued))
                 {
                     break;
                 }
 
-                SentCount++;
-                LastSentOpcode = dequeued.Opcode;
-                LastSentRawPacket = dequeued.RawPacket;
+                byte[] payload = clonedPacket.Length > sizeof(short)
+                    ? clonedPacket.Skip(sizeof(short)).ToArray()
+                    : Array.Empty<byte>();
+                RecordSentOutboundPacket(
+                    dequeued.Opcode,
+                    clonedPacket,
+                    payload,
+                    "transport-queued",
+                    countAsTypedSend: true);
                 flushed++;
             }
 
             return flushed;
+        }
+
+        private void RecordSentOutboundPacket(
+            int opcode,
+            byte[] rawPacket,
+            byte[] payload,
+            string source,
+            bool countAsTypedSend)
+        {
+            if (countAsTypedSend)
+            {
+                SentCount++;
+                LastSentOpcode = opcode;
+                LastSentRawPacket = rawPacket;
+            }
+
+            ForwardedOutboundCount++;
+            if (opcode == TransportationPacketInboxManager.PacketTypeContiMove
+                || opcode == TransportationPacketInboxManager.PacketTypeContiState
+                || opcode == TransportationFieldInitRequestCodec.OutboundFieldInitOpcode)
+            {
+                ForwardedOutboundTransportCount++;
+            }
+
+            RecordOutboundPacket(new OutboundPacketTrace(
+                opcode,
+                payload?.Length ?? 0,
+                BuildPayloadPreview(payload),
+                Convert.ToHexString(rawPacket),
+                source));
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

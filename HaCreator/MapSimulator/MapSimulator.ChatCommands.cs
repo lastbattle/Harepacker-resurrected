@@ -3477,7 +3477,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "partyraid",
                 "Inspect or drive the Party Raid runtime shell",
-                "/partyraid [status|stage <n>|point <n>|team <red|blue>|damage <red|blue> <n>|gaugecap <n>|clock <seconds|clear>|raw <93|94|95|149> <hex>|packetraw <hex>|inbox [status|start [port]|stop]|key <field|party|session> <key> <value>|result <point> <bonus> <total> [win|lose|clear]|outcome <win|lose|clear>]",
+                "/partyraid [status|stage <n>|point <n>|team <red|blue>|damage <red|blue> <n>|gaugecap <n>|clock <seconds|clear>|raw <93|94|95|149> <hex>|packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|key <field|party|session> <key> <value>|result <point> <bonus> <total> [win|lose|clear]|outcome <win|lose|clear>]",
                 args =>
                 {
                     PartyRaidField partyRaid = _specialFieldRuntime.PartyRaid;
@@ -3489,7 +3489,8 @@ namespace HaCreator.MapSimulator
 
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
-                        return ChatCommandHandler.CommandResult.Info(partyRaid.DescribeStatus());
+                        return ChatCommandHandler.CommandResult.Info(
+                            $"{partyRaid.DescribeStatus()}{Environment.NewLine}{_partyRaidPacketInbox.LastStatus}{Environment.NewLine}{_partyRaidOfficialSessionBridge.LastStatus}");
                     }
 
 
@@ -3674,7 +3675,7 @@ namespace HaCreator.MapSimulator
                         if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
                         {
                             return ChatCommandHandler.CommandResult.Info(
-                                $"{partyRaid.DescribeStatus()}{Environment.NewLine}{_partyRaidPacketInbox.LastStatus}");
+                                $"{partyRaid.DescribeStatus()}{Environment.NewLine}{_partyRaidPacketInbox.LastStatus}{Environment.NewLine}{_partyRaidOfficialSessionBridge.LastStatus}");
                         }
 
 
@@ -3706,6 +3707,106 @@ namespace HaCreator.MapSimulator
 
                     }
 
+
+
+                    if (string.Equals(args[0], "session", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Info(
+                                $"{partyRaid.DescribeStatus()}{Environment.NewLine}{_partyRaidOfficialSessionBridge.DescribeStatus()}");
+                        }
+
+
+                        if (string.Equals(args[1], "discover", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 3
+                                || !int.TryParse(args[2], out int discoverRemotePort)
+                                || discoverRemotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /partyraid session discover <remotePort> [processName|pid] [localPort]");
+                            }
+
+
+                            string processSelector = args.Length >= 4 ? args[3] : null;
+                            int? localPortFilter = null;
+                            if (args.Length >= 5)
+                            {
+                                if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /partyraid session discover <remotePort> [processName|pid] [localPort]");
+                                }
+
+
+                                localPortFilter = parsedLocalPort;
+                            }
+
+
+                            return ChatCommandHandler.CommandResult.Info(
+                                _partyRaidOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
+                        }
+
+
+                        if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 5
+                                || !int.TryParse(args[2], out int listenPort)
+                                || listenPort <= 0
+                                || !int.TryParse(args[4], out int remotePort)
+                                || remotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /partyraid session start <listenPort> <serverHost> <serverPort>");
+                            }
+
+
+                            return _partyRaidOfficialSessionBridge.TryStart(listenPort, args[3], remotePort, out string startStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(startStatus)
+                                : ChatCommandHandler.CommandResult.Error(startStatus);
+                        }
+
+
+                        if (string.Equals(args[1], "startauto", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 4
+                                || !int.TryParse(args[2], out int autoListenPort)
+                                || autoListenPort <= 0
+                                || !int.TryParse(args[3], out int autoRemotePort)
+                                || autoRemotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /partyraid session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                            }
+
+
+                            string processSelector = args.Length >= 5 ? args[4] : null;
+                            int? localPortFilter = null;
+                            if (args.Length >= 6)
+                            {
+                                if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /partyraid session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                }
+
+
+                                localPortFilter = parsedLocalPort;
+                            }
+
+
+                            return _partyRaidOfficialSessionBridge.TryStartFromDiscovery(autoListenPort, autoRemotePort, processSelector, localPortFilter, out string autoStartStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(autoStartStatus)
+                                : ChatCommandHandler.CommandResult.Error(autoStartStatus);
+                        }
+
+
+                        if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _partyRaidOfficialSessionBridge.Stop();
+                            return ChatCommandHandler.CommandResult.Ok(_partyRaidOfficialSessionBridge.LastStatus);
+                        }
+
+
+                        return ChatCommandHandler.CommandResult.Error("Usage: /partyraid session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
+
+                    }
 
 
                     if (string.Equals(args[0], "key", StringComparison.OrdinalIgnoreCase))
@@ -3802,7 +3903,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /partyraid [status|stage <n>|point <n>|team <red|blue>|damage <red|blue> <n>|gaugecap <n>|clock <seconds|clear>|raw <93|94|95|149> <hex>|packetraw <hex>|inbox [status|start [port]|stop]|key <field|party|session> <key> <value>|result <point> <bonus> <total> [win|lose|clear]|outcome <win|lose|clear>]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /partyraid [status|stage <n>|point <n>|team <red|blue>|damage <red|blue> <n>|gaugecap <n>|clock <seconds|clear>|raw <93|94|95|149> <hex>|packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|key <field|party|session> <key> <value>|result <point> <bonus> <total> [win|lose|clear]|outcome <win|lose|clear>]");
 
                 });
 
@@ -6455,6 +6556,19 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(_cookieHouseOfficialSessionBridge.LastStatus);
                         }
 
+                        if (string.Equals(args[1], "infer", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return _cookieHouseOfficialSessionBridge.TryPromoteInferredInboundPointOpcode(out string inferStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(inferStatus)
+                                : ChatCommandHandler.CommandResult.Error(inferStatus);
+                        }
+
+                        if (string.Equals(args[1], "clearinfer", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _cookieHouseOfficialSessionBridge.ClearInference();
+                            return ChatCommandHandler.CommandResult.Ok(_cookieHouseOfficialSessionBridge.LastStatus);
+                        }
+
                         if (string.Equals(args[1], "recent", StringComparison.OrdinalIgnoreCase))
                         {
                             return ChatCommandHandler.CommandResult.Info(
@@ -6467,7 +6581,7 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(_cookieHouseOfficialSessionBridge.LastStatus);
                         }
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode>|unmap <opcode>|clearmap|recent|stop]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode>|unmap <opcode>|clearmap|infer|clearinfer|recent|stop]");
 
                     }
 
@@ -9290,6 +9404,111 @@ namespace HaCreator.MapSimulator
                 });
 
 
+
+            _chat.CommandHandler.RegisterCommand(
+                "stageperiod",
+                "Inspect or drive context-owned CWvsContext::OnStageChange stage-period packets",
+                "/stageperiod [status|clear|inbox [status|start [port]|stop]|set <stagePeriod...> [mode]|packet [payloadhex=..|payloadb64=..]|packetraw <hex>]",
+                args =>
+                {
+                    if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return ChatCommandHandler.CommandResult.Info(DescribeContextOwnedStagePeriodStatus());
+                    }
+
+                    switch (args[0].ToLowerInvariant())
+                    {
+                        case "clear":
+                            _contextOwnedStagePeriodRuntime.Clear();
+                            return ChatCommandHandler.CommandResult.Ok(DescribeContextOwnedStagePeriodStatus());
+
+                        case "inbox":
+                            if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Info(DescribeContextOwnedStagePeriodStatus());
+                            }
+
+                            if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
+                            {
+                                int configuredPort = ContextStagePeriodPacketInboxManager.DefaultPort;
+                                if (args.Length >= 3
+                                    && (!int.TryParse(args[2], out configuredPort) || configuredPort <= 0))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /stageperiod inbox start [port]");
+                                }
+
+                                _contextStagePeriodPacketInbox.Start(configuredPort);
+                                return ChatCommandHandler.CommandResult.Ok(DescribeContextOwnedStagePeriodStatus());
+                            }
+
+                            if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _contextStagePeriodPacketInbox.Stop();
+                                return ChatCommandHandler.CommandResult.Ok(DescribeContextOwnedStagePeriodStatus());
+                            }
+
+                            return ChatCommandHandler.CommandResult.Error("Usage: /stageperiod inbox [status|start [port]|stop]");
+
+                        case "set":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /stageperiod set <stagePeriod...> [mode]");
+                            }
+
+                            byte mode = 0;
+                            int stagePeriodTokenCount = args.Length - 1;
+                            if (args.Length >= 3 && byte.TryParse(args[^1], out byte parsedMode))
+                            {
+                                mode = parsedMode;
+                                stagePeriodTokenCount--;
+                            }
+
+                            string stagePeriod = string.Join(" ", args.Skip(1).Take(stagePeriodTokenCount));
+                            if (string.IsNullOrWhiteSpace(stagePeriod))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /stageperiod set <stagePeriod...> [mode]");
+                            }
+
+                            return TryApplyContextOwnedStagePeriodPacket(
+                                ContextOwnedStagePeriodRuntime.BuildPayload(stagePeriod, mode),
+                                out string stagePeriodMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(stagePeriodMessage)
+                                : ChatCommandHandler.CommandResult.Error(stagePeriodMessage);
+
+                        case "packet":
+                            byte[] stagePeriodPayload = Array.Empty<byte>();
+                            string stagePeriodPayloadError = null;
+                            if (args.Length >= 2 && TryParseBinaryPayloadArgument(args[1], out byte[] payloadBytes, out stagePeriodPayloadError))
+                            {
+                                stagePeriodPayload = payloadBytes;
+                            }
+                            else if (args.Length >= 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error(stagePeriodPayloadError ?? "Usage: /stageperiod packet [payloadhex=..|payloadb64=..]");
+                            }
+
+                            return TryApplyContextOwnedStagePeriodPacket(stagePeriodPayload, out string packetMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(packetMessage)
+                                : ChatCommandHandler.CommandResult.Error(packetMessage);
+
+                        case "packetraw":
+                            byte[] rawPayload = Array.Empty<byte>();
+                            if (args.Length >= 2)
+                            {
+                                if (!TryDecodeHexBytes(string.Join(string.Empty, args.Skip(1)), out rawPayload))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /stageperiod packetraw <hex>");
+                                }
+                            }
+
+                            return TryApplyContextOwnedStagePeriodPacket(rawPayload, out string rawMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(rawMessage)
+                                : ChatCommandHandler.CommandResult.Error(rawMessage);
+
+                        default:
+                            return ChatCommandHandler.CommandResult.Error("Usage: /stageperiod [status|clear|inbox [status|start [port]|stop]|set <stagePeriod...> [mode]|packet [payloadhex=..|payloadb64=..]|packetraw <hex>]");
+                    }
+                });
 
             _chat.CommandHandler.RegisterCommand(
                 "stagepacket",

@@ -231,19 +231,45 @@ namespace HaCreator.MapSimulator.Companions
 
             foreach (WzSubProperty skillNode in skillRoot.WzProperties.OfType<WzSubProperty>())
             {
-                if (skillNode["mob"] is not WzSubProperty mobNode)
-                {
-                    continue;
-                }
-
                 if (EnumerateSkillActionNames(skillNode).Any(candidate =>
                         string.Equals(candidate, actionName, StringComparison.OrdinalIgnoreCase)))
                 {
-                    return mobNode;
+                    WzSubProperty frameSourceNode = FindSkillActionFrameSource(skillNode);
+                    if (frameSourceNode != null)
+                    {
+                        return frameSourceNode;
+                    }
                 }
             }
 
             return null;
+        }
+
+        internal static WzSubProperty FindSkillActionFrameSource(WzSubProperty skillNode)
+        {
+            if (skillNode == null)
+            {
+                return null;
+            }
+
+            foreach (string preferredNodeName in new[] { "mob", "effect" })
+            {
+                if (skillNode[preferredNodeName] is WzSubProperty preferredNode
+                    && HasRenderableFrames(preferredNode))
+                {
+                    return preferredNode;
+                }
+            }
+
+            foreach (WzSubProperty childNode in skillNode.WzProperties.OfType<WzSubProperty>())
+            {
+                if (HasRenderableFrames(childNode))
+                {
+                    return childNode;
+                }
+            }
+
+            return HasRenderableFrames(skillNode) ? skillNode : null;
         }
 
         private List<SkillFrame> LoadFrames(WzSubProperty actionNode)
@@ -293,6 +319,11 @@ namespace HaCreator.MapSimulator.Companions
                     yield return actionName;
                 }
             }
+        }
+
+        private static bool HasRenderableFrames(WzSubProperty property)
+        {
+            return property?.WzProperties.OfType<WzCanvasProperty>().Any() == true;
         }
 
         private IDXObject LoadTexture(WzCanvasProperty canvas)

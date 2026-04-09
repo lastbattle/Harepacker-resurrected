@@ -72,6 +72,17 @@ namespace HaCreator.MapSimulator.UI
         public UIObjectState CurrentState => _currentState;
         public bool Enabled => _currentState != UIObjectState.Disabled;
 
+        public Point GetDrawPositionByState(UIObjectState state = UIObjectState.Null)
+        {
+            BaseDXDrawableItem normalDrawable = GetBaseDXDrawableItemByState(UIObjectState.Normal);
+            BaseDXDrawableItem stateDrawable = GetBaseDXDrawableItemByState(state);
+            Point normalPosition = normalDrawable?.Position ?? Point.Zero;
+            Point statePosition = stateDrawable?.Position ?? normalPosition;
+            return new Point(
+                X + (statePosition.X - normalPosition.X),
+                Y + (statePosition.Y - normalPosition.Y));
+        }
+
         private int _X;
         /// <summary>
         /// The additional relative position of the image (used primarily for UI overlay)

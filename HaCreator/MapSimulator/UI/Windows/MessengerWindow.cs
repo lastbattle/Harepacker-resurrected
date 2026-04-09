@@ -77,6 +77,9 @@ namespace HaCreator.MapSimulator.UI
         private Func<bool, string> _stateCycleHandler;
         private Func<string, string> _sendMessageHandler;
         private Func<string, string> _sendWhisperHandler;
+        private Func<string> _requestExitPromptHandler;
+        private Func<MessengerDeleteResult> _confirmExitPromptHandler;
+        private Func<string> _cancelExitPromptHandler;
         private Func<MessengerDeleteResult> _closeRequestHandler;
         private Action _closeAcknowledgeHandler;
         private Action<string> _feedbackHandler;
@@ -87,6 +90,8 @@ namespace HaCreator.MapSimulator.UI
         private MessengerSnapshot _currentSnapshot = new();
         private int _historyIndex = -1;
         private string _historyDraft = string.Empty;
+        private bool _resumeInputAfterExitPrompt;
+        private bool _resumeWhisperAfterExitPrompt;
 
         public MessengerWindow(
             IDXObject maximizedFrame,
@@ -178,6 +183,9 @@ namespace HaCreator.MapSimulator.UI
             Func<bool, string> stateCycleHandler,
             Func<string, string> sendMessageHandler,
             Func<string, string> sendWhisperHandler,
+            Func<string> requestExitPromptHandler,
+            Func<MessengerDeleteResult> confirmExitPromptHandler,
+            Func<string> cancelExitPromptHandler,
             Func<MessengerDeleteResult> closeRequestHandler,
             Action closeAcknowledgeHandler,
             Action<string> feedbackHandler)
@@ -188,6 +196,9 @@ namespace HaCreator.MapSimulator.UI
             _stateCycleHandler = stateCycleHandler;
             _sendMessageHandler = sendMessageHandler;
             _sendWhisperHandler = sendWhisperHandler;
+            _requestExitPromptHandler = requestExitPromptHandler;
+            _confirmExitPromptHandler = confirmExitPromptHandler;
+            _cancelExitPromptHandler = cancelExitPromptHandler;
             _closeRequestHandler = closeRequestHandler;
             _closeAcknowledgeHandler = closeAcknowledgeHandler;
             _feedbackHandler = feedbackHandler;
@@ -235,7 +246,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             KeyboardState keyboardState = Keyboard.GetState();
-            if (_inputActive)
+            if (snapshot.ShowExitPrompt)
+            {
+                HandleExitPromptInput(keyboardState);
+            }
+            else if (_inputActive)
             {
                 HandleKeyboardInput(keyboardState, snapshot, Environment.TickCount);
             }
@@ -265,7 +280,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 bool treatAsClick = !_clickStartPoint.HasValue
                     || Vector2.Distance(new Vector2(_clickStartPoint.Value.X, _clickStartPoint.Value.Y), new Vector2(mouseState.X, mouseState.Y)) <= 4f;
-                if (treatAsClick && !IsCollapsed)
+                if (treatAsClick && snapshot.ShowExitPrompt)
+                {
+                    HandleExitPromptClick(mouseState.X, mouseState.Y);
+                }
+                else if (treatAsClick && !IsCollapsed)
                 {
                     if (GetLeaveButtonBounds().Contains(mouseState.X, mouseState.Y))
                     {
@@ -365,6 +384,11 @@ namespace HaCreator.MapSimulator.UI
             else
             {
                 DrawCollapsedStatus(sprite, snapshot);
+            }
+
+            if (snapshot.ShowExitPrompt)
+            {
+                DrawExitPrompt(sprite, snapshot);
             }
         }
 
@@ -874,7 +898,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (keyboardState.IsKeyDown(Keys.Escape) && _previousKeyboardState.IsKeyUp(Keys.Escape))
             {
-                RequestClose();
+                RequestExitPrompt();
                 return;
             }
 
@@ -1050,6 +1074,20 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void HandleExitPromptInput(KeyboardState keyboardState)
+        {
+            if (keyboardState.IsKeyDown(Keys.Enter) && _previousKeyboardState.IsKeyUp(Keys.Enter))
+            {
+                ConfirmExitPrompt();
+                return;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.Escape) && _previousKeyboardState.IsKeyUp(Keys.Escape))
+            {
+                CancelExitPrompt();
+            }
+        }
+
         private void SendCurrentInput(MessengerSnapshot snapshot)
         {
             string text = _inputText.ToString().Trim();
@@ -1143,6 +1181,41 @@ namespace HaCreator.MapSimulator.UI
             RequestClose();
         }
 
+        private void RequestExitPrompt()
+        {
+            _resumeInputAfterExitPrompt = _inputActive;
+            _resumeWhisperAfterExitPrompt = _whisperMode;
+            DeactivateInput(clearText: false);
+            ShowFeedback(_requestExitPromptHandler?.Invoke());
+        }
+
+        private void ConfirmExitPrompt()
+        {
+            _resumeInputAfterExitPrompt = false;
+            _resumeWhisperAfterExitPrompt = false;
+            DeactivateInput(clearText: false);
+            MessengerDeleteResult result = _confirmExitPromptHandler?.Invoke();
+            ShowFeedback(result?.Message);
+            if (result?.ShouldHideWindow == true)
+            {
+                Hide();
+                _closeAcknowledgeHandler?.Invoke();
+            }
+        }
+
+        private void CancelExitPrompt()
+        {
+            ShowFeedback(_cancelExitPromptHandler?.Invoke());
+            if (_resumeInputAfterExitPrompt)
+            {
+                MessengerSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
+                ActivateInput(_resumeWhisperAfterExitPrompt, snapshot, clearText: false);
+            }
+
+            _resumeInputAfterExitPrompt = false;
+            _resumeWhisperAfterExitPrompt = false;
+        }
+
         private void RequestClose()
         {
             DeactivateInput(clearText: false);
@@ -1153,6 +1226,82 @@ namespace HaCreator.MapSimulator.UI
                 Hide();
                 _closeAcknowledgeHandler?.Invoke();
             }
+        }
+
+        private void HandleExitPromptClick(int mouseX, int mouseY)
+        {
+            GetExitPromptLayout(out Rectangle promptBounds, out Rectangle yesBounds, out Rectangle noBounds);
+            if (yesBounds.Contains(mouseX, mouseY))
+            {
+                ConfirmExitPrompt();
+            }
+            else if (noBounds.Contains(mouseX, mouseY))
+            {
+                CancelExitPrompt();
+            }
+            else if (!promptBounds.Contains(mouseX, mouseY))
+            {
+                CancelExitPrompt();
+            }
+        }
+
+        private void DrawExitPrompt(SpriteBatch sprite, MessengerSnapshot snapshot)
+        {
+            GetExitPromptLayout(out Rectangle promptBounds, out Rectangle yesBounds, out Rectangle noBounds);
+
+            int frameWidth = CurrentFrame?.Width ?? 0;
+            int frameHeight = CurrentFrame?.Height ?? 0;
+            sprite.Draw(_pixel, new Rectangle(Position.X, Position.Y, frameWidth, frameHeight), new Color(0, 0, 0, 140));
+            sprite.Draw(_pixel, promptBounds, new Color(38, 24, 12, 230));
+            sprite.Draw(_pixel, new Rectangle(promptBounds.X + 1, promptBounds.Y + 1, promptBounds.Width - 2, promptBounds.Height - 2), new Color(247, 232, 194, 240));
+
+            DrawOutlinedText(sprite, "Confirm", new Vector2(promptBounds.X + 10, promptBounds.Y + 8), Color.Black, new Color(96, 60, 20), 0.44f);
+            DrawOutlinedText(sprite, snapshot.ExitPromptText, new Vector2(promptBounds.X + 10, promptBounds.Y + 32), Color.Black, new Color(72, 52, 24), 0.38f);
+            DrawPromptButton(sprite, yesBounds, "Yes");
+            DrawPromptButton(sprite, noBounds, "No");
+        }
+
+        private void DrawPromptButton(SpriteBatch sprite, Rectangle bounds, string label)
+        {
+            sprite.Draw(_pixel, bounds, new Color(120, 90, 48, 220));
+            sprite.Draw(_pixel, new Rectangle(bounds.X + 1, bounds.Y + 1, bounds.Width - 2, bounds.Height - 2), new Color(255, 239, 188, 240));
+            DrawCentered(sprite, label, bounds.X, bounds.Y + 5, bounds.Width, Color.Black, 0.38f);
+        }
+
+        private void DrawOutlinedText(SpriteBatch sprite, string text, Vector2 position, Color color, Color outlineColor, float scale)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            Vector2[] offsets =
+            {
+                new(-1f, 0f),
+                new(1f, 0f),
+                new(0f, -1f),
+                new(0f, 1f)
+            };
+
+            foreach (Vector2 offset in offsets)
+            {
+                sprite.DrawString(_font, text, position + offset, outlineColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            }
+
+            sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        }
+
+        private void GetExitPromptLayout(out Rectangle promptBounds, out Rectangle yesBounds, out Rectangle noBounds)
+        {
+            int promptWidth = 250;
+            int promptHeight = 98;
+            int frameWidth = CurrentFrame?.Width ?? 0;
+            int frameHeight = CurrentFrame?.Height ?? 0;
+            int promptX = Position.X + ((frameWidth - promptWidth) / 2);
+            int promptY = Position.Y + ((frameHeight - promptHeight) / 2);
+            promptBounds = new Rectangle(promptX, promptY, promptWidth, promptHeight);
+            yesBounds = new Rectangle(promptBounds.X + 26, promptBounds.Bottom - 30, 64, 22);
+            noBounds = new Rectangle(promptBounds.Right - 26 - 64, promptBounds.Bottom - 30, 64, 22);
         }
 
         private void NavigateHistory(bool previous)

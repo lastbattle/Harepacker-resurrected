@@ -16,14 +16,16 @@ public static class SummonImpactPresentationResolver
         SummonImpactPresentation presentation,
         Rectangle targetHitbox,
         Vector2 source,
-        Vector2 fallbackTargetPosition)
+        Vector2 fallbackTargetPosition,
+        int? fallbackPositionCode = null)
     {
-        if (presentation?.PositionCode == SourceAnchorPositionCode)
+        int? positionCode = presentation?.PositionCode ?? fallbackPositionCode;
+        Vector2 sourceAnchor = ResolveSourceAnchor(source);
+        if (positionCode == SourceAnchorPositionCode)
         {
-            return source;
+            return sourceAnchor;
         }
 
-        Vector2 sourceAnchor = ResolveSourceAnchor(source);
         if (targetHitbox.IsEmpty)
         {
             return ApplyDistanceCap(sourceAnchor, fallbackTargetPosition);
@@ -31,7 +33,7 @@ public static class SummonImpactPresentationResolver
 
         float centerX = targetHitbox.Left + targetHitbox.Width * 0.5f;
         float clampedY = MathHelper.Clamp(sourceAnchor.Y, targetHitbox.Top, targetHitbox.Bottom);
-        float targetX = ResolveTargetAnchorX(presentation?.PositionCode, targetHitbox, source.X, centerX);
+        float targetX = ResolveTargetAnchorX(positionCode, targetHitbox, source.X, centerX);
 
         return ApplyDistanceCap(sourceAnchor, new Vector2(targetX, clampedY));
     }

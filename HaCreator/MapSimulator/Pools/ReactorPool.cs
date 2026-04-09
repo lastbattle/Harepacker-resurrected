@@ -1529,7 +1529,7 @@ namespace HaCreator.MapSimulator.Pools
             int currentY = reactor.ReactorInstance?.Y ?? y;
             int moveEndTime = data.PacketStateEndTime > currentTick
                 ? data.PacketStateEndTime
-                : ResolvePacketStandaloneMoveEndTime(reactor, currentX, currentY, x, y, currentTick);
+                : ResolvePacketStandaloneMoveEndTime(reactor.TemplateMoveEnabled, currentX, currentY, x, y, currentTick);
             bool usesDefaultRelMove = moveEndTime > currentTick
                 && data.PacketStateEndTime <= currentTick;
 
@@ -1631,15 +1631,15 @@ namespace HaCreator.MapSimulator.Pools
                         if (data.PacketHitStartTime > 0 && currentTick >= data.PacketHitStartTime)
                         {
                             data.PacketHitStartTime = 0;
-                            ApplyPendingPacketVisualState(reactor, data, currentTick);
                             data.PacketAnimationEndTime = ResolvePacketAnimationEndTime(
                                 currentTick,
-                                ResolvePacketHitAnimationDuration(reactor, data, _onReactorLayerSoundRequested));
+                                StartPacketHitAnimation(reactor, data, currentTick, _onReactorLayerSoundRequested));
                         }
 
                         if (data.PacketHitStartTime == 0
                             && (data.PacketAnimationEndTime <= 0 || currentTick >= data.PacketAnimationEndTime))
                         {
+                            reactor?.ClearTransientAnimation();
                             ClearPacketStateMovement(reactor, data, snapToTarget: true);
                             DestroyReactor(index, playerId: 0, currentTick);
                         }
@@ -1652,13 +1652,14 @@ namespace HaCreator.MapSimulator.Pools
                         && currentTick >= data.PacketHitStartTime)
                     {
                         data.PacketHitStartTime = 0;
-                        ApplyPendingPacketVisualState(reactor, data, currentTick);
                         data.PacketAnimationEndTime = ResolvePacketAnimationEndTime(
                             currentTick,
-                            ResolvePacketHitAnimationDuration(reactor, data, _onReactorLayerSoundRequested));
+                            StartPacketHitAnimation(reactor, data, currentTick, _onReactorLayerSoundRequested));
 
                         if (data.PacketAnimationEndTime <= 0)
                         {
+                            reactor?.ClearTransientAnimation();
+                            ApplyPendingPacketVisualState(reactor, data, currentTick);
                             data.State = ReactorState.Active;
                             data.StateStartTime = currentTick;
                             StartPacketStateMovement(reactor, data, currentTick);
@@ -1670,6 +1671,8 @@ namespace HaCreator.MapSimulator.Pools
                         && currentTick >= data.PacketAnimationEndTime)
                     {
                         data.PacketAnimationEndTime = 0;
+                        reactor?.ClearTransientAnimation();
+                        ApplyPendingPacketVisualState(reactor, data, currentTick);
                         data.State = ReactorState.Active;
                         data.StateStartTime = currentTick;
                         StartPacketStateMovement(reactor, data, currentTick);
@@ -2011,6 +2014,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            reactor.ClearTransientAnimation();
             reactor.SetAnimationState(data.PacketPendingVisualState, currentTick, restartIfSameState: true);
             data.PacketAnimationSourceState = data.PacketPendingVisualState;
             data.PacketPendingVisualState = -1;
@@ -2050,22 +2054,37 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketMoveEndTime = moveEndTime;
         }
 
-        private static int ResolvePacketStandaloneMoveEndTime(
-            ReactorItem reactor,
+        internal static int ResolvePacketStandaloneMoveEndTime(
+            bool templateMoveEnabled,
             int startX,
             int startY,
             int targetX,
             int targetY,
             int currentTick)
         {
-            if (reactor == null
-                || !reactor.TemplateMoveEnabled
+            if (!templateMoveEnabled
                 || (startX == targetX && startY == targetY))
             {
                 return 0;
             }
 
             return currentTick + PACKET_RELMOVE_FALLBACK_DURATION_MS;
+        }
+
+        internal static float ResolvePacketMoveProgress(
+            int moveStartTime,
+            int moveEndTime,
+            int currentTick,
+            bool usesDefaultRelMove)
+        {
+            int duration = Math.Max(1, moveEndTime - moveStartTime);
+            float progress = MathHelper.Clamp((currentTick - moveStartTime) / (float)duration, 0f, 1f);
+            if (usesDefaultRelMove)
+            {
+                progress = progress * progress * (3f - (2f * progress));
+            }
+
+            return progress;
         }
 
         private static void StartPacketStateMovement(ReactorItem reactor, ReactorRuntimeData data, int currentTick)
@@ -2104,13 +2123,11 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            int duration = Math.Max(1, data.PacketMoveEndTime - data.PacketMoveStartTime);
-            float progress = MathHelper.Clamp((currentTick - data.PacketMoveStartTime) / (float)duration, 0f, 1f);
-            if (data.PacketMoveUsesDefaultRelMove)
-            {
-                progress = progress * progress * (3f - (2f * progress));
-            }
-
+            float progress = ResolvePacketMoveProgress(
+                data.PacketMoveStartTime,
+                data.PacketMoveEndTime,
+                currentTick,
+                data.PacketMoveUsesDefaultRelMove);
             int x = (int)Math.Round(MathHelper.Lerp(data.PacketMoveStartX, data.PacketMoveTargetX, progress));
             int y = (int)Math.Round(MathHelper.Lerp(data.PacketMoveStartY, data.PacketMoveTargetY, progress));
             if (reactor.ReactorInstance?.X != x || reactor.ReactorInstance?.Y != y)
@@ -2486,7 +2503,7 @@ namespace HaCreator.MapSimulator.Pools
                 : 0;
         }
 
-        private static int ResolvePacketHitAnimationDuration(ReactorItem reactor, ReactorRuntimeData data, Action<string> playHitSound)
+        private static int StartPacketHitAnimation(ReactorItem reactor, ReactorRuntimeData data, int currentTick, Action<string> playHitSound)
         {
             if (reactor == null || data == null)
             {
@@ -2503,7 +2520,7 @@ namespace HaCreator.MapSimulator.Pools
                 UpdatePreferredAuthoredOrder(data, ReactorActivationType.Hit, autoEventIndex);
             }
 
-            if (!reactor.TryGetHitAnimationDuration(sourceState, properEventIndex, out int duration))
+            if (!reactor.TryStartHitAnimation(sourceState, properEventIndex, currentTick, out int duration))
             {
                 return 0;
             }

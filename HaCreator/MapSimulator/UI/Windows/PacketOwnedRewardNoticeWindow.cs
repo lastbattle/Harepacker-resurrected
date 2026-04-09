@@ -18,7 +18,7 @@ namespace HaCreator.MapSimulator.UI
         private const float BodyLeftX = 20f;
         private const float BodyLineSpacing = 14f;
         private const int CenteredButtonX = 136;
-        private const int ButtonY = 106;
+        private const int ButtonBottomMargin = 15;
         private const int CloseButtonRightMargin = 8;
         private const int CloseButtonTopMargin = 8;
 
@@ -56,7 +56,7 @@ namespace HaCreator.MapSimulator.UI
             if (_okButton != null)
             {
                 _okButton.X = ResolveOkButtonX(_okButton);
-                _okButton.Y = ButtonY;
+                _okButton.Y = ResolveOkButtonY(_okButton);
                 _okButton.ButtonClickReleased += _ => Hide();
                 AddButton(_okButton);
             }
@@ -227,6 +227,18 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return CenteredButtonX;
+        }
+
+        private int ResolveOkButtonY(UIObject okButton)
+        {
+            int frameHeight = CurrentFrame?.Height ?? 132;
+            BaseDXDrawableItem buttonDrawable = okButton.GetBaseDXDrawableItemByState();
+            if (buttonDrawable?.Frame0 != null && buttonDrawable.Frame0.Height > 0)
+            {
+                return Math.Max(0, frameHeight - buttonDrawable.Frame0.Height - ButtonBottomMargin);
+            }
+
+            return Math.Max(0, frameHeight - ButtonBottomMargin - 16);
         }
 
         private void AnchorCloseButton(UIObject closeButton)

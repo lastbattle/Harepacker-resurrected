@@ -38,16 +38,19 @@ namespace HaCreator.MapSimulator
                     if (sync.CloseExistingOwner)
                     {
                         _speedQuizOwnerRuntime.Clear();
+                        ClearSpeedQuizOwnerInputState();
                         return "Cleared packet-authored speed quiz owner.";
                     }
 
-                    return _speedQuizOwnerRuntime.ApplyClientOwnerState(
+                    string speedQuizMessage = _speedQuizOwnerRuntime.ApplyClientOwnerState(
                         sync.QuestionNumber,
                         sync.TotalQuestions,
                         sync.CorrectAnswers,
                         sync.RemainingQuestions,
                         sync.RemainingSeconds,
                         currTickCount);
+                    ResetSpeedQuizOwnerInputState(currTickCount);
+                    return speedQuizMessage;
 
                 default:
                     return null;
@@ -59,6 +62,7 @@ namespace HaCreator.MapSimulator
             _initialQuizTimerRuntime.Clear();
             _speedQuizOwnerRuntime.Clear();
             ClearInitialQuizOwnerInputState();
+            ClearSpeedQuizOwnerInputState();
             SyncUtilityChannelSelectorAvailability();
         }
     }

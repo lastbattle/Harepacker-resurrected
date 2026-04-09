@@ -913,6 +913,7 @@ namespace HaCreator.MapSimulator.UI
             string saddleName = GetEquippedItemName(EquipSlot.Saddle, displayBuild);
             bool ridingReady = displayBuild?.HasMonsterRiding == true && !string.Equals(mountName, "-", StringComparison.Ordinal);
             bool hasAuthoritativeRide = HasAuthoritativeRideState(displayBuild);
+            bool hasBuildBackedRide = HasBuildBackedRideState(displayBuild, mountName, saddleName);
 
             DrawSectionHeader(sprite, "Ride");
             DrawLabeledRow(
@@ -921,12 +922,16 @@ namespace HaCreator.MapSimulator.UI
                 "Status",
                 hasAuthoritativeRide
                     ? (ridingReady ? "Ride available" : "No active mount slot")
-                    : "Remote ride state unavailable",
+                    : hasBuildBackedRide
+                        ? (ridingReady ? "Build-backed ride equipped" : "Build-backed mount data only")
+                        : "Remote ride state unavailable",
                 hasAuthoritativeRide
                     ? (ridingReady ? SuccessColor : WarningColor)
-                    : MutedColor);
-            DrawLabeledRow(sprite, 66, "Mount", hasAuthoritativeRide ? mountName : "-", ValueColor);
-            DrawLabeledRow(sprite, 90, "Saddle", hasAuthoritativeRide ? saddleName : "-", ValueColor);
+                    : hasBuildBackedRide
+                        ? SecondaryColor
+                        : MutedColor);
+            DrawLabeledRow(sprite, 66, "Mount", hasAuthoritativeRide || hasBuildBackedRide ? mountName : "-", ValueColor);
+            DrawLabeledRow(sprite, 90, "Saddle", hasAuthoritativeRide || hasBuildBackedRide ? saddleName : "-", ValueColor);
             DrawLabeledRow(sprite, 114, "Job", GetDisplayJobText(displayBuild), ValueColor);
             DrawLabeledRow(
                 sprite,
@@ -936,7 +941,9 @@ namespace HaCreator.MapSimulator.UI
                     ? (ridingReady
                         ? "Taming-mob equipment is present in the simulator build."
                         : "Equip a taming mob and saddle to mirror the client ride page.")
-                    : "AvatarLook and field state do not expose the inspected profile ride page authoritatively.",
+                    : hasBuildBackedRide
+                        ? "AvatarLook-backed equipment keeps the inspected ride page populated, but live remote ride state is still unavailable."
+                        : "AvatarLook and field state do not expose the inspected profile ride page authoritatively.",
                 MutedColor,
                 144);
         }
@@ -1012,7 +1019,12 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawCollectPage(SpriteBatch sprite)
         {
-            if (IsRemoteInspectionActive() && !HasAuthoritativeCollectionSummary(GetDisplayedBuild()))
+            CharacterBuild displayBuild = GetDisplayedBuild();
+            ItemMakerProgressionSnapshot progression = GetCollectionSnapshot();
+            MonsterBookSnapshot snapshot = GetMonsterBookSnapshot();
+            bool hasAuthoritativeCollection = HasAuthoritativeCollectionSummary(displayBuild);
+            bool hasBuildBackedCollection = HasBuildBackedCollectionSummary(progression, snapshot);
+            if (IsRemoteInspectionActive() && !hasAuthoritativeCollection && !hasBuildBackedCollection)
             {
                 DrawSectionHeader(sprite, "Collect");
                 DrawPlainText(
@@ -1029,10 +1041,7 @@ namespace HaCreator.MapSimulator.UI
                     0.56f);
                 return;
             }
-
-            ItemMakerProgressionSnapshot progression = GetCollectionSnapshot();
             List<(string Label, string Value)> entries = BuildCollectEntries();
-            MonsterBookSnapshot snapshot = GetMonsterBookSnapshot();
 
             DrawSectionHeader(sprite, "Collect");
             for (int i = 0; i < entries.Count; i++)
@@ -1041,12 +1050,16 @@ namespace HaCreator.MapSimulator.UI
                 DrawLabeledRow(sprite, 40 + (i * 24), label, value, ValueColor, 144);
             }
 
-            string rewardStatus = BuildCollectStatusText(progression, snapshot);
+            string rewardStatus = IsRemoteInspectionActive() && !hasAuthoritativeCollection
+                ? "Build-backed maker/book snapshot only; live remote collection payload is still unavailable."
+                : BuildCollectStatusText(progression, snapshot);
             DrawPlainText(
                 sprite,
                 FitText(rewardStatus, 220),
                 new Vector2(Position.X + 20, Position.Y + 188),
-                CanClaimCollectReward() ? SuccessColor : MutedColor,
+                IsRemoteInspectionActive() && !hasAuthoritativeCollection
+                    ? WarningColor
+                    : CanClaimCollectReward() ? SuccessColor : MutedColor,
                 0.58f);
         }
 
@@ -1054,8 +1067,10 @@ namespace HaCreator.MapSimulator.UI
         {
             CharacterBuild displayBuild = GetDisplayedBuild();
             DrawSectionHeader(sprite, "Personality");
+            bool hasAuthoritativeTraits = HasAuthoritativeTraitState(displayBuild);
+            bool hasBuildBackedTraits = HasBuildBackedTraitState(displayBuild);
 
-            if (IsRemoteInspectionActive() && !HasAuthoritativeTraitState(displayBuild))
+            if (IsRemoteInspectionActive() && !hasAuthoritativeTraits && !hasBuildBackedTraits)
             {
                 DrawPlainText(
                     sprite,
@@ -1088,6 +1103,16 @@ namespace HaCreator.MapSimulator.UI
                 (string label, int value) = traits[i];
                 Color color = value > 0 && value == topValue ? SuccessColor : ValueColor;
                 DrawLabeledRow(sprite, 44 + (i * 24), label, value.ToString(), color, 84);
+            }
+
+            if (IsRemoteInspectionActive() && !hasAuthoritativeTraits && hasBuildBackedTraits)
+            {
+                DrawPlainText(sprite,
+                    "Trait rows reflect build-backed values from the inspected avatar; live remote personality payload is still unavailable.",
+                    new Vector2(Position.X + 20, Position.Y + 198),
+                    WarningColor,
+                    0.54f);
+                return;
             }
 
             if (topValue <= 0)
@@ -2306,12 +2331,14 @@ namespace HaCreator.MapSimulator.UI
                 return "Medal: unavailable";
             }
 
+            string medalName = GetEquippedItemName(EquipSlot.Medal, displayBuild);
             if (IsRemoteInspectionActive() && !displayBuild.HasAuthoritativeProfileMedal)
             {
-                return "Medal unavailable for inspected build";
+                return !string.Equals(medalName, "-", StringComparison.Ordinal)
+                    ? $"Medal: {medalName} (build-backed)"
+                    : "Medal unavailable for inspected build";
             }
 
-            string medalName = GetEquippedItemName(EquipSlot.Medal);
             return string.Equals(medalName, "-", StringComparison.Ordinal)
                 ? IsRemoteInspectionActive()
                     ? "Medal: none equipped on inspected build"
@@ -2329,10 +2356,22 @@ namespace HaCreator.MapSimulator.UI
 
             if (IsRemoteInspectionActive() && !displayBuild.HasAuthoritativeProfilePocketSlot)
             {
+                string remotePocketName = GetEquippedItemName(EquipSlot.Pocket, displayBuild);
+                if (!string.Equals(remotePocketName, "-", StringComparison.Ordinal))
+                {
+                    return $"Pocket: {remotePocketName} (build-backed)";
+                }
+
+                int remoteCharm = Math.Max(0, displayBuild.TraitCharm);
+                if (displayBuild.IsPocketSlotAvailable || remoteCharm > 0)
+                {
+                    return $"Pocket state inferred from inspected build (Charm {remoteCharm}).";
+                }
+
                 return "Pocket availability unavailable for inspected build";
             }
 
-            string pocketName = GetEquippedItemName(EquipSlot.Pocket);
+            string pocketName = GetEquippedItemName(EquipSlot.Pocket, displayBuild);
             if (!string.Equals(pocketName, "-", StringComparison.Ordinal))
             {
                 return $"Pocket: {pocketName}";
@@ -2353,14 +2392,54 @@ namespace HaCreator.MapSimulator.UI
             return build != null && (!IsRemoteInspectionActive() || build.HasAuthoritativeProfileRide);
         }
 
+        private static bool HasBuildBackedRideState(CharacterBuild build, string mountName, string saddleName)
+        {
+            return build != null &&
+                   (build.HasMonsterRiding
+                    || !string.Equals(mountName, "-", StringComparison.Ordinal)
+                    || !string.Equals(saddleName, "-", StringComparison.Ordinal));
+        }
+
         private bool HasAuthoritativeTraitState(CharacterBuild build)
         {
             return build != null && (!IsRemoteInspectionActive() || build.HasAuthoritativeProfileTraits);
         }
 
+        private static bool HasBuildBackedTraitState(CharacterBuild build)
+        {
+            return build != null &&
+                   (build.TraitCharisma > 0
+                    || build.TraitInsight > 0
+                    || build.TraitWill > 0
+                    || build.TraitCraft > 0
+                    || build.TraitSense > 0
+                    || build.TraitCharm > 0);
+        }
+
         private bool HasAuthoritativeCollectionSummary(CharacterBuild build)
         {
             return build != null && (!IsRemoteInspectionActive() || build.HasAuthoritativeProfileCollection);
+        }
+
+        private static bool HasBuildBackedCollectionSummary(ItemMakerProgressionSnapshot progression, MonsterBookSnapshot snapshot)
+        {
+            progression ??= ItemMakerProgressionSnapshot.Default;
+            snapshot ??= new MonsterBookSnapshot();
+
+            return progression.SuccessfulCrafts > 0
+                   || progression.DiscoveredRecipeCount > 0
+                   || progression.UnlockedHiddenRecipeCount > 0
+                   || progression.GenericLevel > 1
+                   || progression.GetLevel(ItemMakerRecipeFamily.Gloves) > 1
+                   || progression.GetLevel(ItemMakerRecipeFamily.Shoes) > 1
+                   || progression.GetLevel(ItemMakerRecipeFamily.Toys) > 1
+                   || progression.GetProgress(ItemMakerRecipeFamily.Generic) > 0
+                   || progression.GetProgress(ItemMakerRecipeFamily.Gloves) > 0
+                   || progression.GetProgress(ItemMakerRecipeFamily.Shoes) > 0
+                   || progression.GetProgress(ItemMakerRecipeFamily.Toys) > 0
+                   || snapshot.TotalCardTypes > 0
+                   || snapshot.OwnedCardTypes > 0
+                   || snapshot.CompletedCardTypes > 0;
         }
 
         private void DrawEquipmentSummary(SpriteBatch sprite, EquipSlot slot, string summaryText, Point iconPosition, Point textPosition)

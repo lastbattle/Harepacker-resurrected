@@ -1384,8 +1384,10 @@ namespace HaCreator.MapSimulator.UI
             AppendRecoveryRateMetadataLines(metadataLines, infoProperty);
             AppendRandomChairEffectMetadataLines(metadataLines, infoProperty);
             AppendAdditionalExperienceMetadataLines(metadataLines, infoProperty);
+            AppendLevelBandMetadataLines(metadataLines, infoProperty);
             AppendLevelUpWarningMetadataLines(metadataLines, infoProperty);
             AppendRecipeMetadataLines(metadataLines, specProperty);
+            AppendConditionalMapMetadataLines(metadataLines, specProperty);
             AppendCashAvailabilityMetadataLines(metadataLines, infoProperty);
             AppendAdditionalInfoFlagsMetadataLines(metadataLines, infoProperty, specProperty);
         }
@@ -1658,6 +1660,35 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static void AppendLevelBandMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            int optimumLevel = GetIntOrStringValue(infoProperty["lvOptimum"]);
+            int levelRange = GetIntOrStringValue(infoProperty["lvRange"]);
+            if (optimumLevel > 0 && levelRange > 0)
+            {
+                int maximumLevel = optimumLevel + Math.Max(0, levelRange - 1);
+                metadataLines.Add(
+                    $"Effective Level Range: Lv. {optimumLevel.ToString(CultureInfo.InvariantCulture)}-{maximumLevel.ToString(CultureInfo.InvariantCulture)}");
+                return;
+            }
+
+            if (optimumLevel > 0)
+            {
+                metadataLines.Add($"Effective from Lv. {optimumLevel.ToString(CultureInfo.InvariantCulture)}");
+                return;
+            }
+
+            if (levelRange > 0)
+            {
+                metadataLines.Add($"Effective for {levelRange.ToString(CultureInfo.InvariantCulture)} level{(levelRange == 1 ? string.Empty : "s")}");
+            }
+        }
+
         private static void AppendLevelUpWarningMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
         {
             if (infoProperty?["LvUpWarning"] is not WzSubProperty warningProperty
@@ -1745,6 +1776,37 @@ namespace HaCreator.MapSimulator.UI
             if (recipeValidDays > 0)
             {
                 metadataLines.Add($"Recipe valid for {FormatDayCount(recipeValidDays)}");
+            }
+        }
+
+        private static void AppendConditionalMapMetadataLines(List<string> metadataLines, WzSubProperty specProperty)
+        {
+            if (specProperty?["con"] is not WzSubProperty conditionProperty
+                || conditionProperty.WzProperties == null)
+            {
+                return;
+            }
+
+            HashSet<string> seenLines = new(StringComparer.Ordinal);
+            foreach (WzImageProperty child in conditionProperty.WzProperties)
+            {
+                if (child is not WzSubProperty entryProperty)
+                {
+                    continue;
+                }
+
+                int startMapId = GetIntOrStringValue(entryProperty["sMap"]);
+                int endMapId = GetIntOrStringValue(entryProperty["eMap"]);
+                if (startMapId <= 0 || endMapId <= 0)
+                {
+                    continue;
+                }
+
+                string line = $"Usable In: {FormatMapRangeLabel(startMapId, endMapId)}";
+                if (seenLines.Add(line))
+                {
+                    metadataLines.Add(line);
+                }
             }
         }
 
@@ -2113,6 +2175,31 @@ namespace HaCreator.MapSimulator.UI
             return string.IsNullOrWhiteSpace(skillName)
                 ? $"Skill: #{skillId.ToString(CultureInfo.InvariantCulture)}"
                 : $"Skill: {skillName}";
+        }
+
+        private static string FormatMapRangeLabel(int startMapId, int endMapId)
+        {
+            if (startMapId == endMapId)
+            {
+                string mapName = ResolveMapName(startMapId);
+                return string.IsNullOrWhiteSpace(mapName)
+                    ? startMapId.ToString(CultureInfo.InvariantCulture)
+                    : mapName;
+            }
+
+            string startLabel = ResolveMapName(startMapId);
+            if (string.IsNullOrWhiteSpace(startLabel))
+            {
+                startLabel = startMapId.ToString(CultureInfo.InvariantCulture);
+            }
+
+            string endLabel = ResolveMapName(endMapId);
+            if (string.IsNullOrWhiteSpace(endLabel))
+            {
+                endLabel = endMapId.ToString(CultureInfo.InvariantCulture);
+            }
+
+            return $"{startLabel} - {endLabel}";
         }
 
         private static string ResolveSkillTooltipLabel(int skillId)

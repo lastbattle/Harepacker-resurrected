@@ -256,6 +256,10 @@ namespace HaCreator.MapSimulator
                 {
                     DrawCenteredPacketOwnedInitialQuizOwner(TickCount, initialQuizOwnerSnapshot);
                 }
+                if (_speedQuizOwnerRuntime.TryBuildOwnerSnapshot(TickCount, out SpeedQuizOwnerSnapshot speedQuizOwnerSnapshot))
+                {
+                    DrawCenteredPacketOwnedSpeedQuizOwner(TickCount, speedQuizOwnerSnapshot);
+                }
                 DrawPacketOwnedScriptOwnerVisuals(TickCount);
             }
 

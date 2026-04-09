@@ -19,9 +19,9 @@ namespace HaCreator.MapSimulator
         private const int InitialQuizOwnerFrameFadeAlpha = 176;
         private const int InitialQuizTimerStringPoolIdTensMinutes = 0x0F73;
         private const int InitialQuizTimerStringPoolIdOnesMinutes = 3955;
-        private const int InitialQuizQuestionLabelStringPoolId = 3958;
-        private const int InitialQuizHintLabelStringPoolId = 3959;
-        private const int InitialQuizAnswerLabelStringPoolId = 3960;
+        private const int InitialQuizHintLabelStringPoolId = 3958;
+        private const int InitialQuizAnswerLabelStringPoolId = 3959;
+        private const int InitialQuizAnswerNoticeStringPoolId = 3960;
         private const int InitialQuizTimeoutNoticeStringPoolId = 3964;
 
         private bool _initialQuizOwnerVisualsLoaded;
@@ -298,7 +298,7 @@ namespace HaCreator.MapSimulator
             Rectangle timerBounds = new(ownerBounds.X + 111, ownerBounds.Y + 33, 43, 24);
             Rectangle questionBounds = new(ownerBounds.X + 219, ownerBounds.Y + 72, 30, 24);
             DrawInitialQuizOwnerTimerDigits(timerBounds, snapshot.RemainingSeconds);
-            DrawPacketScriptNumber(questionBounds, Math.Max(0, snapshot.QuestionNumber), _packetScriptInitialQuizHeaderDigits ?? _packetScriptInitialQuizDigits, Color.White);
+            DrawPacketScriptNumber(questionBounds, Math.Max(0, snapshot.QuestionNumber), _initialQuizOwnerHeaderDigits, Color.White);
 
             DrawInitialQuizOwnerAnimationFrame(ownerBounds, currentTickCount);
 
@@ -315,40 +315,47 @@ namespace HaCreator.MapSimulator
                 0.44f,
                 maxLines: 1);
 
-            string hintLabel = MapleStoryStringPool.GetOrFallback(InitialQuizHintLabelStringPoolId, "Clue:");
-            DrawPacketScriptOwnerWrappedText(
-                hintLabel.Trim(),
-                new Rectangle(ownerBounds.X + 52, ownerBounds.Y + 130, 38, 18),
-                Color.White,
-                0.42f,
-                maxLines: 1);
-            DrawPacketScriptOwnerWrappedText(
-                snapshot.HintText,
-                new Rectangle(ownerBounds.X + 92, ownerBounds.Y + 130, 146, 18),
-                Color.White,
-                0.42f,
-                maxLines: 1);
+            if (ShouldShowInitialQuizOwnerHint(snapshot.HintText))
+            {
+                string hintLabel = MapleStoryStringPool.GetOrFallback(InitialQuizHintLabelStringPoolId, "Clue:");
+                DrawPacketScriptOwnerWrappedText(
+                    hintLabel.Trim(),
+                    new Rectangle(ownerBounds.X + 52, ownerBounds.Y + 130, 38, 18),
+                    Color.White,
+                    0.42f,
+                    maxLines: 1);
+                DrawPacketScriptOwnerWrappedText(
+                    snapshot.HintText,
+                    new Rectangle(ownerBounds.X + 92, ownerBounds.Y + 130, 146, 18),
+                    Color.White,
+                    0.42f,
+                    maxLines: 1);
+            }
+
+            bool showInput = ShouldShowInitialQuizOwnerInput(snapshot.RemainingMs);
+            if (showInput)
+            {
+                DrawInitialQuizOwnerInputField(inputBounds, currentTickCount);
+            }
 
             DrawPacketScriptOwnerWrappedText(
-                MapleStoryStringPool.GetOrFallback(InitialQuizQuestionLabelStringPoolId, "Question:"),
-                new Rectangle(ownerBounds.X + 18, ownerBounds.Y + 68, 90, 18),
-                new Color(117, 69, 27),
-                0.40f,
-                maxLines: 1);
-
-            DrawInitialQuizOwnerInputField(inputBounds, snapshot.RemainingMs > 0, currentTickCount);
-
-            string footerText = snapshot.RemainingMs > 0
-                ? MapleStoryStringPool.GetOrFallback(InitialQuizTimeoutNoticeStringPoolId, "Enter an answer within the time limit.")
-                : "Time is over.";
-            DrawPacketScriptOwnerWrappedText(
-                footerText,
+                MapleStoryStringPool.GetOrFallback(InitialQuizAnswerNoticeStringPoolId, "Enter your answer."),
                 new Rectangle(ownerBounds.X + 38, ownerBounds.Y + 202, 190, 18),
                 new Color(255, 80, 80),
                 0.39f,
                 maxLines: 1);
 
-            Texture2D okButtonTexture = ResolveInitialQuizOwnerOkButtonTexture(snapshot.RemainingMs > 0);
+            if (!showInput)
+            {
+                DrawPacketScriptOwnerWrappedText(
+                    MapleStoryStringPool.GetOrFallback(InitialQuizTimeoutNoticeStringPoolId, "Time is over."),
+                    new Rectangle(ownerBounds.X + 119, ownerBounds.Y + 158, 120, 18),
+                    new Color(255, 80, 80),
+                    0.39f,
+                    maxLines: 1);
+            }
+
+            Texture2D okButtonTexture = ResolveInitialQuizOwnerOkButtonTexture(showInput);
             if (okButtonTexture != null)
             {
                 _spriteBatch.Draw(okButtonTexture, okButtonBounds, Color.White);
@@ -360,17 +367,17 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private void DrawInitialQuizOwnerInputField(Rectangle inputBounds, bool enabled, int currentTickCount)
+        private void DrawInitialQuizOwnerInputField(Rectangle inputBounds, int currentTickCount)
         {
-            Color fillColor = enabled ? new Color(255, 255, 255, 212) : new Color(170, 170, 170, 180);
-            Color borderColor = enabled ? new Color(113, 78, 48) : new Color(84, 84, 84);
+            Color fillColor = new Color(255, 255, 255, 212);
+            Color borderColor = new Color(113, 78, 48);
             DrawPacketScriptOwnerFrame(inputBounds, fillColor, borderColor);
 
-            string answerLabel = MapleStoryStringPool.GetOrFallback(InitialQuizAnswerLabelStringPoolId, "[Enter Answer]");
+            string answerLabel = MapleStoryStringPool.GetOrFallback(InitialQuizAnswerLabelStringPoolId, "Answer:");
             DrawPacketScriptOwnerWrappedText(
                 answerLabel,
                 new Rectangle(inputBounds.X - 64, inputBounds.Y, 60, inputBounds.Height),
-                new Color(95, 61, 35),
+                Color.White,
                 0.37f,
                 maxLines: 1);
 
@@ -381,7 +388,7 @@ namespace HaCreator.MapSimulator
             Vector2 drawPosition = new(inputBounds.X + 4, inputBounds.Y - 1);
             _spriteBatch.DrawString(_fontChat, displayText, drawPosition, textColor, 0f, Vector2.Zero, 0.38f, SpriteEffects.None, 0f);
 
-            if (!enabled || showPlaceholder)
+            if (showPlaceholder)
             {
                 return;
             }
@@ -430,10 +437,10 @@ namespace HaCreator.MapSimulator
             int seconds = Math.Max(0, remainingSeconds) % 60;
             string minuteText = $"{minutes:D2}";
             string secondText = $"{seconds:D2}";
-            DrawPacketScriptNumber(new Rectangle(bounds.X, bounds.Y, 21, bounds.Height), minuteText[0].ToString(), _packetScriptInitialQuizDigits, Color.White, centerHorizontally: false);
-            DrawPacketScriptNumber(new Rectangle(bounds.X + 21, bounds.Y, 21, bounds.Height), minuteText[1].ToString(), _packetScriptInitialQuizDigits, Color.White, centerHorizontally: false);
-            DrawPacketScriptNumber(new Rectangle(bounds.X + 43, bounds.Y, 21, bounds.Height), secondText[0].ToString(), _packetScriptInitialQuizDigits, Color.White, centerHorizontally: false);
-            DrawPacketScriptNumber(new Rectangle(bounds.X + 64, bounds.Y, 21, bounds.Height), secondText[1].ToString(), _packetScriptInitialQuizDigits, Color.White, centerHorizontally: false);
+            DrawPacketScriptNumber(new Rectangle(bounds.X, bounds.Y, 21, bounds.Height), minuteText[0].ToString(), _initialQuizOwnerDigits, Color.White, centerHorizontally: false);
+            DrawPacketScriptNumber(new Rectangle(bounds.X + 21, bounds.Y, 21, bounds.Height), minuteText[1].ToString(), _initialQuizOwnerDigits, Color.White, centerHorizontally: false);
+            DrawPacketScriptNumber(new Rectangle(bounds.X + 43, bounds.Y, 21, bounds.Height), secondText[0].ToString(), _initialQuizOwnerDigits, Color.White, centerHorizontally: false);
+            DrawPacketScriptNumber(new Rectangle(bounds.X + 64, bounds.Y, 21, bounds.Height), secondText[1].ToString(), _initialQuizOwnerDigits, Color.White, centerHorizontally: false);
         }
 
         private Texture2D ResolveInitialQuizOwnerOkButtonTexture(bool enabled)
@@ -580,6 +587,16 @@ namespace HaCreator.MapSimulator
                     .FirstOrDefault(property => string.Equals(property.Name, stateName, StringComparison.OrdinalIgnoreCase))
                     ?.WzProperties.OfType<WzCanvasProperty>()
                     .FirstOrDefault();
+        }
+
+        internal static bool ShouldShowInitialQuizOwnerHint(string hintText)
+        {
+            return !string.IsNullOrWhiteSpace(hintText);
+        }
+
+        internal static bool ShouldShowInitialQuizOwnerInput(int remainingMs)
+        {
+            return remainingMs > 0;
         }
 
         private static char? TryMapInitialQuizOwnerChar(Keys key, bool shiftPressed)

@@ -7768,10 +7768,30 @@ namespace HaCreator.MapSimulator.Loaders
             // and positions the animated layer at x=128, y=161 before NavigateUrl.
             WzImage uiWindowImage = Program.FindImage("UI", "UIWindow.img");
             WzSubProperty rankingLegacyProperty = uiWindowImage?["Ranking"] as WzSubProperty;
-            Texture2D[] loadingFrames = LoadIndexedCanvasTextureList(rankingLegacyProperty?["Loading"] as WzSubProperty, device)
-                .Where(frame => frame != null)
-                .ToArray();
-            if (loadingFrames.Length > 0)
+            List<RankingWindow.LoadingFrame> loadingFrames = new();
+            if (rankingLegacyProperty?["Loading"] is WzSubProperty loadingProperty)
+            {
+                foreach (WzImageProperty child in loadingProperty.WzProperties
+                    .Where(candidate => int.TryParse(candidate.Name, out _))
+                    .OrderBy(candidate => int.Parse(candidate.Name, CultureInfo.InvariantCulture)))
+                {
+                    if (child is not WzCanvasProperty frameCanvas)
+                    {
+                        continue;
+                    }
+
+                    Texture2D texture = frameCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+                    if (texture == null)
+                    {
+                        continue;
+                    }
+
+                    int delayMs = InfoTool.GetInt(frameCanvas["delay"], 120);
+                    loadingFrames.Add(new RankingWindow.LoadingFrame(texture, delayMs));
+                }
+            }
+
+            if (loadingFrames.Count > 0)
             {
                 window.SetLoadingFrames(loadingFrames, new Point(128, 161));
             }
@@ -8409,6 +8429,9 @@ namespace HaCreator.MapSimulator.Loaders
                     for (int rank = 1; rank <= 4; rank++)
                     {
                         backgrounds[rank] = fallbackFrame;
+                        // The recovered CUIRandomMesoBag control/text coordinates still apply even when the
+                        // authored rank art is missing and the simulator has to fall back to the notice frame.
+                        authoredLayoutByRank[rank] = true;
                     }
                 }
             }

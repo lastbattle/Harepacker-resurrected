@@ -73,8 +73,17 @@ namespace HaCreator.MapSimulator.Managers
         private const int PacketTypeUserEnterField = 179;
         private const int PacketTypeUserLeaveField = 180;
         private const int PacketTypeUserMove = 210;
+        private const int PacketTypeMeleeAttack1 = 211;
+        private const int PacketTypeMeleeAttack2 = 212;
+        private const int PacketTypeMeleeAttack3 = 213;
+        private const int PacketTypeMeleeAttack4 = 214;
+        private const int PacketTypeSkillPrepare = 215;
+        private const int PacketTypeSkillCancel = 217;
+        private const int PacketTypeSetActiveEffectItem = 220;
         private const int PacketTypeSetActivePortableChair = 222;
         private const int PacketTypeAvatarModified = 223;
+        private const int PacketTypeTemporaryStatSet = 225;
+        private const int PacketTypeTemporaryStatReset = 226;
         private const int PacketTypeShowResult = 171;
         private const int PacketTypeUserScore = 354;
 
@@ -346,8 +355,17 @@ namespace HaCreator.MapSimulator.Managers
                 "179" or "userenter" or "spawn" => AssignPacketType(PacketTypeUserEnterField, out packetType),
                 "180" or "userleave" or "despawn" => AssignPacketType(PacketTypeUserLeaveField, out packetType),
                 "210" or "usermove" or "move" => AssignPacketType(PacketTypeUserMove, out packetType),
+                "211" or "melee1" => AssignPacketType(PacketTypeMeleeAttack1, out packetType),
+                "212" or "melee2" => AssignPacketType(PacketTypeMeleeAttack2, out packetType),
+                "213" or "melee3" => AssignPacketType(PacketTypeMeleeAttack3, out packetType),
+                "214" or "melee4" or "melee" or "attack" => AssignPacketType(PacketTypeMeleeAttack4, out packetType),
+                "215" or "prepare" or "skillprepare" => AssignPacketType(PacketTypeSkillPrepare, out packetType),
+                "217" or "prepareclear" or "preparedclear" or "skillcancel" => AssignPacketType(PacketTypeSkillCancel, out packetType),
+                "220" or "activeeffect" or "activeeffectitem" or "setactiveeffectitem" => AssignPacketType(PacketTypeSetActiveEffectItem, out packetType),
                 "222" or "chair" or "setchair" => AssignPacketType(PacketTypeSetActivePortableChair, out packetType),
                 "223" or "avatarmod" or "avatarmodified" or "look" => AssignPacketType(PacketTypeAvatarModified, out packetType),
+                "225" or "tempset" or "tempstatset" or "temporarystatset" => AssignPacketType(PacketTypeTemporaryStatSet, out packetType),
+                "226" or "tempreset" or "tempstatreset" or "temporarystatreset" => AssignPacketType(PacketTypeTemporaryStatReset, out packetType),
                 "354" or "userscore" or "score" => AssignPacketType(PacketTypeUserScore, out packetType),
                 _ => int.TryParse(normalized, out packetType)
             };
@@ -367,8 +385,17 @@ namespace HaCreator.MapSimulator.Managers
                 PacketTypeUserEnterField => "userenter (179)",
                 PacketTypeUserLeaveField => "userleave (180)",
                 PacketTypeUserMove => "usermove (210)",
+                PacketTypeMeleeAttack1 => "melee1 (211)",
+                PacketTypeMeleeAttack2 => "melee2 (212)",
+                PacketTypeMeleeAttack3 => "melee3 (213)",
+                PacketTypeMeleeAttack4 => "melee4 (214)",
+                PacketTypeSkillPrepare => "skillprepare (215)",
+                PacketTypeSkillCancel => "skillcancel (217)",
+                PacketTypeSetActiveEffectItem => "setactiveeffectitem (220)",
                 PacketTypeSetActivePortableChair => "chair (222)",
                 PacketTypeAvatarModified => "avatarmodified (223)",
+                PacketTypeTemporaryStatSet => "tempstatset (225)",
+                PacketTypeTemporaryStatReset => "tempstatreset (226)",
                 PacketTypeUserScore => "userscore (354)",
                 _ => packetType.ToString()
             };

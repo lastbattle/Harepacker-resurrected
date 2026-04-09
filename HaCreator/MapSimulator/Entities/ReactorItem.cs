@@ -71,11 +71,14 @@ namespace HaCreator.MapSimulator.Entities
         private readonly Dictionary<int, IDXObject[]> _stateFrames;
         private readonly Dictionary<int, int> _stateHitDurations;
         private readonly Dictionary<(int State, int ProperEventIndex), int> _stateIndexedHitDurations;
+        private readonly Dictionary<int, IDXObject[]> _stateHitFrames;
+        private readonly Dictionary<(int State, int ProperEventIndex), IDXObject[]> _stateIndexedHitFrames;
         private readonly Dictionary<int, bool> _stateRepeatModes;
         private readonly Dictionary<int, AuthoredStateTransition[]> _stateTransitions;
         private readonly HashSet<int> _authoredStates;
         private readonly int[] _availableStates;
         private readonly int _rootHitDuration;
+        private readonly IDXObject[] _rootHitFrames;
         private readonly int _templateLayerMode;
         private readonly bool _templateMoveEnabled;
         private readonly int _originWorldX;
@@ -83,6 +86,9 @@ namespace HaCreator.MapSimulator.Entities
         private int _activeState;
         private int _activeFrameIndex;
         private int _lastStateTick;
+        private IDXObject[] _transientFrames;
+        private int _transientFrameIndex;
+        private int _lastTransientTick;
 
         public ReactorInstance ReactorInstance
         {
@@ -99,28 +105,39 @@ namespace HaCreator.MapSimulator.Entities
             _stateFrames = new Dictionary<int, IDXObject[]>();
             _stateHitDurations = new Dictionary<int, int>();
             _stateIndexedHitDurations = new Dictionary<(int State, int ProperEventIndex), int>();
+            _stateHitFrames = new Dictionary<int, IDXObject[]>();
+            _stateIndexedHitFrames = new Dictionary<(int State, int ProperEventIndex), IDXObject[]>();
             _stateRepeatModes = new Dictionary<int, bool>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
             _authoredStates = new HashSet<int>();
             _availableStates = Array.Empty<int>();
             _rootHitDuration = 0;
+            _rootHitFrames = Array.Empty<IDXObject>();
             _templateLayerMode = 0;
             _templateMoveEnabled = false;
             _originWorldX = reactorInstance?.X ?? 0;
             _originWorldY = reactorInstance?.Y ?? 0;
         }
 
-        public ReactorItem(ReactorInstance reactorInstance, Dictionary<int, List<IDXObject>> stateFrames)
+        public ReactorItem(
+            ReactorInstance reactorInstance,
+            Dictionary<int, List<IDXObject>> stateFrames,
+            Dictionary<int, List<IDXObject>> stateHitFrames = null,
+            Dictionary<(int State, int ProperEventIndex), List<IDXObject>> stateIndexedHitFrames = null,
+            List<IDXObject> rootHitFrames = null)
             : base(GetDefaultFrames(stateFrames), reactorInstance.Flip)
         {
             _reactorInstance = reactorInstance;
             _stateFrames = new Dictionary<int, IDXObject[]>();
             _stateHitDurations = LoadStateHitDurations(reactorInstance);
             _stateIndexedHitDurations = LoadStateIndexedHitDurations(reactorInstance);
+            _stateHitFrames = ToFrameArrayDictionary(stateHitFrames);
+            _stateIndexedHitFrames = ToFrameArrayDictionary(stateIndexedHitFrames);
             _stateRepeatModes = LoadStateRepeatModes(reactorInstance);
             _stateTransitions = LoadStateTransitions(reactorInstance);
             _authoredStates = LoadAuthoredStates(reactorInstance);
             _rootHitDuration = LoadRootHitDuration(reactorInstance);
+            _rootHitFrames = rootHitFrames?.Count > 0 ? rootHitFrames.ToArray() : Array.Empty<IDXObject>();
             _templateLayerMode = LoadTemplateLayerMode(reactorInstance);
             _templateMoveEnabled = LoadTemplateMoveEnabled(reactorInstance);
             _originWorldX = reactorInstance?.X ?? 0;
@@ -148,11 +165,14 @@ namespace HaCreator.MapSimulator.Entities
             _stateFrames = new Dictionary<int, IDXObject[]>();
             _stateHitDurations = new Dictionary<int, int>();
             _stateIndexedHitDurations = new Dictionary<(int State, int ProperEventIndex), int>();
+            _stateHitFrames = new Dictionary<int, IDXObject[]>();
+            _stateIndexedHitFrames = new Dictionary<(int State, int ProperEventIndex), IDXObject[]>();
             _stateRepeatModes = new Dictionary<int, bool>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
             _authoredStates = new HashSet<int>();
             _availableStates = Array.Empty<int>();
             _rootHitDuration = 0;
+            _rootHitFrames = Array.Empty<IDXObject>();
             _templateLayerMode = 0;
             _templateMoveEnabled = false;
             _originWorldX = reactorInstance?.X ?? 0;
@@ -171,6 +191,7 @@ namespace HaCreator.MapSimulator.Entities
             if (resolvedState == _activeState && !restartIfSameState)
                 return;
 
+            ClearTransientAnimation();
             _activeState = resolvedState;
             _activeFrameIndex = 0;
             _lastStateTick = tickCount;
@@ -369,13 +390,14 @@ namespace HaCreator.MapSimulator.Entities
 
         public int GetRemainingAnimationDuration(int tickCount)
         {
-            if (!_stateFrames.TryGetValue(_activeState, out IDXObject[] frames) || frames.Length == 0)
+            IDXObject[] frames = GetActiveFrameSet();
+            if (frames == null || frames.Length == 0)
             {
                 return 0;
             }
 
             GetStateFrame(tickCount, out int frameIndex);
-            int elapsedWithinFrame = Math.Max(0, tickCount - _lastStateTick);
+            int elapsedWithinFrame = Math.Max(0, tickCount - (_transientFrames != null ? _lastTransientTick : _lastStateTick));
             int remainingDuration = Math.Max(0, Math.Max(1, frames[frameIndex].Delay) - elapsedWithinFrame);
 
             for (int i = frameIndex + 1; i < frames.Length; i++)
@@ -403,6 +425,30 @@ namespace HaCreator.MapSimulator.Entities
 
             duration = 0;
             return false;
+        }
+
+        public bool TryStartHitAnimation(int state, int properEventIndex, int tickCount, out int duration)
+        {
+            if (!TryResolveHitAnimation(state, properEventIndex, out IDXObject[] frames, out duration))
+            {
+                return false;
+            }
+
+            if (frames != null && frames.Length > 0)
+            {
+                _transientFrames = frames;
+                _transientFrameIndex = 0;
+                _lastTransientTick = tickCount;
+            }
+
+            return duration > 0;
+        }
+
+        public void ClearTransientAnimation()
+        {
+            _transientFrames = null;
+            _transientFrameIndex = 0;
+            _lastTransientTick = 0;
         }
 
         public bool IsStateRepeat(int state)
@@ -435,32 +481,47 @@ namespace HaCreator.MapSimulator.Entities
 
         private bool TryResolveHitAnimationDuration(int state, int properEventIndex, out int duration)
         {
+            return TryResolveHitAnimation(state, properEventIndex, out _, out duration);
+        }
+
+        private bool TryResolveHitAnimation(int state, int properEventIndex, out IDXObject[] frames, out int duration)
+        {
             if (properEventIndex < 0)
             {
                 if (HasAuthoredState(state))
                 {
+                    frames = ResolveStateFrames(state);
                     duration = GetExactStateDuration(state);
                     return duration > 0;
                 }
 
+                frames = _rootHitFrames;
                 return TryGetRootHitAnimationDuration(out duration);
             }
 
             if (!HasAuthoredState(state) || !HasAuthoredEventIndex(state, properEventIndex))
             {
+                frames = _rootHitFrames;
                 return TryGetRootHitAnimationDuration(out duration);
             }
 
             if (_stateIndexedHitDurations.TryGetValue((state, properEventIndex), out duration) && duration > 0)
             {
+                frames = _stateIndexedHitFrames.TryGetValue((state, properEventIndex), out IDXObject[] indexedFrames)
+                    ? indexedFrames
+                    : Array.Empty<IDXObject>();
                 return true;
             }
 
             if (_stateHitDurations.TryGetValue(state, out duration) && duration > 0)
             {
+                frames = _stateHitFrames.TryGetValue(state, out IDXObject[] stateHitFrames)
+                    ? stateHitFrames
+                    : Array.Empty<IDXObject>();
                 return true;
             }
 
+            frames = _rootHitFrames;
             return TryGetRootHitAnimationDuration(out duration);
         }
 
@@ -551,43 +612,98 @@ namespace HaCreator.MapSimulator.Entities
 
         private IDXObject GetStateFrame(int tickCount, out int frameIndex)
         {
-            if (!_stateFrames.TryGetValue(_activeState, out IDXObject[] frames) || frames.Length == 0)
+            if (_transientFrames != null && _transientFrames.Length > 0)
             {
-                if (!_stateFrames.TryGetValue(0, out frames) || frames.Length == 0)
-                {
-                    frameIndex = 0;
-                    return null;
-                }
+                return GetAnimationFrame(
+                    _transientFrames,
+                    ref _transientFrameIndex,
+                    ref _lastTransientTick,
+                    repeat: false,
+                    tickCount,
+                    out frameIndex);
             }
 
-            if (_activeFrameIndex >= frames.Length)
-                _activeFrameIndex = 0;
+            IDXObject[] frames = ResolveStateFrames(_activeState);
+            if (frames == null || frames.Length == 0)
+            {
+                frameIndex = 0;
+                return null;
+            }
+
+            return GetAnimationFrame(
+                frames,
+                ref _activeFrameIndex,
+                ref _lastStateTick,
+                IsStateRepeat(_activeState),
+                tickCount,
+                out frameIndex);
+        }
+
+        private IDXObject[] GetActiveFrameSet()
+        {
+            return _transientFrames != null && _transientFrames.Length > 0
+                ? _transientFrames
+                : ResolveStateFrames(_activeState);
+        }
+
+        private IDXObject[] ResolveStateFrames(int state)
+        {
+            int resolvedState = ResolveState(state);
+            if (_stateFrames.TryGetValue(resolvedState, out IDXObject[] frames) && frames.Length > 0)
+            {
+                return frames;
+            }
+
+            return _stateFrames.TryGetValue(0, out IDXObject[] fallbackFrames) && fallbackFrames.Length > 0
+                ? fallbackFrames
+                : null;
+        }
+
+        private static IDXObject GetAnimationFrame(
+            IDXObject[] frames,
+            ref int activeFrameIndex,
+            ref int lastFrameTick,
+            bool repeat,
+            int tickCount,
+            out int frameIndex)
+        {
+            if (frames == null || frames.Length == 0)
+            {
+                frameIndex = 0;
+                return null;
+            }
+
+            if (activeFrameIndex >= frames.Length)
+            {
+                activeFrameIndex = 0;
+            }
 
             if (frames.Length > 1)
             {
-                int elapsed = tickCount - _lastStateTick;
-                bool repeat = IsStateRepeat(_activeState);
+                int elapsed = tickCount - lastFrameTick;
                 while (elapsed > 0)
                 {
-                    int currentDelay = Math.Max(1, frames[_activeFrameIndex].Delay);
+                    int currentDelay = Math.Max(1, frames[activeFrameIndex].Delay);
                     if (elapsed < currentDelay)
-                        break;
-
-                    elapsed -= currentDelay;
-                    if (!repeat && _activeFrameIndex >= frames.Length - 1)
                     {
-                        _lastStateTick = tickCount - elapsed;
-                        _activeFrameIndex = frames.Length - 1;
                         break;
                     }
 
-                    _activeFrameIndex = (_activeFrameIndex + 1) % frames.Length;
-                    _lastStateTick += currentDelay;
+                    elapsed -= currentDelay;
+                    if (!repeat && activeFrameIndex >= frames.Length - 1)
+                    {
+                        lastFrameTick = tickCount - elapsed;
+                        activeFrameIndex = frames.Length - 1;
+                        break;
+                    }
+
+                    activeFrameIndex = (activeFrameIndex + 1) % frames.Length;
+                    lastFrameTick += currentDelay;
                 }
             }
 
-            frameIndex = _activeFrameIndex;
-            return frames[_activeFrameIndex];
+            frameIndex = activeFrameIndex;
+            return frames[activeFrameIndex];
         }
 
         private int ResolveState(int state)
@@ -611,6 +727,25 @@ namespace HaCreator.MapSimulator.Entities
                 return 0;
 
             return _stateFrames.ContainsKey(0) ? 0 : _availableStates[0];
+        }
+
+        private static Dictionary<TKey, IDXObject[]> ToFrameArrayDictionary<TKey>(Dictionary<TKey, List<IDXObject>> framesByKey)
+        {
+            Dictionary<TKey, IDXObject[]> result = new Dictionary<TKey, IDXObject[]>();
+            if (framesByKey == null)
+            {
+                return result;
+            }
+
+            foreach (KeyValuePair<TKey, List<IDXObject>> kvp in framesByKey)
+            {
+                if (kvp.Value != null && kvp.Value.Count > 0)
+                {
+                    result[kvp.Key] = kvp.Value.ToArray();
+                }
+            }
+
+            return result;
         }
 
         private int[] GetAuthoredCandidates(int resolvedState, ReactorTransitionRequest request)

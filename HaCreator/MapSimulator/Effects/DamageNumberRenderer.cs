@@ -86,6 +86,8 @@ namespace HaCreator.MapSimulator.Effects
         /// Mirrors Effect_HP building a temporary canvas before scheduling animation.
         /// </summary>
         internal DamageNumberRenderer.PreparedDamageNumberVisual PreparedVisual { get; set; }
+        internal DamageNumberRenderer.PreparedDamageNumberLayer LayerState { get; set; }
+        internal Texture2D CompositeCanvasTexture { get; set; }
 
         /// <summary>
         /// Current alpha value (0.0 to 1.0)
@@ -168,6 +170,16 @@ namespace HaCreator.MapSimulator.Effects
         internal readonly record struct PreparedDigitDrawInfo(int Digit, bool UseLargeDigitSet, int DrawOffsetX, int DrawOffsetY);
         internal readonly record struct PreparedSpriteDrawInfo(string SpriteName, int DrawOffsetX, int DrawOffsetY);
         internal readonly record struct CompositeCanvasPlacement(int Left, int Top, int Width, int Height);
+        internal readonly record struct DamageNumberAnimationTimeline(
+            int HoldDurationMs,
+            int FadeDurationMs,
+            int TotalLifetimeMs,
+            int CriticalDelayMs,
+            int RiseDistancePx);
+        internal sealed record PreparedDamageNumberLayer(
+            int CanvasWidth,
+            int CanvasHeight,
+            DamageNumberAnimationTimeline Timeline);
         internal sealed record PreparedDamageNumberVisual(
             string DamageString,
             int CanvasWidth,
@@ -253,10 +265,14 @@ namespace HaCreator.MapSimulator.Effects
             dmgNumber.ComboIndex = comboIndex;
             dmgNumber.ElapsedMs = 0f; // Reset for pooled objects
             dmgNumber.PreparedVisual = null;
+            dmgNumber.LayerState = null;
+            ReleaseCompositeCanvas(dmgNumber);
 
             if (HasWzSprites)
             {
                 dmgNumber.PreparedVisual = PrepareVisual(dmgNumber);
+                dmgNumber.LayerState = PrepareLayer(dmgNumber.PreparedVisual);
+                dmgNumber.CompositeCanvasTexture = CreateCompositeCanvasTexture(dmgNumber.PreparedVisual, colorType, useCriticalPresentation);
             }
 
             _activeNumbers.Add(dmgNumber);
@@ -310,6 +326,7 @@ namespace HaCreator.MapSimulator.Effects
                 if (dmgNumber.IsComplete)
                 {
                     _activeNumbers.RemoveAt(i);
+                    ReleaseCompositeCanvas(dmgNumber);
                     _pool.Enqueue(dmgNumber);
                 }
             }
@@ -369,15 +386,29 @@ namespace HaCreator.MapSimulator.Effects
 
             PreparedDamageNumberVisual visual = dmgNumber.PreparedVisual ?? PrepareVisual(dmgNumber);
             dmgNumber.PreparedVisual = visual;
+            dmgNumber.LayerState ??= PrepareLayer(visual);
             float alpha = dmgNumber.Alpha;
             Color color = Color.White * alpha;
+
+            int compositeCanvasWidth = dmgNumber.LayerState?.CanvasWidth ?? visual.CanvasWidth;
+            if (dmgNumber.CompositeCanvasTexture != null && compositeCanvasWidth <= 0)
+            {
+                compositeCanvasWidth = dmgNumber.CompositeCanvasTexture.Width;
+            }
 
             CompositeCanvasPlacement placement = ResolveCompositeCanvasPlacement(
                 screenX,
                 screenY,
-                visual.CanvasWidth);
+                compositeCanvasWidth);
 
-            if (visual.MissSprite is PreparedSpriteDrawInfo missSprite
+            if (dmgNumber.CompositeCanvasTexture != null)
+            {
+                spriteBatch.Draw(
+                    dmgNumber.CompositeCanvasTexture,
+                    new Vector2(placement.Left, placement.Top),
+                    color);
+            }
+            else if (visual.MissSprite is PreparedSpriteDrawInfo missSprite
                 && smallDigitSet.SpecialTextures.TryGetValue(missSprite.SpriteName, out var missTexture))
             {
                 spriteBatch.Draw(
@@ -395,6 +426,11 @@ namespace HaCreator.MapSimulator.Effects
                     largeDigitSet.CriticalEffectTexture,
                     new Vector2(placement.Left + criticalSprite.DrawOffsetX, placement.Top + criticalSprite.DrawOffsetY),
                     color);
+            }
+
+            if (dmgNumber.CompositeCanvasTexture != null)
+            {
+                return;
             }
 
             foreach (PreparedDigitDrawInfo entry in visual.Digits)
@@ -569,6 +605,24 @@ namespace HaCreator.MapSimulator.Effects
             return DamageNumberConstants.COMPOSITE_CANVAS_HEIGHT_PX;
         }
 
+        internal static DamageNumberAnimationTimeline ResolveAnimationTimeline()
+        {
+            return new DamageNumberAnimationTimeline(
+                DamageNumberConstants.DISPLAY_DURATION_MS,
+                DamageNumberConstants.FADE_DURATION_MS,
+                DamageNumberConstants.TOTAL_LIFETIME_MS,
+                DamageNumberConstants.CRITICAL_EFFECT_DELAY_MS,
+                (int)DamageNumberConstants.RISE_DISTANCE_PX);
+        }
+
+        internal static PreparedDamageNumberLayer PrepareLayer(PreparedDamageNumberVisual visual)
+        {
+            return new PreparedDamageNumberLayer(
+                visual.CanvasWidth,
+                visual.CanvasHeight,
+                ResolveAnimationTimeline());
+        }
+
         internal static CompositeCanvasPlacement ResolveCompositeCanvasPlacement(
             int centerX,
             int centerTop,
@@ -625,6 +679,92 @@ namespace HaCreator.MapSimulator.Effects
             return ResolveAnyLoadedDigitSet(setName, "NoRed0");
         }
 
+        private Texture2D CreateCompositeCanvasTexture(
+            PreparedDamageNumberVisual visual,
+            DamageColorType colorType,
+            bool isCritical)
+        {
+            if (_device == null || visual == null)
+                return null;
+
+            DamageNumberDigitSet largeDigitSet = ResolveLargeDigitSet(colorType, isCritical);
+            DamageNumberDigitSet smallDigitSet = ResolveSmallDigitSet(colorType, isCritical);
+            if (largeDigitSet == null || smallDigitSet == null)
+                return null;
+
+            int canvasWidth = visual.CanvasWidth;
+            int canvasHeight = visual.CanvasHeight;
+
+            if (visual.MissSprite is PreparedSpriteDrawInfo missSprite
+                && smallDigitSet.SpecialTextures.TryGetValue(missSprite.SpriteName, out Texture2D missTexture))
+            {
+                canvasWidth = Math.Max(canvasWidth, missTexture.Width);
+                canvasHeight = Math.Max(canvasHeight, missTexture.Height);
+            }
+
+            if (canvasWidth <= 0 || canvasHeight <= 0)
+                return null;
+
+            RenderTarget2D renderTarget = new RenderTarget2D(
+                _device,
+                canvasWidth,
+                canvasHeight,
+                false,
+                SurfaceFormat.Color,
+                DepthFormat.None);
+
+            _device.SetRenderTarget(renderTarget);
+            _device.Clear(Color.Transparent);
+
+            using (SpriteBatch compositeBatch = new SpriteBatch(_device))
+            {
+                compositeBatch.Begin(
+                    SpriteSortMode.Deferred,
+                    BlendState.AlphaBlend,
+                    SamplerState.PointClamp,
+                    DepthStencilState.None,
+                    RasterizerState.CullNone);
+
+                if (visual.MissSprite is PreparedSpriteDrawInfo preparedMiss
+                    && smallDigitSet.SpecialTextures.TryGetValue(preparedMiss.SpriteName, out missTexture))
+                {
+                    compositeBatch.Draw(
+                        missTexture,
+                        new Vector2(preparedMiss.DrawOffsetX, preparedMiss.DrawOffsetY),
+                        Color.White);
+                }
+                else
+                {
+                    foreach (PreparedDigitDrawInfo entry in visual.Digits)
+                    {
+                        DamageNumberDigitSet digitSet = entry.UseLargeDigitSet ? largeDigitSet : smallDigitSet;
+                        Texture2D digitTexture = digitSet.Digits[entry.Digit];
+                        if (digitTexture == null)
+                            continue;
+
+                        compositeBatch.Draw(
+                            digitTexture,
+                            new Vector2(entry.DrawOffsetX, entry.DrawOffsetY),
+                            Color.White);
+                    }
+                }
+
+                compositeBatch.End();
+            }
+
+            _device.SetRenderTarget(null);
+            return renderTarget;
+        }
+
+        private static void ReleaseCompositeCanvas(WzDamageNumber dmgNumber)
+        {
+            if (dmgNumber?.CompositeCanvasTexture == null)
+                return;
+
+            dmgNumber.CompositeCanvasTexture.Dispose();
+            dmgNumber.CompositeCanvasTexture = null;
+        }
+
         /// <summary>
         /// Draw a damage number using fallback SpriteFont.
         /// </summary>
@@ -670,6 +810,7 @@ namespace HaCreator.MapSimulator.Effects
         {
             foreach (var dmgNumber in _activeNumbers)
             {
+                ReleaseCompositeCanvas(dmgNumber);
                 _pool.Enqueue(dmgNumber);
             }
             _activeNumbers.Clear();

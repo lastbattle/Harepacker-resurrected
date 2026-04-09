@@ -24,10 +24,22 @@ namespace HaCreator.MapSimulator.UI
             public Point Offset { get; }
         }
 
+        internal readonly struct LoadingFrame
+        {
+            public LoadingFrame(Texture2D texture, int delayMs)
+            {
+                Texture = texture;
+                DelayMs = Math.Max(1, delayMs);
+            }
+
+            public Texture2D Texture { get; }
+            public int DelayMs { get; }
+        }
+
         private readonly List<PageLayer> _layers = new();
         private readonly Texture2D _highlightTexture;
         private readonly string _windowName;
-        private IReadOnlyList<Texture2D> _loadingFrames = Array.Empty<Texture2D>();
+        private IReadOnlyList<LoadingFrame> _loadingFrames = Array.Empty<LoadingFrame>();
         private Point _loadingLayerOffset;
         private Func<RankingWindowSnapshot> _snapshotProvider;
         private RankingWindowSnapshot _currentSnapshot = new();
@@ -56,9 +68,9 @@ namespace HaCreator.MapSimulator.UI
             _currentSnapshot = RefreshSnapshot();
         }
 
-        public void SetLoadingFrames(IReadOnlyList<Texture2D> loadingFrames, Point offset)
+        public void SetLoadingFrames(IReadOnlyList<LoadingFrame> loadingFrames, Point offset)
         {
-            _loadingFrames = loadingFrames ?? Array.Empty<Texture2D>();
+            _loadingFrames = loadingFrames ?? Array.Empty<LoadingFrame>();
             _loadingLayerOffset = offset;
         }
 
@@ -102,7 +114,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            RankingWindowSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
+            RankingWindowSnapshot snapshot = RefreshSnapshot();
             DrawWindowText(sprite, snapshot.Title, new Vector2(Position.X + 18, Position.Y + 16), Color.White);
             float contentWidth = Math.Max(220f, (CurrentFrame?.Width ?? 303) - 36f);
             DrawWrappedText(sprite, snapshot.Subtitle, Position.X + 18, Position.Y + 38, contentWidth, new Color(220, 220, 220), maxLines: 2);
@@ -182,8 +194,19 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int frameIndex = Math.Abs(tickCount / 120) % _loadingFrames.Count;
-            Texture2D loadingFrame = _loadingFrames[frameIndex];
+            List<int> frameDelays = new(_loadingFrames.Count);
+            for (int i = 0; i < _loadingFrames.Count; i++)
+            {
+                frameDelays.Add(_loadingFrames[i].DelayMs);
+            }
+
+            int frameIndex = ResolveLoadingFrameIndex(tickCount, snapshot.LoadingStartTick, frameDelays);
+            if ((uint)frameIndex >= (uint)_loadingFrames.Count)
+            {
+                return;
+            }
+
+            Texture2D loadingFrame = _loadingFrames[frameIndex].Texture;
             if (loadingFrame == null)
             {
                 return;
@@ -193,6 +216,46 @@ namespace HaCreator.MapSimulator.UI
                 loadingFrame,
                 new Vector2(Position.X + _loadingLayerOffset.X, Position.Y + _loadingLayerOffset.Y),
                 Color.White);
+        }
+
+        internal static int ResolveLoadingFrameIndex(int tickCount, int loadingStartTick, IReadOnlyList<int> frameDelays)
+        {
+            if (frameDelays == null || frameDelays.Count == 0)
+            {
+                return 0;
+            }
+
+            int totalDelay = 0;
+            for (int i = 0; i < frameDelays.Count; i++)
+            {
+                totalDelay += Math.Max(1, frameDelays[i]);
+            }
+
+            if (totalDelay <= 0)
+            {
+                return 0;
+            }
+
+            int animationOriginTick = loadingStartTick != int.MinValue ? loadingStartTick : 0;
+            int animationTime = tickCount - animationOriginTick;
+            if (animationTime < 0)
+            {
+                animationTime = 0;
+            }
+
+            animationTime %= totalDelay;
+            for (int i = 0; i < frameDelays.Count; i++)
+            {
+                int frameDelay = Math.Max(1, frameDelays[i]);
+                if (animationTime < frameDelay)
+                {
+                    return i;
+                }
+
+                animationTime -= frameDelay;
+            }
+
+            return frameDelays.Count - 1;
         }
 
         private Rectangle GetNavigationBounds()

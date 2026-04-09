@@ -63,7 +63,7 @@ namespace HaCreator.MapSimulator
 
             bool hasInitialOwner = _initialQuizTimerRuntime.TryBuildOwnerSnapshot(currentTickCount, out InitialQuizOwnerSnapshot initialSnapshot)
                 && _initialQuizOwnerResultSent;
-            bool hasSpeedOwner = _speedQuizOwnerRuntime.TryBuildOwnerSnapshot(currentTickCount, out SpeedQuizOwnerSnapshot speedSnapshot);
+            bool hasSpeedOwner = false;
             if (!hasInitialOwner && !hasSpeedOwner)
             {
                 return;
@@ -80,6 +80,7 @@ namespace HaCreator.MapSimulator
 
             if (hasSpeedOwner)
             {
+                _speedQuizOwnerRuntime.TryBuildOwnerSnapshot(currentTickCount, out SpeedQuizOwnerSnapshot speedSnapshot);
                 DrawPacketOwnedSpeedQuizOwner(speedSnapshot, ownerBounds[boundsIndex], mouseState);
             }
         }
@@ -357,6 +358,16 @@ namespace HaCreator.MapSimulator
         private void DrawPacketScriptNumber(Rectangle bounds, int value, PacketScriptDigitStrip digitStrip, Color color)
         {
             DrawPacketScriptNumber(bounds, value.ToString(), digitStrip, color, centerHorizontally: true);
+        }
+
+        private void DrawPacketScriptNumber(Rectangle bounds, int value, Texture2D[] digits, Color color)
+        {
+            DrawPacketScriptNumber(bounds, value.ToString(), digits, color, centerHorizontally: true);
+        }
+
+        private void DrawPacketScriptNumber(Rectangle bounds, string text, Texture2D[] digits, Color color, bool centerHorizontally)
+        {
+            DrawPacketScriptNumber(bounds, text, new PacketScriptDigitStrip(digits, null), color, centerHorizontally);
         }
 
         private void DrawPacketScriptNumber(Rectangle bounds, string text, PacketScriptDigitStrip digitStrip, Color color, bool centerHorizontally)

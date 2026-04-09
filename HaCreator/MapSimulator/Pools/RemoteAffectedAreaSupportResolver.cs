@@ -367,7 +367,7 @@ namespace HaCreator.MapSimulator.Pools
                 return RemotePlayerAffectedAreaDisposition.FriendlySupport;
             }
 
-            return IsHostilePlayerAreaSkill(skill, levelData)
+            return IsHostilePlayerAreaSkill(skill, supportSkills, levelData)
                 ? RemotePlayerAffectedAreaDisposition.Hostile
                 : RemotePlayerAffectedAreaDisposition.NeutralUnknown;
         }
@@ -605,6 +605,8 @@ namespace HaCreator.MapSimulator.Pools
 
             bool hasHostileDamageMetadata =
                 levelData.Damage > 0
+                || levelData.DotDamage > 0
+                || levelData.DotTime > 0
                 || levelData.AttackCount > 1
                 || skill.Type == SkillType.Attack
                 || skill.Type == SkillType.Magic;

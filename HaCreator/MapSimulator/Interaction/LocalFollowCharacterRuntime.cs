@@ -393,6 +393,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (_attachedPassengerId > 0)
+            {
+                message = "Local follow request was rejected because the local player already has an attached passenger.";
+                return false;
+            }
+
             if (localUser.IsImmovable)
             {
                 message = "Local follow request was rejected because the local player is immovable.";

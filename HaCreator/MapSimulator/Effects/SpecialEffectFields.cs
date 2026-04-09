@@ -299,6 +299,58 @@ namespace HaCreator.MapSimulator.Effects
         #endregion
 
 
+        #region Packet Dispatch
+        public bool TryDispatchActiveWrapperPacket(int packetType, byte[] payload, int currentTimeMs, out string ownerName, out string message)
+        {
+            payload ??= Array.Empty<byte>();
+
+            if (_wedding.IsActive)
+            {
+                ownerName = "CField_Wedding::OnPacket";
+                bool applied = _wedding.TryApplyPacket(packetType, payload, currentTimeMs, out string errorMessage);
+                message = applied ? _wedding.DescribeStatus() : errorMessage;
+                return applied;
+            }
+
+            if (_guildBoss.IsActive)
+            {
+                ownerName = "CField_GuildBoss::OnPacket";
+                bool applied = _guildBoss.TryApplyPacket(packetType, payload, currentTimeMs, out string errorMessage);
+                message = applied ? _guildBoss.DescribeStatus() : errorMessage;
+                return applied;
+            }
+
+            if (_dojo.IsActive)
+            {
+                ownerName = "CField_Dojang::OnPacket";
+                bool applied = _dojo.TryApplyPacket(packetType, payload, currentTimeMs, out string errorMessage);
+                message = applied ? _dojo.DescribeStatus() : errorMessage;
+                return applied;
+            }
+
+            if (_massacre.IsActive)
+            {
+                ownerName = "CField_Massacre::OnPacket";
+                bool applied = _massacre.TryApplyPacket(packetType, payload, currentTimeMs, out string errorMessage);
+                message = applied ? _massacre.DescribeStatus() : errorMessage;
+                return applied;
+            }
+
+            if (_spaceGaga.IsActive)
+            {
+                ownerName = "CField_SpaceGAGA::OnPacket";
+                bool applied = _spaceGaga.TryApplyPacket(packetType, payload, currentTimeMs, out string errorMessage);
+                message = applied ? _spaceGaga.DescribeStatus() : errorMessage;
+                return applied;
+            }
+
+            ownerName = null;
+            message = null;
+            return false;
+        }
+        #endregion
+
+
         #region Draw
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY, int tickCount,

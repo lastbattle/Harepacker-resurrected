@@ -627,7 +627,7 @@ namespace HaCreator.MapSimulator
             return snapshot;
         }
 
-        private static bool TryValidatePacketOwnedMechanicAuthorityScope(
+        internal static bool TryValidatePacketOwnedMechanicAuthorityScope(
             MechanicEquipSlot requestSlot,
             IReadOnlyDictionary<MechanicEquipSlot, int> beforeState,
             MechanicEquipPacketPayload payload,

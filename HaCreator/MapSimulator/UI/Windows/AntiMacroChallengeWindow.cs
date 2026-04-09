@@ -106,6 +106,7 @@ namespace HaCreator.MapSimulator.UI
             _nativeEditHost = new NativeAntiMacroEditHost(InputMaxLength);
             _nativeEditHost.TextChanged += OnNativeEditHostTextChanged;
             _nativeEditHost.SubmitRequested += OnNativeEditHostSubmitRequested;
+            _nativeEditHost.FocusChanged += OnNativeEditHostFocusChanged;
         }
 
         public override string WindowName => _windowName;
@@ -659,7 +660,12 @@ namespace HaCreator.MapSimulator.UI
 
         private bool CanSubmitAnswer()
         {
-            return !string.IsNullOrWhiteSpace(CurrentInput) && GetRemainingMilliseconds(Environment.TickCount) > 0;
+            return CanSubmitAnswer(CurrentInput, GetRemainingMilliseconds(Environment.TickCount));
+        }
+
+        internal static bool CanSubmitAnswer(string currentInput, int remainingMilliseconds)
+        {
+            return !string.IsNullOrWhiteSpace(currentInput) && remainingMilliseconds > 0;
         }
 
         private int GetRemainingSeconds(int tickCount)
@@ -753,6 +759,16 @@ namespace HaCreator.MapSimulator.UI
             {
                 SubmitRequested?.Invoke(CurrentInput);
             }
+        }
+
+        private void OnNativeEditHostFocusChanged(bool hasFocus)
+        {
+            if (!hasFocus)
+            {
+                _softKeyboardActive = false;
+            }
+
+            _submitButton?.SetEnabled(CanSubmitAnswer());
         }
     }
 }

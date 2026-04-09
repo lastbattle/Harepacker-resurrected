@@ -120,9 +120,17 @@ namespace HaCreator.MapSimulator.Fields
 
         public void BindMap(Board board)
         {
-            Reset();
+            BindMap(board?.MapInfo, board);
+        }
 
-            MapInfo mapInfo = board?.MapInfo;
+        internal void BindMap(MapInfo mapInfo)
+        {
+            BindMap(mapInfo, board: null);
+        }
+
+        private void BindMap(MapInfo mapInfo, Board board)
+        {
+            Reset();
             if (mapInfo == null)
             {
                 return;
@@ -131,6 +139,7 @@ namespace HaCreator.MapSimulator.Fields
             _specialEffects.DetectFieldType(mapInfo);
             _specialEffects.ConfigureMap(board);
             _minigames.BindMap(board);
+            _minigames.Tournament.Configure(mapInfo);
             _partyRaid.BindMap(mapInfo);
 
             if (IsAriantArenaMap(mapInfo))
@@ -203,6 +212,48 @@ namespace HaCreator.MapSimulator.Fields
             _minigames.Update(currentTimeMs);
             _cookieHouse.Update();
             _partyRaid.Update(currentTimeMs);
+        }
+
+        public bool TryDispatchCurrentWrapperPacket(int packetType, byte[] payload, int currentTimeMs, out string message)
+        {
+            payload ??= Array.Empty<byte>();
+
+            if (_specialEffects.TryDispatchActiveWrapperPacket(packetType, payload, currentTimeMs, out string ownerName, out string ownerMessage))
+            {
+                message = $"{ownerName} accepted packet {packetType}. {ownerMessage}";
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(ownerName) && !string.IsNullOrWhiteSpace(ownerMessage))
+            {
+                message = $"{ownerName} rejected packet {packetType}. {ownerMessage}";
+                return false;
+            }
+
+            if (_minigames.TryDispatchActiveWrapperPacket(packetType, payload, currentTimeMs, out ownerName, out ownerMessage))
+            {
+                message = $"{ownerName} accepted packet {packetType}. {ownerMessage}";
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(ownerName) && !string.IsNullOrWhiteSpace(ownerMessage))
+            {
+                message = $"{ownerName} rejected packet {packetType}. {ownerMessage}";
+                return false;
+            }
+
+            if (_partyRaid.IsActive)
+            {
+                string owner = _partyRaid.ActiveRuntimeOwnerName;
+                bool applied = _partyRaid.TryApplyRawPacket(packetType, payload, currentTimeMs, out string ownerErrorMessage);
+                message = applied
+                    ? $"{owner} accepted packet {packetType}. {_partyRaid.DescribeStatus()}"
+                    : $"{owner} rejected packet {packetType}. {ownerErrorMessage}";
+                return applied;
+            }
+
+            message = $"No active client-owned special-field wrapper accepted packet {packetType}.";
+            return false;
         }
 
         public int ConsumePendingTransferMapId()

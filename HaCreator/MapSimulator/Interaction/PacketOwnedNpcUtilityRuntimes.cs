@@ -1019,21 +1019,25 @@ namespace HaCreator.MapSimulator.Interaction
         private int _dbcharFlagMask;
         private int _pendingGetAllPassingDay;
         private int _pendingGetAllFee;
+        private int _pendingFeeCalculationOwnerRowIndex = -1;
+        private int _pendingFeeCalculationPacketRowIndex = -1;
         private int _lastPromptContextValue;
         private int _lastPromptTokenValue;
         private int _lastPromptChannelId = -1;
 
         internal bool IsOpen { get; private set; }
         internal bool HasPendingGetAllRequest { get; private set; }
+        internal bool HasPendingFeeCalculationRequest { get; private set; }
         internal bool GetAllRequestWasAccepted { get; private set; }
         internal bool HasDecodedItems => _decodedItems.Count > 0;
-        internal bool IsOwnerGetButtonEnabled => IsOpen && (HasPendingGetAllRequest || HasDecodedItems);
+        internal bool IsOwnerGetButtonEnabled => IsOpen && !HasPendingFeeCalculationRequest && (HasPendingGetAllRequest || HasDecodedItems);
         internal int OwnerMoney => _money;
         internal string StatusMessage { get; private set; } = "CStoreBankDlg::OnPacket idle.";
 
         internal void Close()
         {
             IsOpen = false;
+            ResetPendingFeeCalculationRequest();
             StatusMessage = "CStoreBankDlg owner closed locally.";
         }
 
@@ -1102,6 +1106,9 @@ namespace HaCreator.MapSimulator.Interaction
                     : "No decoded SetStoreBankDlg payload is staged.",
                 BuildDecodedInventorySummary(),
                 BuildRetainedInventorySummary(),
+                HasPendingFeeCalculationRequest
+                    ? $"Pending BtGet fee request: owner row {_pendingFeeCalculationOwnerRowIndex.ToString(CultureInfo.InvariantCulture)}, packet row {_pendingFeeCalculationPacketRowIndex.ToString(CultureInfo.InvariantCulture)} (opcode 69, mode 26)."
+                    : "No BtGet fee request is currently staged.",
                 HasPendingGetAllRequest
                     ? (_pendingGetAllFee > 0
                         ? $"Pending get-all modal: {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s), fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)} (StringPool 0xDC4)."
@@ -1178,6 +1185,56 @@ namespace HaCreator.MapSimulator.Interaction
             return rows;
         }
 
+        internal bool TryBuildSelectedGetOutboundRequest(int ownerRowIndex, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
+            request = default;
+            if (!IsOpen)
+            {
+                StatusMessage = "CStoreBankDlg ignored BtGet because the owner is closed.";
+                AppendNote(StatusMessage);
+                message = StatusMessage;
+                return false;
+            }
+
+            if (HasPendingGetAllRequest)
+            {
+                StatusMessage = "CStoreBankDlg BtGet is currently owned by the staged SendGetAllRequest modal.";
+                AppendNote(StatusMessage);
+                message = StatusMessage;
+                return false;
+            }
+
+            if (HasPendingFeeCalculationRequest)
+            {
+                StatusMessage = _pendingFeeCalculationPacketRowIndex > 0
+                    ? $"CStoreBankDlg ignored repeated BtGet while fee calculation for packet row {_pendingFeeCalculationPacketRowIndex.ToString(CultureInfo.InvariantCulture)} is still pending."
+                    : "CStoreBankDlg ignored repeated BtGet while a fee calculation request is still pending.";
+                AppendNote(StatusMessage);
+                message = StatusMessage;
+                return false;
+            }
+
+            if (ownerRowIndex < 0 || ownerRowIndex >= _decodedItems.Count)
+            {
+                NotifyOwnerGetButtonPressed(ownerRowIndex);
+                message = StatusMessage;
+                return false;
+            }
+
+            StoreBankItemEntry selectedItem = _decodedItems[ownerRowIndex];
+            HasPendingFeeCalculationRequest = true;
+            _pendingFeeCalculationOwnerRowIndex = ownerRowIndex + 1;
+            _pendingFeeCalculationPacketRowIndex = selectedItem.PacketGroupRowIndex;
+            StatusMessage = $"CStoreBankDlg BtGet mirrored SendCalculateFeeRequest for selected row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}) and armed opcode 69, mode 26.";
+            AppendNote(StatusMessage);
+            request = new PacketOwnedNpcUtilityOutboundRequest(
+                69,
+                new byte[] { 26 },
+                $"Mirrored CStoreBankDlg::SendCalculateFeeRequest for owner row {_pendingFeeCalculationOwnerRowIndex.ToString(CultureInfo.InvariantCulture)} / packet row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}) (opcode 69, mode 26).");
+            message = StatusMessage;
+            return true;
+        }
+
         internal void NotifyOwnerGetButtonPressed()
         {
             NotifyOwnerGetButtonPressed(-1);
@@ -1193,10 +1250,16 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 StatusMessage = "CStoreBankDlg BtGet accepted the staged SendGetAllRequest prompt.";
             }
+            else if (HasPendingFeeCalculationRequest)
+            {
+                StatusMessage = _pendingFeeCalculationPacketRowIndex > 0
+                    ? $"CStoreBankDlg ignored repeated BtGet while fee calculation for packet row {_pendingFeeCalculationPacketRowIndex.ToString(CultureInfo.InvariantCulture)} is still pending."
+                    : "CStoreBankDlg ignored repeated BtGet while a fee calculation request is still pending.";
+            }
             else if (ownerRowIndex >= 0 && ownerRowIndex < _decodedItems.Count)
             {
                 StoreBankItemEntry selectedItem = _decodedItems[ownerRowIndex];
-                StatusMessage = $"CStoreBankDlg BtGet acknowledged selected row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}), but the native per-row retrieval packet/body is still not modeled.";
+                StatusMessage = $"CStoreBankDlg BtGet acknowledged selected row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}), but the native retrieval follow-up after SendCalculateFeeRequest is still not modeled.";
             }
             else if (HasDecodedItems)
             {
@@ -1219,6 +1282,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             IsOpen = true;
+            ResetPendingFeeCalculationRequest();
             _lastSubtype = payload[0];
             StatusMessage = _lastSubtype switch
             {
@@ -1252,6 +1316,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            ResetPendingFeeCalculationRequest();
             _lastSubtype = payload[0];
             switch (_lastSubtype)
             {
@@ -1334,6 +1399,13 @@ namespace HaCreator.MapSimulator.Interaction
             _lastPromptContextValue = 0;
             _lastPromptTokenValue = 0;
             _lastPromptChannelId = -1;
+        }
+
+        private void ResetPendingFeeCalculationRequest()
+        {
+            HasPendingFeeCalculationRequest = false;
+            _pendingFeeCalculationOwnerRowIndex = -1;
+            _pendingFeeCalculationPacketRowIndex = -1;
         }
 
         private bool TryParseOpenPayload(byte[] payload, int startOffset)

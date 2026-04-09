@@ -1907,6 +1907,10 @@ namespace HaCreator.MapSimulator.Character
 
             var anim = new CharacterAnimation();
             int? animationDelay = GetIntValue(node["delay"]);
+            if (animationDelay.HasValue)
+            {
+                anim.AuthoredDuration = animationDelay.Value;
+            }
 
             if (node is WzSubProperty subProp)
             {

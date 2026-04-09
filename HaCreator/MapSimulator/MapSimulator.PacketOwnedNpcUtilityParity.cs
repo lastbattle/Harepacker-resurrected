@@ -459,7 +459,15 @@ namespace HaCreator.MapSimulator
             int selectedRowIndex = uiWindowManager?.GetWindow(MapSimulatorWindowNames.StoreBank) is StoreBankOwnerWindow storeBankWindow
                 ? storeBankWindow.SelectedOwnerRowIndex
                 : -1;
-            _packetOwnedStoreBankRuntime.NotifyOwnerGetButtonPressed(selectedRowIndex);
+            bool hasRequest = _packetOwnedStoreBankRuntime.TryBuildSelectedGetOutboundRequest(
+                selectedRowIndex,
+                out PacketOwnedNpcUtilityOutboundRequest request,
+                out string localMessage);
+            DispatchPacketOwnedStoreBankOutboundRequest(
+                hasRequest,
+                request,
+                localMessage,
+                hasRequest ? null : _packetOwnedStoreBankRuntime.StatusMessage);
         }
 
         private string DispatchPacketOwnedNpcShopOutboundRequest(

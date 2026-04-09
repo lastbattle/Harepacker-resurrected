@@ -162,6 +162,14 @@ namespace HaCreator.MapSimulator.UI
             Binding = 8,
         }
 
+        private enum JoypadPendingConfirmAction
+        {
+            None = 0,
+            ResetDefaults = 1,
+            RestoreLiveProfile = 2,
+            DiscardChanges = 3,
+        }
+
         private sealed class JoypadSessionSnapshot
         {
             public PlayerIndex GamepadIndex { get; set; } = PlayerIndex.One;
@@ -227,6 +235,7 @@ namespace HaCreator.MapSimulator.UI
         private int _joypadScrollOffset;
         private int _previousMouseWheelValue;
         private bool _draggingJoypadScrollKnob;
+        private JoypadPendingConfirmAction _pendingJoypadConfirmAction;
 
         public OptionMenuWindow(IDXObject frame, string windowName, Texture2D checkTexture, Texture2D highlightTexture, Texture2D[] scrollTextures)
             : base(frame)
@@ -254,8 +263,8 @@ namespace HaCreator.MapSimulator.UI
 
         public void InitializeButtons(UIObject okButton, UIObject cancelButton)
         {
-            RegisterActionButton(okButton, CommitAndHide);
-            RegisterActionButton(cancelButton, DiscardAndHide);
+            RegisterActionButton(okButton, () => CommitAndHide());
+            RegisterActionButton(cancelButton, () => DiscardAndHide());
         }
 
         public void ConfigureRows(
@@ -412,6 +421,13 @@ namespace HaCreator.MapSimulator.UI
                     return false;
                 }
 
+                if (_pendingJoypadConfirmAction != JoypadPendingConfirmAction.None)
+                {
+                    _previousLeftMouseDown = leftClick;
+                    _previousRightMouseDown = rightClick;
+                    return false;
+                }
+
                 if (!leftClick)
                 {
                     _activeJoypadSliderRowIndex = -1;
@@ -476,6 +492,14 @@ namespace HaCreator.MapSimulator.UI
 
                     _armedJoypadBindingAction = null;
                     _activeJoypadSliderRowIndex = -1;
+                    if (row.Kind == JoypadRowKind.Reset)
+                    {
+                        QueueJoypadResetConfirmation(direction: rightPressedThisFrame ? -1 : 1);
+                        mouseCursor?.SetMouseCursorMovedToClickableItem();
+                        _previousLeftMouseDown = leftClick;
+                        _previousRightMouseDown = rightClick;
+                        return true;
+                    }
 
                     bool applied = false;
                     if (row.SliderStepCount > 1 && leftClick)
@@ -707,6 +731,8 @@ namespace HaCreator.MapSimulator.UI
                 bool captureArmed = _armedJoypadBindingAction == _joypadRows[i].Action && _joypadRows[i].Action.HasValue;
                 Color rowTint = captureArmed
                     ? new Color(120, 92, 42, 220)
+                    : IsJoypadRowDirty(_joypadRows[i], session, _originalJoypadSession)
+                        ? new Color(118, 88, 32, 210)
                     : selected
                         ? new Color(92, 120, 190, 210)
                         : new Color(36, 46, 62, 210);
@@ -1121,6 +1147,11 @@ namespace HaCreator.MapSimulator.UI
             string connectionText = state.IsConnected
                 ? $"P{(int)session.GamepadIndex + 1} connected"
                 : $"P{(int)session.GamepadIndex + 1} disconnected";
+            if (HasJoypadSessionChanges(session))
+            {
+                connectionText += "  staged";
+            }
+
             string calibrationText = state.IsConnected
                 ? $"LX {state.ThumbSticks.Left.X:+0.00;-0.00;0.00}  LY {state.ThumbSticks.Left.Y:+0.00;-0.00;0.00}  LT {state.Triggers.Left:0.00}  RT {state.Triggers.Right:0.00}"
                 : "Cycle the slot until a live controller is found; movement directions stay reserved while this owner is open.";
@@ -1143,6 +1174,7 @@ namespace HaCreator.MapSimulator.UI
             _activeJoypadSliderRowIndex = -1;
             _joypadScrollOffset = 0;
             _draggingJoypadScrollKnob = false;
+            _pendingJoypadConfirmAction = JoypadPendingConfirmAction.None;
             foreach (List<OptionRow> rows in _rows.Values)
             {
                 if (rows == null)
@@ -1175,8 +1207,14 @@ namespace HaCreator.MapSimulator.UI
             _previousMouseWheelValue = mouseState.ScrollWheelValue;
         }
 
-        private void CommitAndHide()
+        private void CommitAndHide(bool force = false)
         {
+            if (!force && _pendingJoypadConfirmAction != JoypadPendingConfirmAction.None)
+            {
+                ConfirmJoypadPendingAction();
+                return;
+            }
+
             foreach (KeyValuePair<OptionMenuMode, List<OptionRow>> group in _rows)
             {
                 if (group.Value == null)
@@ -1198,16 +1236,36 @@ namespace HaCreator.MapSimulator.UI
             ApplyJoypadSession(_stagedJoypadSession);
             _armedJoypadBindingAction = null;
             _activeJoypadSliderRowIndex = -1;
+            _pendingJoypadConfirmAction = JoypadPendingConfirmAction.None;
             ResetJoypadCaptureState(_stagedJoypadSession);
             Hide();
         }
 
-        private void DiscardAndHide()
+        private void DiscardAndHide(bool force = false)
         {
+            if (!force && _pendingJoypadConfirmAction != JoypadPendingConfirmAction.None)
+            {
+                CancelJoypadPendingAction();
+                return;
+            }
+
+            if (!force
+                && IsVisible
+                && _mode == OptionMenuMode.Joypad
+                && _armedJoypadBindingAction == null
+                && _pendingJoypadConfirmAction == JoypadPendingConfirmAction.None
+                && HasJoypadSessionChanges(_stagedJoypadSession))
+            {
+                _pendingJoypadConfirmAction = JoypadPendingConfirmAction.DiscardChanges;
+                _statusMessage = "Discard staged joypad changes? Press Enter, Start, or BtOK to restore the live profile, or Escape / Back to keep editing.";
+                return;
+            }
+
             _stagedOptionValues.Clear();
             _stagedJoypadSession = _originalJoypadSession?.Clone();
             _armedJoypadBindingAction = null;
             _activeJoypadSliderRowIndex = -1;
+            _pendingJoypadConfirmAction = JoypadPendingConfirmAction.None;
             ResetJoypadCaptureState(_stagedJoypadSession);
             Hide();
         }
@@ -1242,6 +1300,22 @@ namespace HaCreator.MapSimulator.UI
 
             if (_armedJoypadBindingAction.HasValue)
             {
+                return;
+            }
+
+            if (_pendingJoypadConfirmAction != JoypadPendingConfirmAction.None)
+            {
+                if (enterPressed || confirmPressed)
+                {
+                    ConfirmJoypadPendingAction();
+                    return;
+                }
+
+                if (escapePressed || cancelPressed)
+                {
+                    CancelJoypadPendingAction();
+                }
+
                 return;
             }
 
@@ -1378,6 +1452,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (_pendingJoypadConfirmAction != JoypadPendingConfirmAction.None)
+            {
+                return;
+            }
+
             if (_selectedJoypadRowIndex < 0 || _selectedJoypadRowIndex >= _joypadRows.Count)
             {
                 _selectedJoypadRowIndex = 0;
@@ -1472,6 +1551,12 @@ namespace HaCreator.MapSimulator.UI
 
             _armedJoypadBindingAction = null;
             _activeJoypadSliderRowIndex = -1;
+            if (row.Kind == JoypadRowKind.Reset)
+            {
+                QueueJoypadResetConfirmation(direction);
+                return;
+            }
+
             row.AdjustValue?.Invoke(session, direction);
             string value = row.GetValue?.Invoke(session) ?? "Unavailable";
             _statusMessage = BuildJoypadRowStatus(row, value, direction >= 0);
@@ -1660,6 +1745,128 @@ namespace HaCreator.MapSimulator.UI
             {
                 destination.Bindings[entry.Key] = entry.Value;
             }
+        }
+
+        private void QueueJoypadResetConfirmation(int direction)
+        {
+            _armedJoypadBindingAction = null;
+            _activeJoypadSliderRowIndex = -1;
+            _pendingJoypadConfirmAction = direction < 0
+                ? JoypadPendingConfirmAction.RestoreLiveProfile
+                : JoypadPendingConfirmAction.ResetDefaults;
+            _statusMessage = direction < 0
+                ? "Restore the live joypad profile captured when this owner opened? Press Enter, Start, or BtOK to confirm, or Escape / Back to keep the staged profile."
+                : "Stage the default MapleStory-style joypad profile? Press Enter, Start, or BtOK to confirm, or Escape / Back to keep the current staged profile.";
+        }
+
+        private void ConfirmJoypadPendingAction()
+        {
+            JoypadPendingConfirmAction action = _pendingJoypadConfirmAction;
+            _pendingJoypadConfirmAction = JoypadPendingConfirmAction.None;
+
+            switch (action)
+            {
+                case JoypadPendingConfirmAction.ResetDefaults:
+                    ResetJoypadSession(_stagedJoypadSession);
+                    ResetJoypadCaptureState(_stagedJoypadSession);
+                    _statusMessage = "Default MapleStory-style joypad profile staged. Press OK to commit or BtCancle to restore the live profile.";
+                    return;
+                case JoypadPendingConfirmAction.RestoreLiveProfile:
+                    if (_originalJoypadSession != null && _stagedJoypadSession != null)
+                    {
+                        CopyJoypadSession(_originalJoypadSession, _stagedJoypadSession);
+                    }
+
+                    ResetJoypadCaptureState(_stagedJoypadSession);
+                    _statusMessage = "Live joypad profile restored into the staged owner state.";
+                    return;
+                case JoypadPendingConfirmAction.DiscardChanges:
+                    DiscardAndHide(force: true);
+                    return;
+                default:
+                    return;
+            }
+        }
+
+        private void CancelJoypadPendingAction()
+        {
+            if (_pendingJoypadConfirmAction == JoypadPendingConfirmAction.None)
+            {
+                return;
+            }
+
+            JoypadPendingConfirmAction cancelledAction = _pendingJoypadConfirmAction;
+            _pendingJoypadConfirmAction = JoypadPendingConfirmAction.None;
+            _statusMessage = cancelledAction == JoypadPendingConfirmAction.DiscardChanges
+                ? "Discard cancelled. The staged joypad profile is still open for editing."
+                : "Joypad confirmation cancelled. The staged profile is unchanged.";
+        }
+
+        private bool HasJoypadSessionChanges(JoypadSessionSnapshot session)
+        {
+            if (session == null || _originalJoypadSession == null)
+            {
+                return false;
+            }
+
+            return session.GamepadIndex != _originalJoypadSession.GamepadIndex
+                || Math.Abs(session.LeftStickDeadZoneX - _originalJoypadSession.LeftStickDeadZoneX) >= 0.001f
+                || Math.Abs(session.LeftStickDeadZoneY - _originalJoypadSession.LeftStickDeadZoneY) >= 0.001f
+                || Math.Abs(session.LeftTriggerThreshold - _originalJoypadSession.LeftTriggerThreshold) >= 0.001f
+                || Math.Abs(session.RightTriggerThreshold - _originalJoypadSession.RightTriggerThreshold) >= 0.001f
+                || session.LeftStickInvertX != _originalJoypadSession.LeftStickInvertX
+                || session.LeftStickInvertY != _originalJoypadSession.LeftStickInvertY
+                || session.ResponseCurve != _originalJoypadSession.ResponseCurve
+                || !HaveSameBindings(session.Bindings, _originalJoypadSession.Bindings);
+        }
+
+        private static bool IsJoypadRowDirty(JoypadRow row, JoypadSessionSnapshot session, JoypadSessionSnapshot originalSession)
+        {
+            if (row == null || session == null || originalSession == null)
+            {
+                return false;
+            }
+
+            if (row.Action.HasValue)
+            {
+                return GetJoypadBinding(session, row.Action.Value) != GetJoypadBinding(originalSession, row.Action.Value);
+            }
+
+            return row.Kind switch
+            {
+                JoypadRowKind.Calibration => Math.Abs(session.LeftStickDeadZoneX - originalSession.LeftStickDeadZoneX) >= 0.001f
+                    || Math.Abs(session.LeftStickDeadZoneY - originalSession.LeftStickDeadZoneY) >= 0.001f
+                    || Math.Abs(session.LeftTriggerThreshold - originalSession.LeftTriggerThreshold) >= 0.001f
+                    || Math.Abs(session.RightTriggerThreshold - originalSession.RightTriggerThreshold) >= 0.001f,
+                JoypadRowKind.ControllerSlot => session.GamepadIndex != originalSession.GamepadIndex,
+                JoypadRowKind.AxisThreshold when string.Equals(row.Label, "Dead Zone X", StringComparison.Ordinal) => Math.Abs(session.LeftStickDeadZoneX - originalSession.LeftStickDeadZoneX) >= 0.001f,
+                JoypadRowKind.AxisThreshold => Math.Abs(session.LeftStickDeadZoneY - originalSession.LeftStickDeadZoneY) >= 0.001f,
+                JoypadRowKind.TriggerThreshold when string.Equals(row.Label, "Trigger Left", StringComparison.Ordinal) => Math.Abs(session.LeftTriggerThreshold - originalSession.LeftTriggerThreshold) >= 0.001f,
+                JoypadRowKind.TriggerThreshold => Math.Abs(session.RightTriggerThreshold - originalSession.RightTriggerThreshold) >= 0.001f,
+                JoypadRowKind.ResponseCurve => session.ResponseCurve != originalSession.ResponseCurve,
+                JoypadRowKind.Toggle when string.Equals(row.Label, "Invert X", StringComparison.Ordinal) => session.LeftStickInvertX != originalSession.LeftStickInvertX,
+                JoypadRowKind.Toggle when string.Equals(row.Label, "Invert Y", StringComparison.Ordinal) => session.LeftStickInvertY != originalSession.LeftStickInvertY,
+                JoypadRowKind.Reset => IsJoypadProfileDirty(session, originalSession),
+                _ => false,
+            };
+        }
+
+        private static bool IsJoypadProfileDirty(JoypadSessionSnapshot session, JoypadSessionSnapshot originalSession)
+        {
+            if (session == null || originalSession == null)
+            {
+                return false;
+            }
+
+            return session.GamepadIndex != originalSession.GamepadIndex
+                || Math.Abs(session.LeftStickDeadZoneX - originalSession.LeftStickDeadZoneX) >= 0.001f
+                || Math.Abs(session.LeftStickDeadZoneY - originalSession.LeftStickDeadZoneY) >= 0.001f
+                || Math.Abs(session.LeftTriggerThreshold - originalSession.LeftTriggerThreshold) >= 0.001f
+                || Math.Abs(session.RightTriggerThreshold - originalSession.RightTriggerThreshold) >= 0.001f
+                || session.LeftStickInvertX != originalSession.LeftStickInvertX
+                || session.LeftStickInvertY != originalSession.LeftStickInvertY
+                || session.ResponseCurve != originalSession.ResponseCurve
+                || !HaveSameBindings(session.Bindings, originalSession.Bindings);
         }
 
         private string BuildJoypadRowStatus(JoypadRow row, string value, bool leftClick)

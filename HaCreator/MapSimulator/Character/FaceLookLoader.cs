@@ -51,9 +51,11 @@ namespace HaCreator.MapSimulator.Character
                 ExpressionName = normalizedExpression,
                 SkinColor = skinColor,
                 FaceItemId = _facePart.ItemId,
-                FaceAccessoryItemId = faceAccessoryItemId
+                FaceAccessoryItemId = faceAccessoryItemId,
+                AuthoredDuration = faceAnimation?.AuthoredDuration
             };
 
+            int resolvedDuration = 0;
             for (int frameIndex = 0; frameIndex < frameCount; frameIndex++)
             {
                 CharacterFrame faceFrame = GetAnimationFrame(faceAnimation, frameIndex);
@@ -68,9 +70,10 @@ namespace HaCreator.MapSimulator.Character
                     Delay = delay
                 });
 
-                faceLook.TotalDuration += delay;
+                resolvedDuration += delay;
             }
 
+            faceLook.TotalDuration = ResolveFaceLookDuration(faceLook.AuthoredDuration, resolvedDuration);
             _lookCache[cacheKey] = faceLook;
             return faceLook;
         }
@@ -184,6 +187,16 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return 100;
+        }
+
+        private static int ResolveFaceLookDuration(int? authoredDuration, int resolvedDuration)
+        {
+            if (authoredDuration.GetValueOrDefault() > 0)
+            {
+                return authoredDuration.Value;
+            }
+
+            return resolvedDuration;
         }
 
         private static CharacterFrame CreateCompositeFrame(CharacterFrame faceFrame, CharacterFrame accessoryFrame, int delay)

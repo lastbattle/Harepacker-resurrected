@@ -418,24 +418,32 @@ namespace HaCreator.MapSimulator
         private bool TryResolvePacketOwnedDynamicPlatform(PacketFieldUtilityFootholdEntry entry, out DynamicPlatform platform)
         {
             platform = null;
-            if (entry?.FootholdSerialNumbers != null && _dynamicFootholds != null)
+            // The client resolves dynamic footholds by object name first and only then refreshes the foothold serial list.
+            if (TryResolvePacketOwnedDynamicPlatform(entry?.Name, out platform))
             {
-                foreach (int serialNumber in entry.FootholdSerialNumbers)
-                {
-                    if (serialNumber < 0)
-                    {
-                        continue;
-                    }
+                return true;
+            }
 
-                    platform = _dynamicFootholds.GetPlatform(serialNumber);
-                    if (platform != null)
-                    {
-                        return true;
-                    }
+            if (entry?.FootholdSerialNumbers == null || _dynamicFootholds == null)
+            {
+                return false;
+            }
+
+            foreach (int serialNumber in entry.FootholdSerialNumbers)
+            {
+                if (serialNumber < 0)
+                {
+                    continue;
+                }
+
+                platform = _dynamicFootholds.GetPlatform(serialNumber);
+                if (platform != null)
+                {
+                    return true;
                 }
             }
 
-            return TryResolvePacketOwnedDynamicPlatform(entry?.Name, out platform);
+            return false;
         }
 
         private bool TryResolvePacketOwnedDynamicPlatform(string name, out DynamicPlatform platform)

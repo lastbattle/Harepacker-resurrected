@@ -67,7 +67,7 @@ namespace HaCreator.MapSimulator.UI
         /// Optional callback invoked before a named window is shown through the manager.
         /// Used by the simulator to keep scripted ownership aligned across launcher paths.
         /// </summary>
-        public Action<string> BeforeShowWindow { get; set; }
+        public Action<UIWindowBase> BeforeShowWindow { get; set; }
         #endregion
 
         #region Properties
@@ -273,7 +273,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleBeforeShowWindow(UIWindowBase window)
         {
-            BeforeShowWindow?.Invoke(window?.WindowName);
+            BeforeShowWindow?.Invoke(window);
         }
 
         /// <summary>

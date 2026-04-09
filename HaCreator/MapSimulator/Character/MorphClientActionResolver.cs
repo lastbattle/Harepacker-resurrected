@@ -76,6 +76,12 @@ namespace HaCreator.MapSimulator.Character
             "stabTF"
         };
 
+        private static readonly string[] PublishedDoubleJumpAliases =
+        {
+            "archerDoubleJump",
+            "iceDoubleJump"
+        };
+
         public static IEnumerable<string> EnumerateClientActionAliases(CharacterPart morphPart, string actionName)
         {
             if (string.IsNullOrWhiteSpace(actionName))
@@ -208,13 +214,30 @@ namespace HaCreator.MapSimulator.Character
 
             bool prefersArcherAliases = PrefersArcherAttackAliases(actionName);
             bool prefersGenericRangedFallback = PrefersGenericRangedFallbackAliases(actionName);
+            bool prefersIceAttackAliases = PrefersIceAttackAliases(morphPart, actionName);
 
-            IEnumerable<string> primaryAuthoredAliases = prefersArcherAliases
-                ? ArcherMorphAuthoredAttackAliases
-                : PirateMorphAuthoredAttackAliases;
-            IEnumerable<string> secondaryAuthoredAliases = prefersArcherAliases
-                ? PirateMorphAuthoredAttackAliases
-                : ArcherMorphAuthoredAttackAliases;
+            IEnumerable<string> primaryAuthoredAliases;
+            IEnumerable<string> secondaryAuthoredAliases;
+            IEnumerable<string> tertiaryAuthoredAliases;
+
+            if (prefersArcherAliases)
+            {
+                primaryAuthoredAliases = ArcherMorphAuthoredAttackAliases;
+                secondaryAuthoredAliases = PirateMorphAuthoredAttackAliases;
+                tertiaryAuthoredAliases = IceMorphAuthoredAttackAliases;
+            }
+            else if (prefersIceAttackAliases)
+            {
+                primaryAuthoredAliases = IceMorphAuthoredAttackAliases;
+                secondaryAuthoredAliases = PirateMorphAuthoredAttackAliases;
+                tertiaryAuthoredAliases = ArcherMorphAuthoredAttackAliases;
+            }
+            else
+            {
+                primaryAuthoredAliases = PirateMorphAuthoredAttackAliases;
+                secondaryAuthoredAliases = ArcherMorphAuthoredAttackAliases;
+                tertiaryAuthoredAliases = IceMorphAuthoredAttackAliases;
+            }
 
             if (prefersGenericRangedFallback)
             {
@@ -260,7 +283,10 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            foreach (string authoredAlias in EnumeratePresentAliases(morphPart, IceMorphAuthoredAttackAliases))
+            foreach (string authoredAlias in EnumeratePreferredAuthoredAttackAliases(
+                         morphPart,
+                         actionName,
+                         tertiaryAuthoredAliases))
             {
                 if (yielded.Add(authoredAlias))
                 {
@@ -276,7 +302,7 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            foreach (string authoredAlias in EnumerateHeuristicCombatAliases(morphPart))
+            foreach (string authoredAlias in EnumerateRemainingPublishedCombatAliases(morphPart, actionName))
             {
                 if (yielded.Add(authoredAlias))
                 {
@@ -680,25 +706,107 @@ namespace HaCreator.MapSimulator.Character
                 yield break;
             }
 
-            foreach (string actionName in EnumeratePublishedActionNames(morphPart))
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string actionName in PublishedDoubleJumpAliases)
             {
-                if (actionName.IndexOf("doublejump", StringComparison.OrdinalIgnoreCase) >= 0)
+                if (HasPublishedAction(morphPart, actionName) && yielded.Add(actionName))
+                {
+                    yield return actionName;
+                }
+            }
+
+            foreach (string actionName in EnumeratePublishedActionNames(morphPart)
+                         .Where(actionName => actionName.IndexOf("doublejump", StringComparison.OrdinalIgnoreCase) >= 0)
+                         .OrderBy(actionName => actionName, StringComparer.OrdinalIgnoreCase))
+            {
+                if (yielded.Add(actionName))
                 {
                     yield return actionName;
                 }
             }
         }
 
-        private static IEnumerable<string> EnumerateHeuristicCombatAliases(CharacterPart morphPart)
+        private static IEnumerable<string> EnumerateRemainingPublishedCombatAliases(CharacterPart morphPart, string requestedActionName)
         {
             if (morphPart?.Animations == null)
             {
                 yield break;
             }
 
-            foreach (string actionName in EnumeratePublishedActionNames(morphPart))
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string actionName in EnumerateOrderedPublishedCombatAliases(morphPart, requestedActionName))
             {
-                if (IsHeuristicCombatAlias(actionName))
+                if (yielded.Add(actionName))
+                {
+                    yield return actionName;
+                }
+            }
+
+            foreach (string actionName in EnumeratePublishedActionNames(morphPart)
+                         .Where(IsHeuristicCombatAlias)
+                         .OrderBy(actionName => actionName, StringComparer.OrdinalIgnoreCase))
+            {
+                if (yielded.Add(actionName))
+                {
+                    yield return actionName;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateOrderedPublishedCombatAliases(CharacterPart morphPart, string requestedActionName)
+        {
+            if (morphPart?.Animations == null)
+            {
+                yield break;
+            }
+
+            IEnumerable<string>[] orderedFamilies;
+            if (PrefersArcherAttackAliases(requestedActionName))
+            {
+                orderedFamilies =
+                [
+                    ArcherMorphAuthoredAttackAliases,
+                    GenericMorphRangedAttackAliases,
+                    PirateMorphAuthoredAttackAliases,
+                    IceMorphAuthoredAttackAliases
+                ];
+            }
+            else if (PrefersGenericRangedFallbackAliases(requestedActionName))
+            {
+                orderedFamilies =
+                [
+                    GenericMorphRangedAttackAliases,
+                    ArcherMorphAuthoredAttackAliases,
+                    PirateMorphAuthoredAttackAliases,
+                    IceMorphAuthoredAttackAliases
+                ];
+            }
+            else if (PrefersIceAttackAliases(morphPart, requestedActionName))
+            {
+                orderedFamilies =
+                [
+                    IceMorphAuthoredAttackAliases,
+                    PirateMorphAuthoredAttackAliases,
+                    ArcherMorphAuthoredAttackAliases,
+                    GenericMorphRangedAttackAliases
+                ];
+            }
+            else
+            {
+                orderedFamilies =
+                [
+                    PirateMorphAuthoredAttackAliases,
+                    ArcherMorphAuthoredAttackAliases,
+                    IceMorphAuthoredAttackAliases,
+                    GenericMorphRangedAttackAliases
+                ];
+            }
+
+            foreach (IEnumerable<string> familyAliases in orderedFamilies)
+            {
+                foreach (string actionName in EnumeratePresentAliases(morphPart, familyAliases))
                 {
                     yield return actionName;
                 }
@@ -839,6 +947,24 @@ namespace HaCreator.MapSimulator.Character
                    || string.Equals(actionName, "arrowEruption", StringComparison.OrdinalIgnoreCase);
         }
 
+        private static bool PrefersIceAttackAliases(CharacterPart morphPart, string actionName)
+        {
+            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (!actionName.Contains("attack", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            bool hasIceAliases = HasAnyPublishedAction(morphPart, IceMorphAuthoredAttackAliases);
+            bool hasPirateAliases = HasAnyPublishedAction(morphPart, PirateMorphAuthoredAttackAliases);
+            bool hasArcherAliases = HasAnyPublishedAction(morphPart, ArcherMorphAuthoredAttackAliases);
+            return hasIceAliases && !hasPirateAliases && !hasArcherAliases;
+        }
+
         private static IEnumerable<string> EnumeratePublishedActionNames(CharacterPart morphPart)
         {
             if (morphPart == null)
@@ -873,6 +999,24 @@ namespace HaCreator.MapSimulator.Character
 
             return (morphPart.Animations?.ContainsKey(actionName) == true)
                    || (morphPart.AvailableAnimations?.Contains(actionName) == true);
+        }
+
+        private static bool HasAnyPublishedAction(CharacterPart morphPart, IEnumerable<string> actionNames)
+        {
+            if (morphPart == null || actionNames == null)
+            {
+                return false;
+            }
+
+            foreach (string actionName in actionNames)
+            {
+                if (HasPublishedAction(morphPart, actionName))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

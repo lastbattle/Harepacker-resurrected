@@ -951,6 +951,7 @@ namespace HaCreator.MapSimulator
                     vegaSpellWindow.CharacterBuild = _playerManager.Player.Build;
                     vegaSpellWindow.SetFont(_fontChat);
                     vegaSpellWindow.SetItemUpgradeBackend(itemUpgradeWindow);
+                    WireVegaSpellWindowOwnerCallbacks(vegaSpellWindow);
                 }
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.RepairDurability) is RepairDurabilityWindow repairDurabilityWindow && _playerManager?.Player?.Build != null)
@@ -1752,6 +1753,7 @@ namespace HaCreator.MapSimulator
                     vegaSpellWindow.CharacterBuild = _playerManager.Player.Build;
                     vegaSpellWindow.SetFont(_fontChat);
                     vegaSpellWindow.SetItemUpgradeBackend(itemUpgradeWindow);
+                    WireVegaSpellWindowOwnerCallbacks(vegaSpellWindow);
                 }
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.RepairDurability) is RepairDurabilityWindow repairDurabilityWindow && _playerManager?.Player?.Build != null)

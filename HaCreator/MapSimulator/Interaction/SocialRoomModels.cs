@@ -734,16 +734,6 @@ namespace HaCreator.MapSimulator.Interaction
                 EmployeeHasWorldPosition = _employeeHasWorldPosition,
                 EmployeeFlip = _employeeFlip,
                 EmployeeHasPacketData = _employeeHasPacketData,
-                EmployeePacketActorHidden = _employeePacketActorHidden,
-                EmployeePacketEmployerId = _employeePacketEmployerId,
-                EmployeePacketFootholdId = _employeePacketFootholdId,
-                EmployeePacketNameTag = _employeePacketNameTag,
-                EmployeePacketMiniRoomType = _employeePacketMiniRoomType,
-                EmployeePacketMiniRoomSerial = _employeePacketMiniRoomSerial,
-                EmployeePacketBalloonTitle = _employeePacketBalloonTitle,
-                EmployeePacketBalloonByte0 = _employeePacketBalloonByte0,
-                EmployeePacketBalloonByte1 = _employeePacketBalloonByte1,
-                EmployeePacketBalloonByte2 = _employeePacketBalloonByte2,
                 EmployeePreferredEmployerId = _employeePoolRuntime.PreferredEmployerId,
                 EmployeePoolEntries = _employeePoolRuntime.BuildSnapshots().ToList(),
                 Occupants = _occupants
@@ -888,22 +878,10 @@ namespace HaCreator.MapSimulator.Interaction
                 _employeeHasWorldPosition = source?.EmployeeHasWorldPosition ?? _defaultSnapshot.EmployeeHasWorldPosition;
                 _employeeFlip = source?.EmployeeFlip ?? _defaultSnapshot.EmployeeFlip;
                 _employeeHasPacketData = source?.EmployeeHasPacketData ?? _defaultSnapshot.EmployeeHasPacketData;
-                _employeePacketActorHidden = source?.EmployeePacketActorHidden ?? _defaultSnapshot.EmployeePacketActorHidden;
-                _employeePacketEmployerId = source?.EmployeePacketEmployerId ?? _defaultSnapshot.EmployeePacketEmployerId;
-                _employeePacketFootholdId = source?.EmployeePacketFootholdId ?? _defaultSnapshot.EmployeePacketFootholdId;
-                _employeePacketNameTag = source?.EmployeePacketNameTag ?? _defaultSnapshot.EmployeePacketNameTag ?? string.Empty;
-                _employeePacketMiniRoomType = source?.EmployeePacketMiniRoomType ?? _defaultSnapshot.EmployeePacketMiniRoomType;
-                _employeePacketMiniRoomSerial = source?.EmployeePacketMiniRoomSerial ?? _defaultSnapshot.EmployeePacketMiniRoomSerial;
-                _employeePacketBalloonTitle = source?.EmployeePacketBalloonTitle ?? _defaultSnapshot.EmployeePacketBalloonTitle ?? string.Empty;
-                _employeePacketBalloonByte0 = source?.EmployeePacketBalloonByte0 ?? _defaultSnapshot.EmployeePacketBalloonByte0;
-                _employeePacketBalloonByte1 = source?.EmployeePacketBalloonByte1 ?? _defaultSnapshot.EmployeePacketBalloonByte1;
-                _employeePacketBalloonByte2 = source?.EmployeePacketBalloonByte2 ?? _defaultSnapshot.EmployeePacketBalloonByte2;
-                _employeePoolRuntime.Restore(source?.EmployeePoolEntries, CreateLegacyEmployeePacketState(source));
-                _employeePoolRuntime.SetPreferredEmployerId(source?.EmployeePreferredEmployerId ?? _defaultSnapshot.EmployeePreferredEmployerId);
-                if (_employeePoolRuntime.HasEntries)
-                {
-                    SyncLegacyEmployeePacketStateFromPool();
-                }
+                _employeePoolRuntime.Restore(source?.EmployeePoolEntries);
+                int restoredPreferredEmployerId = source?.EmployeePreferredEmployerId ?? _defaultSnapshot.EmployeePreferredEmployerId;
+                _employeePoolRuntime.SetPreferredEmployerId(restoredPreferredEmployerId);
+                SyncLegacyEmployeePacketStateFromPool(restoredPreferredEmployerId);
                 _remoteInventoryMeso = Math.Max(0, source?.RemoteInventoryMeso ?? _defaultSnapshot.RemoteInventoryMeso);
 
                 _occupants.Clear();
@@ -6279,31 +6257,6 @@ namespace HaCreator.MapSimulator.Interaction
             return $"|pkt|{_employeePacketEmployerId}|{_employeePacketFootholdId}|{_employeePacketMiniRoomType}|{_employeePacketMiniRoomSerial}|{_employeePacketBalloonTitle}|{_employeePacketBalloonByte0}|{_employeePacketBalloonByte1}|{_employeePacketBalloonByte2}";
         }
 
-        private static SocialRoomEmployeeLegacyPacketState CreateLegacyEmployeePacketState(SocialRoomRuntimeSnapshot snapshot)
-        {
-            if (snapshot == null)
-            {
-                return default;
-            }
-
-            return new SocialRoomEmployeeLegacyPacketState(
-                snapshot.EmployeeHasPacketData,
-                snapshot.EmployeePacketActorHidden,
-                snapshot.EmployeePacketEmployerId,
-                snapshot.EmployeePacketFootholdId,
-                snapshot.EmployeePacketNameTag,
-                snapshot.EmployeePacketMiniRoomType,
-                snapshot.EmployeePacketMiniRoomSerial,
-                snapshot.EmployeePacketBalloonTitle,
-                snapshot.EmployeePacketBalloonByte0,
-                snapshot.EmployeePacketBalloonByte1,
-                snapshot.EmployeePacketBalloonByte2,
-                snapshot.EmployeeTemplateId,
-                snapshot.EmployeeWorldX,
-                snapshot.EmployeeWorldY,
-                snapshot.EmployeeHasWorldPosition);
-        }
-
         private bool TryGetVisibleEmployeePoolEntry(out SocialRoomEmployeePoolEntryState state)
         {
             return _employeePoolRuntime.TryGetPrimaryEntry(out state) && state != null && state.IsVisible;
@@ -6336,23 +6289,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            SocialRoomEmployeeLegacyPacketState legacyState = new(
-                _employeeHasPacketData,
-                _employeePacketActorHidden,
-                _employeePacketEmployerId,
-                _employeePacketFootholdId,
-                _employeePacketNameTag,
-                _employeePacketMiniRoomType,
-                _employeePacketMiniRoomSerial,
-                _employeePacketBalloonTitle,
-                _employeePacketBalloonByte0,
-                _employeePacketBalloonByte1,
-                _employeePacketBalloonByte2,
-                _employeeTemplateId,
-                _employeeWorldX,
-                _employeeWorldY,
-                _employeeHasWorldPosition);
-            _employeePoolRuntime.Restore(snapshots, legacyState);
+            _employeePoolRuntime.Restore(snapshots);
             _employeePoolRuntime.SetPreferredEmployerId(Math.Max(0, preferredEmployerId));
             _employeeHasPacketData = hasPacketState || (snapshots?.Count > 0);
             SyncLegacyEmployeePacketStateFromPool(Math.Max(lastKnownEmployerId, preferredEmployerId));

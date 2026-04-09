@@ -1138,6 +1138,16 @@ namespace HaCreator.MapSimulator.Loaders
             return value > 0 ? "Enabled" : "Disabled";
         }
 
+        private static string FormatActionSpeedValue(int value)
+        {
+            if (value == 0)
+                return string.Empty;
+
+            int levelDelta = Math.Abs(value);
+            string levelText = levelDelta == 1 ? "level" : "levels";
+            return $"{levelDelta.ToString(CultureInfo.InvariantCulture)} {levelText}";
+        }
+
         internal static string FormatFallbackItemConsumptionValue(int itemId, int quantity, string resolvedItemName = null)
         {
             if (itemId <= 0)
@@ -1313,6 +1323,7 @@ namespace HaCreator.MapSimulator.Loaders
             "eva",
             "speed",
             "jump",
+            "actionSpeed",
             "indieAllStat",
             "indiePad",
             "indieMad",
@@ -1404,6 +1415,7 @@ namespace HaCreator.MapSimulator.Loaders
                 ["eva"] = new("eva", "EVA", formatter: FormatSignedValue),
                 ["speed"] = new("speed", "Speed", formatter: FormatSignedValue),
                 ["jump"] = new("jump", "Jump", formatter: FormatSignedValue),
+                ["actionSpeed"] = new("actionSpeed", "Attack Speed", formatter: FormatActionSpeedValue),
                 ["indieAllStat"] = new("indieAllStat", "Independent All Stats", formatter: FormatSignedValue),
                 ["indiePad"] = new("indiePad", "Independent PAD", formatter: FormatSignedValue),
                 ["indieMad"] = new("indieMad", "Independent MAD", formatter: FormatSignedValue),
@@ -1418,8 +1430,8 @@ namespace HaCreator.MapSimulator.Loaders
                 ["indieJump"] = new("indieJump", "Independent Jump", formatter: FormatSignedValue),
                 ["hp"] = new("hp", "HP Recovery"),
                 ["mp"] = new("mp", "MP Recovery"),
-                ["padX"] = new("padX", "PAD Bonus", formatter: FormatSignedValue),
-                ["madX"] = new("madX", "MAD Bonus", formatter: FormatSignedValue),
+                ["padX"] = new("padX", "Weapon ATT", formatter: FormatSignedValue),
+                ["madX"] = new("madX", "Magic ATT", formatter: FormatSignedValue),
                 ["bulletCount"] = new("bulletCount", "Bullet Count"),
                 ["bulletSpeed"] = new("bulletSpeed", "Bullet Speed"),
                 ["morph"] = new("morph", "Morph"),

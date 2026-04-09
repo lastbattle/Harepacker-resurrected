@@ -346,11 +346,20 @@ namespace HaCreator.MapSimulator.Character
         private const int MirrorImageClientBackActionOffsetYPx = 50;
         private const int MirrorImageTransitionDurationMs = 200;
         private const int PacketOwnedEmotionEffectSkillId = 2099000000;
+        private const int BlinkEmotionId = 8;
         // Float idle should ignore the tiny passive sink applied by swim physics.
         private const float FLOAT_ANIMATION_MOVEMENT_THRESHOLD = 20f;
         // CActionMan action metadata uses 150 as the default alpha for composed character pieces.
         private static readonly Color ShadowPartnerTint = new(255, 255, 255, 150);
         private static readonly Color MirrorImageTint = new(128, 128, 128, 208);
+        private static readonly HashSet<int> PacketOwnedEmotionSuppressedRawActionCodes = new()
+        {
+            41,
+            42,
+            57
+        };
+        private static readonly HashSet<string> PacketOwnedEmotionSuppressedActionNames =
+            BuildPacketOwnedEmotionSuppressedActionNames();
 
         #endregion
 
@@ -1991,9 +2000,11 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
-            if (ShouldSuppressPacketOwnedEmotionApplication(HasActiveMorphTransform))
+            if (ShouldSuppressPacketOwnedEmotionApplication(emotionId))
             {
-                message = $"Ignored packet-owned avatar emotion '{emotionName}' ({emotionId}) because a morph transform is active.";
+                message = HasActiveMorphTransform
+                    ? $"Ignored packet-owned avatar emotion '{emotionName}' ({emotionId}) because a morph transform is active."
+                    : $"Ignored packet-owned avatar emotion '{emotionName}' ({emotionId}) because the current client raw action suppresses blink emotion while the one-time action is active.";
                 return true;
             }
 
@@ -2060,9 +2071,72 @@ namespace HaCreator.MapSimulator.Character
             return 0;
         }
 
-        private static bool ShouldSuppressPacketOwnedEmotionApplication(bool hasActiveMorphTransform)
+        private bool ShouldSuppressPacketOwnedEmotionApplication(int emotionId)
         {
-            return hasActiveMorphTransform;
+            int? rawActionCode = TryGetCurrentClientRawActionCode(out int resolvedRawActionCode)
+                ? resolvedRawActionCode
+                : null;
+            return ShouldSuppressPacketOwnedEmotionApplication(
+                HasActiveMorphTransform,
+                emotionId,
+                rawActionCode,
+                _forcedActionName,
+                CurrentActionName,
+                CharacterPart.GetActionString(CurrentAction));
+        }
+
+        internal static bool ShouldSuppressPacketOwnedEmotionApplication(
+            bool hasActiveMorphTransform,
+            int emotionId,
+            int? rawActionCode,
+            params string[] actionNames)
+        {
+            if (hasActiveMorphTransform)
+            {
+                return true;
+            }
+
+            if (emotionId != BlinkEmotionId)
+            {
+                return false;
+            }
+
+            if (rawActionCode.HasValue && PacketOwnedEmotionSuppressedRawActionCodes.Contains(rawActionCode.Value))
+            {
+                return true;
+            }
+
+            if (actionNames == null || actionNames.Length == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < actionNames.Length; i++)
+            {
+                string actionName = actionNames[i];
+                if (!string.IsNullOrWhiteSpace(actionName)
+                    && PacketOwnedEmotionSuppressedActionNames.Contains(actionName))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static HashSet<string> BuildPacketOwnedEmotionSuppressedActionNames()
+        {
+            var actionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (int rawActionCode in PacketOwnedEmotionSuppressedRawActionCodes)
+            {
+                if (CharacterPart.TryGetActionStringFromCode(rawActionCode, out string actionName)
+                    && !string.IsNullOrWhiteSpace(actionName))
+                {
+                    actionNames.Add(actionName);
+                }
+            }
+
+            return actionNames;
         }
 
         internal bool TryGetPacketOwnedEmotionState(int currentTime, out PacketOwnedEmotionState state)
@@ -3714,14 +3788,17 @@ namespace HaCreator.MapSimulator.Character
             DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.BehindCharacter, frame, screenX, screenY, tint);
             DrawMeleeAfterImage(spriteBatch, skeletonRenderer, screenX, screenY, tint, currentTime);
 
-            int[] mirrorLayerInsertionIndices = GetAvatarRenderLayerInsertionIndices(frame.Parts);
+            int[] avatarLayerInsertionIndices = GetAvatarRenderLayerInsertionIndices(frame.Parts);
+            int mirrorOverlayInsertionIndex = ResolveMirrorImageOverlayInsertionIndex(
+                avatarLayerInsertionIndices,
+                frame.Parts.Count);
             bool underFaceDrawn = avatarEffects.Count == 0;
             bool shadowPartnerDrawn = false;
-            var drawnMirrorLayers = new bool[5];
+            bool mirrorImageDrawn = false;
 
             for (int i = 0; i < frame.Parts.Count; i++)
             {
-                DrawMirrorImageLayersAtInsertionIndex(
+                DrawMirrorImageAtInsertionIndex(
                     spriteBatch,
                     skeletonRenderer,
                     frame,
@@ -3730,8 +3807,8 @@ namespace HaCreator.MapSimulator.Character
                     screenY,
                     currentTime,
                     i,
-                    mirrorLayerInsertionIndices,
-                    drawnMirrorLayers,
+                    mirrorOverlayInsertionIndex,
+                    ref mirrorImageDrawn,
                     ref underFaceDrawn,
                     ref shadowPartnerDrawn,
                     avatarEffects,
@@ -3741,7 +3818,7 @@ namespace HaCreator.MapSimulator.Character
                 DrawAssembledPart(spriteBatch, skeletonRenderer, frame.Parts[i], screenX, adjustedY, FacingRight, tint);
             }
 
-            DrawMirrorImageLayersAtInsertionIndex(
+            DrawMirrorImageAtInsertionIndex(
                 spriteBatch,
                 skeletonRenderer,
                 frame,
@@ -3750,8 +3827,8 @@ namespace HaCreator.MapSimulator.Character
                 screenY,
                 currentTime,
                 frame.Parts.Count,
-                mirrorLayerInsertionIndices,
-                drawnMirrorLayers,
+                mirrorOverlayInsertionIndex,
+                ref mirrorImageDrawn,
                 ref underFaceDrawn,
                 ref shadowPartnerDrawn,
                 avatarEffects,
@@ -3761,7 +3838,7 @@ namespace HaCreator.MapSimulator.Character
             DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.OverCharacter, frame, screenX, screenY, tint);
         }
 
-        private void DrawMirrorImageLayersAtInsertionIndex(
+        private void DrawMirrorImageAtInsertionIndex(
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonRenderer,
             AssembledFrame frame,
@@ -3770,44 +3847,34 @@ namespace HaCreator.MapSimulator.Character
             int screenY,
             int currentTime,
             int insertionIndex,
-            IReadOnlyList<int> mirrorLayerInsertionIndices,
-            bool[] drawnMirrorLayers,
+            int mirrorOverlayInsertionIndex,
+            ref bool mirrorImageDrawn,
             ref bool underFaceDrawn,
             ref bool shadowPartnerDrawn,
             List<AvatarEffectRenderable> avatarEffects,
             Color tint,
             Action drawUnderFaceOverlay)
         {
-            if (mirrorLayerInsertionIndices == null || drawnMirrorLayers == null)
+            if (mirrorImageDrawn || insertionIndex != mirrorOverlayInsertionIndex)
             {
                 return;
             }
 
-            int layerCount = Math.Min(mirrorLayerInsertionIndices.Count, drawnMirrorLayers.Length);
-            for (int layerIndex = 0; layerIndex < layerCount; layerIndex++)
+            if (!underFaceDrawn)
             {
-                if (drawnMirrorLayers[layerIndex] || mirrorLayerInsertionIndices[layerIndex] != insertionIndex)
-                {
-                    continue;
-                }
-
-                AvatarRenderLayer overlayTargetLayer = (AvatarRenderLayer)layerIndex;
-                if (overlayTargetLayer == AvatarRenderLayer.UnderFace && !underFaceDrawn)
-                {
-                    drawUnderFaceOverlay?.Invoke();
-                    DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.UnderFace, frame, screenX, screenY, tint);
-                    underFaceDrawn = true;
-                }
-
-                if (overlayTargetLayer == AvatarRenderLayer.UnderFace && !shadowPartnerDrawn)
-                {
-                    DrawShadowPartner(spriteBatch, skeletonRenderer, screenX, screenY, currentTime);
-                    shadowPartnerDrawn = true;
-                }
-
-                DrawMirrorImage(spriteBatch, skeletonRenderer, frame, currentFrameIndex, screenX, screenY, currentTime, overlayTargetLayer);
-                drawnMirrorLayers[layerIndex] = true;
+                drawUnderFaceOverlay?.Invoke();
+                DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.UnderFace, frame, screenX, screenY, tint);
+                underFaceDrawn = true;
             }
+
+            if (!shadowPartnerDrawn)
+            {
+                DrawShadowPartner(spriteBatch, skeletonRenderer, screenX, screenY, currentTime);
+                shadowPartnerDrawn = true;
+            }
+
+            DrawMirrorImage(spriteBatch, skeletonRenderer, frame, currentFrameIndex, screenX, screenY, currentTime, AvatarRenderLayer.UnderFace);
+            mirrorImageDrawn = true;
         }
 
         private void DrawMeleeAfterImage(
@@ -4462,7 +4529,25 @@ namespace HaCreator.MapSimulator.Character
 
         internal static AvatarRenderLayer ResolveMirrorImageOverlayTargetLayer(AvatarRenderLayer renderLayer)
         {
-            return renderLayer;
+            return AvatarRenderLayer.UnderFace;
+        }
+
+        internal static int ResolveMirrorImageOverlayInsertionIndex(
+            IReadOnlyList<int> avatarLayerInsertionIndices,
+            int fallbackInsertionIndex)
+        {
+            if (avatarLayerInsertionIndices == null)
+            {
+                return fallbackInsertionIndex;
+            }
+
+            int underFaceLayerIndex = (int)AvatarRenderLayer.UnderFace;
+            if ((uint)underFaceLayerIndex >= (uint)avatarLayerInsertionIndices.Count)
+            {
+                return fallbackInsertionIndex;
+            }
+
+            return avatarLayerInsertionIndices[underFaceLayerIndex];
         }
 
         internal static bool CanReuseMirrorImagePreparedSourceLayer(

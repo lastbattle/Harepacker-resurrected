@@ -538,6 +538,8 @@ namespace HaCreator.MapSimulator.Interaction
                         CreateNumericResponseChoice("Next", "Next", 2),
                         CreateNumericResponseChoice("Give Up", "Give Up", 0)
                     }),
+                    suppressDialogMutation: true,
+                    statusMessage: $"Opened packet-authored speed-quiz owner for {speaker.DisplayName}: client mode 0 creates `CUISpeedQuiz`.",
                     clientOwnerRuntimeSync: PacketScriptClientOwnerRuntimeSync.CreateSpeedQuiz(
                         currentQuestion,
                         totalQuestions,
@@ -1400,7 +1402,6 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 case 5:
-                case 7:
                 case 15:
                 {
                     if (!submission.NumericValue.HasValue)
@@ -1411,6 +1412,12 @@ namespace HaCreator.MapSimulator.Interaction
 
                     writer.WriteByte(1);
                     writer.WriteInt(submission.NumericValue.Value);
+                    break;
+                }
+
+                case 7:
+                {
+                    writer.WriteMapleString(submittedValue ?? string.Empty);
                     break;
                 }
 

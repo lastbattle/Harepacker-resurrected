@@ -264,6 +264,7 @@ namespace HaCreator.MapSimulator.Character
         public string ActionName { get; set; }          // Original action string
         public List<CharacterFrame> Frames { get; set; } = new();
         public int TotalDuration { get; private set; }
+        public int? AuthoredDuration { get; set; }
         public bool Loop { get; set; } = true;
 
         public void CalculateTotalDuration()
@@ -1197,6 +1198,7 @@ namespace HaCreator.MapSimulator.Character
         public int FaceAccessoryItemId { get; init; }
         public List<FaceLookFrame> Frames { get; } = new();
         public int TotalDuration { get; set; }
+        public int? AuthoredDuration { get; set; }
         public bool HasAccessory => FaceAccessoryItemId > 0;
     }
 

@@ -13,12 +13,15 @@ namespace HaCreator.MapSimulator.UI
     {
         private const int DefaultWidth = 250;
         private const int DefaultHeight = 236;
-        private const int SlotTop = 108;
-        private const int SlotWidth = 52;
-        private const int SlotHeight = 84;
-        private const int SlotSpacing = 14;
-        private const int SlotStartLeft = 21;
-        private const int IconPadding = 6;
+        private const int ClientIconTop = 182;
+        private const int ClientIconLeft = 25;
+        private const int ClientSelectButtonTop = 196;
+        private const int ClientSelectButtonLeft = 21;
+        private const int ClientColumnStride = 66;
+        private const int ClientItemIconSize = 40;
+        private const int ClientSelectButtonWidth = 52;
+        private const int ClientSelectButtonHeight = 18;
+        private const int ClientSelectionHighlightPadding = 4;
         private const int CloseButtonSize = 16;
 
         private readonly Texture2D _pixel;
@@ -31,6 +34,7 @@ namespace HaCreator.MapSimulator.UI
         private Action<string> _feedbackHandler;
         private Func<int, Texture2D> _itemIconProvider;
         private LogoutGiftOwnerSnapshot _snapshot = new();
+        private bool _hasAuthoredFrameTexture;
 
         internal LogoutGiftWindow(GraphicsDevice device)
             : base(new DXObject(0, 0, CreateFrameTexture(device), 0))
@@ -45,6 +49,7 @@ namespace HaCreator.MapSimulator.UI
 
         internal void ConfigureVisualAssets(Texture2D frameTexture)
         {
+            _hasAuthoredFrameTexture = frameTexture != null;
             Frame = frameTexture == null
                 ? null
                 : new DXObject(0, 0, frameTexture, 0);
@@ -201,21 +206,33 @@ namespace HaCreator.MapSimulator.UI
         private void DrawEntry(SpriteBatch sprite, LogoutGiftEntrySnapshot entry, int index)
         {
             Rectangle slotBounds = GetSlotBounds(index);
+            Rectangle iconBounds = GetClientIconBounds(Position, index);
+            Rectangle buttonBounds = GetClientSelectButtonBounds(Position, index);
             bool selected = index == _snapshot.SelectedIndex;
             Color fill = selected ? new Color(255, 241, 194) : new Color(238, 228, 207);
             Color border = selected ? new Color(198, 142, 76) : new Color(163, 134, 103);
 
-            sprite.Draw(_pixel, slotBounds, fill);
-            sprite.Draw(_pixel, new Rectangle(slotBounds.X, slotBounds.Y, slotBounds.Width, 1), border);
-            sprite.Draw(_pixel, new Rectangle(slotBounds.X, slotBounds.Bottom - 1, slotBounds.Width, 1), border);
-            sprite.Draw(_pixel, new Rectangle(slotBounds.X, slotBounds.Y, 1, slotBounds.Height), border);
-            sprite.Draw(_pixel, new Rectangle(slotBounds.Right - 1, slotBounds.Y, 1, slotBounds.Height), border);
+            if (!_hasAuthoredFrameTexture || selected)
+            {
+                sprite.Draw(_pixel, slotBounds, selected ? new Color(255, 244, 212, 210) : new Color(238, 228, 207, 110));
+                sprite.Draw(_pixel, new Rectangle(slotBounds.X, slotBounds.Y, slotBounds.Width, 1), border);
+                sprite.Draw(_pixel, new Rectangle(slotBounds.X, slotBounds.Bottom - 1, slotBounds.Width, 1), border);
+                sprite.Draw(_pixel, new Rectangle(slotBounds.X, slotBounds.Y, 1, slotBounds.Height), border);
+                sprite.Draw(_pixel, new Rectangle(slotBounds.Right - 1, slotBounds.Y, 1, slotBounds.Height), border);
+            }
 
             Texture2D icon = ResolveItemIcon(entry.ItemId);
             if (icon != null)
             {
-                Rectangle iconBounds = new(slotBounds.X + IconPadding, slotBounds.Y + IconPadding, 40, 40);
                 sprite.Draw(icon, iconBounds, Color.White);
+            }
+            else
+            {
+                sprite.Draw(_pixel, iconBounds, new Color(228, 214, 188));
+                sprite.Draw(_pixel, new Rectangle(iconBounds.X, iconBounds.Y, iconBounds.Width, 1), border);
+                sprite.Draw(_pixel, new Rectangle(iconBounds.X, iconBounds.Bottom - 1, iconBounds.Width, 1), border);
+                sprite.Draw(_pixel, new Rectangle(iconBounds.X, iconBounds.Y, 1, iconBounds.Height), border);
+                sprite.Draw(_pixel, new Rectangle(iconBounds.Right - 1, iconBounds.Y, 1, iconBounds.Height), border);
             }
 
             if (!CanDrawWindowText)
@@ -223,15 +240,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            string label = string.IsNullOrWhiteSpace(entry.ItemName)
-                ? (entry.CommoditySerialNumber > 0 ? $"SN {entry.CommoditySerialNumber}" : "Empty")
-                : entry.ItemName;
-            DrawCenteredText(sprite, label, new Rectangle(slotBounds.X + 3, slotBounds.Y + 48, slotBounds.Width - 6, 18), new Color(70, 49, 31), 0.28f);
-
-            string footer = entry.CommoditySerialNumber > 0
-                ? $"SN {entry.CommoditySerialNumber}"
-                : "No gift";
-            DrawCenteredText(sprite, footer, new Rectangle(slotBounds.X + 3, slotBounds.Bottom - 20, slotBounds.Width - 6, 16), new Color(112, 86, 60), 0.25f);
+            sprite.Draw(_pixel, buttonBounds, fill);
+            sprite.Draw(_pixel, new Rectangle(buttonBounds.X, buttonBounds.Y, buttonBounds.Width, 1), border);
+            sprite.Draw(_pixel, new Rectangle(buttonBounds.X, buttonBounds.Bottom - 1, buttonBounds.Width, 1), border);
+            sprite.Draw(_pixel, new Rectangle(buttonBounds.X, buttonBounds.Y, 1, buttonBounds.Height), border);
+            sprite.Draw(_pixel, new Rectangle(buttonBounds.Right - 1, buttonBounds.Y, 1, buttonBounds.Height), border);
+            DrawCenteredText(sprite, $"Gift {index + 1}", buttonBounds, new Color(70, 49, 31), 0.27f);
         }
 
         private void DrawCenteredText(SpriteBatch sprite, string text, Rectangle bounds, Color color, float scale)
@@ -291,11 +305,31 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetSlotBounds(int index)
         {
+            Rectangle iconBounds = GetClientIconBounds(Position, index);
+            Rectangle buttonBounds = GetClientSelectButtonBounds(Position, index);
+            int left = Math.Min(iconBounds.Left, buttonBounds.Left) - ClientSelectionHighlightPadding;
+            int top = Math.Min(iconBounds.Top, buttonBounds.Top) - ClientSelectionHighlightPadding;
+            int right = Math.Max(iconBounds.Right, buttonBounds.Right) + ClientSelectionHighlightPadding;
+            int bottom = Math.Max(iconBounds.Bottom, buttonBounds.Bottom) + ClientSelectionHighlightPadding;
+            return new Rectangle(left, top, right - left, bottom - top);
+        }
+
+        internal static Rectangle GetClientIconBounds(Point origin, int index)
+        {
             return new Rectangle(
-                Position.X + SlotStartLeft + (index * (SlotWidth + SlotSpacing)),
-                Position.Y + SlotTop,
-                SlotWidth,
-                SlotHeight);
+                origin.X + ClientIconLeft + (index * ClientColumnStride),
+                origin.Y + ClientIconTop,
+                ClientItemIconSize,
+                ClientItemIconSize);
+        }
+
+        internal static Rectangle GetClientSelectButtonBounds(Point origin, int index)
+        {
+            return new Rectangle(
+                origin.X + ClientSelectButtonLeft + (index * ClientColumnStride),
+                origin.Y + ClientSelectButtonTop,
+                ClientSelectButtonWidth,
+                ClientSelectButtonHeight);
         }
 
         private Rectangle GetCloseBounds()

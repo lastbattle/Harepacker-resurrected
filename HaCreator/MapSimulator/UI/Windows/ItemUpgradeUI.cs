@@ -83,6 +83,13 @@ namespace HaCreator.MapSimulator.UI
         private static readonly int[] InnocenceScrollIds = { 2049600, 2049601, 2049604 };
         private static readonly int[] GoldenHammerIds = { 2470000, 2470001, 2470002 };
         private static readonly int[] HorntailNecklaceIds = { 1122000, 1122001, 1122002, 1122003 };
+        private static readonly int[] MapleMiracleCubeRequiredEquipIds =
+        {
+            1003243, 1052358, 1072522, 1082315, 1102295, 1132093,
+            1302170, 1312069, 1322101, 1332145, 1372097, 1382121,
+            1402107, 1412068, 1422070, 1432096, 1442133, 1452126,
+            1462114, 1472137, 1482099, 1492098
+        };
 
         private readonly Random _random = new Random();
         private readonly Dictionary<EquipSlot, UpgradeState> _upgradeStates = new Dictionary<EquipSlot, UpgradeState>();
@@ -2570,6 +2577,13 @@ namespace HaCreator.MapSimulator.UI
                 return null;
             }
 
+            if (definition.ItemId == MapleMiracleCubeId &&
+                requiredItems.Count == MapleMiracleCubeRequiredEquipIds.Length &&
+                MapleMiracleCubeRequiredEquipIds.All(requiredItems.Contains))
+            {
+                return "Maple 8th Anniversary Crimson equipment";
+            }
+
             string[] itemNames = requiredItems
                 .Select(ResolveCachedItemNameOrFallback)
                 .Where(name => !string.IsNullOrWhiteSpace(name))
@@ -4004,6 +4018,20 @@ namespace HaCreator.MapSimulator.UI
 
             percent = 0;
             return false;
+        }
+
+        internal static IReadOnlyCollection<int> GetRequiredEquipItemIdsForTests(int consumableItemId)
+        {
+            return TryGetConsumableDefinition(consumableItemId, out EnhancementConsumableDefinition definition)
+                ? GetRequiredEquipItemIds(definition)
+                : Array.Empty<int>();
+        }
+
+        internal static string ResolveRequiredEquipFamilyLabelForTests(int consumableItemId)
+        {
+            return TryGetConsumableDefinition(consumableItemId, out EnhancementConsumableDefinition definition)
+                ? ResolveRequiredEquipFamilyLabel(definition)
+                : null;
         }
 
         private readonly struct VegaModifierProfile

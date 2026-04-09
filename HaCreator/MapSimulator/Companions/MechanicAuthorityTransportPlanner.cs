@@ -45,6 +45,14 @@ namespace HaCreator.MapSimulator.Companions
                     $"Mirrored mechanic authority request {requestId} through the live local-utility bridge as opcode {opcode} [{payloadHex}]. {bridgeStatus}");
             }
 
+            if (trySendOutbox != null && trySendOutbox.Invoke(opcode, payload, out outboxStatus))
+            {
+                return new MechanicAuthorityTransportOutcome(
+                    true,
+                    MechanicAuthorityTransportRoute.GenericOutbox,
+                    $"Mirrored mechanic authority request {requestId} through the generic local-utility outbox as opcode {opcode} [{payloadHex}] after the official-session bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}");
+            }
+
             string deferredBridgeStatus = "Official-session bridge deferred delivery is disabled.";
             if (allowDeferredOfficialBridge
                 && tryQueueBridge != null
@@ -53,15 +61,7 @@ namespace HaCreator.MapSimulator.Companions
                 return new MechanicAuthorityTransportOutcome(
                     true,
                     MechanicAuthorityTransportRoute.DeferredOfficialBridge,
-                    $"Queued mechanic authority request {requestId} for deferred official-session injection as opcode {opcode} [{payloadHex}] after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus}");
-            }
-
-            if (trySendOutbox != null && trySendOutbox.Invoke(opcode, payload, out outboxStatus))
-            {
-                return new MechanicAuthorityTransportOutcome(
-                    true,
-                    MechanicAuthorityTransportRoute.GenericOutbox,
-                    $"Mirrored mechanic authority request {requestId} through the generic local-utility outbox as opcode {opcode} [{payloadHex}] after the official-session bridge path was unavailable. Bridge: {bridgeStatus} Deferred bridge: {deferredBridgeStatus} Outbox: {outboxStatus}");
+                    $"Queued mechanic authority request {requestId} for deferred official-session injection as opcode {opcode} [{payloadHex}] after the live bridge and generic outbox paths were unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus}");
             }
 
             if (tryQueueOutbox != null && tryQueueOutbox.Invoke(opcode, payload, out string queuedOutboxStatus))
@@ -69,7 +69,7 @@ namespace HaCreator.MapSimulator.Companions
                 return new MechanicAuthorityTransportOutcome(
                     true,
                     MechanicAuthorityTransportRoute.DeferredGenericOutbox,
-                    $"Queued mechanic authority request {requestId} for deferred generic local-utility delivery as opcode {opcode} [{payloadHex}] after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred official bridge: {deferredBridgeStatus} Deferred outbox: {queuedOutboxStatus}");
+                    $"Queued mechanic authority request {requestId} for deferred generic local-utility delivery as opcode {opcode} [{payloadHex}] after the live bridge and generic outbox paths were unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred official bridge: {deferredBridgeStatus} Deferred outbox: {queuedOutboxStatus}");
             }
 
             return new MechanicAuthorityTransportOutcome(

@@ -2408,24 +2408,13 @@ namespace HaCreator.MapSimulator.UI
             height = Math.Max(4, Math.Min(viewportHeight, height));
             Point origin = ResolveCandidateWindowOrigin(viewport, width, height);
 
-            int x = origin.X;
-            if (x < 0)
-            {
-                x = 0;
-            }
-
-            if (x + width > viewportWidth)
-            {
-                x = viewportWidth - width;
-            }
-
-            int y = origin.Y;
-            if (y + height > viewportHeight)
-            {
-                y = origin.Y - height - 1;
-            }
-
-            return new Rectangle(x, y, width, height);
+            return SkillMacroImeCandidateWindowLayout.ResolveClientOwnerBounds(
+                viewportWidth,
+                viewportHeight,
+                width,
+                height,
+                origin,
+                origin.Y - height - 1);
         }
 
         private Viewport GetActiveViewport()

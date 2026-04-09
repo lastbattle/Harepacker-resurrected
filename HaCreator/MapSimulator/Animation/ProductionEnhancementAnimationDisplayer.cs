@@ -156,7 +156,12 @@ namespace HaCreator.MapSimulator.Animation
                 VegaRepeatDurationMs);
         }
 
-        public void PlayVegaResult(bool success, int currentTimeMs)
+        public int GetVegaResultPreludeDurationMs()
+        {
+            return VegaRepeatDurationMs;
+        }
+
+        public void PlayVegaResultPrelude(int currentTimeMs)
         {
             _owner.RegisterRepeat(
                 MapSimulatorWindowNames.VegaSpell,
@@ -174,6 +179,10 @@ namespace HaCreator.MapSimulator.Animation
                 AnimationDisplayerWindowOverlayPass.Overlay,
                 currentTimeMs,
                 VegaRepeatDurationMs);
+        }
+
+        public void PlayVegaResultPopup(bool success, int currentTimeMs)
+        {
             _owner.RegisterOneTime(
                 MapSimulatorWindowNames.VegaSpell,
                 "vega:result:popup",

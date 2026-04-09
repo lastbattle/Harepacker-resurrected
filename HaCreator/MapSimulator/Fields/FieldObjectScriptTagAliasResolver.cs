@@ -37,27 +37,15 @@ namespace HaCreator.MapSimulator.Fields
 
                 if (TryParseTrailingStage(candidateScriptName, out string scriptBaseName, out int stage))
                 {
+                    AddStageFamilyTags(scriptBaseName, stage, availableTagSet, resolvedTags, retiredTags);
+
                     string camelCaseBaseName = ToCamelCase(scriptBaseName);
-                    if (string.IsNullOrWhiteSpace(camelCaseBaseName))
+                    if (!string.IsNullOrWhiteSpace(camelCaseBaseName)
+                        && !string.Equals(camelCaseBaseName, scriptBaseName, StringComparison.OrdinalIgnoreCase))
                     {
-                        continue;
+                        AddStageFamilyTags(camelCaseBaseName, stage, availableTagSet, resolvedTags, retiredTags);
                     }
 
-                    if (stage <= 1)
-                    {
-                        AddIfAvailable(camelCaseBaseName, availableTagSet, resolvedTags);
-                    }
-                    else
-                    {
-                        string stageSpecificTag = camelCaseBaseName + stage;
-                        AddIfAvailable(stageSpecificTag, availableTagSet, resolvedTags);
-                        if (!resolvedTags.Contains(stageSpecificTag))
-                        {
-                            AddIfAvailable(camelCaseBaseName, availableTagSet, resolvedTags);
-                        }
-                    }
-
-                    AddSiblingStageTags(camelCaseBaseName, stage, availableTagSet, resolvedTags, retiredTags);
                     continue;
                 }
 
@@ -160,14 +148,56 @@ namespace HaCreator.MapSimulator.Fields
             AddIfAvailable(questIdTag, availableTags, resolvedTags);
         }
 
-        private static void AddSiblingStageTags(
-            string camelCaseBaseName,
+        private static void AddStageFamilyTags(
+            string familyBaseName,
             int activeStage,
             ISet<string> availableTags,
             ISet<string> resolvedTags,
             ISet<string> retiredTags)
         {
-            if (string.IsNullOrWhiteSpace(camelCaseBaseName) || availableTags == null)
+            if (string.IsNullOrWhiteSpace(familyBaseName))
+            {
+                return;
+            }
+
+            if (activeStage <= 1)
+            {
+                AddIfAvailable(familyBaseName, availableTags, resolvedTags);
+            }
+            else if (!TryAddAvailableStageSpecificTag(familyBaseName, activeStage, availableTags, resolvedTags))
+            {
+                AddIfAvailable(familyBaseName, availableTags, resolvedTags);
+            }
+
+            AddSiblingStageTags(familyBaseName, activeStage, availableTags, resolvedTags, retiredTags);
+        }
+
+        private static bool TryAddAvailableStageSpecificTag(
+            string familyBaseName,
+            int activeStage,
+            ISet<string> availableTags,
+            ISet<string> resolvedTags)
+        {
+            if (string.IsNullOrWhiteSpace(familyBaseName) || activeStage < 0)
+            {
+                return false;
+            }
+
+            int originalCount = resolvedTags.Count;
+            AddIfAvailable(familyBaseName + activeStage, availableTags, resolvedTags);
+            AddIfAvailable(familyBaseName + "_" + activeStage, availableTags, resolvedTags);
+            AddIfAvailable(familyBaseName + "-" + activeStage, availableTags, resolvedTags);
+            return resolvedTags.Count != originalCount;
+        }
+
+        private static void AddSiblingStageTags(
+            string familyBaseName,
+            int activeStage,
+            ISet<string> availableTags,
+            ISet<string> resolvedTags,
+            ISet<string> retiredTags)
+        {
+            if (string.IsNullOrWhiteSpace(familyBaseName) || availableTags == null)
             {
                 return;
             }
@@ -181,7 +211,7 @@ namespace HaCreator.MapSimulator.Fields
 
                 if (!TryParseStageTagCandidate(
                     availableTag,
-                    camelCaseBaseName,
+                    familyBaseName,
                     treatBaseTagAsStageZero: activeStage == 0,
                     out int stage))
                 {
@@ -201,25 +231,30 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool TryParseStageTagCandidate(
             string availableTag,
-            string camelCaseBaseName,
+            string familyBaseName,
             bool treatBaseTagAsStageZero,
             out int stage)
         {
             stage = 0;
             if (string.IsNullOrWhiteSpace(availableTag)
-                || string.IsNullOrWhiteSpace(camelCaseBaseName)
-                || !availableTag.StartsWith(camelCaseBaseName, StringComparison.OrdinalIgnoreCase))
+                || string.IsNullOrWhiteSpace(familyBaseName)
+                || !availableTag.StartsWith(familyBaseName, StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }
 
-            if (availableTag.Length == camelCaseBaseName.Length)
+            if (availableTag.Length == familyBaseName.Length)
             {
                 stage = treatBaseTagAsStageZero ? 0 : 1;
                 return true;
             }
 
-            ReadOnlySpan<char> suffix = availableTag.AsSpan(camelCaseBaseName.Length);
+            ReadOnlySpan<char> suffix = availableTag.AsSpan(familyBaseName.Length);
+            if (suffix.Length > 1 && (suffix[0] == '_' || suffix[0] == '-'))
+            {
+                suffix = suffix[1..];
+            }
+
             return int.TryParse(suffix, out stage) && stage >= 0;
         }
 

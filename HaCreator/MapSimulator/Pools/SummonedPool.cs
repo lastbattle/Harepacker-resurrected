@@ -3039,7 +3039,6 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             Vector2 summonPosition = new(summon.PositionX, summon.PositionY);
-            Rectangle summonBounds = GetPacketOwnedSummonAttackBounds(summon);
             Dictionary<int, PacketOwnedExpiryTargetCandidate> candidatesById = candidates
                 .Where(static candidate => candidate.MobObjectId > 0 && !candidate.Hitbox.IsEmpty)
                 .GroupBy(static candidate => candidate.MobObjectId)
@@ -3071,9 +3070,13 @@ namespace HaCreator.MapSimulator.Pools
                 return orderedTargetIds.ToArray();
             }
 
+            bool fallbackFacingRight = ResolvePacketOwnedExpiryFallbackFacingRight(
+                summon,
+                candidatesById.Values.Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId)));
+            Rectangle summonBounds = GetPacketOwnedSummonAttackBounds(summon, fallbackFacingRight);
             IEnumerable<int> fallbackTargetIds = candidatesById.Values
                 .Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId)
-                                    && IsMobHitboxInPacketOwnedSummonAttackRange(summon, summonBounds, candidate.Hitbox))
+                                    && IsMobHitboxInPacketOwnedSummonAttackRange(summon, summonBounds, candidate.Hitbox, fallbackFacingRight))
                 .Select(candidate =>
                 {
                     float centerX = candidate.Hitbox.Left + (candidate.Hitbox.Width * 0.5f);
@@ -3109,6 +3112,96 @@ namespace HaCreator.MapSimulator.Pools
             return orderedTargetIds.ToArray();
         }
 
+        internal static bool ResolvePacketOwnedExpiryFallbackFacingRight(
+            ActiveSummon summon,
+            IEnumerable<PacketOwnedExpiryTargetCandidate> candidates)
+        {
+            if (summon?.SkillData == null || candidates == null)
+            {
+                return summon?.FacingRight ?? true;
+            }
+
+            PacketOwnedExpiryFacingScore rightScore = ScorePacketOwnedExpiryFacingCandidates(
+                summon,
+                candidates,
+                facingRight: true);
+            PacketOwnedExpiryFacingScore leftScore = ScorePacketOwnedExpiryFacingCandidates(
+                summon,
+                candidates,
+                facingRight: false);
+            if (rightScore.InRangeCount != leftScore.InRangeCount)
+            {
+                return rightScore.InRangeCount > leftScore.InRangeCount;
+            }
+
+            int nearestDistanceComparison = rightScore.NearestDistanceSq.CompareTo(leftScore.NearestDistanceSq);
+            if (nearestDistanceComparison != 0)
+            {
+                return nearestDistanceComparison < 0;
+            }
+
+            int nearestVerticalComparison = rightScore.NearestVerticalDistance.CompareTo(leftScore.NearestVerticalDistance);
+            if (nearestVerticalComparison != 0)
+            {
+                return nearestVerticalComparison < 0;
+            }
+
+            return summon.FacingRight;
+        }
+
+        private static PacketOwnedExpiryFacingScore ScorePacketOwnedExpiryFacingCandidates(
+            ActiveSummon summon,
+            IEnumerable<PacketOwnedExpiryTargetCandidate> candidates,
+            bool facingRight)
+        {
+            Rectangle summonBounds = GetPacketOwnedSummonAttackBounds(summon, facingRight);
+            if (summonBounds.IsEmpty)
+            {
+                return PacketOwnedExpiryFacingScore.Empty;
+            }
+
+            Vector2 summonPosition = new(summon.PositionX, summon.PositionY);
+            int inRangeCount = 0;
+            float nearestDistanceSq = float.MaxValue;
+            float nearestVerticalDistance = float.MaxValue;
+            foreach (PacketOwnedExpiryTargetCandidate candidate in candidates)
+            {
+                if (!IsMobHitboxInPacketOwnedSummonAttackRange(summon, summonBounds, candidate.Hitbox, facingRight))
+                {
+                    continue;
+                }
+
+                inRangeCount++;
+                float centerX = candidate.Hitbox.Left + (candidate.Hitbox.Width * 0.5f);
+                float centerY = candidate.Hitbox.Top + (candidate.Hitbox.Height * 0.5f);
+                float deltaX = centerX - summonPosition.X;
+                float deltaY = centerY - summonPosition.Y;
+                float distanceSq = (deltaX * deltaX) + (deltaY * deltaY);
+                if (distanceSq < nearestDistanceSq)
+                {
+                    nearestDistanceSq = distanceSq;
+                    nearestVerticalDistance = MathF.Abs(deltaY);
+                }
+                else if (Math.Abs(distanceSq - nearestDistanceSq) < 0.5f)
+                {
+                    nearestVerticalDistance = MathF.Min(nearestVerticalDistance, MathF.Abs(deltaY));
+                }
+            }
+
+            return inRangeCount > 0
+                ? new PacketOwnedExpiryFacingScore(inRangeCount, nearestDistanceSq, nearestVerticalDistance)
+                : PacketOwnedExpiryFacingScore.Empty;
+        }
+
+        private readonly record struct PacketOwnedExpiryFacingScore(
+            int InRangeCount,
+            float NearestDistanceSq,
+            float NearestVerticalDistance)
+        {
+            public static PacketOwnedExpiryFacingScore Empty { get; } =
+                new(0, float.MaxValue, float.MaxValue);
+        }
+
         private static IReadOnlyList<int> ResolvePacketOwnedExpiryPreferredTargetMobIds(PacketOwnedSummonState state)
         {
             return state?.LastAttackTargets?
@@ -3119,7 +3212,7 @@ namespace HaCreator.MapSimulator.Pools
                 ?? Array.Empty<int>();
         }
 
-        internal static Rectangle GetPacketOwnedSummonAttackBounds(ActiveSummon summon)
+        internal static Rectangle GetPacketOwnedSummonAttackBounds(ActiveSummon summon, bool? facingRightOverride = null)
         {
             if (summon?.SkillData == null)
             {
@@ -3127,18 +3220,19 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             Vector2 summonPosition = new(summon.PositionX, summon.PositionY);
+            bool facingRight = facingRightOverride ?? summon.FacingRight;
             string attackBranchName = summon.CurrentAnimationBranchName;
             Rectangle localHitbox = summon.AssistType == SummonAssistType.Support
                 ? SummonRuntimeRules.ResolveSupportOwnedRange(
                     summon.SkillData,
-                    summon.FacingRight,
+                    facingRight,
                     attackBranchName)
                 : summon.SkillData.TryGetSummonAttackRange(
-                    summon.FacingRight,
+                    facingRight,
                     attackBranchName,
                     out Rectangle branchRange)
                     ? branchRange
-                    : summon.SkillData.GetSummonAttackRange(summon.FacingRight);
+                    : summon.SkillData.GetSummonAttackRange(facingRight);
             if (!localHitbox.IsEmpty)
             {
                 return new Rectangle(
@@ -3152,7 +3246,7 @@ namespace HaCreator.MapSimulator.Pools
             if (attackRadius > 0)
             {
                 Point centerOffset = summon.SkillData.GetSummonAttackCircleCenterOffset(
-                    summon.FacingRight,
+                    facingRight,
                     attackBranchName);
                 int radius = (int)MathF.Ceiling(attackRadius);
                 return new Rectangle(
@@ -3173,7 +3267,8 @@ namespace HaCreator.MapSimulator.Pools
             ActiveSummon summon,
             Rectangle summonBounds,
             MobItem mob,
-            int currentTime)
+            int currentTime,
+            bool? facingRightOverride = null)
         {
             Rectangle mobHitbox = GetMobHitbox(mob, currentTime);
             if (mobHitbox.IsEmpty)
@@ -3181,13 +3276,14 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            return IsMobHitboxInPacketOwnedSummonAttackRange(summon, summonBounds, mobHitbox);
+            return IsMobHitboxInPacketOwnedSummonAttackRange(summon, summonBounds, mobHitbox, facingRightOverride);
         }
 
         private static bool IsMobHitboxInPacketOwnedSummonAttackRange(
             ActiveSummon summon,
             Rectangle summonBounds,
-            Rectangle mobHitbox)
+            Rectangle mobHitbox,
+            bool? facingRightOverride = null)
         {
             if (summon?.SkillData == null || mobHitbox.IsEmpty)
             {
@@ -3198,8 +3294,9 @@ namespace HaCreator.MapSimulator.Pools
             int attackRadius = summon.SkillData.ResolveSummonAttackRadius(attackBranchName);
             if (attackRadius > 0)
             {
+                bool facingRight = facingRightOverride ?? summon.FacingRight;
                 Point centerOffset = summon.SkillData.GetSummonAttackCircleCenterOffset(
-                    summon.FacingRight,
+                    facingRight,
                     attackBranchName);
                 Vector2 circleCenter = new(
                     summon.PositionX + centerOffset.X,
@@ -3487,6 +3584,17 @@ namespace HaCreator.MapSimulator.Pools
         internal static SkillAnimation ResolveClientOwnedReactiveAttackChainAnimation(ActiveSummon summon)
         {
             SkillData skill = summon?.SkillData;
+            if (summon?.SkillId == 4111007)
+            {
+                SkillAnimation rootBallVariant = skill?.Projectile?.ResolveAnimationVariant(
+                    summon.Level,
+                    skill.MaxLevel);
+                if (rootBallVariant?.Frames.Count > 0)
+                {
+                    return rootBallVariant;
+                }
+            }
+
             if (skill?.SummonProjectileAnimations != null)
             {
                 foreach (SkillAnimation animation in skill.SummonProjectileAnimations)
@@ -3607,11 +3715,13 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             SummonImpactPresentation presentation = ResolvePacketAttackImpactPresentation(skill, targetIndex, attackBranchName);
+            int? projectilePositionCode = skill?.ResolveSummonProjectilePositionCode(attackBranchName, targetIndex);
             return SummonImpactPresentationResolver.ResolveImpactPosition(
                 presentation,
                 target.GetBodyHitbox(currentTime),
                 source,
-                GetMobHitboxCenter(target, currentTime));
+                GetMobHitboxCenter(target, currentTime),
+                projectilePositionCode);
         }
 
         private int ResolvePacketTeslaTargetImpactDelayMs(ActiveSummon summon, MobItem target, int currentTime, int targetIndex = 0)

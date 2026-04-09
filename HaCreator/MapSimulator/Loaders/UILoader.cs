@@ -647,7 +647,9 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtPrev"]?["normal"]?["0"] as WzCanvasProperty, device),
                 LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtNext"]?["normal"]?["0"] as WzCanvasProperty, device),
                 LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtOK"]?["normal"]?["0"] as WzCanvasProperty, device),
-                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtClose"]?["normal"]?["0"] as WzCanvasProperty, device));
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtClose"]?["normal"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtPrev"]?["disabled"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtNext"]?["disabled"]?["0"] as WzCanvasProperty, device));
                     Vector2 chatTargetLabelPos = ResolveCanvasPosition(chatFrameAnchorOrigin, subProperty_chatTarget?["all"] as WzCanvasProperty).ToVector2();
                     Vector2 chatEnterPos = ResolveCanvasPosition(chatFrameAnchorOrigin, chatEnterCanvas).ToVector2();
                     Rectangle chatEnterBounds = ResolveCanvasBounds(chatFrameAnchorOrigin, chatEnterCanvas);

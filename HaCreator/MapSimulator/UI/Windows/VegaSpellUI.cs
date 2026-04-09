@@ -58,7 +58,8 @@ namespace HaCreator.MapSimulator.UI
         private VegaAnimationState _state = VegaAnimationState.Idle;
         private ItemUpgradeUI.ItemUpgradeAttemptResult _pendingResult;
         private int _stateElapsedMs;
-        private bool _sharedResultAnimationStarted;
+        private bool _sharedResultPreludeStarted;
+        private bool _sharedResultPopupStarted;
         private UIObject _startButton;
         private UIObject _okButton;
         private UIObject _cancelButton;
@@ -205,7 +206,8 @@ namespace HaCreator.MapSimulator.UI
             _state = VegaAnimationState.Idle;
             _stateElapsedMs = 0;
             _pendingResult = default;
-            _sharedResultAnimationStarted = false;
+            _sharedResultPreludeStarted = false;
+            _sharedResultPopupStarted = false;
             ClampSelection();
             RefreshFrame();
             _statusMessage = BuildReadyMessage();
@@ -240,7 +242,8 @@ namespace HaCreator.MapSimulator.UI
             _state = VegaAnimationState.Casting;
             _stateElapsedMs = 0;
             _pendingResult = default;
-            _sharedResultAnimationStarted = false;
+            _sharedResultPreludeStarted = false;
+            _sharedResultPopupStarted = false;
             _statusMessage = string.IsNullOrWhiteSpace(statusMessage)
                 ? $"Casting {ResolveModifierName()}..."
                 : statusMessage;
@@ -272,7 +275,7 @@ namespace HaCreator.MapSimulator.UI
             base.Update(gameTime);
             ClampSelection();
 
-            if (_state == VegaAnimationState.Casting || _state == VegaAnimationState.Result)
+            if (_state != VegaAnimationState.Idle)
             {
                 _stateElapsedMs += (int)gameTime.ElapsedGameTime.TotalMilliseconds;
             }
@@ -332,6 +335,13 @@ namespace HaCreator.MapSimulator.UI
                     DrawCastingEffects(sprite, windowX, windowY);
                 }
             }
+            else if (_state == VegaAnimationState.ResultPrelude)
+            {
+                if (_productionEnhancementAnimationDisplayer == null)
+                {
+                    DrawResultPrelude(sprite, windowX, windowY);
+                }
+            }
             else if (_state == VegaAnimationState.Result)
             {
                 DrawResult(sprite, windowX, windowY, selectedPart);
@@ -376,6 +386,13 @@ namespace HaCreator.MapSimulator.UI
             {
                 DrawAnimation(sprite, _arrowFrames, elapsed - twinklingDuration - Math.Max(500, spellingDuration / 2), windowX, windowY);
             }
+        }
+
+        private void DrawResultPrelude(SpriteBatch sprite, int windowX, int windowY)
+        {
+            int elapsed = _stateElapsedMs;
+            DrawAnimation(sprite, _twinklingFrames, elapsed, windowX, windowY);
+            DrawAnimation(sprite, _arrowFrames, elapsed, windowX, windowY);
         }
 
         private void DrawResult(SpriteBatch sprite, int windowX, int windowY, CharacterPart selectedPart)
@@ -520,15 +537,16 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (StartSpellCastRequested?.Invoke(request) == true)
+            if (StartSpellCastRequested != null)
             {
+                StartSpellCastRequested(request);
                 return;
             }
 
             _itemUpgradeBackend.PrepareEquipmentSelection(request.Slot);
             _itemUpgradeBackend.PrepareConsumableSelection(request.ModifierItemId);
             ItemUpgradeUI.ItemUpgradeAttemptResult result = _itemUpgradeBackend.TryApplyPreparedUpgrade();
-            if (!_pendingResult.Success.HasValue)
+            if (!result.Success.HasValue)
             {
                 _statusMessage = result.StatusMessage;
                 return;
@@ -544,7 +562,8 @@ namespace HaCreator.MapSimulator.UI
             _state = VegaAnimationState.Idle;
             _stateElapsedMs = 0;
             _pendingResult = default;
-            _sharedResultAnimationStarted = false;
+            _sharedResultPreludeStarted = false;
+            _sharedResultPopupStarted = false;
             _statusMessage = BuildReadyMessage();
             UpdateButtonStates();
         }
@@ -697,6 +716,8 @@ namespace HaCreator.MapSimulator.UI
             return _state switch
             {
                 VegaAnimationState.Casting => new Color(255, 232, 150),
+                VegaAnimationState.ResultPrelude when _pendingResult.Success == true => new Color(160, 255, 160),
+                VegaAnimationState.ResultPrelude => new Color(255, 170, 170),
                 VegaAnimationState.Result when _pendingResult.Success == true => new Color(160, 255, 160),
                 VegaAnimationState.Result => new Color(255, 170, 170),
                 _ => new Color(220, 220, 220)
@@ -750,17 +771,43 @@ namespace HaCreator.MapSimulator.UI
                 !_pendingResult.Success.HasValue ||
                 _stateElapsedMs < ResolveCastingDuration())
             {
+                PromoteResultPopupIfReady();
+                return;
+            }
+
+            _state = VegaAnimationState.ResultPrelude;
+            _stateElapsedMs = 0;
+            _statusMessage = _pendingResult.StatusMessage;
+            if (!_sharedResultPreludeStarted)
+            {
+                _sharedResultPreludeStarted = true;
+                _productionEnhancementAnimationDisplayer?.PlayVegaResultPrelude(Environment.TickCount);
+            }
+
+            PromoteResultPopupIfReady();
+        }
+
+        private void PromoteResultPopupIfReady()
+        {
+            if (_state != VegaAnimationState.ResultPrelude ||
+                _stateElapsedMs < ResolveResultPreludeDuration())
+            {
                 return;
             }
 
             _state = VegaAnimationState.Result;
             _stateElapsedMs = 0;
-            _statusMessage = _pendingResult.StatusMessage;
-            if (!_sharedResultAnimationStarted)
+            if (!_sharedResultPopupStarted)
             {
-                _sharedResultAnimationStarted = true;
-                _productionEnhancementAnimationDisplayer?.PlayVegaResult(_pendingResult.Success == true, Environment.TickCount);
+                _sharedResultPopupStarted = true;
+                _productionEnhancementAnimationDisplayer?.PlayVegaResultPopup(_pendingResult.Success == true, Environment.TickCount);
             }
+        }
+
+        private int ResolveResultPreludeDuration()
+        {
+            return _productionEnhancementAnimationDisplayer?.GetVegaResultPreludeDurationMs()
+                ?? Math.Max(GetAnimationDuration(_twinklingFrames), GetAnimationDuration(_arrowFrames));
         }
 
         private void DrawShadowedText(SpriteBatch sprite, string text, Vector2 position, Color color)
@@ -777,6 +824,7 @@ namespace HaCreator.MapSimulator.UI
         {
             Idle,
             Casting,
+            ResultPrelude,
             Result
         }
 

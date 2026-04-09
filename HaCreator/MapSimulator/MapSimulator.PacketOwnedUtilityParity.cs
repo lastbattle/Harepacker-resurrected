@@ -3698,21 +3698,25 @@ namespace HaCreator.MapSimulator
         {
             resolution = null;
 
-            foreach ((string imageName, string propertyPath) in BuildPacketOwnedRadioTrackCandidates(descriptor))
+            string normalizedDescriptor = NormalizePacketOwnedClientSoundDescriptor(descriptor);
+            if (string.IsNullOrWhiteSpace(normalizedDescriptor))
             {
-                WzImageProperty trackNode = ResolvePacketOwnedSoundProperty(imageName, propertyPath);
-                if (trackNode == null)
-                {
-                    continue;
-                }
-
-                if (TryCreatePacketOwnedRadioTrackResolution(trackNode, $"{imageName[..^4]}/{propertyPath}", out resolution))
-                {
-                    return true;
-                }
+                return false;
             }
 
-            return false;
+            if (!TryResolvePacketOwnedRadioClientTrackNode(
+                    normalizedDescriptor,
+                    out WzImageProperty trackNode,
+                    out string resolvedTrackDescriptor))
+            {
+                return false;
+            }
+
+            return TryCreatePacketOwnedRadioTrackResolution(
+                trackNode,
+                normalizedDescriptor,
+                resolvedTrackDescriptor,
+                out resolution);
         }
 
         internal static IEnumerable<(string ImageName, string PropertyPath)> BuildPacketOwnedRadioTrackCandidates(string descriptor)
@@ -3905,6 +3909,7 @@ namespace HaCreator.MapSimulator
 
         private static bool TryCreatePacketOwnedRadioTrackResolution(
             WzImageProperty trackNode,
+            string authoredDescriptor,
             string resolvedTrackDescriptor,
             out PacketOwnedRadioTrackResolution resolution)
         {
@@ -3915,7 +3920,15 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            WzBinaryProperty audioProperty = ResolvePacketOwnedRadioAudioProperty(resolvedTrackNode);
+            if (!TryResolvePacketOwnedRadioAudioProperty(
+                    authoredDescriptor,
+                    resolvedTrackNode,
+                    out WzBinaryProperty audioProperty,
+                    out string resolvedAudioDescriptor))
+            {
+                return false;
+            }
+
             if (audioProperty == null)
             {
                 return false;
@@ -3927,8 +3940,121 @@ namespace HaCreator.MapSimulator
             resolution = CreatePacketOwnedRadioTrackResolution(
                 audioProperty,
                 resolvedTrackDescriptor,
-                ResolvePacketOwnedDescriptor(audioProperty) ?? resolvedTrackDescriptor,
+                resolvedAudioDescriptor,
                 displayName);
+            return true;
+        }
+
+        private static bool TryResolvePacketOwnedRadioClientTrackNode(
+            string descriptor,
+            out WzImageProperty trackNode,
+            out string resolvedTrackDescriptor)
+        {
+            trackNode = null;
+            resolvedTrackDescriptor = null;
+
+            foreach (string descriptorCandidate in BuildPacketOwnedRadioClientTrackDescriptorCandidates(descriptor))
+            {
+                if (!TrySplitPacketOwnedClientSoundDescriptor(descriptorCandidate, out string imageName, out string propertyPath))
+                {
+                    continue;
+                }
+
+                WzImageProperty resolvedTrackNode = ResolvePacketOwnedSoundProperty(imageName, propertyPath);
+                if (resolvedTrackNode == null)
+                {
+                    continue;
+                }
+
+                trackNode = resolvedTrackNode;
+                resolvedTrackDescriptor = $"{imageName[..^4]}/{propertyPath}";
+                return true;
+            }
+
+            return false;
+        }
+
+        internal static IEnumerable<string> BuildPacketOwnedRadioClientTrackDescriptorCandidates(string descriptor)
+        {
+            string normalized = NormalizePacketOwnedClientSoundDescriptor(descriptor);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                yield break;
+            }
+
+            HashSet<string> yieldedDescriptors = new(StringComparer.OrdinalIgnoreCase);
+            if (TryFormatPacketOwnedClientSoundDescriptorTemplate(
+                    PacketOwnedRadioTrackTemplateStringPoolId,
+                    normalized,
+                    out string trackTemplateDescriptor)
+                && yieldedDescriptors.Add(trackTemplateDescriptor))
+            {
+                yield return trackTemplateDescriptor;
+            }
+
+            if (yieldedDescriptors.Add(normalized))
+            {
+                yield return normalized;
+            }
+        }
+
+        internal static IEnumerable<string> BuildPacketOwnedRadioClientAudioDescriptorCandidates(string descriptor)
+        {
+            string normalized = NormalizePacketOwnedClientSoundDescriptor(descriptor);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                yield break;
+            }
+
+            HashSet<string> yieldedDescriptors = new(StringComparer.OrdinalIgnoreCase);
+            if (TryFormatPacketOwnedClientSoundDescriptorTemplate(
+                    PacketOwnedRadioAudioTemplateStringPoolId,
+                    normalized,
+                    out string audioTemplateDescriptor)
+                && yieldedDescriptors.Add(audioTemplateDescriptor))
+            {
+                yield return audioTemplateDescriptor;
+            }
+
+            if (yieldedDescriptors.Add(normalized))
+            {
+                yield return normalized;
+            }
+        }
+
+        private static bool TryResolvePacketOwnedRadioAudioProperty(
+            string authoredDescriptor,
+            WzImageProperty resolvedTrackNode,
+            out WzBinaryProperty audioProperty,
+            out string resolvedAudioDescriptor)
+        {
+            audioProperty = null;
+            resolvedAudioDescriptor = null;
+
+            foreach (string descriptorCandidate in BuildPacketOwnedRadioClientAudioDescriptorCandidates(authoredDescriptor))
+            {
+                if (!TrySplitPacketOwnedClientSoundDescriptor(descriptorCandidate, out string imageName, out string propertyPath))
+                {
+                    continue;
+                }
+
+                WzImageProperty resolvedAudioNode = ResolvePacketOwnedSoundProperty(imageName, propertyPath);
+                if (WzInfoTools.GetRealProperty(resolvedAudioNode) is WzBinaryProperty binaryProperty)
+                {
+                    audioProperty = binaryProperty;
+                    resolvedAudioDescriptor = $"{imageName[..^4]}/{propertyPath}";
+                    return true;
+                }
+            }
+
+            audioProperty = ResolvePacketOwnedRadioAudioProperty(resolvedTrackNode);
+            if (audioProperty == null)
+            {
+                return false;
+            }
+
+            resolvedAudioDescriptor = ResolvePacketOwnedDescriptor(audioProperty)
+                ?? ResolvePacketOwnedDescriptor(resolvedTrackNode);
             return true;
         }
 

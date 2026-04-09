@@ -562,6 +562,20 @@ namespace HaCreator.MapSimulator.Interaction
             return GetQuestState(questId);
         }
 
+        public void AcknowledgeQuestAlarmUpdate(int questId)
+        {
+            if (questId <= 0)
+            {
+                return;
+            }
+
+            EnsureDefinitionsLoaded();
+            if (_definitions.ContainsKey(questId))
+            {
+                _questAlarmUpdateTicks.Remove(questId);
+            }
+        }
+
         public void RecordQuestDetailViewed(int questId)
         {
             if (questId <= 0)
@@ -573,7 +587,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (_definitions.ContainsKey(questId))
             {
                 _recentlyViewedQuestId = questId;
-                _questAlarmUpdateTicks.Remove(questId);
+                AcknowledgeQuestAlarmUpdate(questId);
             }
         }
 
@@ -1864,9 +1878,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int GetResolvedItemCount(int itemId)
         {
             int inventoryCount = Math.Max(0, _inventoryItemCountProvider?.Invoke(itemId) ?? 0);
-            return inventoryCount > 0
-                ? inventoryCount
-                : GetTrackedItemCount(itemId);
+            return inventoryCount + GetTrackedItemCount(itemId);
         }
 
         private bool TryConsumeResolvedItemCount(int itemId, int quantity)
@@ -1876,17 +1888,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            int consumedInventoryCount = 0;
             int inventoryCount = Math.Max(0, _inventoryItemCountProvider?.Invoke(itemId) ?? 0);
             if (inventoryCount > 0 && _consumeInventoryItem != null)
             {
                 int consumeCount = Math.Min(inventoryCount, quantity);
                 if (_consumeInventoryItem(itemId, consumeCount))
                 {
-                    if (GetTrackedItemCount(itemId) > 0)
-                    {
-                        AdjustTrackedItemCount(itemId, -consumeCount);
-                    }
-
+                    consumedInventoryCount = consumeCount;
                     quantity -= consumeCount;
                 }
             }
@@ -1898,11 +1907,27 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (GetTrackedItemCount(itemId) < quantity)
             {
+                RestoreConsumedResolvedItemCount(itemId, consumedInventoryCount);
                 return false;
             }
 
             AdjustTrackedItemCount(itemId, -quantity);
             return true;
+        }
+
+        private void RestoreConsumedResolvedItemCount(int itemId, int quantity)
+        {
+            if (itemId <= 0 || quantity <= 0)
+            {
+                return;
+            }
+
+            if (_addInventoryItem != null && _addInventoryItem(itemId, quantity))
+            {
+                return;
+            }
+
+            AdjustTrackedItemCount(itemId, quantity);
         }
 
         private bool TryGrantRewardItem(
@@ -6346,32 +6371,21 @@ namespace HaCreator.MapSimulator.Interaction
             return selectedProperty?["stop"] ?? containerProperty?["stop"];
         }
 
-        private static IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> ParseConversationVariantStopPages(
+        internal static IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> ParseConversationVariantStopPages(
             WzImageProperty containerProperty,
             WzImageProperty selectedProperty,
             IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> fallbackStopPages)
         {
             IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> selectedStopPages = ParseConversationStopPages(selectedProperty);
-            if (selectedStopPages.Count > 0)
-            {
-                return selectedStopPages;
-            }
-
             IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> directSelectedStopPages =
                 ParseConversationStopPagesFromStopProperty(selectedProperty?["stop"]);
-            if (directSelectedStopPages.Count > 0)
-            {
-                return directSelectedStopPages;
-            }
-
             IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> directContainerStopPages =
                 ParseConversationStopPagesFromStopProperty(containerProperty?["stop"]);
-            if (directContainerStopPages.Count > 0)
-            {
-                return directContainerStopPages;
-            }
-
-            return fallbackStopPages ?? new Dictionary<string, IReadOnlyList<NpcInteractionPage>>(StringComparer.OrdinalIgnoreCase);
+            return MergeConversationStopPages(
+                fallbackStopPages,
+                directContainerStopPages,
+                directSelectedStopPages,
+                selectedStopPages);
         }
 
         private static IReadOnlyList<NpcInteractionPage> ParseConversationVariantLostPages(
@@ -6409,6 +6423,37 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return pagesByBranch;
+        }
+
+        private static IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> MergeConversationStopPages(
+            params IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>>[] pageSets)
+        {
+            var mergedPages = new Dictionary<string, IReadOnlyList<NpcInteractionPage>>(StringComparer.OrdinalIgnoreCase);
+            if (pageSets == null)
+            {
+                return mergedPages;
+            }
+
+            for (int i = 0; i < pageSets.Length; i++)
+            {
+                IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> pageSet = pageSets[i];
+                if (pageSet == null)
+                {
+                    continue;
+                }
+
+                foreach ((string branchName, IReadOnlyList<NpcInteractionPage> branchPages) in pageSet)
+                {
+                    if (string.IsNullOrWhiteSpace(branchName) || branchPages == null || branchPages.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    mergedPages[branchName] = branchPages;
+                }
+            }
+
+            return mergedPages;
         }
 
         private static IReadOnlyList<NpcInteractionPage> ParseConversationPageSequence(

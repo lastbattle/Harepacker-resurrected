@@ -236,6 +236,46 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        internal bool TryObserveInboundPacketForInference(
+            byte[] rawPacket,
+            out int opcode,
+            out bool mapped,
+            out string status)
+        {
+            opcode = 0;
+            mapped = false;
+            status = null;
+
+            if (!TryDecodeOpcode(rawPacket, out opcode, out byte[] payload))
+            {
+                status = "Cookie House live packet must contain a 2-byte opcode prefix.";
+                LastStatus = status;
+                return false;
+            }
+
+            lock (_sync)
+            {
+                mapped = _mappedInboundPointOpcodes.Contains(opcode);
+                if (!mapped)
+                {
+                    RecordInferencePacketNoLock(rawPacket);
+                    if (TryPromoteInferredInboundPointOpcodeNoLock(out int inferredOpcode, out string inferenceStatus))
+                    {
+                        mapped = _mappedInboundPointOpcodes.Contains(opcode);
+                        LastStatus = $"Cookie House official-session bridge inferred inbound point opcode {inferredOpcode}/0x{inferredOpcode:X}. {inferenceStatus}";
+                    }
+                    else if (!string.IsNullOrWhiteSpace(inferenceStatus))
+                    {
+                        LastStatus = inferenceStatus;
+                    }
+                }
+
+                RecordRecentPacketNoLock(opcode, payload.Length, mapped, rawPacket);
+                status = LastStatus;
+                return true;
+            }
+        }
+
         public void ClearRecentPackets()
         {
             lock (_sync)
@@ -499,30 +539,9 @@ namespace HaCreator.MapSimulator.Managers
 
                 pair.ClientSession.SendPacket((byte[])raw.Clone());
 
-                if (!TryDecodeOpcode(raw, out int opcode, out byte[] payload))
+                if (!TryObserveInboundPacketForInference(raw, out int opcode, out bool mapped, out _))
                 {
                     return;
-                }
-
-                bool mapped;
-                lock (_sync)
-                {
-                    mapped = _mappedInboundPointOpcodes.Contains(opcode);
-                    if (!mapped)
-                    {
-                        RecordInferencePacketNoLock(raw);
-                        if (TryPromoteInferredInboundPointOpcodeNoLock(out int inferredOpcode, out string inferenceStatus))
-                        {
-                            mapped = _mappedInboundPointOpcodes.Contains(opcode);
-                            LastStatus = $"Cookie House official-session bridge inferred inbound point opcode {inferredOpcode}/0x{inferredOpcode:X}. {inferenceStatus}";
-                        }
-                        else if (_mappedInboundPointOpcodes.Count == 0 && !string.IsNullOrWhiteSpace(inferenceStatus))
-                        {
-                            LastStatus = inferenceStatus;
-                        }
-                    }
-
-                    RecordRecentPacketNoLock(opcode, payload.Length, mapped, raw);
                 }
 
                 if (!mapped)

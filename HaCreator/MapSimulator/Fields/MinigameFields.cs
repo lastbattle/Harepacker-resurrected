@@ -133,6 +133,55 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
+        public bool TryDispatchActiveWrapperPacket(int packetType, byte[] payload, int currentTimeMs, out string ownerName, out string message)
+        {
+            payload ??= Array.Empty<byte>();
+
+            if (_snowBall.IsActive || _snowBall.State != SnowBallField.GameState.NotStarted)
+            {
+                ownerName = "CField_SnowBall::OnPacket";
+                bool applied = _snowBall.TryApplyPacket(packetType, payload, currentTimeMs, out string errorMessage);
+                message = applied ? _snowBall.DescribeStatus() : errorMessage;
+                return applied;
+            }
+
+            if (_coconut.IsActive)
+            {
+                ownerName = "CField_Coconut::OnPacket";
+                bool applied = _coconut.TryApplyPacket(packetType, payload, currentTimeMs, out string errorMessage);
+                message = applied ? _coconut.DescribeStatus() : errorMessage;
+                return applied;
+            }
+
+            if (_ariantArena.IsActive)
+            {
+                ownerName = "CField_AriantArena::OnPacket";
+                bool applied = _ariantArena.TryApplyPacket(packetType, payload, currentTimeMs, out string errorMessage);
+                message = applied ? _ariantArena.DescribeStatus() : errorMessage;
+                return applied;
+            }
+
+            if (_monsterCarnival.IsVisible)
+            {
+                ownerName = _monsterCarnival.Definition?.ClientOwnerLabel ?? "CField_MonsterCarnival";
+                bool applied = _monsterCarnival.TryApplyRawPacket(packetType, payload, currentTimeMs, out string errorMessage);
+                message = applied ? _monsterCarnival.DescribeStatus() : errorMessage;
+                return applied;
+            }
+
+            if (_tournament.IsActive)
+            {
+                ownerName = "CField_Tournament::OnPacket";
+                bool applied = _tournament.TryApplyRawPacket(packetType, payload, currentTimeMs, out string errorMessage);
+                message = applied ? _tournament.DescribeStatus() : errorMessage;
+                return applied;
+            }
+
+            ownerName = null;
+            message = null;
+            return false;
+        }
+
 
         public void Draw(
             SpriteBatch spriteBatch,

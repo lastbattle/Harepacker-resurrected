@@ -1,7 +1,9 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Pools;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -16,26 +18,33 @@ namespace HaCreator.MapSimulator.Interaction
             Vector2 anchorPosition,
             Func<string, string, int> resolveSyntheticRemoteUserId)
         {
-            remoteUserPool?.RemoveBySourceTag(MessengerRemoteUserSourceTag);
             if (remoteUserPool == null || messengerRuntime == null || localTemplate == null || resolveSyntheticRemoteUserId == null)
             {
                 return;
             }
 
-            foreach (MessengerRemoteParticipantSnapshot snapshot in messengerRuntime.GetRemoteParticipantSnapshots())
+            IReadOnlyList<MessengerRemoteParticipantSnapshot> snapshots = messengerRuntime.GetRemoteParticipantSnapshots();
+            remoteUserPool.RemoveBySourceTagExcept(
+                MessengerRemoteUserSourceTag,
+                snapshots.BuildMessengerRemoteUserKeepSet(resolveSyntheticRemoteUserId));
+
+            foreach (MessengerRemoteParticipantSnapshot snapshot in snapshots)
             {
                 int characterId = resolveSyntheticRemoteUserId(MessengerRemoteUserSourceTag, snapshot.Name);
-                CharacterBuild build = localTemplate.Clone();
-                build.Name = snapshot.Name;
-                build.Level = snapshot.Level > 0 ? snapshot.Level : build.Level;
-                build.JobName = string.IsNullOrWhiteSpace(snapshot.JobName) ? build.JobName : snapshot.JobName.Trim();
+                remoteUserPool.TryGetActor(characterId, out RemoteUserActor existingActor);
+                CharacterBuild build = snapshot.CreateRemoteBuildTemplate(localTemplate, existingActor?.Build);
+                if (build == null)
+                {
+                    continue;
+                }
 
-                if (snapshot.AvatarLook != null)
+                LoginAvatarLook avatarLook = snapshot.ResolveRemoteAvatarLook();
+                if (avatarLook != null)
                 {
                     remoteUserPool.TryAddOrUpdateAvatarLook(
                         characterId,
                         snapshot.Name,
-                        snapshot.AvatarLook,
+                        avatarLook,
                         build,
                         anchorPosition,
                         out _,

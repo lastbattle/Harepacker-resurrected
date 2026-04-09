@@ -413,8 +413,11 @@ namespace HaCreator.MapSimulator.Interaction
             bool preferContextualAction)
         {
             string nextIdleAction = preferContextualAction
-                ? ResolveContextualIdleAction(actorKey, actor, snapshot, profile) ?? ResolveNextAvailableAction(actorKey, actor, profile.IdleActions)
-                : ResolveNextAvailableAction(actorKey, actor, profile.IdleActions);
+                ? ResolveContextualIdleAction(actorKey, actor, snapshot, profile)
+                    ?? ResolveClientCycleAction(actorKey, actor, profile)
+                    ?? ResolveNextAvailableAction(actorKey, actor, profile.IdleActions)
+                : ResolveClientCycleAction(actorKey, actor, profile)
+                    ?? ResolveNextAvailableAction(actorKey, actor, profile.IdleActions);
             if (string.IsNullOrWhiteSpace(nextIdleAction))
             {
                 nextIdleAction = AnimationKeys.Stand;
@@ -429,6 +432,16 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             actor.SetAction(_currentIdleAction);
+        }
+
+        private string ResolveClientCycleAction(string actorKey, NpcItem actor, EmployeeTemplateProfile profile)
+        {
+            if (profile?.CycleActions == null || profile.CycleActions.Length == 0)
+            {
+                return null;
+            }
+
+            return ResolveNextAvailableAction(actorKey, actor, profile.CycleActions);
         }
 
         private string ResolveContextualIdleAction(
@@ -992,6 +1005,7 @@ namespace HaCreator.MapSimulator.Interaction
                 int minIdleDurationMs,
                 int maxIdleDurationMs,
                 string[] speakActions,
+                string[] cycleActions,
                 string[] idleActions,
                 string[] activeActions,
                 string[] restockActions,
@@ -1003,6 +1017,7 @@ namespace HaCreator.MapSimulator.Interaction
                 MinIdleDurationMs = Math.Max(250, minIdleDurationMs);
                 MaxIdleDurationMs = Math.Max(MinIdleDurationMs, maxIdleDurationMs);
                 SpeakActions = speakActions ?? Array.Empty<string>();
+                CycleActions = cycleActions ?? Array.Empty<string>();
                 IdleActions = idleActions ?? Array.Empty<string>();
                 ActiveActions = activeActions ?? Array.Empty<string>();
                 RestockActions = restockActions ?? Array.Empty<string>();
@@ -1016,6 +1031,7 @@ namespace HaCreator.MapSimulator.Interaction
                 minIdleDurationMs: 1350,
                 maxIdleDurationMs: 2600,
                 speakActions: new[] { "say" },
+                cycleActions: new[] { AnimationKeys.Stand, "eye", "ear", "potion" },
                 idleActions: new[] { AnimationKeys.Stand, "eye", "ear", "potion" },
                 activeActions: new[] { "eye", AnimationKeys.Stand, "ear" },
                 restockActions: new[] { "potion", "ear", AnimationKeys.Stand },
@@ -1028,6 +1044,7 @@ namespace HaCreator.MapSimulator.Interaction
                 minIdleDurationMs: 1600,
                 maxIdleDurationMs: 2800,
                 speakActions: new[] { "say0", AnimationKeys.Stand },
+                cycleActions: new[] { AnimationKeys.Stand, "say0" },
                 idleActions: new[] { AnimationKeys.Stand },
                 activeActions: new[] { AnimationKeys.Stand },
                 restockActions: new[] { AnimationKeys.Stand },
@@ -1053,6 +1070,10 @@ namespace HaCreator.MapSimulator.Interaction
                         "speak",
                         "hand",
                         "smile",
+                        AnimationKeys.Stand),
+                    cycleActions: BuildPreferredActions(
+                        orderedActions,
+                        fallbackToRemainingActions: true,
                         AnimationKeys.Stand),
                     idleActions: BuildPreferredActions(
                         orderedActions,
@@ -1215,6 +1236,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int MinIdleDurationMs { get; }
             public int MaxIdleDurationMs { get; }
             public string[] SpeakActions { get; }
+            public string[] CycleActions { get; }
             public string[] IdleActions { get; }
             public string[] ActiveActions { get; }
             public string[] RestockActions { get; }

@@ -152,6 +152,9 @@ namespace HaCreator.MapSimulator.Interaction
                 StatusText = BuildStatusText(memo),
                 AttachmentSummary = BuildAttachmentSummary(memo.Attachment),
                 AttachmentDescription = BuildAttachmentDescription(memo),
+                AttachmentItemId = memo.Attachment?.Kind == MemoAttachmentKind.Item ? memo.Attachment.ItemId : 0,
+                AttachmentQuantity = memo.Attachment?.Kind == MemoAttachmentKind.Item ? memo.Attachment.Quantity : 0,
+                AttachmentMeso = memo.Attachment?.Kind == MemoAttachmentKind.Meso ? memo.Attachment.Meso : 0,
                 CanClaim = CanClaimAttachment(memo),
                 IsClaimed = memo.Attachment?.IsClaimed == true,
                 IsExpired = IsExpired(memo)
@@ -222,11 +225,9 @@ namespace HaCreator.MapSimulator.Interaction
             ParcelDialogTab activeTab,
             out string message)
         {
-            HashSet<string> previousSignatures = _packetOwnedSessionEntrySignatures.Count > 0
-                ? new HashSet<string>(_packetOwnedSessionEntrySignatures, StringComparer.Ordinal)
-                : null;
+            HashSet<string> previousSignatures = new(_packetOwnedSessionEntrySignatures, StringComparer.Ordinal);
             var refreshedSignatures = new HashSet<string>(StringComparer.Ordinal);
-            List<string> newlyHydratedBodies = previousSignatures == null ? null : new();
+            var newlyHydratedBodies = new List<string>();
 
             _memos.Clear();
             _nextMemoId = 1;
@@ -272,8 +273,7 @@ namespace HaCreator.MapSimulator.Interaction
                         expirationTimestampUtc: entry.ExpirationTimestampUtc,
                         notifySocialText: false);
 
-                    if (previousSignatures != null
-                        && !previousSignatures.Contains(signature)
+                    if (!previousSignatures.Contains(signature)
                         && !string.IsNullOrWhiteSpace(resolvedBody))
                     {
                         newlyHydratedBodies?.Add(resolvedBody.Trim());
@@ -289,7 +289,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _packetOwnedSessionEntrySignatures.Add(signature);
             }
 
-            if (newlyHydratedBodies != null)
+            if (newlyHydratedBodies.Count > 0)
             {
                 foreach (string body in newlyHydratedBodies)
                 {
@@ -679,6 +679,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal bool TryClaimAttachment(int memoId, out string message)
         {
+            return TryClaimAttachment(memoId, out _, out message);
+        }
+
+        internal bool TryClaimAttachment(int memoId, out MemoMailboxClaimResult claimResult, out string message)
+        {
+            claimResult = null;
             MemoState memo = FindMemo(memoId);
             if (memo?.Attachment == null)
             {
@@ -700,6 +706,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            claimResult = new MemoMailboxClaimResult
+            {
+                MemoId = memo.MemoId,
+                AttachmentItemId = memo.Attachment.Kind == MemoAttachmentKind.Item ? memo.Attachment.ItemId : 0,
+                AttachmentQuantity = memo.Attachment.Kind == MemoAttachmentKind.Item ? memo.Attachment.Quantity : 0,
+                AttachmentMeso = memo.Attachment.Kind == MemoAttachmentKind.Meso ? memo.Attachment.Meso : 0,
+                AttachmentSummary = BuildAttachmentSummary(memo.Attachment)
+            };
             memo.Attachment.IsClaimed = true;
             memo.IsRead = true;
             message = $"Claimed {BuildAttachmentSummary(memo.Attachment)} from parcel #{memo.MemoId}.";

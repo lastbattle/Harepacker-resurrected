@@ -416,14 +416,28 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal bool HasRegisteredTutorVariant(int skillId)
         {
-            return skillId > 0 && FindRegisteredTutorVariantIndex(SnapshotSharedRegisteredTutorVariants(), skillId) >= 0;
+            if (skillId <= 0)
+            {
+                return false;
+            }
+
+            IReadOnlyList<TutorVariantSnapshot> variants = SnapshotSharedRegisteredTutorVariants();
+            for (int i = 0; i < variants.Count; i++)
+            {
+                if (variants[i].SkillId == skillId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal IReadOnlyList<TutorVariantSnapshot> SnapshotDisplayTutorVariants()
         {
             IReadOnlyList<TutorVariantSnapshot> registeredVariants = SnapshotSharedRegisteredTutorVariants();
             List<TutorVariantSnapshot> variants = new();
-            HashSet<int> emittedSkillIds = new();
+            HashSet<long> emittedSkillIds = new();
             IReadOnlyList<int> clientTutorSkillIds = SnapshotSharedClientTutorSkillSlots();
             for (int i = 0; i < clientTutorSkillIds.Count; i++)
             {
@@ -472,6 +486,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool TryGetSharedActiveVariantForCharacter(int runtimeCharacterId, out TutorVariantSnapshot variant)
         {
             IReadOnlyList<TutorVariantSnapshot> variants = SnapshotSharedRegisteredTutorVariants();
+            int selectedIndex = -1;
             for (int i = 0; i < variants.Count; i++)
             {
                 TutorVariantSnapshot candidate = variants[i];
@@ -485,7 +500,16 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                variant = candidate;
+                if (selectedIndex < 0
+                    || IsPreferredActiveVariantCandidate(candidate, variants[selectedIndex], runtimeCharacterId))
+                {
+                    selectedIndex = i;
+                }
+            }
+
+            if (selectedIndex >= 0)
+            {
+                variant = variants[selectedIndex];
                 return true;
             }
 
@@ -493,22 +517,34 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
-        private static int FindRegisteredTutorVariantIndex(IReadOnlyList<TutorVariantSnapshot> variants, int skillId)
+        private static int FindRegisteredTutorVariantIndex(IReadOnlyList<TutorVariantSnapshot> variants, int skillId, int boundCharacterId)
         {
             if (skillId <= 0)
             {
                 return -1;
             }
 
+            int fallbackIndex = -1;
             for (int i = 0; i < variants.Count; i++)
             {
-                if (variants[i].SkillId == skillId)
+                TutorVariantSnapshot candidate = variants[i];
+                if (candidate.SkillId != skillId)
+                {
+                    continue;
+                }
+
+                if (boundCharacterId > 0 && candidate.BoundCharacterId == boundCharacterId)
                 {
                     return i;
                 }
+
+                if (fallbackIndex < 0)
+                {
+                    fallbackIndex = i;
+                }
             }
 
-            return -1;
+            return fallbackIndex;
         }
 
         private void UpsertRegisteredTutorVariant(
@@ -526,12 +562,13 @@ namespace HaCreator.MapSimulator.Interaction
 
             lock (SharedTutorStateSync)
             {
-                int index = FindRegisteredTutorVariantIndex(SharedRegisteredTutorVariants, skillId);
+                int normalizedCharacterId = Math.Max(0, runtimeCharacterId);
+                int index = FindRegisteredTutorVariantIndex(SharedRegisteredTutorVariants, skillId, normalizedCharacterId);
                 TutorVariantSnapshot nextSnapshot = new(
                     skillId,
                     ResolveSummonObjectId(skillId),
                     actorHeight > 0 ? actorHeight : ResolveFallbackActorHeight(skillId),
-                    Math.Max(0, runtimeCharacterId),
+                    normalizedCharacterId,
                     isActive,
                     isActive ? currentTick : int.MinValue,
                     markRemoval ? currentTick : int.MinValue,
@@ -550,7 +587,7 @@ namespace HaCreator.MapSimulator.Interaction
                             : currentSnapshot.LastRemovalTick,
                         BoundCharacterId = Math.Max(
                             0,
-                            runtimeCharacterId > 0 ? runtimeCharacterId : currentSnapshot.BoundCharacterId),
+                            normalizedCharacterId > 0 ? normalizedCharacterId : currentSnapshot.BoundCharacterId),
                         ActorHeight = actorHeight > 0 ? actorHeight : currentSnapshot.ActorHeight
                     };
                     SharedRegisteredTutorVariants[index] = nextSnapshot;
@@ -558,21 +595,6 @@ namespace HaCreator.MapSimulator.Interaction
                 else
                 {
                     SharedRegisteredTutorVariants.Add(nextSnapshot);
-                }
-
-                for (int i = 0; i < SharedRegisteredTutorVariants.Count; i++)
-                {
-                    TutorVariantSnapshot variant = SharedRegisteredTutorVariants[i];
-                    if (variant.SkillId == skillId)
-                    {
-                        continue;
-                    }
-
-                    SharedRegisteredTutorVariants[i] = variant with
-                    {
-                        IsActive = false,
-                        BoundCharacterId = Math.Max(variant.BoundCharacterId, Math.Max(0, runtimeCharacterId))
-                    };
                 }
 
                 LastRegistryMutationTick = currentTick;
@@ -583,23 +605,23 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<int> clientTutorSkillIds,
             IReadOnlyList<TutorVariantSnapshot> registeredVariants)
         {
-            HashSet<int> emittedSkillIds = new();
+            HashSet<long> emittedSkillIds = new();
             for (int i = 0; i < clientTutorSkillIds.Count; i++)
             {
                 int slotSkillId = clientTutorSkillIds[i];
-                int variantIndex = FindRegisteredTutorVariantIndex(registeredVariants, slotSkillId);
-                if (variantIndex < 0 || !emittedSkillIds.Add(slotSkillId))
+                TutorVariantSnapshot slotVariant = ResolvePreferredRegisteredTutorVariant(slotSkillId, registeredVariants);
+                if (slotVariant.SkillId <= 0 || !emittedSkillIds.Add(BuildTutorVariantKey(slotVariant)))
                 {
                     continue;
                 }
 
-                yield return DescribeRegisteredTutorVariant(registeredVariants[variantIndex]);
+                yield return DescribeRegisteredTutorVariant(slotVariant);
             }
 
             for (int i = 0; i < registeredVariants.Count; i++)
             {
                 TutorVariantSnapshot variant = registeredVariants[i];
-                if (emittedSkillIds.Add(variant.SkillId))
+                if (emittedSkillIds.Add(BuildTutorVariantKey(variant)))
                 {
                     yield return DescribeRegisteredTutorVariant(variant);
                 }
@@ -608,10 +630,10 @@ namespace HaCreator.MapSimulator.Interaction
 
         private TutorVariantSnapshot ResolveDisplayTutorVariant(int skillId, IReadOnlyList<TutorVariantSnapshot> registeredVariants)
         {
-            int variantIndex = FindRegisteredTutorVariantIndex(registeredVariants, skillId);
-            if (variantIndex >= 0)
+            TutorVariantSnapshot preferredVariant = ResolvePreferredRegisteredTutorVariant(skillId, registeredVariants);
+            if (preferredVariant.SkillId > 0)
             {
-                return registeredVariants[variantIndex];
+                return preferredVariant;
             }
 
             bool isActiveVariant = IsActive && ActiveSkillId == skillId;
@@ -745,7 +767,7 @@ namespace HaCreator.MapSimulator.Interaction
             lock (SharedTutorStateSync)
             {
                 PruneExpiredSharedTutorMessagesUnsafe(currentTick);
-                int snapshotIndex = FindSharedTutorMessageIndexUnsafe(displayVariant.SkillId);
+                int snapshotIndex = FindSharedTutorMessageIndexUnsafe(displayVariant.SkillId, displayVariant.BoundCharacterId);
                 if (snapshotIndex < 0)
                 {
                     return false;
@@ -807,7 +829,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             lock (SharedTutorStateSync)
             {
-                int index = FindSharedTutorMessageIndexUnsafe(ActiveSkillId);
+                int index = FindSharedTutorMessageIndexUnsafe(ActiveSkillId, BoundCharacterId);
                 if (index >= 0)
                 {
                     SharedTutorMessages[index] = snapshot;
@@ -828,7 +850,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             lock (SharedTutorStateSync)
             {
-                int index = FindSharedTutorMessageIndexUnsafe(skillId);
+                int index = FindSharedTutorMessageIndexUnsafe(skillId, BoundCharacterId);
                 if (index >= 0)
                 {
                     SharedTutorMessages.RemoveAt(index);
@@ -836,22 +858,34 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private static int FindSharedTutorMessageIndexUnsafe(int skillId)
+        private static int FindSharedTutorMessageIndexUnsafe(int skillId, int boundCharacterId)
         {
             if (skillId <= 0)
             {
                 return -1;
             }
 
+            int fallbackIndex = -1;
             for (int i = 0; i < SharedTutorMessages.Count; i++)
             {
-                if (SharedTutorMessages[i].SkillId == skillId)
+                TutorMessageSnapshot candidate = SharedTutorMessages[i];
+                if (candidate.SkillId != skillId)
+                {
+                    continue;
+                }
+
+                if (boundCharacterId > 0 && candidate.BoundCharacterId == boundCharacterId)
                 {
                     return i;
                 }
+
+                if (fallbackIndex < 0)
+                {
+                    fallbackIndex = i;
+                }
             }
 
-            return -1;
+            return fallbackIndex;
         }
 
         private static void PruneExpiredSharedTutorMessagesUnsafe(int currentTick)
@@ -871,12 +905,83 @@ namespace HaCreator.MapSimulator.Interaction
         private static string DescribeRegisteredTutorVariant(TutorVariantSnapshot variant)
         {
             string state = variant.IsActive ? "active" : "listed";
-            return $"{variant.SkillId} ({state})";
+            string owner = variant.BoundCharacterId > 0 ? $", char {variant.BoundCharacterId}" : string.Empty;
+            return $"{variant.SkillId} ({state}{owner})";
         }
 
         private static int ClampDuration(int durationMs)
         {
             return Math.Clamp(durationMs <= 0 ? DefaultIndexedDurationMs : durationMs, MinMessageDurationMs, MaxMessageDurationMs);
+        }
+
+        private static bool IsPreferredActiveVariantCandidate(TutorVariantSnapshot candidate, TutorVariantSnapshot current, int runtimeCharacterId)
+        {
+            bool candidateMatchesCharacter = runtimeCharacterId > 0 && candidate.BoundCharacterId == runtimeCharacterId;
+            bool currentMatchesCharacter = runtimeCharacterId > 0 && current.BoundCharacterId == runtimeCharacterId;
+            if (candidateMatchesCharacter != currentMatchesCharacter)
+            {
+                return candidateMatchesCharacter;
+            }
+
+            if (candidate.LastMutationTick != current.LastMutationTick)
+            {
+                return candidate.LastMutationTick > current.LastMutationTick;
+            }
+
+            if (candidate.LastHireTick != current.LastHireTick)
+            {
+                return candidate.LastHireTick > current.LastHireTick;
+            }
+
+            return candidate.BoundCharacterId > current.BoundCharacterId;
+        }
+
+        private static TutorVariantSnapshot ResolvePreferredRegisteredTutorVariant(int skillId, IReadOnlyList<TutorVariantSnapshot> registeredVariants)
+        {
+            TutorVariantSnapshot selectedVariant = default;
+            bool found = false;
+            for (int i = 0; i < registeredVariants.Count; i++)
+            {
+                TutorVariantSnapshot candidate = registeredVariants[i];
+                if (candidate.SkillId != skillId)
+                {
+                    continue;
+                }
+
+                if (!found
+                    || IsPreferredRegisteredTutorVariantCandidate(candidate, selectedVariant))
+                {
+                    selectedVariant = candidate;
+                    found = true;
+                }
+            }
+
+            return found ? selectedVariant : default;
+        }
+
+        private static bool IsPreferredRegisteredTutorVariantCandidate(TutorVariantSnapshot candidate, TutorVariantSnapshot current)
+        {
+            if (candidate.IsActive != current.IsActive)
+            {
+                return candidate.IsActive;
+            }
+
+            if (candidate.LastMutationTick != current.LastMutationTick)
+            {
+                return candidate.LastMutationTick > current.LastMutationTick;
+            }
+
+            if (candidate.LastHireTick != current.LastHireTick)
+            {
+                return candidate.LastHireTick > current.LastHireTick;
+            }
+
+            return candidate.BoundCharacterId > current.BoundCharacterId;
+        }
+
+        private static long BuildTutorVariantKey(TutorVariantSnapshot variant)
+        {
+            return ((long)variant.SkillId << 32) | (uint)Math.Max(0, variant.BoundCharacterId);
         }
 
         private static int NormalizeTutorSkillId(int skillId)

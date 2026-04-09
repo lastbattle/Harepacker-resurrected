@@ -218,7 +218,13 @@ namespace HaCreator.MapSimulator.Pools
         int DropId,
         int ActorId,
         DropPickupActorKind ActorKind,
-        string ActorName);
+        string ActorName,
+        int FallbackOwnerId = 0,
+        short? TargetX = null,
+        short? TargetY = null)
+    {
+        public bool HasExplicitTargetPosition => TargetX.HasValue && TargetY.HasValue;
+    }
 
     public readonly record struct RemoteUserMeleeAttackPacket(
         int CharacterId,
@@ -1268,7 +1274,20 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 string actorName = reader.ReadString8();
-                if (reader.RemainingLength != 0)
+                int fallbackOwnerId = 0;
+                short? targetX = null;
+                short? targetY = null;
+                if (reader.RemainingLength == sizeof(int))
+                {
+                    fallbackOwnerId = reader.ReadInt32();
+                }
+                else if (reader.RemainingLength == sizeof(int) + (sizeof(short) * 2))
+                {
+                    fallbackOwnerId = reader.ReadInt32();
+                    targetX = reader.ReadInt16();
+                    targetY = reader.ReadInt16();
+                }
+                else if (reader.RemainingLength != 0)
                 {
                     error = $"Remote user drop-pickup packet has {reader.RemainingLength} unread bytes remaining.";
                     return false;
@@ -1284,7 +1303,10 @@ namespace HaCreator.MapSimulator.Pools
                     dropId,
                     actorId,
                     (DropPickupActorKind)actorKindRaw,
-                    actorName);
+                    actorName,
+                    fallbackOwnerId,
+                    targetX,
+                    targetY);
                 return true;
             }
             catch (InvalidOperationException ex)

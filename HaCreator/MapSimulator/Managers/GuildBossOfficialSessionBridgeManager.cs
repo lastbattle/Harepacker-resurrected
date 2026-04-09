@@ -176,11 +176,12 @@ namespace HaCreator.MapSimulator.Managers
         {
             lock (_sync)
             {
-                int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+                bool autoSelectListenPort = listenPort <= 0;
+                int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
                 string resolvedRemoteHost = NormalizeRemoteHost(remoteHost);
                 if (HasAttachedClient)
                 {
-                    if (MatchesTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, resolvedRemoteHost, remotePort))
+                    if (MatchesRequestedTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, resolvedRemoteHost, remotePort, autoSelectListenPort))
                     {
                         status = $"Guild boss official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
                         LastStatus = status;
@@ -193,7 +194,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 if (IsRunning
-                    && MatchesTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, resolvedRemoteHost, remotePort))
+                    && MatchesRequestedTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, resolvedRemoteHost, remotePort, autoSelectListenPort))
                 {
                     status = $"Guild boss official-session bridge already listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
                     LastStatus = status;
@@ -204,12 +205,12 @@ namespace HaCreator.MapSimulator.Managers
 
                 try
                 {
-                    ListenPort = resolvedListenPort;
                     RemoteHost = resolvedRemoteHost;
                     RemotePort = remotePort;
                     _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, ListenPort);
+                    _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
                     _listener.Start();
+                    ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
                     LastStatus = $"Guild boss official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
                     status = LastStatus;
@@ -248,10 +249,11 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+            bool autoSelectListenPort = listenPort <= 0;
+            int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
             if (HasAttachedClient)
             {
-                if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, candidate.RemoteEndpoint))
+                if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, candidate.RemoteEndpoint, autoSelectListenPort))
                 {
                     status = $"Guild boss official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
                     LastStatus = status;
@@ -263,7 +265,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, candidate.RemoteEndpoint) && IsRunning)
+            if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, candidate.RemoteEndpoint, autoSelectListenPort) && IsRunning)
             {
                 status = $"Guild boss official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}.";
                 LastStatus = status;
@@ -791,16 +793,18 @@ namespace HaCreator.MapSimulator.Managers
             string currentRemoteHost,
             int currentRemotePort,
             int expectedListenPort,
-            IPEndPoint discoveredRemoteEndpoint)
+            IPEndPoint discoveredRemoteEndpoint,
+            bool ignoreListenPort = false)
         {
             return discoveredRemoteEndpoint != null
-                && MatchesTargetConfiguration(
+                && MatchesRequestedTargetConfiguration(
                     currentListenPort,
                     currentRemoteHost,
                     currentRemotePort,
                     expectedListenPort,
                     discoveredRemoteEndpoint.Address.ToString(),
-                    discoveredRemoteEndpoint.Port);
+                    discoveredRemoteEndpoint.Port,
+                    ignoreListenPort);
         }
 
         internal static bool MatchesTargetConfiguration(
@@ -812,6 +816,23 @@ namespace HaCreator.MapSimulator.Managers
             int expectedRemotePort)
         {
             return currentListenPort == expectedListenPort
+                && currentRemotePort == expectedRemotePort
+                && string.Equals(
+                    NormalizeRemoteHost(currentRemoteHost),
+                    NormalizeRemoteHost(expectedRemoteHost),
+                    StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool MatchesRequestedTargetConfiguration(
+            int currentListenPort,
+            string currentRemoteHost,
+            int currentRemotePort,
+            int expectedListenPort,
+            string expectedRemoteHost,
+            int expectedRemotePort,
+            bool ignoreListenPort)
+        {
+            return (ignoreListenPort || currentListenPort == expectedListenPort)
                 && currentRemotePort == expectedRemotePort
                 && string.Equals(
                     NormalizeRemoteHost(currentRemoteHost),

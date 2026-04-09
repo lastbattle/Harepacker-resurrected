@@ -38,6 +38,17 @@ namespace HaCreator.MapSimulator
         private readonly CashServicePacketInboxManager _cashServicePacketInbox = new();
         private const string CashServiceStageBgmPath = "BgmUI/ShopBgm";
 
+        private sealed class CashInventoryPacketFocusSnapshot
+        {
+            public string ActiveTabName { get; init; } = string.Empty;
+            public string FocusTitle { get; init; } = string.Empty;
+            public string FocusMessage { get; init; } = string.Empty;
+            public string FocusSignature { get; init; } = string.Empty;
+            public int FirstPosition { get; init; } = 1;
+            public int ScrollOffset { get; init; }
+            public int RowFocusIndex { get; init; }
+        }
+
         private string PreviewCashAvatarWeatherAction()
         {
             int currTickCount = Environment.TickCount;
@@ -135,21 +146,7 @@ namespace HaCreator.MapSimulator
             {
                 lockerWindow.SetFont(_fontChat);
                 lockerWindow.SetContentProvider(() => BuildCashShopLockerOwnerLines(cashShopWindow));
-                lockerWindow.SetLockerStateProvider(() =>
-                {
-                    AdminShopDialogUI.LockerOwnerSnapshot snapshot = cashShopWindow.GetLockerOwnerSnapshot();
-                    return new CashShopStageChildWindow.LockerOwnerState
-                    {
-                        AccountLabel = snapshot.AccountLabel,
-                        UsedSlotCount = snapshot.UsedSlotCount,
-                        SlotLimit = snapshot.SlotLimit,
-                        CanExpand = snapshot.CanExpand,
-                        ScrollOffset = 0,
-                        WheelRange = 208,
-                        HasNumberFont = true,
-                        SharedCharacterNames = snapshot.SharedCharacterNames
-                    };
-                });
+                lockerWindow.SetLockerStateProvider(() => BuildCashShopLockerOwnerState(cashShopWindow));
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopInventory) is CashShopStageChildWindow inventoryWindow)
@@ -158,29 +155,7 @@ namespace HaCreator.MapSimulator
                 inventoryWindow.SetContentProvider(() => BuildCashShopInventoryOwnerLines(cashShopWindow));
                 inventoryWindow.SetInventoryVisibleRowProvider((tabName, scrollOffset, maxRows) =>
                     BuildCashServiceInventoryOwnerRows(inventoryRuntime, tabName, scrollOffset, maxRows));
-                inventoryWindow.SetInventoryStateProvider(() =>
-                {
-                    AdminShopDialogUI.InventoryOwnerSnapshot snapshot = cashShopWindow.GetInventoryOwnerSnapshot();
-                    CashServiceStageWindow stageWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) as CashServiceStageWindow;
-                    string selectedEntryTitle = snapshot.SelectedEntryTitle;
-                    if (string.IsNullOrWhiteSpace(selectedEntryTitle))
-                    {
-                        selectedEntryTitle = stageWindow?.CashInventoryPacketEntries.FirstOrDefault()?.Title ?? string.Empty;
-                    }
-
-                    return new CashShopStageChildWindow.InventoryOwnerState
-                    {
-                        EquipCount = snapshot.EquipCount,
-                        UseCount = snapshot.UseCount,
-                        SetupCount = snapshot.SetupCount,
-                        EtcCount = snapshot.EtcCount,
-                        CashCount = snapshot.CashCount,
-                        ScrollOffset = 0,
-                        WheelRange = 140,
-                        HasNumberFont = true,
-                        SelectedEntryTitle = selectedEntryTitle
-                    };
-                });
+                inventoryWindow.SetInventoryStateProvider(() => BuildCashShopInventoryOwnerState(cashShopWindow));
                 inventoryWindow.SetExternalAction("BtExTrunk", () =>
                 {
                     ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.CashShopLocker);
@@ -291,6 +266,38 @@ namespace HaCreator.MapSimulator
             return lines;
         }
 
+        private CashShopStageChildWindow.LockerOwnerState BuildCashShopLockerOwnerState(AdminShopDialogUI cashShopWindow)
+        {
+            AdminShopDialogUI.LockerOwnerSnapshot snapshot = cashShopWindow?.GetLockerOwnerSnapshot() ?? new();
+            CashServiceStageWindow stageWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) as CashServiceStageWindow;
+            int usedSlotCount = snapshot.UsedSlotCount;
+            int slotLimit = snapshot.SlotLimit;
+            if (stageWindow != null)
+            {
+                if (stageWindow.CashLockerItemCount > 0)
+                {
+                    usedSlotCount = Math.Max(usedSlotCount, stageWindow.CashLockerItemCount);
+                }
+
+                if (stageWindow.CashLockerSlotLimit > 0)
+                {
+                    slotLimit = Math.Max(slotLimit, stageWindow.CashLockerSlotLimit);
+                }
+            }
+
+            return new CashShopStageChildWindow.LockerOwnerState
+            {
+                AccountLabel = snapshot.AccountLabel,
+                UsedSlotCount = usedSlotCount,
+                SlotLimit = slotLimit,
+                CanExpand = snapshot.CanExpand || (slotLimit > 0 && usedSlotCount < slotLimit),
+                ScrollOffset = 0,
+                WheelRange = 208,
+                HasNumberFont = true,
+                SharedCharacterNames = snapshot.SharedCharacterNames
+            };
+        }
+
         private IReadOnlyList<string> BuildCashShopInventoryOwnerLines(AdminShopDialogUI cashShopWindow)
         {
             List<string> lines = new(cashShopWindow?.DescribeInventoryOwnerState() ?? Array.Empty<string>());
@@ -310,6 +317,36 @@ namespace HaCreator.MapSimulator
             }
 
             return lines;
+        }
+
+        private CashShopStageChildWindow.InventoryOwnerState BuildCashShopInventoryOwnerState(AdminShopDialogUI cashShopWindow)
+        {
+            AdminShopDialogUI.InventoryOwnerSnapshot snapshot = cashShopWindow?.GetInventoryOwnerSnapshot() ?? new();
+            CashServiceStageWindow stageWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) as CashServiceStageWindow;
+            CashInventoryPacketFocusSnapshot packetFocus = ResolveCashInventoryPacketFocus(stageWindow);
+            string selectedEntryTitle = snapshot.SelectedEntryTitle;
+            if (string.IsNullOrWhiteSpace(selectedEntryTitle))
+            {
+                selectedEntryTitle = packetFocus?.FocusTitle ?? string.Empty;
+            }
+
+            return new CashShopStageChildWindow.InventoryOwnerState
+            {
+                EquipCount = snapshot.EquipCount,
+                UseCount = snapshot.UseCount,
+                SetupCount = snapshot.SetupCount,
+                EtcCount = snapshot.EtcCount,
+                CashCount = snapshot.CashCount,
+                FirstPosition = packetFocus?.FirstPosition ?? 1,
+                ScrollOffset = packetFocus?.ScrollOffset ?? 0,
+                RowFocusIndex = packetFocus?.RowFocusIndex ?? 0,
+                WheelRange = 140,
+                HasNumberFont = true,
+                ActiveTabName = packetFocus?.ActiveTabName ?? string.Empty,
+                SelectedEntryTitle = selectedEntryTitle,
+                PacketFocusSignature = packetFocus?.FocusSignature ?? string.Empty,
+                PacketFocusMessage = packetFocus?.FocusMessage ?? string.Empty
+            };
         }
 
         private static IReadOnlyList<string> BuildCashServiceInventoryOwnerRows(
@@ -371,6 +408,45 @@ namespace HaCreator.MapSimulator
             }
 
             return rows;
+        }
+
+        private static CashInventoryPacketFocusSnapshot ResolveCashInventoryPacketFocus(CashServiceStageWindow stageWindow)
+        {
+            CashServiceStageWindow.PacketCatalogEntry packetEntry = stageWindow?.CashInventoryPacketEntries.FirstOrDefault();
+            if (packetEntry == null)
+            {
+                return null;
+            }
+
+            int slotIndex = Math.Max(1, packetEntry.ListingId);
+            int zeroBasedSlotIndex = slotIndex - 1;
+            int rowFocusIndex = Math.Clamp(zeroBasedSlotIndex % 4, 0, 3);
+            int scrollOffset = Math.Max(0, zeroBasedSlotIndex - rowFocusIndex);
+            string activeTabName = ResolveCashInventoryTabName(packetEntry.ItemId);
+            return new CashInventoryPacketFocusSnapshot
+            {
+                ActiveTabName = activeTabName,
+                FocusTitle = packetEntry.Title ?? string.Empty,
+                FocusMessage = packetEntry.Detail ?? string.Empty,
+                FocusSignature = string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{activeTabName}|{slotIndex}|{packetEntry.ItemId}|{stageWindow.CashInventoryPacketEntries.Count}"),
+                FirstPosition = scrollOffset + 1,
+                ScrollOffset = scrollOffset,
+                RowFocusIndex = rowFocusIndex
+            };
+        }
+
+        private static string ResolveCashInventoryTabName(int itemId)
+        {
+            int inventoryTab = Math.Max(0, (itemId / 1_000_000) - 1);
+            return inventoryTab switch
+            {
+                1 => "Use",
+                2 => "Setup",
+                3 => "Etc",
+                _ => "Equip"
+            };
         }
 
         private IReadOnlyList<string> BuildCashShopListOwnerLines(AdminShopDialogUI cashShopWindow)

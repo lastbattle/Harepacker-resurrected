@@ -343,20 +343,36 @@ namespace HaCreator.MapSimulator.Fields
 
         public static bool CanRegisterMapTransferDestination(int mapId)
         {
-            return CanRegisterMapTransferDestination(mapId, null);
+            return CanRegisterMapTransferDestination(mapId, null, null);
         }
 
         public static bool CanRegisterMapTransferDestination(int mapId, MapInfo mapInfo)
         {
-            return GetMapTransferRegistrationRestrictionMessage(mapId, mapInfo) == null;
+            return CanRegisterMapTransferDestination(mapId, mapInfo, null);
+        }
+
+        public static bool CanRegisterMapTransferDestination(
+            int mapId,
+            MapInfo mapInfo,
+            FieldEntryRestrictionContext? context)
+        {
+            return GetMapTransferRegistrationRestrictionMessage(mapId, mapInfo, context) == null;
         }
 
         public static string GetMapTransferRegistrationRestrictionMessage(int mapId)
         {
-            return GetMapTransferRegistrationRestrictionMessage(mapId, null);
+            return GetMapTransferRegistrationRestrictionMessage(mapId, null, null);
         }
 
         public static string GetMapTransferRegistrationRestrictionMessage(int mapId, MapInfo mapInfo)
+        {
+            return GetMapTransferRegistrationRestrictionMessage(mapId, mapInfo, null);
+        }
+
+        public static string GetMapTransferRegistrationRestrictionMessage(
+            int mapId,
+            MapInfo mapInfo,
+            FieldEntryRestrictionContext? context)
         {
             if (mapId <= 0 || mapId == MapConstants.MaxMap)
             {
@@ -377,6 +393,14 @@ namespace HaCreator.MapSimulator.Fields
             if (mapInfo == null)
             {
                 return null;
+            }
+
+            string entryRestrictionMessage = context.HasValue
+                ? FieldEntryRestrictionEvaluator.GetRestrictionMessage(mapInfo, context.Value)
+                : null;
+            if (!string.IsNullOrWhiteSpace(entryRestrictionMessage))
+            {
+                return entryRestrictionMessage;
             }
 
             if (mapInfo.noMapCmd == true ||

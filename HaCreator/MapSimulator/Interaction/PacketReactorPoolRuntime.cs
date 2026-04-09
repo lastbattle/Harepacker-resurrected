@@ -164,7 +164,7 @@ namespace HaCreator.MapSimulator.Interaction
             writer.Write((short)x);
             writer.Write((short)y);
             writer.Write((ushort)Math.Clamp(hitStartDelayMs, ushort.MinValue, ushort.MaxValue));
-            writer.Write((byte)Math.Clamp(properEventIndex, byte.MinValue, byte.MaxValue));
+            writer.Write(EncodeSignedByte(properEventIndex));
             writer.Write((byte)Math.Clamp(stateEndDelayTicks, byte.MinValue, byte.MaxValue));
             writer.Flush();
             return stream.ToArray();
@@ -221,7 +221,7 @@ namespace HaCreator.MapSimulator.Interaction
                 reader.ReadInt16(),
                 reader.ReadInt16(),
                 reader.ReadUInt16(),
-                reader.ReadByte(),
+                ReadSignedByte(reader),
                 reader.ReadByte());
             EnsureNoTrailingBytes(stream, "reactor change-state");
 
@@ -273,6 +273,17 @@ namespace HaCreator.MapSimulator.Interaction
             byte[] bytes = Encoding.Default.GetBytes(text);
             writer.Write((short)bytes.Length);
             writer.Write(bytes);
+        }
+
+        private static byte EncodeSignedByte(int value)
+        {
+            sbyte clamped = (sbyte)Math.Clamp(value, sbyte.MinValue, sbyte.MaxValue);
+            return unchecked((byte)clamped);
+        }
+
+        private static int ReadSignedByte(BinaryReader reader)
+        {
+            return unchecked((sbyte)reader.ReadByte());
         }
 
         private static string ReadMapleString(BinaryReader reader)

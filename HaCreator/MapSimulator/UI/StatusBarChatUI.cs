@@ -102,7 +102,9 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _whisperPickerDialogBarTexture;
         private Texture2D _whisperPickerDialogLineTexture;
         private Texture2D _whisperPickerPrevButtonTexture;
+        private Texture2D _whisperPickerPrevButtonDisabledTexture;
         private Texture2D _whisperPickerNextButtonTexture;
+        private Texture2D _whisperPickerNextButtonDisabledTexture;
         private Texture2D _whisperPickerOkButtonTexture;
         private Texture2D _whisperPickerCloseButtonTexture;
         private readonly List<WhisperPickerButtonHitRegion> _whisperPickerButtonHitRegions = new List<WhisperPickerButtonHitRegion>();
@@ -221,7 +223,9 @@ namespace HaCreator.MapSimulator.UI
             Texture2D prevButtonTexture,
             Texture2D nextButtonTexture,
             Texture2D okButtonTexture,
-            Texture2D closeButtonTexture)
+            Texture2D closeButtonTexture,
+            Texture2D prevButtonDisabledTexture = null,
+            Texture2D nextButtonDisabledTexture = null)
         {
             _whisperPickerDialogTopTexture = topTexture;
             _whisperPickerDialogCenterTexture = centerTexture;
@@ -229,7 +233,9 @@ namespace HaCreator.MapSimulator.UI
             _whisperPickerDialogBarTexture = barTexture;
             _whisperPickerDialogLineTexture = lineTexture;
             _whisperPickerPrevButtonTexture = prevButtonTexture;
+            _whisperPickerPrevButtonDisabledTexture = prevButtonDisabledTexture;
             _whisperPickerNextButtonTexture = nextButtonTexture;
+            _whisperPickerNextButtonDisabledTexture = nextButtonDisabledTexture;
             _whisperPickerOkButtonTexture = okButtonTexture;
             _whisperPickerCloseButtonTexture = closeButtonTexture;
         }
@@ -422,8 +428,9 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 BaseDXDrawableItem buttonToDraw = uiBtn.GetBaseDXDrawableItemByState();
-                int drawRelativeX = -(this.Position.X) - uiBtn.X;
-                int drawRelativeY = -(this.Position.Y) - uiBtn.Y;
+                Point buttonDrawPosition = uiBtn.GetDrawPositionByState();
+                int drawRelativeX = -(this.Position.X) - buttonDrawPosition.X;
+                int drawRelativeY = -(this.Position.Y) - buttonDrawPosition.Y;
 
                 buttonToDraw.Draw(sprite, skeletonMeshRenderer,
                     gameTime,
@@ -825,6 +832,7 @@ namespace HaCreator.MapSimulator.UI
                 chatState.WhisperTargetPickerSelectionIndex,
                 candidates.Count,
                 WhisperPickerVisibleRows);
+            int modalVisibleRowCount = WhisperPickerVisibleRows;
             int rowHeight = Math.Max(
                 Math.Max(
                     _whisperPickerSelectedTexture?.Height ?? 0,
@@ -846,7 +854,7 @@ namespace HaCreator.MapSimulator.UI
             int titleBarHeight = _whisperPickerDialogBarTexture?.Height ?? 0;
             int topHeight = _whisperPickerDialogTopTexture?.Height ?? 28;
             int bottomHeight = _whisperPickerDialogBottomTexture?.Height ?? 44;
-            int contentHeight = (rowHeight * (visibleCount + 1))
+            int contentHeight = (rowHeight * (modalVisibleRowCount + 1))
                 + WhisperPickerModalHeaderGap
                 + titleBarHeight
                 + WhisperPickerModalFooterGap
@@ -880,7 +888,7 @@ namespace HaCreator.MapSimulator.UI
                 _whisperPickerBounds.Value,
                 contentY,
                 rowHeight,
-                visibleCount,
+                modalVisibleRowCount,
                 ResolveWhisperPickerMinimumRowWidth(),
                 ResolveWhisperPickerMaxCandidateWidth(chatState, firstVisibleIndex, visibleCount),
                 _whisperPickerDialogLineTexture?.Width ?? 0);
@@ -907,13 +915,12 @@ namespace HaCreator.MapSimulator.UI
                 isSelected: chatState.WhisperTargetPickerSelectionIndex < 0,
                 registerHitRegion: false);
 
-            for (int i = 0; i < visibleCount; i++)
+            for (int i = 0; i < modalVisibleRowCount; i++)
             {
                 int candidateIndex = firstVisibleIndex + i;
-                if (candidateIndex < 0 || candidateIndex >= candidates.Count)
-                {
-                    continue;
-                }
+                string candidateText = candidateIndex >= 0 && candidateIndex < candidates.Count
+                    ? candidates[candidateIndex]
+                    : string.Empty;
 
                 Rectangle rowBounds = StatusBarChatLayoutRules.ResolveWhisperPickerModalVisibleRowBounds(
                     listBounds,
@@ -925,13 +932,23 @@ namespace HaCreator.MapSimulator.UI
                     rowBounds.Y,
                     rowBounds.Width,
                     rowBounds.Height,
-                    candidates[candidateIndex],
+                    candidateText,
                     isSelected: candidateIndex == chatState.WhisperTargetPickerSelectionIndex,
                     registerHitRegion: true);
             }
 
             int buttonY = modalY + modalHeight - bottomHeight - buttonRowHeight - 6;
-            DrawWhisperPickerButtonRow(sprite, modalX, buttonY, modalWidth, buttonRowHeight);
+            DrawWhisperPickerButtonRow(
+                sprite,
+                modalX,
+                buttonY,
+                modalWidth,
+                buttonRowHeight,
+                StatusBarChatLayoutRules.CanPageWhisperPickerBackward(firstVisibleIndex),
+                StatusBarChatLayoutRules.CanPageWhisperPickerForward(
+                    firstVisibleIndex,
+                    candidates.Count,
+                    WhisperPickerVisibleRows));
         }
 
         private void DrawWhisperPickerRow(
@@ -1048,7 +1065,14 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void DrawWhisperPickerButtonRow(SpriteBatch sprite, int modalX, int buttonY, int modalWidth, int buttonRowHeight)
+        private void DrawWhisperPickerButtonRow(
+            SpriteBatch sprite,
+            int modalX,
+            int buttonY,
+            int modalWidth,
+            int buttonRowHeight,
+            bool canPageBackward,
+            bool canPageForward)
         {
             Texture2D[] textures =
             {
@@ -1057,6 +1081,13 @@ namespace HaCreator.MapSimulator.UI
                 _whisperPickerOkButtonTexture,
                 _whisperPickerCloseButtonTexture
             };
+            Texture2D[] disabledTextures =
+            {
+                _whisperPickerPrevButtonDisabledTexture,
+                _whisperPickerNextButtonDisabledTexture,
+                null,
+                null
+            };
             WhisperPickerButtonAction[] actions =
             {
                 WhisperPickerButtonAction.Previous,
@@ -1064,19 +1095,27 @@ namespace HaCreator.MapSimulator.UI
                 WhisperPickerButtonAction.Confirm,
                 WhisperPickerButtonAction.Close
             };
+            bool[] isEnabled =
+            {
+                canPageBackward,
+                canPageForward,
+                true,
+                true
+            };
 
             int totalButtonWidth = 0;
             for (int i = 0; i < textures.Length; i++)
             {
-                totalButtonWidth += Math.Max(50, textures[i]?.Width ?? 0);
+                Texture2D texture = isEnabled[i] ? textures[i] : disabledTextures[i] ?? textures[i];
+                totalButtonWidth += Math.Max(40, texture?.Width ?? 0);
             }
 
             totalButtonWidth += WhisperPickerModalButtonGap * (textures.Length - 1);
             int buttonX = modalX + Math.Max(0, (modalWidth - totalButtonWidth) / 2);
             for (int i = 0; i < textures.Length; i++)
             {
-                Texture2D texture = textures[i];
-                int buttonWidth = Math.Max(50, texture?.Width ?? 0);
+                Texture2D texture = isEnabled[i] ? textures[i] : disabledTextures[i] ?? textures[i];
+                int buttonWidth = Math.Max(40, texture?.Width ?? 0);
                 Rectangle buttonBounds = new Rectangle(buttonX, buttonY, buttonWidth, buttonRowHeight);
                 if (texture != null)
                 {
@@ -1088,11 +1127,15 @@ namespace HaCreator.MapSimulator.UI
                     sprite.Draw(_pixelTexture, buttonBounds, new Color(154, 120, 68, 240));
                 }
 
-                _whisperPickerButtonHitRegions.Add(new WhisperPickerButtonHitRegion
+                if (isEnabled[i])
                 {
-                    Bounds = buttonBounds,
-                    Action = actions[i]
-                });
+                    _whisperPickerButtonHitRegions.Add(new WhisperPickerButtonHitRegion
+                    {
+                        Bounds = buttonBounds,
+                        Action = actions[i]
+                    });
+                }
+
                 buttonX += buttonBounds.Width + WhisperPickerModalButtonGap;
             }
         }

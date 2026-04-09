@@ -60,6 +60,7 @@ namespace HaCreator.MapSimulator.Companions
 
     internal sealed class PetLoader
     {
+        private readonly record struct PetActionFrame(string Name, IDXObject Frame);
         private readonly record struct PetAnimationCacheKey(int PetItemId, int PetWearItemId);
         private readonly record struct PetActionCacheKey(int PetItemId, int PetWearItemId, string ActionName);
 
@@ -558,36 +559,68 @@ namespace HaCreator.MapSimulator.Companions
                 return emptyFrames;
             }
 
-            List<IDXObject> baseFrames = LoadActionFrames(actionNode, defaultDelay: 100);
-            if (baseFrames.Count == 0 || petWearItemId <= 0)
+            List<PetActionFrame> baseFrames = LoadNamedActionFrames(actionNode, fallbackDelayByFrameName: null, defaultDelay: 100);
+            if (baseFrames.Count == 0)
             {
-                _actionCache[cacheKey] = baseFrames;
-                return baseFrames;
+                List<IDXObject> emptyFrames = new();
+                _actionCache[cacheKey] = emptyFrames;
+                return emptyFrames;
+            }
+
+            if (petWearItemId <= 0)
+            {
+                List<IDXObject> loadedBaseFrames = baseFrames.Select(static entry => entry.Frame).ToList();
+                _actionCache[cacheKey] = loadedBaseFrames;
+                return loadedBaseFrames;
             }
 
             WzImageProperty petWearActionNode = ResolvePetWearActionNode(petWearItemId, petItemId, actionName);
             if (petWearActionNode == null)
             {
-                _actionCache[cacheKey] = baseFrames;
-                return baseFrames;
+                List<IDXObject> loadedBaseFrames = baseFrames.Select(static entry => entry.Frame).ToList();
+                _actionCache[cacheKey] = loadedBaseFrames;
+                return loadedBaseFrames;
             }
 
-            List<IDXObject> overlayFrames = LoadActionFrames(
+            var baseDelayByFrameName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (PetActionFrame baseFrame in baseFrames)
+            {
+                if (!string.IsNullOrWhiteSpace(baseFrame.Name) && baseFrame.Frame != null)
+                {
+                    baseDelayByFrameName[baseFrame.Name] = baseFrame.Frame.Delay > 0 ? baseFrame.Frame.Delay : 100;
+                }
+            }
+
+            List<PetActionFrame> overlayFrames = LoadNamedActionFrames(
                 petWearActionNode,
-                baseFrames.Select(frame => frame?.Delay ?? 100).ToList(),
+                baseDelayByFrameName,
                 defaultDelay: 100);
             if (overlayFrames.Count == 0)
             {
-                _actionCache[cacheKey] = baseFrames;
-                return baseFrames;
+                List<IDXObject> loadedBaseFrames = baseFrames.Select(static entry => entry.Frame).ToList();
+                _actionCache[cacheKey] = loadedBaseFrames;
+                return loadedBaseFrames;
+            }
+
+            var overlayFramesByName = new Dictionary<string, IDXObject>(StringComparer.OrdinalIgnoreCase);
+            foreach (PetActionFrame overlayFrame in overlayFrames)
+            {
+                if (!string.IsNullOrWhiteSpace(overlayFrame.Name) &&
+                    overlayFrame.Frame != null &&
+                    !overlayFramesByName.ContainsKey(overlayFrame.Name))
+                {
+                    overlayFramesByName[overlayFrame.Name] = overlayFrame.Frame;
+                }
             }
 
             var composedFrames = new List<IDXObject>(baseFrames.Count);
-            for (int i = 0; i < baseFrames.Count; i++)
+            foreach (PetActionFrame baseFrame in baseFrames)
             {
-                IDXObject baseFrame = baseFrames[i];
-                IDXObject overlayFrame = i < overlayFrames.Count ? overlayFrames[i] : null;
-                composedFrames.Add(overlayFrame == null ? baseFrame : ComposePetWearFrame(baseFrame, overlayFrame));
+                IDXObject overlayFrame = !string.IsNullOrWhiteSpace(baseFrame.Name) &&
+                                         overlayFramesByName.TryGetValue(baseFrame.Name, out IDXObject resolvedOverlayFrame)
+                    ? resolvedOverlayFrame
+                    : null;
+                composedFrames.Add(overlayFrame == null ? baseFrame.Frame : ComposePetWearFrame(baseFrame.Frame, overlayFrame));
             }
 
             _actionCache[cacheKey] = composedFrames;
@@ -773,12 +806,17 @@ namespace HaCreator.MapSimulator.Companions
 
         private List<IDXObject> LoadActionFrames(WzImageProperty actionNode, int defaultDelay)
         {
-            return LoadActionFrames(actionNode, fallbackDelays: null, defaultDelay);
+            return LoadNamedActionFrames(actionNode, fallbackDelayByFrameName: null, defaultDelay)
+                .Select(static entry => entry.Frame)
+                .ToList();
         }
 
-        private List<IDXObject> LoadActionFrames(WzImageProperty actionNode, IReadOnlyList<int> fallbackDelays, int defaultDelay)
+        private List<PetActionFrame> LoadNamedActionFrames(
+            WzImageProperty actionNode,
+            IReadOnlyDictionary<string, int> fallbackDelayByFrameName,
+            int defaultDelay)
         {
-            var frames = new List<IDXObject>();
+            var frames = new List<PetActionFrame>();
             if (actionNode == null)
             {
                 return frames;
@@ -787,20 +825,21 @@ namespace HaCreator.MapSimulator.Companions
             foreach (WzImageProperty child in actionNode.WzProperties.OrderBy(GetFrameOrder))
             {
                 WzCanvasProperty canvas = ResolveCanvasProperty(child);
-
                 if (canvas == null)
                 {
                     continue;
                 }
 
-                int frameIndex = frames.Count;
-                int fallbackDelay = fallbackDelays != null && frameIndex < fallbackDelays.Count
-                    ? fallbackDelays[frameIndex]
+                string frameName = child.Name ?? string.Empty;
+                int fallbackDelay = fallbackDelayByFrameName != null &&
+                                    !string.IsNullOrWhiteSpace(frameName) &&
+                                    fallbackDelayByFrameName.TryGetValue(frameName, out int resolvedFallbackDelay)
+                    ? resolvedFallbackDelay
                     : defaultDelay;
                 IDXObject frame = LoadTexture(canvas, fallbackDelay);
                 if (frame != null)
                 {
-                    frames.Add(frame);
+                    frames.Add(new PetActionFrame(frameName, frame));
                 }
             }
 

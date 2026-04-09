@@ -77,6 +77,7 @@ namespace HaCreator.MapSimulator.UI
         public const string FamilyChart = "FamilyChart";
         public const string FamilyTree = "FamilyTree";
         public const string SocialList = "SocialList";
+        public const string FriendGroup = "FriendGroup";
         public const string SocialSearch = "SocialSearch";
         public const string GuildSearch = "GuildSearch";
         public const string GuildRank = "GuildRank";

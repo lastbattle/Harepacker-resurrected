@@ -427,14 +427,17 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (_entries.TryGetValue(packet.EmployerId, out SocialRoomEmployeePoolEntryState existing))
             {
-                ApplyEnterField(existing, packet);
+                existing.Flags |= SocialRoomEmployeePoolFlags.EnteredField;
+                _lastTouchedEmployerId = existing.EmployerId;
+                string displayName = string.IsNullOrWhiteSpace(existing.NameTag) ? "Owner" : existing.NameTag;
+                message =
+                    $"Reactivated pooled employee enter-field packet: employer={existing.EmployerId}, owner={displayName}, template={(existing.TemplateId > 0 ? existing.TemplateId.ToString() : "legacy")}.";
+                return true;
             }
-            else
-            {
-                SocialRoomEmployeePoolEntryState state = new(packet.EmployerId);
-                ApplyEnterField(state, packet);
-                _entries[state.EmployerId] = state;
-            }
+
+            SocialRoomEmployeePoolEntryState state = new(packet.EmployerId);
+            ApplyEnterField(state, packet);
+            _entries[state.EmployerId] = state;
 
             SocialRoomEmployeePoolEntryState appliedState = _entries[packet.EmployerId];
             _lastTouchedEmployerId = appliedState.EmployerId;

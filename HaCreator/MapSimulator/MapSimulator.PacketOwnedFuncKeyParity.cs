@@ -4,6 +4,7 @@ using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
@@ -633,6 +634,160 @@ namespace HaCreator.MapSimulator
                 packetEntryType: entry.Type,
                 packetEntryId: entry.Id,
                 packetScanCode: scanCode);
+        }
+
+        private KeyConfigWindow.ShortcutVisualState ResolvePacketOwnedKeyConfigShortcutVisualState(InputAction action)
+        {
+            if (_playerManager?.Skills == null
+                || !TryResolvePacketOwnedBindableHotkeySlotIndex(action, out int slotIndex)
+                || slotIndex < 0)
+            {
+                return default;
+            }
+
+            int skillId = _playerManager.Skills.GetHotkeySkill(slotIndex);
+            if (skillId > 0)
+            {
+                return BuildPacketOwnedKeyConfigSkillShortcutVisualState(skillId);
+            }
+
+            int itemId = _playerManager.Skills.GetHotkeyItem(slotIndex);
+            if (itemId > 0)
+            {
+                InventoryType inventoryType = _playerManager.Skills.GetHotkeyItemInventoryType(slotIndex);
+                int itemCount = _playerManager.Skills.GetHotkeyItemCount(slotIndex);
+                return BuildPacketOwnedKeyConfigItemShortcutVisualState(itemId, inventoryType, itemCount);
+            }
+
+            int macroIndex = _playerManager.Skills.GetHotkeyMacroIndex(slotIndex);
+            if (macroIndex >= 0)
+            {
+                return BuildPacketOwnedKeyConfigMacroShortcutVisualState(macroIndex);
+            }
+
+            return default;
+        }
+
+        private KeyConfigWindow.ShortcutVisualState BuildPacketOwnedKeyConfigSkillShortcutVisualState(int skillId)
+        {
+            SkillData skill = _playerManager?.SkillLoader?.LoadSkill(skillId);
+            string title = !string.IsNullOrWhiteSpace(skill?.Name)
+                ? skill.Name
+                : $"Skill {skillId}";
+            int skillLevel = Math.Max(0, _playerManager?.Skills?.GetSkillLevel(skillId) ?? 0);
+            string detail = skillLevel > 0
+                ? $"Packet-owned skill entry {skillId} is staged through the live hotkey map at level {skillLevel}."
+                : $"Packet-owned skill entry {skillId} is staged through the live hotkey map.";
+            string badgeText = skillLevel > 0
+                ? $"Lv{skillLevel}"
+                : "SKILL";
+            return new KeyConfigWindow.ShortcutVisualState(
+                skill?.IconTexture,
+                title,
+                detail,
+                badgeText: badgeText);
+        }
+
+        private KeyConfigWindow.ShortcutVisualState BuildPacketOwnedKeyConfigItemShortcutVisualState(
+            int itemId,
+            InventoryType inventoryType,
+            int itemCount)
+        {
+            string title = InventoryItemMetadataResolver.TryResolveItemName(itemId, out string itemName)
+                && !string.IsNullOrWhiteSpace(itemName)
+                    ? itemName
+                    : $"Item {itemId}";
+            string inventoryLabel = inventoryType != InventoryType.NONE
+                ? inventoryType.ToString()
+                : "Unknown";
+            bool unavailable = itemCount <= 0;
+            string detail = unavailable
+                ? $"Packet-owned {inventoryLabel.ToLowerInvariant()} item entry {itemId} is mapped, but the live inventory count is empty."
+                : $"Packet-owned {inventoryLabel.ToLowerInvariant()} item entry {itemId} is staged through the live hotkey map.";
+            string badgeText = inventoryType == InventoryType.CASH
+                ? "CASH"
+                : "ITEM";
+            string quantityText = itemCount > 1
+                ? itemCount.ToString(CultureInfo.InvariantCulture)
+                : string.Empty;
+            return new KeyConfigWindow.ShortcutVisualState(
+                ResolvePacketOwnedKeyConfigItemIcon(itemId, inventoryType),
+                title,
+                detail,
+                badgeText: badgeText,
+                quantityText: quantityText,
+                unavailable: unavailable);
+        }
+
+        private Texture2D ResolvePacketOwnedKeyConfigItemIcon(int itemId, InventoryType inventoryType)
+        {
+            Texture2D itemTexture = (uiWindowManager?.InventoryWindow as IInventoryRuntime)?.GetItemTexture(inventoryType, itemId);
+            if (itemTexture != null && !itemTexture.IsDisposed)
+            {
+                return itemTexture;
+            }
+
+            return LoadInventoryItemIcon(itemId);
+        }
+
+        private KeyConfigWindow.ShortcutVisualState BuildPacketOwnedKeyConfigMacroShortcutVisualState(int macroIndex)
+        {
+            SkillMacro macro = uiWindowManager?.SkillMacroWindow?.GetMacro(macroIndex);
+            int displaySkillId = ResolvePacketOwnedMacroDisplaySkillId(macro);
+            SkillData displaySkill = displaySkillId > 0
+                ? _playerManager?.SkillLoader?.LoadSkill(displaySkillId)
+                : null;
+            int configuredSkillCount = CountPacketOwnedConfiguredMacroSkills(macro);
+            string title = !string.IsNullOrWhiteSpace(macro?.Name)
+                ? macro.Name
+                : $"Macro {macroIndex + 1}";
+            string detail = configuredSkillCount > 0
+                ? $"Packet-owned macro entry {macroIndex + 1} is staged through the live hotkey map with {configuredSkillCount} configured skill step{(configuredSkillCount == 1 ? string.Empty : "s")}."
+                : $"Packet-owned macro entry {macroIndex + 1} is staged through the live hotkey map, but the macro is still empty.";
+            bool unavailable = macro == null || !macro.IsEnabled || configuredSkillCount <= 0;
+            return new KeyConfigWindow.ShortcutVisualState(
+                displaySkill?.IconTexture,
+                title,
+                detail,
+                badgeText: $"M{macroIndex + 1}",
+                unavailable: unavailable);
+        }
+
+        private static int ResolvePacketOwnedMacroDisplaySkillId(SkillMacro macro)
+        {
+            if (macro?.SkillIds == null)
+            {
+                return 0;
+            }
+
+            for (int i = 0; i < macro.SkillIds.Length; i++)
+            {
+                if (macro.SkillIds[i] > 0)
+                {
+                    return macro.SkillIds[i];
+                }
+            }
+
+            return 0;
+        }
+
+        private static int CountPacketOwnedConfiguredMacroSkills(SkillMacro macro)
+        {
+            if (macro?.SkillIds == null)
+            {
+                return 0;
+            }
+
+            int configuredSkillCount = 0;
+            for (int i = 0; i < macro.SkillIds.Length; i++)
+            {
+                if (macro.SkillIds[i] > 0)
+                {
+                    configuredSkillCount++;
+                }
+            }
+
+            return configuredSkillCount;
         }
 
         private int ApplyPacketOwnedCastMappingsToLiveInput(PlayerInput input)

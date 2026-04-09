@@ -575,10 +575,11 @@ namespace HaCreator.MapSimulator.UI {
                 }
 
                 BaseDXDrawableItem buttonToDraw = uiBtn.GetBaseDXDrawableItemByState();
+                Point buttonDrawPosition = uiBtn.GetDrawPositionByState();
 
                 // Position drawn is relative to this UI
-                int drawRelativeX = -(this.Position.X) - uiBtn.X; // Left to right
-                int drawRelativeY = -(this.Position.Y) - uiBtn.Y; // Top to bottom
+                int drawRelativeX = -(this.Position.X) - buttonDrawPosition.X; // Left to right
+                int drawRelativeY = -(this.Position.Y) - buttonDrawPosition.Y; // Top to bottom
 
                 buttonToDraw.Draw(sprite, skeletonMeshRenderer,
                     gameTime,
@@ -1336,7 +1337,7 @@ namespace HaCreator.MapSimulator.UI {
 
         private void DrawPreparedSkillHudText(SpriteBatch sprite, StatusBarPreparedSkillRenderData preparedSkill, PreparedSkillHudProfile hudProfile, Rectangle barRect, float progress)
         {
-            if (_font == null || preparedSkill == null)
+            if (!HasStatusBarTextRenderer() || preparedSkill == null)
             {
                 return;
             }

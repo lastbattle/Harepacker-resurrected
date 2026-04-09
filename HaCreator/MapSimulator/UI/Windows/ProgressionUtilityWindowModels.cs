@@ -170,6 +170,12 @@ namespace HaCreator.MapSimulator.UI
     internal static class CollectionBookSnapshotFactory
     {
         private const int EntriesPerPage = 6;
+        private const float ClientCollectionTextLaneWidth = 190f;
+        private const int ClientCollectionEntryRuleGap = 6;
+        private const int ClientCollectionDetailLineStep = 9;
+        private const int ClientCollectionStandardEntryBaseHeight = 25;
+        private const int ClientCollectionOverviewIdentityEntryBaseHeight = 28;
+        private const int ClientCollectionOverviewMetricEntryBaseHeight = 19;
         private const int BookFontObjectStringPoolId = 0x5AF;
         private const int BookFontFamilyStringPoolId = 0x1A25;
         private const int BookFontStyleStringPoolId = 0x5B0;
@@ -488,20 +494,21 @@ namespace HaCreator.MapSimulator.UI
             };
 
             IReadOnlyList<CollectionBookEntrySnapshot> entries = page?.Entries ?? Array.Empty<CollectionBookEntrySnapshot>();
+            int currentTop = 66;
             for (int row = 0; row < EntriesPerPage; row++)
             {
-                int rowTop = 66 + (row * 25);
                 CollectionBookEntrySnapshot entry = row < entries.Count ? entries[row] : null;
                 if (entry != null)
                 {
-                    records.Add(CreateTextRecord(entry.Label, 16, rowTop, 96, 2, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
-                    records.Add(CreateTextRecord(entry.Value, 104, rowTop, 78, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Right, CollectionBookRecordRole.Value));
-                    records.Add(CreateTextRecord(entry.Detail, 22, rowTop + 10, 156, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail));
+                    AddStandardEntryRecords(records, entry, currentTop);
                 }
 
                 if (row < EntriesPerPage - 1)
                 {
-                    records.Add(CreateRuleRecord(15, rowTop + 19, 166));
+                    int detailLineCount = GetWrappedCollectionLineCount(entry?.Detail, 156);
+                    int ruleTop = currentTop + 19 + ((detailLineCount - 1) * ClientCollectionDetailLineStep);
+                    records.Add(CreateRuleRecord(15, ruleTop, 166));
+                    currentTop = ruleTop + ClientCollectionEntryRuleGap;
                 }
             }
 
@@ -522,14 +529,14 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<CollectionBookEntrySnapshot> entries = page?.Entries ?? Array.Empty<CollectionBookEntrySnapshot>();
             CollectionBookEntrySnapshot characterEntry = entries.Count > 0 ? entries[0] : null;
             CollectionBookEntrySnapshot targetEntry = entries.Count > 1 ? entries[1] : null;
-            AddOverviewIdentityEntryRecords(records, characterEntry, 66);
-            AddOverviewIdentityEntryRecords(records, targetEntry, 94);
+            int currentTop = 66;
+            currentTop = AddOverviewIdentityEntryRecords(records, characterEntry, currentTop);
+            currentTop = AddOverviewIdentityEntryRecords(records, targetEntry, currentTop);
 
             int metricRowCount = Math.Min(5, Math.Max(0, entries.Count - 2));
             for (int row = 0; row < metricRowCount; row++)
             {
-                int rowTop = 122 + (row * 19);
-                AddOverviewMetricEntryRecords(records, entries[row + 2], rowTop);
+                currentTop = AddOverviewMetricEntryRecords(records, entries[row + 2], currentTop);
             }
 
             records.Add(CreateRuleRecord(15, 221, 166));
@@ -537,30 +544,117 @@ namespace HaCreator.MapSimulator.UI
             return records;
         }
 
-        private static void AddOverviewIdentityEntryRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top)
+        private static int AddOverviewIdentityEntryRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top)
         {
             if (entry == null)
             {
-                return;
+                return top + ClientCollectionOverviewIdentityEntryBaseHeight;
             }
 
             records.Add(CreateTextRecord(entry.Label, 16, top, 44, 2, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
             records.Add(CreateTextRecord(entry.Value, 60, top, 120, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Left, CollectionBookRecordRole.Value));
-            records.Add(CreateTextRecord(entry.Detail, 22, top + 10, 158, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail));
-            records.Add(CreateRuleRecord(15, top + 23, 166));
+            AddWrappedTextRecords(records, entry.Detail, 22, top + 10, 158, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail);
+            int detailLineCount = GetWrappedCollectionLineCount(entry.Detail, 158);
+            int ruleTop = top + 23 + ((detailLineCount - 1) * ClientCollectionDetailLineStep);
+            records.Add(CreateRuleRecord(15, ruleTop, 166));
+            return ruleTop + 5;
         }
 
-        private static void AddOverviewMetricEntryRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top)
+        private static int AddOverviewMetricEntryRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top)
+        {
+            if (entry == null)
+            {
+                return top + ClientCollectionOverviewMetricEntryBaseHeight;
+            }
+
+            records.Add(CreateTextRecord(entry.Label, 16, top, 98, 2, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
+            records.Add(CreateTextRecord(entry.Value, 106, top, 76, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Right, CollectionBookRecordRole.Value));
+            AddWrappedTextRecords(records, entry.Detail, 22, top + 9, 160, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail);
+            int detailLineCount = GetWrappedCollectionLineCount(entry.Detail, 160);
+            int ruleTop = top + 16 + ((detailLineCount - 1) * ClientCollectionDetailLineStep);
+            records.Add(CreateRuleRecord(15, ruleTop, 166));
+            return ruleTop + 3;
+        }
+
+        private static void AddStandardEntryRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top)
         {
             if (entry == null)
             {
                 return;
             }
 
-            records.Add(CreateTextRecord(entry.Label, 16, top, 98, 2, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
-            records.Add(CreateTextRecord(entry.Value, 106, top, 76, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Right, CollectionBookRecordRole.Value));
-            records.Add(CreateTextRecord(entry.Detail, 22, top + 9, 160, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail));
-            records.Add(CreateRuleRecord(15, top + 16, 166));
+            records.Add(CreateTextRecord(entry.Label, 16, top, 96, 2, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
+            records.Add(CreateTextRecord(entry.Value, 104, top, 78, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Right, CollectionBookRecordRole.Value));
+            AddWrappedTextRecords(records, entry.Detail, 22, top + 10, 156, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail);
+        }
+
+        private static void AddWrappedTextRecords(
+            List<CollectionBookRecordSnapshot> records,
+            string text,
+            int left,
+            int top,
+            int width,
+            int styleIndex,
+            CollectionBookTextAlignment alignment,
+            CollectionBookRecordRole role)
+        {
+            IReadOnlyList<string> lines = WrapCollectionText(text, width);
+            if (lines.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < lines.Count; i++)
+            {
+                records.Add(CreateTextRecord(lines[i], left, top + (i * ClientCollectionDetailLineStep), width, styleIndex, alignment, role));
+            }
+        }
+
+        private static int GetWrappedCollectionLineCount(string text, int width)
+        {
+            int count = WrapCollectionText(text, width).Count;
+            return Math.Max(1, count);
+        }
+
+        private static IReadOnlyList<string> WrapCollectionText(string text, int width)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return Array.Empty<string>();
+            }
+
+            return QuestAlarmTextLayout.WrapText(
+                text,
+                Math.Min(width, ClientCollectionTextLaneWidth),
+                MeasureApproximateCollectionTextWidth);
+        }
+
+        private static float MeasureApproximateCollectionTextWidth(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return 0f;
+            }
+
+            float width = 0f;
+            foreach (char character in text)
+            {
+                width += character switch
+                {
+                    '\t' => 16f,
+                    ' ' => 4f,
+                    >= '0' and <= '9' => 6f,
+                    >= 'A' and <= 'Z' => 6f,
+                    >= 'a' and <= 'z' => 5f,
+                    '.' or ',' or ':' or ';' or '\'' or '"' or '!' or '|' => 3f,
+                    '(' or ')' or '[' or ']' or '{' or '}' => 4f,
+                    '/' or '\\' or '-' or '_' or '+' or '=' => 5f,
+                    _ when character >= 0x2E80 => 10f,
+                    _ => 6f
+                };
+            }
+
+            return width;
         }
 
         private static CollectionBookRecordSnapshot CreateTextRecord(string text, int left, int top, int width, int styleIndex, CollectionBookTextAlignment alignment, CollectionBookRecordRole role = CollectionBookRecordRole.GenericText)
@@ -871,6 +965,7 @@ namespace HaCreator.MapSimulator.UI
         public string NavigationRequestText { get; init; } = string.Empty;
         public string NavigationStateText { get; init; } = string.Empty;
         public bool IsLoading { get; init; }
+        public int LoadingStartTick { get; init; } = int.MinValue;
         public IReadOnlyList<RankingEntrySnapshot> Entries { get; init; } = Array.Empty<RankingEntrySnapshot>();
     }
 
@@ -920,5 +1015,6 @@ namespace HaCreator.MapSimulator.UI
         public bool CanClickSummon { get; init; }
         public string ProgressText { get; init; } = string.Empty;
         public string StatusText { get; init; } = string.Empty;
+        public string FooterText { get; init; } = string.Empty;
     }
 }

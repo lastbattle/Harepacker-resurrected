@@ -65,9 +65,21 @@ namespace HaCreator.MapSimulator.Interaction
         public string StatusText { get; init; } = string.Empty;
         public string AttachmentSummary { get; init; } = string.Empty;
         public string AttachmentDescription { get; init; } = string.Empty;
+        public int AttachmentItemId { get; init; }
+        public int AttachmentQuantity { get; init; }
+        public int AttachmentMeso { get; init; }
         public bool CanClaim { get; init; }
         public bool IsClaimed { get; init; }
         public bool IsExpired { get; init; }
+    }
+
+    internal sealed class MemoMailboxClaimResult
+    {
+        public int MemoId { get; init; }
+        public int AttachmentItemId { get; init; }
+        public int AttachmentQuantity { get; init; }
+        public int AttachmentMeso { get; init; }
+        public string AttachmentSummary { get; init; } = string.Empty;
     }
 
     internal sealed class MemoMailboxEntrySnapshot

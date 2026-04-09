@@ -25,8 +25,20 @@ namespace HaCreator.MapSimulator.Interaction
         public QuestRewardRaiseWindowMode WindowMode { get; init; }
         public QuestRewardRaiseWindowMode DisplayMode { get; set; }
         public string OpenDispatchSummary { get; set; } = string.Empty;
+        public string LastInboundSummary { get; set; } = string.Empty;
+        public bool AwaitingConfirmAck { get; set; }
+        public bool AwaitingOwnerDestroyAck { get; set; }
         public Dictionary<int, int> SelectedItemsByGroup { get; } = new Dictionary<int, int>();
         public List<QuestRewardRaisePlacedPiece> PlacedPieces { get; } = new List<QuestRewardRaisePlacedPiece>();
+    }
+
+    internal enum QuestRewardRaisePieceLifecycleState
+    {
+        PendingAddAck,
+        Active,
+        PendingReleaseAck,
+        PendingConfirmAck,
+        Confirmed
     }
 
     internal sealed class QuestRewardRaisePlacedPiece
@@ -40,5 +52,9 @@ namespace HaCreator.MapSimulator.Interaction
         public int PacketOpcode { get; set; }
         public byte[] PacketPayload { get; set; } = Array.Empty<byte>();
         public string DispatchSummary { get; set; } = string.Empty;
+        public int LastInboundPacketType { get; set; } = -1;
+        public byte[] LastInboundPayload { get; set; } = Array.Empty<byte>();
+        public string LastInboundSummary { get; set; } = string.Empty;
+        public QuestRewardRaisePieceLifecycleState LifecycleState { get; set; } = QuestRewardRaisePieceLifecycleState.PendingAddAck;
     }
 }

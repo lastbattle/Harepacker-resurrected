@@ -116,6 +116,8 @@ namespace HaCreator.MapSimulator.Character
         private static readonly IReadOnlySet<string> WildHunterJaguarExclusiveActionNames =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
+                "doubleJump",
+                "knockback",
                 "swallow_pre",
                 "swallow_loop",
                 "swallow",

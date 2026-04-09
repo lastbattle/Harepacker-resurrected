@@ -1912,8 +1912,11 @@ namespace HaCreator.MapSimulator
                     && requestSlot.Quantity < request.InitialSlotQuantity;
             }
 
-            if (request.ResolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved
-                && (!requestSlotMatches || requestSlotQuantityDropped))
+            if (ShouldCompleteFieldHazardRemoteObservedRequest(
+                    request.ResolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved,
+                    request.DispatchState == FieldHazardPetConsumeDispatchState.Dispatched,
+                    requestSlotMatches,
+                    requestSlotQuantityDropped))
             {
                 CompleteFieldHazardRemoteObservedRequest(
                     request,
@@ -1931,7 +1934,9 @@ namespace HaCreator.MapSimulator
                 _pendingFieldHazardPetAutoConsumeRequest = null;
                 TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
                 _chat?.AddSystemMessage(GetFieldHazardNoHpPotionChatNoticeText(), currentTickCount);
-                string slotExpiredDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} for {request.Candidate.ItemName} lost {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} before the synthetic ack arrived.";
+                string slotExpiredDetail = request.DispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued
+                    ? $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} for {request.Candidate.ItemName} lost {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} before deferred packet-owned delivery left the queue."
+                    : $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} for {request.Candidate.ItemName} lost {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} before the synthetic ack arrived.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(slotExpiredDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
                 return;
             }
@@ -1983,7 +1988,11 @@ namespace HaCreator.MapSimulator
                 string remoteUnresolvedDetail = request.DispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued
                     ? $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} remained deferred/external after the simulator observation window; waiting for a real server/inventory result for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}."
                     : $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} remained externally owned after the simulator observation window; waiting for a real server/inventory result for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
-                _localOverlayRuntime.SetFieldHazardFollowUp(remoteUnresolvedDetail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
+                _localOverlayRuntime.SetFieldHazardFollowUp(
+                    remoteUnresolvedDetail,
+                    ResolveFieldHazardRemoteObservationExpiryFollowUpKind(
+                        request.DispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued),
+                    currentTickCount);
                 return;
             }
 
@@ -2732,7 +2741,7 @@ namespace HaCreator.MapSimulator
             return "request";
         }
 
-        private static int ResolveFieldHazardPetAutoConsumeRequestIndex(bool forceRequest, bool buffSkillRequest)
+        internal static int ResolveFieldHazardPetAutoConsumeRequestIndex(bool forceRequest, bool buffSkillRequest)
         {
             if (buffSkillRequest)
             {
@@ -2787,12 +2796,11 @@ namespace HaCreator.MapSimulator
             };
         }
 
-        private static int ResolveFieldHazardSyntheticAckDelayMs(
-            FieldHazardPetConsumeDispatchState dispatchState,
-            FieldHazardPetConsumeResolutionMode resolutionMode)
+        internal static int ResolveFieldHazardSyntheticAckDelayMs(
+            bool externalObserved,
+            bool deferredQueued)
         {
-            if (resolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved
-                && dispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued)
+            if (externalObserved && deferredQueued)
             {
                 return FieldHazardPetAutoConsumeDeferredDispatchSyntheticAckDelayMs;
             }
@@ -2800,17 +2808,52 @@ namespace HaCreator.MapSimulator
             return FieldHazardPetAutoConsumeSyntheticAckDelayMs;
         }
 
-        private static int ResolveFieldHazardRemoteObservationWindowMs(
+        private static int ResolveFieldHazardSyntheticAckDelayMs(
             FieldHazardPetConsumeDispatchState dispatchState,
             FieldHazardPetConsumeResolutionMode resolutionMode)
         {
-            if (resolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved
-                && dispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued)
+            return ResolveFieldHazardSyntheticAckDelayMs(
+                resolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved,
+                dispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued);
+        }
+
+        internal static int ResolveFieldHazardRemoteObservationWindowMs(
+            bool externalObserved,
+            bool deferredQueued)
+        {
+            if (externalObserved && deferredQueued)
             {
                 return FieldHazardPetAutoConsumeDeferredDispatchRemoteObservationWindowMs;
             }
 
             return FieldHazardPetAutoConsumeRemoteObservationWindowMs;
+        }
+
+        private static int ResolveFieldHazardRemoteObservationWindowMs(
+            FieldHazardPetConsumeDispatchState dispatchState,
+            FieldHazardPetConsumeResolutionMode resolutionMode)
+        {
+            return ResolveFieldHazardRemoteObservationWindowMs(
+                resolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved,
+                dispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued);
+        }
+
+        internal static bool ShouldCompleteFieldHazardRemoteObservedRequest(
+            bool externalObserved,
+            bool dispatched,
+            bool requestSlotMatches,
+            bool requestSlotQuantityDropped)
+        {
+            return externalObserved
+                && dispatched
+                && (!requestSlotMatches || requestSlotQuantityDropped);
+        }
+
+        internal static FieldHazardFollowUpKind ResolveFieldHazardRemoteObservationExpiryFollowUpKind(bool deferredQueued)
+        {
+            return deferredQueued
+                ? FieldHazardFollowUpKind.Pending
+                : FieldHazardFollowUpKind.Acknowledged;
         }
 
         private bool TryCreateFieldHazardHpPotionCandidate(

@@ -27,6 +27,16 @@ namespace HaCreator.MapSimulator.Managers
         private const int MaxRecentSg88ManualAttackRequests = 16;
         private const int Sg88ManualAttackCaptureGraceMs = 120;
         private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket);
+        private sealed class LearnedSg88ManualAttackTemplate
+        {
+            public required Sg88ManualAttackRequestPacketTemplate Template { get; init; }
+            public required int RequestedAt { get; init; }
+            public required int ObservedAt { get; init; }
+            public required string Source { get; init; }
+            public required string Evidence { get; init; }
+            public string ResolutionSource { get; set; }
+        }
+
         private sealed class Sg88ManualAttackCapture
         {
             public int SummonObjectId { get; init; }
@@ -49,6 +59,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly Queue<OutboundPacketTrace> _recentOutboundPackets = new();
         private readonly List<Sg88ManualAttackCapture> _pendingSg88ManualAttackCaptures = new();
         private readonly Queue<Sg88ManualAttackCapture> _recentSg88ManualAttackCaptures = new();
+        private readonly Dictionary<int, LearnedSg88ManualAttackTemplate> _learnedSg88ManualAttackTemplates = new();
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
@@ -221,9 +232,10 @@ namespace HaCreator.MapSimulator.Managers
                 _recentOutboundPackets.Clear();
                 _recentSg88ManualAttackCaptures.Clear();
                 _pendingSg88ManualAttackCaptures.Clear();
+                _learnedSg88ManualAttackTemplates.Clear();
             }
 
-            LastStatus = "Summoned official-session bridge outbound and SG-88 request history cleared.";
+            LastStatus = "Summoned official-session bridge outbound, SG-88 request history, and learned template cache cleared.";
             return LastStatus;
         }
 
@@ -839,6 +851,7 @@ namespace HaCreator.MapSimulator.Managers
                 _recentOutboundPackets.Clear();
                 _pendingSg88ManualAttackCaptures.Clear();
                 _recentSg88ManualAttackCaptures.Clear();
+                _learnedSg88ManualAttackTemplates.Clear();
                 while (_pendingOutboundPackets.TryDequeue(out _))
                 {
                 }
@@ -1094,7 +1107,7 @@ namespace HaCreator.MapSimulator.Managers
             return $"0x{requestPacket.Opcode:X}@{requestPacket.ObservedAt}[{requestPacket.PayloadLength}] score={capture.RequestPacketScore} evidence={evidence} source={requestPacket.Source}";
         }
 
-        private static void TryAssignSg88ManualAttackRequestPacket(
+        private void TryAssignSg88ManualAttackRequestPacket(
             Sg88ManualAttackCapture capture,
             OutboundPacketTrace trace,
             Sg88ManualAttackTraceBinding binding)
@@ -1135,6 +1148,7 @@ namespace HaCreator.MapSimulator.Managers
             capture.RequestPacket = trace;
             capture.RequestPacketScore = binding.Score;
             capture.RequestPacketEvidence = binding.Evidence;
+            PromoteLearnedSg88ManualAttackTemplate(capture, trace, binding);
         }
 
         private static string BuildTraceBindingEvidence(
@@ -1340,7 +1354,7 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
-        private bool TryResolveLearnedSg88ManualAttackRequestTemplate(
+        internal bool TryResolveLearnedSg88ManualAttackRequestTemplate(
             int targetCount,
             out Sg88ManualAttackRequestPacketTemplate template,
             out string status)
@@ -1413,6 +1427,17 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (_learnedSg88ManualAttackTemplates.TryGetValue(targetCount, out LearnedSg88ManualAttackTemplate learnedTemplate))
+            {
+                template = learnedTemplate.Template;
+                string resolution = string.IsNullOrWhiteSpace(learnedTemplate.ResolutionSource)
+                    ? "cached official capture"
+                    : $"cached official capture ({learnedTemplate.ResolutionSource})";
+                status =
+                    $"Using cached learned SG-88 request template from opcode 0x{template.Opcode:X} captured at tick {learnedTemplate.RequestedAt} via {resolution}.";
+                return true;
+            }
+
             status = $"No learned SG-88 request packet template matched targetCount={targetCount}.";
             return false;
         }
@@ -1421,6 +1446,53 @@ namespace HaCreator.MapSimulator.Managers
         {
             return !string.IsNullOrWhiteSpace(source)
                 && source.StartsWith(OfficialSessionTraceSourcePrefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void PromoteLearnedSg88ManualAttackTemplate(
+            Sg88ManualAttackCapture capture,
+            OutboundPacketTrace trace,
+            Sg88ManualAttackTraceBinding binding)
+        {
+            if (capture?.RequestPacket is not OutboundPacketTrace requestPacket
+                || !IsEligibleSg88TemplateEvidenceSource(trace.Source))
+            {
+                return;
+            }
+
+            if (!TryCreateSg88ManualAttackRequestTemplate(
+                    requestPacket,
+                    capture.SummonObjectId,
+                    capture.PrimaryTargetMobId,
+                    capture.TargetMobIds,
+                    out Sg88ManualAttackRequestPacketTemplate template,
+                    out _))
+            {
+                return;
+            }
+
+            int targetCount = capture.TargetMobIds.Length;
+            if (targetCount <= 0)
+            {
+                return;
+            }
+
+            if (_learnedSg88ManualAttackTemplates.TryGetValue(targetCount, out LearnedSg88ManualAttackTemplate existingTemplate)
+                && (existingTemplate.ObservedAt > trace.ObservedAt
+                    || (existingTemplate.ObservedAt == trace.ObservedAt
+                        && string.CompareOrdinal(existingTemplate.Evidence, binding.Evidence) >= 0)))
+            {
+                return;
+            }
+
+            _learnedSg88ManualAttackTemplates[targetCount] = new LearnedSg88ManualAttackTemplate
+            {
+                Template = template,
+                RequestedAt = capture.RequestedAt,
+                ObservedAt = trace.ObservedAt,
+                Source = trace.Source,
+                Evidence = binding.Evidence,
+                ResolutionSource = capture.ResolutionSource
+            };
         }
 
         private static int[] FindAllInt32Offsets(byte[] payload, int value)

@@ -615,6 +615,52 @@ namespace HaCreator.MapSimulator.UI
 
         public int PacketOwnedAdminShopNpcTemplateId => _packetOwnedAdminShopNpcTemplateId;
 
+        public bool HasPacketOwnedAdminShopCatalog => UsesPacketOwnedAdminShopCatalog(AdminShopServiceMode.CashShop);
+
+        public IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> GetPacketOwnedCashShopStageCatalogEntries()
+        {
+            if (!UsesPacketOwnedAdminShopCatalog(AdminShopServiceMode.CashShop))
+            {
+                return Array.Empty<CashServiceStageWindow.PacketCatalogEntry>();
+            }
+
+            List<CashServiceStageWindow.PacketCatalogEntry> entries = new(_packetOwnedAdminShopRows.Count);
+            foreach (PacketOwnedAdminShopCommoditySnapshot row in _packetOwnedAdminShopRows)
+            {
+                AdminShopEntry entry = row.Price > 0
+                    ? CreatePacketOwnedCommodityEntry(row)
+                    : CreatePacketOwnedSellTemplateEntry(row);
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                entries.Add(new CashServiceStageWindow.PacketCatalogEntry
+                {
+                    Title = entry.Title ?? string.Empty,
+                    Detail = entry.Detail ?? string.Empty,
+                    Seller = entry.Seller ?? string.Empty,
+                    PriceLabel = entry.PriceLabel ?? string.Empty,
+                    StateLabel = string.IsNullOrWhiteSpace(entry.StateLabel)
+                        ? "Packet-owned shop"
+                        : entry.StateLabel,
+                    ListingId = entry.PacketSerialNumber > 0 ? entry.PacketSerialNumber : row.SerialNumber,
+                    ItemId = entry.RewardItemId > 0 ? entry.RewardItemId : row.ItemId,
+                    Quantity = Math.Max(1, entry.RewardQuantity),
+                    Price = (int)Math.Clamp(Math.Abs((long)entry.Price), 0L, int.MaxValue)
+                });
+            }
+
+            return entries;
+        }
+
+        public string GetPacketOwnedCashShopStageCatalogSummary()
+        {
+            return _packetOwnedAdminShopSessionActive
+                ? BuildPacketOwnedAdminShopStateSummary()
+                : string.Empty;
+        }
+
         public bool TryBeginPacketOwnedAdminShopSession(byte[] payload, out string message)
         {
             message = "Packet-owned admin-shop payload could not be decoded.";
@@ -1164,10 +1210,6 @@ namespace HaCreator.MapSimulator.UI
 
             int alreadyWishlistedCount = matches.Count(match =>
                 match.Entry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(GetEntryKey(match.Entry)));
-            matches = matches
-                .Where(match => !match.Entry.Wishlisted && !_wishlistedEntryKeys[_currentMode].Contains(GetEntryKey(match.Entry)))
-                .ToList();
-
             if (matches.Count == 0)
             {
                 message = alreadyWishlistedCount > 0
@@ -1179,25 +1221,35 @@ namespace HaCreator.MapSimulator.UI
             }
 
             List<WishlistSearchResult> results = matches
-                .Select(match => new WishlistSearchResult
-                {
-                    EntryKey = GetEntryKey(match.Entry),
-                    Title = match.Entry.Title,
-                    Seller = match.Entry.Seller,
-                    PriceLabel = match.Entry.PriceLabel,
-                    Detail = match.Entry.Detail,
-                    CategoryLabel = GetCategoryLabel(match.Entry.Category),
-                    RewardItemId = match.Entry.RewardItemId,
-                    IconTexture = match.Entry.IconTexture,
-                    AlreadyWishlisted = match.Entry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(GetEntryKey(match.Entry)),
-                    Score = match.Score
-                })
+                .Select(match => BuildWishlistSearchResult(match.Entry, match.Score))
                 .ToList();
 
-            message = $"SearchItemName staged {results.Count} result(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)}.";
+            message = alreadyWishlistedCount > 0
+                ? $"SearchItemName staged {results.Count} result(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)}; {alreadyWishlistedCount} row(s) are already saved."
+                : $"SearchItemName staged {results.Count} result(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)}.";
             _footerMessage = message;
             UpdateActionButtonStates();
             return results;
+        }
+
+        public bool TryResolveWishlistSearchResult(string entryKey, out WishlistSearchResult result)
+        {
+            result = null;
+            if (string.IsNullOrWhiteSpace(entryKey))
+            {
+                return false;
+            }
+
+            AdminShopEntry matchedEntry = _paneStates[AdminShopPane.Npc]
+                .SourceEntries
+                .FirstOrDefault(entry => string.Equals(GetEntryKey(entry), entryKey, StringComparison.Ordinal));
+            if (matchedEntry == null)
+            {
+                return false;
+            }
+
+            result = BuildWishlistSearchResult(matchedEntry, 0);
+            return result != null;
         }
 
         public bool TryApplyWishlistSearchResult(string entryKey, int categoryIndex, out string message)
@@ -3171,6 +3223,29 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        private WishlistSearchResult BuildWishlistSearchResult(AdminShopEntry entry, int score)
+        {
+            if (entry == null)
+            {
+                return null;
+            }
+
+            string entryKey = GetEntryKey(entry);
+            return new WishlistSearchResult
+            {
+                EntryKey = entryKey,
+                Title = entry.Title,
+                Seller = entry.Seller,
+                PriceLabel = entry.PriceLabel,
+                Detail = entry.Detail,
+                CategoryLabel = GetCategoryLabel(entry.Category),
+                RewardItemId = entry.RewardItemId,
+                IconTexture = entry.IconTexture,
+                AlreadyWishlisted = entry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(entryKey),
+                Score = score
+            };
+        }
+
         private static int ScoreWishlistEntry(AdminShopEntry entry, string query)
         {
             if (entry == null || string.IsNullOrWhiteSpace(query))
@@ -3587,11 +3662,13 @@ namespace HaCreator.MapSimulator.UI
                         continue;
                     }
 
-                    _paneStates[AdminShopPane.Npc].SourceEntries.Add(entry);
                     if (RequiresInventorySource(entry))
                     {
                         packetSellTemplates.Add(entry);
+                        continue;
                     }
+
+                    _paneStates[AdminShopPane.Npc].SourceEntries.Add(entry);
                 }
 
                 foreach (AdminShopEntry userEntry in CreateInventoryBackedUserEntries(packetSellTemplates))
@@ -4442,6 +4519,8 @@ namespace HaCreator.MapSimulator.UI
             string npcText = _packetOwnedAdminShopNpcTemplateId > 0
                 ? $"NPC {_packetOwnedAdminShopNpcTemplateId}"
                 : "NPC unresolved";
+            int buyRowCount = _packetOwnedAdminShopRows.Count(row => row != null && row.Price > 0);
+            int sellRowCount = _packetOwnedAdminShopRows.Count(row => row != null && row.Price <= 0);
             string resultText = _packetOwnedAdminShopLastSubtype >= 0
                 ? $"last result subtype {_packetOwnedAdminShopLastSubtype}, code {_packetOwnedAdminShopLastResultCode}"
                 : "no result packet yet";
@@ -4451,7 +4530,7 @@ namespace HaCreator.MapSimulator.UI
             string disconnectText = _packetOwnedAdminShopWouldDisconnect
                 ? "client-disconnect parity hazard recorded"
                 : "no disconnect hazard recorded";
-            return $"Packet-owned admin shop: {npcText}, open rows {_packetOwnedAdminShopDecodedItemCount}, packets open={_packetOwnedAdminShopOpenCount}/result={_packetOwnedAdminShopResultCount}, {resultText}, {outboundText}, {disconnectText}";
+            return $"Packet-owned admin shop: {npcText}, open rows {_packetOwnedAdminShopDecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}), packets open={_packetOwnedAdminShopOpenCount}/result={_packetOwnedAdminShopResultCount}, {resultText}, {outboundText}, {disconnectText}";
         }
 
         private string GetEntryStateText(AdminShopEntry entry)

@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Fields;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using Microsoft.Xna.Framework;
 using System;
@@ -39,14 +40,14 @@ namespace HaCreator.MapSimulator
                             }
 
                             byte[] payload = BitConverter.GetBytes(entryValue);
-                            return field.TryApplyRawPacket(8, payload, currTickCount, out string openMessage)
+                            return TryApplyRockPaperScissorsPacket(8, payload, currTickCount, out string openMessage)
                                 ? ChatCommandHandler.CommandResult.Ok(field.DescribeStatus())
                                 : ChatCommandHandler.CommandResult.Error(openMessage);
                         }
 
                         case "close":
                         case "destroy":
-                            return field.TryApplyRawPacket(13, Array.Empty<byte>(), currTickCount, out string destroyMessage)
+                            return TryApplyRockPaperScissorsPacket(13, Array.Empty<byte>(), currTickCount, out string destroyMessage)
                                 ? ChatCommandHandler.CommandResult.Ok(field.DescribeStatus())
                                 : ChatCommandHandler.CommandResult.Error(destroyMessage);
 
@@ -111,7 +112,7 @@ namespace HaCreator.MapSimulator
                                 }
                             }
 
-                            return field.TryApplyRawPacket(packetType, payload, currTickCount, out string packetMessage)
+                            return TryApplyRockPaperScissorsPacket(packetType, payload, currTickCount, out string packetMessage)
                                 ? ChatCommandHandler.CommandResult.Ok(field.DescribeStatus())
                                 : ChatCommandHandler.CommandResult.Error(packetMessage);
                         }
@@ -128,7 +129,7 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Error(packetParseError ?? "Usage: /rps packetraw <opcode-wrapped hex bytes>");
                             }
 
-                            return field.TryApplyRawPacket(packetType, payload, currTickCount, out string packetRawMessage)
+                            return TryApplyRockPaperScissorsPacket(packetType, payload, currTickCount, out string packetRawMessage)
                                 ? ChatCommandHandler.CommandResult.Ok(field.DescribeStatus())
                                 : ChatCommandHandler.CommandResult.Error(packetRawMessage);
                         }
@@ -195,6 +196,33 @@ namespace HaCreator.MapSimulator
                     applied,
                     applied ? field.DescribeStatus() : resultMessage);
             }
+        }
+
+        private bool TryApplyRockPaperScissorsPacket(int packetType, byte[] payload, int currentTickCount, out string message)
+        {
+            RockPaperScissorsField field = _specialFieldRuntime.Minigames.RockPaperScissors;
+            bool applied = field.TryApplyRawPacket(packetType, payload, currentTickCount, out message);
+            if (!applied)
+            {
+                return false;
+            }
+
+            string notice = packetType switch
+            {
+                8 => MapleStoryStringPool.GetOrFallback(
+                    RockPaperScissorsField.OpenNoticeStringPoolId,
+                    "Rock-Paper-Scissors challenge opened."),
+                6 => MapleStoryStringPool.GetOrFallback(
+                    RockPaperScissorsField.WinNoticeStringPoolId,
+                    "Rock-Paper-Scissors round complete: win notice."),
+                7 => MapleStoryStringPool.GetOrFallback(
+                    RockPaperScissorsField.LoseNoticeStringPoolId,
+                    "Rock-Paper-Scissors round complete: lose notice."),
+                _ => null
+            };
+            ShowPacketOwnedNoticeDialog(notice);
+            message = field.DescribeStatus();
+            return true;
         }
 
         private bool HasRockPaperScissorsUniqueModelessConflict()

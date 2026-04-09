@@ -18,6 +18,7 @@ using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
@@ -1447,6 +1448,10 @@ namespace HaCreator.MapSimulator.Effects
                 build.Name = actorName.Trim();
             }
 
+            build.HasAuthoritativeProfileLevel = false;
+            build.HasAuthoritativeProfileJob = false;
+            build.HasAuthoritativeProfileGuild = false;
+
             return build;
         }
 
@@ -1460,16 +1465,20 @@ namespace HaCreator.MapSimulator.Effects
             if (spawn.Level.HasValue && spawn.Level.Value > 0)
             {
                 build.Level = spawn.Level.Value;
+                build.HasAuthoritativeProfileLevel = true;
             }
 
             if (spawn.JobId.HasValue && spawn.JobId.Value >= 0)
             {
                 build.Job = spawn.JobId.Value;
+                build.JobName = SkillDataLoader.GetJobName(spawn.JobId.Value);
+                build.HasAuthoritativeProfileJob = true;
             }
 
-            if (!string.IsNullOrWhiteSpace(spawn.GuildName))
+            if (spawn.GuildName != null)
             {
-                build.GuildName = spawn.GuildName.Trim();
+                build.GuildName = string.IsNullOrWhiteSpace(spawn.GuildName) ? string.Empty : spawn.GuildName.Trim();
+                build.HasAuthoritativeProfileGuild = true;
             }
         }
 
@@ -1480,24 +1489,28 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
-            if (destination.Level <= 0 && source.Level > 0)
+            if (source.HasAuthoritativeProfileLevel)
             {
-                destination.Level = source.Level;
+                destination.Level = Math.Max(1, source.Level);
+                destination.HasAuthoritativeProfileLevel = true;
             }
 
-            if (destination.Job < 0 && source.Job >= 0)
+            if (source.HasAuthoritativeProfileJob)
             {
-                destination.Job = source.Job;
+                destination.Job = Math.Max(0, source.Job);
+                destination.HasAuthoritativeProfileJob = true;
             }
 
-            if (!string.IsNullOrWhiteSpace(source.JobName) && string.IsNullOrWhiteSpace(destination.JobName))
+            if (!string.IsNullOrWhiteSpace(source.JobName)
+                && (source.HasAuthoritativeProfileJob || string.IsNullOrWhiteSpace(destination.JobName)))
             {
                 destination.JobName = source.JobName;
             }
 
-            if (string.IsNullOrWhiteSpace(destination.GuildName) && !string.IsNullOrWhiteSpace(source.GuildName))
+            if (source.HasAuthoritativeProfileGuild)
             {
-                destination.GuildName = source.GuildName;
+                destination.GuildName = source.GuildName ?? string.Empty;
+                destination.HasAuthoritativeProfileGuild = true;
             }
         }
 

@@ -1333,7 +1333,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             InventorySlotData slot = slots[slotIndex];
-            if (slot == null)
+            if (slot == null || slot.IsDisabled)
             {
                 return false;
             }

@@ -8,6 +8,16 @@ namespace HaCreator.MapSimulator.Interaction
         AfterDialog = 1
     }
 
+    internal enum PacketQuestResultNoticeSurface
+    {
+        Chat = 0,
+        UtilDialogNotice = 1
+    }
+
+    internal readonly record struct PacketQuestResultNoticeRouting(
+        PacketQuestResultNoticeSurface Surface,
+        PacketQuestResultNoticeDispatchStage Stage);
+
     internal static class PacketQuestResultClientSemantics
     {
         internal const int FirstHandledSubtype = 6;
@@ -23,6 +33,22 @@ namespace HaCreator.MapSimulator.Interaction
             return openedModal
                 ? PacketQuestResultNoticeDispatchStage.AfterDialog
                 : PacketQuestResultNoticeDispatchStage.Immediate;
+        }
+
+        internal static PacketQuestResultNoticeRouting ResolveNoticeRouting(int resultType, bool openedModal)
+        {
+            return resultType switch
+            {
+                10 => new PacketQuestResultNoticeRouting(
+                    PacketQuestResultNoticeSurface.UtilDialogNotice,
+                    ResolveSubtype10NoticeDispatchStage(openedModal)),
+                12 => new PacketQuestResultNoticeRouting(
+                    PacketQuestResultNoticeSurface.UtilDialogNotice,
+                    PacketQuestResultNoticeDispatchStage.Immediate),
+                _ => new PacketQuestResultNoticeRouting(
+                    PacketQuestResultNoticeSurface.Chat,
+                    PacketQuestResultNoticeDispatchStage.Immediate)
+            };
         }
 
         internal static IReadOnlyList<int> GetNewlyAvailableQuestIds(

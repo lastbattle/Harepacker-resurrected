@@ -33,6 +33,18 @@ namespace HaCreator.MapSimulator.Interaction
         Complete
     }
 
+    internal enum QuestDetailInlineReferenceKind
+    {
+        None,
+        Npc,
+        Map
+    }
+
+    internal readonly record struct QuestDetailInlineReference(
+        QuestDetailInlineReferenceKind Kind,
+        int TargetId,
+        string Label);
+
     internal static class QuestDetailDeliveryTypeCodec
     {
         // `CUIQuestInfo::LoadData` writes the client `QuestInfo::nDeliveryType` as 0=accept, 1=complete, 2=none.

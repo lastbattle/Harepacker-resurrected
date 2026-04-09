@@ -199,6 +199,8 @@ namespace HaCreator.MapSimulator.Fields
         private int _turnDeadlineTick;
         private int _resultExpireTick;
         private int _lastWinnerIndex = -1;
+        private bool _turnWarningEnabled;
+        private bool _turnWarningShown;
         private string _title = "Match Cards";
         private string _statusMessage = "Open a MiniRoom to begin.";
         private MemoryGamePacketType? _lastPacketType;
@@ -477,6 +479,8 @@ namespace HaCreator.MapSimulator.Fields
             _pendingHideTick = 0;
             _lastWinnerIndex = -1;
             _turnDeadlineTick = tickCount + DefaultTurnSeconds * 1000;
+            _turnWarningEnabled = true;
+            _turnWarningShown = false;
             _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
             message = _statusMessage;
             _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Match Cards round started.");

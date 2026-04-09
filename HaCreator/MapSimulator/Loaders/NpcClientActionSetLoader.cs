@@ -19,6 +19,7 @@ namespace HaCreator.MapSimulator.Loaders
     internal static class NpcClientActionSetLoader
     {
         internal const int AutomaticClientActionSetIndex = -2;
+        internal const int RootClientActionSetIndex = -1;
         internal const int DefaultNpcFrameDelay = 180;
         private const string QuestConditionStatePropertyName = "state";
         private const string QuestConditionValuePropertyName = "value";
@@ -95,11 +96,11 @@ namespace HaCreator.MapSimulator.Loaders
                 return -1;
             }
 
-            if (requestedClientActionSetIndex >= 0)
+            if (requestedClientActionSetIndex >= RootClientActionSetIndex)
             {
                 return actionSets.Any(set => set.Index == requestedClientActionSetIndex)
                     ? requestedClientActionSetIndex
-                    : actionSets[0].Index;
+                    : ResolveRootClientActionSetIndex(actionSets);
             }
 
             if (requestedClientActionSetIndex != AutomaticClientActionSetIndex)
@@ -193,7 +194,7 @@ namespace HaCreator.MapSimulator.Loaders
             if (rootActions.Count > 0)
             {
                 actionSets.Add(new NpcClientActionSetDefinition(
-                    0,
+                    RootClientActionSetIndex,
                     IsRootSet: true,
                     RequiredGender: null,
                     Hide: GetHideFlag(source.WzProperties),
@@ -201,7 +202,7 @@ namespace HaCreator.MapSimulator.Loaders
                     Actions: rootActions));
             }
 
-            int nextIndex = actionSets.Count;
+            int nextIndex = 0;
             foreach (WzSubProperty conditionProperty in GetConditionContainers(source.WzProperties))
             {
                 List<WzImageProperty> actions = GetActionProperties(conditionProperty.WzProperties, includeConditionContainers: true);

@@ -29,15 +29,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            _poolRuntime.Restore(snapshot.EmployeePoolEntries, CreateLegacyEmployeePacketState(snapshot));
+            _poolRuntime.Restore(snapshot.EmployeePoolEntries);
             _poolRuntime.SetPreferredEmployerId(snapshot.EmployeePreferredEmployerId);
             _activeKind = snapshot.Kind;
             _hasPacketState = snapshot.EmployeeHasPacketData || snapshot.EmployeePoolEntries?.Count > 0;
-            _lastKnownEmployerId = Math.Max(
-                0,
-                snapshot.EmployeePacketEmployerId > 0
-                    ? snapshot.EmployeePacketEmployerId
-                    : snapshot.EmployeePreferredEmployerId);
+            _lastKnownEmployerId = ResolveLastKnownEmployerId(snapshot.EmployeePreferredEmployerId);
             _lastDispatchSummary = $"Restored packet-owned employee pool state from {snapshot.Kind}.";
         }
 
@@ -194,24 +190,15 @@ namespace HaCreator.MapSimulator.Interaction
             return kind == SocialRoomKind.PersonalShop || kind == SocialRoomKind.EntrustedShop;
         }
 
-        private static SocialRoomEmployeeLegacyPacketState CreateLegacyEmployeePacketState(SocialRoomRuntimeSnapshot snapshot)
+        private int ResolveLastKnownEmployerId(int fallbackEmployerId)
         {
-            return new SocialRoomEmployeeLegacyPacketState(
-                snapshot?.EmployeeHasPacketData == true,
-                snapshot?.EmployeePacketActorHidden == true,
-                snapshot?.EmployeePacketEmployerId ?? 0,
-                snapshot?.EmployeePacketFootholdId ?? 0,
-                snapshot?.EmployeePacketNameTag,
-                snapshot?.EmployeePacketMiniRoomType ?? 0,
-                snapshot?.EmployeePacketMiniRoomSerial ?? 0,
-                snapshot?.EmployeePacketBalloonTitle,
-                snapshot?.EmployeePacketBalloonByte0 ?? 0,
-                snapshot?.EmployeePacketBalloonByte1 ?? 0,
-                snapshot?.EmployeePacketBalloonByte2 ?? 0,
-                snapshot?.EmployeeTemplateId ?? 0,
-                snapshot?.EmployeeWorldX ?? 0,
-                snapshot?.EmployeeWorldY ?? 0,
-                snapshot?.EmployeeHasWorldPosition == true);
+            if (_poolRuntime.TryGetPrimaryEntry(out SocialRoomEmployeePoolEntryState pooledEmployee)
+                && pooledEmployee != null)
+            {
+                return pooledEmployee.EmployerId;
+            }
+
+            return Math.Max(0, fallbackEmployerId);
         }
     }
 }

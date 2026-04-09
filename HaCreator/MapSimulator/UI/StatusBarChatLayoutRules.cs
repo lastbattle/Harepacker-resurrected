@@ -208,6 +208,22 @@ namespace HaCreator.MapSimulator.UI
                 safeRowHeight);
         }
 
+        public static bool CanPageWhisperPickerBackward(int firstVisibleIndex)
+        {
+            return firstVisibleIndex > 0;
+        }
+
+        public static bool CanPageWhisperPickerForward(
+            int firstVisibleIndex,
+            int candidateCount,
+            int visibleRowCount)
+        {
+            int safeCandidateCount = Math.Max(0, candidateCount);
+            int safeVisibleRowCount = Math.Max(1, visibleRowCount);
+            int safeFirstVisibleIndex = Math.Max(0, firstVisibleIndex);
+            return safeFirstVisibleIndex + safeVisibleRowCount < safeCandidateCount;
+        }
+
         private static int ResolveLongestFittingPrefixLength(
             string text,
             float maxWidth,

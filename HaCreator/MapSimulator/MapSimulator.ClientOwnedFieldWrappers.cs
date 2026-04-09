@@ -295,7 +295,7 @@ namespace HaCreator.MapSimulator
             ApplyTutorialFieldAppearance(mapInfo);
             SyncWeddingPhotoFieldWrapper(mapInfo);
             SyncClientOwnedResultFieldWrappers(mapInfo);
-            ApplyClientOwnedWeddingPhotoSceneCameraLock();
+            TryApplyClientOwnedWeddingPhotoSceneCameraLock();
         }
 
         private void SyncClientOwnedResultFieldWrappers(MapInfo mapInfo)
@@ -859,18 +859,19 @@ namespace HaCreator.MapSimulator
             _wrapperOwnedAranTutorActorApplied = false;
         }
 
-        private void ApplyClientOwnedWeddingPhotoSceneCameraLock()
+        private bool TryApplyClientOwnedWeddingPhotoSceneCameraLock()
         {
             if (_activeWeddingPhotoSceneContract is not WeddingPhotoSceneContract contract
                 || contract.Kind != WeddingPhotoWrapperKind.SceneOwner
                 || !TryResolveWeddingPhotoSceneViewportCenter(contract, out Vector2 viewportCenter))
             {
-                return;
+                return false;
             }
 
             _cameraController?.SetPosition(viewportCenter.X, viewportCenter.Y);
             CenterCameraOnWorldPosition(viewportCenter.X, viewportCenter.Y);
             ClampCameraToBoundaries();
+            return true;
         }
 
         private void ConfigureNoDragonPresentation(MapInfo mapInfo)
@@ -1301,6 +1302,18 @@ namespace HaCreator.MapSimulator
                 (contract.ViewportLeft + contract.ViewportRight) * 0.5f,
                 (contract.ViewportTop + contract.ViewportBottom) * 0.5f);
             return true;
+        }
+
+        internal static bool TryResolveWeddingPhotoSceneLockedCameraCenter(MapInfo mapInfo, out Vector2 center)
+        {
+            center = Vector2.Zero;
+            if (!TryBuildWeddingPhotoSceneContract(mapInfo, out WeddingPhotoSceneContract contract)
+                || contract.Kind != WeddingPhotoWrapperKind.SceneOwner)
+            {
+                return false;
+            }
+
+            return TryResolveWeddingPhotoSceneViewportCenter(contract, out center);
         }
 
         private static bool HasWeddingPhotoSafeAreaContract(MapInfo mapInfo)

@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Pools;
 using Microsoft.Xna.Framework;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -43,6 +44,7 @@ namespace HaCreator.MapSimulator
                     snapshot.ActionName,
                     WeddingRemoteUserSourceTag,
                     isVisibleInWorld: true);
+                TryApplyWeddingRemoteProfileMetadata(_remoteUserPool, characterId, build, out _);
 
                 _remoteUserPool.TrySetPortableChair(
                     characterId,
@@ -110,6 +112,39 @@ namespace HaCreator.MapSimulator
             _remoteUserPool.RemoveBySourceTag(WeddingRemoteUserSourceTag);
             _weddingRemoteItemEffectRevisionByCharacterId.Clear();
             _weddingRemoteAvatarModifiedRevisionByCharacterId.Clear();
+        }
+
+        internal static bool TryApplyWeddingRemoteProfileMetadata(
+            RemoteUserActorPool remoteUserPool,
+            int characterId,
+            CharacterBuild build,
+            out string message)
+        {
+            message = null;
+            if (remoteUserPool == null)
+            {
+                message = "Remote user pool is unavailable.";
+                return false;
+            }
+
+            if (build == null)
+            {
+                message = $"Wedding remote user {characterId} does not have a build.";
+                return false;
+            }
+
+            int? level = build.HasAuthoritativeProfileLevel ? Math.Max(1, build.Level) : null;
+            int? jobId = build.HasAuthoritativeProfileJob ? Math.Max(0, build.Job) : null;
+            string guildName = build.HasAuthoritativeProfileGuild
+                ? (build.GuildName ?? string.Empty)
+                : null;
+            if (!level.HasValue && !jobId.HasValue && guildName == null)
+            {
+                message = $"Wedding remote user {characterId} does not carry authoritative profile metadata.";
+                return false;
+            }
+
+            return remoteUserPool.TryApplyProfileMetadata(characterId, level, guildName, jobId, out message);
         }
 
         private static int ResolveWeddingRemoteUserId(WeddingRemoteParticipantSnapshot snapshot)

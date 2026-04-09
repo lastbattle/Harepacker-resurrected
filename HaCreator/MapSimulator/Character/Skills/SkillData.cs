@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -154,6 +155,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         // Damage
         public int Damage { get; set; }              // Damage % (e.g., 150 = 150%)
+        public int DotDamage { get; set; }           // Damage-over-time % for aura / mist style skills
+        public int DotInterval { get; set; }         // Damage-over-time tick interval in seconds
+        public int DotTime { get; set; }             // Damage-over-time duration in seconds
         public int AttackCount { get; set; } = 1;    // Number of hits
         public int MobCount { get; set; } = 1;       // Max targets
 
@@ -387,6 +391,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SkillId { get; set; }
         public SkillAnimation Animation { get; set; }
         public SkillAnimation HitAnimation { get; set; }
+        public List<SkillAnimation> VariantAnimations { get; set; } = new();
 
         public ProjectileBehavior Behavior { get; set; } = ProjectileBehavior.Straight;
         public float Speed { get; set; } = 400f;
@@ -399,6 +404,37 @@ namespace HaCreator.MapSimulator.Character.Skills
         // Explosion
         public float ExplosionRadius { get; set; } = 0;
         public SkillAnimation ExplosionAnimation { get; set; }
+
+        public SkillAnimation ResolveAnimationVariant(int level, int maxLevel = 0)
+        {
+            if (VariantAnimations == null || VariantAnimations.Count == 0)
+            {
+                return Animation;
+            }
+
+            List<SkillAnimation> renderableVariants = VariantAnimations
+                .Where(static animation => animation?.Frames.Count > 0)
+                .ToList();
+            if (renderableVariants.Count == 0)
+            {
+                return Animation;
+            }
+
+            if (renderableVariants.Count == 1)
+            {
+                return renderableVariants[0];
+            }
+
+            int resolvedLevel = Math.Max(1, level);
+            int resolvedMaxLevel = maxLevel > 0
+                ? maxLevel
+                : Math.Max(resolvedLevel, renderableVariants.Count);
+            int variantIndex = Math.Clamp(
+                ((resolvedLevel - 1) * renderableVariants.Count) / Math.Max(1, resolvedMaxLevel),
+                0,
+                renderableVariants.Count - 1);
+            return renderableVariants[variantIndex];
+        }
     }
 
     #endregion
@@ -593,9 +629,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             || AvatarUnderFaceFinishEffect != null
             || AvatarLadderFinishEffect != null;
 
-        public bool IsSwallowFamilySkill =>
-            IsSwallowSkill
-            || (DummySkillParents?.Length ?? 0) > 0;
+        public bool IsSwallowFamilySkill { get; set; }
 
         public bool UsesAffectedSkillPassiveData =>
             GetAffectedSkillIds().Length > 0
@@ -916,6 +950,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return SummonProjectileAnimations;
+        }
+
+        public int? ResolveSummonProjectilePositionCode(string branchName = null, int variantIndex = 0)
+        {
+            IReadOnlyList<SkillAnimation> animations = GetSummonProjectileAnimations(branchName);
+            if (animations == null || animations.Count == 0)
+            {
+                return null;
+            }
+
+            SkillAnimation animation = animations[Math.Abs(variantIndex) % animations.Count];
+            return animation?.PositionCode;
         }
 
         public int ResolveSummonAttackIntervalMs(int level)

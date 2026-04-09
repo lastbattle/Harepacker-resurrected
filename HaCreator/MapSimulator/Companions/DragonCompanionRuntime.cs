@@ -161,6 +161,32 @@ namespace HaCreator.MapSimulator.Companions
         private const int DragonBlinkEffectStringPoolId = 0x0B6B;
         private const int DragonFuryEffectStringPoolId = 0x15DA;
         private const int DragonQuestInfoEffectStringPoolId = 0x19BC;
+        private static readonly string[] ExactClientQuestInfoFormatTokens =
+        {
+            "%d",
+            "%i",
+            "%u",
+            "%ld",
+            "%li",
+            "%lu",
+            "%hd",
+            "%hi",
+            "%hu"
+        };
+        private static readonly string[] CompatibilityQuestInfoFormatTokens =
+        {
+            "{0}",
+            "%d",
+            "%i",
+            "%u",
+            "%ld",
+            "%li",
+            "%lu",
+            "%hd",
+            "%hi",
+            "%hu",
+            "%s"
+        };
 
         public DragonCompanionRuntime(GraphicsDevice device)
         {
@@ -1518,7 +1544,7 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            if (!TryFormatQuestInfoEffectUolTemplate(rawFormat, questState.ToString(), out string formatted)
+            if (!TryFormatQuestInfoEffectUolTemplate(rawFormat, questState.ToString(), ExactClientQuestInfoFormatTokens, out string formatted)
                 || !LooksLikeQuestInfoEffectUol(formatted))
             {
                 return false;
@@ -1545,7 +1571,7 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             string normalized = rawFormat.Trim().Replace('\\', '/');
-            if (!TryFormatQuestInfoEffectUolTemplate(normalized, suffix, out string formatted))
+            if (!TryFormatQuestInfoEffectUolTemplate(normalized, suffix, CompatibilityQuestInfoFormatTokens, out string formatted))
             {
                 if (questState == 0 && LooksLikeQuestInfoEffectUol(normalized))
                 {
@@ -1568,6 +1594,15 @@ namespace HaCreator.MapSimulator.Companions
 
         internal static bool TryFormatQuestInfoEffectUolTemplate(string rawFormat, string replacement, out string formatted)
         {
+            return TryFormatQuestInfoEffectUolTemplate(rawFormat, replacement, CompatibilityQuestInfoFormatTokens, out formatted);
+        }
+
+        private static bool TryFormatQuestInfoEffectUolTemplate(
+            string rawFormat,
+            string replacement,
+            IReadOnlyList<string> supportedTokens,
+            out string formatted)
+        {
             formatted = null;
             if (string.IsNullOrWhiteSpace(rawFormat))
             {
@@ -1575,22 +1610,7 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             string normalized = rawFormat.Trim().Replace('\\', '/');
-            string[] supportedTokens =
-            {
-                "{0}",
-                "%d",
-                "%i",
-                "%u",
-                "%ld",
-                "%li",
-                "%lu",
-                "%hd",
-                "%hi",
-                "%hu",
-                "%s"
-            };
-
-            foreach (string token in supportedTokens)
+            foreach (string token in supportedTokens ?? Array.Empty<string>())
             {
                 int tokenIndex = normalized.IndexOf(token, StringComparison.Ordinal);
                 if (tokenIndex < 0)

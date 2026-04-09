@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.Interaction
         private PendingMessengerInviteState _incomingInvite;
         private bool _deleteRequested;
         private bool _windowCloseReady;
+        private bool _exitPromptActive;
         private string _lastActionSummary = "Messenger opened.";
         private string _lastPacketSummary = "Messenger packet trace idle.";
 
@@ -151,6 +152,8 @@ namespace HaCreator.MapSimulator.Interaction
                 StatusBarText = statusBarText,
                 CollapsedStatusText = collapsedStatusText,
                 ShowStatusBlink = showStatusBlink,
+                ShowExitPrompt = _exitPromptActive,
+                ExitPromptText = _exitPromptActive ? MessengerClientParityText.GetExitChatRoomPrompt() : string.Empty,
                 ShouldCloseWindow = _windowCloseReady,
                 WindowCloseSummary = _lastActionSummary
             };
@@ -311,7 +314,7 @@ namespace HaCreator.MapSimulator.Interaction
                 contact.Name,
                 0,
                 true);
-            _lastActionSummary = $"Received Messenger invite #{_incomingInvite.InviteId} from {contact.Name}.";
+            _lastActionSummary = MessengerClientParityText.FormatIncomingInviteNotice(contact.Name);
             AddSystemLog(_lastActionSummary);
             StartBlink(Environment.TickCount);
             RecordPacketSummary($"Applied simulated Messenger invite packet from {contact.Name}.");
@@ -592,6 +595,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         public MessengerDeleteResult TryDeleteMessenger()
         {
+            _exitPromptActive = false;
+
             if (_incomingInvite != null)
             {
                 _deleteRequested = true;
@@ -628,10 +633,29 @@ namespace HaCreator.MapSimulator.Interaction
             return new MessengerDeleteResult(_lastActionSummary, true);
         }
 
+        public string RequestExitPrompt()
+        {
+            _exitPromptActive = true;
+            return null;
+        }
+
+        public MessengerDeleteResult ConfirmExitPrompt()
+        {
+            _exitPromptActive = false;
+            return TryDeleteMessenger();
+        }
+
+        public string CancelExitPrompt()
+        {
+            _exitPromptActive = false;
+            return null;
+        }
+
         public void AcknowledgeWindowClose()
         {
             _windowCloseReady = false;
             _deleteRequested = false;
+            _exitPromptActive = false;
         }
 
         public string RemoveParticipant(string name, bool rejectedInvite)
@@ -873,7 +897,7 @@ namespace HaCreator.MapSimulator.Interaction
                         return inviteResultError ?? "Messenger invite-result packet payload could not be decoded.";
                     }
 
-                    return ResolvePendingInvitePacket(inviteResultPacket.ContactName, inviteResultPacket.InviteSent);
+                    return ApplyPacketInviteResult(inviteResultPacket);
                 case MessengerPacketType.Migrated:
                     if (!MessengerPacketCodec.TryParseMigrated(payload, out MessengerMigratedPacket migratedPacket, out string migratedError))
                     {
@@ -1362,7 +1386,11 @@ namespace HaCreator.MapSimulator.Interaction
                 packet.StatusText);
             if (_contacts.TryGetValue(resolvedName, out MessengerContactState contact))
             {
-                contact.AvatarLook = packet.AvatarLook;
+                if (packet.AvatarLook != null)
+                {
+                    contact.AvatarLook = packet.AvatarLook;
+                }
+
                 SyncParticipantFromContact(contact);
             }
 
@@ -1390,13 +1418,39 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _lastActionSummary = packet.Blocked
-                ? $"{resolvedName} is blocking Messenger contact requests."
-                : $"{resolvedName} cleared the Messenger block state.";
+                ? MessengerClientParityText.FormatNotAcceptingChat(resolvedName)
+                : MessengerClientParityText.FormatInviteDenied(resolvedName);
             AddSystemLog(_lastActionSummary);
             StartBlink(Environment.TickCount);
             RecordPacketSummary(packet.Blocked
                 ? $"Applied decoded Messenger blocked packet for {resolvedName}: blocked."
                 : $"Applied decoded Messenger blocked packet for {resolvedName}: unblocked.");
+            return _lastActionSummary;
+        }
+
+        private string ApplyPacketInviteResult(MessengerInviteResultPacket packet)
+        {
+            string resolvedName = NormalizeParticipantName(packet.ContactName);
+            if (resolvedName == null)
+            {
+                return "Messenger invite-result packet contact name is empty.";
+            }
+
+            if (_pendingInvite != null
+                && string.Equals(_pendingInvite.ContactName, resolvedName, StringComparison.OrdinalIgnoreCase))
+            {
+                _pendingInvite = null;
+            }
+
+            _lastActionSummary = packet.InviteSent
+                ? MessengerClientParityText.FormatInviteSent(resolvedName)
+                : MessengerClientParityText.FormatContactNotFound(resolvedName);
+            AddSystemLog(_lastActionSummary);
+            StartBlink(Environment.TickCount);
+            RecordPacketSummary(packet.InviteSent
+                ? $"Decoded Messenger invite-result packet: invite sent to {resolvedName}."
+                : $"Decoded Messenger invite-result packet: {resolvedName} could not be found.");
+            TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the invite-result resolved the pending request.");
             return _lastActionSummary;
         }
 
@@ -1498,7 +1552,11 @@ namespace HaCreator.MapSimulator.Interaction
                 contact.IsOnline = packet.IsOnline;
                 contact.AcceptsInvites = packet.IsOnline;
                 contact.Channel = packet.Channel;
-                contact.AvatarLook = packet.AvatarLook;
+                if (packet.AvatarLook != null)
+                {
+                    contact.AvatarLook = packet.AvatarLook;
+                }
+
                 contact.DataSourceLabel = "packet";
                 SyncParticipantFromContact(contact);
             }
@@ -1633,7 +1691,11 @@ namespace HaCreator.MapSimulator.Interaction
                     contact.IsOnline = participantPacket.IsOnline;
                     contact.AcceptsInvites = participantPacket.IsOnline;
                     contact.Channel = participantPacket.Channel;
-                    contact.AvatarLook = participantPacket.AvatarLook;
+                    if (participantPacket.AvatarLook != null)
+                    {
+                        contact.AvatarLook = participantPacket.AvatarLook;
+                    }
+
                     contact.DataSourceLabel = "packet";
                     locationSummary = contact.LocationSummary;
                     statusText = participantPacket.IsOnline ? contact.StatusText : "Offline";
@@ -2035,6 +2097,8 @@ namespace HaCreator.MapSimulator.Interaction
         public string StatusBarText { get; init; } = string.Empty;
         public string CollapsedStatusText { get; init; } = string.Empty;
         public bool ShowStatusBlink { get; init; }
+        public bool ShowExitPrompt { get; init; }
+        public string ExitPromptText { get; init; } = string.Empty;
         public bool ShouldCloseWindow { get; init; }
         public string WindowCloseSummary { get; init; } = string.Empty;
     }

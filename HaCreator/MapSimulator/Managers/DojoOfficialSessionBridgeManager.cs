@@ -691,30 +691,27 @@ namespace HaCreator.MapSimulator.Managers
                 timeOverActive = _inferenceTimeOverActive;
             }
 
-            if (DojoField.TryInferPacketType(
-                    payload,
-                    clearMapIdHint,
-                    clearPortalNameHint,
-                    exitMapIdHint,
-                    out packetType,
-                    out string reason,
-                    out bool isStableInference))
-            {
-                if (isStableInference)
-                {
-                    _opcodeMappings[opcode] = packetType;
-                }
+            bool inferredFromPayload = DojoField.TryInferPacketType(
+                payload,
+                clearMapIdHint,
+                clearPortalNameHint,
+                exitMapIdHint,
+                out int inferredPacketType,
+                out string inferredReason,
+                out bool isStableInference);
 
-                string evidencePrefix = isStableInference ? "auto" : "tentative";
-                RememberLearnedOpcode(opcode, packetType, $"{evidencePrefix}:{reason}");
-                mappingReason = $"{evidencePrefix}:{reason}";
-                LastStatus = isStableInference
-                    ? $"Auto-mapped Dojo opcode {opcode} to {DescribePacketType(packetType)} from payload inference ({reason})."
-                    : $"Tentatively identified Dojo opcode {opcode} as {DescribePacketType(packetType)} from payload inference ({reason}); waiting for stronger evidence before persisting the mapping.";
+            if (inferredFromPayload && isStableInference)
+            {
+                _opcodeMappings[opcode] = inferredPacketType;
+                RememberLearnedOpcode(opcode, inferredPacketType, $"auto:{inferredReason}");
+                packetType = inferredPacketType;
+                mappingReason = $"auto:{inferredReason}";
+                LastStatus = $"Auto-mapped Dojo opcode {opcode} to {DescribePacketType(packetType)} from payload inference ({inferredReason}).";
                 return true;
             }
 
-            if (TryInferTransferPacketTypeFromFieldState(
+            if (inferredFromPayload
+                && TryInferTransferPacketTypeFromFieldState(
                     payload,
                     clearMapIdHint,
                     clearPortalNameHint,
@@ -730,6 +727,15 @@ namespace HaCreator.MapSimulator.Managers
                 RememberLearnedOpcode(opcode, packetType, $"state:{stateReason}");
                 mappingReason = $"state:{stateReason}";
                 LastStatus = $"Auto-mapped Dojo opcode {opcode} to {DescribePacketType(packetType)} from field-state inference ({stateReason}).";
+                return true;
+            }
+
+            if (inferredFromPayload)
+            {
+                packetType = inferredPacketType;
+                mappingReason = $"tentative:{inferredReason}";
+                RememberLearnedOpcode(opcode, packetType, mappingReason);
+                LastStatus = $"Tentatively identified Dojo opcode {opcode} as {DescribePacketType(packetType)} from payload inference ({inferredReason}); waiting for stronger evidence before persisting the mapping.";
                 return true;
             }
 

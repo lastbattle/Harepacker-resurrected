@@ -265,13 +265,22 @@ namespace HaCreator.MapSimulator
 
         private void ApplyPacketOwnedCharacterSkillSnapshot(PacketCharacterDataSnapshot snapshot)
         {
-            IReadOnlyDictionary<int, int> cooldowns = snapshot?.SkillCooldownRemainingSecondsBySkillId;
-            if (cooldowns == null || _playerManager?.Skills == null)
+            if (_playerManager?.Skills == null || snapshot == null)
             {
                 return;
             }
 
-            _playerManager.Skills.ApplyAuthoritativeCooldownSnapshot(cooldowns, currTickCount);
+            IReadOnlyDictionary<int, int> skillRecords = snapshot.SkillRecords;
+            if (skillRecords != null)
+            {
+                _playerManager.Skills.ApplyAuthoritativeSkillRecordSnapshot(skillRecords);
+            }
+
+            IReadOnlyDictionary<int, int> cooldowns = snapshot.SkillCooldownRemainingSecondsBySkillId;
+            if (cooldowns != null)
+            {
+                _playerManager.Skills.ApplyAuthoritativeCooldownSnapshot(cooldowns, currTickCount);
+            }
         }
 
         private static CharacterGender ResolvePacketOwnedCharacterGender(byte genderValue, CharacterGender fallback)

@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.UI
         private const float ConditionValueGap = 8f;
         private const float ConditionRowGap = 4f;
         private const int ConditionIconSize = 18;
+        private const float ConditionSectionBodyGap = 6f;
         private const float ClientTitleScale = 0.74f;
         private const float ClientHeaderScale = 0.58f;
         private const float ClientDetailScale = 0.58f;
@@ -650,13 +651,18 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawSectionHeaderClipped(sprite, clipRect, _requirementHeaderTexture, "Requirements", x, ref y, ClientDetailScale);
+            if (!string.IsNullOrWhiteSpace(_state.RequirementText))
+            {
+                y = DrawRichTextClipped(sprite, _state.RequirementText, new Vector2(x, y), maxWidth, new Color(215, 228, 215), clipRect, ClientDetailScale);
+                if (_state.RequirementLines != null && _state.RequirementLines.Count > 0)
+                {
+                    y += ConditionSectionBodyGap;
+                }
+            }
+
             if (_state.RequirementLines != null && _state.RequirementLines.Count > 0)
             {
                 y = DrawConditionLines(sprite, clipRect, _state.RequirementLines, x, y, maxWidth, false);
-            }
-            else
-            {
-                y = DrawRichTextClipped(sprite, _state.RequirementText, new Vector2(x, y), maxWidth, new Color(215, 228, 215), clipRect, ClientDetailScale);
             }
 
             return y + 8f;
@@ -670,13 +676,18 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawSectionHeaderClipped(sprite, clipRect, _rewardHeaderTexture, "Rewards", x, ref y, ClientDetailScale);
+            if (!string.IsNullOrWhiteSpace(_state.RewardText))
+            {
+                y = DrawRichTextClipped(sprite, _state.RewardText, new Vector2(x, y), maxWidth, new Color(232, 220, 176), clipRect, ClientDetailScale);
+                if (_state.RewardLines != null && _state.RewardLines.Count > 0)
+                {
+                    y += ConditionSectionBodyGap;
+                }
+            }
+
             if (_state.RewardLines != null && _state.RewardLines.Count > 0)
             {
                 y = DrawConditionLines(sprite, clipRect, _state.RewardLines, x, y, maxWidth, true);
-            }
-            else
-            {
-                y = DrawRichTextClipped(sprite, _state.RewardText, new Vector2(x, y), maxWidth, new Color(232, 220, 176), clipRect, ClientDetailScale);
             }
 
             return y + 8f;
@@ -1076,10 +1087,28 @@ namespace HaCreator.MapSimulator.UI
 
             Rectangle logClipRect = GetLogClipRectangle();
             float y = Position.Y + GetLogContentBaseY() - _logScrollOffset;
+            if (!string.IsNullOrWhiteSpace(_state.RequirementText))
+            {
+                y += AdvanceRichText(_state.RequirementText, ClientContentWidth, ClientDetailScale);
+                if (_state.RequirementLines != null && _state.RequirementLines.Count > 0)
+                {
+                    y += ConditionSectionBodyGap;
+                }
+            }
+
             HoveredQuestItemInfo hovered = TryResolveHoveredConditionItem(mouseX, mouseY, logClipRect, _state.RequirementLines, Position.X + ClientContentX, ref y, ClientContentWidth, false);
             if (hovered != null)
             {
                 return hovered;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_state.RewardText))
+            {
+                y += AdvanceRichText(_state.RewardText, ClientContentWidth, ClientDetailScale);
+                if (_state.RewardLines != null && _state.RewardLines.Count > 0)
+                {
+                    y += ConditionSectionBodyGap;
+                }
             }
 
             return TryResolveHoveredConditionItem(mouseX, mouseY, logClipRect, _state.RewardLines, Position.X + ClientContentX, ref y, ClientContentWidth, true);
@@ -1353,18 +1382,40 @@ namespace HaCreator.MapSimulator.UI
             if (HasRequirementContent())
             {
                 y = AdvanceSectionHeader(_requirementHeaderTexture, y);
-                y = _state.RequirementLines != null && _state.RequirementLines.Count > 0
-                    ? AdvanceConditionLines(_state.RequirementLines, Position.X + ClientContentX, y, ClientContentWidth, false)
-                    : y + AdvanceRichText(_state.RequirementText, ClientContentWidth, ClientDetailScale);
+                if (!string.IsNullOrWhiteSpace(_state.RequirementText))
+                {
+                    y += AdvanceRichText(_state.RequirementText, ClientContentWidth, ClientDetailScale);
+                    if (_state.RequirementLines != null && _state.RequirementLines.Count > 0)
+                    {
+                        y += ConditionSectionBodyGap;
+                    }
+                }
+
+                if (_state.RequirementLines != null && _state.RequirementLines.Count > 0)
+                {
+                    y = AdvanceConditionLines(_state.RequirementLines, Position.X + ClientContentX, y, ClientContentWidth, false);
+                }
+
                 y += 8f;
             }
 
             if (HasRewardContent())
             {
                 y = AdvanceSectionHeader(_rewardHeaderTexture, y);
-                y = _state.RewardLines != null && _state.RewardLines.Count > 0
-                    ? AdvanceConditionLines(_state.RewardLines, Position.X + ClientContentX, y, ClientContentWidth, true)
-                    : y + AdvanceRichText(_state.RewardText, ClientContentWidth, ClientDetailScale);
+                if (!string.IsNullOrWhiteSpace(_state.RewardText))
+                {
+                    y += AdvanceRichText(_state.RewardText, ClientContentWidth, ClientDetailScale);
+                    if (_state.RewardLines != null && _state.RewardLines.Count > 0)
+                    {
+                        y += ConditionSectionBodyGap;
+                    }
+                }
+
+                if (_state.RewardLines != null && _state.RewardLines.Count > 0)
+                {
+                    y = AdvanceConditionLines(_state.RewardLines, Position.X + ClientContentX, y, ClientContentWidth, true);
+                }
+
                 y += 8f;
             }
 

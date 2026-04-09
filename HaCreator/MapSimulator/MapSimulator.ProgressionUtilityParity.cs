@@ -93,7 +93,12 @@ namespace HaCreator.MapSimulator
                 string footer = string.IsNullOrWhiteSpace(source)
                     ? "Recovered in-field FadeYesNo owner path."
                     : $"Launch source: {source}";
-                confirmDialogWindow.Configure("Game Menu", body, footer);
+                ConfigureInGameConfirmDialog(
+                    "Game Menu",
+                    body,
+                    footer,
+                    onConfirm: Exit,
+                    onCancel: null);
                 confirmDialogWindow.Show();
                 uiWindowManager.ShowWindow(confirmDialogWindow);
                 return;
@@ -129,7 +134,9 @@ namespace HaCreator.MapSimulator
                 confirmDialogWindow.Hide();
             }
 
-            Exit();
+            Action acceptedAction = _inGameConfirmAcceptedAction;
+            ClearInGameConfirmDialogActions();
+            acceptedAction?.Invoke();
         }
 
         private void HandleInGameConfirmDialogCancelled()
@@ -138,6 +145,10 @@ namespace HaCreator.MapSimulator
             {
                 confirmDialogWindow.Hide();
             }
+
+            Action cancelledAction = _inGameConfirmCancelledAction;
+            ClearInGameConfirmDialogActions();
+            cancelledAction?.Invoke();
         }
 
         private RankingWindowSnapshot BuildUtilityRankingSnapshot()
@@ -245,6 +256,7 @@ namespace HaCreator.MapSimulator
                 NavigationRequestText = requestShapeText,
                 NavigationStateText = BuildRankingOwnerLifecycleDetail(build, launchSource, webSeedText, usedResolvedTemplate),
                 IsLoading = isLoading,
+                LoadingStartTick = _lastRankingOpenTick,
                 Entries = entries
             };
         }

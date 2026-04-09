@@ -497,7 +497,12 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
-            int damage = Math.Max(1, levelData.Damage);
+            int damage = Math.Max(levelData.Damage, levelData.DotDamage);
+            if (damage <= 0)
+            {
+                return 0;
+            }
+
             int attackCount = Math.Max(1, levelData.AttackCount);
             int scaledDamage = Math.Max(1, damage * attackCount);
             return skill?.IsMagicDamageSkill == true

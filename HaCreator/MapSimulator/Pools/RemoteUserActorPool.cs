@@ -227,7 +227,10 @@ namespace HaCreator.MapSimulator.Pools
                 [35001001] = new("tank_stand", "tank_walk", "tank", "tank_prone"),
                 [35101004] = new("tank_stand", "tank_walk", "tank", "tank_prone"),
                 [35101009] = new("tank_stand", "tank_walk", "tank", "tank_prone"),
+                [35121003] = new("tank_stand", "tank_walk", "tank", "tank_prone"),
                 [35121005] = new("tank_stand", "tank_walk", "tank", "tank_prone"),
+                [35121009] = new("tank_stand", "tank_walk", "tank", "tank_prone"),
+                [35121010] = new("tank_stand", "tank_walk", "tank", "tank_prone"),
                 [35111004] = new("siege_stand", "siege_stand", "siege", "siege_stand"),
                 [35121013] = new("tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand")
             };
@@ -3685,12 +3688,39 @@ namespace HaCreator.MapSimulator.Pools
             IEnumerable<PortableChairPairRecord> pairRecords,
             bool preferVisibleOnly)
         {
+            Dictionary<int, int> pairs = new();
+            foreach (PortableChairPairRecord record in ResolvePortableChairPairRecords(participants, pairRecords, preferVisibleOnly).Values)
+            {
+                if (!record.IsActive
+                    || !record.PairCharacterId.HasValue
+                    || pairs.ContainsKey(record.CharacterId)
+                    || pairs.ContainsKey(record.PairCharacterId.Value))
+                {
+                    continue;
+                }
+
+                pairs[record.CharacterId] = record.PairCharacterId.Value;
+                pairs[record.PairCharacterId.Value] = record.CharacterId;
+            }
+
+            return pairs;
+        }
+
+        internal static IReadOnlyDictionary<int, PortableChairPairRecord> ResolvePortableChairPairRecords(
+            IEnumerable<PortableChairPairParticipant> participants,
+            IEnumerable<PortableChairPairRecord> pairRecords,
+            bool preferVisibleOnly)
+        {
             IReadOnlyDictionary<int, PortableChairPairRecord> recordMap = pairRecords?
                 .Where(static record => record.CharacterId > 0 && record.ItemId > 0)
                 .GroupBy(static record => record.CharacterId)
                 .ToDictionary(
                     static group => group.Key,
-                    static group => group.Last())
+                    static group => group.Last() with
+                    {
+                        PairCharacterId = null,
+                        Status = 0
+                    })
                 ?? new Dictionary<int, PortableChairPairRecord>();
             List<PortableChairPairParticipant> resolvedParticipants = participants?
                 .Where(participant =>
@@ -3717,7 +3747,7 @@ namespace HaCreator.MapSimulator.Pools
                 ?? new List<PortableChairPairParticipant>();
             if (resolvedParticipants.Count < 2)
             {
-                return new Dictionary<int, int>();
+                return new Dictionary<int, PortableChairPairRecord>(recordMap);
             }
 
             List<PortableChairPairCandidate> candidates = new();
@@ -3736,24 +3766,40 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            Dictionary<int, int> pairs = new();
+            Dictionary<int, PortableChairPairRecord> resolvedRecords = new(recordMap);
             foreach (PortableChairPairCandidate candidate in candidates
                 .OrderBy(static candidate => candidate.Priority)
                 .ThenBy(static candidate => candidate.Score)
                 .ThenBy(static candidate => candidate.Left.CharacterId)
                 .ThenBy(static candidate => candidate.Right.CharacterId))
             {
-                if (pairs.ContainsKey(candidate.Left.CharacterId)
-                    || pairs.ContainsKey(candidate.Right.CharacterId))
+                if (!resolvedRecords.TryGetValue(candidate.Left.CharacterId, out PortableChairPairRecord leftRecord)
+                    || !resolvedRecords.TryGetValue(candidate.Right.CharacterId, out PortableChairPairRecord rightRecord)
+                    || leftRecord.IsActive
+                    || rightRecord.IsActive)
                 {
                     continue;
                 }
 
-                pairs[candidate.Left.CharacterId] = candidate.Right.CharacterId;
-                pairs[candidate.Right.CharacterId] = candidate.Left.CharacterId;
+                int status = ResolvePortableChairPairStatus(candidate.Left, candidate.Right);
+                if (status == 0)
+                {
+                    continue;
+                }
+
+                resolvedRecords[candidate.Left.CharacterId] = leftRecord with
+                {
+                    PairCharacterId = candidate.Right.CharacterId,
+                    Status = status
+                };
+                resolvedRecords[candidate.Right.CharacterId] = rightRecord with
+                {
+                    PairCharacterId = candidate.Left.CharacterId,
+                    Status = status
+                };
             }
 
-            return pairs;
+            return resolvedRecords;
         }
 
         private Dictionary<int, int> BuildPortableChairPairMap(PlayerCharacter localPlayer, bool preferVisibleOnly)
@@ -3795,10 +3841,24 @@ namespace HaCreator.MapSimulator.Pools
                     IsRelationshipOverlaySuppressed(localPlayer, localCharacterId, ownerCharacterId: 0)));
             }
 
-            return new Dictionary<int, int>(ResolvePortableChairPairings(
+            IReadOnlyDictionary<int, PortableChairPairRecord> pairRecords = ResolvePortableChairPairRecords(
                 participants,
                 BuildPortableChairPairRecords(localPlayer),
-                preferVisibleOnly));
+                preferVisibleOnly);
+            SyncResolvedPortableChairPairRecords(pairRecords);
+
+            Dictionary<int, int> pairMap = new();
+            foreach ((int characterId, PortableChairPairRecord record) in pairRecords)
+            {
+                if (!record.IsActive || !record.PairCharacterId.HasValue || pairMap.ContainsKey(characterId))
+                {
+                    continue;
+                }
+
+                pairMap[characterId] = record.PairCharacterId.Value;
+            }
+
+            return pairMap;
         }
 
         private IEnumerable<PortableChairPairRecord> BuildPortableChairPairRecords(PlayerCharacter localPlayer)
@@ -3838,6 +3898,28 @@ namespace HaCreator.MapSimulator.Pools
             if (characterId > 0)
             {
                 _portableChairPairRecordsByCharacterId.Remove(characterId);
+            }
+        }
+
+        private void SyncResolvedPortableChairPairRecords(IReadOnlyDictionary<int, PortableChairPairRecord> pairRecords)
+        {
+            if (pairRecords == null)
+            {
+                return;
+            }
+
+            foreach ((int characterId, PortableChairPairRecord record) in pairRecords)
+            {
+                if (!_portableChairPairRecordsByCharacterId.TryGetValue(characterId, out PortableChairPairRecord existingRecord))
+                {
+                    continue;
+                }
+
+                _portableChairPairRecordsByCharacterId[characterId] = existingRecord with
+                {
+                    PairCharacterId = record.PairCharacterId,
+                    Status = record.Status
+                };
             }
         }
 
@@ -3889,6 +3971,22 @@ namespace HaCreator.MapSimulator.Pools
                 (false, true) => 1,
                 _ => 2
             };
+        }
+
+        private static int ResolvePortableChairPairStatus(
+            PortableChairPairParticipant left,
+            PortableChairPairParticipant right)
+        {
+            return PlayerCharacter.IsPortableChairActualPairActive(
+                left.Chair,
+                left.FacingRight,
+                left.Position.X,
+                left.Position.Y,
+                right.FacingRight,
+                right.Position.X,
+                right.Position.Y)
+                ? 3
+                : 0;
         }
 
         private static float ComputePortableChairPairScore(
@@ -5800,6 +5898,8 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
+            string weaponType = actor.Build?.GetWeapon()?.WeaponType;
+
             if (CharacterPart.TryGetActionStringFromCode(actor.BaseActionRawCode.Value, out string rawActionName))
             {
                 string normalizedRawActionName = NormalizeActionName(rawActionName, allowSitFallback: false);
@@ -5808,16 +5908,32 @@ namespace HaCreator.MapSimulator.Pools
                     return true;
                 }
 
-                if (ShadowPartnerHelperActionFamiliesMatch(rawActionName, observedPlayerActionName))
+                if (ShadowPartnerHelperActionFamiliesMatch(
+                        rawActionName,
+                        observedPlayerActionName,
+                        weaponType,
+                        actor.BaseActionRawCode,
+                        weaponType))
                 {
                     return true;
                 }
             }
 
-            return ShadowPartnerHelperActionFamiliesMatch(actor.BaseActionName, observedPlayerActionName);
+            return ShadowPartnerHelperActionFamiliesMatch(
+                actor.BaseActionName,
+                observedPlayerActionName,
+                weaponType,
+                actor.BaseActionRawCode,
+                weaponType);
         }
 
-        private static bool ShadowPartnerHelperActionFamiliesMatch(string leftActionName, string rightActionName)
+        internal static bool ShadowPartnerHelperActionFamiliesMatch(
+            string leftActionName,
+            string rightActionName,
+            string leftWeaponType = null,
+            int? leftRawActionCode = null,
+            string rightWeaponType = null,
+            int? rightRawActionCode = null)
         {
             if (string.IsNullOrWhiteSpace(leftActionName) || string.IsNullOrWhiteSpace(rightActionName))
             {
@@ -5831,12 +5947,15 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            var leftCandidates = CollectShadowPartnerHelperActionIdentityCandidates(leftActionName);
-            var rightCandidates = CollectShadowPartnerHelperActionIdentityCandidates(rightActionName);
+            var leftCandidates = CollectShadowPartnerHelperActionIdentityCandidates(leftActionName, leftWeaponType, leftRawActionCode);
+            var rightCandidates = CollectShadowPartnerHelperActionIdentityCandidates(rightActionName, rightWeaponType, rightRawActionCode);
             return leftCandidates.Overlaps(rightCandidates);
         }
 
-        private static HashSet<string> CollectShadowPartnerHelperActionIdentityCandidates(string actionName)
+        private static HashSet<string> CollectShadowPartnerHelperActionIdentityCandidates(
+            string actionName,
+            string weaponType = null,
+            int? rawActionCode = null)
         {
             var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             string normalizedActionName = NormalizeActionName(actionName, allowSitFallback: false);
@@ -5848,7 +5967,9 @@ namespace HaCreator.MapSimulator.Pools
             PlayerState state = ResolveShadowPartnerActionIdentityState(normalizedActionName);
             foreach (string candidate in ShadowPartnerClientActionResolver.EnumerateHelperIdentityCandidates(
                          actionName,
-                         state))
+                         state,
+                         weaponType,
+                         rawActionCode))
             {
                 string normalizedCandidate = NormalizeActionName(candidate, allowSitFallback: false);
                 if (!string.IsNullOrWhiteSpace(normalizedCandidate))

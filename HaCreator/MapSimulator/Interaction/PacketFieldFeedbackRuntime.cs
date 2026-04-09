@@ -78,6 +78,15 @@ namespace HaCreator.MapSimulator.Interaction
         private const int HontaleTimerStageTwoStringPoolId = 0x16EF;
         private const int HontaleTimerStageOneStringPoolId = 0x16F0;
         private const int HontaleTimerStageZeroStringPoolId = 0x16F1;
+        private const string ZakumTimerBeforeFallback = "The Zakum Shrine will close if you do not summon Zakum in {0} minutes.";
+        private const string ZakumTimerWarningFallback = "The Zakum Shrine will close in {0} minutes.";
+        private const string ZakumTimerExpiredFallback = "The Zakum Shrine has closed.";
+        private const string HorntailTimerBeforeFallback = "The Horntail's Cave will close if you do not summon Horntail in {0} minutes.";
+        private const string HorntailTimerWarningFallback = "The Horntail's Cave will close in {0} minutes.";
+        private const string HorntailTimerExpiredFallback = "The Horntail's Cave has closed.";
+        private const string HontaleTimerStageTwoFallback = "The Horntail Expedition has ended.";
+        private const string HontaleTimerStageOneFallback = "The Horntail Expedition will end in {0} min(s).";
+        private const string HontaleTimerStageZeroFallback = "The Horntail Expedition will end if it does not start within {0} min(s) of entering.";
         private static readonly Encoding SwindleEncoding = Encoding.Default;
         // Recovered from CCurseProcess::s_FilterChars in the v95 client.
         private static readonly byte[] SwindleFilteredCharacters =
@@ -282,6 +291,9 @@ namespace HaCreator.MapSimulator.Interaction
                         ZakumTimerBeforeStringPoolId,
                         ZakumTimerWarningStringPoolId,
                         ZakumTimerExpiredStringPoolId,
+                        ZakumTimerBeforeFallback,
+                        ZakumTimerWarningFallback,
+                        ZakumTimerExpiredFallback,
                         out message),
                     PacketFieldFeedbackPacketKind.HontailTimer => TryApplyBossTimer(
                         "Horntail",
@@ -290,6 +302,9 @@ namespace HaCreator.MapSimulator.Interaction
                         HorntailTimerBeforeStringPoolId,
                         HorntailTimerWarningStringPoolId,
                         HorntailTimerExpiredStringPoolId,
+                        HorntailTimerBeforeFallback,
+                        HorntailTimerWarningFallback,
+                        HorntailTimerExpiredFallback,
                         out message),
                     PacketFieldFeedbackPacketKind.ChaosZakumTimer => TryApplyBossTimer(
                         "Chaos Zakum",
@@ -298,6 +313,9 @@ namespace HaCreator.MapSimulator.Interaction
                         ZakumTimerBeforeStringPoolId,
                         ZakumTimerWarningStringPoolId,
                         ZakumTimerExpiredStringPoolId,
+                        ZakumTimerBeforeFallback,
+                        ZakumTimerWarningFallback,
+                        ZakumTimerExpiredFallback,
                         out message),
                     PacketFieldFeedbackPacketKind.HontaleTimer => TryApplyHontaleTimer(payload, callbacks, out message),
                     PacketFieldFeedbackPacketKind.FieldFadeOutForce => TryApplyFieldFadeOutForce(payload, callbacks, out message),
@@ -952,6 +970,9 @@ namespace HaCreator.MapSimulator.Interaction
             int normalStringPoolId,
             int warningStringPoolId,
             int expiredStringPoolId,
+            string normalFallbackFormat,
+            string warningFallbackFormat,
+            string expiredFallbackText,
             out string message)
         {
             using MemoryStream stream = new(payload, writable: false);
@@ -959,12 +980,14 @@ namespace HaCreator.MapSimulator.Interaction
             byte mode = reader.ReadByte();
             int value = reader.ReadInt32();
             string text = ResolveBossTimerChatText(
-                bossName,
                 mode,
                 value,
                 normalStringPoolId,
                 warningStringPoolId,
-                expiredStringPoolId);
+                expiredStringPoolId,
+                normalFallbackFormat,
+                warningFallbackFormat,
+                expiredFallbackText);
             callbacks?.AddClientChatMessage?.Invoke($"[System] {text}", 12, null);
             _lastBossTimerSummary = text;
             _statusMessage = $"Applied packet-owned {bossName} timer feedback.";
@@ -1081,22 +1104,24 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private static string ResolveBossTimerChatText(
-            string bossName,
             byte mode,
             int value,
             int normalStringPoolId,
             int warningStringPoolId,
-            int expiredStringPoolId)
+            int expiredStringPoolId,
+            string normalFallbackFormat,
+            string warningFallbackFormat,
+            string expiredFallbackText)
         {
             if (value == 0)
             {
-                return MapleStoryStringPool.GetOrFallback(expiredStringPoolId, $"{bossName} timer expired.");
+                return MapleStoryStringPool.GetOrFallback(expiredStringPoolId, expiredFallbackText);
             }
 
             int stringPoolId = mode != 0 ? warningStringPoolId : normalStringPoolId;
             string fallbackFormat = mode != 0
-                ? $"{bossName} warning stage {{0}}."
-                : $"{bossName} timer update: {{0}} remaining.";
+                ? warningFallbackFormat
+                : normalFallbackFormat;
             return FormatStringPoolTimerText(stringPoolId, fallbackFormat, value);
         }
 
@@ -1107,19 +1132,19 @@ namespace HaCreator.MapSimulator.Interaction
                 case 0:
                     text = FormatStringPoolTimerText(
                         HontaleTimerStageZeroStringPoolId,
-                        "Hontale timer stage {0}.",
+                        HontaleTimerStageZeroFallback,
                         value);
                     return true;
                 case 1:
                     text = FormatStringPoolTimerText(
                         HontaleTimerStageOneStringPoolId,
-                        "Hontale warning stage {0}.",
+                        HontaleTimerStageOneFallback,
                         value);
                     return true;
                 case 2:
                     text = FormatStringPoolTimerText(
                         HontaleTimerStageTwoStringPoolId,
-                        "Hontale emergency stage {0}.",
+                        HontaleTimerStageTwoFallback,
                         value);
                     return true;
                 default:
@@ -1569,6 +1594,32 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return warningEntries;
+        }
+
+        internal static string ResolveBossTimerChatTextForTest(
+            byte mode,
+            int value,
+            int normalStringPoolId,
+            int warningStringPoolId,
+            int expiredStringPoolId,
+            string normalFallbackFormat,
+            string warningFallbackFormat,
+            string expiredFallbackText)
+        {
+            return ResolveBossTimerChatText(
+                mode,
+                value,
+                normalStringPoolId,
+                warningStringPoolId,
+                expiredStringPoolId,
+                normalFallbackFormat,
+                warningFallbackFormat,
+                expiredFallbackText);
+        }
+
+        internal static bool TryResolveHontaleTimerChatTextForTest(byte mode, byte value, out string text)
+        {
+            return TryResolveHontaleTimerChatText(mode, value, out text);
         }
 
         private void DrawBossHp(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int currentTick)

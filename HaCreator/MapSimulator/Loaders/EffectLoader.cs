@@ -44,10 +44,34 @@ namespace HaCreator.MapSimulator.Loaders
                 reactorInstance,
                 device,
                 usedProps);
+            Dictionary<int, List<IDXObject>> stateHitFrames = LoadReactorHitFrames(
+                texturePool,
+                linkedReactorImage,
+                reactorInstance,
+                device,
+                usedProps);
+            Dictionary<(int State, int ProperEventIndex), List<IDXObject>> stateIndexedHitFrames = LoadReactorIndexedHitFrames(
+                texturePool,
+                linkedReactorImage,
+                reactorInstance,
+                device,
+                usedProps);
+            List<IDXObject> rootHitFrames = LoadReactorFramesForProperty(
+                texturePool,
+                WzInfoTools.GetRealProperty(linkedReactorImage?["hit"]),
+                reactorInstance.X,
+                reactorInstance.Y,
+                device,
+                usedProps);
             if (stateFrames.Count == 0)
                 return null;
 
-            return new ReactorItem(reactorInstance, stateFrames);
+            return new ReactorItem(
+                reactorInstance,
+                stateFrames,
+                stateHitFrames,
+                stateIndexedHitFrames,
+                rootHitFrames);
         }
 
         private static Dictionary<int, List<IDXObject>> LoadReactorStateFrames(
@@ -116,6 +140,123 @@ namespace HaCreator.MapSimulator.Loaders
             if (hitFrames != null)
             {
                 return MapSimulatorLoader.LoadFrames(texturePool, hitFrames, x, y, device, usedProps);
+            }
+
+            return new List<IDXObject>();
+        }
+
+        private static Dictionary<int, List<IDXObject>> LoadReactorHitFrames(
+            TexturePool texturePool,
+            WzImage linkedReactorImage,
+            ReactorInstance reactorInstance,
+            GraphicsDevice device,
+            ConcurrentBag<WzObject> usedProps)
+        {
+            Dictionary<int, List<IDXObject>> stateHitFrames = new Dictionary<int, List<IDXObject>>();
+            if (linkedReactorImage == null)
+            {
+                return stateHitFrames;
+            }
+
+            IEnumerable<int> stateIds = linkedReactorImage.WzProperties
+                .Select(prop => prop?.Name)
+                .Where(name => int.TryParse(name, out _))
+                .Select(int.Parse)
+                .OrderBy(state => state);
+
+            foreach (int state in stateIds)
+            {
+                WzImageProperty stateProperty = WzInfoTools.GetRealProperty(linkedReactorImage[state.ToString()]);
+                List<IDXObject> frames = LoadReactorFramesForProperty(
+                    texturePool,
+                    WzInfoTools.GetRealProperty(stateProperty?["hit"]),
+                    reactorInstance.X,
+                    reactorInstance.Y,
+                    device,
+                    usedProps);
+                if (frames.Count > 0)
+                {
+                    stateHitFrames[state] = frames;
+                }
+            }
+
+            return stateHitFrames;
+        }
+
+        private static Dictionary<(int State, int ProperEventIndex), List<IDXObject>> LoadReactorIndexedHitFrames(
+            TexturePool texturePool,
+            WzImage linkedReactorImage,
+            ReactorInstance reactorInstance,
+            GraphicsDevice device,
+            ConcurrentBag<WzObject> usedProps)
+        {
+            Dictionary<(int State, int ProperEventIndex), List<IDXObject>> indexedHitFrames = new Dictionary<(int State, int ProperEventIndex), List<IDXObject>>();
+            if (linkedReactorImage == null)
+            {
+                return indexedHitFrames;
+            }
+
+            IEnumerable<int> stateIds = linkedReactorImage.WzProperties
+                .Select(prop => prop?.Name)
+                .Where(name => int.TryParse(name, out _))
+                .Select(int.Parse)
+                .OrderBy(state => state);
+
+            foreach (int state in stateIds)
+            {
+                WzImageProperty stateProperty = WzInfoTools.GetRealProperty(linkedReactorImage[state.ToString()]);
+                if (stateProperty?.WzProperties == null)
+                {
+                    continue;
+                }
+
+                foreach (WzImageProperty child in stateProperty.WzProperties)
+                {
+                    if (!int.TryParse(child?.Name, out int properEventIndex))
+                    {
+                        continue;
+                    }
+
+                    List<IDXObject> frames = LoadReactorFramesForProperty(
+                        texturePool,
+                        WzInfoTools.GetRealProperty(child),
+                        reactorInstance.X,
+                        reactorInstance.Y,
+                        device,
+                        usedProps);
+                    if (frames.Count > 0)
+                    {
+                        indexedHitFrames[(state, properEventIndex)] = frames;
+                    }
+                }
+            }
+
+            return indexedHitFrames;
+        }
+
+        private static List<IDXObject> LoadReactorFramesForProperty(
+            TexturePool texturePool,
+            WzImageProperty property,
+            int x,
+            int y,
+            GraphicsDevice device,
+            ConcurrentBag<WzObject> usedProps)
+        {
+            WzImageProperty resolvedProperty = WzInfoTools.GetRealProperty(property);
+            if (resolvedProperty == null)
+            {
+                return new List<IDXObject>();
+            }
+
+            if (resolvedProperty is WzCanvasProperty || HasDirectNumericFrames(resolvedProperty))
+            {
+                return MapSimulatorLoader.LoadFrames(texturePool, resolvedProperty, x, y, device, usedProps);
+            }
+
+            WzImageProperty nestedDefaultFrames = WzInfoTools.GetRealProperty(resolvedProperty["0"]);
+            if (nestedDefaultFrames is WzCanvasProperty || HasDirectNumericFrames(nestedDefaultFrames))
+            {
+                return MapSimulatorLoader.LoadFrames(texturePool, nestedDefaultFrames, x, y, device, usedProps);
             }
 
             return new List<IDXObject>();

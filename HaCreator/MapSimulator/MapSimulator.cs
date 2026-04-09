@@ -481,6 +481,7 @@ namespace HaCreator.MapSimulator
         private readonly DojoPacketInboxManager _dojoPacketInbox = new DojoPacketInboxManager();
         private readonly DojoOfficialSessionBridgeManager _dojoOfficialSessionBridge = new DojoOfficialSessionBridgeManager();
         private readonly PartyRaidPacketInboxManager _partyRaidPacketInbox = new PartyRaidPacketInboxManager();
+        private readonly PartyRaidOfficialSessionBridgeManager _partyRaidOfficialSessionBridge = new PartyRaidOfficialSessionBridgeManager();
         private readonly TournamentPacketInboxManager _tournamentPacketInbox = new TournamentPacketInboxManager();
         private readonly TournamentOfficialSessionBridgeManager _tournamentOfficialSessionBridge = new TournamentOfficialSessionBridgeManager();
         private readonly CookieHousePointInboxManager _cookieHousePointInbox = new CookieHousePointInboxManager();
@@ -1503,7 +1504,10 @@ namespace HaCreator.MapSimulator
 
 
             MapleLib.WzLib.WzStructure.MapInfo targetMapInfo = ResolveMapTransferDestinationMapInfo(targetMapId);
-            string registrationRestriction = FieldInteractionRestrictionEvaluator.GetMapTransferRegistrationRestrictionMessage(targetMapId, targetMapInfo);
+            string registrationRestriction = FieldInteractionRestrictionEvaluator.GetMapTransferRegistrationRestrictionMessage(
+                targetMapId,
+                targetMapInfo,
+                BuildFieldEntryRestrictionContext());
             if (!string.IsNullOrWhiteSpace(registrationRestriction))
             {
                 _chat.AddMessage(registrationRestriction, new Color(255, 228, 151), Environment.TickCount);
@@ -1898,7 +1902,8 @@ namespace HaCreator.MapSimulator
             {
                 string registrationRestriction = FieldInteractionRestrictionEvaluator.GetMapTransferRegistrationRestrictionMessage(
                     _mapTransferManualDestination.MapId,
-                    ResolveMapTransferDestinationMapInfo(_mapTransferManualDestination.MapId));
+                    ResolveMapTransferDestinationMapInfo(_mapTransferManualDestination.MapId),
+                    BuildFieldEntryRestrictionContext());
                 if (!string.IsNullOrWhiteSpace(registrationRestriction))
                 {
                     return registrationRestriction;
@@ -1914,7 +1919,8 @@ namespace HaCreator.MapSimulator
 
             string currentMapRegistrationRestriction = FieldInteractionRestrictionEvaluator.GetMapTransferRegistrationRestrictionMessage(
                 _mapBoard?.MapInfo?.id ?? 0,
-                _mapBoard?.MapInfo);
+                _mapBoard?.MapInfo,
+                BuildFieldEntryRestrictionContext());
             if (!string.IsNullOrWhiteSpace(currentMapRegistrationRestriction))
             {
                 return currentMapRegistrationRestriction;
@@ -2587,19 +2593,37 @@ namespace HaCreator.MapSimulator
 
             if (ShouldTrackInheritedDirectionModeOwner())
             {
-                _scriptedDirectionModeWindows.TrackWindow(windowName);
+                TrackDirectionModeOwnerWindow(windowName, uiWindowManager.GetWindow(windowName));
             }
 
 
             uiWindowManager.ShowWindow(windowName);
         }
-        private void HandleImplicitDirectionModeOwnerWindowShow(string windowName)
+        private void HandleImplicitDirectionModeOwnerWindowShow(UIWindowBase window)
         {
+            string windowName = window?.WindowName;
             if (!ShouldTrackInheritedDirectionModeOwner()
                 || !DirectionModeWindowOwnerRegistry.IsImplicitOwnerEligibleWindow(windowName))
             {
                 return;
             }
+
+            TrackDirectionModeOwnerWindow(windowName, window);
+        }
+
+        private void TrackDirectionModeOwnerWindow(string windowName, UIWindowBase window)
+        {
+            if (string.IsNullOrWhiteSpace(windowName))
+            {
+                return;
+            }
+
+            if (window != null)
+            {
+                _scriptedDirectionModeWindows.TrackOwner(windowName, () => window.IsVisible);
+                return;
+            }
+
             _scriptedDirectionModeWindows.TrackWindow(windowName);
         }
         private bool ShouldTrackInheritedDirectionModeOwner()
@@ -3178,6 +3202,9 @@ namespace HaCreator.MapSimulator
                 forward => _messengerRuntime.CycleState(forward),
                 message => _messengerRuntime.ProcessChatInput(message),
                 message => _messengerRuntime.WhisperSelected(message),
+                () => _messengerRuntime.RequestExitPrompt(),
+                () => _messengerRuntime.ConfirmExitPrompt(),
+                () => _messengerRuntime.CancelExitPrompt(),
                 () => _messengerRuntime.TryDeleteMessenger(),
                 _messengerRuntime.AcknowledgeWindowClose,
                 ShowUtilityFeedbackMessage);
@@ -4472,14 +4499,7 @@ namespace HaCreator.MapSimulator
 
         private void OpenVegaSpellWindowForConsumable(int itemId)
         {
-            if (!TryShowVegaSpellWindow(out VegaSpellUI vegaSpellWindow))
-            {
-                return;
-            }
-
-
-            vegaSpellWindow.PrepareModifierSelection(itemId);
-
+            QueueVegaSpellWindowLaunch(itemId, "consumable-owner request");
         }
 
 
@@ -5802,8 +5822,7 @@ namespace HaCreator.MapSimulator
             }
 
 
-
-            _scriptedDirectionModeWindows.TrackWindow(windowName);
+            TrackDirectionModeOwnerWindow(windowName, uiWindowManager.GetWindow(windowName));
 
             uiWindowManager.ShowWindow(windowName);
 
@@ -5826,7 +5845,7 @@ namespace HaCreator.MapSimulator
 
             if (trackDirectionModeOwner)
             {
-                _scriptedDirectionModeWindows.TrackWindow(windowName);
+                TrackDirectionModeOwnerWindow(windowName, window);
             }
 
 
@@ -15894,6 +15913,7 @@ namespace HaCreator.MapSimulator
             _transportOfficialSessionBridge.Dispose();
 
             _partyRaidPacketInbox.Dispose();
+            _partyRaidOfficialSessionBridge.Dispose();
             _tournamentPacketInbox.Dispose();
             _tournamentOfficialSessionBridge.Dispose();
 
@@ -19519,8 +19539,16 @@ namespace HaCreator.MapSimulator
             return null;
         }
 
-        private bool TryGetSocialRoomEmployeeBridgeRuntime(out SocialRoomRuntime runtime, out SocialRoomKind kind)
+        private bool TryGetSocialRoomEmployeeBridgeRuntime(
+            SocialRoomEmployeePacketInboxMessage message,
+            out SocialRoomRuntime runtime,
+            out SocialRoomKind kind)
         {
+            if (TryResolveSocialRoomEmployeeBridgeRuntimeFromPacket(message, out runtime, out kind))
+            {
+                return true;
+            }
+
             if (_socialRoomEmployeeOfficialSessionBridge.PreferredKind is SocialRoomKind preferredKind
                 && TryGetSocialRoomRuntime(preferredKind, out SocialRoomRuntime preferredRuntime))
             {
@@ -19564,6 +19592,78 @@ namespace HaCreator.MapSimulator
             runtime = null;
             kind = SocialRoomKind.PersonalShop;
             return false;
+        }
+
+        private bool TryResolveSocialRoomEmployeeBridgeRuntimeFromPacket(
+            SocialRoomEmployeePacketInboxMessage message,
+            out SocialRoomRuntime runtime,
+            out SocialRoomKind kind)
+        {
+            runtime = null;
+            kind = SocialRoomKind.PersonalShop;
+            if (message == null
+                || !SocialRoomEmployeePoolCodec.TryDecodeRoutingHint(message.Opcode, message.Payload, out SocialRoomEmployeePoolCodec.RoutingHint hint, out _))
+            {
+                return false;
+            }
+
+            if (TryResolveSocialRoomEmployeeBridgeRuntimeByEmployer(hint.EmployerId, out runtime, out kind))
+            {
+                return true;
+            }
+
+            if (TryResolveSocialRoomKindFromMiniRoomType(hint.MiniRoomType, out SocialRoomKind hintedKind)
+                && TryGetSocialRoomRuntime(hintedKind, out SocialRoomRuntime hintedRuntime))
+            {
+                runtime = hintedRuntime;
+                kind = hintedKind;
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryResolveSocialRoomEmployeeBridgeRuntimeByEmployer(
+            int employerId,
+            out SocialRoomRuntime runtime,
+            out SocialRoomKind kind)
+        {
+            runtime = null;
+            kind = SocialRoomKind.PersonalShop;
+            if (employerId <= 0)
+            {
+                return false;
+            }
+
+            foreach (SocialRoomKind candidateKind in new[] { SocialRoomKind.EntrustedShop, SocialRoomKind.PersonalShop })
+            {
+                if (TryGetSocialRoomRuntime(candidateKind, out SocialRoomRuntime candidateRuntime)
+                    && candidateRuntime.MatchesEmployeeEmployerId(employerId))
+                {
+                    runtime = candidateRuntime;
+                    kind = candidateKind;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveSocialRoomKindFromMiniRoomType(byte miniRoomType, out SocialRoomKind kind)
+        {
+            switch (miniRoomType)
+            {
+                case 3:
+                    kind = SocialRoomKind.PersonalShop;
+                    return true;
+                case 4:
+                case 5:
+                    kind = SocialRoomKind.EntrustedShop;
+                    return true;
+                default:
+                    kind = SocialRoomKind.PersonalShop;
+                    return false;
+            }
         }
         internal static int BuildRemotePetPickupActorId(int ownerCharacterId, int slotIndex)
         {
@@ -22721,7 +22821,12 @@ namespace HaCreator.MapSimulator
                 SocialRoomOccupant occupant = runtime.Occupants.FirstOrDefault(candidate =>
                     candidate != null
                     && string.Equals(candidate.Name, participantName, StringComparison.OrdinalIgnoreCase));
-                if (!ShouldSeedSyntheticMinimapOccupantMarker(SocialRoomKind.MiniRoom, occupant, participantName))
+                if (!ShouldSeedSyntheticMinimapOccupantMarker(
+                        SocialRoomKind.MiniRoom,
+                        runtime,
+                        hasDedicatedFieldActorMarker: false,
+                        occupant,
+                        participantName))
                 {
                     continue;
                 }
@@ -22760,10 +22865,13 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (runtime == null || runtime.GetFieldActorSnapshot(DateTime.UtcNow) == null)
+            SocialRoomFieldActorSnapshot fieldActorSnapshot = runtime?.GetFieldActorSnapshot(DateTime.UtcNow);
+            if (runtime == null || fieldActorSnapshot == null)
             {
                 return;
             }
+
+            bool hasDedicatedFieldActorMarker = fieldActorSnapshot != null;
             string localName = player?.Build?.Name;
             foreach (SocialRoomOccupant occupant in runtime.Occupants)
 
@@ -22776,7 +22884,12 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                if (!ShouldSeedSyntheticMinimapOccupantMarker(kind, occupant, occupant.Name))
+                if (!ShouldSeedSyntheticMinimapOccupantMarker(
+                        kind,
+                        runtime,
+                        hasDedicatedFieldActorMarker,
+                        occupant,
+                        occupant.Name))
                 {
                     continue;
                 }
@@ -22790,10 +22903,18 @@ namespace HaCreator.MapSimulator
 
         private bool ShouldSeedSyntheticMinimapOccupantMarker(
             SocialRoomKind kind,
+            SocialRoomRuntime runtime,
+            bool hasDedicatedFieldActorMarker,
             SocialRoomOccupant occupant,
             string occupantName)
         {
             if (string.IsNullOrWhiteSpace(occupantName))
+            {
+                return false;
+            }
+
+            if (hasDedicatedFieldActorMarker
+                && IsTraderOccupantRepresentedByFieldActor(kind, runtime, occupant))
             {
                 return false;
             }
@@ -22816,8 +22937,28 @@ namespace HaCreator.MapSimulator
             return kind switch
             {
                 SocialRoomKind.MiniRoom => occupant.Role is SocialRoomOccupantRole.Owner or SocialRoomOccupantRole.Guest,
-                SocialRoomKind.PersonalShop => occupant.Role == SocialRoomOccupantRole.Visitor,
-                SocialRoomKind.EntrustedShop => occupant.Role == SocialRoomOccupantRole.Owner,
+                SocialRoomKind.PersonalShop => occupant.Role is SocialRoomOccupantRole.Owner or SocialRoomOccupantRole.Buyer or SocialRoomOccupantRole.Visitor,
+                SocialRoomKind.EntrustedShop => occupant.Role is SocialRoomOccupantRole.Owner or SocialRoomOccupantRole.Merchant or SocialRoomOccupantRole.Buyer or SocialRoomOccupantRole.Visitor,
+                _ => false
+            };
+        }
+
+        private static bool IsTraderOccupantRepresentedByFieldActor(
+            SocialRoomKind kind,
+            SocialRoomRuntime runtime,
+            SocialRoomOccupant occupant)
+        {
+            if (runtime == null || occupant == null)
+            {
+                return false;
+            }
+
+            bool matchesOwnerName = !string.IsNullOrWhiteSpace(runtime.OwnerName)
+                && string.Equals(occupant.Name, runtime.OwnerName, StringComparison.OrdinalIgnoreCase);
+            return kind switch
+            {
+                SocialRoomKind.PersonalShop => occupant.Role == SocialRoomOccupantRole.Owner || matchesOwnerName,
+                SocialRoomKind.EntrustedShop => occupant.Role is SocialRoomOccupantRole.Owner or SocialRoomOccupantRole.Merchant || matchesOwnerName,
                 _ => false
             };
         }
@@ -26559,6 +26700,7 @@ namespace HaCreator.MapSimulator
                 questAlarmWindow.ConfigurePersistence(_questAlarmStore, () => _playerManager?.Player?.Build);
                 questAlarmWindow.QuestRequested += OpenQuestFromAlarmWindow;
                 questAlarmWindow.QuestLogRequested += OpenQuestLogFromAlarmWindow;
+                questAlarmWindow.QuestRecentUpdateAcknowledged += _questRuntime.AcknowledgeQuestAlarmUpdate;
                 questAlarmWindow.QuestDeleted += ResetQuestDetailFromQuestAlarmMutation;
                 questAlarmWindow.TrackerCleared += ResetQuestDetailFromQuestAlarmMutation;
                 questAlarmWindow.StatusMessageRequested += message =>
@@ -28215,11 +28357,17 @@ namespace HaCreator.MapSimulator
             }
 
 
-            FieldEntryRestrictionContext context = new(
+            return FieldEntryRestrictionEvaluator.GetRestrictionMessage(
+                targetBoard.MapInfo,
+                BuildFieldEntryRestrictionContext());
+        }
+
+        private FieldEntryRestrictionContext BuildFieldEntryRestrictionContext()
+        {
+            return new FieldEntryRestrictionContext(
                 _playerManager?.Player?.Level ?? 1,
-                _socialListRuntime.HasPartyAdmissionContext(),
-                _socialListRuntime.HasExpeditionAdmissionContext());
-            return FieldEntryRestrictionEvaluator.GetRestrictionMessage(targetBoard.MapInfo, context);
+                _socialListRuntime?.HasPartyAdmissionContext() == true,
+                _socialListRuntime?.HasExpeditionAdmissionContext() == true);
         }
 
 
@@ -30851,6 +30999,7 @@ namespace HaCreator.MapSimulator
             else
             {
                 _partyRaidPacketInbox.Stop();
+                _partyRaidOfficialSessionBridge.Stop();
             }
         }
 
@@ -30887,91 +31036,47 @@ namespace HaCreator.MapSimulator
 
         private void DrainCoconutPacketInbox(int currentTickCount)
         {
-            CoconutField field = _specialFieldRuntime.Minigames.Coconut;
             while (_coconutPacketInbox.TryDequeue(out CoconutPacketInboxMessage message))
             {
-                if (!field.IsActive)
-                {
-                    _coconutPacketInbox.RecordDispatchResult(
-                        message.Source,
-                        message.PacketType,
-                        success: false,
-                        message: "runtime inactive");
-                    continue;
-                }
-
-
-                bool applied = field.TryApplyPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
+                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
                 _coconutPacketInbox.RecordDispatchResult(
                     message.Source,
                     message.PacketType,
                     applied,
-                    applied ? field.DescribeStatus() : errorMessage);
+                    errorMessage);
             }
             while (_coconutOfficialSessionBridge.TryDequeue(out CoconutPacketInboxMessage bridgeMessage))
             {
-                if (!field.IsActive)
-                {
-                    _coconutOfficialSessionBridge.RecordDispatchResult(
-                        bridgeMessage.Source,
-                        bridgeMessage.PacketType,
-                        success: false,
-                        message: "runtime inactive");
-                    continue;
-                }
-
-
-                bool applied = field.TryApplyPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
+                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
                 _coconutOfficialSessionBridge.RecordDispatchResult(
                     bridgeMessage.Source,
                     bridgeMessage.PacketType,
                     applied,
-                    applied ? field.DescribeStatus() : bridgeErrorMessage);
+                    bridgeErrorMessage);
             }
         }
 
 
         private void DrainSnowBallPacketInbox(int currentTickCount)
         {
-            SnowBallField field = _specialFieldRuntime.Minigames.SnowBall;
             while (_snowBallPacketInbox.TryDequeue(out SnowBallPacketInboxMessage message))
             {
-                if (!field.IsActive && field.State == SnowBallField.GameState.NotStarted)
-                {
-                    _snowBallPacketInbox.RecordDispatchResult(
-                        message.Source,
-                        message.PacketType,
-                        success: false,
-                        message: "runtime inactive");
-                    continue;
-                }
-
-                bool applied = field.TryApplyPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
+                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
                 _snowBallPacketInbox.RecordDispatchResult(
                     message.Source,
                     message.PacketType,
                     applied,
-                    applied ? field.DescribeStatus() : errorMessage);
+                    errorMessage);
             }
 
             while (_snowBallOfficialSessionBridge.TryDequeue(out SnowBallPacketInboxMessage bridgeMessage))
             {
-                if (!field.IsActive && field.State == SnowBallField.GameState.NotStarted)
-                {
-                    _snowBallOfficialSessionBridge.RecordDispatchResult(
-                        bridgeMessage.Source,
-                        bridgeMessage.PacketType,
-                        success: false,
-                        message: "runtime inactive");
-                    continue;
-                }
-
-                bool applied = field.TryApplyPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
+                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
                 _snowBallOfficialSessionBridge.RecordDispatchResult(
                     bridgeMessage.Source,
                     bridgeMessage.PacketType,
                     applied,
-                    applied ? field.DescribeStatus() : bridgeErrorMessage);
+                    bridgeErrorMessage);
             }
         }
 
@@ -31113,7 +31218,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                if (!TryGetSocialRoomEmployeeBridgeRuntime(out SocialRoomRuntime runtime, out SocialRoomKind kind))
+                if (!TryGetSocialRoomEmployeeBridgeRuntime(message, out SocialRoomRuntime runtime, out SocialRoomKind kind))
                 {
                     _socialRoomEmployeeOfficialSessionBridge.RecordDispatchResult(message.Source, success: false, "social-room runtime inactive");
                     continue;
@@ -31306,7 +31411,7 @@ namespace HaCreator.MapSimulator
             switch (message.Kind)
             {
                 case WeddingInboxMessageKind.Packet:
-                    return field.TryApplyPacket(message.PacketType, message.Payload, Environment.TickCount, out errorMessage);
+                    return _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, Environment.TickCount, out errorMessage);
                 case WeddingInboxMessageKind.CoupleMove:
                 case WeddingInboxMessageKind.CoupleAvatar:
                     if (!TryResolveWeddingParticipantId(field, message.ActorKey, out int participantId, out errorMessage))
@@ -31424,7 +31529,7 @@ namespace HaCreator.MapSimulator
             switch (message.Kind)
             {
                 case AriantArenaInboxMessageKind.Packet:
-                    return field.TryApplyPacket(message.PacketType, message.Payload, currentTickCount, out errorMessage);
+                    return _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, currentTickCount, out errorMessage);
 
 
                 case AriantArenaInboxMessageKind.ActorAddClone:
@@ -31672,46 +31777,23 @@ namespace HaCreator.MapSimulator
 
         private void DrainMonsterCarnivalPacketInbox(int currentTickCount)
         {
-            MonsterCarnivalField field = _specialFieldRuntime.Minigames.MonsterCarnival;
             while (_monsterCarnivalPacketInbox.TryDequeue(out MonsterCarnivalPacketInboxMessage message))
             {
-                if (!field.IsVisible)
-                {
-                    _monsterCarnivalPacketInbox.RecordDispatchResult(
-                        message.Source,
-                        message.PacketType,
-                        success: false,
-                        message: "runtime inactive");
-                    continue;
-                }
-
-
-                bool applied = field.TryApplyRawPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
+                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
                 _monsterCarnivalPacketInbox.RecordDispatchResult(
                     message.Source,
                     message.PacketType,
                     applied,
-                    applied ? field.DescribeStatus() : errorMessage);
+                    errorMessage);
             }
             while (_monsterCarnivalOfficialSessionBridge.TryDequeue(out MonsterCarnivalPacketInboxMessage bridgeMessage))
             {
-                if (!field.IsVisible)
-                {
-                    _monsterCarnivalOfficialSessionBridge.RecordDispatchResult(
-                        bridgeMessage.Source,
-                        bridgeMessage.PacketType,
-                        success: false,
-                        message: "runtime inactive");
-                    continue;
-                }
-
-
-                bool applied = field.TryApplyRawPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
+                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
                 _monsterCarnivalOfficialSessionBridge.RecordDispatchResult(
                     bridgeMessage.Source,
                     bridgeMessage.PacketType,
                     applied,
-                    applied ? field.DescribeStatus() : bridgeErrorMessage);
+                    bridgeErrorMessage);
             }
         }
 
@@ -31758,7 +31840,7 @@ namespace HaCreator.MapSimulator
         }
 
 
-        private static bool TryApplyMassacreInboxMessage(MassacreField field, MassacrePacketInboxMessage message, int currentTickCount, out string resultMessage)
+        private bool TryApplyMassacreInboxMessage(MassacreField field, MassacrePacketInboxMessage message, int currentTickCount, out string resultMessage)
         {
             resultMessage = field?.DescribeStatus() ?? "Massacre HUD inactive";
             if (field == null || message == null)
@@ -31797,7 +31879,7 @@ namespace HaCreator.MapSimulator
                         message.HasRankOverride ? message.Rank : null);
                     return true;
                 case MassacrePacketInboxMessageKind.Packet:
-                    return field.TryApplyPacket(message.PacketType, message.Payload, currentTickCount, out resultMessage);
+                    return _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, currentTickCount, out resultMessage);
                 default:
                     resultMessage = $"Unsupported Massacre inbox message kind: {message.Kind}";
                     return false;
@@ -31935,7 +32017,7 @@ namespace HaCreator.MapSimulator
         }
 
 
-        private static bool TryApplyDojoInboxMessage(DojoField field, DojoPacketInboxMessage message, int currentTickCount, out string resultMessage)
+        private bool TryApplyDojoInboxMessage(DojoField field, DojoPacketInboxMessage message, int currentTickCount, out string resultMessage)
         {
             resultMessage = field?.DescribeStatus() ?? "Mu Lung Dojo HUD inactive";
             if (field == null || message == null)
@@ -32003,8 +32085,7 @@ namespace HaCreator.MapSimulator
 
 
                 case DojoPacketMessageKind.RawPacket:
-
-                    return field.TryApplyPacket(message.PacketType, message.Payload, currentTickCount, out resultMessage);
+                    return _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, currentTickCount, out resultMessage);
 
 
 
@@ -32039,7 +32120,7 @@ namespace HaCreator.MapSimulator
                     PartyRaidPacketScope.Party => field.OnPartyValue(message.Key, message.Value),
                     PartyRaidPacketScope.Session => field.OnSessionValue(message.Key, message.Value),
                     PartyRaidPacketScope.Clock => TryApplyPartyRaidClockInbox(field, message, currentTickCount),
-                    PartyRaidPacketScope.Packet => field.TryApplyRawPacket(message.PacketType, message.Payload, currentTickCount, out dispatchMessage),
+                    PartyRaidPacketScope.Packet => _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, currentTickCount, out dispatchMessage),
                     _ => false
                 };
 
@@ -32053,36 +32134,12 @@ namespace HaCreator.MapSimulator
                         ? field.DescribeStatus()
                         : dispatchMessage ?? $"key not accepted ({message.Key}={message.Value})");
             }
-        }
 
-        private void DrainTournamentPacketInbox(int currentTickCount)
-        {
-            TournamentField field = _specialFieldRuntime.Minigames.Tournament;
-            while (_tournamentPacketInbox.TryDequeue(out TournamentPacketInboxMessage message))
+            while (_partyRaidOfficialSessionBridge.TryDequeue(out PartyRaidPacketInboxMessage bridgeMessage))
             {
                 if (!field.IsActive)
                 {
-                    _tournamentPacketInbox.RecordDispatchResult(
-                        message.Source,
-                        message.PacketType,
-                        success: false,
-                        message: "runtime inactive");
-                    continue;
-                }
-
-                bool applied = field.TryApplyRawPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
-                _tournamentPacketInbox.RecordDispatchResult(
-                    message.Source,
-                    message.PacketType,
-                    applied,
-                    applied ? field.DescribeStatus() : errorMessage);
-            }
-
-            while (_tournamentOfficialSessionBridge.TryDequeue(out TournamentPacketInboxMessage bridgeMessage))
-            {
-                if (!field.IsActive)
-                {
-                    _tournamentOfficialSessionBridge.RecordDispatchResult(
+                    _partyRaidOfficialSessionBridge.RecordDispatchResult(
                         bridgeMessage.Source,
                         bridgeMessage.PacketType,
                         success: false,
@@ -32090,12 +32147,35 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                bool bridgeApplied = field.TryApplyRawPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
+                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeDispatchMessage);
+                _partyRaidOfficialSessionBridge.RecordDispatchResult(
+                    bridgeMessage.Source,
+                    bridgeMessage.PacketType,
+                    applied,
+                    bridgeDispatchMessage);
+            }
+        }
+
+        private void DrainTournamentPacketInbox(int currentTickCount)
+        {
+            while (_tournamentPacketInbox.TryDequeue(out TournamentPacketInboxMessage message))
+            {
+                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
+                _tournamentPacketInbox.RecordDispatchResult(
+                    message.Source,
+                    message.PacketType,
+                    applied,
+                    errorMessage);
+            }
+
+            while (_tournamentOfficialSessionBridge.TryDequeue(out TournamentPacketInboxMessage bridgeMessage))
+            {
+                bool bridgeApplied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
                 _tournamentOfficialSessionBridge.RecordDispatchResult(
                     bridgeMessage.Source,
                     bridgeMessage.PacketType,
                     bridgeApplied,
-                    bridgeApplied ? field.DescribeStatus() : bridgeErrorMessage);
+                    bridgeErrorMessage);
             }
         }
 
@@ -32134,46 +32214,23 @@ namespace HaCreator.MapSimulator
 
         private void DrainGuildBossTransport(int currentTickCount)
         {
-            GuildBossField field = _specialFieldRuntime.SpecialEffects.GuildBoss;
             while (_guildBossOfficialSessionBridge.TryDequeue(out GuildBossPacketInboxMessage bridgeMessage))
             {
-                if (!field.IsActive)
-                {
-                    _guildBossOfficialSessionBridge.RecordDispatchResult(
-                        bridgeMessage.Source,
-                        bridgeMessage.PacketType,
-                        success: false,
-                        message: "runtime inactive");
-                    continue;
-                }
-
-
-                bool bridgeApplied = field.TryApplyPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
+                bool bridgeApplied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
                 _guildBossOfficialSessionBridge.RecordDispatchResult(
                     bridgeMessage.Source,
                     bridgeMessage.PacketType,
                     bridgeApplied,
-                    bridgeApplied ? field.DescribeStatus() : bridgeErrorMessage);
+                    bridgeErrorMessage);
             }
             while (_guildBossTransport.TryDequeue(out GuildBossPacketInboxMessage message))
             {
-                if (!field.IsActive)
-                {
-                    _guildBossTransport.RecordDispatchResult(
-                        message.Source,
-                        message.PacketType,
-                        success: false,
-                        message: "runtime inactive");
-                    continue;
-                }
-
-
-                bool applied = field.TryApplyPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
+                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
                 _guildBossTransport.RecordDispatchResult(
                     message.Source,
                     message.PacketType,
                     applied,
-                    applied ? field.DescribeStatus() : errorMessage);
+                    errorMessage);
             }
         }
 

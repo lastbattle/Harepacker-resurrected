@@ -67,10 +67,11 @@ namespace HaCreator.MapSimulator
             ReviveOwnerVariant variant = ResolveReviveOwnerVariant();
             bool hasPremiumChoice = ReviveOwnerRuntime.HasPremiumChoiceForVariant(variant);
             string ownerLabel = ReviveOwnerRuntime.GetOwnerLabel(variant);
+            Vector2 premiumRespawnPoint = ResolveCurrentFieldReviveRespawnPoint(variant, deathPoint);
 
             string normalDetail = BuildDefaultReviveDetail(variant, ownerLabel, spawnPoint);
             string premiumDetail = hasPremiumChoice
-                ? BuildPremiumReviveDetail(variant, ownerLabel, deathPoint)
+                ? BuildPremiumReviveDetail(variant, ownerLabel, deathPoint, premiumRespawnPoint)
                 : string.Empty;
 
             _reviveOwnerRuntime.Open(
@@ -187,7 +188,9 @@ namespace HaCreator.MapSimulator
                 }
 
                 Debug.WriteLine(DispatchReviveOwnerTransferFieldRequest(request));
-                _playerManager.RespawnAt(_playerManager.Player.DeathX, _playerManager.Player.DeathY);
+                Vector2 deathPoint = new(_playerManager.Player.DeathX, _playerManager.Player.DeathY);
+                Vector2 respawnPoint = ResolveCurrentFieldReviveRespawnPoint(request.Variant, deathPoint);
+                _playerManager.RespawnAt(respawnPoint.X, respawnPoint.Y);
                 return;
             }
 
@@ -249,6 +252,18 @@ namespace HaCreator.MapSimulator
                 || mapInfo.forcedReturn == mapId;
         }
 
+        private Vector2 ResolveCurrentFieldReviveRespawnPoint(ReviveOwnerVariant variant, Vector2 fallbackPoint)
+        {
+            if (!ReviveOwnerRuntime.UsesCurrentFieldRespawn(variant))
+            {
+                return fallbackPoint;
+            }
+
+            return TryGetUnsupportedMapInfoPoint(_mapBoard?.MapInfo, "ReviveCurFieldOfNoTransferPoint", out Vector2 revivePoint)
+                ? revivePoint
+                : fallbackPoint;
+        }
+
         private static bool TryGetUnsupportedMapInfoFlag(MapInfo mapInfo, string propertyName, out bool value)
         {
             value = false;
@@ -269,6 +284,25 @@ namespace HaCreator.MapSimulator
                 WzStringProperty stringProperty when int.TryParse(stringProperty.Value, out int parsed) => parsed != 0,
                 _ => InfoTool.GetInt(property, 0) != 0
             };
+            return true;
+        }
+
+        private static bool TryGetUnsupportedMapInfoPoint(MapInfo mapInfo, string propertyName, out Vector2 point)
+        {
+            point = default;
+            if (mapInfo?.unsupportedInfoProperties == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            var property = mapInfo.unsupportedInfoProperties.FirstOrDefault(
+                candidate => string.Equals(candidate?.Name, propertyName, StringComparison.Ordinal));
+            if (property is not WzVectorProperty vectorProperty)
+            {
+                return false;
+            }
+
+            point = new Vector2(vectorProperty.X.Value, vectorProperty.Y.Value);
             return true;
         }
 
@@ -309,10 +343,14 @@ namespace HaCreator.MapSimulator
             return $"Default branch returns to the simulator respawn seam at ({spawnPoint.X:0}, {spawnPoint.Y:0}).";
         }
 
-        private static string BuildPremiumReviveDetail(ReviveOwnerVariant variant, string ownerLabel, Vector2 deathPoint)
+        private static string BuildPremiumReviveDetail(ReviveOwnerVariant variant, string ownerLabel, Vector2 deathPoint, Vector2 respawnPoint)
         {
             string detailPrefix = ResolveReviveOwnerDetailPrefix(variant, ownerLabel);
-            return $"{detailPrefix} revives in the current field near the death point at ({deathPoint.X:0}, {deathPoint.Y:0}).";
+            bool usesFieldAuthoredPoint = Vector2.DistanceSquared(respawnPoint, deathPoint) > 1f;
+            string pointSource = usesFieldAuthoredPoint
+                ? "the WZ-authored no-transfer revive point"
+                : "the death point";
+            return $"{detailPrefix} revives in the current field at {pointSource} ({respawnPoint.X:0}, {respawnPoint.Y:0}).";
         }
 
         private bool TryConsumeReviveOwnerPremiumItem(ReviveOwnerTransferRequest request)

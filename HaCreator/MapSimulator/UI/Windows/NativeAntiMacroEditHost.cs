@@ -28,6 +28,9 @@ namespace HaCreator.MapSimulator.UI
         private const int SwpNoActivate = 0x0010;
         private const int WmSetText = 0x000C;
         private const int WmSetFont = 0x0030;
+        private const int WmSetFocus = 0x0007;
+        private const int WmKillFocus = 0x0008;
+        private const int WmGetDlgCode = 0x0087;
         private const int WmChar = 0x0102;
         private const int WmKeyDown = 0x0100;
         private const int WmCut = 0x0300;
@@ -50,6 +53,9 @@ namespace HaCreator.MapSimulator.UI
         private const uint EsAutoHScroll = 0x0080;
         private const uint EsNoHideSel = 0x0100;
         private const uint ImeExcludeStyle = 0x0080;
+        private const int DlgcWantArrows = 0x0001;
+        private const int DlgcHasSetSel = 0x0008;
+        private const int DlgcWantChars = 0x0080;
         private const int CandidateListCount = 4;
         private static readonly IntPtr HwndTop = IntPtr.Zero;
         private static readonly object HostMapLock = new();
@@ -77,6 +83,7 @@ namespace HaCreator.MapSimulator.UI
 
         public event Action<string> TextChanged;
         public event Action SubmitRequested;
+        public event Action<bool> FocusChanged;
 
         public bool TryAttach(IntPtr parentHandle, Rectangle bounds)
         {
@@ -174,6 +181,11 @@ namespace HaCreator.MapSimulator.UI
 
             _lastKnownText = currentText;
             TextChanged?.Invoke(currentText);
+        }
+
+        internal static int GetClientOwnedAntiMacroDialogCode()
+        {
+            return DlgcWantArrows | DlgcHasSetSel | DlgcWantChars;
         }
 
         public void Reset()
@@ -445,6 +457,12 @@ namespace HaCreator.MapSimulator.UI
 
         private IntPtr SubclassWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
         {
+            if (msg == WmGetDlgCode)
+            {
+                IntPtr originalResult = CallWindowProc(_originalWndProc, hWnd, msg, wParam, lParam);
+                return new IntPtr(originalResult.ToInt32() | GetClientOwnedAntiMacroDialogCode());
+            }
+
             if (msg == WmKeyDown && wParam.ToInt32() == VkA && (GetKeyState(VkControl) & 0x8000) != 0)
             {
                 SelectAll();
@@ -463,6 +481,16 @@ namespace HaCreator.MapSimulator.UI
             }
 
             IntPtr result = CallWindowProc(_originalWndProc, hWnd, msg, wParam, lParam);
+            if (msg == WmSetFocus)
+            {
+                UpdateImePlacement();
+                FocusChanged?.Invoke(true);
+            }
+            else if (msg == WmKillFocus)
+            {
+                FocusChanged?.Invoke(false);
+            }
+
             if (msg == WmSetText || msg == WmPaste || msg == WmCut || msg == WmClear || msg == WmUndo || msg == WmChar)
             {
                 SynchronizeState();

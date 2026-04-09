@@ -255,6 +255,8 @@ namespace HaCreator.MapSimulator.Pools
             LastStateChangeTime = currentTime;
             MotionElapsedMs = 0;
             MotionLastUpdateTime = currentTime;
+            CurrentFrame = 0;
+            LastFrameTime = currentTime;
         }
 
         private void UpdateFalling(int currentTime, float deltaTime)
@@ -474,6 +476,14 @@ namespace HaCreator.MapSimulator.Pools
         {
             if (AnimFrames == null || AnimFrames.Count <= 1)
                 return;
+
+            if (IsPacketControlled
+                && State == DropState.Spawning
+                && CreateDelayMs > 0
+                && currentTime < SpawnTime + CreateDelayMs)
+            {
+                return;
+            }
 
             var frame = AnimFrames[CurrentFrame];
             int delay = frame?.Delay ?? 100;

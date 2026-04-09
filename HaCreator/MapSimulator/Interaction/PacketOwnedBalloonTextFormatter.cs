@@ -11,6 +11,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int? CurrentMapId { get; init; }
         public Func<int, string> ResolveItemCountText { get; init; }
         public Func<int, string> ResolveQuestStateText { get; init; }
+        public Func<int, string> ResolveQuestRecordText { get; init; }
         public Func<string> ResolveJobNameText { get; init; }
     }
 
@@ -27,6 +28,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex QuestNameRegex = new(@"#(?:q|y)(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestReferenceNameRegex = new(@"#y(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestStateRegex = new(@"#u(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex QuestRecordRegex = new(@"#R(\d+):?#", RegexOptions.Compiled);
         private static readonly Regex SkillNameRegex = new(@"#s(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex MapNameRegex = new(@"#m(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex CurrentMapNameRegex = new(@"#m#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -62,6 +64,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = QuestNameRegex.Replace(formatted, static match => ResolveQuestName(match.Groups[1].Value));
             formatted = QuestReferenceNameRegex.Replace(formatted, static match => ResolveQuestName(match.Groups[1].Value));
             formatted = QuestStateRegex.Replace(formatted, match => ResolveQuestStateText(match.Groups[1].Value, context));
+            formatted = QuestRecordRegex.Replace(formatted, match => ResolveQuestRecordText(match.Groups[1].Value, context));
             formatted = SkillNameRegex.Replace(formatted, static match => ResolveSkillName(match.Groups[1].Value));
             formatted = MapNameRegex.Replace(formatted, static match => ResolveMapName(match.Groups[1].Value));
             formatted = CurrentMapNameRegex.Replace(formatted, _ => ResolveCurrentMapName(context));
@@ -217,6 +220,22 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return "Not started";
+        }
+
+        private static string ResolveQuestRecordText(string questIdText, PacketOwnedBalloonTextFormattingContext context)
+        {
+            if (context?.ResolveQuestRecordText != null &&
+                int.TryParse(questIdText, out int questId) &&
+                questId > 0)
+            {
+                string resolvedText = context.ResolveQuestRecordText(questId);
+                if (!string.IsNullOrWhiteSpace(resolvedText))
+                {
+                    return resolvedText;
+                }
+            }
+
+            return "0";
         }
 
         private static string ResolveSelectedMobText(string questIdText)
