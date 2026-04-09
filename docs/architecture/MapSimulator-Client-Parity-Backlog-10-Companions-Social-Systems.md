@@ -355,12 +355,12 @@ If the goal is visible parity first, the next work in this area should be sequen
    Add live pet entities, activation ordering, and chair-backed avatar layers so the simulator can represent the most visible companion-state surfaces in-field.
 2. Merchant-actor pass:
    Close the dedicated `CEmployeePool` packet bridge and the remaining `CEmployee` actor/template/runtime details before continuing to refine hired-merchant and employee-backed room systems only through UI and storage flows.
-3. Social utility pass:
-   Add trunk, memo, friend or guild or alliance list, and blacklist shells so the common account-facing windows exist before deeper room systems.
-4. Room-system pass:
-   Add MiniRoom, personal shop, and entrusted shop runtime shells once the shared social and inventory primitives are in place.
+3. Social utility refinement pass:
+   Tighten MapleTV, parcel or memo, messenger, family, and social-list packet ownership now that the common account-facing windows already exist, instead of reopening the older "add the shell" work.
+4. Room-system refinement pass:
+   Deepen MiniRoom, personal-shop, entrusted-shop, trading-room, and explicit Omok packet lifecycle parity now that the base runtimes and child dialogs are already on disk.
 5. Feedback pass:
-   Close pet speech, companion equip tabs, and other secondary UI behaviors after the runtime owners exist.
+   Close the remaining pet speech, companion equip-tab, and other secondary UI behaviors after the runtime owners exist.
 
 ## Working Rule For Future Updates
 

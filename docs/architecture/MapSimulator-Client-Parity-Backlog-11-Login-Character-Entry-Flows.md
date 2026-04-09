@@ -186,11 +186,6 @@ The latest `CField::OnPacket` re-check exposed another entitlement-adjacent owne
 Notes:
 `CLogin::OnPacket` routes packet type `9` into `CLogin::OnSelectCharacterByVACResult`, which is a distinct alternate character-entry path rather than a synonym for the normal `OnSelectCharacterResult` flow. IDA shows it owns its own result-code table, title-return failures, website-handoff prompts, and direct `CWvsContext::IssueConnect` success path, so it should be tracked explicitly instead of being assumed to fall under the ordinary roster-select result handler.
 
-### 9. Cross-document stage-handoff note
-
-Notes:
-Direct decompile of `CLogin::OnPacket` still confirms that packet families `141` to `143` are forwarded to `CStage::OnPacket`, and packet families `144` to `146` are forwarded to `CMapLoadable::OnPacket`. That dependency remains relevant to pre-field flow, but the actual implementation tracker is intentionally centralized in backlog 7 under the packet-owned stage-transition and map-load presentation rows, so this login document stays on the pre-field handoff only and does not duplicate that owner family a second time.
-
 ## Current State Summary
 
 This area is still mostly absent from the simulator today.
