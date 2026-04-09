@@ -139,6 +139,7 @@ namespace HaCreator.MapSimulator.Pools
             public bool FollowSummonFacing { get; init; }
             public bool MirrorOffsetWithSummonFacing { get; init; }
             public Vector2 AttachedOffset { get; init; }
+            public MobAnimationSet.AttackInfoMetadata AttackInfo { get; init; }
             public List<IDXObject> Frames { get; init; }
             public int CurrentFrame { get; set; }
             public int LastFrameTime { get; set; }
@@ -392,7 +393,12 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            return TryTriggerExpiredSelfDestructAction(state, currentTime);
+            if (TryTriggerExpiredSelfDestructAction(state, currentTime))
+            {
+                return true;
+            }
+
+            return TryBeginNaturalExpiryRemoval(state, currentTime);
         }
 
         public bool TryDamageSummonByObjectId(int objectId, int damage, int currentTime)
@@ -1603,6 +1609,49 @@ namespace HaCreator.MapSimulator.Pools
             RemovePuppet(state.Summon);
         }
 
+        private bool TryBeginNaturalExpiryRemoval(PacketOwnedSummonState state, int currentTime)
+        {
+            if (state?.Summon == null || !TryPrepareNaturalExpiryRemovalPlayback(state.Summon, currentTime))
+            {
+                return false;
+            }
+
+            CancelSummonExpiryTimer(state.Summon.ObjectId);
+            state.RemovalReason = 0;
+            ClearPacketOwnedOneTimeAction(state);
+            ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
+            RemovePuppet(state.Summon);
+            return true;
+        }
+
+        private static bool TryPrepareNaturalExpiryRemovalPlayback(ActiveSummon summon, int currentTime)
+        {
+            if (summon == null
+                || summon.IsPendingRemoval
+                || summon.ExpiryActionTriggered
+                || !summon.HasReachedNaturalExpiry(currentTime))
+            {
+                return false;
+            }
+
+            summon.ExpiryActionTriggered = true;
+            summon.LastAttackAnimationStartTime = currentTime;
+            int actionDuration = ResolveSummonPendingRemovalActionDurationMs(summon);
+            int removalDuration = ResolveSummonRemovalPlaybackDurationMs(summon);
+            summon.RemovalAnimationStartTime = actionDuration > 0
+                ? currentTime + actionDuration
+                : currentTime;
+            summon.PendingRemovalTime = summon.RemovalAnimationStartTime + removalDuration;
+
+            if (actionDuration <= 0)
+            {
+                summon.ActorState = SummonActorState.Die;
+                summon.LastStateChangeTime = currentTime;
+            }
+
+            return true;
+        }
+
         private static int ResolveSummonMaxHealth(SkillLevelData levelData)
         {
             return Math.Max(1, levelData?.HP ?? 1);
@@ -2768,6 +2817,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             Vector2 source = new(summon.PositionX, summon.PositionY);
+            Vector2 projectileSource = SummonImpactPresentationResolver.ResolveSourceAnchor(source);
             for (int i = 0; i < targets.Count; i++)
             {
                 MobItem target = targets[i];
@@ -2785,7 +2835,7 @@ namespace HaCreator.MapSimulator.Pools
                 int impactDelayMs = Math.Max(60, ResolvePacketAttackImpactDelayMs(summon, target, currentTime, i));
                 SpawnPacketProjectileVisual(
                     summon,
-                    source,
+                    projectileSource,
                     targetCenter,
                     currentTime,
                     impactDelayMs,
@@ -2849,7 +2899,7 @@ namespace HaCreator.MapSimulator.Pools
                         : ResolvePacketAttackImpactDelayMs(teslaCoil, source, target, currentTime, targetIndex >= 0 ? targetIndex : 0));
                 SpawnPacketProjectileVisual(
                     teslaCoil,
-                    source,
+                    SummonImpactPresentationResolver.ResolveSourceAnchor(source),
                     targetCenter,
                     currentTime,
                     impactDelayMs,
@@ -3163,7 +3213,9 @@ namespace HaCreator.MapSimulator.Pools
                 target,
                 source,
                 currentTime);
-            float distance = Vector2.Distance(source, impactPosition);
+            float distance = Vector2.Distance(
+                SummonImpactPresentationResolver.ResolveSourceAnchor(source),
+                impactPosition);
             int travelDelayMs = (int)MathF.Round(distance * 1000f / projectileSpeed);
             return Math.Max(delayMs, travelDelayMs);
         }
@@ -3316,10 +3368,9 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             MobAnimationSet.AttackInfoMetadata attackInfo = mob?.GetAttackInfo(attackAction);
-            Vector2 hitPosition = ResolvePacketHitEffectPosition(summon, attackInfo, currentTime);
-            bool followSummon = attackInfo?.HitAttach == true;
-            Vector2 summonPosition = new(summon.PositionX, summon.PositionY);
-            bool followSummonFacing = followSummon || attackInfo?.FacingAttach == true;
+            Vector2 hitPosition = ResolvePacketHitEffectPosition(summon, attackInfo, currentTime, hitFrameIndex: 0);
+            bool followSummon = attackInfo?.ResolveHitAttach(0) == true;
+            bool followSummonFacing = followSummon || attackInfo?.ResolveFacingAttach(0) == true;
             _mobAttackHitEffects.Add(new PacketOwnedMobAttackHitEffectDisplay
             {
                 X = hitPosition.X,
@@ -3327,8 +3378,9 @@ namespace HaCreator.MapSimulator.Pools
                 AttachedSummonObjectId = summon.ObjectId,
                 FollowSummon = followSummon,
                 FollowSummonFacing = followSummonFacing,
-                MirrorOffsetWithSummonFacing = followSummon && attackInfo?.FacingAttach == true,
-                AttachedOffset = followSummon ? hitPosition - summonPosition : Vector2.Zero,
+                MirrorOffsetWithSummonFacing = attackInfo?.ResolveFacingAttach(0) == true,
+                AttachedOffset = PacketOwnedSummonUpdateRules.ResolvePacketOwnedAuthoredHitOffset(attackInfo),
+                AttackInfo = attackInfo,
                 Frames = frames,
                 CurrentFrame = 0,
                 LastFrameTime = currentTime,
@@ -3336,11 +3388,11 @@ namespace HaCreator.MapSimulator.Pools
             });
         }
 
-        private Vector2 ResolvePacketHitEffectPosition(ActiveSummon summon, MobAnimationSet.AttackInfoMetadata attackInfo, int currentTime)
+        private Vector2 ResolvePacketHitEffectPosition(ActiveSummon summon, MobAnimationSet.AttackInfoMetadata attackInfo, int currentTime, int hitFrameIndex = 0)
         {
             Rectangle hitbox = GetSummonHitbox(summon, currentTime);
             Vector2 summonPosition = new(summon.PositionX, summon.PositionY);
-            return ResolvePacketHitEffectPosition(hitbox, summonPosition, attackInfo, summon.FacingRight, _random);
+            return ResolvePacketHitEffectPosition(hitbox, summonPosition, attackInfo, summon.FacingRight, _random, hitFrameIndex);
         }
 
         private static Vector2 ResolvePacketHitEffectPosition(
@@ -3348,14 +3400,16 @@ namespace HaCreator.MapSimulator.Pools
             Vector2 summonPosition,
             MobAnimationSet.AttackInfoMetadata attackInfo,
             bool facingRight,
-            Random random)
+            Random random,
+            int hitFrameIndex = 0)
         {
             return PacketOwnedSummonUpdateRules.ResolvePacketOwnedMobAttackHitAnchor(
                 hitbox,
                 summonPosition,
                 attackInfo,
                 facingRight,
-                random);
+                random,
+                hitFrameIndex);
         }
 
         private static void PlayPacketMobAttackSound(MobItem mob, sbyte attackIndex)
@@ -3458,7 +3512,7 @@ namespace HaCreator.MapSimulator.Pools
 
         private Vector2 ResolveHitEffectDrawPosition(PacketOwnedMobAttackHitEffectDisplay hitEffect)
         {
-            if (hitEffect?.FollowSummon != true)
+            if (!ShouldHitEffectFollowSummon(hitEffect))
             {
                 return new Vector2(hitEffect?.X ?? 0f, hitEffect?.Y ?? 0f);
             }
@@ -3469,7 +3523,7 @@ namespace HaCreator.MapSimulator.Pools
                 return PacketOwnedSummonUpdateRules.ResolvePacketOwnedAttachedHitPosition(
                     new Vector2(state.Summon.PositionX, state.Summon.PositionY),
                     hitEffect.AttachedOffset,
-                    hitEffect.MirrorOffsetWithSummonFacing,
+                    ResolveHitEffectMirrorOffsetWithSummonFacing(hitEffect),
                     state.Summon.FacingRight);
             }
 
@@ -3478,7 +3532,7 @@ namespace HaCreator.MapSimulator.Pools
 
         private bool ResolveHitEffectFlip(PacketOwnedMobAttackHitEffectDisplay hitEffect, IDXObject frame)
         {
-            if (hitEffect?.FollowSummonFacing == true
+            if (ShouldHitEffectFollowSummonFacing(hitEffect)
                 && _summonsByObjectId.TryGetValue(hitEffect.AttachedSummonObjectId, out PacketOwnedSummonState state)
                 && state?.Summon != null)
             {
@@ -3486,6 +3540,43 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return hitEffect?.Flip ?? false;
+        }
+
+        private static bool ShouldHitEffectFollowSummon(PacketOwnedMobAttackHitEffectDisplay hitEffect)
+        {
+            if (hitEffect == null)
+            {
+                return false;
+            }
+
+            return hitEffect.AttackInfo?.ResolveHitAttach(hitEffect.CurrentFrame) ?? hitEffect.FollowSummon;
+        }
+
+        private static bool ShouldHitEffectFollowSummonFacing(PacketOwnedMobAttackHitEffectDisplay hitEffect)
+        {
+            if (hitEffect == null)
+            {
+                return false;
+            }
+
+            if (hitEffect.AttackInfo != null)
+            {
+                return hitEffect.AttackInfo.ResolveHitAttach(hitEffect.CurrentFrame)
+                       || hitEffect.AttackInfo.ResolveFacingAttach(hitEffect.CurrentFrame);
+            }
+
+            return hitEffect.FollowSummonFacing;
+        }
+
+        private static bool ResolveHitEffectMirrorOffsetWithSummonFacing(PacketOwnedMobAttackHitEffectDisplay hitEffect)
+        {
+            if (hitEffect == null)
+            {
+                return false;
+            }
+
+            return hitEffect.AttackInfo?.ResolveFacingAttach(hitEffect.CurrentFrame)
+                   ?? hitEffect.MirrorOffsetWithSummonFacing;
         }
 
         internal static Point ResolvePacketOverlayFrameTopLeft(IDXObject frame, int anchorX, int anchorY, bool shouldFlip)

@@ -8,6 +8,19 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly IReadOnlyDictionary<int, string> OverrideEntries = new Dictionary<int, string>
         {
             [0x1A15] = "%d",
+            // Recovered from MapleStory.exe v95 `CWvsContext::OnDropPickUpMessage`.
+            // The generated table drifts for several pickup-notice ids, so pin the
+            // verified screen/chat strings here to keep pickup notice formatting on the
+            // client-owned path instead of accidentally resolving unrelated text.
+            [0x012F] = "You have gained mesos (+%d)",
+            [0x0130] = "Internet Cafe Meso Bonus (+%d)",
+            [0x0134] = "You can't get anymore items.",
+            [0x0BD2] = "Your inventory is full.",
+            [0x1491] = "Your pet has picked up some mesos.",
+            [0x14D3] = "You cannot acquire any items because the game file has been damaged. Please try again after reinstalling the game.",
+            [0x14D9] = "You cannot acquire any items.",
+            [0x1542] = "You have gained a(n) %s (%s) x %d.",
+            [0x1543] = "You have gained a(n) %s (%s).",
             // Recovered from MapleStory.exe v95 StringPool::GetString. The generated table
             // in this workspace uses the decoded storage order, not the client key lookup,
             // so direct index resolution for these MapleTV result ids is incorrect.
@@ -51,6 +64,21 @@ namespace HaCreator.MapSimulator.Interaction
             // resolves these ids through StringPool before loading the layer from Effect/BasicEff.
             [0x0B6B] = "Effect/BasicEff.img/dragonBlink",
             [0x15DA] = "Effect/BasicEff.img/dragonFury",
+            // Recovered from MapleStory.exe v95 `CDragon::UpdateQuestInfo`. The generated table
+            // resolves 0x19BC to an unrelated UI list frame in this workspace, but the client
+            // formats the dragon quest-info layer path from this string-pool slot before loading
+            // the layer. WZ confirms the three v95-owned targets are `QuestAlert`, `QuestAlert2`,
+            // and `QuestAlert3`, so keep the format explicit here.
+            [0x19BC] = "Effect/BasicEff.img/QuestAlert%s",
+            // Recovered from MapleStory.exe v95 `CUIWeddingInvitation::OnCreate` and `Draw`.
+            // The client resolves the invitation button UOL, the dialog backgrounds, and the
+            // basic-black face through these StringPool ids before wiring the owner. Keep them
+            // explicit here so wedding invitation parity does not drift if the generated table
+            // changes shape again.
+            [0x0EAF] = "UI/UIWindow.img/Wedding/Invitation/Vegas",
+            [0x0EB0] = "UI/UIWindow.img/Wedding/Invitation/Cathedral",
+            [0x19CE] = "UI/UIWindow2.img/Wedding/Invitation/BtOK",
+            [0x1A25] = "Arial",
             // Recovered from MapleStory.exe v95 `CField::OnFieldEffect` /
             // `CField::ShowScreenEffect`. Keep these packet-owned field-feedback
             // effect templates explicit so summon and screen-effect resolution
@@ -80,12 +108,12 @@ namespace HaCreator.MapSimulator.Interaction
             [0x01D4] = "You win.",
             [0x01D5] = "It's a tie.",
             [0x01D6] = "You lost.",
-            [0x01DC] = "Your opponent requests a tie.\r\nWill you accept it?",
-            [0x01DD] = "Will you request a tie?",
-            [0x01DE] = "Your opponent denied your request for a tie.",
-            [0x01E0] = "Your oppentent has requested to \r\nwithdraw his/her last move.\r\nDo you accept?",
-            [0x01E1] = "Request to withdraw your last move?",
-            [0x01E2] = "Your opponent denied your request.",
+            [0x01D9] = "Your opponent requests a tie.\r\nWill you accept it?",
+            [0x01DA] = "Will you request a tie?",
+            [0x01DB] = "Your opponent denied your request for a tie.",
+            [0x01DD] = "Your oppentent has requested to \r\nwithdraw his/her last move.\r\nDo you accept?",
+            [0x01DE] = "Request to withdraw your last move?",
+            [0x01DF] = "Your opponent denied your request.",
             [0x01E5] = "Time left : %d sec.",
             [0x01E6] = "It's [ %s ]'s turn.",
             [0x0645] = "Draw",
@@ -101,6 +129,14 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0D75] = "%s Team's snowball has passed the %d stage.",
             [0x0D76] = "%s Team is attacking the snowman, stopping the progress of %s Team's snowball.",
             [0x0D77] = "%s Team's snowball is moving again.",
+            // Recovered from MapleStory.exe v95 `CField_Wedding::OnWeddingProgress`. The
+            // client resolves the opening wedding BGM through ids 0x108E/0x108F before step
+            // 0 on the Cathedral or Saint Maple ceremony maps. The current WZ export only
+            // exposes `Sound/BgmEvent.img/wedding`, so keep both ids pinned to that shared
+            // path here instead of leaving the wedding runtime on a local constant.
+            [0x108E] = "BgmEvent/wedding",
+            [0x108F] = "BgmEvent/wedding",
+            [0x1090] = "Would you like to give your blessing to the couple?",
             // Recovered from MapleStory.exe v95 `CUIQuestAlarm::Draw` and
             // `CUIQuestAlarm::OnButtonClicked`. Keep these quest-alarm ids explicit so the
             // owner retains the exact client title and notice strings even if regenerated
@@ -108,6 +144,35 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0E4C] = "Quest Helper (%d/5)",
             [0x106F] = "[%s] It has been excluded from the auto alarm and it will not be automatically reigstered until you re log-on",
             [0x18EC] = "There are no quests in the quest helper.",
+            // Recovered from MapleStory.exe v95 `CEngageDlg` and the surrounding
+            // CWvsContext engagement result handlers. The generated table in this
+            // workspace already carries most of this block, but keeping the proposal
+            // literals explicit here protects the owner from string-pool drift and
+            // fixes the `%2C`-escaped withdrawn-request notice.
+            [0x1093] = "Waiting for her response...",
+            [0x109B] = "%s has requested engagement.\r\nWill you accept this proposal?",
+            [0x109D] = "You are now engaged.",
+            [0x109E] = "You are now married!",
+            [0x109F] = "She has politely declined your engagement request.",
+            [0x10A0] = "Your engagement has been broken.",
+            [0x10A1] = "You are no longer married.",
+            [0x10A2] = "You have entered the wrong character name.",
+            [0x10A3] = "Your partner has to be in the same map.",
+            [0x10A4] = "Your partner's ETC slots are full.",
+            [0x10A5] = "You cannot be engaged to the same gender.",
+            [0x10A6] = "You are already engaged.",
+            [0x10A7] = "You are already married.",
+            [0x10A8] = "She is already engaged.",
+            [0x10A9] = "This person is already married.",
+            [0x10AA] = "You're already in middle or proposing a person.",
+            [0x10AB] = "She is currently being asked by another suitor.",
+            [0x10AC] = "Unfortunately, the man who proposed to you has withdrawn his request for an engagement.",
+            [0x10AD] = "You can't break the engagement after making reservations.",
+            [0x10AE] = "The reservation has been canceled. Please try again later.",
+            [0x10AF] = "This invitation is not valid.",
+            [0x10B0] = "Congratulations!\r\nYour reservation was successfully made!",
+            [0x10B1] = "Your ETC slot is full.\r\nPlease remove some items.",
+            [0x10B2] = "Please enter your partner's name.",
         };
 
         public static int Count => Entries.Length;

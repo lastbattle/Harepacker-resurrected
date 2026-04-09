@@ -69,6 +69,7 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AntiMacro) == null)
             {
                 AntiMacroChallengeWindow window = new(MapSimulatorWindowNames.AntiMacro, adminVariant: false, GraphicsDevice);
+                window.TryAttachNativeEditHost(Window?.Handle ?? IntPtr.Zero);
                 window.Position = ResolvePacketOwnedAntiMacroWindowPosition(window);
                 window.SubmitRequested += HandlePacketOwnedAntiMacroAnswerSubmitted;
                 uiWindowManager.RegisterCustomWindow(window);
@@ -77,6 +78,7 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AdminAntiMacro) == null)
             {
                 AntiMacroChallengeWindow window = new(MapSimulatorWindowNames.AdminAntiMacro, adminVariant: true, GraphicsDevice);
+                window.TryAttachNativeEditHost(Window?.Handle ?? IntPtr.Zero);
                 window.Position = ResolvePacketOwnedAntiMacroWindowPosition(window);
                 window.SubmitRequested += HandlePacketOwnedAntiMacroAnswerSubmitted;
                 uiWindowManager.RegisterCustomWindow(window);
@@ -265,15 +267,18 @@ namespace HaCreator.MapSimulator
                 submittedAnswer,
                 _lastPacketOwnedAntiMacroSubmittedRemainingMs,
                 out string dispatchStatus,
-                out string payloadHex))
+                out string payloadHex,
+                out bool externallyObserved))
             {
                 _lastPacketOwnedAntiMacroSummary =
-                    $"Queued anti-macro answer outpacket {PacketOwnedAntiMacroAnswerSubmitOpcode} [{payloadHex}] with remaining={_lastPacketOwnedAntiMacroSubmittedRemainingMs}ms and dispatched it through the live local-utility bridge. {dispatchStatus}";
+                    externallyObserved
+                        ? $"Queued anti-macro answer outpacket {PacketOwnedAntiMacroAnswerSubmitOpcode} [{payloadHex}] with remaining={_lastPacketOwnedAntiMacroSubmittedRemainingMs}ms and handed it off to an external transport path. {dispatchStatus}"
+                        : $"Queued anti-macro answer outpacket {PacketOwnedAntiMacroAnswerSubmitOpcode} [{payloadHex}] with remaining={_lastPacketOwnedAntiMacroSubmittedRemainingMs}ms and staged it for later external transport. {dispatchStatus}";
                 return;
             }
 
             _lastPacketOwnedAntiMacroSummary =
-                $"Queued anti-macro answer outpacket {PacketOwnedAntiMacroAnswerSubmitOpcode} [{payloadHex}] with remaining={_lastPacketOwnedAntiMacroSubmittedRemainingMs}ms; no live local-utility bridge accepted it, so the request remains simulator-owned while awaiting packet-owned result resolution. {dispatchStatus}";
+                $"Queued anti-macro answer outpacket {PacketOwnedAntiMacroAnswerSubmitOpcode} [{payloadHex}] with remaining={_lastPacketOwnedAntiMacroSubmittedRemainingMs}ms; no local-utility transport path accepted it, so the request remains simulator-owned while awaiting packet-owned result resolution. {dispatchStatus}";
         }
 
         private string DescribePacketOwnedAntiMacroStatus(int currentTickCount)
@@ -590,18 +595,22 @@ namespace HaCreator.MapSimulator
             string submittedAnswer,
             int remainingMs,
             out string status,
-            out string payloadHex)
+            out string payloadHex,
+            out bool externallyObserved)
         {
             byte[] payload = BuildPacketOwnedAntiMacroAnswerPayload(submittedAnswer);
             payloadHex = BitConverter.ToString(payload).Replace("-", string.Empty);
+            externallyObserved = false;
 
             if (_localUtilityOfficialSessionBridge.HasConnectedSession)
             {
-                status = $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms.";
-                return _localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                bool sent = _localUtilityOfficialSessionBridge.TrySendOutboundPacket(
                     PacketOwnedAntiMacroAnswerSubmitOpcode,
                     payload,
-                    out status);
+                    out string bridgeStatus);
+                status = $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms. {bridgeStatus}";
+                externallyObserved = sent;
+                return sent;
             }
 
             if (_localUtilityOfficialSessionBridge.HasAttachedClient
@@ -615,13 +624,35 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                payload,
+                out string outboxStatus))
+            {
+                status =
+                    $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms and dispatched opcode {PacketOwnedAntiMacroAnswerSubmitOpcode} through the generic local-utility outbox after the live bridge path was unavailable. Outbox: {outboxStatus}";
+                externallyObserved = true;
+                return true;
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(
+                PacketOwnedAntiMacroAnswerSubmitOpcode,
+                payload,
+                out string queuedOutboxStatus))
+            {
+                status =
+                    $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms and queued opcode {PacketOwnedAntiMacroAnswerSubmitOpcode} for deferred generic local-utility outbox delivery after the live bridge path was unavailable. Deferred outbox: {queuedOutboxStatus}";
+                return true;
+            }
+
             if (!_localUtilityOfficialSessionBridge.HasConnectedSession)
             {
-                status = "Local utility official-session bridge has no connected Maple session for anti-macro outbound injection.";
+                status =
+                    "Local utility official-session bridge has no connected Maple session for anti-macro outbound injection, and the generic local-utility outbox was unavailable.";
                 return false;
             }
 
-            status = "Local utility official-session bridge could not inject or queue the anti-macro outbound packet.";
+            status = "Local utility official-session bridge could not inject or queue the anti-macro outbound packet, and the generic local-utility outbox was unavailable.";
             return false;
         }
 

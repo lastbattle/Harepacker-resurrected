@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using HaSharedLibrary.Util;
+using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
@@ -37,9 +38,12 @@ namespace HaCreator.MapSimulator.Interaction
         private Texture2D _packetQuestResultTopTexture;
         private Texture2D _packetQuestResultCenterTexture;
         private Texture2D _packetQuestResultBottomTexture;
+        private Texture2D _packetQuestResultSeparatorTexture;
         private UtilDialogButtonTextures _packetQuestResultPrevButtonTextures;
         private UtilDialogButtonTextures _packetQuestResultNextButtonTextures;
         private UtilDialogButtonTextures _packetQuestResultOkButtonTextures;
+        private Texture2D _packetQuestResultSpeakerTexture;
+        private int _packetQuestResultSpeakerTemplateId;
 
         private SpriteFont _font;
         private string _npcName = "NPC";
@@ -145,6 +149,7 @@ namespace HaCreator.MapSimulator.Interaction
             _npcName = string.IsNullOrWhiteSpace(state?.NpcName) ? "NPC" : state.NpcName;
             _presentationStyle = state?.PresentationStyle ?? NpcInteractionPresentationStyle.Default;
             EnsurePacketQuestResultVisualAssetsLoaded();
+            EnsurePacketQuestResultSpeakerVisualLoaded(state?.SpeakerTemplateId ?? 0);
             _entries.Clear();
 
             if (state?.Entries != null)
@@ -460,6 +465,10 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             Rectangle textRect = GetTextRectangle(windowRect, entryListRect);
+            if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
+            {
+                DrawPacketQuestResultSpeakerPane(spriteBatch, windowRect, textRect);
+            }
 
             if (NpcInteractionPresentationProfile.ShouldDrawEntryHeader(_presentationStyle))
             {
@@ -614,9 +623,32 @@ namespace HaCreator.MapSimulator.Interaction
                 ?? LoadCanvasTexture(ResolveProperty(uiWindow1Image, "UtilDlgEx/c") as WzCanvasProperty);
             _packetQuestResultBottomTexture = LoadCanvasTexture(ResolveProperty(uiWindow2Image, "UtilDlgEx/s") as WzCanvasProperty)
                 ?? LoadCanvasTexture(ResolveProperty(uiWindow1Image, "UtilDlgEx/s") as WzCanvasProperty);
+            _packetQuestResultSeparatorTexture = LoadCanvasTexture(ResolveProperty(uiWindow2Image, "UtilDlgEx/line") as WzCanvasProperty)
+                ?? LoadCanvasTexture(ResolveProperty(uiWindow1Image, "UtilDlgEx/line") as WzCanvasProperty);
             _packetQuestResultPrevButtonTextures = LoadButtonTextures(uiWindow2Image, uiWindow1Image, "BtPrev");
             _packetQuestResultNextButtonTextures = LoadButtonTextures(uiWindow2Image, uiWindow1Image, "BtNext");
             _packetQuestResultOkButtonTextures = LoadButtonTextures(uiWindow2Image, uiWindow1Image, "BtOK");
+        }
+
+        private void EnsurePacketQuestResultSpeakerVisualLoaded(int speakerTemplateId)
+        {
+            if (_packetQuestResultSpeakerTemplateId == speakerTemplateId)
+            {
+                return;
+            }
+
+            _packetQuestResultSpeakerTemplateId = speakerTemplateId;
+            _packetQuestResultSpeakerTexture?.Dispose();
+            _packetQuestResultSpeakerTexture = null;
+
+            if (speakerTemplateId <= 0)
+            {
+                return;
+            }
+
+            WzImage npcImage = global::HaCreator.Program.FindImage("Npc", $"{speakerTemplateId:D7}.img");
+            EnsureParsed(npcImage);
+            _packetQuestResultSpeakerTexture = LoadCanvasTexture(WzInfoTools.GetNpcImage(npcImage));
         }
 
         private UtilDialogButtonTextures LoadButtonTextures(WzImage primaryImage, WzImage fallbackImage, string buttonPath)
@@ -672,11 +704,9 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
             {
-                return new Rectangle(
-                    windowRect.X + 34,
-                    windowRect.Y + 24,
-                    windowRect.Width - 68,
-                    windowRect.Height - 90);
+                return PacketQuestResultUtilDialogLayout.GetBodyTextRectangle(
+                    windowRect,
+                    hasSpeakerPortrait: _packetQuestResultSpeakerTexture != null);
             }
 
             return new Rectangle(
@@ -861,6 +891,55 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             spriteBatch.Draw(_packetQuestResultBottomTexture, new Vector2(rect.X, rect.Bottom - bottomHeight), Color.White);
+        }
+
+        private void DrawPacketQuestResultSpeakerPane(SpriteBatch spriteBatch, Rectangle windowRect, Rectangle bodyTextRect)
+        {
+            if (_packetQuestResultSpeakerTexture == null)
+            {
+                return;
+            }
+
+            Rectangle portraitBounds = PacketQuestResultUtilDialogLayout.GetSpeakerPortraitBounds(windowRect, bodyTextRect);
+            if (portraitBounds.Width <= 0 || portraitBounds.Height <= 0)
+            {
+                return;
+            }
+
+            Rectangle destination = FitInside(
+                portraitBounds,
+                _packetQuestResultSpeakerTexture.Width,
+                _packetQuestResultSpeakerTexture.Height);
+            if (destination.Width > 0 && destination.Height > 0)
+            {
+                spriteBatch.Draw(_packetQuestResultSpeakerTexture, destination, Color.White);
+            }
+
+            if (_packetQuestResultSeparatorTexture != null)
+            {
+                int separatorX = bodyTextRect.X - _packetQuestResultSeparatorTexture.Width - 6;
+                int separatorY = windowRect.Y + 56;
+                spriteBatch.Draw(_packetQuestResultSeparatorTexture, new Vector2(separatorX, separatorY), Color.White);
+            }
+
+            string speakerName = string.IsNullOrWhiteSpace(_npcName) ? "NPC" : _npcName;
+            Vector2 speakerPosition = new Vector2(portraitBounds.X + 2, portraitBounds.Bottom - 26);
+            DrawText(spriteBatch, speakerName, speakerPosition, new Color(71, 48, 24));
+        }
+
+        private static Rectangle FitInside(Rectangle bounds, int sourceWidth, int sourceHeight)
+        {
+            if (sourceWidth <= 0 || sourceHeight <= 0 || bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            float scale = Math.Min(bounds.Width / (float)sourceWidth, bounds.Height / (float)sourceHeight);
+            int width = Math.Max(1, (int)Math.Round(sourceWidth * scale));
+            int height = Math.Max(1, (int)Math.Round(sourceHeight * scale));
+            int x = bounds.X + ((bounds.Width - width) / 2);
+            int y = bounds.Y + ((bounds.Height - height) / 2);
+            return new Rectangle(x, y, width, height);
         }
 
         private void DrawButton(SpriteBatch spriteBatch, Rectangle rect, string label, bool enabled)

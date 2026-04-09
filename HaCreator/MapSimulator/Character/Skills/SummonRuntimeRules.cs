@@ -1,3 +1,4 @@
+using Microsoft.Xna.Framework;
 using System;
 using System.Linq;
 
@@ -197,6 +198,21 @@ namespace HaCreator.MapSimulator.Character.Skills
             return null;
         }
 
+        internal static string ResolveBeholderHealBranch(SkillData skill)
+        {
+            return ResolveNamedSummonBranch(skill, "skill1", "heal", "support");
+        }
+
+        internal static string ResolveLocalSupportBranch(SkillData skill, bool preferHealFirst)
+        {
+            return ResolveSupportOwnedBranch(skill, preferHealFirst);
+        }
+
+        internal static string ResolveLocalSummonActionBranch(SkillData skill)
+        {
+            return ResolveNamedSummonBranch(skill, "subsummon", "skill1", "skill2");
+        }
+
         private static string ResolveAssistOwnedPacketSkillBranch(SkillData skill, SummonAssistType assistType)
         {
             if (skill == null)
@@ -250,6 +266,34 @@ namespace HaCreator.MapSimulator.Character.Skills
             return preferHealFirst
                 ? ResolveNamedSummonBranch(skill, "skill1", "heal", "support", "skill2", "stand")
                 : ResolveNamedSummonBranch(skill, "skill2", "support", "heal", "skill1", "stand");
+        }
+
+        internal static Rectangle ResolveSupportOwnedRange(
+            SkillData skill,
+            bool facingRight,
+            string explicitBranchName = null)
+        {
+            if (skill == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            if (!string.IsNullOrWhiteSpace(explicitBranchName)
+                && skill.TryGetSummonAttackRange(facingRight, explicitBranchName, out Rectangle explicitRange))
+            {
+                return explicitRange;
+            }
+
+            string supportBranchName = HasMinionAbilityToken(skill.MinionAbility, "heal")
+                ? ResolveSupportOwnedBranch(skill, preferHealFirst: true)
+                : ResolveSupportOwnedBranch(skill, preferHealFirst: false);
+            if (!string.IsNullOrWhiteSpace(supportBranchName)
+                && skill.TryGetSummonAttackRange(facingRight, supportBranchName, out Rectangle supportRange))
+            {
+                return supportRange;
+            }
+
+            return skill.GetSummonAttackRange(facingRight);
         }
 
         private static string ResolvePacketIndexedSkillBranch(SkillData skill, byte normalizedAction)

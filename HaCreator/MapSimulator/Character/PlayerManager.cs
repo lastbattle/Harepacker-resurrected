@@ -391,7 +391,7 @@ namespace HaCreator.MapSimulator.Character
                 Skills.SetCombatEffects(_combatEffects);
                 Skills.SetSoundManager(_soundManager);
                 Skills.SetFootholdLookup(_findFoothold);
-                Skills.SetTamingMobLoader(Loader.LoadEquipment);
+                Skills.SetTamingMobLoader(Loader.LoadTamingMob);
                 Skills.OnAttackAreaResolved = _reactorAttackAreaHandler;
                 Skills.OnRepeatSkillModeEndRequested = HandleRepeatSkillModeEndRequested;
                 build.SkillStatBonusProvider = stat => Skills.GetPassiveBonus(stat) + Skills.GetBuffStat(stat);
@@ -416,7 +416,7 @@ namespace HaCreator.MapSimulator.Character
             Player.SetLadderLookup(_findLadder);
             Player.SetSwimAreaCheck(_checkSwimArea);
             Func<int, CharacterPart> tamingMobLoader = Loader != null
-                ? new Func<int, CharacterPart>(Loader.LoadEquipment)
+                ? new Func<int, CharacterPart>(Loader.LoadTamingMob)
                 : null;
             Player.SetTamingMobLoader(tamingMobLoader);
             Player.SetPortableChairTamingMobLoader(tamingMobLoader);
@@ -1295,6 +1295,20 @@ namespace HaCreator.MapSimulator.Character
             int currentTime)
         {
             return Skills?.TryResolvePendingSg88ManualAttackPacket(summonObjectId, targetMobIds, currentTime) == true;
+        }
+
+        public bool TryResolvePacketOwnedSg88ManualAttackPacket(
+            int summonObjectId,
+            IReadOnlyList<int> targetMobIds,
+            int currentTime,
+            out int resolvedRequestedAt)
+        {
+            resolvedRequestedAt = int.MinValue;
+            return Skills?.TryResolvePendingSg88ManualAttackPacket(
+                summonObjectId,
+                targetMobIds,
+                currentTime,
+                out resolvedRequestedAt) == true;
         }
 
         private void TryAcknowledgePendingRepeatSkillModeEnd(int currentTime)

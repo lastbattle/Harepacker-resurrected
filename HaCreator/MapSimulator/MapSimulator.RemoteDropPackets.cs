@@ -23,7 +23,8 @@ namespace HaCreator.MapSimulator
                         currTickCount,
                         _playerManager?.Player?.Build?.Id ?? 0,
                         ResolveRemoteDropPacketActorName,
-                        ResolveRemoteDropPacketTargetPosition),
+                        ResolveRemoteDropPacketTargetPosition,
+                        ResolveRemoteDropPacketPetActorId),
                     out string result))
             {
                 return ChatCommandHandler.CommandResult.Error(result ?? $"Failed to apply remote drop packet {packetType}.");
@@ -113,6 +114,19 @@ namespace HaCreator.MapSimulator
 
         private string ResolveRemoteDropPacketActorName(PacketDropLeaveReason reason, RemoteDropLeavePacket packet)
         {
+            if (reason == PacketDropLeaveReason.PetPickup)
+            {
+                int resolvedPetActorId = ResolveRemoteDropPacketPetActorId(packet);
+                return ResolveRemotePickupActorName(
+                    DropPickupActorKind.Pet,
+                    resolvedPetActorId,
+                    null,
+                    _remoteUserPool,
+                    ResolveMobPickupSourceName,
+                    ResolvePickupItemName,
+                    packet.ActorId);
+            }
+
             return ResolveRemoteDropPacketActorName(
                 reason,
                 packet,
@@ -146,7 +160,7 @@ namespace HaCreator.MapSimulator
                     itemNameResolver),
                 PacketDropLeaveReason.PetPickup => ResolveRemotePickupActorName(
                     DropPickupActorKind.Pet,
-                    packet.SecondaryActorId != 0 ? packet.SecondaryActorId : packet.ActorId,
+                    ResolveRemoteDropPacketPetActorId(packet, localCharacterId: 0, _ => 0),
                     null,
                     remoteUserPool,
                     mobNameResolver,
@@ -164,10 +178,60 @@ namespace HaCreator.MapSimulator
                 PacketDropLeaveReason.MobPickup => ResolveDropPickupActorPosition(DropPickupActorKind.Mob, packet.ActorId, 0),
                 PacketDropLeaveReason.PetPickup => ResolveDropPickupActorPosition(
                     DropPickupActorKind.Pet,
-                    packet.SecondaryActorId != 0 ? packet.SecondaryActorId : packet.ActorId,
+                    ResolveRemoteDropPacketPetActorId(packet),
                     packet.ActorId),
                 _ => null
             };
+        }
+
+        private int ResolveRemoteDropPacketPetActorId(RemoteDropLeavePacket packet)
+        {
+            return ResolveRemoteDropPacketPetActorId(
+                packet,
+                _playerManager?.Player?.Build?.Id ?? 0,
+                ResolveLocalPetRuntimeIdByIndex);
+        }
+
+        internal static int ResolveRemoteDropPacketPetActorId(
+            RemoteDropLeavePacket packet,
+            int localCharacterId,
+            Func<int, int> localPetRuntimeIdResolver)
+        {
+            if (packet.Reason != PacketDropLeaveReason.PetPickup)
+            {
+                return packet.ActorId;
+            }
+
+            int petIndex = Math.Max(0, packet.SecondaryActorId);
+            if (packet.ActorId > 0 && packet.ActorId == localCharacterId)
+            {
+                int localPetRuntimeId = localPetRuntimeIdResolver?.Invoke(petIndex) ?? 0;
+                return localPetRuntimeId > 0
+                    ? localPetRuntimeId
+                    : packet.ActorId;
+            }
+
+            return packet.ActorId > 0
+                ? BuildRemotePetPickupActorId(packet.ActorId, petIndex)
+                : packet.ActorId;
+        }
+
+        private int ResolveLocalPetRuntimeIdByIndex(int petIndex)
+        {
+            if (petIndex < 0 || _playerManager?.Pets?.ActivePets == null)
+            {
+                return 0;
+            }
+
+            foreach (var pet in _playerManager.Pets.ActivePets)
+            {
+                if (pet?.SlotIndex == petIndex)
+                {
+                    return pet.RuntimeId;
+                }
+            }
+
+            return 0;
         }
 
         private Vector2? ResolveDropPickupActorPosition(DropPickupActorKind actorKind, int actorId, int fallbackOwnerId)

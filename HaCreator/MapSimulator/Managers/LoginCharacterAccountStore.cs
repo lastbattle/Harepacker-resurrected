@@ -225,6 +225,8 @@ namespace HaCreator.MapSimulator.Managers
                 .Select(CloneEntryState)
                 .ToList()
                 ?? new List<LoginCharacterAccountEntryState>();
+            LoginExtraCharInfoResultProfile normalizedExtraCharInfoResult =
+                NormalizeExtraCharInfoResultProfile(extraCharInfoResult, accountId);
 
             int maxCharacterId = normalizedEntries.Count == 0 ? 0 : normalizedEntries.Max(entry => entry.CharacterId);
             int normalizedNextCharacterId = Math.Max(Math.Max(1, nextCharacterId), maxCharacterId + 1);
@@ -242,7 +244,7 @@ namespace HaCreator.MapSimulator.Managers
                 BirthDate = NormalizeBirthDate(birthDate),
                 IsSecondaryPasswordEnabled = isSecondaryPasswordEnabled,
                 SecondaryPassword = NormalizeSecret(secondaryPassword),
-                ExtraCharInfoResult = CloneExtraCharInfoResultProfile(extraCharInfoResult),
+                ExtraCharInfoResult = normalizedExtraCharInfoResult,
                 StorageExpansionHistory = CloneStorageExpansionHistory(storageExpansionHistory),
                 Entries = normalizedEntries
             };
@@ -272,6 +274,8 @@ namespace HaCreator.MapSimulator.Managers
 
             PersistedAccountState reboundState = ClonePersistedState(persistedState);
             reboundState.AccountId = accountId;
+            reboundState.ExtraCharInfoResult =
+                NormalizeExtraCharInfoResultProfile(reboundState.ExtraCharInfoResult, accountId);
             _accountsByKey[ResolveAccountKey(accountName, worldId, accountId)] = reboundState;
             _accountsByKey[accountNameKey] = ClonePersistedState(reboundState);
             SaveToDisk();
@@ -318,6 +322,8 @@ namespace HaCreator.MapSimulator.Managers
                 PersistedAccountState reboundState = ClonePersistedState(persistedState);
                 reboundState.AccountId = accountId;
                 reboundState.AccountName = normalizedAccountName;
+                reboundState.ExtraCharInfoResult =
+                    NormalizeExtraCharInfoResultProfile(reboundState.ExtraCharInfoResult, accountId);
                 _accountsByKey[ResolveAccountKey(normalizedAccountName, worldId, accountId)] = reboundState;
                 _accountsByKey[ResolveAccountKey(normalizedAccountName, worldId)] = ClonePersistedState(reboundState);
             }
@@ -618,6 +624,29 @@ namespace HaCreator.MapSimulator.Managers
                 ResultFlag = profile.ResultFlag,
                 CanHaveExtraCharacter = profile.CanHaveExtraCharacter
             };
+        }
+
+        private static LoginExtraCharInfoResultProfile NormalizeExtraCharInfoResultProfile(
+            LoginExtraCharInfoResultProfile profile,
+            int? accountId)
+        {
+            LoginExtraCharInfoResultProfile clonedProfile = CloneExtraCharInfoResultProfile(profile);
+            if (clonedProfile == null)
+            {
+                return null;
+            }
+
+            if (accountId.HasValue && accountId.Value > 0)
+            {
+                return new LoginExtraCharInfoResultProfile
+                {
+                    AccountId = accountId.Value,
+                    ResultFlag = clonedProfile.ResultFlag,
+                    CanHaveExtraCharacter = clonedProfile.CanHaveExtraCharacter
+                };
+            }
+
+            return clonedProfile;
         }
     }
 }

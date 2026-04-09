@@ -181,43 +181,7 @@ namespace HaCreator.MapSimulator
                 listWindow.SetExternalAction("PageDown", () => cashShopWindow.MoveListOwnerSelectionByPage(1));
                 listWindow.SetExternalAction("Home", () => cashShopWindow.SelectListOwnerBoundary(false));
                 listWindow.SetExternalAction("End", () => cashShopWindow.SelectListOwnerBoundary(true));
-                listWindow.SetListStateProvider(() =>
-                {
-                    AdminShopDialogUI.ListOwnerSnapshot snapshot = cashShopWindow.GetListOwnerSnapshot();
-                    List<CashShopStageChildWindow.ListOwnerEntryState> entries = new();
-                    for (int i = 0; i < snapshot.VisibleEntries.Count; i++)
-                    {
-                        AdminShopDialogUI.OwnerEntrySnapshot entry = snapshot.VisibleEntries[i];
-                        entries.Add(new CashShopStageChildWindow.ListOwnerEntryState
-                        {
-                            Title = entry.Title,
-                            Detail = entry.Detail,
-                            Seller = entry.Seller,
-                            PriceLabel = entry.PriceLabel,
-                            StateLabel = entry.StateLabel,
-                            IsSelected = entry.IsSelected
-                        });
-                    }
-
-                    IReadOnlyList<string> recentPackets = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow stageWindow
-                        ? stageWindow.GetRecentPacketSummaries()
-                        : Array.Empty<string>();
-                    return new CashShopStageChildWindow.ListOwnerState
-                    {
-                        PaneLabel = snapshot.PaneLabel,
-                        BrowseModeLabel = snapshot.BrowseModeLabel,
-                        CategoryLabel = snapshot.CategoryLabel,
-                        FooterMessage = snapshot.FooterMessage,
-                        SelectedEntryDetail = snapshot.VisibleEntries.FirstOrDefault(entry => entry.IsSelected)?.Detail ?? string.Empty,
-                        SelectedIndex = snapshot.SelectedIndex,
-                        ScrollOffset = snapshot.ScrollOffset,
-                        TotalCount = snapshot.TotalCount,
-                        PlateFocusIndex = snapshot.SelectedIndex >= 0 ? snapshot.SelectedIndex - snapshot.ScrollOffset : -1,
-                        HasKeyFocusCanvas = true,
-                        VisibleEntries = entries,
-                        RecentPackets = recentPackets
-                    };
-                });
+                listWindow.SetListStateProvider(() => BuildCashShopListOwnerState(cashShopWindow));
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStatus) is CashShopStageChildWindow statusWindow)
@@ -290,6 +254,79 @@ namespace HaCreator.MapSimulator
             }
 
             return lines;
+        }
+
+        private CashShopStageChildWindow.ListOwnerState BuildCashShopListOwnerState(AdminShopDialogUI cashShopWindow)
+        {
+            AdminShopDialogUI.ListOwnerSnapshot snapshot = cashShopWindow?.GetListOwnerSnapshot();
+            CashServiceStageWindow stageWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) as CashServiceStageWindow;
+            IReadOnlyList<string> recentPackets = stageWindow?.GetRecentPacketSummaries() ?? Array.Empty<string>();
+            if (stageWindow != null
+                && (snapshot == null || (snapshot.TotalCount <= 0 && stageWindow.CashPacketCatalogEntries.Count > 0)))
+            {
+                List<CashShopStageChildWindow.ListOwnerEntryState> packetEntries = BuildPacketEntryStates(stageWindow.CashPacketCatalogEntries);
+                return new CashShopStageChildWindow.ListOwnerState
+                {
+                    PaneLabel = "Packet wishlist",
+                    BrowseModeLabel = "Wish",
+                    CategoryLabel = "CCashShop",
+                    FooterMessage = stageWindow.CashItemLastSummary,
+                    SelectedEntryDetail = packetEntries.FirstOrDefault()?.Detail ?? string.Empty,
+                    SelectedIndex = packetEntries.Count > 0 ? 0 : -1,
+                    ScrollOffset = 0,
+                    TotalCount = Math.Max(stageWindow.WishlistCount, packetEntries.Count),
+                    PlateFocusIndex = packetEntries.Count > 0 ? 0 : -1,
+                    HasKeyFocusCanvas = true,
+                    VisibleEntries = packetEntries,
+                    RecentPackets = recentPackets
+                };
+            }
+
+            if (snapshot == null)
+            {
+                return new CashShopStageChildWindow.ListOwnerState
+                {
+                    PaneLabel = "Cash Shop list",
+                    BrowseModeLabel = "Unavailable",
+                    CategoryLabel = "CCashShop",
+                    FooterMessage = "Cash Shop list owner snapshot is unavailable.",
+                    SelectedIndex = -1,
+                    PlateFocusIndex = -1,
+                    HasKeyFocusCanvas = true,
+                    RecentPackets = recentPackets
+                };
+            }
+
+            List<CashShopStageChildWindow.ListOwnerEntryState> entries = new();
+            for (int i = 0; i < snapshot.VisibleEntries.Count; i++)
+            {
+                AdminShopDialogUI.OwnerEntrySnapshot entry = snapshot.VisibleEntries[i];
+                entries.Add(new CashShopStageChildWindow.ListOwnerEntryState
+                {
+                    Title = entry.Title,
+                    Detail = entry.Detail,
+                    Seller = entry.Seller,
+                    PriceLabel = entry.PriceLabel,
+                    StateLabel = entry.StateLabel,
+                    IsSelected = entry.IsSelected
+                });
+            }
+
+            return new CashShopStageChildWindow.ListOwnerState
+            {
+                PaneLabel = snapshot.PaneLabel,
+                BrowseModeLabel = snapshot.BrowseModeLabel,
+                CategoryLabel = snapshot.CategoryLabel,
+                FooterMessage = snapshot.FooterMessage,
+                SelectedEntryDetail = snapshot.VisibleEntries.FirstOrDefault(entry => entry.IsSelected)?.Detail ?? string.Empty,
+                SelectedIndex = snapshot.SelectedIndex,
+                ScrollOffset = snapshot.ScrollOffset,
+                TotalCount = snapshot.TotalCount,
+                PlateFocusIndex = snapshot.SelectedIndex >= 0 ? snapshot.SelectedIndex - snapshot.ScrollOffset : -1,
+                HasKeyFocusCanvas = true,
+                VisibleEntries = entries,
+                RecentPackets = recentPackets
+            };
         }
 
         private IReadOnlyList<string> BuildCashShopStatusOwnerLines()
@@ -449,75 +486,7 @@ namespace HaCreator.MapSimulator
                 listWindow.SetExternalAction("BtCancel", () => "CITCWnd_List cancelled the currently staged action.");
                 listWindow.SetExternalAction("BtBuy1", () =>
                     $"CITCWnd_List opened alternate buy confirmation for listing {mtsStageWindow.ItcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)}.");
-                listWindow.SetListStateProvider(() =>
-                {
-                    AdminShopDialogUI.ListOwnerSnapshot snapshot = mtsWindow?.GetListOwnerSnapshot();
-                    if (snapshot == null)
-                    {
-                        List<CashShopStageChildWindow.ListOwnerEntryState> fallbackEntries = new();
-                        if (mtsStageWindow.ItcNormalItemMutationCount > 0)
-                        {
-                            fallbackEntries.Add(new CashShopStageChildWindow.ListOwnerEntryState
-                            {
-                                Title = $"Listing {mtsStageWindow.ItcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)}",
-                                Detail = mtsStageWindow.ItcNormalItemLastSummary,
-                                Seller = "CITC packet owner",
-                                PriceLabel = mtsStageWindow.ItcNormalItemSelectedPrice.ToString("N0", CultureInfo.InvariantCulture),
-                                StateLabel = $"Subtype {mtsStageWindow.ItcNormalItemSubtype.ToString(CultureInfo.InvariantCulture)}",
-                                IsSelected = true
-                            });
-                        }
-
-                        return new CashShopStageChildWindow.ListOwnerState
-                        {
-                            PaneLabel = "CITC list",
-                            BrowseModeLabel = $"Sort {mtsStageWindow.ItcNormalItemSortType.ToString(CultureInfo.InvariantCulture)}",
-                            CategoryLabel = $"Category {mtsStageWindow.ItcNormalItemCategory.ToString(CultureInfo.InvariantCulture)}",
-                            FooterMessage = mtsStageWindow.ItcNormalItemLastSummary,
-                            SelectedEntryDetail = fallbackEntries.Count > 0 ? fallbackEntries[0].Detail : string.Empty,
-                            SelectedIndex = fallbackEntries.Count > 0 ? 0 : -1,
-                            ScrollOffset = 0,
-                            TotalCount = Math.Max(mtsStageWindow.ItcNormalItemEntryCount, fallbackEntries.Count),
-                            PlateFocusIndex = fallbackEntries.Count > 0 ? 0 : -1,
-                            HasKeyFocusCanvas = true,
-                            VisibleEntries = fallbackEntries,
-                            RecentPackets = mtsStageWindow.GetRecentPacketSummaries()
-                        };
-                    }
-
-                    List<CashShopStageChildWindow.ListOwnerEntryState> entries = new();
-                    for (int i = 0; i < snapshot.VisibleEntries.Count; i++)
-                    {
-                        AdminShopDialogUI.OwnerEntrySnapshot entry = snapshot.VisibleEntries[i];
-                        entries.Add(new CashShopStageChildWindow.ListOwnerEntryState
-                        {
-                            Title = entry.Title,
-                            Detail = entry.Detail,
-                            Seller = entry.Seller,
-                            PriceLabel = entry.PriceLabel,
-                            StateLabel = entry.StateLabel,
-                            IsSelected = entry.IsSelected
-                        });
-                    }
-
-                    return new CashShopStageChildWindow.ListOwnerState
-                    {
-                        PaneLabel = snapshot.PaneLabel,
-                        BrowseModeLabel = $"{snapshot.BrowseModeLabel} / Sort {mtsStageWindow.ItcNormalItemSortType.ToString(CultureInfo.InvariantCulture)}",
-                        CategoryLabel = $"{snapshot.CategoryLabel} / Cat {mtsStageWindow.ItcNormalItemCategory.ToString(CultureInfo.InvariantCulture)}",
-                        FooterMessage = string.IsNullOrWhiteSpace(snapshot.FooterMessage)
-                            ? mtsStageWindow.ItcNormalItemLastSummary
-                            : $"{snapshot.FooterMessage} {mtsStageWindow.ItcNormalItemLastSummary}",
-                        SelectedEntryDetail = snapshot.VisibleEntries.FirstOrDefault(entry => entry.IsSelected)?.Detail ?? string.Empty,
-                        SelectedIndex = snapshot.SelectedIndex,
-                        ScrollOffset = snapshot.ScrollOffset,
-                        TotalCount = snapshot.TotalCount,
-                        PlateFocusIndex = snapshot.SelectedIndex >= 0 ? snapshot.SelectedIndex - snapshot.ScrollOffset : -1,
-                        HasKeyFocusCanvas = true,
-                        VisibleEntries = entries,
-                        RecentPackets = mtsStageWindow.GetRecentPacketSummaries()
-                    };
-                });
+                listWindow.SetListStateProvider(() => BuildItcListOwnerState(mtsWindow, mtsStageWindow));
             }
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.ItcStatus) is CashShopStageChildWindow statusWindow)
@@ -552,6 +521,93 @@ namespace HaCreator.MapSimulator
             }
 
             return lines;
+        }
+
+        private CashShopStageChildWindow.ListOwnerState BuildItcListOwnerState(AdminShopDialogUI mtsWindow, CashServiceStageWindow mtsStageWindow)
+        {
+            AdminShopDialogUI.ListOwnerSnapshot snapshot = mtsWindow?.GetListOwnerSnapshot();
+            IReadOnlyList<string> recentPackets = mtsStageWindow?.GetRecentPacketSummaries() ?? Array.Empty<string>();
+            if (snapshot == null || (snapshot.TotalCount <= 0 && mtsStageWindow?.ItcPacketCatalogEntries.Count > 0))
+            {
+                List<CashShopStageChildWindow.ListOwnerEntryState> packetEntries = BuildPacketEntryStates(mtsStageWindow?.ItcPacketCatalogEntries);
+                int sortType = mtsStageWindow?.ItcNormalItemSortType ?? 0;
+                int category = mtsStageWindow?.ItcNormalItemCategory ?? 0;
+                int subCategory = mtsStageWindow?.ItcNormalItemSubCategory ?? 0;
+                int totalCount = mtsStageWindow?.ItcCurrentCategoryItemCount ?? 0;
+                return new CashShopStageChildWindow.ListOwnerState
+                {
+                    PaneLabel = "CITC packet list",
+                    BrowseModeLabel = $"Sort {sortType.ToString(CultureInfo.InvariantCulture)}",
+                    CategoryLabel = $"Category {category.ToString(CultureInfo.InvariantCulture)}/{subCategory.ToString(CultureInfo.InvariantCulture)}",
+                    FooterMessage = mtsStageWindow?.ItcNormalItemLastSummary ?? "CITC packet list unavailable.",
+                    SelectedEntryDetail = packetEntries.FirstOrDefault()?.Detail ?? string.Empty,
+                    SelectedIndex = packetEntries.Count > 0 ? 0 : -1,
+                    ScrollOffset = 0,
+                    TotalCount = Math.Max(totalCount, packetEntries.Count),
+                    PlateFocusIndex = packetEntries.Count > 0 ? 0 : -1,
+                    HasKeyFocusCanvas = true,
+                    VisibleEntries = packetEntries,
+                    RecentPackets = recentPackets
+                };
+            }
+
+            List<CashShopStageChildWindow.ListOwnerEntryState> entries = new();
+            for (int i = 0; i < snapshot.VisibleEntries.Count; i++)
+            {
+                AdminShopDialogUI.OwnerEntrySnapshot entry = snapshot.VisibleEntries[i];
+                entries.Add(new CashShopStageChildWindow.ListOwnerEntryState
+                {
+                    Title = entry.Title,
+                    Detail = entry.Detail,
+                    Seller = entry.Seller,
+                    PriceLabel = entry.PriceLabel,
+                    StateLabel = entry.StateLabel,
+                    IsSelected = entry.IsSelected
+                });
+            }
+
+            return new CashShopStageChildWindow.ListOwnerState
+            {
+                PaneLabel = snapshot.PaneLabel,
+                BrowseModeLabel = $"{snapshot.BrowseModeLabel} / Sort {mtsStageWindow.ItcNormalItemSortType.ToString(CultureInfo.InvariantCulture)}",
+                CategoryLabel = $"{snapshot.CategoryLabel} / Cat {mtsStageWindow.ItcNormalItemCategory.ToString(CultureInfo.InvariantCulture)}",
+                FooterMessage = string.IsNullOrWhiteSpace(snapshot.FooterMessage)
+                    ? mtsStageWindow.ItcNormalItemLastSummary
+                    : $"{snapshot.FooterMessage} {mtsStageWindow.ItcNormalItemLastSummary}",
+                SelectedEntryDetail = snapshot.VisibleEntries.FirstOrDefault(entry => entry.IsSelected)?.Detail ?? string.Empty,
+                SelectedIndex = snapshot.SelectedIndex,
+                ScrollOffset = snapshot.ScrollOffset,
+                TotalCount = snapshot.TotalCount,
+                PlateFocusIndex = snapshot.SelectedIndex >= 0 ? snapshot.SelectedIndex - snapshot.ScrollOffset : -1,
+                HasKeyFocusCanvas = true,
+                VisibleEntries = entries,
+                RecentPackets = recentPackets
+            };
+        }
+
+        private static List<CashShopStageChildWindow.ListOwnerEntryState> BuildPacketEntryStates(IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> entries)
+        {
+            List<CashShopStageChildWindow.ListOwnerEntryState> result = new();
+            if (entries == null)
+            {
+                return result;
+            }
+
+            for (int i = 0; i < entries.Count && i < 5; i++)
+            {
+                CashServiceStageWindow.PacketCatalogEntry entry = entries[i];
+                result.Add(new CashShopStageChildWindow.ListOwnerEntryState
+                {
+                    Title = entry.Title,
+                    Detail = entry.Detail,
+                    Seller = entry.Seller,
+                    PriceLabel = entry.PriceLabel,
+                    StateLabel = entry.StateLabel,
+                    IsSelected = i == 0
+                });
+            }
+
+            return result;
         }
 
         private IReadOnlyList<string> BuildItcStatusOwnerLines()

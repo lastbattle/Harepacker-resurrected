@@ -878,6 +878,61 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class PacketOwnedStoreBankDialogRuntime
     {
+        private sealed class StoreBankEquipData
+        {
+            internal short RemainingUpgradeCount { get; init; }
+            internal byte UpgradeCount { get; init; }
+            internal short Strength { get; init; }
+            internal short Dexterity { get; init; }
+            internal short Intelligence { get; init; }
+            internal short Luck { get; init; }
+            internal short Hp { get; init; }
+            internal short Mp { get; init; }
+            internal short WeaponAttack { get; init; }
+            internal short MagicAttack { get; init; }
+            internal short WeaponDefense { get; init; }
+            internal short MagicDefense { get; init; }
+            internal short Accuracy { get; init; }
+            internal short Avoidability { get; init; }
+            internal short Hands { get; init; }
+            internal short Speed { get; init; }
+            internal short Jump { get; init; }
+            internal short Attribute { get; init; }
+            internal byte LevelUpType { get; init; }
+            internal byte Level { get; init; }
+            internal int Experience { get; init; }
+            internal int Durability { get; init; }
+            internal int ItemUpgradeCount { get; init; }
+            internal byte Grade { get; init; }
+            internal byte BonusUpgradeCount { get; init; }
+            internal short Option1 { get; init; }
+            internal short Option2 { get; init; }
+            internal short Option3 { get; init; }
+            internal short Socket1 { get; init; }
+            internal short Socket2 { get; init; }
+            internal long? NonCashSerialNumber { get; init; }
+            internal long ExpirationTime { get; init; }
+            internal int IucOrExp { get; init; }
+        }
+
+        private sealed class StoreBankBundleData
+        {
+            internal short Attribute { get; init; }
+            internal long RechargeableSerialNumber { get; init; }
+        }
+
+        private sealed class StoreBankPetData
+        {
+            internal byte Level { get; init; }
+            internal short Closeness { get; init; }
+            internal byte Fullness { get; init; }
+            internal long ExpirationTime { get; init; }
+            internal short Attribute { get; init; }
+            internal ushort Skill { get; init; }
+            internal int RemainingLife { get; init; }
+            internal short Fatigue { get; init; }
+        }
+
         private sealed class StoreBankItemEntry
         {
             internal int ItemId { get; init; }
@@ -891,6 +946,9 @@ namespace HaCreator.MapSimulator.Interaction
             internal long CashSerialNumber { get; init; }
             internal bool IsRechargeBundle { get; init; }
             internal string MetadataSummary { get; init; } = string.Empty;
+            internal StoreBankEquipData EquipData { get; init; }
+            internal StoreBankBundleData BundleData { get; init; }
+            internal StoreBankPetData PetData { get; init; }
         }
 
         private readonly struct StoreInventoryGroup

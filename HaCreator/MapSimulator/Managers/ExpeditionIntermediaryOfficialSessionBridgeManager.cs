@@ -310,6 +310,55 @@ namespace HaCreator.MapSimulator.Managers
             return "Cleared captured expedition outbound client packet history.";
         }
 
+        public bool TryReplayRecentOutboundPacket(int historyIndexFromNewest, out string status)
+        {
+            if (historyIndexFromNewest <= 0)
+            {
+                status = "Expedition intermediary replay index must be 1 or greater.";
+                LastStatus = status;
+                return false;
+            }
+
+            RecentOutboundPacket packet;
+            lock (_sync)
+            {
+                if (_recentOutboundPackets.Count == 0)
+                {
+                    status = "No captured expedition outbound client packets are available to replay.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                if (historyIndexFromNewest > _recentOutboundPackets.Count)
+                {
+                    status = $"Expedition intermediary replay index {historyIndexFromNewest} exceeds the {_recentOutboundPackets.Count} captured outbound packet(s).";
+                    LastStatus = status;
+                    return false;
+                }
+
+                packet = _recentOutboundPackets[^historyIndexFromNewest];
+            }
+
+            if (string.IsNullOrWhiteSpace(packet.RawPacketHex))
+            {
+                status = $"Captured expedition outbound packet {historyIndexFromNewest} has no raw payload to replay.";
+                LastStatus = status;
+                return false;
+            }
+
+            try
+            {
+                byte[] rawPacket = Convert.FromHexString(packet.RawPacketHex);
+                return TrySendRawPacket(rawPacket, out status);
+            }
+            catch (FormatException ex)
+            {
+                status = $"Captured expedition outbound packet {historyIndexFromNewest} could not be replayed: {ex.Message}";
+                LastStatus = status;
+                return false;
+            }
+        }
+
         public void Dispose()
         {
             lock (_sync)

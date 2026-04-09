@@ -258,11 +258,18 @@ namespace HaCreator.MapSimulator.Pools
             Vector2 summonPosition,
             MobAnimationSet.AttackInfoMetadata attackInfo,
             bool facingRight,
-            Random random)
+            Random random,
+            int hitFrameIndex = 0)
         {
-            if (attackInfo?.HitAttach == true)
+            bool hitAttach = attackInfo?.ResolveHitAttach(hitFrameIndex) == true;
+            bool facingAttach = attackInfo?.ResolveFacingAttach(hitFrameIndex) == true;
+            if (hitAttach)
             {
-                return summonPosition + ResolvePacketOwnedAttachedHitOffset(attackInfo, facingRight);
+                return ResolvePacketOwnedAttachedHitPosition(
+                    summonPosition,
+                    ResolvePacketOwnedAuthoredHitOffset(attackInfo),
+                    facingAttach,
+                    facingRight);
             }
 
             if (!hitbox.IsEmpty)
@@ -274,10 +281,24 @@ namespace HaCreator.MapSimulator.Pools
 
             if (attackInfo?.HasRangeOrigin == true)
             {
-                return summonPosition + ResolvePacketOwnedAttachedHitOffset(attackInfo, facingRight);
+                return ResolvePacketOwnedAttachedHitPosition(
+                    summonPosition,
+                    ResolvePacketOwnedAuthoredHitOffset(attackInfo),
+                    facingAttach,
+                    facingRight);
             }
 
             return summonPosition;
+        }
+
+        internal static Vector2 ResolvePacketOwnedAuthoredHitOffset(MobAnimationSet.AttackInfoMetadata attackInfo)
+        {
+            if (attackInfo?.HasRangeOrigin != true)
+            {
+                return Vector2.Zero;
+            }
+
+            return new Vector2(attackInfo.RangeOrigin.X, attackInfo.RangeOrigin.Y);
         }
 
         internal static Vector2 ResolvePacketOwnedAttachedHitPosition(
@@ -340,24 +361,6 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return skillData.Projectile?.Animation?.Frames.Count > 0;
-        }
-
-        private static Vector2 ResolvePacketOwnedAttachedHitOffset(
-            MobAnimationSet.AttackInfoMetadata attackInfo,
-            bool facingRight)
-        {
-            if (attackInfo?.HasRangeOrigin != true)
-            {
-                return Vector2.Zero;
-            }
-
-            int offsetX = attackInfo.RangeOrigin.X;
-            if (attackInfo.FacingAttach && !facingRight)
-            {
-                offsetX = -offsetX;
-            }
-
-            return new Vector2(offsetX, attackInfo.RangeOrigin.Y);
         }
 
         private static bool IsSpawnAnimationActive(ActiveSummon summon, int currentTime)

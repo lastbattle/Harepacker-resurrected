@@ -41,7 +41,6 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<string, EmployeeTemplateProfile> _cashProfileCache = new(StringComparer.Ordinal);
         private readonly Dictionary<int, EmployeeActionCatalog> _cashActionCatalogCache = new();
         private readonly Dictionary<(int TemplateId, int ActionIndex), List<IDXObject>> _cashActionCache = new();
-        private readonly Dictionary<string, int> _actionCursorByActorKey = new(StringComparer.Ordinal);
         private readonly ConcurrentBag<WzObject> _usedProps = new();
         private readonly Random _random = new();
         private MiniRoomBalloonAssets _miniRoomBalloonAssets;
@@ -51,6 +50,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string _activeActorKey = string.Empty;
         private string _lastStateKey = string.Empty;
         private string _currentIdleAction = AnimationKeys.Stand;
+        private bool? _currentAutoFlip;
         private int _idleActionRemainingMs;
         private int _temporaryActionRemainingMs;
 
@@ -63,6 +63,7 @@ namespace HaCreator.MapSimulator.Interaction
             _activeActorKey = string.Empty;
             _lastStateKey = string.Empty;
             _currentIdleAction = AnimationKeys.Stand;
+            _currentAutoFlip = null;
             _idleActionRemainingMs = 0;
             _temporaryActionRemainingMs = 0;
         }
@@ -312,7 +313,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             actor.SetRenderPositionOverride(actorX, actorY);
-            actor.NpcInstance.Flip = snapshot.Flip ?? ResolveDefaultFlip(player, actorX);
+            actor.NpcInstance.Flip = ResolveActorFlip(snapshot, player, actorX);
         }
 
         private void AdvanceActionState(
@@ -331,7 +332,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (stateChanged)
             {
                 _lastStateKey = snapshot.StateKey ?? string.Empty;
-                TriggerStateAction(actorKey, actor, profile);
+                TriggerStateAction(actorKey, actor, snapshot, profile);
                 ResetIdleSelection(actorKey, actor, snapshot, profile, preferContextualAction: true);
             }
 
@@ -351,7 +352,11 @@ namespace HaCreator.MapSimulator.Interaction
             ResetIdleSelection(actorKey, actor, snapshot, profile, preferContextualAction: false);
         }
 
-        private void TriggerStateAction(string actorKey, NpcItem actor, EmployeeTemplateProfile profile)
+        private void TriggerStateAction(
+            string actorKey,
+            NpcItem actor,
+            SocialRoomFieldActorSnapshot snapshot,
+            EmployeeTemplateProfile profile)
         {
             string speakAction = ResolveNextAvailableAction(actorKey, actor, profile.SpeakActions);
             if (string.IsNullOrWhiteSpace(speakAction))
@@ -359,6 +364,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
+            RefreshAutoFacing(snapshot);
             actor.SetTemporaryAction(speakAction, profile.SpeakDurationMs);
             _temporaryActionRemainingMs = ResolveActionDurationMs(actor, speakAction, profile.SpeakDurationMs);
         }
@@ -380,6 +386,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             _currentIdleAction = nextIdleAction;
             _idleActionRemainingMs = ResolveActionDurationMs(actor, _currentIdleAction, profile.MinIdleDurationMs);
+
+            if (_temporaryActionRemainingMs <= 0)
+            {
+                RefreshAutoFacing(snapshot);
+            }
 
             actor.SetAction(_currentIdleAction);
         }
@@ -461,20 +472,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return actor.HasAction(AnimationKeys.Stand) ? AnimationKeys.Stand : null;
             }
 
-            int startIndex = 0;
-            if (!string.IsNullOrWhiteSpace(actorKey)
-                && _actionCursorByActorKey.TryGetValue(actorKey, out int cursor))
-            {
-                startIndex = Math.Clamp(cursor, 0, availableActions.Count - 1);
-            }
-
-            string selectedAction = availableActions[startIndex];
-            if (!string.IsNullOrWhiteSpace(actorKey))
-            {
-                _actionCursorByActorKey[actorKey] = (startIndex + 1) % availableActions.Count;
-            }
-
-            return selectedAction;
+            return availableActions[_random.Next(availableActions.Count)];
         }
 
         private EmployeeTemplateProfile ResolveProfile(SocialRoomFieldActorSnapshot snapshot)
@@ -630,6 +628,33 @@ namespace HaCreator.MapSimulator.Interaction
         private static int GetFrameOrder(WzImageProperty property)
         {
             return int.TryParse(property?.Name, out int index) ? index : int.MaxValue;
+        }
+
+        private void RefreshAutoFacing(SocialRoomFieldActorSnapshot snapshot)
+        {
+            if (snapshot?.Flip.HasValue == true)
+            {
+                _currentAutoFlip = snapshot.Flip.Value;
+                return;
+            }
+
+            _currentAutoFlip = _random.Next(2) == 0;
+        }
+
+        private bool ResolveActorFlip(SocialRoomFieldActorSnapshot snapshot, PlayerCharacter player, int actorX)
+        {
+            if (snapshot?.Flip.HasValue == true)
+            {
+                _currentAutoFlip = snapshot.Flip.Value;
+                return snapshot.Flip.Value;
+            }
+
+            if (!_currentAutoFlip.HasValue)
+            {
+                _currentAutoFlip = ResolveDefaultFlip(player, actorX);
+            }
+
+            return _currentAutoFlip.Value;
         }
 
         private static bool ResolveDefaultFlip(PlayerCharacter player, int actorX)

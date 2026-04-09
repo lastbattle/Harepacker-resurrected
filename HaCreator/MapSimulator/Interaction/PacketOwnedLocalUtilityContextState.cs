@@ -17,6 +17,12 @@ namespace HaCreator.MapSimulator.Interaction
         public int LastChairCorrectionRequestOpcode { get; private set; } = -1;
         public ushort LastChairCorrectionSeatToken { get; private set; }
         public byte[] LastChairCorrectionPayload { get; private set; } = Array.Empty<byte>();
+        public int LastEmotionChangeRequestTick { get; private set; } = int.MinValue;
+        public int LastEmotionChangeRequestOpcode { get; private set; } = -1;
+        public int LastEmotionChangeEmotionId { get; private set; }
+        public int LastEmotionChangeDurationMs { get; private set; }
+        public bool LastEmotionChangeByItemOption { get; private set; }
+        public byte[] LastEmotionChangePayload { get; private set; } = Array.Empty<byte>();
         public bool PetConsumeExclusiveRequestSent { get; private set; }
         public int LastPetConsumeRequestTick { get; private set; } = int.MinValue;
         public int LastPetConsumeRequestOpcode { get; private set; } = -1;
@@ -29,6 +35,11 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly int[] _petConsumeExclusiveRequestTicks = CreatePetConsumeExclusiveRequestTicks();
         public bool HasRadioCreateLayerLeftContextValue { get; private set; }
         public bool RadioCreateLayerLeftContextValue { get; private set; }
+        public int RadioCreateLayerBoundCharacterId { get; private set; }
+        public int RadioCreateLayerLastObservedRuntimeCharacterId { get; private set; }
+        public int RadioCreateLayerMutationSequence { get; private set; }
+        public int RadioCreateLayerLastMutationTick { get; private set; } = int.MinValue;
+        public string RadioCreateLayerLastMutationSource { get; private set; } = "fallback";
         public bool HasPersistedApspState =>
             BoundCharacterId > 0
             || ApspReceiveContextToken > 0
@@ -61,6 +72,11 @@ namespace HaCreator.MapSimulator.Interaction
             ApspSendContextToken = 0;
             HasRadioCreateLayerLeftContextValue = false;
             RadioCreateLayerLeftContextValue = false;
+            RadioCreateLayerBoundCharacterId = 0;
+            RadioCreateLayerLastObservedRuntimeCharacterId = 0;
+            RadioCreateLayerMutationSequence = 0;
+            RadioCreateLayerLastMutationTick = int.MinValue;
+            RadioCreateLayerLastMutationSource = "fallback";
             ClearChairContext();
         }
 
@@ -197,16 +213,47 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Packet-owned local utility CWvsContext AP/SP tokens: recv={receiveToken} (+0x20B4), send={sendToken} (+0x2030), boundCharacter={boundCharacter}.{persistence}{divergence}{runtimeDetail}";
         }
 
-        public void SetRadioCreateLayerLeftContextValue(bool enabled)
+        public void ObserveRadioCreateLayerRuntimeCharacterId(int runtimeCharacterId)
         {
-            HasRadioCreateLayerLeftContextValue = true;
-            RadioCreateLayerLeftContextValue = enabled;
+            RadioCreateLayerLastObservedRuntimeCharacterId = NormalizeRuntimeCharacterId(runtimeCharacterId);
         }
 
-        public void ClearRadioCreateLayerLeftContextValue()
+        public void EnsureRadioCreateLayerInitializedFromRuntime(int runtimeCharacterId)
         {
+            int resolvedCharacterId = NormalizeRuntimeCharacterId(runtimeCharacterId);
+            ObserveRadioCreateLayerRuntimeCharacterId(resolvedCharacterId);
+            if (resolvedCharacterId > 0 && RadioCreateLayerBoundCharacterId <= 0)
+            {
+                RadioCreateLayerBoundCharacterId = resolvedCharacterId;
+            }
+        }
+
+        public void ResetRadioCreateLayerForCharacter(int runtimeCharacterId)
+        {
+            int resolvedCharacterId = NormalizeRuntimeCharacterId(runtimeCharacterId);
+            ObserveRadioCreateLayerRuntimeCharacterId(resolvedCharacterId);
+            RadioCreateLayerBoundCharacterId = resolvedCharacterId;
             HasRadioCreateLayerLeftContextValue = false;
             RadioCreateLayerLeftContextValue = false;
+            RecordRadioCreateLayerMutation("runtime-character-reset", int.MinValue, incrementSequence: true);
+        }
+
+        public void SetRadioCreateLayerLeftContextValue(bool enabled, string source, int currentTick, int runtimeCharacterId)
+        {
+            EnsureRadioCreateLayerInitializedFromRuntime(runtimeCharacterId);
+            bool changed = !HasRadioCreateLayerLeftContextValue || RadioCreateLayerLeftContextValue != enabled;
+            HasRadioCreateLayerLeftContextValue = true;
+            RadioCreateLayerLeftContextValue = enabled;
+            RecordRadioCreateLayerMutation(source, currentTick, incrementSequence: changed);
+        }
+
+        public void ClearRadioCreateLayerLeftContextValue(string source, int currentTick, int runtimeCharacterId)
+        {
+            EnsureRadioCreateLayerInitializedFromRuntime(runtimeCharacterId);
+            bool changed = HasRadioCreateLayerLeftContextValue;
+            HasRadioCreateLayerLeftContextValue = false;
+            RadioCreateLayerLeftContextValue = false;
+            RecordRadioCreateLayerMutation(source, currentTick, incrementSequence: changed);
         }
 
         public bool ResolveRadioCreateLayerLeftContextValue(bool fallback)
@@ -224,7 +271,19 @@ namespace HaCreator.MapSimulator.Interaction
             string source = HasRadioCreateLayerLeftContextValue
                 ? "packet-owned context state"
                 : "fallback";
-            return $"Packet-owned local utility CWvsContext[{contextSlot}] (radio bLeft): {value} via {source}.";
+            string boundCharacter = RadioCreateLayerBoundCharacterId > 0
+                ? RadioCreateLayerBoundCharacterId.ToString()
+                : "unset";
+            string runtimeCharacter = RadioCreateLayerLastObservedRuntimeCharacterId > 0
+                ? RadioCreateLayerLastObservedRuntimeCharacterId.ToString()
+                : "unset";
+            string mutationTick = RadioCreateLayerLastMutationTick == int.MinValue
+                ? "idle"
+                : RadioCreateLayerLastMutationTick.ToString();
+            return
+                $"Packet-owned local utility CWvsContext[{contextSlot}] (radio bLeft): {value} via {source}, " +
+                $"boundCharacter={boundCharacter}, runtimeCharacter={runtimeCharacter}, " +
+                $"mutationSeq={RadioCreateLayerMutationSequence}, lastMutation={RadioCreateLayerLastMutationSource}@{mutationTick}.";
         }
 
         public void ObserveChairSitResult(int currentTick)
@@ -329,6 +388,32 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        public bool TryEmitEmotionChangeRequest(int currentTick, int emotionId, bool byItemOption, int durationMs, out PacketOwnedLocalUtilityOutboundRequest request)
+        {
+            request = default!;
+            if (emotionId < 0 || emotionId > 0x17)
+            {
+                return false;
+            }
+
+            int elapsed = LastEmotionChangeRequestTick == int.MinValue
+                ? int.MaxValue
+                : unchecked(currentTick - LastEmotionChangeRequestTick);
+            if (elapsed < PacketOwnedLocalUtilityOutboundRequest.EmotionChangeThrottleMs)
+            {
+                return false;
+            }
+
+            LastEmotionChangeRequestTick = currentTick;
+            LastEmotionChangeRequestOpcode = PacketOwnedLocalUtilityOutboundRequest.EmotionChangeOpcode;
+            LastEmotionChangeEmotionId = emotionId;
+            LastEmotionChangeDurationMs = durationMs;
+            LastEmotionChangeByItemOption = byItemOption;
+            LastEmotionChangePayload = PacketOwnedLocalUtilityOutboundRequest.CreateEmotionChangePayload(emotionId, byItemOption, durationMs);
+            request = PacketOwnedLocalUtilityOutboundRequest.CreateEmotionChange(emotionId, byItemOption, durationMs);
+            return true;
+        }
+
         public string DescribeChairContext(int currentTick, bool chairSecureSit)
         {
             string secureText = chairSecureSit.ToString().ToLowerInvariant();
@@ -345,6 +430,18 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Chair sit secure={secureText}, CWvsContext chair exclSent={exclusiveSentText} (+0x20B8), sit-result age={sitResultAge}, exclTick age={exclusiveTickAge} (+0x20BC), correction outpacket={correctionText}.";
         }
 
+        public string DescribeEmotionContext(int currentTick)
+        {
+            if (LastEmotionChangeRequestTick == int.MinValue || LastEmotionChangeRequestOpcode < 0)
+            {
+                return "Emotion change outpacket=idle.";
+            }
+
+            string age = $"{Math.Max(0, unchecked(currentTick - LastEmotionChangeRequestTick))} ms";
+            string byItemOption = LastEmotionChangeByItemOption ? "1" : "0";
+            return $"Emotion change outpacket={LastEmotionChangeRequestOpcode}[{BitConverter.ToString(LastEmotionChangePayload).Replace("-", string.Empty)}] emotion={LastEmotionChangeEmotionId} duration={LastEmotionChangeDurationMs} byItemOption={byItemOption} age={age}.";
+        }
+
         private void ClearChairContext()
         {
             ChairExclusiveRequestSent = false;
@@ -354,6 +451,12 @@ namespace HaCreator.MapSimulator.Interaction
             LastChairCorrectionRequestOpcode = -1;
             LastChairCorrectionSeatToken = 0;
             LastChairCorrectionPayload = Array.Empty<byte>();
+            LastEmotionChangeRequestTick = int.MinValue;
+            LastEmotionChangeRequestOpcode = -1;
+            LastEmotionChangeEmotionId = 0;
+            LastEmotionChangeDurationMs = 0;
+            LastEmotionChangeByItemOption = false;
+            LastEmotionChangePayload = Array.Empty<byte>();
             PetConsumeExclusiveRequestSent = false;
             LastPetConsumeRequestTick = int.MinValue;
             LastPetConsumeRequestOpcode = -1;
@@ -381,6 +484,19 @@ namespace HaCreator.MapSimulator.Interaction
             return contextToken > 0 ? contextToken : NormalizeCharacterId(fallbackCharacterId);
         }
 
+        private void RecordRadioCreateLayerMutation(string source, int currentTick, bool incrementSequence)
+        {
+            if (incrementSequence)
+            {
+                RadioCreateLayerMutationSequence++;
+            }
+
+            RadioCreateLayerLastMutationSource = string.IsNullOrWhiteSpace(source)
+                ? "unknown"
+                : source.Trim();
+            RadioCreateLayerLastMutationTick = currentTick;
+        }
+
         private static int[] CreatePetConsumeExclusiveRequestTicks()
         {
             int[] ticks = new int[3];
@@ -396,6 +512,8 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public const int ChairGetUpOpcode = 45;
         public const ushort ChairGetUpSeatToken = 0xFFFF;
+        public const int EmotionChangeOpcode = 56;
+        public const int EmotionChangeThrottleMs = 2000;
         public const int PetItemUseRequestOpcode = 203;
         public const int PetItemUseRequestThrottleMs = 200;
 
@@ -414,6 +532,23 @@ namespace HaCreator.MapSimulator.Interaction
                 0xFF,
                 0xFF
             };
+        }
+
+        public static PacketOwnedLocalUtilityOutboundRequest CreateEmotionChange(int emotionId, bool byItemOption, int durationMs)
+        {
+            return new PacketOwnedLocalUtilityOutboundRequest(
+                EmotionChangeOpcode,
+                0,
+                Array.AsReadOnly(CreateEmotionChangePayload(emotionId, byItemOption, durationMs)));
+        }
+
+        public static byte[] CreateEmotionChangePayload(int emotionId, bool byItemOption, int durationMs)
+        {
+            byte[] payload = new byte[9];
+            Buffer.BlockCopy(BitConverter.GetBytes(emotionId), 0, payload, 0, sizeof(int));
+            Buffer.BlockCopy(BitConverter.GetBytes(durationMs), 0, payload, 4, sizeof(int));
+            payload[8] = byItemOption ? (byte)1 : (byte)0;
+            return payload;
         }
 
         public static PacketOwnedLocalUtilityOutboundRequest CreatePetItemUseRequest(

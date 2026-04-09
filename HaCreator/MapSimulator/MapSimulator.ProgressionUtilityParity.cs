@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using System;
 using System.Collections.Generic;
@@ -227,50 +228,61 @@ namespace HaCreator.MapSimulator
             }
 
             string loginStatus = _loginRuntime.LastEventSummary;
-            entries.Add(new EventEntrySnapshot
+            bool shouldSurfaceLoginBootstrap = _loginRuntime.LastPacketType.HasValue
+                && (!_loginRuntime.HasWorldInformation || _loginRuntime.CurrentStep != LoginStep.EnteringField);
+            if (shouldSurfaceLoginBootstrap)
             {
-                Title = "Login Bootstrap Feed",
-                Detail = $"{_loginRuntime.CurrentStep} step. {loginStatus}",
-                StatusText = _loginRuntime.HasWorldInformation ? "Clear" : (_loginRuntime.LastPacketType.HasValue ? "Running" : "Start"),
-                Status = _loginRuntime.HasWorldInformation ? EventEntryStatus.Clear : (_loginRuntime.LastPacketType.HasValue ? EventEntryStatus.InProgress : EventEntryStatus.Start),
-                ScheduledAt = DateTime.Today,
-                SortOrder = nextSortOrder++
-            });
+                entries.Add(new EventEntrySnapshot
+                {
+                    Title = "Login Bootstrap Feed",
+                    Detail = $"{_loginRuntime.CurrentStep} step. {loginStatus}",
+                    StatusText = _loginRuntime.HasWorldInformation ? "Clear" : "Running",
+                    Status = _loginRuntime.HasWorldInformation ? EventEntryStatus.Clear : EventEntryStatus.InProgress,
+                    ScheduledAt = DateTime.Today,
+                    SortOrder = nextSortOrder++
+                });
+            }
 
             string packetFieldState = _packetFieldStateRuntime.DescribeStatus(currentTick);
-            entries.Add(new EventEntrySnapshot
+            if (!IsIdleEventOwnerStatus(packetFieldState))
             {
-                Title = "Packet Field State",
-                Detail = packetFieldState,
-                StatusText = packetFieldState.Contains("idle", StringComparison.OrdinalIgnoreCase) ? "Start" : "Running",
-                Status = packetFieldState.Contains("idle", StringComparison.OrdinalIgnoreCase) ? EventEntryStatus.Start : EventEntryStatus.InProgress,
-                ScheduledAt = DateTime.Today,
-                SortOrder = nextSortOrder++
-            });
+                entries.Add(new EventEntrySnapshot
+                {
+                    Title = "Packet Field State",
+                    Detail = packetFieldState,
+                    StatusText = "Running",
+                    Status = EventEntryStatus.InProgress,
+                    ScheduledAt = DateTime.Today,
+                    SortOrder = nextSortOrder++
+                });
+            }
 
             string overlayStatus = DescribePacketOwnedFieldFadeAndBalloonStatus(currentTick);
-            entries.Add(new EventEntrySnapshot
+            if (!IsIdleEventOwnerStatus(overlayStatus))
             {
-                Title = "Local Overlay Feed",
-                Detail = overlayStatus,
-                StatusText = overlayStatus.Contains("idle", StringComparison.OrdinalIgnoreCase) ? "Start" : "Running",
-                Status = overlayStatus.Contains("idle", StringComparison.OrdinalIgnoreCase) ? EventEntryStatus.Start : EventEntryStatus.InProgress,
-                ScheduledAt = DateTime.Today,
-                SortOrder = nextSortOrder++
-            });
+                entries.Add(new EventEntrySnapshot
+                {
+                    Title = "Local Overlay Feed",
+                    Detail = overlayStatus,
+                    StatusText = "Running",
+                    Status = EventEntryStatus.InProgress,
+                    ScheduledAt = DateTime.Today,
+                    SortOrder = nextSortOrder++
+                });
+            }
 
-            string guideDetail = _packetQuestGuideQuestId > 0
-                ? $"Quest #{_packetQuestGuideQuestId} is keeping packet-authored world-map targets alive."
-                : "No packet-authored quest-guide target is currently active.";
-            entries.Add(new EventEntrySnapshot
+            if (_packetQuestGuideQuestId > 0)
             {
-                Title = "Quest Guide Routing",
-                Detail = guideDetail,
-                StatusText = _packetQuestGuideQuestId > 0 ? "Running" : "Start",
-                Status = _packetQuestGuideQuestId > 0 ? EventEntryStatus.InProgress : EventEntryStatus.Start,
-                ScheduledAt = DateTime.Today,
-                SortOrder = nextSortOrder++
-            });
+                entries.Add(new EventEntrySnapshot
+                {
+                    Title = "Quest Guide Routing",
+                    Detail = $"Quest #{_packetQuestGuideQuestId} is keeping packet-authored world-map targets alive.",
+                    StatusText = "Running",
+                    Status = EventEntryStatus.InProgress,
+                    ScheduledAt = DateTime.Today,
+                    SortOrder = nextSortOrder++
+                });
+            }
 
             if (_lastDeliveryQuestId > 0)
             {
@@ -470,6 +482,11 @@ namespace HaCreator.MapSimulator
                 entries.Add(CreatePacketOwnedEventEntry("Notice Alarm", _lastPacketOwnedNoticeMessage, EventEntryStatus.Clear, "Clear", _lastPacketOwnedNoticeTick));
             }
 
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedChatMessage))
+            {
+                entries.Add(CreatePacketOwnedEventEntry("Chat Alarm", _lastPacketOwnedChatMessage, EventEntryStatus.Clear, "Clear", _lastPacketOwnedChatTick));
+            }
+
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedBuffzoneMessage))
             {
                 entries.Add(CreatePacketOwnedEventEntry("Buffzone Alarm", _lastPacketOwnedBuffzoneMessage, EventEntryStatus.InProgress, "Running", _lastPacketOwnedBuffzoneTick));
@@ -554,6 +571,11 @@ namespace HaCreator.MapSimulator
                 candidates.Add(($"Notice: {TruncatePacketOwnedUtilityText(_lastPacketOwnedNoticeMessage, 64)}", _lastPacketOwnedNoticeTick, true));
             }
 
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedChatMessage))
+            {
+                candidates.Add(($"Chat: {TruncatePacketOwnedUtilityText(_lastPacketOwnedChatMessage, 64)}", _lastPacketOwnedChatTick, false));
+            }
+
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedBuffzoneMessage))
             {
                 candidates.Add(($"Buff zone: {TruncatePacketOwnedUtilityText(_lastPacketOwnedBuffzoneMessage, 60)}", _lastPacketOwnedBuffzoneTick, false));
@@ -627,6 +649,12 @@ namespace HaCreator.MapSimulator
 
             int age = unchecked(currentTick - sourceTick);
             return age < 0 ? 0 : age;
+        }
+
+        private static bool IsIdleEventOwnerStatus(string statusText)
+        {
+            return string.IsNullOrWhiteSpace(statusText)
+                || statusText.Contains("idle", StringComparison.OrdinalIgnoreCase);
         }
 
         private static EventAlarmLineSnapshot CreateEventAlarmLine(string text, int index, bool highlight = false)

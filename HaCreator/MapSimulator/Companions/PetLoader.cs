@@ -84,35 +84,18 @@ namespace HaCreator.MapSimulator.Companions
             "dung"
         };
 
-        private static readonly IReadOnlyDictionary<string, string[]> ActionLookupCandidates =
-            new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["stand0"] = new[] { "stand0", "stand", "stand1" },
-                ["stand1"] = new[] { "stand1", "stand0", "stand" },
-                ["move"] = new[] { "move", "walk" },
-                ["jump"] = new[] { "jump", "fly" },
-                ["hang"] = new[] { "hang" },
-                ["fly"] = new[] { "fly", "jump" },
-                ["rest0"] = new[] { "rest0", "rest", "nap" },
-                ["chat"] = new[] { "chat", "say", "speak" },
-                ["angry"] = new[] { "angry", "no", "tedious" },
-                ["cry"] = new[] { "cry", "stunned", "no" },
-                ["alert"] = new[] { "alert", "hand" },
-                ["stretch"] = new[] { "stretch", "love" },
-                ["prone"] = new[] { "prone", "nap", "rest0" },
-                ["hungry"] = new[] { "hungry" },
-                ["poor"] = new[] { "poor", "dung" },
-                ["rise"] = new[] { "rise" },
-                ["dung"] = new[] { "dung", "poor" }
-            };
-
         private static readonly string[] RandomIdleActionCandidates =
         {
             "chat",
+            "say",
             "alert",
+            "hand",
             "stretch",
+            "love",
             "prone",
-            "rest0"
+            "nap",
+            "rest0",
+            "rest"
         };
 
         private static readonly IReadOnlyDictionary<PetAutoSpeechEvent, string> StructuredEventPropertyNames =
@@ -214,6 +197,7 @@ namespace HaCreator.MapSimulator.Companions
                 animations.AddAnimation(PetDefinition.ClientMultiPetHangActionName, clientMultiPetHangFrames);
             }
 
+            animations.AddMissingAliasAnimations();
             _animationSetCache[cacheKey] = animations;
             return animations;
         }
@@ -657,14 +641,14 @@ namespace HaCreator.MapSimulator.Companions
                 yield break;
             }
 
-            if (ActionLookupCandidates.TryGetValue(requestedAction, out string[] candidates))
+            bool yielded = false;
+            foreach (string candidate in PetActionAliases.EnumerateCandidates(requestedAction))
             {
-                for (int i = 0; i < candidates.Length; i++)
-                {
-                    yield return candidates[i];
-                }
+                yielded = true;
+                yield return candidate;
             }
-            else
+
+            if (!yielded)
             {
                 yield return requestedAction;
             }

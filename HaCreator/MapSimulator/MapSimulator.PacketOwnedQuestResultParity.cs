@@ -317,6 +317,7 @@ namespace HaCreator.MapSimulator
             _npcInteractionOverlay.Open(new NpcInteractionState
             {
                 NpcName = npcName,
+                SpeakerTemplateId = speakerNpcId,
                 SelectedEntryId = presentation.QuestId,
                 Entries = new[]
                 {

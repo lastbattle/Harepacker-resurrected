@@ -64,6 +64,10 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, string> _miniRoomAvatarKeys = new Dictionary<int, string>();
         private readonly Dictionary<EntrustedShopChildDialogKind, EntrustedChildDialogVisual> _entrustedChildDialogVisuals = new Dictionary<EntrustedShopChildDialogKind, EntrustedChildDialogVisual>();
         private SpriteFont _font;
+        private UIObject _tradingRoomTradeButton;
+        private UIObject _tradingRoomResetButton;
+        private UIObject _tradingRoomCoinButton;
+        private UIObject _tradingRoomAcceptButton;
         private Texture2D[] _miniRoomOmokBlackStoneFrames = Array.Empty<Texture2D>();
         private Texture2D[] _miniRoomOmokWhiteStoneFrames = Array.Empty<Texture2D>();
         private Texture2D _miniRoomOmokLastBlackStoneTexture;
@@ -215,7 +219,21 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (_runtime.Kind == SocialRoomKind.TradingRoom)
+            {
+                DrawTradingRoomContents(sprite);
+                return;
+            }
+
             DrawDefaultContents(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
+        }
+
+        public void RegisterTradingRoomButtons(UIObject tradeButton, UIObject resetButton, UIObject coinButton, UIObject acceptButton)
+        {
+            _tradingRoomTradeButton = tradeButton;
+            _tradingRoomResetButton = resetButton;
+            _tradingRoomCoinButton = coinButton;
+            _tradingRoomAcceptButton = acceptButton;
         }
 
         private void DrawMiniRoomContents(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, int tickCount)
@@ -600,6 +618,135 @@ namespace HaCreator.MapSimulator.UI
                 0.55f);
 
             DrawEntrustedChildDialog(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, _runtime.GetEntrustedChildDialogSnapshot());
+        }
+
+        private void DrawTradingRoomContents(SpriteBatch sprite)
+        {
+            UpdateTradingRoomButtons();
+
+            Rectangle remoteOfferPanel = new Rectangle(Position.X + 11, Position.Y + 150, 113, 109);
+            Rectangle localOfferPanel = new Rectangle(Position.X + 150, Position.Y + 150, 113, 109);
+            Rectangle statePanel = new Rectangle(Position.X + 279, Position.Y + 116, 226, 143);
+            Rectangle inventoryPanel = new Rectangle(Position.X + 278, Position.Y + 270, 228, 150);
+            Rectangle statusPanel = new Rectangle(Position.X + 16, Position.Y + 274, 247, 146);
+
+            DrawPanel(sprite, remoteOfferPanel);
+            DrawPanel(sprite, localOfferPanel);
+            DrawPanel(sprite, statePanel);
+            DrawPanel(sprite, inventoryPanel);
+            DrawPanel(sprite, statusPanel);
+
+            DrawCenteredText(sprite, _runtime.OwnerName, Position.X + 218, Position.Y + 123, HeaderColor, 0.56f);
+            DrawCenteredText(sprite, _runtime.RemoteTraderName, Position.X + 55, Position.Y + 123, HeaderColor, 0.56f);
+            DrawRightAlignedText(sprite, $"{_runtime.TradeLocalOfferMeso:N0}", Position.X + 262, Position.Y + 263, AccentColor, 0.58f);
+            DrawRightAlignedText(sprite, $"{_runtime.TradeRemoteOfferMeso:N0}", Position.X + 124, Position.Y + 263, AccentColor, 0.58f);
+
+            DrawTradeOfferSummary(sprite, remoteOfferPanel, isLocalParty: false);
+            DrawTradeOfferSummary(sprite, localOfferPanel, isLocalParty: true);
+            DrawTradeStatePanel(sprite, statePanel);
+            DrawTradeRemoteInventoryPanel(sprite, inventoryPanel);
+            DrawTradeStatusPanel(sprite, statusPanel);
+        }
+
+        private void UpdateTradingRoomButtons()
+        {
+            if (_runtime.Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            bool canTrade = _runtime.Occupants.Count > 1 && !_runtime.TradeLocalLocked;
+            bool canCoin = !_runtime.TradeLocalLocked;
+            bool canAccept = _runtime.TradeLocalLocked && _runtime.TradeRemoteLocked && !_runtime.TradeVerificationPending;
+
+            _tradingRoomTradeButton?.SetEnabled(canTrade);
+            _tradingRoomCoinButton?.SetEnabled(canCoin);
+            _tradingRoomAcceptButton?.SetEnabled(canAccept);
+            _tradingRoomResetButton?.SetEnabled(true);
+        }
+
+        private void DrawTradeOfferSummary(SpriteBatch sprite, Rectangle panel, bool isLocalParty)
+        {
+            string partyName = isLocalParty ? _runtime.OwnerName : _runtime.RemoteTraderName;
+            bool locked = isLocalParty ? _runtime.TradeLocalLocked : _runtime.TradeRemoteLocked;
+            bool accepted = isLocalParty ? _runtime.TradeLocalAccepted : _runtime.TradeRemoteAccepted;
+            int offerMeso = isLocalParty ? _runtime.TradeLocalOfferMeso : _runtime.TradeRemoteOfferMeso;
+            string stage = accepted
+                ? "Accepted"
+                : locked
+                    ? _runtime.TradeVerificationPending ? "Verifying" : "Locked"
+                    : "Open";
+
+            DrawText(sprite, Truncate(partyName, 12), new Vector2(panel.X + 8, panel.Y + 8), HeaderColor, 0.5f);
+            DrawText(sprite, stage, new Vector2(panel.X + 8, panel.Y + 23), accepted ? SuccessColor : locked ? WarningColor : ValueColor, 0.48f);
+            DrawText(sprite, $"{offerMeso:N0} mesos", new Vector2(panel.X + 8, panel.Y + 38), AccentColor, 0.46f);
+
+            float rowY = panel.Y + 56;
+            foreach (SocialRoomItemEntry item in _runtime.Items.Where(entry => string.Equals(entry.OwnerName, partyName, StringComparison.OrdinalIgnoreCase)).Take(3))
+            {
+                DrawText(sprite, Truncate($"{item.ItemName} x{item.Quantity}", 15), new Vector2(panel.X + 8, rowY), ValueColor, 0.42f);
+                rowY += 15f;
+            }
+
+            if (locked)
+            {
+                sprite.Draw(_panelTexture, panel, new Color(0, 0, 0, 96));
+                DrawCenteredText(sprite, accepted ? "READY" : "LOCKED", panel.Center.X, panel.Center.Y - 8, Color.White, 0.6f);
+            }
+        }
+
+        private void DrawTradeStatePanel(SpriteBatch sprite, Rectangle panel)
+        {
+            DrawText(sprite, "Trade State", new Vector2(panel.X + 10, panel.Y + 8), HeaderColor, 0.62f);
+            DrawKeyValue(sprite, panel.X + 10, panel.Y + 34, "Room", _runtime.RoomState);
+            DrawKeyValue(sprite, panel.X + 10, panel.Y + 56, "Local", _runtime.TradeLocalAccepted ? "Accepted" : _runtime.TradeLocalLocked ? "Locked" : "Open");
+            DrawKeyValue(sprite, panel.X + 10, panel.Y + 78, "Remote", _runtime.TradeRemoteAccepted ? "Accepted" : _runtime.TradeRemoteLocked ? "Locked" : "Open");
+            DrawKeyValue(sprite, panel.X + 10, panel.Y + 100, "CRC", _runtime.TradeVerificationPending ? "Pending" : "Clear");
+            DrawKeyValue(sprite, panel.X + 10, panel.Y + 122, "Rows", $"{_runtime.TradeLocalVerificationCount}/{_runtime.TradeRemoteVerificationCount}");
+        }
+
+        private void DrawTradeRemoteInventoryPanel(SpriteBatch sprite, Rectangle panel)
+        {
+            DrawText(sprite, "Remote Catalog", new Vector2(panel.X + 10, panel.Y + 8), HeaderColor, 0.62f);
+            DrawText(sprite, $"{_runtime.RemoteInventoryMeso:N0} mesos", new Vector2(panel.X + 10, panel.Y + 26), AccentColor, 0.5f);
+
+            float rowY = panel.Y + 48;
+            foreach (SocialRoomRuntime.SocialRoomRemoteInventoryEntry entry in _runtime.RemoteInventoryEntries.Take(6))
+            {
+                DrawText(sprite, Truncate($"{entry.ItemName} x{entry.Quantity}", 24), new Vector2(panel.X + 10, rowY), ValueColor, 0.44f);
+                rowY += 17f;
+            }
+        }
+
+        private void DrawTradeStatusPanel(SpriteBatch sprite, Rectangle panel)
+        {
+            DrawText(sprite, "Packet Owner", new Vector2(panel.X + 10, panel.Y + 8), HeaderColor, 0.62f);
+            float textY = panel.Y + 28;
+            DrawWrapped(sprite, "CTradingRoomDlg::OnPacket owns 15 put-item, 16 put-money, 17 trade, and 21 exceed-limit while subtype 20 stays on the OnTrade CRC branch.", panel.X + 10, ref textY, panel.Width - 20, MutedColor, 0.42f);
+            textY += 4f;
+            DrawWrapped(sprite, _runtime.StatusMessage, panel.X + 10, ref textY, panel.Width - 20, AccentColor, 0.44f);
+        }
+
+        private void DrawCenteredText(SpriteBatch sprite, string text, int centerX, int y, Color color, float scale)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            Vector2 size = _font.MeasureString(text) * scale;
+            sprite.DrawString(_font, text, new Vector2(centerX - (size.X / 2f), y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        }
+
+        private void DrawRightAlignedText(SpriteBatch sprite, string text, int rightX, int y, Color color, float scale)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            Vector2 size = _font.MeasureString(text) * scale;
+            sprite.DrawString(_font, text, new Vector2(rightX - size.X, y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
         }
 
         private void DrawMiniRoomAvatarStrip(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, int tickCount, Rectangle panel)

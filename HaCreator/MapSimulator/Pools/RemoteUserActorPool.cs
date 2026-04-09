@@ -61,6 +61,7 @@ namespace HaCreator.MapSimulator.Pools
             public PlayerState ObservedPlayerState { get; set; }
             public bool ObservedPlayerFacingRight { get; set; }
             public int? ObservedRawActionCode { get; set; }
+            public int ObservedPlayerActionTriggerTime { get; set; } = int.MinValue;
             public string CurrentActionName { get; set; }
             public SkillAnimation CurrentPlaybackAnimation { get; set; }
             public int CurrentActionStartTime { get; set; }
@@ -69,9 +70,11 @@ namespace HaCreator.MapSimulator.Pools
             public SkillAnimation PendingPlaybackAnimation { get; set; }
             public int PendingActionReadyTime { get; set; }
             public bool PendingFacingRight { get; set; }
+            public bool PendingForceReplay { get; set; }
             public string QueuedActionName { get; set; }
             public SkillAnimation QueuedPlaybackAnimation { get; set; }
             public bool QueuedFacingRight { get; set; }
+            public bool QueuedForceReplay { get; set; }
         }
 
         internal readonly record struct PortableChairPairParticipant(
@@ -273,7 +276,6 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     ClearActorFollowLinks(actor);
                     ClearPortableChairPairRecord(characterId);
-                    PurgeRelationshipRecordsForCharacter(characterId, Environment.TickCount);
                     NotifyActorRemoved(actor.CharacterId, actor.Name);
                     _actorIdsByName.Remove(actor.Name);
                     _actorsById.Remove(characterId);
@@ -299,7 +301,6 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     ClearActorFollowLinks(actor);
                     ClearPortableChairPairRecord(characterId);
-                    PurgeRelationshipRecordsForCharacter(characterId, Environment.TickCount);
                     NotifyActorRemoved(actor.CharacterId, actor.Name);
                     _actorIdsByName.Remove(actor.Name);
                     _actorsById.Remove(characterId);
@@ -370,7 +371,7 @@ namespace HaCreator.MapSimulator.Pools
                 actor.Name = build.Name.Trim();
                 actor.Position = position;
                 actor.FacingRight = facingRight;
-                SetActorAction(actor, actionName, actor.Build.ActivePortableChair != null);
+                SetActorAction(actor, actionName, actor.Build.ActivePortableChair != null, Environment.TickCount);
                 actor.SourceTag = string.IsNullOrWhiteSpace(sourceTag) ? actor.SourceTag : sourceTag.Trim();
                 actor.IsVisibleInWorld = isVisibleInWorld;
                 SyncPortableChairPairRecord(
@@ -472,7 +473,13 @@ namespace HaCreator.MapSimulator.Pools
             if (!string.IsNullOrWhiteSpace(actionName))
             {
                 actor.BeginMeleeAfterImageFade(Environment.TickCount);
-                SetActorAction(actor, actionName, actor.Build.ActivePortableChair != null);
+                SetActorAction(
+                    actor,
+                    actionName,
+                    actor.Build.ActivePortableChair != null,
+                    Environment.TickCount,
+                    forceReplay: true,
+                    rawActionCode: CharacterPart.TryGetClientRawActionCode(actionName, out int actionCode) ? actionCode : null);
                 RegisterMeleeAfterImage(actor, 0, actor.ActionName, Environment.TickCount, 10, 0);
             }
 
@@ -603,7 +610,13 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             actor.BeginMeleeAfterImageFade(Environment.TickCount);
-            SetActorAction(actor, actionName, actor.Build.ActivePortableChair != null);
+            SetActorAction(
+                actor,
+                actionName,
+                actor.Build.ActivePortableChair != null,
+                Environment.TickCount,
+                forceReplay: true,
+                rawActionCode: CharacterPart.TryGetClientRawActionCode(actionName, out int actionCode) ? actionCode : null);
             if (facingRight.HasValue)
             {
                 actor.FacingRight = facingRight.Value;
@@ -658,7 +671,13 @@ namespace HaCreator.MapSimulator.Pools
             if (!string.IsNullOrWhiteSpace(resolvedActionName))
             {
                 actor.BeginMeleeAfterImageFade(currentTime);
-                SetActorAction(actor, resolvedActionName, actor.Build.ActivePortableChair != null);
+                SetActorAction(
+                    actor,
+                    resolvedActionName,
+                    actor.Build.ActivePortableChair != null,
+                    currentTime,
+                    forceReplay: true,
+                    rawActionCode: actionCode);
             }
             RegisterMeleeAfterImage(actor, skillId, actor.ActionName, currentTime, masteryPercent, chargeElement, actionCode);
             return true;
@@ -676,7 +695,12 @@ namespace HaCreator.MapSimulator.Pools
             actor.LastMoveActionRaw = moveAction;
             actor.FacingRight = DecodeFacingRight(moveAction);
             actor.BeginMeleeAfterImageFade(Environment.TickCount);
-            SetActorAction(actor, ResolveActionName(actor, MoveActionFromRaw(moveAction)), actor.Build.ActivePortableChair != null);
+            SetActorAction(
+                actor,
+                ResolveActionName(actor, MoveActionFromRaw(moveAction)),
+                actor.Build.ActivePortableChair != null,
+                Environment.TickCount,
+                rawActionCode: moveAction);
             actor.MovementDrivenActionSelection = true;
             RegisterMeleeAfterImage(actor, 0, actor.ActionName, Environment.TickCount, 10, 0);
             return true;
@@ -760,7 +784,7 @@ namespace HaCreator.MapSimulator.Pools
                 actor.Build.ActivePortableChair = null;
                 actor.PreferredPortableChairPairCharacterId = null;
                 ClearPortableChairPairRecord(characterId);
-                SetActorAction(actor, CharacterPart.GetActionString(CharacterAction.Stand1), allowSitFallback: false);
+                SetActorAction(actor, CharacterPart.GetActionString(CharacterAction.Stand1), allowSitFallback: false, Environment.TickCount);
                 SyncTemporaryStatPresentation(actor);
                 actor.ClearMeleeAfterImage();
                 return true;
@@ -777,7 +801,7 @@ namespace HaCreator.MapSimulator.Pools
             actor.PreferredPortableChairPairCharacterId = pairCharacterId;
             SyncPortableChairPairRecord(characterId, chair, pairCharacterId);
             ApplyPortableChairMount(actor, chair);
-            SetActorAction(actor, "sit", allowSitFallback: true);
+            SetActorAction(actor, "sit", allowSitFallback: true, Environment.TickCount);
             SyncTemporaryStatPresentation(actor);
             actor.ClearMeleeAfterImage();
             return true;
@@ -1064,12 +1088,6 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            if (!_actorsById.ContainsKey(ownerCharacterId.Value))
-            {
-                message = $"Remote user {ownerCharacterId.Value} is not active, so the packet-owned {packet.RelationshipType} relationship add cannot be applied.";
-                return false;
-            }
-
             int? pairCharacterId = packet.RelationshipType == RemoteRelationshipOverlayType.Marriage
                 ? ResolveMarriagePairCharacterId(ownerCharacterId.Value, packet.RelationshipRecord)
                 : packet.RelationshipRecord.PairCharacterId;
@@ -1082,7 +1100,9 @@ namespace HaCreator.MapSimulator.Pools
             GetRelationshipRecordTable(packet.RelationshipType)[ownerCharacterId.Value] = normalizedRecord;
             RefreshRelationshipOverlays(packet.RelationshipType, currentTime);
 
-            message = $"Remote user {ownerCharacterId.Value} {packet.RelationshipType} relationship record applied.";
+            message = _actorsById.ContainsKey(ownerCharacterId.Value)
+                ? $"Remote user {ownerCharacterId.Value} {packet.RelationshipType} relationship record applied."
+                : $"Stored remote {packet.RelationshipType} relationship record for inactive owner {ownerCharacterId.Value}.";
             return true;
         }
 
@@ -1190,6 +1210,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 actor.TemporaryStats = default;
                 actor.TemporaryStatDelay = 0;
+                SyncTemporaryStatPresentation(actor);
                 message = $"Remote user {packet.CharacterId} temporary-stat mask cleared.";
                 return true;
             }
@@ -1292,7 +1313,6 @@ namespace HaCreator.MapSimulator.Pools
 
             ClearActorFollowLinks(actor);
             ClearPortableChairPairRecord(characterId);
-            PurgeRelationshipRecordsForCharacter(characterId, Environment.TickCount);
             NotifyActorRemoved(actor.CharacterId, actor.Name);
             _actorsById.Remove(characterId);
             _actorIdsByName.Remove(actor.Name);
@@ -3145,52 +3165,6 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private void PurgeRelationshipRecordsForCharacter(int characterId, int currentTime)
-        {
-            if (characterId <= 0)
-            {
-                return;
-            }
-
-            EnsureRelationshipRecordTablesInitialized();
-            foreach (RemoteRelationshipOverlayType relationshipType in new[]
-            {
-                RemoteRelationshipOverlayType.Couple,
-                RemoteRelationshipOverlayType.Friendship,
-                RemoteRelationshipOverlayType.NewYearCard,
-                RemoteRelationshipOverlayType.Marriage
-            })
-            {
-                Dictionary<int, RemoteUserRelationshipRecord> recordTable = GetRelationshipRecordTable(relationshipType);
-                bool removedAny = false;
-                foreach (KeyValuePair<int, RemoteUserRelationshipRecord> entry in recordTable.ToArray())
-                {
-                    int ownerCharacterId = entry.Key;
-                    RemoteUserRelationshipRecord record = entry.Value;
-                    int? pairCharacterId = relationshipType == RemoteRelationshipOverlayType.Marriage
-                        ? ResolveMarriagePairCharacterId(ownerCharacterId, record)
-                        : record.PairCharacterId;
-                    if (ownerCharacterId != characterId
-                        && (!pairCharacterId.HasValue || pairCharacterId.Value != characterId))
-                    {
-                        continue;
-                    }
-
-                    recordTable.Remove(ownerCharacterId);
-                    removedAny = true;
-                    if (_actorsById.TryGetValue(ownerCharacterId, out RemoteUserActor ownerActor))
-                    {
-                        ownerActor.RelationshipOverlays.Remove(relationshipType);
-                    }
-                }
-
-                if (removedAny)
-                {
-                    RefreshRelationshipOverlays(relationshipType, currentTime);
-                }
-            }
-        }
-
         private Dictionary<int, RemoteUserRelationshipRecord> GetRelationshipRecordTable(RemoteRelationshipOverlayType relationshipType)
         {
             EnsureRelationshipRecordTable(relationshipType);
@@ -3920,14 +3894,30 @@ namespace HaCreator.MapSimulator.Pools
             actor.RefreshAssembler();
         }
 
-        private static void SetActorAction(RemoteUserActor actor, string actionName, bool allowSitFallback)
+        private static void SetActorAction(
+            RemoteUserActor actor,
+            string actionName,
+            bool allowSitFallback,
+            int currentTime = int.MinValue,
+            bool forceReplay = false,
+            int? rawActionCode = null)
         {
             if (actor == null)
             {
                 return;
             }
 
-            actor.BaseActionName = NormalizeActionName(actionName, allowSitFallback);
+            string normalizedActionName = NormalizeActionName(actionName, allowSitFallback);
+            bool baseActionChanged = !string.Equals(actor.BaseActionName, normalizedActionName, StringComparison.OrdinalIgnoreCase);
+            bool rawActionChanged = actor.BaseActionRawCode != rawActionCode;
+
+            actor.BaseActionName = normalizedActionName;
+            actor.BaseActionRawCode = rawActionCode;
+            if (currentTime != int.MinValue && (forceReplay || baseActionChanged || rawActionChanged))
+            {
+                actor.BaseActionStartTime = currentTime;
+            }
+
             actor.ActionName = ResolveClientVisibleActionName(actor.BaseActionName, actor.TemporaryStats.KnownState);
             actor.RidingVehicleId = ResolveRemoteRidingVehicleId(actor);
         }
@@ -4982,7 +4972,8 @@ namespace HaCreator.MapSimulator.Pools
 
             actor.ShadowPartnerPresentation ??= new RemoteShadowPartnerPresentationState();
             RemoteShadowPartnerPresentationState presentation = actor.ShadowPartnerPresentation;
-            int? rawActionCode = actor.LastMoveActionRaw >= 0 ? actor.LastMoveActionRaw : null;
+            int? rawActionCode = ResolveRemoteShadowPartnerObservedRawActionCode(actor, state);
+            int actionTriggerTime = ResolveRemoteShadowPartnerObservedActionTriggerTime(actor, state);
             string fallbackActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
             string resolvedObservedAction = ResolveRemoteShadowPartnerActionName(
                 actor.TemporaryStatShadowPartnerSkill.ShadowPartnerActionAnimations,
@@ -5004,6 +4995,7 @@ namespace HaCreator.MapSimulator.Pools
                 presentation.ObservedPlayerState = state;
                 presentation.ObservedPlayerFacingRight = actor.FacingRight;
                 presentation.ObservedRawActionCode = rawActionCode;
+                presentation.ObservedPlayerActionTriggerTime = actionTriggerTime;
 
                 string createActionName = ResolveRemoteShadowPartnerCreateActionName(
                     actor.TemporaryStatShadowPartnerSkill.ShadowPartnerActionAnimations,
@@ -5026,12 +5018,19 @@ namespace HaCreator.MapSimulator.Pools
                         presentation.QueuedActionName = resolvedObservedAction;
                         presentation.QueuedPlaybackAnimation = resolvedObservedPlayback;
                         presentation.QueuedFacingRight = actor.FacingRight;
+                        presentation.QueuedForceReplay = state == PlayerState.Attacking && actionTriggerTime != int.MinValue;
                     }
 
                     return;
                 }
 
-                SetRemoteShadowPartnerAction(actor, resolvedObservedAction, currentTime, actor.FacingRight, resolvedObservedPlayback);
+                SetRemoteShadowPartnerAction(
+                    actor,
+                    resolvedObservedAction,
+                    currentTime,
+                    actor.FacingRight,
+                    resolvedObservedPlayback,
+                    forceRestartWhenSameAction: state == PlayerState.Attacking && actionTriggerTime != int.MinValue);
                 return;
             }
 
@@ -5043,13 +5042,15 @@ namespace HaCreator.MapSimulator.Pools
             bool observedChanged = !string.Equals(observedPlayerActionName, presentation.ObservedPlayerActionName, StringComparison.OrdinalIgnoreCase)
                                   || state != presentation.ObservedPlayerState
                                   || actor.FacingRight != presentation.ObservedPlayerFacingRight
-                                  || rawActionCode != presentation.ObservedRawActionCode;
+                                  || rawActionCode != presentation.ObservedRawActionCode
+                                  || actionTriggerTime != presentation.ObservedPlayerActionTriggerTime;
             if (observedChanged)
             {
                 presentation.ObservedPlayerActionName = observedPlayerActionName;
                 presentation.ObservedPlayerState = state;
                 presentation.ObservedPlayerFacingRight = actor.FacingRight;
                 presentation.ObservedRawActionCode = rawActionCode;
+                presentation.ObservedPlayerActionTriggerTime = actionTriggerTime;
 
                 if (ShadowPartnerClientActionResolver.IsAttackAction(observedPlayerActionName))
                 {
@@ -5059,6 +5060,7 @@ namespace HaCreator.MapSimulator.Pools
                         presentation.PendingPlaybackAnimation = resolvedObservedPlayback;
                         presentation.PendingActionReadyTime = currentTime + ResolveRemoteShadowPartnerAttackDelayMs(actor, resolvedObservedAction);
                         presentation.PendingFacingRight = actor.FacingRight;
+                        presentation.PendingForceReplay = true;
                     }
                 }
                 else
@@ -5068,6 +5070,7 @@ namespace HaCreator.MapSimulator.Pools
                         presentation.QueuedActionName = resolvedObservedAction;
                         presentation.QueuedPlaybackAnimation = resolvedObservedPlayback;
                         presentation.QueuedFacingRight = actor.FacingRight;
+                        presentation.QueuedForceReplay = false;
                     }
                     else
                     {
@@ -5082,6 +5085,7 @@ namespace HaCreator.MapSimulator.Pools
 
                     presentation.PendingActionName = null;
                     presentation.PendingPlaybackAnimation = null;
+                    presentation.PendingForceReplay = false;
                 }
             }
 
@@ -5091,18 +5095,27 @@ namespace HaCreator.MapSimulator.Pools
                 string pendingActionName = presentation.PendingActionName;
                 SkillAnimation pendingPlaybackAnimation = presentation.PendingPlaybackAnimation;
                 bool pendingFacingRight = presentation.PendingFacingRight;
+                bool pendingForceReplay = presentation.PendingForceReplay;
                 presentation.PendingActionName = null;
                 presentation.PendingPlaybackAnimation = null;
+                presentation.PendingForceReplay = false;
 
                 if (ShouldHoldRemoteShadowPartnerCurrentAction(actor, currentTime))
                 {
                     presentation.QueuedActionName = pendingActionName;
                     presentation.QueuedPlaybackAnimation = pendingPlaybackAnimation;
                     presentation.QueuedFacingRight = pendingFacingRight;
+                    presentation.QueuedForceReplay = pendingForceReplay;
                 }
                 else
                 {
-                    SetRemoteShadowPartnerAction(actor, pendingActionName, currentTime, pendingFacingRight, pendingPlaybackAnimation);
+                    SetRemoteShadowPartnerAction(
+                        actor,
+                        pendingActionName,
+                        currentTime,
+                        pendingFacingRight,
+                        pendingPlaybackAnimation,
+                        forceRestartWhenSameAction: pendingForceReplay);
                 }
             }
 
@@ -5190,9 +5203,17 @@ namespace HaCreator.MapSimulator.Pools
             string queuedActionName = presentation.QueuedActionName;
             SkillAnimation queuedPlaybackAnimation = presentation.QueuedPlaybackAnimation;
             bool queuedFacingRight = presentation.QueuedFacingRight;
+            bool queuedForceReplay = presentation.QueuedForceReplay;
             presentation.QueuedActionName = null;
             presentation.QueuedPlaybackAnimation = null;
-            SetRemoteShadowPartnerAction(actor, queuedActionName, currentTime, queuedFacingRight, queuedPlaybackAnimation);
+            presentation.QueuedForceReplay = false;
+            SetRemoteShadowPartnerAction(
+                actor,
+                queuedActionName,
+                currentTime,
+                queuedFacingRight,
+                queuedPlaybackAnimation,
+                forceRestartWhenSameAction: queuedForceReplay);
             return true;
         }
 
@@ -5202,7 +5223,8 @@ namespace HaCreator.MapSimulator.Pools
             int currentTime,
             bool facingRight,
             SkillAnimation playbackAnimation,
-            bool preserveTimingWhenOnlyFacingChanges = false)
+            bool preserveTimingWhenOnlyFacingChanges = false,
+            bool forceRestartWhenSameAction = false)
         {
             if (actor?.ShadowPartnerPresentation == null
                 || actor.TemporaryStatShadowPartnerSkill?.ShadowPartnerActionAnimations == null
@@ -5215,18 +5237,25 @@ namespace HaCreator.MapSimulator.Pools
             RemoteShadowPartnerPresentationState presentation = actor.ShadowPartnerPresentation;
             if (string.Equals(presentation.CurrentActionName, actionName, StringComparison.OrdinalIgnoreCase))
             {
-                if (!preserveTimingWhenOnlyFacingChanges || presentation.CurrentFacingRight == facingRight)
-                {
-                    return;
-                }
-
-                presentation.CurrentFacingRight = facingRight;
                 presentation.CurrentPlaybackAnimation = playbackAnimation
                     ?? ResolveRemoteShadowPartnerPlaybackAnimation(
                         actor.TemporaryStatShadowPartnerSkill.ShadowPartnerActionAnimations,
                         actionName,
                         presentation.ObservedPlayerActionName,
                         presentation.ObservedRawActionCode.GetValueOrDefault(-1));
+                if (forceRestartWhenSameAction)
+                {
+                    presentation.CurrentActionStartTime = currentTime;
+                    presentation.CurrentFacingRight = facingRight;
+                    return;
+                }
+
+                if (!preserveTimingWhenOnlyFacingChanges || presentation.CurrentFacingRight == facingRight)
+                {
+                    return;
+                }
+
+                presentation.CurrentFacingRight = facingRight;
                 return;
             }
 
@@ -5261,6 +5290,31 @@ namespace HaCreator.MapSimulator.Pools
                 actor?.TemporaryStatShadowPartnerSkill?.ShadowPartnerActionAnimations,
                 actionName,
                 RemoteShadowPartnerAttackDelayMs);
+        }
+
+        private static int? ResolveRemoteShadowPartnerObservedRawActionCode(RemoteUserActor actor, PlayerState state)
+        {
+            if (actor == null)
+            {
+                return null;
+            }
+
+            if (state == PlayerState.Attacking && actor.BaseActionRawCode.HasValue)
+            {
+                return actor.BaseActionRawCode;
+            }
+
+            return actor.LastMoveActionRaw;
+        }
+
+        private static int ResolveRemoteShadowPartnerObservedActionTriggerTime(RemoteUserActor actor, PlayerState state)
+        {
+            if (actor == null || state != PlayerState.Attacking)
+            {
+                return int.MinValue;
+            }
+
+            return actor.BaseActionStartTime;
         }
 
         private static string ResolveRemoteShadowPartnerCreateActionName(
@@ -5768,7 +5822,12 @@ namespace HaCreator.MapSimulator.Pools
 
             if (actor.MovementDrivenActionSelection)
             {
-                SetActorAction(actor, ResolveActionName(actor, sampled.Action), actor.Build.ActivePortableChair != null);
+                SetActorAction(
+                    actor,
+                    ResolveActionName(actor, sampled.Action),
+                    actor.Build.ActivePortableChair != null,
+                    currentTime,
+                    rawActionCode: actor.LastMoveActionRaw);
                 if (!string.Equals(previousActionName, actor.ActionName, StringComparison.OrdinalIgnoreCase))
                 {
                     actor.BeginMeleeAfterImageFade(currentTime);
@@ -5989,6 +6048,8 @@ namespace HaCreator.MapSimulator.Pools
         public Vector2 Position { get; set; }
         public bool FacingRight { get; set; }
         public string BaseActionName { get; set; }
+        public int BaseActionStartTime { get; set; } = int.MinValue;
+        public int? BaseActionRawCode { get; set; }
         public string ActionName { get; set; }
         public string SourceTag { get; set; }
         public bool IsVisibleInWorld { get; set; }

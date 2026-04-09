@@ -24,7 +24,9 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class GuildSkillRuntime
     {
+        private const int DefaultAvailablePoints = 2;
         private const int DefaultGuildFundMeso = 25000000;
+        private const int DefaultLocalGuildLevel = 12;
         private static readonly HashSet<string> PlaceholderGuildNames = new(StringComparer.OrdinalIgnoreCase)
         {
             "-",
@@ -36,22 +38,19 @@ namespace HaCreator.MapSimulator.Interaction
         };
 
         private readonly List<SkillDisplayData> _skills = new();
-        private readonly Dictionary<int, int> _savedSkillLevels = new();
         private readonly Dictionary<int, DateTimeOffset> _activeGuildSkillExpirations = new();
-        private readonly Dictionary<int, DateTimeOffset> _savedActiveGuildSkillExpirations = new();
+        private readonly Dictionary<string, GuildSkillSavedState> _savedGuildStates = new(StringComparer.OrdinalIgnoreCase);
         private int _selectedIndex;
         private int _recommendedSkillId;
-        private int _availablePoints = 2;
+        private int _availablePoints = DefaultAvailablePoints;
         private int _guildFundMeso = DefaultGuildFundMeso;
-        private int _savedAvailablePoints = 2;
-        private int _savedGuildFundMeso = DefaultGuildFundMeso;
-        private int _savedGuildLevel = 12;
-        private int _guildLevel = 12;
+        private int _guildLevel = DefaultLocalGuildLevel;
         private string _guildName = "Maple GM";
         private string _guildRoleLabel = "Master";
         private bool _isInGuild = true;
         private bool _hasManagementAuthority = true;
         private GuildSkillPermissionLevel _permissionLevel = GuildSkillPermissionLevel.Master;
+        private string _activeGuildStateKey = "Maple GM";
 
         internal static bool HasGuildMembership(CharacterBuild build)
         {
@@ -67,8 +66,18 @@ namespace HaCreator.MapSimulator.Interaction
         internal void UpdateContext(GuildSkillUiContext context)
         {
             bool inGuild = context.HasGuildMembership;
+            string newGuildStateKey = inGuild ? NormalizeGuildStateKey(context.GuildName) : string.Empty;
+            bool changedGuildIdentity = !string.Equals(_activeGuildStateKey, newGuildStateKey, StringComparison.OrdinalIgnoreCase);
+            if (changedGuildIdentity && !string.IsNullOrWhiteSpace(_activeGuildStateKey))
+            {
+                SaveCurrentGuildState(_activeGuildStateKey);
+            }
+
+            GuildSkillSavedState savedState = inGuild
+                ? GetSavedGuildState(newGuildStateKey)
+                : null;
             _guildName = inGuild ? (context.GuildName?.Trim() ?? string.Empty) : "No Guild";
-            _guildLevel = inGuild ? ResolveGuildLevel(context.GuildLevel) : 0;
+            _guildLevel = inGuild ? ResolveGuildLevel(context.GuildLevel, savedState?.GuildLevel ?? 0) : 0;
             _guildRoleLabel = inGuild
                 ? NormalizeGuildRoleLabel(context.GuildRoleLabel)
                 : "No Guild";
@@ -81,18 +90,15 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (!inGuild)
             {
-                if (_isInGuild)
-                {
-                    SaveCurrentGuildState();
-                }
-
                 ApplyNoGuildState();
             }
-            else if (!_isInGuild)
+            else if (!_isInGuild || changedGuildIdentity)
             {
-                RestoreSavedGuildState();
+                RestoreGuildState(savedState);
+                SaveCurrentGuildState(newGuildStateKey);
             }
 
+            _activeGuildStateKey = newGuildStateKey;
             _isInGuild = inGuild;
             EnsureRecommendation();
         }
@@ -103,7 +109,7 @@ namespace HaCreator.MapSimulator.Interaction
             UpdateContext(new GuildSkillUiContext(
                 hasGuildMembership,
                 build?.GuildName,
-                hasGuildMembership ? ResolveLocalFallbackGuildLevel() : 0,
+                hasGuildMembership ? ResolveLocalFallbackGuildLevel(GetSavedGuildState(NormalizeGuildStateKey(build?.GuildName))?.GuildLevel ?? 0) : 0,
                 guildRoleLabel,
                 canManageSkills));
         }
@@ -121,11 +127,12 @@ namespace HaCreator.MapSimulator.Interaction
             if (_skills.Count > 0)
             {
                 _selectedIndex = Math.Clamp(_selectedIndex, 0, _skills.Count - 1);
-                SeedInitialLevels();
-                _availablePoints = 2;
-                _guildFundMeso = Math.Max(0, _savedGuildFundMeso);
-                SaveCurrentGuildState();
-                if (!_isInGuild)
+                if (_isInGuild)
+                {
+                    RestoreGuildState(GetSavedGuildState(_activeGuildStateKey));
+                    SaveCurrentGuildState(_activeGuildStateKey);
+                }
+                else
                 {
                     ApplyNoGuildState();
                 }
@@ -133,8 +140,6 @@ namespace HaCreator.MapSimulator.Interaction
             else
             {
                 _selectedIndex = -1;
-                _savedSkillLevels.Clear();
-                _savedAvailablePoints = 0;
             }
 
             EnsureRecommendation();
@@ -162,6 +167,8 @@ namespace HaCreator.MapSimulator.Interaction
                 SummaryLines = BuildSummaryLines(selectedSkill, selectedRequiredGuildLevel, selectedRemainingMinutes),
                 Entries = _skills.Select(skill => new GuildSkillEntrySnapshot
                 {
+                    InGuild = _isInGuild,
+                    GuildRoleLabel = _guildRoleLabel,
                     SkillId = skill.SkillId,
                     SkillName = skill.SkillName,
                     Description = skill.Description,
@@ -191,7 +198,7 @@ namespace HaCreator.MapSimulator.Interaction
             _guildFundMeso = Math.Max(0, guildFundMeso);
             if (_isInGuild)
             {
-                SaveCurrentGuildState();
+                SaveCurrentGuildState(_activeGuildStateKey);
             }
         }
 
@@ -251,7 +258,7 @@ namespace HaCreator.MapSimulator.Interaction
             DateTimeOffset renewedExpiration = baseTime.AddMinutes(durationMinutes);
             _activeGuildSkillExpirations[selectedSkill.SkillId] = renewedExpiration;
             _guildFundMeso = Math.Max(0, _guildFundMeso - renewalCost);
-            SaveCurrentGuildState();
+            SaveCurrentGuildState(_activeGuildStateKey);
 
             int remainingMinutes = Math.Max(1, (int)Math.Ceiling((renewedExpiration - now).TotalMinutes));
             return $"{selectedSkill.SkillName} renewed for {FormatDuration(durationMinutes)} (cost {FormatMeso(renewalCost)}). Remaining: {FormatDuration(remainingMinutes)}. Guild fund: {FormatMeso(_guildFundMeso)}.";
@@ -305,18 +312,9 @@ namespace HaCreator.MapSimulator.Interaction
             }
             _availablePoints = Math.Max(0, _availablePoints - 1);
             _guildFundMeso = Math.Max(0, _guildFundMeso - levelUpCost);
-            SaveCurrentGuildState();
+            SaveCurrentGuildState(_activeGuildStateKey);
             EnsureRecommendation();
             return $"{selectedSkill.SkillName} advanced to Lv. {selectedSkill.CurrentLevel}. Guild fund: {FormatMeso(_guildFundMeso)}.";
-        }
-
-        private void SeedInitialLevels()
-        {
-            for (int i = 0; i < _skills.Count; i++)
-            {
-                SkillDisplayData skill = _skills[i];
-                skill.CurrentLevel = GetSeededLevel(i, skill);
-            }
         }
 
         private SkillDisplayData GetSelectedSkill()
@@ -503,9 +501,11 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 parts.Add($"Remain {FormatDuration(remainingMinutes)}");
             }
-            else if (selectedSkill.CurrentLevel > 0 && durationMinutes > 0)
+
+            string stateLabel = ResolveStateLabel(_isInGuild, CanManageSkills(), selectedSkill.CurrentLevel, durationMinutes, remainingMinutes);
+            if (!string.IsNullOrWhiteSpace(stateLabel))
             {
-                parts.Add(CanManageSkills() ? "Inactive" : "View only");
+                parts.Add(stateLabel);
             }
 
             parts.Add($"Fund {FormatCompactMeso(_guildFundMeso)}");
@@ -522,6 +522,31 @@ namespace HaCreator.MapSimulator.Interaction
             return parts.Count > 0
                 ? string.Join("  |  ", parts)
                 : (_isInGuild ? $"SP {_availablePoints}" : "No guild");
+        }
+
+        internal static string ResolveStateLabel(bool inGuild, bool canManageSkills, int currentLevel, int durationMinutes, int remainingMinutes)
+        {
+            if (!inGuild)
+            {
+                return "No guild";
+            }
+
+            if (remainingMinutes > 0)
+            {
+                return "Active";
+            }
+
+            if (currentLevel > 0 && durationMinutes > 0)
+            {
+                return canManageSkills ? "Inactive" : "View only";
+            }
+
+            if (!canManageSkills)
+            {
+                return "View only";
+            }
+
+            return string.Empty;
         }
 
         private static string FormatDuration(int durationMinutes)
@@ -609,13 +634,12 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private void RestoreSavedGuildState()
+        private void RestoreGuildState(GuildSkillSavedState savedState)
         {
-            _guildLevel = Math.Max(1, _savedGuildLevel);
             for (int i = 0; i < _skills.Count; i++)
             {
                 SkillDisplayData skill = _skills[i];
-                if (!_savedSkillLevels.TryGetValue(skill.SkillId, out int savedLevel))
+                if (savedState?.SkillLevels == null || !savedState.SkillLevels.TryGetValue(skill.SkillId, out int savedLevel))
                 {
                     savedLevel = GetSeededLevel(i, skill);
                 }
@@ -623,10 +647,15 @@ namespace HaCreator.MapSimulator.Interaction
                 skill.CurrentLevel = Math.Clamp(savedLevel, 0, Math.Max(0, skill.MaxLevel));
             }
 
-            _availablePoints = Math.Max(0, _savedAvailablePoints);
-            _guildFundMeso = Math.Max(0, _savedGuildFundMeso);
+            _availablePoints = Math.Max(0, savedState?.AvailablePoints ?? DefaultAvailablePoints);
+            _guildFundMeso = Math.Max(0, savedState?.GuildFundMeso ?? DefaultGuildFundMeso);
             _activeGuildSkillExpirations.Clear();
-            foreach (KeyValuePair<int, DateTimeOffset> entry in _savedActiveGuildSkillExpirations)
+            if (savedState?.ActiveExpirations == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<int, DateTimeOffset> entry in savedState.ActiveExpirations)
             {
                 if (entry.Value > DateTimeOffset.UtcNow)
                 {
@@ -635,26 +664,35 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private void SaveCurrentGuildState()
+        private void SaveCurrentGuildState(string guildStateKey)
         {
-            _savedGuildLevel = Math.Max(1, _guildLevel);
-            _savedSkillLevels.Clear();
-            foreach (SkillDisplayData skill in _skills)
+            if (string.IsNullOrWhiteSpace(guildStateKey))
             {
-                _savedSkillLevels[skill.SkillId] = Math.Clamp(skill.CurrentLevel, 0, Math.Max(0, skill.MaxLevel));
+                return;
             }
 
-            _savedAvailablePoints = Math.Max(0, _availablePoints);
-            _savedGuildFundMeso = Math.Max(0, _guildFundMeso);
-            _savedActiveGuildSkillExpirations.Clear();
+            Dictionary<int, int> savedSkillLevels = new();
+            foreach (SkillDisplayData skill in _skills)
+            {
+                savedSkillLevels[skill.SkillId] = Math.Clamp(skill.CurrentLevel, 0, Math.Max(0, skill.MaxLevel));
+            }
+
+            Dictionary<int, DateTimeOffset> savedActiveGuildSkillExpirations = new();
             DateTimeOffset now = DateTimeOffset.UtcNow;
             foreach (KeyValuePair<int, DateTimeOffset> entry in _activeGuildSkillExpirations)
             {
                 if (entry.Value > now)
                 {
-                    _savedActiveGuildSkillExpirations[entry.Key] = entry.Value;
+                    savedActiveGuildSkillExpirations[entry.Key] = entry.Value;
                 }
             }
+
+            _savedGuildStates[guildStateKey] = new GuildSkillSavedState(
+                Math.Max(1, _guildLevel),
+                Math.Max(0, _availablePoints),
+                Math.Max(0, _guildFundMeso),
+                savedSkillLevels,
+                savedActiveGuildSkillExpirations);
         }
 
         private static int GetSeededLevel(int index, SkillDisplayData skill)
@@ -667,19 +705,37 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
-        private int ResolveGuildLevel(int requestedGuildLevel)
+        private int ResolveGuildLevel(int requestedGuildLevel, int savedGuildLevel)
         {
             if (requestedGuildLevel > 0)
             {
                 return Math.Max(1, requestedGuildLevel);
             }
 
-            return ResolveLocalFallbackGuildLevel();
+            return ResolveLocalFallbackGuildLevel(savedGuildLevel);
         }
 
-        private int ResolveLocalFallbackGuildLevel()
+        private int ResolveLocalFallbackGuildLevel(int savedGuildLevel = 0)
         {
-            return Math.Max(1, Math.Max(_guildLevel, _savedGuildLevel));
+            return Math.Max(1, Math.Max(Math.Max(_guildLevel, savedGuildLevel), DefaultLocalGuildLevel));
+        }
+
+        private GuildSkillSavedState GetSavedGuildState(string guildStateKey)
+        {
+            if (string.IsNullOrWhiteSpace(guildStateKey))
+            {
+                return null;
+            }
+
+            _savedGuildStates.TryGetValue(guildStateKey, out GuildSkillSavedState savedState);
+            return savedState;
+        }
+
+        private static string NormalizeGuildStateKey(string guildName)
+        {
+            return string.IsNullOrWhiteSpace(guildName)
+                ? string.Empty
+                : guildName.Trim();
         }
 
         private static string NormalizeGuildRoleLabel(string guildRoleLabel)
@@ -713,6 +769,29 @@ namespace HaCreator.MapSimulator.Interaction
         }
     }
 
+    internal sealed class GuildSkillSavedState
+    {
+        internal GuildSkillSavedState(
+            int guildLevel,
+            int availablePoints,
+            int guildFundMeso,
+            IReadOnlyDictionary<int, int> skillLevels,
+            IReadOnlyDictionary<int, DateTimeOffset> activeExpirations)
+        {
+            GuildLevel = guildLevel;
+            AvailablePoints = availablePoints;
+            GuildFundMeso = guildFundMeso;
+            SkillLevels = skillLevels ?? new Dictionary<int, int>();
+            ActiveExpirations = activeExpirations ?? new Dictionary<int, DateTimeOffset>();
+        }
+
+        internal int GuildLevel { get; }
+        internal int AvailablePoints { get; }
+        internal int GuildFundMeso { get; }
+        internal IReadOnlyDictionary<int, int> SkillLevels { get; }
+        internal IReadOnlyDictionary<int, DateTimeOffset> ActiveExpirations { get; }
+    }
+
     internal sealed class GuildSkillSnapshot
     {
         public bool InGuild { get; init; }
@@ -732,6 +811,8 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class GuildSkillEntrySnapshot
     {
+        public bool InGuild { get; init; }
+        public string GuildRoleLabel { get; init; } = string.Empty;
         public int SkillId { get; init; }
         public string SkillName { get; init; } = string.Empty;
         public string Description { get; init; } = string.Empty;

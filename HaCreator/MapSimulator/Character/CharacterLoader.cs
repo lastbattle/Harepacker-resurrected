@@ -1578,10 +1578,18 @@ namespace HaCreator.MapSimulator.Character
             {
                 // Load info
                 LoadEquipInfo(part, imgNode as WzImage);
+                AttachTamingMobActionFrameOwner(part);
                 _equipCache[itemId] = part;
             }
 
             return part?.Clone();
+        }
+
+        public CharacterPart LoadTamingMob(int itemId)
+        {
+            CharacterPart part = LoadEquipment(itemId);
+            AttachTamingMobActionFrameOwner(part);
+            return part;
         }
 
         private WeaponPart LoadWeapon(WzImage img, int itemId)
@@ -1929,6 +1937,16 @@ namespace HaCreator.MapSimulator.Character
             {
                 part.IconRaw = LoadTexture(canvasRaw);
             }
+        }
+
+        private static void AttachTamingMobActionFrameOwner(CharacterPart part)
+        {
+            if (part?.Slot != EquipSlot.TamingMob)
+            {
+                return;
+            }
+
+            part.TamingMobActionFrameOwner ??= new TamingMobActionFrameOwner(part.ItemId);
         }
 
         private static void ApplyGrowthInfo(WzImageProperty info, CharacterPart part)

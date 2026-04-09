@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Managers;
 using MapleLib.WzLib;
 
@@ -40,16 +41,20 @@ namespace HaCreator.MapSimulator
                 yield break;
             }
 
-            foreach (WzImageProperty child in source.WzProperties)
+            HashSet<string> yieldedActions = new(StringComparer.OrdinalIgnoreCase);
+            foreach (NpcClientActionSetLoader.NpcClientActionSetDefinition actionSet in NpcClientActionSetLoader.GetClientActionSets(source))
             {
-                if (child == null || string.Equals(child.Name, "info", StringComparison.OrdinalIgnoreCase))
+                foreach (WzImageProperty action in actionSet.Actions ?? Array.Empty<WzImageProperty>())
                 {
-                    continue;
-                }
+                    if (action == null
+                        || string.IsNullOrWhiteSpace(action.Name)
+                        || action["speak"] == null
+                        || !yieldedActions.Add(action.Name))
+                    {
+                        continue;
+                    }
 
-                if (child["speak"] != null)
-                {
-                    yield return child.Name;
+                    yield return action.Name;
                 }
             }
         }
@@ -59,12 +64,14 @@ namespace HaCreator.MapSimulator
             IEnumerable<string> availableActions,
             IEnumerable<string> speakFallbackActions)
         {
+            List<string> availableActionOrder = new();
             var availableActionMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (string action in availableActions ?? Array.Empty<string>())
             {
                 if (!string.IsNullOrWhiteSpace(action) && !availableActionMap.ContainsKey(action))
                 {
                     availableActionMap[action] = action;
+                    availableActionOrder.Add(action);
                 }
             }
 
@@ -91,7 +98,7 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            foreach (string action in availableActionMap.Values.OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
+            foreach (string action in availableActionOrder)
             {
                 if (action.IndexOf("shop", StringComparison.OrdinalIgnoreCase) >= 0
                     || action.IndexOf("say", StringComparison.OrdinalIgnoreCase) >= 0
@@ -101,7 +108,7 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            foreach (string action in availableActionMap.Values.OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
+            foreach (string action in availableActionOrder)
             {
                 if (action.StartsWith("stand", StringComparison.OrdinalIgnoreCase))
                 {
@@ -109,7 +116,7 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            return availableActionMap.Values.FirstOrDefault() ?? AnimationKeys.Stand;
+            return availableActionOrder.FirstOrDefault() ?? AnimationKeys.Stand;
         }
 
         internal static bool TryEncodeEquippedPosition(EquipSlot slot, int itemId, out int encodedPosition)

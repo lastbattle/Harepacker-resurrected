@@ -50,7 +50,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly PreviewNameTagStyle _selectedNameTagStyle;
         private readonly IReadOnlyDictionary<LoginJobDecorationStyle, PreviewCanvasFrame> _jobDecorations;
         private readonly IReadOnlyList<PreviewCanvasFrame> _buyCharacterFrames;
-        private readonly Texture2D _emptySlotTexture;
+        private readonly PreviewCanvasFrame _emptySlotFrame;
         private readonly ClientTextRasterizer _nameTagTextRasterizer;
 
         private SpriteFont _font;
@@ -69,7 +69,7 @@ namespace HaCreator.MapSimulator.UI
             PreviewNameTagStyle normalNameTagStyle,
             PreviewNameTagStyle selectedNameTagStyle,
             IReadOnlyDictionary<LoginJobDecorationStyle, PreviewCanvasFrame> jobDecorations,
-            Texture2D emptySlotTexture,
+            PreviewCanvasFrame emptySlotFrame,
             IReadOnlyList<PreviewCanvasFrame> buyCharacterFrames,
             IEnumerable<UIObject> cardButtons,
             UIObject prevPageButton,
@@ -81,7 +81,7 @@ namespace HaCreator.MapSimulator.UI
             _normalNameTagStyle = normalNameTagStyle;
             _selectedNameTagStyle = selectedNameTagStyle;
             _jobDecorations = jobDecorations ?? new Dictionary<LoginJobDecorationStyle, PreviewCanvasFrame>();
-            _emptySlotTexture = emptySlotTexture;
+            _emptySlotFrame = emptySlotFrame;
             _buyCharacterFrames = buyCharacterFrames ?? Array.Empty<PreviewCanvasFrame>();
             _prevPageButton = prevPageButton;
             _nextPageButton = nextPageButton;
@@ -433,21 +433,15 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawEmptySlot(SpriteBatch sprite, Point slotAnchor)
         {
-            if (_emptySlotTexture == null)
+            if (_emptySlotFrame.Texture == null)
             {
                 return;
             }
 
-            Point origin = Point.Zero;
-            if (_emptySlotTexture.Bounds.Width > 0 && _emptySlotTexture.Bounds.Height > 0)
-            {
-                origin = new Point(_emptySlotTexture.Width / 2, _emptySlotTexture.Height + 1);
-            }
-
             Vector2 position = new(
-                Position.X + slotAnchor.X - origin.X,
-                Position.Y + slotAnchor.Y - origin.Y);
-            sprite.Draw(_emptySlotTexture, position, Color.White);
+                Position.X + slotAnchor.X - _emptySlotFrame.Origin.X,
+                Position.Y + slotAnchor.Y - _emptySlotFrame.Origin.Y);
+            sprite.Draw(_emptySlotFrame.Texture, position, Color.White);
         }
 
         private void DrawBuyCharacterCard(SpriteBatch sprite, Point slotAnchor, int tickCount)

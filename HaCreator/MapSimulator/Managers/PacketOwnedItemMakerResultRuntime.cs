@@ -36,10 +36,10 @@ namespace HaCreator.MapSimulator.Managers
     internal static class PacketOwnedItemMakerResultRuntime
     {
         public const int ClientPacketType = 248;
-        private const int GainedItemPluralStringPoolId = 5446;
-        private const int GainedItemSingularStringPoolId = 5447;
-        private const int LostMesosStringPoolId = 309;
-        private const int DisassemblySuccessStringPoolId = 772;
+        private const int ItemMakerPrimaryGainStringPoolId = 5442;
+        private const int ItemMakerSecondaryGainStringPoolId = 306;
+        private const int LostMesosStringPoolId = 305;
+        private const int DisassemblySuccessStringPoolId = 307;
         private const int IncorrectRequestStringPoolId = 3948;
         private const int CannotDisassembleStringPoolId = 4579;
 
@@ -242,14 +242,14 @@ namespace HaCreator.MapSimulator.Managers
                 case 2:
                     if (!result.SuppressedPrimaryTargetNotice)
                     {
-                        AppendGainedItemLine(lines, result.TargetItemId, result.TargetItemCount);
+                        AppendPrimaryTargetGainLine(lines, result.TargetItemId, result.TargetItemCount);
                     }
 
-                    AppendRewardLines(lines, result.RewardItems);
-                    AppendBonusLines(lines, result.BonusItemIds);
+                    AppendSecondaryRewardLines(lines, result.RewardItems);
+                    AppendSecondaryBonusLines(lines, result.BonusItemIds);
                     if (result.HasAuxiliaryItem)
                     {
-                        AppendGainedItemLine(lines, result.AuxiliaryItemId, 1);
+                        AppendSecondaryGainLine(lines, result.AuxiliaryItemId, 1);
                     }
 
                     AppendMesoLossLine(lines, result.MesoDelta);
@@ -258,10 +258,10 @@ namespace HaCreator.MapSimulator.Managers
                 case 3:
                     if (result.TargetItemId > 0)
                     {
-                        lines.Add(FormatDisassemblySuccess(result.TargetItemId));
+                        AppendPrimaryTargetGainLine(lines, result.TargetItemId, 1);
                     }
 
-                    AppendGainedItemLine(lines, result.GeneratedItemId, result.GeneratedItemCount);
+                    AppendSecondaryGainLine(lines, result.GeneratedItemId, result.GeneratedItemCount);
                     break;
 
                 case 4:
@@ -270,7 +270,7 @@ namespace HaCreator.MapSimulator.Managers
                         lines.Add(FormatDisassemblySuccess(result.DisassembledItemId));
                     }
 
-                    AppendRewardLines(lines, result.RewardItems);
+                    AppendPrimaryRewardLines(lines, result.RewardItems);
                     AppendMesoLossLine(lines, result.MesoDelta);
                     break;
             }
@@ -298,7 +298,7 @@ namespace HaCreator.MapSimulator.Managers
             return count;
         }
 
-        private static void AppendRewardLines(List<string> lines, IReadOnlyList<PacketOwnedItemMakerResultItemEntry> items)
+        private static void AppendPrimaryRewardLines(List<string> lines, IReadOnlyList<PacketOwnedItemMakerResultItemEntry> items)
         {
             if (items == null)
             {
@@ -308,11 +308,25 @@ namespace HaCreator.MapSimulator.Managers
             for (int i = 0; i < items.Count; i++)
             {
                 PacketOwnedItemMakerResultItemEntry item = items[i];
-                AppendGainedItemLine(lines, item.ItemId, item.Quantity);
+                AppendPrimaryTargetGainLine(lines, item.ItemId, item.Quantity);
             }
         }
 
-        private static void AppendBonusLines(List<string> lines, IReadOnlyList<int> bonusItemIds)
+        private static void AppendSecondaryRewardLines(List<string> lines, IReadOnlyList<PacketOwnedItemMakerResultItemEntry> items)
+        {
+            if (items == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                PacketOwnedItemMakerResultItemEntry item = items[i];
+                AppendSecondaryGainLine(lines, item.ItemId, item.Quantity);
+            }
+        }
+
+        private static void AppendSecondaryBonusLines(List<string> lines, IReadOnlyList<int> bonusItemIds)
         {
             if (bonusItemIds == null)
             {
@@ -321,11 +335,11 @@ namespace HaCreator.MapSimulator.Managers
 
             for (int i = 0; i < bonusItemIds.Count; i++)
             {
-                AppendGainedItemLine(lines, bonusItemIds[i], 1);
+                AppendSecondaryGainLine(lines, bonusItemIds[i], 1);
             }
         }
 
-        private static void AppendGainedItemLine(List<string> lines, int itemId, int quantity)
+        private static void AppendPrimaryTargetGainLine(List<string> lines, int itemId, int quantity)
         {
             if (lines == null || itemId <= 0)
             {
@@ -333,21 +347,30 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             int clampedQuantity = Math.Max(1, quantity);
-            bool plural = clampedQuantity > 1;
-            string fallbackFormat = plural
-                ? "You have gained items in the {0} tab ({1} {2})"
-                : "You have gained an item in the {0} tab ({1})";
             string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
-                plural ? GainedItemPluralStringPoolId : GainedItemSingularStringPoolId,
-                fallbackFormat,
+                ItemMakerPrimaryGainStringPoolId,
+                "You have gained %1 x%3 (%2).",
                 maxPlaceholderCount: 3,
                 out _);
-            string inventoryLabel = ResolveInventoryTabLabel(itemId);
+            string itemTypeName = ResolveItemTypeName(itemId);
             string itemName = ResolveItemName(itemId);
-            string line = plural
-                ? string.Format(CultureInfo.InvariantCulture, format, inventoryLabel, itemName, clampedQuantity)
-                : string.Format(CultureInfo.InvariantCulture, format, inventoryLabel, itemName);
-            lines.Add(line);
+            lines.Add(string.Format(CultureInfo.InvariantCulture, format, itemTypeName, itemName, clampedQuantity));
+        }
+
+        private static void AppendSecondaryGainLine(List<string> lines, int itemId, int quantity)
+        {
+            if (lines == null || itemId <= 0)
+            {
+                return;
+            }
+
+            int clampedQuantity = Math.Max(1, quantity);
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                ItemMakerSecondaryGainStringPoolId,
+                "You have gained {0} x{1}.",
+                maxPlaceholderCount: 2,
+                out _);
+            lines.Add(string.Format(CultureInfo.InvariantCulture, format, ResolveItemName(itemId), clampedQuantity));
         }
 
         private static void AppendMesoLossLine(List<string> lines, int mesoDelta)
@@ -362,7 +385,7 @@ namespace HaCreator.MapSimulator.Managers
                 "You have lost mesos. ({0})",
                 maxPlaceholderCount: 1,
                 out _);
-            lines.Add(string.Format(CultureInfo.InvariantCulture, format, mesoDelta));
+            lines.Add(string.Format(CultureInfo.InvariantCulture, format, -mesoDelta));
         }
 
         private static string FormatDisassemblySuccess(int itemId)
@@ -383,18 +406,12 @@ namespace HaCreator.MapSimulator.Managers
                 : $"Item #{itemId}";
         }
 
-        private static string ResolveInventoryTabLabel(int itemId)
+        private static string ResolveItemTypeName(int itemId)
         {
-            int typeBucket = itemId / 1000000;
-            return typeBucket switch
-            {
-                1 => "Eqp",
-                2 => "Use",
-                3 => "Setup",
-                4 => "Etc",
-                5 => "Cash",
-                _ => "Inventory"
-            };
+            return HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                && !string.IsNullOrWhiteSpace(itemInfo?.Item1)
+                ? itemInfo.Item1.Trim()
+                : "Item";
         }
     }
 }

@@ -122,14 +122,13 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.AdminShopWishListSearchResult;
         public override bool CapturesKeyboardInput => IsVisible;
 
-        public void ShowFor(AdminShopWishListUI owner, IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> results)
+        public void PrepareForShow(AdminShopWishListUI owner, IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> results)
         {
             _owner = owner;
             _results = results ?? Array.Empty<AdminShopDialogUI.WishlistSearchResult>();
             _selectedIndex = 0;
             _pageIndex = 0;
             PositionRelativeToOwner(owner);
-            Show();
         }
 
         public void HideForOwner(string message)

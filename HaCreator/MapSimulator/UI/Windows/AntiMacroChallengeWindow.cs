@@ -7,6 +7,7 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -74,6 +75,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D[] _countdownDigitTextures = new Texture2D[10];
         private readonly Point[] _countdownDigitOriginsByValue = new Point[10];
         private readonly AntiMacroEditControl _editControl;
+        private readonly NativeAntiMacroEditHost _nativeEditHost;
 
         private SpriteFont _font;
         private Texture2D _challengeTexture;
@@ -101,12 +103,15 @@ namespace HaCreator.MapSimulator.UI
             pixelTexture.SetData(new[] { Color.White });
             _editControl = new AntiMacroEditControl(pixelTexture, _layout.InputOrigin, InputWidth, InputHeight, InputMaxLength);
             _editControl.UseClientAntiMacroVisualStyle();
+            _nativeEditHost = new NativeAntiMacroEditHost(InputMaxLength);
+            _nativeEditHost.TextChanged += OnNativeEditHostTextChanged;
+            _nativeEditHost.SubmitRequested += OnNativeEditHostSubmitRequested;
         }
 
         public override string WindowName => _windowName;
         public override bool SupportsDragging => false;
-        public override bool CapturesKeyboardInput => IsVisible && _editControl.HasFocus;
-        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _editControl.HasFocus && _softKeyboardActive;
+        public override bool CapturesKeyboardInput => IsVisible && (UsingNativeEditHost ? _nativeEditHost.HasFocus : _editControl.HasFocus);
+        bool ISoftKeyboardHost.WantsSoftKeyboard => !UsingNativeEditHost && IsVisible && _editControl.HasFocus && _softKeyboardActive;
         SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => SoftKeyboardKeyboardType.AlphaNumeric;
         int ISoftKeyboardHost.SoftKeyboardTextLength => _editControl.Text?.Length ?? 0;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => InputMaxLength;
@@ -114,7 +119,7 @@ namespace HaCreator.MapSimulator.UI
 
         public event Action<string> SubmitRequested;
 
-        public string CurrentInput => _editControl.Text;
+        public string CurrentInput => UsingNativeEditHost ? _nativeEditHost.Text : _editControl.Text;
         public int ExpiresAt => _expiresAt;
         public bool IsAdminVariant => _adminVariant;
         public Point ActiveFrameSize => new(
@@ -127,17 +132,37 @@ namespace HaCreator.MapSimulator.UI
             _editControl.SetFont(font);
         }
 
+        public void TryAttachNativeEditHost(IntPtr parentWindowHandle)
+        {
+            if (_nativeEditHost.TryAttach(parentWindowHandle, GetNativeInputBounds()))
+            {
+                _nativeEditHost.SetVisible(IsVisible);
+            }
+        }
+
         public override void Hide()
         {
             base.Hide();
             _editControl.SetFocus(false);
+            _nativeEditHost.SetVisible(false);
+            _nativeEditHost.Blur();
             _softKeyboardActive = false;
         }
 
         public override void Show()
         {
             base.Show();
-            _editControl.ActivateByOwner();
+            if (UsingNativeEditHost)
+            {
+                _nativeEditHost.UpdateBounds(GetNativeInputBounds());
+                _nativeEditHost.SetVisible(true);
+                _nativeEditHost.Focus();
+            }
+            else
+            {
+                _editControl.ActivateByOwner();
+            }
+
             _softKeyboardActive = false;
         }
 
@@ -179,6 +204,11 @@ namespace HaCreator.MapSimulator.UI
                 digitDrawOrigins,
                 countdownCommaDrawOrigin ?? _layout.CountdownCommaOrigin);
             _editControl.UpdateLayout(_layout.InputOrigin);
+            if (UsingNativeEditHost)
+            {
+                _nativeEditHost.UpdateBounds(GetNativeInputBounds());
+            }
+
             _attemptMessageFormat = string.IsNullOrWhiteSpace(attemptMessageFormat)
                 ? AntiMacroOwnerStringPoolText.GetAttemptMessageFormat(appendFallbackSuffix: false)
                 : attemptMessageFormat;
@@ -209,6 +239,7 @@ namespace HaCreator.MapSimulator.UI
             _answerCount = Math.Max(0, answerCount);
             _statusText = statusText ?? string.Empty;
             _editControl.Reset();
+            _nativeEditHost.Reset();
             _softKeyboardActive = false;
             _previousMouseState = Mouse.GetState();
             _submitButton?.SetEnabled(false);
@@ -222,6 +253,8 @@ namespace HaCreator.MapSimulator.UI
             _answerCount = 0;
             _statusText = string.Empty;
             _editControl.Clear();
+            _nativeEditHost.Reset();
+            _nativeEditHost.SetVisible(false);
             _submitButton?.SetEnabled(false);
             Hide();
         }
@@ -237,10 +270,17 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _editControl.HandleKeyboardInput(keyboardState, _previousKeyboardState);
-            if (Pressed(keyboardState, Keys.Enter) && CanSubmitAnswer())
+            if (UsingNativeEditHost)
             {
-                SubmitRequested?.Invoke(_editControl.Text);
+                _nativeEditHost.UpdateBounds(GetNativeInputBounds());
+            }
+            else
+            {
+                _editControl.HandleKeyboardInput(keyboardState, _previousKeyboardState);
+                if (Pressed(keyboardState, Keys.Enter) && CanSubmitAnswer())
+                {
+                    SubmitRequested?.Invoke(_editControl.Text);
+                }
             }
 
             _submitButton?.SetEnabled(CanSubmitAnswer());
@@ -262,25 +302,42 @@ namespace HaCreator.MapSimulator.UI
             Rectangle ownerBounds = GetWindowBounds();
             if (leftJustPressed)
             {
-                Rectangle inputBounds = _editControl.GetBounds(ownerBounds);
+                Rectangle inputBounds = UsingNativeEditHost ? GetNativeInputBounds() : _editControl.GetBounds(ownerBounds);
                 if (inputBounds.Contains(mouseState.Position))
                 {
-                    _editControl.BeginSelectionAtMouseX(mouseState.X, ownerBounds);
-                    _softKeyboardActive = true;
+                    if (UsingNativeEditHost)
+                    {
+                        _nativeEditHost.Focus();
+                        _softKeyboardActive = false;
+                    }
+                    else
+                    {
+                        _editControl.BeginSelectionAtMouseX(mouseState.X, ownerBounds);
+                        _softKeyboardActive = true;
+                    }
+
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
                 }
                 else if (!ContainsPoint(mouseState.X, mouseState.Y))
                 {
-                    _editControl.SetFocus(false);
+                    if (UsingNativeEditHost)
+                    {
+                        _nativeEditHost.Blur();
+                    }
+                    else
+                    {
+                        _editControl.SetFocus(false);
+                    }
+
                     _softKeyboardActive = false;
                 }
             }
-            else if (leftHeld && _editControl.IsSelectingWithMouse)
+            else if (!UsingNativeEditHost && leftHeld && _editControl.IsSelectingWithMouse)
             {
                 _editControl.UpdateSelectionAtMouseX(mouseState.X, ownerBounds);
             }
 
-            if (leftJustReleased)
+            if (!UsingNativeEditHost && leftJustReleased)
             {
                 _editControl.EndMouseSelection();
             }
@@ -312,45 +369,95 @@ namespace HaCreator.MapSimulator.UI
             DrawChallengeTexture(sprite, challengeBounds);
             DrawCountdown(sprite, bounds, tickCount);
             DrawAttemptMessage(sprite, bounds);
-            _editControl.Draw(sprite, bounds, drawChrome: true);
-            _editControl.DrawImeCandidateWindow(sprite, bounds);
+            if (!UsingNativeEditHost)
+            {
+                _editControl.Draw(sprite, bounds, drawChrome: true);
+                _editControl.DrawImeCandidateWindow(sprite, bounds);
+            }
         }
 
         public override void HandleCommittedText(string text)
         {
+            if (UsingNativeEditHost)
+            {
+                return;
+            }
+
             _editControl.HandleCommittedText(text, CapturesKeyboardInput);
         }
 
         public override void HandleCompositionText(string text)
         {
+            if (UsingNativeEditHost)
+            {
+                return;
+            }
+
             _editControl.HandleCompositionText(text, CapturesKeyboardInput);
         }
 
         public override void HandleCompositionState(ImeCompositionState state)
         {
+            if (UsingNativeEditHost)
+            {
+                return;
+            }
+
             _editControl.HandleCompositionState(state, CapturesKeyboardInput);
         }
 
         public override void ClearCompositionText()
         {
+            if (UsingNativeEditHost)
+            {
+                return;
+            }
+
             _editControl.ClearCompositionText();
         }
 
         public override void HandleImeCandidateList(ImeCandidateListState state)
         {
+            if (UsingNativeEditHost)
+            {
+                return;
+            }
+
             _editControl.HandleImeCandidateList(state, CapturesKeyboardInput);
         }
 
         public override void ClearImeCandidateList()
         {
+            if (UsingNativeEditHost)
+            {
+                return;
+            }
+
             _editControl.ClearImeCandidateList();
         }
 
-        Rectangle ISoftKeyboardHost.GetSoftKeyboardAnchorBounds() => _editControl.GetBounds(GetWindowBounds());
+        Rectangle ISoftKeyboardHost.GetSoftKeyboardAnchorBounds() => UsingNativeEditHost ? GetNativeInputBounds() : _editControl.GetBounds(GetWindowBounds());
 
         bool ISoftKeyboardHost.TryInsertSoftKeyboardCharacter(char character, out string errorMessage)
         {
             errorMessage = string.Empty;
+            if (UsingNativeEditHost)
+            {
+                if (!_nativeEditHost.HasFocus)
+                {
+                    errorMessage = "The anti-macro answer field is not focused.";
+                    return false;
+                }
+
+                if (!_nativeEditHost.TryInsertCharacter(character))
+                {
+                    errorMessage = "The anti-macro answer field is full.";
+                    return false;
+                }
+
+                return true;
+            }
+
             if (!_editControl.HasFocus)
             {
                 errorMessage = "The anti-macro answer field is not focused.";
@@ -369,6 +476,23 @@ namespace HaCreator.MapSimulator.UI
         bool ISoftKeyboardHost.TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage)
         {
             errorMessage = string.Empty;
+            if (UsingNativeEditHost)
+            {
+                if (!_nativeEditHost.HasFocus)
+                {
+                    errorMessage = "The anti-macro answer field is not focused.";
+                    return false;
+                }
+
+                if (!_nativeEditHost.TryReplaceCharacterBeforeCaret(character))
+                {
+                    errorMessage = "That key cannot replace the current anti-macro answer character.";
+                    return false;
+                }
+
+                return true;
+            }
+
             if (!_editControl.HasFocus)
             {
                 errorMessage = "The anti-macro answer field is not focused.";
@@ -387,6 +511,23 @@ namespace HaCreator.MapSimulator.UI
         bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
         {
             errorMessage = string.Empty;
+            if (UsingNativeEditHost)
+            {
+                if (!_nativeEditHost.HasFocus)
+                {
+                    errorMessage = "The anti-macro answer field is not focused.";
+                    return false;
+                }
+
+                if (!_nativeEditHost.TryBackspace())
+                {
+                    errorMessage = "The anti-macro answer field is already empty.";
+                    return false;
+                }
+
+                return true;
+            }
+
             if (!_editControl.HasFocus)
             {
                 errorMessage = "The anti-macro answer field is not focused.";
@@ -411,7 +552,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            SubmitRequested?.Invoke(_editControl.Text);
+            SubmitRequested?.Invoke(CurrentInput);
             return true;
         }
 
@@ -542,6 +683,13 @@ namespace HaCreator.MapSimulator.UI
             return (remainingMs + 999) / 1000;
         }
 
+        private bool UsingNativeEditHost => _nativeEditHost.IsAttached;
+
+        private Rectangle GetNativeInputBounds()
+        {
+            return _editControl.GetBounds(GetWindowBounds());
+        }
+
         private new Rectangle GetWindowBounds()
         {
             Point size = ActiveFrameSize;
@@ -596,7 +744,20 @@ namespace HaCreator.MapSimulator.UI
         {
             if (CanSubmitAnswer())
             {
-                SubmitRequested?.Invoke(_editControl.Text);
+                SubmitRequested?.Invoke(CurrentInput);
+            }
+        }
+
+        private void OnNativeEditHostTextChanged(string text)
+        {
+            _submitButton?.SetEnabled(CanSubmitAnswer());
+        }
+
+        private void OnNativeEditHostSubmitRequested()
+        {
+            if (CanSubmitAnswer())
+            {
+                SubmitRequested?.Invoke(CurrentInput);
             }
         }
     }

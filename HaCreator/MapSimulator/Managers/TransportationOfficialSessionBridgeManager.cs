@@ -44,6 +44,7 @@ namespace HaCreator.MapSimulator.Managers
             int Opcode,
             int PayloadLength,
             string PayloadHex,
+            string RawPacketHex,
             string Source);
 
         private sealed class BridgePair
@@ -128,7 +129,7 @@ namespace HaCreator.MapSimulator.Managers
                     + string.Join(
                         Environment.NewLine,
                         entries.Select(entry =>
-                            $"opcode={entry.Opcode} payloadLen={entry.PayloadLength} source={entry.Source} payloadHex={entry.PayloadHex}"));
+                            $"opcode={entry.Opcode} payloadLen={entry.PayloadLength} source={entry.Source} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
             }
         }
 
@@ -141,6 +142,56 @@ namespace HaCreator.MapSimulator.Managers
 
             LastStatus = "Transport official-session bridge outbound history cleared.";
             return LastStatus;
+        }
+
+        public bool TryReplayRecentOutboundPacket(int historyIndexFromNewest, out string status)
+        {
+            if (historyIndexFromNewest <= 0)
+            {
+                status = "Transport replay index must be 1 or greater.";
+                LastStatus = status;
+                return false;
+            }
+
+            OutboundPacketTrace[] entries;
+            lock (_sync)
+            {
+                if (_recentOutboundPackets.Count == 0)
+                {
+                    status = "No captured transport outbound client packets are available to replay.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                if (historyIndexFromNewest > _recentOutboundPackets.Count)
+                {
+                    status = $"Transport replay index {historyIndexFromNewest} exceeds the {_recentOutboundPackets.Count} captured outbound packet(s).";
+                    LastStatus = status;
+                    return false;
+                }
+
+                entries = _recentOutboundPackets.ToArray();
+            }
+
+            OutboundPacketTrace trace = entries[^historyIndexFromNewest];
+            if (string.IsNullOrWhiteSpace(trace.RawPacketHex))
+            {
+                status = $"Captured transport outbound packet {historyIndexFromNewest} has no raw payload to replay.";
+                LastStatus = status;
+                return false;
+            }
+
+            try
+            {
+                byte[] rawPacket = Convert.FromHexString(trace.RawPacketHex);
+                return TrySendRawPacket(rawPacket, out status);
+            }
+            catch (FormatException ex)
+            {
+                status = $"Captured transport outbound packet {historyIndexFromNewest} could not be replayed: {ex.Message}";
+                LastStatus = status;
+                return false;
+            }
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -493,6 +544,7 @@ namespace HaCreator.MapSimulator.Managers
                         opcode,
                         payload?.Length ?? 0,
                         BuildPayloadPreview(payload),
+                        Convert.ToHexString(raw),
                         pair.ClientEndpoint));
 
                     if (isTransportOpcode)
@@ -517,6 +569,58 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 _recentOutboundPackets.Enqueue(trace);
+            }
+        }
+
+        private bool TrySendRawPacket(byte[] rawPacket, out string status)
+        {
+            BridgePair pair = _activePair;
+            if (pair == null || !pair.InitCompleted)
+            {
+                status = "Transport official-session bridge has no active Maple session.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (rawPacket == null || rawPacket.Length < sizeof(short))
+            {
+                status = "Transport outbound packet must include a 2-byte opcode.";
+                LastStatus = status;
+                return false;
+            }
+
+            try
+            {
+                byte[] clonedPacket = (byte[])rawPacket.Clone();
+                int opcode = BitConverter.ToUInt16(clonedPacket, 0);
+                byte[] payload = clonedPacket.Length > sizeof(short)
+                    ? clonedPacket.Skip(sizeof(short)).ToArray()
+                    : Array.Empty<byte>();
+
+                pair.ServerSession.SendPacket(clonedPacket);
+                ForwardedOutboundCount++;
+                if (opcode == TransportationPacketInboxManager.PacketTypeContiMove
+                    || opcode == TransportationPacketInboxManager.PacketTypeContiState)
+                {
+                    ForwardedOutboundTransportCount++;
+                }
+
+                RecordOutboundPacket(new OutboundPacketTrace(
+                    opcode,
+                    payload.Length,
+                    BuildPayloadPreview(payload),
+                    Convert.ToHexString(clonedPacket),
+                    "transport-replay"));
+
+                status = $"Replayed outbound {TransportationPacketInboxManager.DescribePacket(opcode, payload)} to live session {pair.RemoteEndpoint}.";
+                LastStatus = status;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                status = $"Transport outbound replay failed: {ex.Message}";
+                LastStatus = status;
+                return false;
             }
         }
 

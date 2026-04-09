@@ -9,6 +9,7 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class NpcDialogueFormattingContext
     {
+        public Func<string> ResolvePlayerNameText { get; init; }
         public Func<int, string> ResolveItemCountText { get; init; }
         public Func<int, string> ResolveQuestStateText { get; init; }
         public Func<string> ResolveJobNameText { get; init; }
@@ -51,7 +52,7 @@ namespace HaCreator.MapSimulator.Interaction
                 .Replace("#l", string.Empty);
 
             formatted = SelectionRegex.Replace(formatted, string.Empty);
-            formatted = PlayerNameRegex.Replace(formatted, "You");
+            formatted = PlayerNameRegex.Replace(formatted, match => ResolvePlayerNameText(context));
             formatted = ItemIconRegex.Replace(formatted, string.Empty);
             formatted = RewardCategoryRegex.Replace(formatted, string.Empty);
             formatted = ItemCountRegex.Replace(formatted, match => ResolveItemCountText(match.Groups[1].Value, context));
@@ -421,6 +422,20 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return "0";
+        }
+
+        private static string ResolvePlayerNameText(NpcDialogueFormattingContext context)
+        {
+            if (context?.ResolvePlayerNameText != null)
+            {
+                string resolvedText = context.ResolvePlayerNameText();
+                if (!string.IsNullOrWhiteSpace(resolvedText))
+                {
+                    return resolvedText;
+                }
+            }
+
+            return "You";
         }
 
         private static string ResolveQuestStateText(string questIdText, NpcDialogueFormattingContext context)

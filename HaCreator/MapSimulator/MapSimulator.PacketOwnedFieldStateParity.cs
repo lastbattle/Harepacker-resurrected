@@ -253,7 +253,13 @@ namespace HaCreator.MapSimulator
 
         private QuestWindowDetailState GetQuestWindowDetailStateWithPacketState(int questId)
         {
-            QuestWindowDetailState state = _questRuntime.GetQuestWindowDetailState(questId, _playerManager?.Player?.Build);
+            QuestDetailDeliveryType deliveryTypeOverride =
+                _lastDeliveryQuestId == questId
+                    ? _lastPacketOwnedDeliveryType
+                    : QuestDetailDeliveryType.None;
+            QuestWindowDetailState state = deliveryTypeOverride != QuestDetailDeliveryType.None
+                ? _questRuntime.GetQuestWindowDetailState(questId, _playerManager?.Player?.Build, deliveryTypeOverride)
+                : _questRuntime.GetQuestWindowDetailState(questId, _playerManager?.Player?.Build);
             if (state == null || !_packetFieldStateRuntime.TryGetQuestTimerText(questId, currTickCount, out string timerText))
             {
                 return state;

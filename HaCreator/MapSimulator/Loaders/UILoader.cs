@@ -1810,8 +1810,7 @@ namespace HaCreator.MapSimulator.Loaders
             int mapButtonWidth,
             int rightInset)
         {
-            return Math.Max(0, minimizeButtonWidth)
-                + Math.Max(0, maximizeButtonWidth)
+            return Math.Max(Math.Max(0, minimizeButtonWidth), Math.Max(0, maximizeButtonWidth))
                 + Math.Max(0, mapButtonWidth)
                 + Math.Max(0, rightInset);
         }
@@ -2100,7 +2099,7 @@ namespace HaCreator.MapSimulator.Loaders
                 ResolveUiButtonSnapshotWidth(collapsedMinimizeButtonProperty),
                 ResolveUiButtonSnapshotWidth(collapsedMaximizeButtonProperty),
                 ResolveUiButtonSnapshotWidth(collapsedMapButtonProperty),
-                rightInset: 8);
+                rightInset: 6);
             if (collapsedButtonReserveWidth > 0)
             {
                 collapsedMapNameStackPanel.AddRenderable(new HaUIImage(new HaUIInfo()

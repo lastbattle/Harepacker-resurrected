@@ -746,6 +746,7 @@ namespace HaCreator.MapSimulator.Character
         public Dictionary<string, CharacterAnimation> Animations { get; set; } = new();
         public HashSet<string> AvailableAnimations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         internal Func<string, CharacterAnimation> AnimationResolver { get; set; }
+        internal TamingMobActionFrameOwner TamingMobActionFrameOwner { get; set; }
 
         // For equipment with visible slots
         public string VSlot { get; set; }           // Visible slot conflicts
@@ -881,7 +882,8 @@ namespace HaCreator.MapSimulator.Character
                 GrowthExpPercent = GrowthExpPercent,
                 Icon = Icon,
                 IconRaw = IconRaw,
-                AnimationResolver = AnimationResolver
+                AnimationResolver = AnimationResolver,
+                TamingMobActionFrameOwner = TamingMobActionFrameOwner
             };
         }
 

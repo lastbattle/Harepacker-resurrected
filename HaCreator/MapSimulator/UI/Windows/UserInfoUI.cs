@@ -3,6 +3,7 @@ using HaCreator.MapSimulator.Companions;
 using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -159,6 +160,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly string[] _itemPopupEntries = { "Mini Room", "Personal Shop", "Entrusted Shop" };
         private readonly List<string> _wishEntries = new List<string> { "White Scroll", "Brown Work Gloves", "Ilbi Throwing-Star" };
         private readonly Dictionary<ItemMakerRecipeFamily, IDXObject> _productSkillIcons = new Dictionary<ItemMakerRecipeFamily, IDXObject>();
+        private readonly Dictionary<int, Texture2D> _itemIconCache = new Dictionary<int, Texture2D>();
         private IDXObject _productSkillRecipeIcon;
         private IDXObject _marriedIcon;
 
@@ -1061,8 +1063,8 @@ namespace HaCreator.MapSimulator.UI
         {
             string medalText = BuildMedalSummary();
             string pocketText = BuildPocketSummary();
-            DrawPlainText(sprite, FitText(medalText, 150), new Vector2(Position.X + 18, Position.Y + 152), MutedColor, 0.48f);
-            DrawPlainText(sprite, FitText(pocketText, 150), new Vector2(Position.X + 18, Position.Y + 166), MutedColor, 0.48f);
+            DrawEquipmentSummary(sprite, EquipSlot.Medal, medalText, new Point(18, 148), new Point(40, 152));
+            DrawEquipmentSummary(sprite, EquipSlot.Pocket, pocketText, new Point(18, 164), new Point(40, 166));
         }
 
         private void DrawMarriageBadge(SpriteBatch sprite)
@@ -2117,6 +2119,74 @@ namespace HaCreator.MapSimulator.UI
                 : IsRemoteInspectionActive()
                     ? $"Pocket locked on inspected build ({charm}/30 Charm)"
                     : $"Pocket locked ({charm}/30 Charm)";
+        }
+
+        private void DrawEquipmentSummary(SpriteBatch sprite, EquipSlot slot, string summaryText, Point iconPosition, Point textPosition)
+        {
+            if (sprite == null)
+            {
+                return;
+            }
+
+            CharacterPart equippedPart = TryResolveEquippedItem(slot);
+            Texture2D icon = TryResolveItemIcon(sprite, equippedPart?.ItemId ?? 0);
+            if (icon != null)
+            {
+                sprite.Draw(
+                    icon,
+                    new Rectangle(Position.X + iconPosition.X, Position.Y + iconPosition.Y, 16, 16),
+                    Color.White);
+            }
+
+            DrawPlainText(
+                sprite,
+                FitText(summaryText, icon != null ? 128 : 150),
+                new Vector2(Position.X + (icon != null ? textPosition.X : iconPosition.X), Position.Y + textPosition.Y),
+                MutedColor,
+                0.48f);
+        }
+
+        private CharacterPart TryResolveEquippedItem(EquipSlot slot)
+        {
+            CharacterBuild displayBuild = GetDisplayedBuild();
+            if (displayBuild?.Equipment != null &&
+                displayBuild.Equipment.TryGetValue(slot, out CharacterPart equippedPart) &&
+                equippedPart != null)
+            {
+                return equippedPart;
+            }
+
+            if (displayBuild?.HiddenEquipment != null &&
+                displayBuild.HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart) &&
+                hiddenPart != null)
+            {
+                return hiddenPart;
+            }
+
+            return null;
+        }
+
+        private Texture2D TryResolveItemIcon(SpriteBatch sprite, int itemId)
+        {
+            if (sprite?.GraphicsDevice == null || itemId <= 0 || HaCreator.Program.InfoManager?.ItemIconCache == null)
+            {
+                return null;
+            }
+
+            if (_itemIconCache.TryGetValue(itemId, out Texture2D cachedIcon))
+            {
+                return cachedIcon;
+            }
+
+            if (!HaCreator.Program.InfoManager.ItemIconCache.TryGetValue(itemId, out var canvas) || canvas == null)
+            {
+                _itemIconCache[itemId] = null;
+                return null;
+            }
+
+            Texture2D texture = canvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(sprite.GraphicsDevice);
+            _itemIconCache[itemId] = texture;
+            return texture;
         }
 
         private string ResolveNextPetExceptionEntry()

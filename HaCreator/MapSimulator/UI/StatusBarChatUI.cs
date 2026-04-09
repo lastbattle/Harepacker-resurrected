@@ -1478,10 +1478,10 @@ namespace HaCreator.MapSimulator.UI
             switch (action)
             {
                 case WhisperPickerButtonAction.Previous:
-                    WhisperTargetPickerSelectionDeltaRequested?.Invoke(-1);
+                    WhisperTargetPickerSelectionDeltaRequested?.Invoke(-WhisperPickerVisibleRows);
                     break;
                 case WhisperPickerButtonAction.Next:
-                    WhisperTargetPickerSelectionDeltaRequested?.Invoke(1);
+                    WhisperTargetPickerSelectionDeltaRequested?.Invoke(WhisperPickerVisibleRows);
                     break;
                 case WhisperPickerButtonAction.Confirm:
                     WhisperTargetPickerConfirmRequested?.Invoke();

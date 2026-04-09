@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             "fly",
             "move",
             "walk",
+            "repeat",
             "attack1",
             "attack",
             "die"
@@ -54,6 +55,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             "support",
             "subsummon",
             "attackTriangle",
+            "repeat",
+            "repeat0",
+            "effect",
+            "effect0",
             "skill1",
             "skill2",
             "skill3",
@@ -232,6 +237,38 @@ namespace HaCreator.MapSimulator.Character.Skills
             return null;
         }
 
+        public SkillAnimation ResolveSummonActionAnimation(
+            SkillData skill,
+            int skillLevel,
+            string actionKey,
+            SkillAnimation fallback = null)
+        {
+            if (skill == null || string.IsNullOrWhiteSpace(actionKey))
+            {
+                return fallback;
+            }
+
+            string normalizedKey = actionKey.Trim();
+            if (TryGetCachedSummonActionAnimation(skill.SkillId, skillLevel, normalizedKey, out SkillAnimation cachedAnimation))
+            {
+                return cachedAnimation;
+            }
+
+            if (skill.SummonActionAnimations != null
+                && skill.SummonActionAnimations.TryGetValue(normalizedKey, out cachedAnimation)
+                && cachedAnimation?.Frames.Count > 0)
+            {
+                CacheSummonActionAnimation(
+                    skill,
+                    normalizedKey,
+                    cachedAnimation,
+                    skillLevel > 0 ? new[] { skillLevel } : null);
+                return cachedAnimation;
+            }
+
+            return fallback;
+        }
+
         /// <summary>
         /// Load every skill book available in Skill.wz and merge the results into a single catalog.
         /// </summary>
@@ -319,6 +356,70 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             skill.Name = GetString(stringNode, "name");
             skill.Description = GetString(stringNode, "desc");
+            skill.DescriptionHints = BuildDescriptionHints(stringNode, skill.Description);
+        }
+
+        private static string BuildDescriptionHints(WzImageProperty stringNode, string description)
+        {
+            if (stringNode == null)
+            {
+                return string.Empty;
+            }
+
+            string[] authoredHintKeys =
+            {
+                "pdesc",
+                "h",
+                "h1",
+                "ph"
+            };
+
+            List<string> segments = new();
+            foreach (string hintKey in authoredHintKeys)
+            {
+                string value = GetString(stringNode, hintKey);
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(description)
+                    && string.Equals(
+                        NormalizeAuthoredDescriptionText(value),
+                        NormalizeAuthoredDescriptionText(description),
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (segments.Any(existing => string.Equals(
+                        NormalizeAuthoredDescriptionText(existing),
+                        NormalizeAuthoredDescriptionText(value),
+                        StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+
+                segments.Add(value.Trim());
+            }
+
+            return segments.Count == 0
+                ? string.Empty
+                : string.Join(" ", segments);
+        }
+
+        private static string NormalizeAuthoredDescriptionText(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            return string.Join(
+                " ",
+                value.Replace("\\r", " ", StringComparison.Ordinal)
+                    .Replace("\\n", " ", StringComparison.Ordinal)
+                    .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
         }
 
         private void ParseSkillInfo(SkillData skill, WzImageProperty skillNode)
@@ -2114,6 +2215,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     if (spawnAnimation.Frames.Count > 0)
                     {
                         skill.SummonSpawnAnimation = spawnAnimation;
+                        skill.SummonSpawnBranchName = spawnBranchName;
                     }
                 }
             }
@@ -2124,9 +2226,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (directAnimation.Frames.Count > 0)
                 {
                     skill.SummonAnimation = directAnimation;
+                    skill.SummonIdleBranchName = "summon";
                     if (skill.SummonSpawnAnimation == null)
                     {
                         skill.SummonSpawnAnimation = directAnimation;
+                        skill.SummonSpawnBranchName = "summon";
                     }
                 }
 
@@ -2139,6 +2243,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (directAnimation.Frames.Count > 0)
                 {
                     skill.SummonAnimation = directAnimation;
+                    skill.SummonIdleBranchName = "summon";
                 }
 
                 return;
@@ -2150,6 +2255,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (directAnimation.Frames.Count > 0)
                 {
                     skill.SummonAnimation = directAnimation;
+                    skill.SummonIdleBranchName = "summon";
                 }
 
                 return;
@@ -2159,21 +2265,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 && (preferredBranchName.Equals("stand", StringComparison.OrdinalIgnoreCase)
                     || preferredBranchName.Equals("fly", StringComparison.OrdinalIgnoreCase)
                     || preferredBranchName.Equals("move", StringComparison.OrdinalIgnoreCase)
-                    || preferredBranchName.Equals("walk", StringComparison.OrdinalIgnoreCase)))
+                    || preferredBranchName.Equals("walk", StringComparison.OrdinalIgnoreCase)
+                    || IsRepeatStyleSummonBranchName(preferredBranchName)))
             {
                 summonAnimation.Loop = true;
             }
 
             skill.SummonAnimation = summonAnimation;
+            skill.SummonIdleBranchName = preferredBranchName;
             if (skill.SummonSpawnAnimation == null)
             {
                 skill.SummonSpawnAnimation = summonAnimation;
+                skill.SummonSpawnBranchName = preferredBranchName;
             }
 
             string supportBranchName = SelectPreferredSummonSupportBranch(branchNames);
             if (supportBranchName != null)
             {
-                PopulateSummonSupportMetadata(skill, summonNode[supportBranchName]);
+                PopulateSummonSupportMetadata(skill, supportBranchName, summonNode[supportBranchName]);
             }
 
             WzImageProperty prepareBranch = summonNode["prepare"];
@@ -2183,6 +2292,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (prepareAnimation.Frames.Count > 0)
                 {
                     skill.SummonAttackPrepareAnimation = prepareAnimation;
+                    skill.SummonPrepareBranchName = "prepare";
                 }
             }
 
@@ -2230,6 +2340,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                   if (removalAnimation.Frames.Count > 0)
                   {
                       skill.SummonRemovalAnimation = removalAnimation;
+                      skill.SummonRemovalBranchName = removalBranchName;
                   }
               }
 
@@ -2320,6 +2431,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             return animation;
         }
 
+        private bool TryGetCachedSummonActionAnimation(
+            int skillId,
+            int skillLevel,
+            string actionKey,
+            out SkillAnimation animation)
+        {
+            animation = null;
+            if (skillId <= 0 || skillLevel <= 0 || string.IsNullOrWhiteSpace(actionKey))
+            {
+                return false;
+            }
+
+            return _summonActionCache.TryGetValue(
+                new SummonActionCacheKey(skillId, skillLevel, actionKey),
+                out animation);
+        }
+
         private bool TryGetCachedSummonActionAnimation(SkillData skill, string actionKey, out SkillAnimation animation)
         {
             animation = null;
@@ -2340,7 +2468,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
-        private void CacheSummonActionAnimation(SkillData skill, string actionKey, SkillAnimation animation)
+        private void CacheSummonActionAnimation(
+            SkillData skill,
+            string actionKey,
+            SkillAnimation animation,
+            IEnumerable<int> explicitLevels = null)
         {
             if (skill == null || string.IsNullOrWhiteSpace(actionKey) || animation == null)
             {
@@ -2348,7 +2480,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             skill.SummonActionAnimations[actionKey] = animation;
-            foreach (int level in EnumerateSummonActionCacheLevels(skill))
+            IEnumerable<int> cacheLevels = explicitLevels ?? EnumerateSummonActionCacheLevels(skill);
+            foreach (int level in cacheLevels
+                         .Where(level => level > 0)
+                         .Distinct())
             {
                 _summonActionCache[new SummonActionCacheKey(skill.SkillId, level, actionKey)] = animation;
             }
@@ -2376,7 +2511,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private SkillAnimation LoadSummonActionAnimation(WzImageProperty node, string name)
         {
             SkillAnimation animation = LoadSkillAnimation(node, name, LoadSummonActionFrame);
-            if (animation.Frames.Count > 0 && ShouldAppendReversedSummonFrames(node))
+            if (animation.Frames.Count > 0 && ShouldAppendReversedSummonFrames(node, name))
             {
                 AppendReversedSummonFrames(animation);
             }
@@ -2750,7 +2885,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
-        private static void PopulateSummonSupportMetadata(SkillData skill, WzImageProperty supportBranch)
+        private static void PopulateSummonSupportMetadata(SkillData skill, string supportBranchName, WzImageProperty supportBranch)
         {
             if (skill == null || supportBranch == null)
             {
@@ -2780,6 +2915,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             skill.SummonAttackRangeRight = rb?.X ?? 0;
             skill.SummonAttackRangeTop = lt?.Y ?? 0;
             skill.SummonAttackRangeBottom = rb?.Y ?? 0;
+            if (!string.IsNullOrWhiteSpace(supportBranchName))
+            {
+                skill.SummonNamedRangeMetadata[supportBranchName] = new SkillData.SummonRangeMetadata(
+                    Math.Abs(lt?.X ?? 0),
+                    rb?.X ?? 0,
+                    lt?.Y ?? 0,
+                    rb?.Y ?? 0);
+            }
         }
 
         public static string SelectPreferredSummonSpawnBranch(IEnumerable<string> branchNames)
@@ -3105,8 +3248,19 @@ namespace HaCreator.MapSimulator.Character.Skills
             return new Rectangle(-origin.X, -origin.Y, texture?.Width ?? 0, texture?.Height ?? 0);
         }
 
-        private static bool ShouldAppendReversedSummonFrames(WzImageProperty actionNode)
+        internal static bool IsRepeatStyleSummonBranchName(string actionKey)
         {
+            return !string.IsNullOrWhiteSpace(actionKey)
+                   && actionKey.StartsWith("repeat", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool ShouldAppendReversedSummonFrames(WzImageProperty actionNode, string actionKey)
+        {
+            if (IsRepeatStyleSummonBranchName(actionKey))
+            {
+                return true;
+            }
+
             if (actionNode == null)
             {
                 return false;
@@ -3762,7 +3916,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (node?["x"] == null || node["acc"] != null || node["accX"] != null)
                 return false;
 
-            string description = (skill?.Description ?? string.Empty).ToLowerInvariant();
+            string description = SkillDataTextSurface.GetDescriptionSurface(skill).ToLowerInvariant();
             string name = (skill?.Name ?? string.Empty).ToLowerInvariant();
             return description.Contains("accuracy")
                    || description.Contains("accurary")
@@ -3774,7 +3928,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (node?["x"] == null || node["pad"] != null || node["padX"] != null)
                 return false;
 
-            string description = (skill?.Description ?? string.Empty).ToLowerInvariant();
+            string description = SkillDataTextSurface.GetDescriptionSurface(skill).ToLowerInvariant();
             return description.Contains("weapon attack")
                    || description.Contains("att,")
                    || description.Contains("att ")
@@ -3803,7 +3957,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             string name = (skill?.Name ?? string.Empty).Trim();
-            string description = (skill?.Description ?? string.Empty).Trim();
+            string description = SkillDataTextSurface.GetDescriptionSurface(skill).Trim();
             return name.Equals("Echo of Hero", StringComparison.OrdinalIgnoreCase)
                    || (description.Contains("weapon attack", StringComparison.OrdinalIgnoreCase)
                        && description.Contains("magic attack", StringComparison.OrdinalIgnoreCase));

@@ -56,17 +56,34 @@ namespace HaCreator.MapSimulator.Interaction
             return rankingEntries;
         }
 
-        internal string ApplyGuildCreateAgreementAcceptance(GuildCreateAgreementAcceptance acceptance)
+        internal string SubmitGuildCreateAgreementAcceptance(GuildCreateAgreementAcceptance acceptance)
         {
             if (string.IsNullOrWhiteSpace(acceptance.GuildName))
             {
                 return null;
             }
 
-            string acceptedGuildName = acceptance.GuildName.Trim();
-            string acceptedMasterName = string.IsNullOrWhiteSpace(acceptance.MasterName)
+            return SubmitPendingGuildDialogRequest(new GuildDialogPendingRequest(
+                GuildDialogPendingRequestKind.CreateGuild,
+                "Create guild",
+                string.IsNullOrWhiteSpace(acceptance.MasterName) ? _playerName : acceptance.MasterName.Trim(),
+                acceptance.GuildName.Trim(),
+                null,
+                DefaultGuildCreateCostMesos,
+                acceptance.AcceptedAtUtc));
+        }
+
+        private string ApplyGuildCreateAgreementAcceptanceCore(string masterName, string guildName)
+        {
+            if (string.IsNullOrWhiteSpace(guildName))
+            {
+                return null;
+            }
+
+            string acceptedGuildName = guildName.Trim();
+            string acceptedMasterName = string.IsNullOrWhiteSpace(masterName)
                 ? _playerName
-                : acceptance.MasterName.Trim();
+                : masterName.Trim();
 
             _hasGuildMembership = true;
             _guildName = acceptedGuildName;

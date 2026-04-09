@@ -43,6 +43,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly VerticalScrollbarSkin _receiveScrollbarSkin;
         private readonly Texture2D _pixel;
         private readonly List<RowLayout> _rowLayouts = new();
+        private readonly List<ParcelDialogTab> _tabOrder = new();
         private readonly List<Rectangle> _tabBounds = new();
         private readonly StringBuilder _inputBuffer = new();
 
@@ -410,7 +411,7 @@ namespace HaCreator.MapSimulator.UI
                 DrawLayer(sprite, _tabQuickHint, _tabQuickHintOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             }
 
-            DrawTabs(sprite, snapshot.ActiveTab);
+            DrawTabs(sprite, snapshot.ActiveTab, snapshot.AvailableTabs);
             Rectangle contentBounds = GetContentBounds();
 
             string title = snapshot.ActiveTab switch
@@ -479,13 +480,20 @@ namespace HaCreator.MapSimulator.UI
                 drawReflectionInfo);
         }
 
-        private void DrawTabs(SpriteBatch sprite, ParcelDialogTab activeTab)
+        private void DrawTabs(SpriteBatch sprite, ParcelDialogTab activeTab, ParcelDialogTabAvailability availableTabs)
         {
             _tabBounds.Clear();
+            _tabOrder.Clear();
             int x = Position.X + 8;
             int y = Position.Y + 9;
             for (int i = 0; i < 3; i++)
             {
+                ParcelDialogTab tab = (ParcelDialogTab)i;
+                if (!IsTabAvailable(availableTabs, tab))
+                {
+                    continue;
+                }
+
                 Texture2D texture = activeTab == (ParcelDialogTab)i
                     ? GetTabTexture(_enabledTabs, i)
                     : GetTabTexture(_disabledTabs, i);
@@ -497,6 +505,7 @@ namespace HaCreator.MapSimulator.UI
                 Rectangle bounds = new Rectangle(x, y, texture.Width, texture.Height);
                 sprite.Draw(texture, bounds, Color.White);
                 _tabBounds.Add(bounds);
+                _tabOrder.Add(tab);
                 x += texture.Width + 1;
             }
         }
@@ -732,7 +741,11 @@ namespace HaCreator.MapSimulator.UI
                 if (_tabBounds[i].Contains(mousePosition))
                 {
                     DeactivateInput();
-                    _tabSelected?.Invoke((ParcelDialogTab)i);
+                    if (i < _tabOrder.Count)
+                    {
+                        _tabSelected?.Invoke(_tabOrder[i]);
+                    }
+
                     return;
                 }
             }
@@ -1156,7 +1169,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (Pressed(keyboardState, Keys.Tab))
             {
-                CycleInputTarget(snapshot.ActiveTab == ParcelDialogTab.QuickSend, keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift), draftSnapshot);
+                CycleInputTarget(snapshot.ActiveTab, keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift), draftSnapshot);
                 return;
             }
 
@@ -1281,9 +1294,9 @@ namespace HaCreator.MapSimulator.UI
             ResetKeyRepeat();
         }
 
-        private void CycleInputTarget(bool quickMode, bool backwards, MemoMailboxDraftSnapshot snapshot)
+        private void CycleInputTarget(ParcelDialogTab activeTab, bool backwards, MemoMailboxDraftSnapshot snapshot)
         {
-            ComposeInputField[] order = quickMode
+            ComposeInputField[] order = activeTab == ParcelDialogTab.QuickSend
                 ? new[] { ComposeInputField.QuickRecipient, ComposeInputField.QuickBody, ComposeInputField.QuickMeso }
                 : new[] { ComposeInputField.SendRecipient, ComposeInputField.SendBody, ComposeInputField.SendMeso };
 
@@ -1544,6 +1557,19 @@ namespace HaCreator.MapSimulator.UI
         private static bool IsMesoField(ComposeInputField field)
         {
             return field == ComposeInputField.SendMeso || field == ComposeInputField.QuickMeso;
+        }
+
+        private static bool IsTabAvailable(ParcelDialogTabAvailability availableTabs, ParcelDialogTab tab)
+        {
+            ParcelDialogTabAvailability flag = tab switch
+            {
+                ParcelDialogTab.Receive => ParcelDialogTabAvailability.Receive,
+                ParcelDialogTab.Send => ParcelDialogTabAvailability.Send,
+                ParcelDialogTab.QuickSend => ParcelDialogTabAvailability.QuickSend,
+                _ => ParcelDialogTabAvailability.None
+            };
+
+            return (availableTabs & flag) != 0;
         }
 
         private static string SanitizeCommittedText(string text)

@@ -17,6 +17,7 @@ using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
@@ -58,12 +59,8 @@ namespace HaCreator.MapSimulator.Effects
         private const int SaintMapleAltarNpcId = 9201002;
         private const int DialogDurationMs = 5000;
         private const int DialogFadeInDurationMs = 300;
-        // CField_Wedding::OnWeddingProgress special-cases StringPool id 0x1090 for the
-        // guest-only yes/no modal when Saint Maple Altar reaches step 2.
-        private const string GuestBlessPromptText = "Would you like to give your blessing to the couple?";
         private const string BlessEffectImageName = "BasicEff.img";
         private const string BlessEffectPath = "Wedding";
-        private const string WeddingBgmPath = "BgmEvent/wedding";
         private const string WeddingUiImageName = "UIWindow.img";
         private const string CeremonyTextOverlayPath = "wedding/text/0";
         private const string CeremonyCardOverlayPath = "wedding/card/0";
@@ -1731,7 +1728,7 @@ namespace HaCreator.MapSimulator.Effects
                 SetCeremonyTextOverlay(true);
                 SetCeremonyCardOverlay(false);
                 SetCeremonyCelebration(active: false);
-                _requestBgmOverride?.Invoke(WeddingBgmPath);
+                _requestBgmOverride?.Invoke(WeddingCeremonyClientText.ResolveOpeningBgmPath(_mapId));
             }
             else
             {
@@ -2075,7 +2072,7 @@ namespace HaCreator.MapSimulator.Effects
                 {
                     return new WeddingDialog
                     {
-                        Message = GuestBlessPromptText,
+                        Message = WeddingCeremonyClientText.GetGuestBlessPromptText(),
                         NpcId = _npcId,
                         StartTime = currentTimeMs,
                         Duration = DialogDurationMs,

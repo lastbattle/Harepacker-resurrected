@@ -23,7 +23,7 @@ public static class SummonImpactPresentationResolver
             return source;
         }
 
-        Vector2 sourceAnchor = new(source.X, source.Y - SourceVerticalOffset);
+        Vector2 sourceAnchor = ResolveSourceAnchor(source);
         if (targetHitbox.IsEmpty)
         {
             return ApplyDistanceCap(sourceAnchor, fallbackTargetPosition);
@@ -34,6 +34,11 @@ public static class SummonImpactPresentationResolver
         float targetX = ResolveTargetAnchorX(presentation?.PositionCode, targetHitbox, source.X, centerX);
 
         return ApplyDistanceCap(sourceAnchor, new Vector2(targetX, clampedY));
+    }
+
+    public static Vector2 ResolveSourceAnchor(Vector2 source)
+    {
+        return new Vector2(source.X, source.Y - SourceVerticalOffset);
     }
 
     public static Vector2 ResolveFallbackTargetPosition(Vector2 targetPosition, float visualHeight)

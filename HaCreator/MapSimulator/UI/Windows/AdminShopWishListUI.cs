@@ -196,8 +196,8 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public override string WindowName => MapSimulatorWindowNames.AdminShopWishList;
-        public override bool CapturesKeyboardInput => IsVisible && _searchFieldFocused;
-        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _searchFieldFocused && _softKeyboardActive;
+        public override bool CapturesKeyboardInput => IsVisible && _searchFieldFocused && !IsChildAddOnOpen();
+        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _searchFieldFocused && _softKeyboardActive && !IsChildAddOnOpen();
         SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => SoftKeyboardKeyboardType.AlphaNumeric;
         int ISoftKeyboardHost.SoftKeyboardTextLength => _searchQuery?.Length ?? 0;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => SearchMaxLength;
@@ -298,7 +298,7 @@ namespace HaCreator.MapSimulator.UI
             return applied;
         }
 
-        public void ShowFor(AdminShopDialogUI sourceDialog)
+        public void PrepareForShow(AdminShopDialogUI sourceDialog)
         {
             _sourceDialog = sourceDialog;
             _priceRanges = sourceDialog?.GetWishlistPriceRanges() ?? Array.Empty<AdminShopDialogUI.WishlistPriceRange>();
@@ -322,7 +322,6 @@ namespace HaCreator.MapSimulator.UI
             HideCategoryAddOnRequested?.Invoke();
             HideSearchResultAddOnRequested?.Invoke();
             PositionRelativeToSource(sourceDialog);
-            Show();
         }
 
         public override void Show()
@@ -1041,6 +1040,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        private bool IsChildAddOnOpen()
+        {
+            return IsCategoryAddOnOpen() || IsSearchResultAddOnOpen();
         }
 
         private void CloseCategoryAddOn()

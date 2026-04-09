@@ -83,6 +83,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int DeliveryQuestPacketType = 275;
         public const int DamageMeterPacketType = 267;
         public const int TimeBombAttackPacketType = 268;
+        public const int PassiveMoveClientPacketType = 269;
         public const int FollowCharacterFailedClientPacketType = 270;
         public const int VengeanceSkillApplyPacketType = 271;
         public const int ExJablinApplyPacketType = 272;
@@ -97,8 +98,10 @@ namespace HaCreator.MapSimulator.Managers
         public const int MessengerDispatchPacketType = 1017;
         public const int MarriageResultPacketType = 1018;
         public const int ItemMakerHiddenRecipeUnlockPacketType = PacketOwnedItemMakerHiddenRecipeUnlockRuntime.PacketType;
+        public const int ItemMakerSessionPacketType = PacketOwnedItemMakerSessionRuntime.PacketType;
         public const int RepeatSkillModeEndAckPacketType = PacketOwnedMechanicRepeatSkillRuntime.RepeatSkillModeEndAckPacketType;
         public const int Sg88ManualAttackConfirmPacketType = PacketOwnedMechanicRepeatSkillRuntime.Sg88ManualAttackConfirmPacketType;
+        public const int MechanicEquipStatePacketType = 1023;
 
         private readonly ConcurrentQueue<LocalUtilityPacketInboxMessage> _pendingMessages = new();
         private readonly object _listenerLock = new();
@@ -389,6 +392,13 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("passivemove", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onpassivemove", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = PassiveMoveClientPacketType;
+                return true;
+            }
+
             if (token.Equals("followask", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("followprompt", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("followrequestprompt", StringComparison.OrdinalIgnoreCase))
@@ -568,6 +578,14 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("makersession", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemmakersession", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onitemmakersession", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ItemMakerSessionPacketType;
+                return true;
+            }
+
             if (token.Equals("questresult", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("onquestresult", StringComparison.OrdinalIgnoreCase))
             {
@@ -695,6 +713,14 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("mechanicequip", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mechequip", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mechanicpane", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MechanicEquipStatePacketType;
+                return true;
+            }
+
             if (token.Equals("skillcooltime", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("skillcooltimeset", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("cooltime", StringComparison.OrdinalIgnoreCase))
@@ -781,6 +807,8 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == OpenClassCompetitionPagePacketType
                 || packetType == MakerResultClientPacketType
                 || packetType == ItemMakerHiddenRecipeUnlockPacketType
+                || packetType == ItemMakerSessionPacketType
+                || packetType == MechanicEquipStatePacketType
                 || packetType == DamageMeterPacketType
                 || packetType == TimeBombAttackPacketType
                 || packetType == VengeanceSkillApplyPacketType
@@ -975,8 +1003,10 @@ namespace HaCreator.MapSimulator.Managers
                 MessengerDispatchPacketType => "Messenger OnPacket(1017)",
                 MarriageResultPacketType => "MarriageResult OnMarriageResult(1018)",
                 ItemMakerHiddenRecipeUnlockPacketType => "ItemMakerHiddenRecipeUnlock(1019)",
+                ItemMakerSessionPacketType => "ItemMakerSession(1024)",
                 RepeatSkillModeEndAckPacketType => "RepeatSkillModeEndAck(1020)",
                 Sg88ManualAttackConfirmPacketType => "Sg88ManualAttackConfirm(1021)",
+                MechanicEquipStatePacketType => "MechanicEquipState(1023)",
                 _ => $"packet {packetType}"
             };
         }

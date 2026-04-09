@@ -564,18 +564,20 @@ namespace HaCreator.MapSimulator.UI
             frameIndex = 15;
             remainingText = string.Empty;
 
-            if (_skillManager == null || !_skillManager.IsOnCooldown(skillId, currentTime))
+            if (_skillManager == null
+                || !_skillManager.TryGetCooldownUiState(skillId, currentTime, out var cooldownState)
+                || !cooldownState.DisplayInCooldownUi)
             {
                 return false;
             }
 
-            int remainingMs = Math.Max(0, _skillManager.GetCooldownRemaining(skillId, currentTime));
+            int remainingMs = Math.Max(0, cooldownState.RemainingMs);
             if (remainingMs <= 0)
             {
                 return false;
             }
 
-            int totalMs = Math.Max(0, _skillManager.GetCooldownDuration(skillId, currentTime));
+            int totalMs = Math.Max(0, cooldownState.DurationMs);
             if (totalMs <= 0)
             {
                 return false;
@@ -587,7 +589,11 @@ namespace HaCreator.MapSimulator.UI
             int remainingSeconds = Math.Max(0, (int)Math.Ceiling(remainingMs / 1000f));
             int elapsedSeconds = Math.Clamp(totalSeconds - remainingSeconds, 0, totalSeconds);
             frameIndex = Math.Clamp((14 * elapsedSeconds) / totalSeconds, 0, 14);
-            remainingText = Math.Max(1, (int)Math.Ceiling(remainingMs / 1000f)).ToString();
+            remainingText = cooldownState.SuppressCounterText
+                ? string.Empty
+                : string.IsNullOrWhiteSpace(cooldownState.CounterText)
+                    ? Math.Max(1, (int)Math.Ceiling(remainingMs / 1000f)).ToString()
+                    : cooldownState.CounterText;
             return true;
         }
 
@@ -777,13 +783,15 @@ namespace HaCreator.MapSimulator.UI
             if (levelData == null)
                 return string.Empty;
 
-            int remainingMs = 0;
-            if (_skillManager != null && _skillManager.IsOnCooldown(skillId, currentTime))
+            string cooldownStateText = SkillCooldownTooltipText.FormatCooldownState(0);
+            if (_skillManager != null && _skillManager.TryGetCooldownUiState(skillId, currentTime, out var cooldownState))
             {
-                remainingMs = Math.Max(0, _skillManager.GetCooldownRemaining(skillId, currentTime));
+                cooldownStateText = !string.IsNullOrWhiteSpace(cooldownState.TooltipStateText)
+                    ? cooldownState.TooltipStateText
+                    : SkillCooldownTooltipText.FormatCooldownState(cooldownState.RemainingMs);
             }
 
-            return $"MP {levelData.MpCon}  Cooldown {SkillCooldownTooltipText.FormatCooldownState(remainingMs)}";
+            return $"MP {levelData.MpCon}  {cooldownStateText}";
         }
 
         private void DrawCooldownMask(SpriteBatch sprite, int slotX, int slotY, int frameIndex)

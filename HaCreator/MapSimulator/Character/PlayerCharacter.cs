@@ -184,9 +184,11 @@ namespace HaCreator.MapSimulator.Character
             public SkillAnimation PendingPlaybackAnimation { get; set; }
             public int PendingActionReadyTime { get; set; }
             public bool PendingFacingRight { get; set; }
+            public bool PendingForceReplay { get; set; }
             public string QueuedActionName { get; set; }
             public SkillAnimation QueuedPlaybackAnimation { get; set; }
             public bool QueuedFacingRight { get; set; }
+            public bool QueuedForceReplay { get; set; }
             public bool ObservedPlayerFacingRight { get; set; }
             public bool ObservedPlayerFloatingState { get; set; }
             public int ObservedPlayerActionTriggerTime { get; set; } = int.MinValue;
@@ -224,15 +226,21 @@ namespace HaCreator.MapSimulator.Character
         {
             public MirrorImageRenderableSourceLayer(
                 IReadOnlyList<AssembledPart> parts,
+                Texture2D preparedSnapshotTexture,
+                Rectangle preparedSnapshotBounds,
                 bool facingRight,
                 int transitionStartTime)
             {
                 Parts = parts;
+                PreparedSnapshotTexture = preparedSnapshotTexture;
+                PreparedSnapshotBounds = preparedSnapshotBounds;
                 FacingRight = facingRight;
                 TransitionStartTime = transitionStartTime;
             }
 
             public IReadOnlyList<AssembledPart> Parts { get; }
+            public Texture2D PreparedSnapshotTexture { get; }
+            public Rectangle PreparedSnapshotBounds { get; }
             public bool FacingRight { get; }
             public int TransitionStartTime { get; }
         }
@@ -2341,6 +2349,7 @@ namespace HaCreator.MapSimulator.Character
                     ? ResolveShadowPartnerPlaybackAnimation(skill.ShadowPartnerActionAnimations, resolvedActionName, CurrentActionName)
                     : null,
                 QueuedFacingRight = FacingRight,
+                QueuedForceReplay = useSpawnAction && State == PlayerState.Attacking && GetShadowPartnerObservedActionTriggerTime() != int.MinValue,
                 ObservedPlayerFacingRight = FacingRight,
                 ObservedPlayerFloatingState = State is PlayerState.Swimming or PlayerState.Flying,
                 ObservedPlayerActionTriggerTime = GetShadowPartnerObservedActionTriggerTime()
@@ -3894,6 +3903,19 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
+                if (renderableLayer.Value.PreparedSnapshotTexture != null)
+                {
+                    DrawMirrorImagePreparedSnapshot(
+                        spriteBatch,
+                        renderableLayer.Value.PreparedSnapshotTexture,
+                        renderableLayer.Value.PreparedSnapshotBounds,
+                        adjustedX,
+                        adjustedY,
+                        renderableLayer.Value.FacingRight,
+                        tint);
+                    continue;
+                }
+
                 for (int i = 0; i < parts.Count; i++)
                 {
                     DrawMirrorImagePreparedPart(
@@ -3928,6 +3950,36 @@ namespace HaCreator.MapSimulator.Character
             int drawY = adjustedY + part.OffsetY;
             Color drawTint = ResolveMirrorImagePreparedPartTint(part.Tint, mirrorTint);
             part.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, drawTint, flip, null);
+        }
+
+        private static void DrawMirrorImagePreparedSnapshot(
+            SpriteBatch spriteBatch,
+            Texture2D snapshotTexture,
+            Rectangle snapshotBounds,
+            int screenX,
+            int adjustedY,
+            bool flip,
+            Color mirrorTint)
+        {
+            if (spriteBatch == null
+                || snapshotTexture == null
+                || snapshotBounds.Width <= 0
+                || snapshotBounds.Height <= 0)
+            {
+                return;
+            }
+
+            Point drawPosition = ResolveMirrorImagePreparedSnapshotDrawPosition(screenX, adjustedY, snapshotBounds, flip);
+            spriteBatch.Draw(
+                snapshotTexture,
+                new Vector2(drawPosition.X, drawPosition.Y),
+                null,
+                mirrorTint,
+                0f,
+                Vector2.Zero,
+                1f,
+                flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None,
+                0f);
         }
 
         private void PrepareMirrorImageSourceLayers(AssembledFrame frame, int currentFrameIndex, int currentTime)
@@ -4059,17 +4111,25 @@ namespace HaCreator.MapSimulator.Character
             {
                 return new MirrorImageRenderableSourceLayer(
                     liveSourceParts,
+                    preparedSnapshotTexture: null,
+                    preparedSnapshotBounds: Rectangle.Empty,
                     FacingRight,
                     ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedCurrentTime));
             }
 
-            if (preparedLayer.Parts == null || preparedLayer.Parts.Count == 0)
+            if (!CanRenderPreparedMirrorImageSourceLayer(
+                    preparedLayer.ComposedTexture != null
+                    && preparedLayer.Bounds.Width > 0
+                    && preparedLayer.Bounds.Height > 0,
+                    preparedLayer.Parts))
             {
                 return null;
             }
 
             return new MirrorImageRenderableSourceLayer(
                 preparedLayer.Parts,
+                preparedLayer.ComposedTexture,
+                preparedLayer.Bounds,
                 preparedLayer.PreparedFacingRight,
                 ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedCurrentTime));
         }
@@ -4139,7 +4199,8 @@ namespace HaCreator.MapSimulator.Character
             }
 
             Rectangle bounds = CalculateMirrorImageSourceLayerBounds(clonedParts);
-            ReplacePreparedMirrorImageSourceLayerTexture(preparedLayer, null);
+            Texture2D composedTexture = CreateMirrorImageLayerTexture(clonedParts, bounds);
+            ReplacePreparedMirrorImageSourceLayerTexture(preparedLayer, composedTexture);
             preparedLayer.RenderLayer = renderLayer;
             preparedLayer.SourceSignature = sourceSignature;
             preparedLayer.Bounds = bounds;
@@ -4313,6 +4374,31 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return new Rectangle(minX, minY, Math.Max(0, maxX - minX), Math.Max(0, maxY - minY));
+        }
+
+        internal static Point ResolveMirrorImagePreparedSnapshotDrawPosition(
+            int screenX,
+            int adjustedY,
+            Rectangle snapshotBounds,
+            bool flip)
+        {
+            if (snapshotBounds.Width <= 0 || snapshotBounds.Height <= 0)
+            {
+                return new Point(screenX, adjustedY);
+            }
+
+            int drawX = flip
+                ? screenX - snapshotBounds.Width - snapshotBounds.X
+                : screenX + snapshotBounds.X;
+            int drawY = adjustedY + snapshotBounds.Y;
+            return new Point(drawX, drawY);
+        }
+
+        internal static bool CanRenderPreparedMirrorImageSourceLayer(
+            bool hasPreparedSnapshot,
+            IReadOnlyList<AssembledPart> preparedParts)
+        {
+            return hasPreparedSnapshot || (preparedParts != null && preparedParts.Count > 0);
         }
 
         private Texture2D CreateMirrorImageLayerTexture(IReadOnlyList<AssembledPart> sourceParts, Rectangle bounds)
@@ -4645,6 +4731,7 @@ namespace HaCreator.MapSimulator.Character
                             playerActionName);
                         _activeShadowPartner.PendingActionReadyTime = currentTime + ResolveShadowPartnerAttackDelayMs(delayedAttackAction);
                         _activeShadowPartner.PendingFacingRight = FacingRight;
+                        _activeShadowPartner.PendingForceReplay = true;
                     }
                 }
                 else
@@ -4658,6 +4745,7 @@ namespace HaCreator.MapSimulator.Character
                             resolvedAction,
                             playerActionName);
                         _activeShadowPartner.QueuedFacingRight = FacingRight;
+                        _activeShadowPartner.QueuedForceReplay = false;
                     }
                     else
                     {
@@ -4674,6 +4762,7 @@ namespace HaCreator.MapSimulator.Character
 
                     _activeShadowPartner.PendingActionName = null;
                     _activeShadowPartner.PendingPlaybackAnimation = null;
+                    _activeShadowPartner.PendingForceReplay = false;
                 }
             }
 
@@ -4683,18 +4772,26 @@ namespace HaCreator.MapSimulator.Character
                 string pendingActionName = _activeShadowPartner.PendingActionName;
                 SkillAnimation pendingPlaybackAnimation = _activeShadowPartner.PendingPlaybackAnimation;
                 bool pendingFacingRight = _activeShadowPartner.PendingFacingRight;
+                bool pendingForceReplay = _activeShadowPartner.PendingForceReplay;
                 _activeShadowPartner.PendingActionName = null;
                 _activeShadowPartner.PendingPlaybackAnimation = null;
+                _activeShadowPartner.PendingForceReplay = false;
 
                 if (ShouldHoldShadowPartnerCurrentAction(currentTime))
                 {
                     _activeShadowPartner.QueuedActionName = pendingActionName;
                     _activeShadowPartner.QueuedPlaybackAnimation = pendingPlaybackAnimation;
                     _activeShadowPartner.QueuedFacingRight = pendingFacingRight;
+                    _activeShadowPartner.QueuedForceReplay = pendingForceReplay;
                 }
                 else
                 {
-                    SetShadowPartnerAction(pendingActionName, currentTime, pendingFacingRight, playbackAnimation: pendingPlaybackAnimation);
+                    SetShadowPartnerAction(
+                        pendingActionName,
+                        currentTime,
+                        pendingFacingRight,
+                        playbackAnimation: pendingPlaybackAnimation,
+                        forceRestartWhenSameAction: pendingForceReplay);
                 }
             }
 
@@ -4748,14 +4845,20 @@ namespace HaCreator.MapSimulator.Character
                 ShadowPartnerAttackDelayMs);
         }
 
-        private void SetShadowPartnerAction(string actionName, int currentTime, bool facingRight, SkillAnimation playbackAnimation = null)
+        private void SetShadowPartnerAction(
+            string actionName,
+            int currentTime,
+            bool facingRight,
+            SkillAnimation playbackAnimation = null,
+            bool forceRestartWhenSameAction = false)
         {
             SetShadowPartnerAction(
                 actionName,
                 currentTime,
                 facingRight,
                 preserveTimingWhenOnlyFacingChanges: false,
-                playbackAnimation: playbackAnimation);
+                playbackAnimation: playbackAnimation,
+                forceRestartWhenSameAction: forceRestartWhenSameAction);
         }
 
         private void SetShadowPartnerAction(
@@ -4763,7 +4866,8 @@ namespace HaCreator.MapSimulator.Character
             int currentTime,
             bool facingRight,
             bool preserveTimingWhenOnlyFacingChanges,
-            SkillAnimation playbackAnimation = null)
+            SkillAnimation playbackAnimation = null,
+            bool forceRestartWhenSameAction = false)
         {
             if (_activeShadowPartner == null || string.IsNullOrWhiteSpace(actionName))
             {
@@ -4778,14 +4882,22 @@ namespace HaCreator.MapSimulator.Character
             if (string.Equals(_activeShadowPartner.CurrentActionName, actionName, StringComparison.OrdinalIgnoreCase))
             {
                 RefreshShadowPartnerClientOffsetTarget(currentTime, facingRight);
+                _activeShadowPartner.CurrentPlaybackAnimation = playbackAnimation
+                    ?? ResolveShadowPartnerPlaybackAnimation(_activeShadowPartner.ActionAnimations, actionName, _activeShadowPartner.ObservedPlayerActionName);
+
+                if (forceRestartWhenSameAction)
+                {
+                    _activeShadowPartner.CurrentActionStartTime = currentTime;
+                    _activeShadowPartner.CurrentFacingRight = facingRight;
+                    return;
+                }
+
                 if (_activeShadowPartner.CurrentFacingRight == facingRight)
                 {
                     return;
                 }
 
                 _activeShadowPartner.CurrentFacingRight = facingRight;
-                _activeShadowPartner.CurrentPlaybackAnimation = playbackAnimation
-                    ?? ResolveShadowPartnerPlaybackAnimation(_activeShadowPartner.ActionAnimations, actionName, _activeShadowPartner.ObservedPlayerActionName);
                 if (preserveTimingWhenOnlyFacingChanges)
                 {
                     return;
@@ -5371,9 +5483,16 @@ namespace HaCreator.MapSimulator.Character
             string queuedActionName = _activeShadowPartner.QueuedActionName;
             SkillAnimation queuedPlaybackAnimation = _activeShadowPartner.QueuedPlaybackAnimation;
             bool queuedFacingRight = _activeShadowPartner.QueuedFacingRight;
+            bool queuedForceReplay = _activeShadowPartner.QueuedForceReplay;
             _activeShadowPartner.QueuedActionName = null;
             _activeShadowPartner.QueuedPlaybackAnimation = null;
-            SetShadowPartnerAction(queuedActionName, currentTime, queuedFacingRight, playbackAnimation: queuedPlaybackAnimation);
+            _activeShadowPartner.QueuedForceReplay = false;
+            SetShadowPartnerAction(
+                queuedActionName,
+                currentTime,
+                queuedFacingRight,
+                playbackAnimation: queuedPlaybackAnimation,
+                forceRestartWhenSameAction: queuedForceReplay);
             return true;
         }
 
@@ -6568,8 +6687,17 @@ namespace HaCreator.MapSimulator.Character
 
         private static bool SupportsTamingMobTransitionAction(CharacterPart mountPart, string actionName)
         {
-            return mountPart?.Slot == EquipSlot.TamingMob
-                   && mountPart.GetAnimation(actionName) != null;
+            if (mountPart?.Slot != EquipSlot.TamingMob)
+            {
+                return false;
+            }
+
+            if (mountPart.TamingMobActionFrameOwner?.SupportsAction(mountPart, actionName) == true)
+            {
+                return true;
+            }
+
+            return mountPart.GetAnimation(actionName) != null;
         }
 
         private static bool IsAutomaticTamingMobTransitionAction(string actionName)
@@ -7061,6 +7189,9 @@ namespace HaCreator.MapSimulator.Character
 
             if (string.Equals(normalizedAction, "tank_pre", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "tank_stand", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_walk", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_prone", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "tank_after", StringComparison.OrdinalIgnoreCase))
             {
                 transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_pre", "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after");
@@ -7069,6 +7200,7 @@ namespace HaCreator.MapSimulator.Character
 
             if (string.Equals(normalizedAction, "siege_pre", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "siege_stand", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "siege", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "siege_after", StringComparison.OrdinalIgnoreCase))
             {
                 transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "siege_pre", "siege_stand", "siege_stand", "siege", "siege_stand", "siege_after", locksMovement: true);
@@ -7083,6 +7215,7 @@ namespace HaCreator.MapSimulator.Character
 
             if (string.Equals(normalizedAction, "tank_siegepre", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "tank_siegestand", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_siegeattack", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "tank_siegeafter", StringComparison.OrdinalIgnoreCase))
             {
                 transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_siegepre", "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand", "tank_siegeafter", locksMovement: true);

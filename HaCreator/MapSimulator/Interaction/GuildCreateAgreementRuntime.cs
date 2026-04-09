@@ -56,7 +56,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             _isOpen = false;
             _timedOut = true;
-            _statusMessage = $"Guild creation agreement timed out for {_masterName} and {_guildName}. The client-side timeout close path is mirrored, but the chat string and server follow-up are still approximated.";
+            string timeoutText = MapleStoryStringPool.GetOrFallback(0x015A, "The guild creation agreement timed out.");
+            _statusMessage = $"{timeoutText} ({_masterName}, {_guildName})";
             return _statusMessage;
         }
 

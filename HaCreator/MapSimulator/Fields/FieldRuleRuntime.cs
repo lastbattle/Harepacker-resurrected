@@ -29,6 +29,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly int _consumeItemCoolTimeSeconds;
         private readonly List<string> _entryScripts;
         private readonly Func<int, bool> _hasItem;
+        private readonly Func<int, int> _resolveEnvironmentalDamageProtectionAmount;
 
         private readonly HashSet<int> _announcedThresholds = new HashSet<int>();
         private int _remainingMoveSkillUses;
@@ -39,7 +40,11 @@ namespace HaCreator.MapSimulator.Fields
         private bool _initialized;
         private bool _timeExpired;
 
-        public FieldRuleRuntime(MapInfo mapInfo, Func<int, bool> hasItem = null, bool includeFirstUserEnterScript = true)
+        public FieldRuleRuntime(
+            MapInfo mapInfo,
+            Func<int, bool> hasItem = null,
+            Func<int, int> resolveEnvironmentalDamageProtectionAmount = null,
+            bool includeFirstUserEnterScript = true)
         {
             _timeLimitSeconds = Math.Max(0, mapInfo?.timeLimit ?? 0);
             _transferMapId = ResolveTransferMapId(mapInfo);
@@ -54,6 +59,7 @@ namespace HaCreator.MapSimulator.Fields
             _consumeItemCoolTimeSeconds = Math.Max(0, mapInfo?.consumeItemCoolTime ?? 0);
             _entryScripts = CollectEntryScripts(mapInfo, includeFirstUserEnterScript);
             _hasItem = hasItem;
+            _resolveEnvironmentalDamageProtectionAmount = resolveEnvironmentalDamageProtectionAmount;
         }
 
         public bool IsActive =>
@@ -138,8 +144,12 @@ namespace HaCreator.MapSimulator.Fields
             {
                 if (!HasProtectItemEquipped())
                 {
-                    result.EnvironmentalDamage = _decHp;
-                    result.TriggerDamageMist = true;
+                    int protectedDamage = Math.Max(0, _decHp - GetEnvironmentalDamageProtectionAmount(currentTimeMs));
+                    if (protectedDamage > 0)
+                    {
+                        result.EnvironmentalDamage = protectedDamage;
+                        result.TriggerDamageMist = true;
+                    }
                 }
 
                 do
@@ -456,6 +466,13 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return false;
+        }
+
+        private int GetEnvironmentalDamageProtectionAmount(int currentTimeMs)
+        {
+            return _resolveEnvironmentalDamageProtectionAmount == null
+                ? 0
+                : Math.Max(0, _resolveEnvironmentalDamageProtectionAmount(currentTimeMs));
         }
 
         private string GetConsumeItemCooldownRestrictionMessage(InventoryType inventoryType, int currentTimeMs)

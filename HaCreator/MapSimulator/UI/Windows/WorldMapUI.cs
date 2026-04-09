@@ -133,6 +133,11 @@ namespace HaCreator.MapSimulator.UI
         private const int KeyRepeatInitialDelayMs = 360;
         private const int KeyRepeatIntervalMs = 42;
         private const int CandidateWindowPadding = 4;
+        private const uint CandidateWindowStyleRect = 0x0001;
+        private const uint CandidateWindowStylePoint = 0x0002;
+        private const uint CandidateWindowStyleForcePosition = 0x0020;
+        private const uint CandidateWindowStyleCandidatePosition = 0x0040;
+        private const uint CandidateWindowStyleExclude = 0x0080;
 
         private readonly Texture2D _titleTexture;
         private readonly Texture2D _sidePanelTexture;
@@ -1764,7 +1769,7 @@ namespace HaCreator.MapSimulator.UI
 
             width = Math.Max(64, Math.Min(Math.Min(viewportWidth, availableWidth), width));
             height = Math.Max(4, Math.Min(Math.Min(viewportHeight, availableHeight), height));
-            Point origin = ResolveCandidateWindowOrigin();
+            Point origin = ResolveCandidateWindowOrigin(viewport, width, height);
 
             int minX = Math.Max(0, ownerBounds.X);
             int maxX = Math.Min(viewportWidth, ownerBounds.Right) - width;
@@ -2669,8 +2674,13 @@ namespace HaCreator.MapSimulator.UI
             return new SearchInputVisualState(visibleText, visibleStart, visibleCaretIndex, visibleCompositionStart, visibleCompositionLength);
         }
 
-        private Point ResolveCandidateWindowOrigin()
+        private Point ResolveCandidateWindowOrigin(Viewport viewport, int width, int height)
         {
+            if (TryResolveCandidateWindowOriginFromWindowForm(viewport, width, height, out Point windowFormOrigin))
+            {
+                return windowFormOrigin;
+            }
+
             Rectangle bounds = GetSearchInputBounds();
             SearchInputVisualState searchVisual = BuildSearchInputVisualState();
             int anchorIndex = searchVisual.VisibleCompositionLength > 0
@@ -2686,6 +2696,77 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return new Point(x, bounds.Bottom + 1);
+        }
+
+        private bool TryResolveCandidateWindowOriginFromWindowForm(Viewport viewport, int width, int height, out Point origin)
+        {
+            ImeCandidateWindowForm windowForm = _candidateListState?.WindowForm;
+            if (windowForm == null || !windowForm.HasPlacementData)
+            {
+                origin = Point.Zero;
+                return false;
+            }
+
+            int viewportWidth = Math.Max(1, viewport.Width);
+            int viewportHeight = Math.Max(1, viewport.Height);
+            uint style = windowForm.Style;
+
+            int x = windowForm.CurrentX;
+            int y = windowForm.CurrentY;
+
+            if ((style & CandidateWindowStyleExclude) != 0 && windowForm.AreaWidth > 0 && windowForm.AreaHeight > 0)
+            {
+                x = windowForm.CurrentX;
+                y = windowForm.AreaY + windowForm.AreaHeight + 1;
+                if (y + height > viewportHeight)
+                {
+                    y = windowForm.AreaY - height - 1;
+                }
+            }
+            else if ((style & (CandidateWindowStyleForcePosition | CandidateWindowStyleCandidatePosition | CandidateWindowStylePoint)) != 0)
+            {
+                y = windowForm.CurrentY + 1;
+            }
+            else if ((style & CandidateWindowStyleRect) != 0 && windowForm.AreaWidth > 0 && windowForm.AreaHeight > 0)
+            {
+                x = windowForm.AreaX;
+                y = windowForm.AreaY + windowForm.AreaHeight + 1;
+                if (y + height > viewportHeight)
+                {
+                    y = windowForm.AreaY - height - 1;
+                }
+            }
+            else
+            {
+                origin = Point.Zero;
+                return false;
+            }
+
+            Rectangle ownerBounds = GetOwnerBounds();
+            int minX = Math.Max(0, ownerBounds.X);
+            int maxX = ownerBounds.Width > 0
+                ? Math.Min(viewportWidth, ownerBounds.Right) - width
+                : viewportWidth - width;
+            if (maxX < minX)
+            {
+                minX = 0;
+                maxX = Math.Max(0, viewportWidth - width);
+            }
+
+            int minY = Math.Max(0, ownerBounds.Y);
+            int maxY = ownerBounds.Height > 0
+                ? Math.Min(viewportHeight, ownerBounds.Bottom) - height
+                : viewportHeight - height;
+            if (maxY < minY)
+            {
+                minY = 0;
+                maxY = Math.Max(0, viewportHeight - height);
+            }
+
+            origin = new Point(
+                Math.Clamp(x, minX, Math.Max(minX, maxX)),
+                Math.Clamp(y, minY, Math.Max(minY, maxY)));
+            return true;
         }
 
         private int ResolveCompositionAnchorIndex()

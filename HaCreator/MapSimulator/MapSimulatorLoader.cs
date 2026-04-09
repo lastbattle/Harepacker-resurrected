@@ -4,6 +4,7 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Animation;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.UI;
@@ -411,8 +412,20 @@ namespace HaCreator.MapSimulator {
         /// <param name="device"></param>
         /// <param name="usedProps"></param>
         /// <returns></returns>
-        public static NpcItem CreateNpcFromProperty(TexturePool texturePool, NpcInstance npcInstance, float UserScreenScaleFactor, GraphicsDevice device, ConcurrentBag<WzObject> usedProps) {
-            return LifeLoader.CreateNpcFromProperty(texturePool, npcInstance, UserScreenScaleFactor, device, usedProps);
+        public static NpcItem CreateNpcFromProperty(
+            TexturePool texturePool,
+            NpcInstance npcInstance,
+            float UserScreenScaleFactor,
+            GraphicsDevice device,
+            ConcurrentBag<WzObject> usedProps,
+            CharacterGender? localPlayerGender = null) {
+            return LifeLoader.CreateNpcFromProperty(
+                texturePool,
+                npcInstance,
+                UserScreenScaleFactor,
+                device,
+                usedProps,
+                localPlayerGender: localPlayerGender);
         }
         #endregion
 

@@ -415,6 +415,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SkillId { get; set; }
         public string Name { get; set; }
         public string Description { get; set; }
+        public string DescriptionHints { get; set; }
         public int MaxLevel { get; set; }
 
         // Classification
@@ -487,8 +488,13 @@ namespace HaCreator.MapSimulator.Character.Skills
         public List<SkillAnimation> SummonProjectileAnimations { get; set; } = new();
         public List<SkillAnimation> SummonTargetHitAnimations { get; set; } = new();
         public List<SummonImpactPresentation> SummonTargetHitPresentations { get; set; } = new();
+        public Dictionary<string, SummonRangeMetadata> SummonNamedRangeMetadata { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, SkillAnimation> SummonNamedAnimations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, SkillAnimation> SummonActionAnimations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public string SummonSpawnBranchName { get; set; }
+        public string SummonIdleBranchName { get; set; }
+        public string SummonPrepareBranchName { get; set; }
+        public string SummonRemovalBranchName { get; set; }
         public string SummonAttackBranchName { get; set; }
         public SkillAnimation AvatarOverlayEffect { get; set; } // Avatar-bound looping overlay
         public SkillAnimation AvatarOverlaySecondaryEffect { get; set; } // Optional second overlay on the same avatar-owned plane
@@ -702,34 +708,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             var levelData = GetLevel(level);
             if (levelData == null) return Rectangle.Empty;
 
-            bool hasExplicitRangeBox = levelData.RangeL > 0
-                || levelData.RangeR > 0
-                || levelData.RangeTop != 0
-                || levelData.RangeBottom != 0;
-
-            if (hasExplicitRangeBox)
+            if (TryGetExplicitAttackRange(level, facingRight, out Rectangle explicitRange))
             {
-                int left = -levelData.RangeL;
-                int right = levelData.RangeR;
-                if (!facingRight)
-                {
-                    (left, right) = (-right, -left);
-                }
-
-                int top = levelData.RangeTop;
-                int bottom = levelData.RangeBottom;
-                if (bottom <= top)
-                {
-                    int fallbackHeight = levelData.RangeY > 0 ? levelData.RangeY : 60;
-                    top = -fallbackHeight / 2;
-                    bottom = top + fallbackHeight;
-                }
-
-                return new Rectangle(
-                    left,
-                    top,
-                    Math.Max(1, right - left),
-                    Math.Max(1, bottom - top));
+                return explicitRange;
             }
 
             int rangeX = facingRight ? levelData.RangeR : levelData.RangeL;
@@ -743,36 +724,86 @@ namespace HaCreator.MapSimulator.Character.Skills
                 Math.Max(1, height));
         }
 
+        public bool TryGetExplicitAttackRange(int level, bool facingRight, out Rectangle range)
+        {
+            range = Rectangle.Empty;
+
+            var levelData = GetLevel(level);
+            if (levelData == null)
+            {
+                return false;
+            }
+
+            bool hasExplicitRangeBox = levelData.RangeL > 0
+                || levelData.RangeR > 0
+                || levelData.RangeTop != 0
+                || levelData.RangeBottom != 0;
+            if (!hasExplicitRangeBox)
+            {
+                return false;
+            }
+
+            int left = -levelData.RangeL;
+            int right = levelData.RangeR;
+            if (!facingRight)
+            {
+                (left, right) = (-right, -left);
+            }
+
+            int top = levelData.RangeTop;
+            int bottom = levelData.RangeBottom;
+            if (bottom <= top)
+            {
+                int fallbackHeight = levelData.RangeY > 0 ? levelData.RangeY : 60;
+                top = -fallbackHeight / 2;
+                bottom = top + fallbackHeight;
+            }
+
+            range = new Rectangle(
+                left,
+                top,
+                Math.Max(1, right - left),
+                Math.Max(1, bottom - top));
+            return true;
+        }
+
         public Rectangle GetSummonAttackRange(bool facingRight)
         {
+            if (TryGetSummonAttackRange(facingRight, branchName: null, out Rectangle range))
+            {
+                return range;
+            }
+
+            return Rectangle.Empty;
+        }
+
+        public bool TryGetSummonAttackRange(bool facingRight, string branchName, out Rectangle range)
+        {
+            if (!string.IsNullOrWhiteSpace(branchName)
+                && SummonNamedRangeMetadata != null
+                && SummonNamedRangeMetadata.TryGetValue(branchName, out SummonRangeMetadata metadata)
+                && metadata.HasExplicitRectangle)
+            {
+                range = metadata.ToRectangle(facingRight);
+                return true;
+            }
+
             bool hasExplicitRect = SummonAttackRangeLeft > 0
                 || SummonAttackRangeRight > 0
                 || SummonAttackRangeTop != 0
                 || SummonAttackRangeBottom != 0;
             if (hasExplicitRect)
             {
-                int left = -SummonAttackRangeLeft;
-                int right = SummonAttackRangeRight;
-                if (!facingRight)
-                {
-                    (left, right) = (-right, -left);
-                }
-
-                int top = SummonAttackRangeTop;
-                int bottom = SummonAttackRangeBottom;
-                if (bottom <= top)
-                {
-                    bottom = top + 60;
-                }
-
-                return new Rectangle(
-                    left,
-                    top,
-                    Math.Max(1, right - left),
-                    Math.Max(1, bottom - top));
+                range = new SummonRangeMetadata(
+                    SummonAttackRangeLeft,
+                    SummonAttackRangeRight,
+                    SummonAttackRangeTop,
+                    SummonAttackRangeBottom).ToRectangle(facingRight);
+                return true;
             }
 
-            return Rectangle.Empty;
+            range = Rectangle.Empty;
+            return false;
         }
 
         public Point GetSummonAttackCircleCenterOffset(bool facingRight)
@@ -801,6 +832,41 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return 1000;
+        }
+
+        public readonly record struct SummonRangeMetadata(
+            int Left,
+            int Right,
+            int Top,
+            int Bottom)
+        {
+            public bool HasExplicitRectangle =>
+                Left > 0
+                || Right > 0
+                || Top != 0
+                || Bottom != 0;
+
+            public Rectangle ToRectangle(bool facingRight)
+            {
+                int left = -Left;
+                int right = Right;
+                if (!facingRight)
+                {
+                    (left, right) = (-right, -left);
+                }
+
+                int bottom = Bottom;
+                if (bottom <= Top)
+                {
+                    bottom = Top + 60;
+                }
+
+                return new Rectangle(
+                    left,
+                    Top,
+                    Math.Max(1, right - left),
+                    Math.Max(1, bottom - Top));
+            }
         }
 
         public int ResolveSummonDurationSeconds(int level)

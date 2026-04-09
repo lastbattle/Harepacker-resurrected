@@ -22,6 +22,19 @@ namespace HaCreator.MapSimulator.UI
 
     public sealed class CashServiceStageWindow : UIWindowBase
     {
+        public sealed class PacketCatalogEntry
+        {
+            public string Title { get; init; } = string.Empty;
+            public string Detail { get; init; } = string.Empty;
+            public string Seller { get; init; } = string.Empty;
+            public string PriceLabel { get; init; } = string.Empty;
+            public string StateLabel { get; init; } = string.Empty;
+            public int ListingId { get; init; }
+            public int ItemId { get; init; }
+            public int Quantity { get; init; } = 1;
+            public int Price { get; init; }
+        }
+
         private sealed class StageLayer
         {
             public StageLayer(IDXObject layer, Point offset)
@@ -74,6 +87,10 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, Texture2D> _cashShopBackdropVariants = new();
         private readonly Dictionary<int, PacketRouteState> _packetRoutes = new();
         private readonly List<int> _packetRouteOrder = new();
+        private readonly List<PacketCatalogEntry> _cashPacketCatalogEntries = new();
+        private readonly List<PacketCatalogEntry> _itcPacketCatalogEntries = new();
+        private readonly List<PacketCatalogEntry> _itcSalePacketEntries = new();
+        private readonly List<PacketCatalogEntry> _itcPurchasePacketEntries = new();
 
         private SpriteFont _font;
         private CharacterBuild _build;
@@ -118,6 +135,7 @@ namespace HaCreator.MapSimulator.UI
         private int _itcNormalItemSelectedListingId;
         private int _itcNormalItemSelectedPrice;
         private int _itcNormalItemMutationCount;
+        private int _itcCurrentCategoryItemCount;
         private int _itcSaleItemCount;
         private int _itcPurchaseItemCount;
         private string _itcNormalItemLastSummary = "No ITC normal-item packet routed yet.";
@@ -161,6 +179,7 @@ namespace HaCreator.MapSimulator.UI
         public int ItcNormalItemSubCategory => _itcNormalItemSubCategory;
         public int ItcNormalItemSortType => _itcNormalItemSortType;
         public int ItcNormalItemSortColumn => _itcNormalItemSortColumn;
+        public int ItcCurrentCategoryItemCount => _itcCurrentCategoryItemCount;
         public int ItcNormalItemEntryCount => _itcNormalItemEntryCount;
         public int ItcNormalItemPageEntryCount => _itcNormalItemPageEntryCount;
         public int ItcNormalItemSelectedListingId => _itcNormalItemSelectedListingId;
@@ -168,6 +187,10 @@ namespace HaCreator.MapSimulator.UI
         public int ItcSaleItemCount => _itcSaleItemCount;
         public int ItcPurchaseItemCount => _itcPurchaseItemCount;
         public string ItcNormalItemLastSummary => _itcNormalItemLastSummary;
+        public IReadOnlyList<PacketCatalogEntry> CashPacketCatalogEntries => _cashPacketCatalogEntries;
+        public IReadOnlyList<PacketCatalogEntry> ItcPacketCatalogEntries => _itcPacketCatalogEntries;
+        public IReadOnlyList<PacketCatalogEntry> ItcSalePacketEntries => _itcSalePacketEntries;
+        public IReadOnlyList<PacketCatalogEntry> ItcPurchasePacketEntries => _itcPurchasePacketEntries;
 
         public override void SetFont(SpriteFont font)
         {
@@ -262,15 +285,24 @@ namespace HaCreator.MapSimulator.UI
             _cashItemPrice = 0;
             _cashItemMutationCount = 0;
             _cashItemLastSummary = "No cash-item result routed yet.";
+            _cashPacketCatalogEntries.Clear();
             _itcNormalItemSubtype = -1;
             _itcNormalItemPage = 0;
             _itcNormalItemCategory = 0;
+            _itcNormalItemSubCategory = 0;
             _itcNormalItemSortType = 1;
             _itcNormalItemSortColumn = 0;
+            _itcCurrentCategoryItemCount = 0;
             _itcNormalItemEntryCount = 0;
+            _itcNormalItemPageEntryCount = 0;
             _itcNormalItemSelectedListingId = 0;
             _itcNormalItemSelectedPrice = 0;
             _itcNormalItemMutationCount = 0;
+            _itcSaleItemCount = 0;
+            _itcPurchaseItemCount = 0;
+            _itcPacketCatalogEntries.Clear();
+            _itcSalePacketEntries.Clear();
+            _itcPurchasePacketEntries.Clear();
             _itcNormalItemLastSummary = "No ITC normal-item packet routed yet.";
 
             if (_stageKind == CashServiceStageKind.CashShop)
@@ -512,6 +544,18 @@ namespace HaCreator.MapSimulator.UI
 
         private IReadOnlyList<string> BuildLockerPane()
         {
+            if (_stageKind == CashServiceStageKind.CashShop && _cashLockerSlotLimit > 0)
+            {
+                return new[]
+                {
+                    $"Cash locker items {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)}/{_cashLockerSlotLimit.ToString(CultureInfo.InvariantCulture)}.",
+                    $"Character slots {_cashCharacterSlotCount.ToString(CultureInfo.InvariantCulture)}, buy-count {_cashBuyCharacterCount.ToString(CultureInfo.InvariantCulture)}, characters {_cashCharacterCount.ToString(CultureInfo.InvariantCulture)}.",
+                    _storageRuntime != null
+                        ? $"Shared-account trunk mirror still tracks {_storageRuntime.GetUsedSlotCount().ToString(CultureInfo.InvariantCulture)}/{_storageRuntime.GetSlotLimit().ToString(CultureInfo.InvariantCulture)} outside the cash locker."
+                        : "Cash locker data is coming from packet-owned CCashShop state."
+                };
+            }
+
             if (_storageRuntime == null)
             {
                 return new[] { "Locker runtime unavailable.", "Cash locker pane remains staged but empty." };
@@ -581,6 +625,13 @@ namespace HaCreator.MapSimulator.UI
             else
             {
                 lines.Add(_itcNormalItemLastSummary);
+                if (_itcPacketCatalogEntries.Count > 0)
+                {
+                    foreach (PacketCatalogEntry entry in _itcPacketCatalogEntries.Take(3))
+                    {
+                        lines.Add($"{entry.Title} | {entry.PriceLabel} | {entry.StateLabel}");
+                    }
+                }
             }
 
             if (_packetRouteOrder.Count == 0)
@@ -600,12 +651,15 @@ namespace HaCreator.MapSimulator.UI
 
         private IReadOnlyList<string> BuildBestPane()
         {
+            string wishlistLine = _cashPacketCatalogEntries.Count > 0
+                ? $"Wishlist count {_wishlistCount}/10 with {_cashPacketCatalogEntries.Count.ToString(CultureInfo.InvariantCulture)} packet-owned row(s)."
+                : $"Wishlist count {_wishlistCount}/10.";
             return new[]
             {
                 _pendingCommoditySerialNumber > 0
                     ? $"GoToCommoditySN {_pendingCommoditySerialNumber} is waiting on the best-items owner."
                     : "No commodity serial is waiting on best-items.",
-                $"Wishlist count {_wishlistCount}/10."
+                wishlistLine
             };
         }
 
@@ -634,24 +688,40 @@ namespace HaCreator.MapSimulator.UI
 
         private IReadOnlyList<string> BuildSalePane()
         {
-            return new[]
+            List<string> lines = new()
             {
-                "Sale owner is split from purchase owner.",
+                $"Sale owner is split from purchase owner. Packet list count {_itcSaleItemCount.ToString(CultureInfo.InvariantCulture)}.",
                 _itcNormalItemLastSummary,
                 _noticeState
             };
+
+            foreach (PacketCatalogEntry entry in _itcSalePacketEntries.Take(2))
+            {
+                lines.Add($"{entry.Title} | {entry.PriceLabel} | {entry.StateLabel}");
+            }
+
+            return lines;
         }
 
         private IReadOnlyList<string> BuildPurchasePane()
         {
-            return new[]
+            List<string> lines = new()
             {
-                "Purchase owner remains separate from the main list.",
-                _itcNormalItemMutationCount > 0
-                    ? $"Last listing {_itcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)} at {_itcNormalItemSelectedPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos."
-                    : "No listing payload has reached the purchase owner yet.",
+                $"Purchase owner remains separate from the main list. Packet list count {_itcPurchaseItemCount.ToString(CultureInfo.InvariantCulture)}.",
+                _itcPurchasePacketEntries.Count > 0
+                    ? $"{_itcPurchasePacketEntries[0].Title} at {_itcPurchasePacketEntries[0].PriceLabel}."
+                    : (_itcNormalItemMutationCount > 0
+                        ? $"Last listing {_itcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)} at {_itcNormalItemSelectedPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos."
+                        : "No listing payload has reached the purchase owner yet."),
                 _statusMessage
             };
+
+            foreach (PacketCatalogEntry entry in _itcPurchasePacketEntries.Take(2))
+            {
+                lines.Add($"{entry.Title} | {entry.PriceLabel} | {entry.StateLabel}");
+            }
+
+            return lines;
         }
 
         private string ApplyCashShopPacket(int packetType, byte[] payload, int tickCount)
@@ -747,23 +817,53 @@ namespace HaCreator.MapSimulator.UI
         {
             byte[] packetPayload = payload ?? Array.Empty<byte>();
             _cashItemResultSubtype = packetPayload.Length > 0 ? packetPayload[0] : -1;
-            _cashItemCommoditySerialNumber = TryReadInt32At(packetPayload, 1, out int commoditySerialNumber)
-                ? Math.Max(0, commoditySerialNumber)
-                : 0;
-            _cashItemProductId = TryReadInt32At(packetPayload, 5, out int productId)
-                ? Math.Max(0, productId)
-                : 0;
-            _cashItemPrice = TryReadInt32At(packetPayload, 9, out int price)
-                ? Math.Max(0, price)
-                : 0;
             _cashItemMutationCount++;
-
-            string subtypeLabel = _cashItemResultSubtype >= 0
-                ? _cashItemResultSubtype.ToString(CultureInfo.InvariantCulture)
-                : "n/a";
-            string summary =
-                $"Cash item subtype {subtypeLabel} mutated CCSWnd_List/CCSWnd_Best with SN {_cashItemCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}, item {_cashItemProductId.ToString(CultureInfo.InvariantCulture)}, price {_cashItemPrice.ToString("N0", CultureInfo.InvariantCulture)}, payload {packetPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s).";
-            if (_pendingCommoditySerialNumber > 0)
+            string subtypeLabel = GetCashItemResultSubtypeLabel(_cashItemResultSubtype);
+            string summary = _cashItemResultSubtype switch
+            {
+                88 => TryApplyCashLoadLockerDone(packetPayload, out string lockerMessage)
+                    ? lockerMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResLoadLockerDone", packetPayload),
+                90 => TryApplyCashLoadGiftDone(packetPayload, out string giftMessage)
+                    ? giftMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResLoadGiftDone", packetPayload),
+                92 => TryApplyCashWishlistPacket(packetPayload, "CCashShop::OnCashItemResLoadWishDone", out string loadWishMessage)
+                    ? loadWishMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResLoadWishDone", packetPayload),
+                98 => TryApplyCashWishlistPacket(packetPayload, "CCashShop::OnCashItemResSetWishDone", out string setWishMessage)
+                    ? setWishMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResSetWishDone", packetPayload),
+                100 => TryApplyCashBuyDone(packetPayload, out string buyDoneMessage)
+                    ? buyDoneMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResBuyDone", packetPayload),
+                101 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResBuyFailed"),
+                109 => BuildCashSimpleResult("CCashShop::OnCashItemResIncSlotCountDone", packetPayload),
+                110 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResIncSlotCountFailed"),
+                111 => TryApplyCashCounterUpdate(packetPayload, "CCashShop::OnCashItemResIncTrunkCountDone", 48, value => _cashLockerSlotLimit = value, out string trunkMessage)
+                    ? trunkMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResIncTrunkCountDone", packetPayload),
+                112 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResIncTrunkCountFailed"),
+                113 => TryApplyCashCounterUpdate(packetPayload, "CCashShop::OnCashItemResIncCharacterSlotCountDone", 15, value => _cashCharacterSlotCount = value, out string characterSlotMessage)
+                    ? characterSlotMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResIncCharacterSlotCountDone", packetPayload),
+                114 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResIncCharacterSlotCountFailed"),
+                115 => TryApplyCashCounterUpdate(packetPayload, "CCashShop::OnCashItemResIncBuyCharacterCountDone", short.MaxValue, value => _cashBuyCharacterCount = value, out string buyCharacterMessage)
+                    ? buyCharacterMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResIncBuyCharacterCountDone", packetPayload),
+                116 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResIncBuyCharacterCountFailed"),
+                119 => BuildCashSimpleResult("CCashShop::OnCashItemResMoveLtoSDone", packetPayload),
+                120 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResMoveLtoSFailed"),
+                121 => BuildCashSimpleResult("CCashShop::OnCashItemResMoveStoLDone", packetPayload),
+                122 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResMoveStoLFailed"),
+                123 => BuildCashSimpleResult("CCashShop::OnCashItemResDestroyDone", packetPayload),
+                124 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResDestroyFailed"),
+                125 => BuildCashSimpleResult("CCashShop::OnCashItemResExpireDone", packetPayload),
+                _ => $"{subtypeLabel} reached CCashShop with {packetPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s) of packet-owned state."
+            };
+            _cashItemCommoditySerialNumber = _cashPacketCatalogEntries.FirstOrDefault()?.ListingId ?? 0;
+            _cashItemProductId = _cashPacketCatalogEntries.FirstOrDefault()?.ItemId ?? 0;
+            _cashItemPrice = _cashPacketCatalogEntries.FirstOrDefault()?.Price ?? 0;
+            if (_pendingCommoditySerialNumber > 0 && _cashItemResultSubtype is 92 or 98 or 100)
             {
                 summary += $" Pending commodity SN {_pendingCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)} was resumed.";
             }
@@ -776,24 +876,566 @@ namespace HaCreator.MapSimulator.UI
         {
             byte[] packetPayload = payload ?? Array.Empty<byte>();
             _itcNormalItemSubtype = packetPayload.Length > 0 ? packetPayload[0] : -1;
-            _itcNormalItemPage = TryReadInt32At(packetPayload, 1, out int page) ? Math.Max(0, page) : _itcNormalItemPage;
-            _itcNormalItemCategory = TryReadInt32At(packetPayload, 5, out int category) ? Math.Max(0, category) : _itcNormalItemCategory;
-            _itcNormalItemSortType = TryReadInt32At(packetPayload, 9, out int sortType) ? Math.Max(0, sortType) : _itcNormalItemSortType;
-            _itcNormalItemSortColumn = TryReadInt32At(packetPayload, 13, out int sortColumn) ? Math.Max(0, sortColumn) : _itcNormalItemSortColumn;
-            _itcNormalItemEntryCount = TryReadInt32At(packetPayload, 17, out int entryCount) ? Math.Max(0, entryCount) : _itcNormalItemEntryCount;
-            _itcNormalItemSelectedListingId = TryReadInt32At(packetPayload, 21, out int listingId) ? Math.Max(0, listingId) : _itcNormalItemSelectedListingId;
-            _itcNormalItemSelectedPrice = TryReadInt32At(packetPayload, 25, out int listingPrice) ? Math.Max(0, listingPrice) : _itcNormalItemSelectedPrice;
             _itcNormalItemMutationCount++;
-
-            _navigationState =
-                $"CITC list category {_itcNormalItemCategory.ToString(CultureInfo.InvariantCulture)} / page {_itcNormalItemPage.ToString(CultureInfo.InvariantCulture)} / subtype {_itcNormalItemSubtype.ToString(CultureInfo.InvariantCulture)}.";
-            _searchState =
-                $"CITC sort column {_itcNormalItemSortColumn.ToString(CultureInfo.InvariantCulture)} type {_itcNormalItemSortType.ToString(CultureInfo.InvariantCulture)} with {_itcNormalItemEntryCount.ToString(CultureInfo.InvariantCulture)} entries.";
-            _noticeState =
-                $"Listing {_itcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)} at {_itcNormalItemSelectedPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos is now staged.";
-            _itcNormalItemLastSummary =
-                $"Normal-item subtype {_itcNormalItemSubtype.ToString(CultureInfo.InvariantCulture)} updated CITC sale/purchase/list owners (category {_itcNormalItemCategory.ToString(CultureInfo.InvariantCulture)}, page {_itcNormalItemPage.ToString(CultureInfo.InvariantCulture)}, entries {_itcNormalItemEntryCount.ToString(CultureInfo.InvariantCulture)}, payload {packetPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s)).";
+            _itcNormalItemLastSummary = _itcNormalItemSubtype switch
+            {
+                21 => TryApplyItcCatalogList(packetPayload, isSearchResult: false, out string listMessage)
+                    ? listMessage
+                    : BuildPacketDecodeFailure("CITC::OnGetITCListDone", packetPayload),
+                22 => BuildItcFailureMessage(packetPayload, "CITC::OnGetITCListFailed"),
+                23 => TryApplyItcCatalogList(packetPayload, isSearchResult: true, out string searchMessage)
+                    ? searchMessage
+                    : BuildPacketDecodeFailure("CITC::OnGetSearchITCListDone", packetPayload),
+                24 => BuildItcFailureMessage(packetPayload, "CITC::OnGetSearchITCListFailed"),
+                29 => BuildItcSimpleResult("CITC::OnNormalItemResRegisterSaleEntryDone", "Inventory owner reset after sale-entry registration.", packetPayload),
+                30 => BuildItcFailureMessage(packetPayload, "CITC::OnNormalItemResRegisterSaleEntryFailed"),
+                33 => TryApplyItcUserItemList(packetPayload, isPurchaseList: true, out string purchaseMessage)
+                    ? purchaseMessage
+                    : BuildPacketDecodeFailure("CITC::OnGetUserPurchaseItemDone", packetPayload),
+                34 => BuildItcFailureMessage(packetPayload, "CITC::OnGetUserPurchaseItemFailed"),
+                35 => TryApplyItcUserItemList(packetPayload, isPurchaseList: false, out string saleMessage)
+                    ? saleMessage
+                    : BuildPacketDecodeFailure("CITC::OnGetUserSaleItemDone", packetPayload),
+                36 => BuildItcFailureMessage(packetPayload, "CITC::OnGetUserSaleItemFailed"),
+                37 => BuildItcSimpleResult("CITC::OnCancelSaleItemDone", "The selected sale entry was cancelled and the request lock cleared.", packetPayload),
+                38 => BuildItcFailureMessage(packetPayload, "CITC::OnCancelSaleItemFailed"),
+                39 => BuildItcSimpleResult("CITC::OnMoveITCPurchaseItemLtoSDone", "A purchase item moved from the list owner into storage.", packetPayload),
+                40 => BuildItcFailureMessage(packetPayload, "CITC::OnMoveITCPurchaseItemLtoSFailed"),
+                41 => BuildItcSimpleResult("CITC::OnSetZzimDone", "The selected wish item was added to the packet-owned zzim list.", packetPayload),
+                42 => BuildItcFailureMessage(packetPayload, "CITC::OnSetZzimFailed"),
+                43 => BuildItcSimpleResult("CITC::OnDeleteZzimDone", "The selected wish item was removed from the packet-owned zzim list.", packetPayload),
+                44 => BuildItcFailureMessage(packetPayload, "CITC::OnDeleteZzimFailed"),
+                45 => BuildItcSimpleResult("CITC::OnLoadWishSaleListDone", "The packet-owned wish-sale list refreshed.", packetPayload),
+                46 => BuildItcFailureMessage(packetPayload, "CITC::OnLoadWishSaleListFailed"),
+                47 => BuildItcSimpleResult("CITC::OnBuyWishDone", "The selected wish entry completed its buy flow.", packetPayload),
+                48 => BuildItcFailureMessage(packetPayload, "CITC::OnBuyWishFailed"),
+                49 => BuildItcSimpleResult("CITC::OnCancelWishDone", "The selected wish registration was cancelled.", packetPayload),
+                50 => BuildItcFailureMessage(packetPayload, "CITC::OnCancelWishFailed"),
+                51 => BuildItcSimpleResult("CITC::OnBuyItemDone", "The selected ITC listing was purchased successfully.", packetPayload),
+                52 => BuildItcFailureMessage(packetPayload, "CITC::OnBuyItemFailed"),
+                53 => BuildItcSimpleResult("CITC::OnBuyZzimItemDone", "The selected zzim listing was purchased successfully.", packetPayload),
+                54 => BuildItcFailureMessage(packetPayload, "CITC::OnBuyZzimItemFailed"),
+                55 => BuildItcSimpleResult("CITC::OnRegisterWishItemDone", "The selected item was registered into the wish list.", packetPayload),
+                56 => BuildItcFailureMessage(packetPayload, "CITC::OnRegisterWishItemFailed"),
+                60 => BuildItcFailureMessage(packetPayload, "CITC::OnBidAuctionFailed"),
+                61 => BuildItcSimpleResult("CITC::OnNotifyCancelWishResult", "A packet-owned cancel-wish result notice reached CITC.", packetPayload),
+                62 => BuildItcSimpleResult("CITC::OnSuccessBidInfoResult", "A packet-owned bid-success notice reached CITC.", packetPayload),
+                _ => $"{GetItcNormalItemSubtypeLabel(_itcNormalItemSubtype)} reached CITC with {packetPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s) of packet-owned state."
+            };
             return _itcNormalItemLastSummary;
+        }
+
+        private bool TryApplyCashLoadLockerDone(byte[] payload, out string message)
+        {
+            message = null;
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (stream.Length < 1 + sizeof(short))
+            {
+                return false;
+            }
+
+            _ = reader.ReadByte();
+            short itemCount = reader.ReadInt16();
+            if (itemCount < 0)
+            {
+                return false;
+            }
+
+            long itemBlockLength = 55L * itemCount;
+            if (stream.Length - stream.Position < itemBlockLength + (sizeof(short) * 4))
+            {
+                return false;
+            }
+
+            stream.Position += itemBlockLength;
+            _cashLockerItemCount = Math.Max(0, (int)itemCount);
+            _cashLockerSlotLimit = Math.Max(0, (int)reader.ReadInt16());
+            _cashCharacterSlotCount = Math.Max(0, (int)reader.ReadInt16());
+            _cashBuyCharacterCount = Math.Max(0, (int)reader.ReadInt16());
+            _cashCharacterCount = Math.Max(0, (int)reader.ReadInt16());
+            _noticeState = $"Cash locker refreshed to {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)}/{_cashLockerSlotLimit.ToString(CultureInfo.InvariantCulture)} entries.";
+            message =
+                $"CCashShop::OnCashItemResLoadLockerDone loaded {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)} cash locker item(s), locker limit {_cashLockerSlotLimit.ToString(CultureInfo.InvariantCulture)}, character slots {_cashCharacterSlotCount.ToString(CultureInfo.InvariantCulture)}, buy-count {_cashBuyCharacterCount.ToString(CultureInfo.InvariantCulture)}, characters {_cashCharacterCount.ToString(CultureInfo.InvariantCulture)}.";
+            return true;
+        }
+
+        private bool TryApplyCashLoadGiftDone(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload.Length < 1 + sizeof(short))
+            {
+                return false;
+            }
+
+            short giftCount = BitConverter.ToInt16(payload, 1);
+            _noticeState = $"Gift inbox refreshed with {Math.Max(0, (int)giftCount).ToString(CultureInfo.InvariantCulture)} gift row(s).";
+            message = $"CCashShop::OnCashItemResLoadGiftDone loaded {Math.Max(0, (int)giftCount).ToString(CultureInfo.InvariantCulture)} gift row(s) into the dedicated receive-gift flow.";
+            return true;
+        }
+
+        private bool TryApplyCashWishlistPacket(byte[] payload, string ownerName, out string message)
+        {
+            message = null;
+            if (payload.Length < 1 + (_cashWishlistSerialNumbers.Length * sizeof(int)))
+            {
+                return false;
+            }
+
+            _cashPacketCatalogEntries.Clear();
+            _wishlistCount = 0;
+            for (int i = 0; i < _cashWishlistSerialNumbers.Length; i++)
+            {
+                int serialNumber = BitConverter.ToInt32(payload, 1 + (i * sizeof(int)));
+                _cashWishlistSerialNumbers[i] = Math.Max(0, serialNumber);
+                if (_cashWishlistSerialNumbers[i] <= 0)
+                {
+                    continue;
+                }
+
+                _wishlistCount++;
+                _cashPacketCatalogEntries.Add(new PacketCatalogEntry
+                {
+                    Title = $"Wishlist slot {(i + 1).ToString(CultureInfo.InvariantCulture)}",
+                    Detail = $"Commodity SN {_cashWishlistSerialNumbers[i].ToString(CultureInfo.InvariantCulture)} is now owned by the packet-authored wish list.",
+                    Seller = "CCashShop wishlist",
+                    PriceLabel = $"SN {_cashWishlistSerialNumbers[i].ToString(CultureInfo.InvariantCulture)}",
+                    StateLabel = "Wish",
+                    ListingId = _cashWishlistSerialNumbers[i]
+                });
+            }
+
+            _searchState = $"{ownerName} refreshed {_wishlistCount.ToString(CultureInfo.InvariantCulture)} wishlist slot(s).";
+            _noticeState = _wishlistCount > 0
+                ? $"Wishlist SNs: {string.Join(", ", _cashWishlistSerialNumbers.Where(value => value > 0).Take(5))}."
+                : "Wishlist cleared by packet-owned CCashShop state.";
+            message = $"{ownerName} refreshed {_wishlistCount.ToString(CultureInfo.InvariantCulture)} wishlist slot(s) across the dedicated list/best owners.";
+            return true;
+        }
+
+        private bool TryApplyCashBuyDone(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload.Length < 1 + 55)
+            {
+                return false;
+            }
+
+            _cashLockerItemCount = Math.Max(0, _cashLockerItemCount + 1);
+            _noticeState = $"A purchased cash item was appended to the locker (now {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)} item(s)).";
+            message = "CCashShop::OnCashItemResBuyDone appended one 55-byte cash-item body to the locker and invalidated CCSWnd_Locker.";
+            return true;
+        }
+
+        private bool TryApplyCashCounterUpdate(byte[] payload, string ownerName, int maxValue, Action<int> applyValue, out string message)
+        {
+            message = null;
+            if (payload.Length < 1 + sizeof(short))
+            {
+                return false;
+            }
+
+            int value = Math.Max(0, (int)BitConverter.ToInt16(payload, 1));
+            if (maxValue > 0)
+            {
+                value = Math.Min(maxValue, value);
+            }
+
+            applyValue(value);
+            _noticeState = $"{ownerName} updated the packet-owned counter to {value.ToString(CultureInfo.InvariantCulture)}.";
+            message = _noticeState;
+            return true;
+        }
+
+        private string BuildCashItemFailureMessage(byte[] payload, string ownerName)
+        {
+            int reason = payload.Length >= 2 ? payload[1] : -1;
+            _noticeState = reason >= 0
+                ? $"{ownerName} failed with reason {reason.ToString(CultureInfo.InvariantCulture)}."
+                : $"{ownerName} failed before a reason byte could be decoded.";
+            return _noticeState;
+        }
+
+        private string BuildCashSimpleResult(string ownerName, byte[] payload)
+        {
+            _noticeState = $"{ownerName} completed with {payload.Length.ToString(CultureInfo.InvariantCulture)} byte(s) of packet-owned state.";
+            return _noticeState;
+        }
+
+        private bool TryApplyItcCatalogList(byte[] payload, bool isSearchResult, out string message)
+        {
+            message = null;
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (stream.Length < 1 + (sizeof(int) * 5) + (sizeof(byte) * 2))
+            {
+                return false;
+            }
+
+            _ = reader.ReadByte();
+            _itcCurrentCategoryItemCount = Math.Max(0, reader.ReadInt32());
+            _itcNormalItemPageEntryCount = Math.Max(0, reader.ReadInt32());
+            _itcNormalItemCategory = Math.Max(0, reader.ReadInt32());
+            _itcNormalItemSubCategory = Math.Max(0, reader.ReadInt32());
+            _itcNormalItemPage = Math.Max(0, reader.ReadInt32());
+            _itcNormalItemSortType = Math.Max(0, (int)reader.ReadByte());
+            _itcNormalItemSortColumn = Math.Max(0, (int)reader.ReadByte());
+            _itcNormalItemEntryCount = _itcCurrentCategoryItemCount;
+            _itcPacketCatalogEntries.Clear();
+
+            for (int i = 0; i < _itcNormalItemPageEntryCount; i++)
+            {
+                if (!TryReadItcItemEntry(reader, out PacketCatalogEntry entry))
+                {
+                    return false;
+                }
+
+                _itcPacketCatalogEntries.Add(entry);
+            }
+
+            if (stream.Position < stream.Length)
+            {
+                _ = reader.ReadByte();
+            }
+
+            PacketCatalogEntry selectedEntry = _itcPacketCatalogEntries.FirstOrDefault();
+            _itcNormalItemSelectedListingId = selectedEntry?.ListingId ?? 0;
+            _itcNormalItemSelectedPrice = selectedEntry?.Price ?? 0;
+            _navigationState =
+                $"CITC category {_itcNormalItemCategory.ToString(CultureInfo.InvariantCulture)} / subcategory {_itcNormalItemSubCategory.ToString(CultureInfo.InvariantCulture)} / page {_itcNormalItemPage.ToString(CultureInfo.InvariantCulture)} owned by {(isSearchResult ? "search" : "list")} results.";
+            _searchState =
+                $"Sort column {_itcNormalItemSortColumn.ToString(CultureInfo.InvariantCulture)} / sort type {_itcNormalItemSortType.ToString(CultureInfo.InvariantCulture)} with {_itcNormalItemPageEntryCount.ToString(CultureInfo.InvariantCulture)} visible row(s).";
+            _noticeState = selectedEntry != null
+                ? $"{selectedEntry.Title} by {selectedEntry.Seller} is the packet-owned focused row."
+                : "The packet-owned CITC list is empty.";
+            message =
+                $"{(isSearchResult ? "CITC::OnGetSearchITCListDone" : "CITC::OnGetITCListDone")} loaded {_itcNormalItemPageEntryCount.ToString(CultureInfo.InvariantCulture)} row(s) out of {_itcCurrentCategoryItemCount.ToString(CultureInfo.InvariantCulture)} for category {_itcNormalItemCategory.ToString(CultureInfo.InvariantCulture)}/{_itcNormalItemSubCategory.ToString(CultureInfo.InvariantCulture)} page {_itcNormalItemPage.ToString(CultureInfo.InvariantCulture)}.";
+            return true;
+        }
+
+        private bool TryApplyItcUserItemList(byte[] payload, bool isPurchaseList, out string message)
+        {
+            message = null;
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (stream.Length < 1 + sizeof(int))
+            {
+                return false;
+            }
+
+            _ = reader.ReadByte();
+            int count = Math.Max(0, reader.ReadInt32());
+            List<PacketCatalogEntry> target = isPurchaseList ? _itcPurchasePacketEntries : _itcSalePacketEntries;
+            target.Clear();
+            for (int i = 0; i < count; i++)
+            {
+                if (!TryReadItcItemEntry(reader, out PacketCatalogEntry entry))
+                {
+                    return false;
+                }
+
+                target.Add(entry);
+            }
+
+            int limitedCount = 0;
+            if (isPurchaseList && stream.Length - stream.Position >= sizeof(int))
+            {
+                limitedCount = Math.Max(0, reader.ReadInt32());
+            }
+
+            if (stream.Position < stream.Length)
+            {
+                _ = reader.ReadByte();
+            }
+
+            if (isPurchaseList)
+            {
+                _itcPurchaseItemCount = count;
+                _noticeState = limitedCount > 0
+                    ? $"Purchase owner loaded {_itcPurchaseItemCount.ToString(CultureInfo.InvariantCulture)} row(s) with {limitedCount.ToString(CultureInfo.InvariantCulture)} limited result(s) still outstanding."
+                    : $"Purchase owner loaded {_itcPurchaseItemCount.ToString(CultureInfo.InvariantCulture)} row(s).";
+                message = $"CITC::OnGetUserPurchaseItemDone loaded {_itcPurchaseItemCount.ToString(CultureInfo.InvariantCulture)} purchase row(s){(limitedCount > 0 ? $" and {limitedCount.ToString(CultureInfo.InvariantCulture)} limited-item notice row(s)" : string.Empty)}.";
+            }
+            else
+            {
+                _itcSaleItemCount = count;
+                _noticeState = $"Sale owner loaded {_itcSaleItemCount.ToString(CultureInfo.InvariantCulture)} packet-authored row(s).";
+                message = $"CITC::OnGetUserSaleItemDone loaded {_itcSaleItemCount.ToString(CultureInfo.InvariantCulture)} sale row(s).";
+            }
+
+            PacketCatalogEntry selectedEntry = target.FirstOrDefault();
+            _itcNormalItemSelectedListingId = selectedEntry?.ListingId ?? _itcNormalItemSelectedListingId;
+            _itcNormalItemSelectedPrice = selectedEntry?.Price ?? _itcNormalItemSelectedPrice;
+            return true;
+        }
+
+        private bool TryReadItcItemEntry(BinaryReader reader, out PacketCatalogEntry entry)
+        {
+            entry = null;
+            if (!TryReadItemAttachment(reader, out int itemId, out int quantity, out _))
+            {
+                return false;
+            }
+
+            Stream stream = reader.BaseStream;
+            if (stream.Length - stream.Position < (sizeof(int) * 3) + sizeof(long))
+            {
+                return false;
+            }
+
+            int listingId = reader.ReadInt32();
+            int price = reader.ReadInt32();
+            _ = reader.ReadInt32();
+            if (!TryReadMapleString(reader, out _)
+                || !TryReadMapleString(reader, out _))
+            {
+                return false;
+            }
+
+            stream.Position += sizeof(long);
+            if (!TryReadMapleString(reader, out string userId)
+                || !TryReadMapleString(reader, out string gameId)
+                || !TryReadMapleString(reader, out string comment))
+            {
+                return false;
+            }
+
+            if (stream.Length - stream.Position < (sizeof(int) * 6) + sizeof(short))
+            {
+                return false;
+            }
+
+            int bidCount = reader.ReadInt32();
+            int bidRange = reader.ReadInt32();
+            int bidPrice = reader.ReadInt32();
+            int minPrice = reader.ReadInt32();
+            int maxPrice = reader.ReadInt32();
+            int unitPrice = reader.ReadInt32();
+            short processStatus = reader.ReadInt16();
+            string seller = string.IsNullOrWhiteSpace(gameId) ? userId : gameId;
+            if (string.IsNullOrWhiteSpace(seller))
+            {
+                seller = "ITC seller";
+            }
+
+            string title = $"Item {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)} x{Math.Max(1, quantity).ToString(CultureInfo.InvariantCulture)}";
+            string detail = string.IsNullOrWhiteSpace(comment)
+                ? $"Listing {listingId.ToString(CultureInfo.InvariantCulture)} for {price.ToString("N0", CultureInfo.InvariantCulture)} mesos."
+                : comment;
+            string stateLabel = $"State {processStatus.ToString(CultureInfo.InvariantCulture)} / bids {bidCount.ToString(CultureInfo.InvariantCulture)}";
+            if (bidPrice > 0)
+            {
+                stateLabel += $" @ {bidPrice.ToString("N0", CultureInfo.InvariantCulture)}";
+            }
+            else if (unitPrice > 0)
+            {
+                stateLabel += $" / unit {unitPrice.ToString("N0", CultureInfo.InvariantCulture)}";
+            }
+
+            if (bidRange > 0 || minPrice > 0 || maxPrice > 0)
+            {
+                detail += $" Range {Math.Max(0, minPrice).ToString("N0", CultureInfo.InvariantCulture)}-{Math.Max(0, maxPrice).ToString("N0", CultureInfo.InvariantCulture)} (+{Math.Max(0, bidRange).ToString("N0", CultureInfo.InvariantCulture)}).";
+            }
+
+            entry = new PacketCatalogEntry
+            {
+                Title = title,
+                Detail = detail,
+                Seller = seller,
+                PriceLabel = price.ToString("N0", CultureInfo.InvariantCulture),
+                StateLabel = stateLabel,
+                ListingId = Math.Max(0, listingId),
+                ItemId = Math.Max(0, itemId),
+                Quantity = Math.Max(1, quantity),
+                Price = Math.Max(0, price)
+            };
+            return true;
+        }
+
+        private static bool TryReadItemAttachment(BinaryReader reader, out int itemId, out int quantity, out string error)
+        {
+            itemId = 0;
+            quantity = 0;
+            error = null;
+
+            Stream stream = reader.BaseStream;
+            if (stream.Length - stream.Position < sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long))
+            {
+                error = "ITC item payload is too short to contain a GW_ItemSlotBase body.";
+                return false;
+            }
+
+            byte slotType = reader.ReadByte();
+            if (slotType is not 1 and not 2 and not 3)
+            {
+                error = $"Unsupported GW_ItemSlotBase type {slotType.ToString(CultureInfo.InvariantCulture)}.";
+                return false;
+            }
+
+            itemId = reader.ReadInt32();
+            bool hasCashSerialNumber = reader.ReadByte() != 0;
+            if (hasCashSerialNumber)
+            {
+                if (stream.Length - stream.Position < sizeof(long))
+                {
+                    error = "ITC item payload ended before the cash serial number.";
+                    return false;
+                }
+
+                _ = reader.ReadInt64();
+            }
+
+            if (stream.Length - stream.Position < sizeof(long))
+            {
+                error = "ITC item payload ended before the item serial number.";
+                return false;
+            }
+
+            _ = reader.ReadInt64();
+
+            quantity = 1;
+            return slotType switch
+            {
+                1 => TryReadEquipBody(reader, hasCashSerialNumber, out error),
+                2 => TryReadBundleBody(reader, itemId, out quantity, out error),
+                3 => TryReadPetBody(reader, out error),
+                _ => false
+            };
+        }
+
+        private static bool TryReadEquipBody(BinaryReader reader, bool hasCashSerialNumber, out string error)
+        {
+            error = null;
+            Stream stream = reader.BaseStream;
+            const int equipStatsByteLength = (sizeof(byte) * 2) + (sizeof(short) * 15);
+            if (stream.Length - stream.Position < equipStatsByteLength)
+            {
+                error = "ITC equip payload ended before the stat block.";
+                return false;
+            }
+
+            stream.Position += equipStatsByteLength;
+            if (!TryReadMapleString(reader, out _))
+            {
+                error = "ITC equip payload ended before the title string.";
+                return false;
+            }
+
+            const int tailLength = sizeof(short) + (sizeof(byte) * 2) + (sizeof(int) * 3) + (sizeof(byte) * 2) + (sizeof(short) * 5);
+            if (stream.Length - stream.Position < tailLength + sizeof(long) + sizeof(int))
+            {
+                error = "ITC equip payload ended before the tail block.";
+                return false;
+            }
+
+            stream.Position += tailLength;
+            if (!hasCashSerialNumber)
+            {
+                if (stream.Length - stream.Position < sizeof(long))
+                {
+                    error = "ITC equip payload ended before the non-cash serial number.";
+                    return false;
+                }
+
+                stream.Position += sizeof(long);
+            }
+
+            stream.Position += sizeof(long) + sizeof(int);
+            return true;
+        }
+
+        private static bool TryReadBundleBody(BinaryReader reader, int itemId, out int quantity, out string error)
+        {
+            quantity = 1;
+            error = null;
+            Stream stream = reader.BaseStream;
+            if (stream.Length - stream.Position < sizeof(ushort))
+            {
+                error = "ITC bundle payload ended before the quantity field.";
+                return false;
+            }
+
+            quantity = Math.Max(1, (int)reader.ReadUInt16());
+            if (!TryReadMapleString(reader, out _))
+            {
+                error = "ITC bundle payload ended before the title string.";
+                return false;
+            }
+
+            if (stream.Length - stream.Position < sizeof(short))
+            {
+                error = "ITC bundle payload ended before the attribute field.";
+                return false;
+            }
+
+            _ = reader.ReadInt16();
+            if (itemId / 10000 is 207 or 233)
+            {
+                if (stream.Length - stream.Position < sizeof(long))
+                {
+                    error = "ITC bundle payload ended before the recharge serial number.";
+                    return false;
+                }
+
+                _ = reader.ReadInt64();
+            }
+
+            return true;
+        }
+
+        private static bool TryReadPetBody(BinaryReader reader, out string error)
+        {
+            error = null;
+            Stream stream = reader.BaseStream;
+            const int petNameLength = 13;
+            const int petTailLength = sizeof(byte) + sizeof(short) + sizeof(byte) + sizeof(long) + sizeof(short) + sizeof(ushort) + sizeof(int) + sizeof(short);
+            if (stream.Length - stream.Position < petNameLength + petTailLength)
+            {
+                error = "ITC pet payload ended before the pet body finished.";
+                return false;
+            }
+
+            stream.Position += petNameLength + petTailLength;
+            return true;
+        }
+
+        private static bool TryReadMapleString(BinaryReader reader, out string value)
+        {
+            value = string.Empty;
+            Stream stream = reader.BaseStream;
+            if (stream.Length - stream.Position < sizeof(short))
+            {
+                return false;
+            }
+
+            short length = reader.ReadInt16();
+            if (length < 0 || stream.Length - stream.Position < length)
+            {
+                return false;
+            }
+
+            value = Encoding.ASCII.GetString(reader.ReadBytes(length)).TrimEnd('\0', ' ');
+            return true;
+        }
+
+        private static string BuildPacketDecodeFailure(string ownerName, byte[] payload)
+        {
+            return $"{ownerName} reached the simulator, but the packet body could not be decoded from {payload.Length.ToString(CultureInfo.InvariantCulture)} byte(s).";
+        }
+
+        private string BuildItcFailureMessage(byte[] payload, string ownerName)
+        {
+            int reason = payload.Length >= 2 ? payload[1] : -1;
+            _noticeState = reason >= 0
+                ? $"{ownerName} failed with reason {reason.ToString(CultureInfo.InvariantCulture)}."
+                : $"{ownerName} failed before a reason byte could be decoded.";
+            return _noticeState;
+        }
+
+        private string BuildItcSimpleResult(string ownerName, string fallbackMessage, byte[] payload)
+        {
+            _noticeState = fallbackMessage;
+            return $"{ownerName} completed with {payload.Length.ToString(CultureInfo.InvariantCulture)} byte(s). {fallbackMessage}";
         }
 
         private void RecordPacketRoute(int packetType, string label, string detail, int tickCount)
@@ -976,6 +1618,114 @@ namespace HaCreator.MapSimulator.UI
                 411 => "QueryCash",
                 412 => "NormalItem",
                 _ => $"Packet {packetType}"
+            };
+        }
+
+        private static string GetCashItemResultSubtypeLabel(int subtype)
+        {
+            return subtype switch
+            {
+                84 => "CCashShop::OnCashItemResLimitGoodsCountChanged",
+                88 => "CCashShop::OnCashItemResLoadLockerDone",
+                89 => "CCashShop::OnCashItemResLoadLockerFailed",
+                90 => "CCashShop::OnCashItemResLoadGiftDone",
+                91 => "CCashShop::OnCashItemResLoadGiftFailed",
+                92 => "CCashShop::OnCashItemResLoadWishDone",
+                93 => "CCashShop::OnCashItemResLoadWishFailed",
+                98 => "CCashShop::OnCashItemResSetWishDone",
+                99 => "CCashShop::OnCashItemResSetWishFailed",
+                100 => "CCashShop::OnCashItemResBuyDone",
+                101 => "CCashShop::OnCashItemResBuyFailed",
+                102 => "CCashShop::OnCashItemResUseCouponDone",
+                104 => "CCashShop::OnCashItemResGiftCouponDone",
+                105 => "CCashShop::OnCashItemResUseCouponFailed",
+                107 => "CCashShop::OnCashItemResGiftDone",
+                108 => "CCashShop::OnCashItemResGiftFailed",
+                109 => "CCashShop::OnCashItemResIncSlotCountDone",
+                110 => "CCashShop::OnCashItemResIncSlotCountFailed",
+                111 => "CCashShop::OnCashItemResIncTrunkCountDone",
+                112 => "CCashShop::OnCashItemResIncTrunkCountFailed",
+                113 => "CCashShop::OnCashItemResIncCharacterSlotCountDone",
+                114 => "CCashShop::OnCashItemResIncCharacterSlotCountFailed",
+                115 => "CCashShop::OnCashItemResIncBuyCharacterCountDone",
+                116 => "CCashShop::OnCashItemResIncBuyCharacterCountFailed",
+                117 => "CCashShop::OnCashItemResEnableEquipSlotExtDone",
+                118 => "CCashShop::OnCashItemResEnableEquipSlotExtFailed",
+                119 => "CCashShop::OnCashItemResMoveLtoSDone",
+                120 => "CCashShop::OnCashItemResMoveLtoSFailed",
+                121 => "CCashShop::OnCashItemResMoveStoLDone",
+                122 => "CCashShop::OnCashItemResMoveStoLFailed",
+                123 => "CCashShop::OnCashItemResDestroyDone",
+                124 => "CCashShop::OnCashItemResDestroyFailed",
+                125 => "CCashShop::OnCashItemResExpireDone",
+                -106 => "CCashShop::OnCashItemResRebateDone",
+                -105 => "CCashShop::OnCashItemResRebateFailed",
+                -104 => "CCashShop::OnCashItemResCoupleDone",
+                -103 => "CCashShop::OnCashItemResCoupleFailed",
+                -102 => "CCashShop::OnCashItemResBuyPackageDone",
+                -101 => "CCashShop::OnCashItemResBuyPackageFailed",
+                -100 => "CCashShop::OnCashItemResGiftPackageDone",
+                -99 => "CCashShop::OnCashItemResGiftPackageFailed",
+                -98 => "CCashShop::OnCashItemResBuyNormalDone",
+                -97 => "CCashShop::OnCashItemResBuyNormalFailed",
+                -94 => "CCashShop::OnCashItemResFriendShipDone",
+                -93 => "CCashShop::OnCashItemResFriendShipFailed",
+                -86 => "CCashShop::OnCashItemResFreeCashItemDone",
+                -81 => "CCashShop::OnCashItemResPurchaseRecord",
+                -80 => "CCashShop::OnCashItemResPurchaseRecordFailed",
+                -77 => "CCashShop::OnCashItemNameChangeResBuyDone",
+                -75 => "CCashShop::OnCashItemResTransferWorldDone",
+                -74 => "CCashShop::OnCashItemResTransferWorldFailed",
+                -73 => "CCashShop::OnCashItemResCashGachaponOpenDone",
+                -72 => "CCashShop::OnCashItemResCashGachaponOpenFailed",
+                -71 => "CCashShop::OnCashItemResCashGachaponCopyDone",
+                -70 => "CCashShop::OnCashItemResCashGachaponCopyFailed",
+                -69 => "CCashShop::OnCashItemResChangeMaplePointDone",
+                -68 => "CCashShop::OnCashItemResChangeMaplePointFailed",
+                _ => $"Cash item subtype {subtype.ToString(CultureInfo.InvariantCulture)}"
+            };
+        }
+
+        private static string GetItcNormalItemSubtypeLabel(int subtype)
+        {
+            return subtype switch
+            {
+                21 => "CITC::OnGetITCListDone",
+                22 => "CITC::OnGetITCListFailed",
+                23 => "CITC::OnGetSearchITCListDone",
+                24 => "CITC::OnGetSearchITCListFailed",
+                29 => "CITC::OnNormalItemResRegisterSaleEntryDone",
+                30 => "CITC::OnNormalItemResRegisterSaleEntryFailed",
+                31 => "CITC::OnSaleCurrentItemToWishDone",
+                32 => "CITC::OnSaleCurrentItemToWishFailed",
+                33 => "CITC::OnGetUserPurchaseItemDone",
+                34 => "CITC::OnGetUserPurchaseItemFailed",
+                35 => "CITC::OnGetUserSaleItemDone",
+                36 => "CITC::OnGetUserSaleItemFailed",
+                37 => "CITC::OnCancelSaleItemDone",
+                38 => "CITC::OnCancelSaleItemFailed",
+                39 => "CITC::OnMoveITCPurchaseItemLtoSDone",
+                40 => "CITC::OnMoveITCPurchaseItemLtoSFailed",
+                41 => "CITC::OnSetZzimDone",
+                42 => "CITC::OnSetZzimFailed",
+                43 => "CITC::OnDeleteZzimDone",
+                44 => "CITC::OnDeleteZzimFailed",
+                45 => "CITC::OnLoadWishSaleListDone",
+                46 => "CITC::OnLoadWishSaleListFailed",
+                47 => "CITC::OnBuyWishDone",
+                48 => "CITC::OnBuyWishFailed",
+                49 => "CITC::OnCancelWishDone",
+                50 => "CITC::OnCancelWishFailed",
+                51 => "CITC::OnBuyItemDone",
+                52 => "CITC::OnBuyItemFailed",
+                53 => "CITC::OnBuyZzimItemDone",
+                54 => "CITC::OnBuyZzimItemFailed",
+                55 => "CITC::OnRegisterWishItemDone",
+                56 => "CITC::OnRegisterWishItemFailed",
+                60 => "CITC::OnBidAuctionFailed",
+                61 => "CITC::OnNotifyCancelWishResult",
+                62 => "CITC::OnSuccessBidInfoResult",
+                _ => $"ITC normal-item subtype {subtype.ToString(CultureInfo.InvariantCulture)}"
             };
         }
 

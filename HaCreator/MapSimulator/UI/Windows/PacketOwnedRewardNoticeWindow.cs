@@ -17,10 +17,13 @@ namespace HaCreator.MapSimulator.UI
         private const float BodyCenterX = 156f;
         private const int CenteredButtonX = 136;
         private const int ButtonY = 106;
+        private const int CloseButtonRightMargin = 8;
+        private const int CloseButtonTopMargin = 8;
 
         private string _title = string.Empty;
         private string _body = string.Empty;
         private UIObject _okButton;
+        private UIObject _closeButton;
         private bool _autoSeparated = true;
         private bool _tightLine = false;
 
@@ -45,7 +48,7 @@ namespace HaCreator.MapSimulator.UI
             _okButton = okButton;
             if (_okButton != null)
             {
-                _okButton.X = CenteredButtonX;
+                _okButton.X = ResolveOkButtonX(_okButton);
                 _okButton.Y = ButtonY;
                 _okButton.ButtonClickReleased += _ => Hide();
                 AddButton(_okButton);
@@ -53,6 +56,8 @@ namespace HaCreator.MapSimulator.UI
 
             if (closeButton != null)
             {
+                _closeButton = closeButton;
+                AnchorCloseButton(closeButton);
                 closeButton.ButtonClickReleased += _ => Hide();
                 InitializeCloseButton(closeButton);
             }
@@ -156,6 +161,35 @@ namespace HaCreator.MapSimulator.UI
                 {
                     yield return currentLine;
                 }
+            }
+        }
+
+        private int ResolveOkButtonX(UIObject okButton)
+        {
+            int frameWidth = CurrentFrame?.Width ?? 312;
+            BaseDXDrawableItem buttonDrawable = okButton.GetBaseDXDrawableItemByState();
+            if (buttonDrawable?.Frame0 != null && buttonDrawable.Frame0.Width > 0)
+            {
+                return Math.Max(0, (frameWidth - buttonDrawable.Frame0.Width) / 2);
+            }
+
+            return CenteredButtonX;
+        }
+
+        private void AnchorCloseButton(UIObject closeButton)
+        {
+            BaseDXDrawableItem closeButtonDrawable = closeButton.GetBaseDXDrawableItemByState();
+            int frameWidth = CurrentFrame?.Width ?? 312;
+            int closeButtonWidth = closeButtonDrawable?.Frame0?.Width ?? 16;
+
+            if (closeButton.X <= 0)
+            {
+                closeButton.X = Math.Max(CloseButtonTopMargin, frameWidth - closeButtonWidth - CloseButtonRightMargin);
+            }
+
+            if (closeButton.Y <= 0)
+            {
+                closeButton.Y = CloseButtonTopMargin;
             }
         }
     }

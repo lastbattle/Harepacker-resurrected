@@ -212,6 +212,7 @@ namespace HaCreator.MapSimulator
                 EnsureStageTransitionPacketInboxState(shouldRun: false);
                 EnsureReactorPoolPacketInboxState(shouldRun: false);
                 EnsurePacketFieldOfficialSessionBridgeState(shouldRun: false);
+                EnsureTradingRoomPacketInboxState(shouldRun: false);
                 EnsureSummonedPacketInboxState(shouldRun: false);
                 EnsureSummonedOfficialSessionBridgeState(shouldRun: false);
                 EnsureMobAttackPacketInboxState(shouldRun: false);
@@ -256,6 +257,8 @@ namespace HaCreator.MapSimulator
             DrainEngagementProposalInbox();
 
             _specialFieldRuntime.Update(gameTime, currTickCount);
+            EnsureTradingRoomPacketInboxState(shouldRun: true);
+            DrainTradingRoomPacketInbox(currTickCount);
             SyncWeddingRemoteActorsToSharedPool(_specialFieldRuntime.SpecialEffects.Wedding);
             MessengerRemoteUserSynchronizer.Sync(
                 _remoteUserPool,

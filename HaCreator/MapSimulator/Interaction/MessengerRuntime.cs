@@ -873,7 +873,7 @@ namespace HaCreator.MapSimulator.Interaction
                         return inviteResultError ?? "Messenger invite-result packet payload could not be decoded.";
                     }
 
-                    return ResolvePendingInvitePacket(inviteResultPacket.ContactName, inviteResultPacket.Accepted);
+                    return ResolvePendingInvitePacket(inviteResultPacket.ContactName, inviteResultPacket.InviteSent);
                 case MessengerPacketType.Migrated:
                     if (!MessengerPacketCodec.TryParseMigrated(payload, out MessengerMigratedPacket migratedPacket, out string migratedError))
                     {

@@ -646,6 +646,35 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        public static bool TryParsePassiveMove(
+            ReadOnlySpan<byte> payload,
+            int currentTime,
+            out PlayerMovementSyncSnapshot snapshot,
+            out byte moveAction,
+            out string error)
+        {
+            snapshot = null;
+            moveAction = 0;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                if (!TryDecodeMoveSnapshot(ref reader, currentTime, out snapshot, out moveAction))
+                {
+                    error = "Passive-move packet could not be decoded.";
+                    return false;
+                }
+
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
         public static bool TryParseMoveAction(ReadOnlySpan<byte> payload, out RemoteUserMoveActionPacket packet, out string error)
         {
             packet = default;
@@ -1922,11 +1951,15 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             RemoteUserTemporaryStatKnownState knownState = snapshot.KnownState;
+            bool hasSoulArrow = knownState.HasSoulArrow
+                && (IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.SoulArrow)
+                    || (knownState.HasSpiritJavelin
+                        && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.SpiritJavelin)));
             RemoteUserTemporaryStatKnownState maskedKnownState = new(
                 IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Speed) ? knownState.Speed : null,
                 knownState.HasShadowPartner && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.ShadowPartner),
                 knownState.HasDarkSight && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.DarkSight),
-                knownState.HasSoulArrow && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.SoulArrow),
+                hasSoulArrow,
                 knownState.HasSpiritJavelin && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.SpiritJavelin),
                 IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.WeaponCharge) ? knownState.ChargeSkillId : null,
                 IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Morph) ? knownState.MorphId : null,

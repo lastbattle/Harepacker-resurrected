@@ -116,6 +116,7 @@ namespace HaCreator.MapSimulator.Fields
         private const byte MemoryGameTimeOverPacketType = 63;
         private const byte MemoryGameTurnUpCardPacketType = 68;
         private const int MemoryGameGiveUpPromptStringPoolId = 0x1D7;
+        private const int MemoryGameBanPromptStringPoolId = 0x1D8;
         private const int MemoryGameIncomingTiePromptStringPoolId = 0x1D9;
         private const int MemoryGameOutgoingTiePromptStringPoolId = 0x1DA;
         private const int MemoryGameTieResultNoticeStringPoolId = 0x1DB;
@@ -350,6 +351,7 @@ namespace HaCreator.MapSimulator.Fields
             OutgoingTieRequest,
             IncomingTieRequest,
             GiveUp,
+            BanParticipant,
             BookLeave,
             CancelBookedLeave,
             CloseRoom
@@ -665,6 +667,32 @@ namespace HaCreator.MapSimulator.Fields
                 out message);
         }
 
+        private bool TryPromptBanParticipant(out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Open a Memory Game room first.";
+                return false;
+            }
+
+            int targetIndex = _localPlayerIndex == 0 ? 1 : 0;
+            string targetName = ResolveParticipantName(targetIndex);
+            if (string.IsNullOrWhiteSpace(targetName)
+                || string.Equals(targetName, "Opponent", StringComparison.Ordinal)
+                || string.Equals(targetName, "Player", StringComparison.Ordinal))
+            {
+                message = "No participant is available to ban.";
+                return false;
+            }
+
+            return TryOpenPrompt(
+                MemoryGamePromptType.BanParticipant,
+                MemoryGameBanPromptStringPoolId,
+                _localPlayerIndex,
+                ResolveMemoryGamePromptText(MemoryGameBanPromptStringPoolId, targetName),
+                out message);
+        }
+
 
         public bool TryBanParticipant(int requesterIndex, out string message)
         {
@@ -827,8 +855,9 @@ namespace HaCreator.MapSimulator.Fields
                 MemoryGamePromptType.OutgoingTieRequest => ConfirmOutgoingTieRequest(tickCount, out message),
                 MemoryGamePromptType.IncomingTieRequest => ConfirmIncomingTieRequest(tickCount, out message),
                 MemoryGamePromptType.GiveUp => ConfirmGiveUp(prompt.PlayerIndex, out message),
-                MemoryGamePromptType.BookLeave => TryApplyLeaveBookingStatus(prompt.PlayerIndex, booked: true, out message),
-                MemoryGamePromptType.CancelBookedLeave => TryApplyLeaveBookingStatus(prompt.PlayerIndex, booked: false, out message),
+                MemoryGamePromptType.BanParticipant => ConfirmBanParticipant(prompt.PlayerIndex, tickCount, out message),
+                MemoryGamePromptType.BookLeave => ConfirmLeaveBooking(prompt.PlayerIndex, booked: true, tickCount, out message),
+                MemoryGamePromptType.CancelBookedLeave => ConfirmLeaveBooking(prompt.PlayerIndex, booked: false, tickCount, out message),
                 MemoryGamePromptType.CloseRoom => TryResolveLobbyExit(prompt.PlayerIndex, out message),
                 _ => AssignPromptMissing(out message)
             };
@@ -946,9 +975,9 @@ namespace HaCreator.MapSimulator.Fields
             bool handled = packetType switch
             {
                 MiniRoomBaseLeavePacketType => TryDispatchPacket(MemoryGamePacketType.EndRoom, tickCount, out message),
-                MemoryGameTieRequestPacketType => TryPromptTieRequest(out message),
+                MemoryGameTieRequestPacketType => TryApplyOutgoingTieRequest(out message),
                 MemoryGameTieResultPacketType => TryApplyOutgoingTieResponse(packetBytes, tickCount, out message),
-                MemoryGameClientGiveUpPacketType => TryDispatchPacket(MemoryGamePacketType.GiveUp, tickCount, out message, _localPlayerIndex),
+                MemoryGameClientGiveUpPacketType => TryApplyOutgoingGiveUpRequest(tickCount, out message),
                 MemoryGameClientBookLeavePacketType => TryApplyLeaveBookingStatus(_localPlayerIndex, booked: true, out message),
                 MemoryGameClientCancelLeavePacketType => TryApplyLeaveBookingStatus(_localPlayerIndex, booked: false, out message),
                 MemoryGameReadyPacketType => TryDispatchPacket(MemoryGamePacketType.SetReady, tickCount, out message, _localPlayerIndex, readyState: true),
@@ -1154,7 +1183,7 @@ namespace HaCreator.MapSimulator.Fields
                         TryRequestRoomExit(_localPlayerIndex, out message);
                         return true;
                     case 4:
-                        message = "Ban is not modeled for the simulator MiniRoom.";
+                        TryPromptBanParticipant(out message);
                         return true;
                 }
             }
@@ -1644,6 +1673,28 @@ namespace HaCreator.MapSimulator.Fields
             SyncMiniRoomRuntime();
             message = _statusMessage;
             return true;
+        }
+
+        private bool TryApplyOutgoingTieRequest(out string message)
+        {
+            if (_localTieRequestSent)
+            {
+                message = "A Match Cards tie request is already pending.";
+                return false;
+            }
+
+            _localTieRequestSent = true;
+            _statusMessage = "Tie request sent. Waiting for the opponent's response.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
+            SyncMiniRoomRuntime();
+            message = _statusMessage;
+            return true;
+        }
+
+        private bool TryApplyOutgoingGiveUpRequest(int tickCount, out string message)
+        {
+            _localGiveUpRequestSent = true;
+            return TryDispatchPacket(MemoryGamePacketType.GiveUp, tickCount, out message, _localPlayerIndex);
         }
 
 
@@ -2531,8 +2582,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool ConfirmOutgoingTieRequest(int tickCount, out string message)
         {
-            _localTieRequestSent = true;
-            return TryClaimTie(out message);
+            return TryDispatchOfficialClientSubtype(MemoryGameTieRequestPacketType, tickCount, out message);
         }
 
         private bool ConfirmIncomingTieRequest(int tickCount, out string message)
@@ -2544,10 +2594,45 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (playerIndex == _localPlayerIndex)
             {
-                _localGiveUpRequestSent = true;
+                return TryDispatchOfficialClientSubtype(MemoryGameClientGiveUpPacketType, Environment.TickCount, out message);
             }
 
             return TryGiveUp(playerIndex, out message);
+        }
+
+        private bool ConfirmBanParticipant(int playerIndex, int tickCount, out string message)
+        {
+            if (playerIndex == _localPlayerIndex)
+            {
+                return TryDispatchOfficialClientSubtype(MemoryGameClientBanOrTurnUpCardPacketType, tickCount, out message);
+            }
+
+            return TryBanParticipant(playerIndex, out message);
+        }
+
+        private bool ConfirmLeaveBooking(int playerIndex, bool booked, int tickCount, out string message)
+        {
+            if (playerIndex == _localPlayerIndex)
+            {
+                return TryDispatchOfficialClientSubtype(
+                    booked ? MemoryGameClientBookLeavePacketType : MemoryGameClientCancelLeavePacketType,
+                    tickCount,
+                    out message);
+            }
+
+            return TryApplyLeaveBookingStatus(playerIndex, booked, out message);
+        }
+
+        private bool TryDispatchOfficialClientSubtype(byte subtype, int tickCount, out string message, params byte[] extraPayload)
+        {
+            byte[] payload = new byte[1 + (extraPayload?.Length ?? 0)];
+            payload[0] = subtype;
+            if (extraPayload != null && extraPayload.Length > 0)
+            {
+                Buffer.BlockCopy(extraPayload, 0, payload, 1, extraPayload.Length);
+            }
+
+            return TryDispatchOfficialClientPacket(payload, tickCount, out message);
         }
 
         private void ClearPendingPrompt()
@@ -2646,9 +2731,16 @@ namespace HaCreator.MapSimulator.Fields
         private static string ResolveMemoryGamePromptText(int stringPoolId, string name = null)
         {
             string resolvedName = string.IsNullOrWhiteSpace(name) ? "The other player" : name.Trim();
+            if (TryResolveRecoveredMiniRoomStringText(stringPoolId, out string recoveredFormat))
+            {
+                string recoveredComposite = ConvertMiniRoomPrintfToCompositeFormat(recoveredFormat, 1);
+                return string.Format(CultureInfo.InvariantCulture, recoveredComposite, resolvedName);
+            }
+
             string fallbackText = stringPoolId switch
             {
                 MemoryGameGiveUpPromptStringPoolId => "Would you like to give up this Match Cards round?",
+                MemoryGameBanPromptStringPoolId => string.Format(CultureInfo.InvariantCulture, "Would you like to ban {0} from the room?", resolvedName),
                 MemoryGameIncomingTiePromptStringPoolId => string.Format(CultureInfo.InvariantCulture, "{0} requested a tie. Accept it?", resolvedName),
                 MemoryGameOutgoingTiePromptStringPoolId => "Would you like to request a tie?",
                 MemoryGameTieResultNoticeStringPoolId => "The other player declined the tie request.",
@@ -2661,6 +2753,50 @@ namespace HaCreator.MapSimulator.Fields
             string format = MapleStoryStringPool.GetCompositeFormatOrFallback(stringPoolId, fallbackText, 1, out bool usedResolvedText);
             string text = string.Format(CultureInfo.InvariantCulture, format, resolvedName);
             return usedResolvedText ? text : $"{text} [StringPool 0x{stringPoolId:X}]";
+        }
+
+        private static bool TryResolveRecoveredMiniRoomStringText(int stringPoolId, out string text)
+        {
+            if (MiniRoomRecoveredStringPoolEntries.TryGetValue(stringPoolId, out MiniRoomStringPoolEntryEvidence evidence)
+                && !string.IsNullOrWhiteSpace(evidence.DecodedText))
+            {
+                text = evidence.DecodedText;
+                return true;
+            }
+
+            text = null;
+            return false;
+        }
+
+        private static string ConvertMiniRoomPrintfToCompositeFormat(string format, int maxPlaceholderCount)
+        {
+            if (string.IsNullOrWhiteSpace(format))
+            {
+                return string.Empty;
+            }
+
+            int tokenIndex = 0;
+            int searchStart = 0;
+            while (tokenIndex < maxPlaceholderCount)
+            {
+                int markerIndex = format.IndexOf("%s", searchStart, StringComparison.Ordinal);
+                if (markerIndex < 0)
+                {
+                    markerIndex = format.IndexOf("%d", searchStart, StringComparison.Ordinal);
+                }
+
+                if (markerIndex < 0)
+                {
+                    break;
+                }
+
+                string replacement = $"{{{tokenIndex}}}";
+                format = format.Remove(markerIndex, 2).Insert(markerIndex, replacement);
+                searchStart = markerIndex + replacement.Length;
+                tokenIndex++;
+            }
+
+            return format;
         }
 
 

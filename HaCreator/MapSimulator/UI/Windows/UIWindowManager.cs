@@ -35,6 +35,9 @@ namespace HaCreator.MapSimulator.UI
 
         // Window that currently has focus (topmost)
         private UIWindowBase _focusedWindow;
+        private UIWindowBase _softKeyboardModalOwner;
+        private UIWindowBase _softKeyboardPreviousFocusedWindow;
+        private ISoftKeyboardHost _activeSoftKeyboardHost;
 
         // Window currently being dragged (prevents other windows from starting drag)
         private UIWindowBase _draggingWindow;
@@ -193,6 +196,7 @@ namespace HaCreator.MapSimulator.UI
             if (softKeyboardWindow != null)
             {
                 softKeyboardWindow.BeforeShow = HandleBeforeShowWindow;
+                softKeyboardWindow.AfterDismiss = HandleSoftKeyboardDismissed;
             }
 
             if (_windowFont != null)
@@ -359,6 +363,21 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        /// <summary>
+        /// Show a window after first applying caller-owned launch state through the manager seam.
+        /// Keeps registered visibility transitions and owner callbacks aligned in one place.
+        /// </summary>
+        public void ShowWindow(UIWindowBase window, Action prepareToShow)
+        {
+            if (window == null)
+            {
+                return;
+            }
+
+            prepareToShow?.Invoke();
+            ShowWindow(window);
+        }
+
         public void ShowWindow(UIWindowBase window)
         {
             if (window == null)
@@ -523,7 +542,9 @@ namespace HaCreator.MapSimulator.UI
 
             ProcessPendingEquipmentChange(EquipWindow, InventoryWindow as InventoryUI);
 
-            SoftKeyboardWindow?.SyncHost(GetActiveSoftKeyboardHost());
+            ISoftKeyboardHost activeSoftKeyboardHost = GetActiveSoftKeyboardHost();
+            HandleSoftKeyboardOwnerTransition(activeSoftKeyboardHost);
+            SoftKeyboardWindow?.SyncHost(activeSoftKeyboardHost);
             if (SoftKeyboardWindow?.IsVisible == true)
             {
                 SoftKeyboardWindow.Update(gameTime);
@@ -1223,6 +1244,82 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return null;
+        }
+
+        private void HandleSoftKeyboardOwnerTransition(ISoftKeyboardHost host)
+        {
+            if (ReferenceEquals(_activeSoftKeyboardHost, host))
+            {
+                return;
+            }
+
+            UIWindowBase previousOwner = ResolveSoftKeyboardOwnerWindow(_activeSoftKeyboardHost);
+            _activeSoftKeyboardHost = host;
+            if (host == null)
+            {
+                RestoreSoftKeyboardModalFocus(previousOwner ?? _softKeyboardModalOwner);
+                return;
+            }
+
+            UIWindowBase ownerWindow = ResolveSoftKeyboardOwnerWindow(host);
+            if (_softKeyboardModalOwner == null)
+            {
+                _softKeyboardPreviousFocusedWindow =
+                    _focusedWindow != null
+                    && !ReferenceEquals(_focusedWindow, ownerWindow)
+                    && _focusedWindow.IsVisible
+                        ? _focusedWindow
+                        : null;
+            }
+
+            _softKeyboardModalOwner = ownerWindow;
+            if (ownerWindow?.IsVisible == true)
+            {
+                BringToFront(ownerWindow);
+            }
+            else
+            {
+                _focusedWindow = ownerWindow;
+            }
+        }
+
+        private void HandleSoftKeyboardDismissed(ISoftKeyboardHost dismissedHost)
+        {
+            _activeSoftKeyboardHost = null;
+            RestoreSoftKeyboardModalFocus(ResolveSoftKeyboardOwnerWindow(dismissedHost));
+        }
+
+        private void RestoreSoftKeyboardModalFocus(UIWindowBase preferredOwner)
+        {
+            UIWindowBase focusTarget =
+                preferredOwner?.IsVisible == true ? preferredOwner
+                : _softKeyboardModalOwner?.IsVisible == true ? _softKeyboardModalOwner
+                : _softKeyboardPreviousFocusedWindow?.IsVisible == true ? _softKeyboardPreviousFocusedWindow
+                : null;
+
+            _softKeyboardModalOwner = null;
+            _softKeyboardPreviousFocusedWindow = null;
+
+            if (focusTarget != null)
+            {
+                BringToFront(focusTarget);
+                return;
+            }
+
+            _focusedWindow = null;
+            for (int i = windows.Count - 1; i >= 0; i--)
+            {
+                if (windows[i].IsVisible)
+                {
+                    _focusedWindow = windows[i];
+                    break;
+                }
+            }
+        }
+
+        private static UIWindowBase ResolveSoftKeyboardOwnerWindow(ISoftKeyboardHost host)
+        {
+            return host as UIWindowBase;
         }
 
         private static bool TryBeginSkillDrag(UIWindowBase window, int mouseX, int mouseY)

@@ -16,7 +16,7 @@ namespace HaCreator.MapSimulator.UI
     public class MinimapUI : BaseDXDrawableItem, IUIObjectEvents
     {
         internal readonly record struct ClientStateTransition(int CurrentOption, int PreviousExpandedOption, bool IsCollapsed);
-        internal readonly record struct ClientButtonVisibility(bool MinVisible, bool MaxVisible, bool BigVisible, bool SmallVisible);
+        internal readonly record struct ClientButtonVisibility(bool MinVisible, bool MaxVisible, bool BigVisible, bool SmallVisible, bool NpcVisible);
         internal readonly record struct ClientButtonPlacement(int X, int Y, bool Visible);
 
         public enum HelperMarkerType
@@ -804,12 +804,14 @@ namespace HaCreator.MapSimulator.UI
             ClientButtonVisibility buttonVisibility = ResolveButtonVisibilityForTesting(
                 _currentOption,
                 _bIsCollapsedState,
-                _btnSmall != null && _expandedFrame != null);
+                _btnSmall != null && _expandedFrame != null,
+                _btnNpc != null && ResolveAnyNpcMarker() != null && _npcMarkers.Count > 0);
 
             _btnMin.SetVisible(buttonVisibility.MinVisible);
             _btnMax.SetVisible(buttonVisibility.MaxVisible);
             _btnBig?.SetVisible(buttonVisibility.BigVisible);
             _btnSmall?.SetVisible(buttonVisibility.SmallVisible);
+            _btnNpc?.SetVisible(buttonVisibility.NpcVisible);
 
             int frameWidth = GetVisibleFrame()?.Frame0?.Width ?? Frame0?.Width ?? 0;
             int frameHeight = GetVisibleFrame()?.Frame0?.Height ?? Frame0?.Height ?? 0;
@@ -1067,7 +1069,8 @@ namespace HaCreator.MapSimulator.UI
         internal static ClientButtonVisibility ResolveButtonVisibilityForTesting(
             int currentOption,
             bool isCollapsed,
-            bool supportsExpandedOption)
+            bool supportsExpandedOption,
+            bool supportsNpcButton)
         {
             int normalizedCurrentOption = currentOption <= ClientOptionCollapsed
                 ? ClientOptionCollapsed
@@ -1081,14 +1084,16 @@ namespace HaCreator.MapSimulator.UI
                     MinVisible: false,
                     MaxVisible: true,
                     BigVisible: false,
-                    SmallVisible: false);
+                    SmallVisible: false,
+                    NpcVisible: false);
             }
 
             return new ClientButtonVisibility(
                 MinVisible: true,
                 MaxVisible: false,
                 BigVisible: supportsExpandedOption && normalizedCurrentOption == ClientOptionCompact,
-                SmallVisible: supportsExpandedOption && normalizedCurrentOption >= ClientOptionExpanded);
+                SmallVisible: supportsExpandedOption && normalizedCurrentOption >= ClientOptionExpanded,
+                NpcVisible: supportsNpcButton);
         }
 
         internal static ClientButtonPlacement ResolveMapButtonPlacementForTesting(int frameWidth, int buttonWidth)

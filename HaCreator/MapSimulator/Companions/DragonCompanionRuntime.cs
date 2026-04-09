@@ -31,25 +31,39 @@ namespace HaCreator.MapSimulator.Companions
 
         private sealed class DragonAnimationSet
         {
-            public DragonAnimationSet(int jobId, IReadOnlyDictionary<string, SkillAnimation> animations)
+            private readonly DragonActionLoader _loader;
+
+            public DragonAnimationSet(int jobId, DragonActionLoader loader, Dictionary<string, SkillAnimation> animations)
             {
                 JobId = jobId;
+                _loader = loader ?? throw new ArgumentNullException(nameof(loader));
                 Animations = animations ?? throw new ArgumentNullException(nameof(animations));
-                StandAnimation = GetAnimation("stand");
-                MoveAnimation = GetAnimation("move");
             }
 
             public int JobId { get; }
-            public IReadOnlyDictionary<string, SkillAnimation> Animations { get; }
-            public SkillAnimation StandAnimation { get; }
-            public SkillAnimation MoveAnimation { get; }
+            public Dictionary<string, SkillAnimation> Animations { get; }
+            public SkillAnimation StandAnimation => GetAnimation("stand");
+            public SkillAnimation MoveAnimation => GetAnimation("move");
 
             public bool TryGetAnimation(string actionName, out SkillAnimation animation)
             {
                 animation = null;
-                return !string.IsNullOrWhiteSpace(actionName)
-                       && Animations.TryGetValue(actionName, out animation)
-                       && animation != null;
+                string resolvedActionName = _loader.ResolveClientActionName(actionName);
+                if (string.IsNullOrWhiteSpace(resolvedActionName))
+                {
+                    return false;
+                }
+
+                if (!Animations.TryGetValue(resolvedActionName, out animation) || animation == null)
+                {
+                    animation = _loader.GetOrLoadAnimation(JobId, resolvedActionName);
+                    if (animation != null)
+                    {
+                        Animations[resolvedActionName] = animation;
+                    }
+                }
+
+                return animation != null;
             }
 
             public SkillAnimation GetAnimation(string actionName)
@@ -77,6 +91,7 @@ namespace HaCreator.MapSimulator.Companions
         }
 
         private readonly GraphicsDevice _device;
+        private readonly DragonActionLoader _actionLoader;
         private readonly Dictionary<int, DragonAnimationSet> _animationCache = new();
         private readonly Dictionary<int, LayerAnimationSequence> _questInfoAnimationCache = new();
         private SkillAnimation _dragonFuryAnimation;
@@ -149,6 +164,7 @@ namespace HaCreator.MapSimulator.Companions
         public DragonCompanionRuntime(GraphicsDevice device)
         {
             _device = device ?? throw new ArgumentNullException(nameof(device));
+            _actionLoader = new DragonActionLoader(device);
         }
 
         public void SetCurrentMapInfoProvider(Func<MapInfo> currentMapInfoProvider)
@@ -358,96 +374,31 @@ namespace HaCreator.MapSimulator.Companions
 
         private DragonAnimationSet LoadAnimationSet(int dragonJob)
         {
-            WzImage image = global::HaCreator.Program.FindImage("Skill", $"Dragon/{dragonJob}.img");
-            if (image == null)
+            var animations = new Dictionary<string, SkillAnimation>(StringComparer.OrdinalIgnoreCase);
+            foreach (string baseActionName in new[] { "stand", "move" })
             {
-                return null;
+                SkillAnimation animation = _actionLoader.GetOrLoadAnimation(dragonJob, baseActionName);
+                if (animation != null)
+                {
+                    animations[animation.Name] = animation;
+                }
             }
 
-            var animations = new Dictionary<string, SkillAnimation>(StringComparer.OrdinalIgnoreCase);
-            foreach (WzImageProperty property in image.WzProperties)
+            if (animations.Count == 0)
             {
-                if (property is not WzSubProperty actionNode || string.Equals(actionNode.Name, "info", StringComparison.OrdinalIgnoreCase))
+                foreach (string actionName in _actionLoader.EnumerateKnownActionNames(dragonJob))
                 {
-                    continue;
-                }
-
-                SkillAnimation animation = LoadAnimation(actionNode);
-                if (animation?.Frames?.Count > 0)
-                {
-                    animations[actionNode.Name] = animation;
+                    SkillAnimation animation = _actionLoader.GetOrLoadAnimation(dragonJob, actionName);
+                    if (animation != null)
+                    {
+                        animations[animation.Name] = animation;
+                    }
                 }
             }
 
             return animations.Count == 0
                 ? null
-                : new DragonAnimationSet(dragonJob, animations);
-        }
-
-        private SkillAnimation LoadAnimation(WzSubProperty actionNode)
-        {
-            var animation = new SkillAnimation
-            {
-                Name = actionNode.Name,
-                Loop = IsLoopingAction(actionNode.Name)
-            };
-
-            IEnumerable<WzCanvasProperty> frames = actionNode.WzProperties
-                .OfType<WzCanvasProperty>()
-                .OrderBy(frame => ParseFrameIndex(frame.Name));
-
-            foreach (WzCanvasProperty canvas in frames)
-            {
-                IDXObject texture = LoadTexture(canvas);
-                if (texture == null)
-                {
-                    continue;
-                }
-
-                WzCanvasProperty metadataCanvas = ResolveMetadataCanvas(canvas);
-                WzVectorProperty origin = metadataCanvas["origin"] as WzVectorProperty;
-                animation.Frames.Add(new SkillFrame
-                {
-                    Texture = texture,
-                    Origin = new Point(origin?.X.Value ?? 0, origin?.Y.Value ?? 0),
-                    Delay = Math.Max(1, GetIntValue(metadataCanvas["delay"]) ?? 100),
-                    Bounds = ResolveFrameBounds(metadataCanvas, texture),
-                    AlphaStart = Math.Clamp(GetIntValue(metadataCanvas["a0"]) ?? 255, 0, 255),
-                    AlphaEnd = Math.Clamp(GetIntValue(metadataCanvas["a1"]) ?? 255, 0, 255)
-                });
-            }
-
-            animation.CalculateDuration();
-            return animation;
-        }
-
-        private IDXObject LoadTexture(WzCanvasProperty canvas)
-        {
-            if (canvas?.PngProperty == null)
-            {
-                return null;
-            }
-
-            try
-            {
-                var bitmap = canvas.GetLinkedWzCanvasBitmap();
-                if (bitmap == null)
-                {
-                    return null;
-                }
-
-                Texture2D texture = bitmap.ToTexture2DAndDispose(_device);
-                return texture == null
-                    ? null
-                    : new DXObject(0, 0, texture, Math.Max(1, GetIntValue(canvas["delay"]) ?? 100))
-                    {
-                        Tag = canvas
-                    };
-            }
-            catch
-            {
-                return null;
-            }
+                : new DragonAnimationSet(dragonJob, _actionLoader, animations);
         }
 
         private static Vector2 ResolveAnchor(PlayerCharacter owner, DragonAnimationSet animationSet, int currentTime)
@@ -584,32 +535,10 @@ namespace HaCreator.MapSimulator.Companions
                    && !string.Equals(actionName, "move", StringComparison.OrdinalIgnoreCase);
         }
 
-        private static bool IsLoopingAction(string actionName)
-        {
-            return string.Equals(actionName, "stand", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "move", StringComparison.OrdinalIgnoreCase);
-        }
-
         private static bool ShouldLoopExplicitAction(string actionName)
         {
             return !string.IsNullOrWhiteSpace(actionName)
                    && actionName.EndsWith("_prepare", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static int ParseFrameIndex(string value)
-        {
-            return int.TryParse(value, out int parsed) ? parsed : int.MaxValue;
-        }
-
-        private static int? GetIntValue(WzImageProperty property)
-        {
-            return property switch
-            {
-                WzIntProperty intProperty => intProperty.Value,
-                WzShortProperty shortProperty => shortProperty.Value,
-                WzLongProperty longProperty => (int)longProperty.Value,
-                _ => null
-            };
         }
 
         private bool ShouldSuppressForCurrentMap()
@@ -720,23 +649,6 @@ namespace HaCreator.MapSimulator.Companions
             {
                 _activeFollowReleaseStableFrames = 0;
                 _isFollowActive = shouldEngageActiveFollow;
-            }
-        }
-
-        private static WzCanvasProperty ResolveMetadataCanvas(WzCanvasProperty canvas)
-        {
-            if (canvas == null)
-            {
-                return null;
-            }
-
-            try
-            {
-                return canvas.GetLinkedWzImageProperty() as WzCanvasProperty ?? canvas;
-            }
-            catch
-            {
-                return canvas;
             }
         }
 
@@ -1259,6 +1171,100 @@ namespace HaCreator.MapSimulator.Companions
             animation.Loop = loop;
             animation.CalculateDuration();
             return animation;
+        }
+
+        private SkillAnimation LoadAnimation(WzSubProperty actionNode)
+        {
+            if (actionNode == null)
+            {
+                return null;
+            }
+
+            List<SkillFrame> frames = new();
+            foreach (WzCanvasProperty canvas in actionNode.WzProperties.OfType<WzCanvasProperty>().OrderBy(frame => ParseFrameIndex(frame.Name)))
+            {
+                WzCanvasProperty metadataCanvas = ResolveMetadataCanvas(canvas);
+                IDXObject texture = LoadAnimationTexture(metadataCanvas);
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                WzVectorProperty origin = metadataCanvas["origin"] as WzVectorProperty;
+                frames.Add(new SkillFrame
+                {
+                    Texture = texture,
+                    Origin = new Point(origin?.X.Value ?? 0, origin?.Y.Value ?? 0),
+                    Delay = Math.Max(1, GetIntValue(metadataCanvas["delay"]) ?? 100),
+                    Bounds = ResolveFrameBounds(metadataCanvas, texture),
+                    AlphaStart = Math.Clamp(GetIntValue(metadataCanvas["a0"]) ?? 255, 0, 255),
+                    AlphaEnd = Math.Clamp(GetIntValue(metadataCanvas["a1"]) ?? 255, 0, 255)
+                });
+            }
+
+            if (frames.Count == 0)
+            {
+                return null;
+            }
+
+            SkillAnimation animation = new()
+            {
+                Name = actionNode.Name,
+                PositionCode = GetIntValue(actionNode["pos"])
+            };
+            animation.Frames.AddRange(frames);
+            animation.CalculateDuration();
+            return animation;
+        }
+
+        private IDXObject LoadAnimationTexture(WzCanvasProperty canvas)
+        {
+            if (canvas?.PngProperty == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                System.Drawing.Bitmap bitmap = canvas.GetLinkedWzCanvasBitmap();
+                if (bitmap == null)
+                {
+                    return null;
+                }
+
+                Texture2D texture = bitmap.ToTexture2DAndDispose(_device);
+                return texture == null
+                    ? null
+                    : new DXObject(0, 0, texture, Math.Max(1, GetIntValue(canvas["delay"]) ?? 100))
+                    {
+                        Tag = canvas
+                    };
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static WzCanvasProperty ResolveMetadataCanvas(WzCanvasProperty canvas)
+        {
+            return canvas;
+        }
+
+        private static int ParseFrameIndex(string value)
+        {
+            return int.TryParse(value, out int parsed) ? parsed : int.MaxValue;
+        }
+
+        private static int? GetIntValue(WzImageProperty property)
+        {
+            return property switch
+            {
+                WzIntProperty intProperty => intProperty.Value,
+                WzShortProperty shortProperty => shortProperty.Value,
+                WzLongProperty longProperty => (int)longProperty.Value,
+                _ => null
+            };
         }
 
         internal static bool TryResolveWzAssetUol(

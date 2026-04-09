@@ -47,7 +47,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _familyHeadId = DefaultFamilyHeadId;
         private int _preceptIndex;
         private FamilyEntitlementType _entitlementType = FamilyEntitlementType.DropAndExpBuff;
-        private int _entitlementUsesLeft = 3;
+        private readonly Dictionary<FamilyEntitlementType, int> _entitlementUseCounts = new();
         private string _familyName = string.Empty;
         private string _locationSummary = "Maple Island";
         private string _remotePreviewRequestSummary;
@@ -126,6 +126,9 @@ namespace HaCreator.MapSimulator.Interaction
             FamilyMemberState localPlayer = GetMember(LocalPlayerId) ?? selectedMember;
             FamilyPrivilegeState activePrivilege = GetActivePrivilege(Environment.TickCount);
             int entitlementPage = Math.Clamp((int)_entitlementType, 0, FamilyEntitlementCount - 1) + 1;
+            int specialCost = GetSpecialReputationCost(localPlayer);
+            int specialUseCount = GetEntitlementUseCount(_entitlementType);
+            int specialUseLimit = GetEntitlementDailyLimit(_entitlementType);
 
             return new FamilyChartSnapshot
             {
@@ -137,17 +140,20 @@ namespace HaCreator.MapSimulator.Interaction
                 TotalMembers = _members.Count,
                 JuniorCount = Math.Max(0, localPlayer?.Children.Count ?? 0),
                 CurrentReputation = localPlayer?.CurrentReputation ?? 0,
+                TotalReputation = GetTotalFamilyReputation(),
                 TodayReputation = localPlayer?.TodayReputation ?? 0,
-                SpecialReputationCost = GetSpecialReputationCost(localPlayer),
-                SpecialUsesLeft = _entitlementUsesLeft,
+                SpecialReputationCost = specialCost,
+                SpecialUseCount = specialUseCount,
+                SpecialUseLimit = specialUseLimit,
                 Precept = _precepts[_preceptIndex],
                 EntitlementLabel = GetEntitlementLabel(_entitlementType),
                 EntitlementIndex = (int)_entitlementType,
+                EntitlementDescription = BuildEntitlementDescription(localPlayer, activePrivilege),
                 DetailLines = BuildDetailLines(localPlayer, activePrivilege),
                 CanPageBackward = FamilyEntitlementCount > 1,
                 CanPageForward = FamilyEntitlementCount > 1,
                 CanAddJunior = CanAddJunior(localPlayer),
-                CanUseSpecial = CanExecuteEntitlement(selectedMember),
+                CanUseSpecial = CanUseCompactEntitlement(localPlayer, specialCost, specialUseCount, specialUseLimit),
                 Page = entitlementPage,
                 TotalPages = FamilyEntitlementCount
             };
@@ -344,17 +350,32 @@ namespace HaCreator.MapSimulator.Interaction
         internal FamilyEntitlementUseResult ExecuteSelectedEntitlement(int currentTick, Vector2 localPlayerPosition)
         {
             FamilyMemberState selectedMember = GetSelectedMember();
-            if (!CanExecuteEntitlement(selectedMember))
+            FamilyMemberState localPlayer = GetMember(LocalPlayerId) ?? selectedMember;
+            int specialCost = GetSpecialReputationCost(localPlayer);
+            int specialUseCount = GetEntitlementUseCount(_entitlementType);
+            int specialUseLimit = GetEntitlementDailyLimit(_entitlementType);
+            if (!CanUseCompactEntitlement(localPlayer, specialCost, specialUseCount, specialUseLimit))
             {
+                if (string.IsNullOrWhiteSpace(_familyName))
+                {
+                    return new FamilyEntitlementUseResult("Register a family name before using a family entitlement.");
+                }
+
+                if (specialUseCount >= specialUseLimit)
+                {
+                    return new FamilyEntitlementUseResult("That family entitlement has reached its daily limit for this simulator session.");
+                }
+
+                if ((localPlayer?.CurrentReputation ?? 0) < specialCost)
+                {
+                    return new FamilyEntitlementUseResult("There is not enough family reputation to use that entitlement.");
+                }
+
                 return new FamilyEntitlementUseResult("That family entitlement cannot be used right now.");
             }
 
-            FamilyMemberState localPlayer = GetMember(LocalPlayerId);
-            localPlayer ??= selectedMember;
             string localLocation = localPlayer?.LocationSummary ?? _locationSummary;
             string selectedLocation = selectedMember?.LocationSummary ?? localLocation;
-
-            _entitlementUsesLeft = Math.Max(0, _entitlementUsesLeft - 1);
 
             switch (_entitlementType)
             {
@@ -376,6 +397,7 @@ namespace HaCreator.MapSimulator.Interaction
                         return new FamilyEntitlementUseResult($"Prepared a move request to {selectedMember.Name}, but cross-map transfer still remains outside the simulator field seam.");
                     }
 
+                    ConsumeEntitlementUse(localPlayer, specialCost);
                     return new FamilyEntitlementUseResult(
                         $"Moved to {selectedMember.Name}'s family-chart branch in {selectedLocation}.",
                         RequestTeleport: true,
@@ -391,11 +413,13 @@ namespace HaCreator.MapSimulator.Interaction
                     selectedMember.LocationSummary = localLocation;
                     selectedMember.IsOnline = true;
                     selectedMember.SimulatedPosition = new Vector2(localPlayerPosition.X + 64f, localPlayerPosition.Y);
+                    ConsumeEntitlementUse(localPlayer, specialCost);
                     return new FamilyEntitlementUseResult($"Summoned {selectedMember.Name} to {localLocation}.");
                 }
                 case FamilyEntitlementType.DropBuff:
                 case FamilyEntitlementType.ExpBuff:
                 case FamilyEntitlementType.DropAndExpBuff:
+                    ConsumeEntitlementUse(localPlayer, specialCost);
                     _activePrivilege = new FamilyPrivilegeState(_entitlementType, currentTick + EntitlementDurationMs);
                     return new FamilyEntitlementUseResult($"Applied {GetEntitlementLabel(_entitlementType)} for the current simulator family session.");
                 default:
@@ -415,7 +439,9 @@ namespace HaCreator.MapSimulator.Interaction
             string headName = head?.Name ?? "(missing)";
             string selectedName = selectedMember?.Name ?? "(none)";
             string familyName = string.IsNullOrWhiteSpace(_familyName) ? "(unset)" : _familyName;
-            return $"Family roster: {_members.Count} members, family {familyName}, head {headName} (#{_familyHeadId}), selected {selectedName} (#{selectedMember?.Id ?? 0}), entitlement {_entitlementUsesLeft} use(s) left on {GetEntitlementLabel(_entitlementType)}.";
+            int useCount = GetEntitlementUseCount(_entitlementType);
+            int useLimit = GetEntitlementDailyLimit(_entitlementType);
+            return $"Family roster: {_members.Count} members, family {familyName}, head {headName} (#{_familyHeadId}), selected {selectedName} (#{selectedMember?.Id ?? 0}), entitlement {useCount}/{useLimit} uses on {GetEntitlementLabel(_entitlementType)}.";
         }
 
         internal string ResetToSeedFamily()
@@ -547,7 +573,7 @@ namespace HaCreator.MapSimulator.Interaction
             _familyHeadId = DefaultFamilyHeadId;
             _preceptIndex = 0;
             _entitlementType = FamilyEntitlementType.DropAndExpBuff;
-            _entitlementUsesLeft = 3;
+            _entitlementUseCounts.Clear();
             _familyName = string.Empty;
             _activePrivilege = null;
             _selectedEmptyTreeSlot = -1;
@@ -863,10 +889,17 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanExecuteEntitlement(FamilyMemberState selectedMember)
         {
-            return _entitlementUsesLeft > 0
-                && selectedMember != null
+            return selectedMember != null
                 && selectedMember.Id != RemotePreviewMemberId
                 && (selectedMember.Id == LocalPlayerId || selectedMember.IsOnline);
+        }
+
+        private bool CanUseCompactEntitlement(FamilyMemberState selectedMember, int specialCost, int specialUseCount, int specialUseLimit)
+        {
+            return selectedMember != null
+                && !string.IsNullOrWhiteSpace(_familyName)
+                && specialUseCount < specialUseLimit
+                && selectedMember.CurrentReputation >= specialCost;
         }
 
         private void CollectBranchMemberIds(int memberId, List<int> results)
@@ -890,6 +923,40 @@ namespace HaCreator.MapSimulator.Interaction
             };
 
             return Math.Max(baseCost, baseCost + (GetStatisticValue(selectedMember) * 25));
+        }
+
+        private int GetEntitlementUseCount(FamilyEntitlementType entitlementType)
+        {
+            return _entitlementUseCounts.TryGetValue(entitlementType, out int useCount)
+                ? Math.Max(0, useCount)
+                : 0;
+        }
+
+        private int GetEntitlementDailyLimit(FamilyEntitlementType entitlementType)
+        {
+            return entitlementType switch
+            {
+                FamilyEntitlementType.MoveToMember => 3,
+                FamilyEntitlementType.SummonMember => 3,
+                FamilyEntitlementType.DropBuff => 2,
+                FamilyEntitlementType.ExpBuff => 2,
+                _ => 1
+            };
+        }
+
+        private int GetTotalFamilyReputation()
+        {
+            return _members.Values.Sum(member => Math.Max(0, member.CurrentReputation));
+        }
+
+        private void ConsumeEntitlementUse(FamilyMemberState localPlayer, int specialCost)
+        {
+            if (localPlayer != null)
+            {
+                localPlayer.CurrentReputation = Math.Max(0, localPlayer.CurrentReputation - Math.Max(0, specialCost));
+            }
+
+            _entitlementUseCounts[_entitlementType] = GetEntitlementUseCount(_entitlementType) + 1;
         }
 
         private int CountDescendants(int memberId)
@@ -971,6 +1038,27 @@ namespace HaCreator.MapSimulator.Interaction
                 : _textResources.FormatTitle(titleMember.Name);
         }
 
+        private string BuildEntitlementDescription(FamilyMemberState localPlayer, FamilyPrivilegeState activePrivilege)
+        {
+            string description = _entitlementType switch
+            {
+                FamilyEntitlementType.MoveToMember => "Move to the selected family member's location when both members share the current field seam.",
+                FamilyEntitlementType.SummonMember => "Summon the selected online family member into the current field seam beside the local player.",
+                FamilyEntitlementType.DropBuff => "Apply the simulator's family drop-rate support buff for the current family session.",
+                FamilyEntitlementType.ExpBuff => "Apply the simulator's family EXP support buff for the current family session.",
+                _ => "Apply the simulator's combined family drop-rate and EXP support buff for the current family session."
+            };
+
+            if (activePrivilege?.Type == _entitlementType)
+            {
+                TimeSpan remaining = TimeSpan.FromMilliseconds(Math.Max(0, activePrivilege.ExpiresAtTick - Environment.TickCount));
+                return $"{description} Active for {Math.Max(0, remaining.Minutes):00}:{Math.Max(0, remaining.Seconds):00}.";
+            }
+
+            int remainingUses = Math.Max(0, GetEntitlementDailyLimit(_entitlementType) - GetEntitlementUseCount(_entitlementType));
+            return $"{description} {remainingUses} use(s) remain in this simulator session.";
+        }
+
         private string BuildCompactTitle()
         {
             return string.IsNullOrWhiteSpace(_familyName)
@@ -1015,6 +1103,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _selectedMemberId = LocalPlayerId;
                 _familyHeadId = DefaultFamilyHeadId;
+                _entitlementUseCounts.Clear();
                 return;
             }
 
@@ -1183,11 +1272,14 @@ namespace HaCreator.MapSimulator.Interaction
         public int TotalMembers { get; init; }
         public int JuniorCount { get; init; }
         public int CurrentReputation { get; init; }
+        public int TotalReputation { get; init; }
         public int TodayReputation { get; init; }
         public int SpecialReputationCost { get; init; }
-        public int SpecialUsesLeft { get; init; }
+        public int SpecialUseCount { get; init; }
+        public int SpecialUseLimit { get; init; }
         public string Precept { get; init; } = string.Empty;
         public string EntitlementLabel { get; init; } = string.Empty;
+        public string EntitlementDescription { get; init; } = string.Empty;
         public int EntitlementIndex { get; init; }
         public IReadOnlyList<string> DetailLines { get; init; } = Array.Empty<string>();
         public bool CanPageBackward { get; init; }

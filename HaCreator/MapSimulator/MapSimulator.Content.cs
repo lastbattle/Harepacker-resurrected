@@ -309,7 +309,13 @@ namespace HaCreator.MapSimulator
                         continue;
 
 
-                    NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(_texturePool, npc, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, usedProps);
+                    NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(
+                        _texturePool,
+                        npc,
+                        UserScreenScaleFactor,
+                        _DxDeviceManager.GraphicsDevice,
+                        usedProps,
+                        _playerManager?.Player?.Build?.Gender);
                     if (npcItem != null)
                         mapObjects_NPCs.Add(npcItem);
                 }
@@ -327,6 +333,7 @@ namespace HaCreator.MapSimulator
 
 
                     MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(_texturePool, mob, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, _soundManager, usedProps);
+                    ConfigureMobAutoSkillSelection(npcItem);
 
 
 
@@ -875,6 +882,7 @@ namespace HaCreator.MapSimulator
                 bookCollectionWindow.OpenRequested = HandleBookCollectionOpened;
                 bookCollectionWindow.ClosingRequested = HandleBookCollectionClosing;
                 bookCollectionWindow.CloseRequested = HandleBookCollectionClosed;
+                bookCollectionWindow.OnImeCandidateSelected = TrySelectBookCollectionImeCandidate;
 
             }
 
@@ -1106,6 +1114,7 @@ namespace HaCreator.MapSimulator
 
             _escortFollow.Clear();
             _localFollowRuntime.Clear();
+            ClearPacketOwnedPassiveMoveState();
             _fieldRuleRuntime = null;
             _lastFieldRestrictionMessageTime = int.MinValue;
             _lastFieldRestrictionMessage = null;
@@ -1427,7 +1436,13 @@ namespace HaCreator.MapSimulator
                 {
                     if (npc.Hide)
                         continue;
-                    NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(_texturePool, npc, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, usedProps);
+                    NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(
+                        _texturePool,
+                        npc,
+                        UserScreenScaleFactor,
+                        _DxDeviceManager.GraphicsDevice,
+                        usedProps,
+                        _playerManager?.Player?.Build?.Gender);
                     if (npcItem != null)
                     {
                         mapObjects_NPCs.Add(npcItem);
@@ -1448,6 +1463,7 @@ namespace HaCreator.MapSimulator
                     if (mob.Hide)
                         continue;
                     MobItem mobItem = MapSimulatorLoader.CreateMobFromProperty(_texturePool, mob, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, _soundManager, usedProps);
+                    ConfigureMobAutoSkillSelection(mobItem);
                     mapObjects_Mobs.Add(mobItem);
                     loadedCount++;
                 }

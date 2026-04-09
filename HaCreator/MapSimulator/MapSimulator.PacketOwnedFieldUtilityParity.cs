@@ -812,6 +812,10 @@ namespace HaCreator.MapSimulator
 
         private sealed record PacketOwnedQuizPresentation(string Summary, string DisplayText, bool StartEventTimer);
 
+        private const int QuizAnswerBracketPrefixStringPoolId = 930;
+        private const int QuizAnswerTrueMarkerStringPoolId = 2260;
+        private const int QuizAnswerFalseMarkerStringPoolId = 2261;
+
         private PacketOwnedQuizPresentation ResolvePacketOwnedQuizPresentation(bool isQuestion, byte category, ushort problemId)
         {
             if (!TryResolvePacketOwnedQuizProblem(category, problemId, out WzSubProperty problemProperty))
@@ -837,12 +841,7 @@ namespace HaCreator.MapSimulator
 
             int answerValue = problemProperty["a"]?.GetInt() ?? -1;
             string detailText = NormalizePacketOwnedQuizText(problemProperty["d"]?.GetString());
-            string answerPrefix = answerValue switch
-            {
-                0 => "[X]",
-                1 => "[O]",
-                _ => "[?]"
-            };
+            string answerPrefix = ResolvePacketOwnedQuizAnswerMarker(answerValue);
             string answerDisplayText = string.IsNullOrWhiteSpace(detailText)
                 ? answerPrefix
                 : $"{detailText} {answerPrefix}";
@@ -850,6 +849,23 @@ namespace HaCreator.MapSimulator
                 $"Packet-authored quiz answer {category}-{problemId}: {answerDisplayText}",
                 answerDisplayText,
                 false);
+        }
+
+        private static string ResolvePacketOwnedQuizAnswerMarker(int answerValue)
+        {
+            string answerBody = answerValue switch
+            {
+                0 => MapleStoryStringPool.GetOrFallback(QuizAnswerFalseMarkerStringPoolId, "X"),
+                1 => MapleStoryStringPool.GetOrFallback(QuizAnswerTrueMarkerStringPoolId, "O"),
+                _ => "?"
+            };
+            string bracketPrefix = MapleStoryStringPool.GetOrFallback(QuizAnswerBracketPrefixStringPoolId, "[");
+            if (string.IsNullOrWhiteSpace(bracketPrefix))
+            {
+                bracketPrefix = "[";
+            }
+
+            return $"{bracketPrefix}{answerBody}]";
         }
 
         private static bool TryResolvePacketOwnedQuizProblem(byte category, ushort problemId, out WzSubProperty problemProperty)

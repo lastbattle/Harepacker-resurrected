@@ -59,16 +59,18 @@ namespace HaCreator.MapSimulator.UI
                 if (entry.RemainingDurationMinutes > 0)
                 {
                     lines.Add($"Remaining: {FormatDuration(entry.RemainingDurationMinutes)}");
-                    lines.Add("State: Active");
-                }
-                else if (entry.CurrentLevel > 0)
-                {
-                    lines.Add(entry.CanManageSkills ? "State: Inactive" : "State: View only");
                 }
             }
-            else if (!entry.CanManageSkills)
+
+            string stateLabel = GuildSkillRuntime.ResolveStateLabel(
+                entry.InGuild,
+                entry.CanManageSkills,
+                entry.CurrentLevel,
+                entry.DurationMinutes,
+                entry.RemainingDurationMinutes);
+            if (!string.IsNullOrWhiteSpace(stateLabel))
             {
-                lines.Add("State: View only");
+                lines.Add($"State: {stateLabel}");
             }
 
             if (entry.ActivationCost > 0)

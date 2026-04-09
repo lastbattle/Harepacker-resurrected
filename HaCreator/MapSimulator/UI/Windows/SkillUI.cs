@@ -818,19 +818,27 @@ namespace HaCreator.MapSimulator.UI
             remainingProgress = 0f;
             remainingText = string.Empty;
 
-            if (_skillManager == null || !_skillManager.IsOnCooldown(skillId, currentTime))
+            if (_skillManager == null
+                || !_skillManager.TryGetCooldownUiState(skillId, currentTime, out var cooldownState)
+                || !cooldownState.DisplayInCooldownUi)
                 return false;
 
-            int remainingMs = Math.Max(0, _skillManager.GetCooldownRemaining(skillId, currentTime));
+            int remainingMs = Math.Max(0, cooldownState.RemainingMs);
             if (remainingMs <= 0)
                 return false;
 
-            int durationMs = Math.Max(remainingMs, _skillManager.GetCooldownDuration(skillId, currentTime));
+            int durationMs = Math.Max(remainingMs, cooldownState.DurationMs);
             if (durationMs <= 0)
                 return false;
 
-            remainingProgress = Math.Clamp(remainingMs / (float)durationMs, 0f, 1f);
-            remainingText = Math.Max(1, (int)Math.Ceiling(remainingMs / 1000f)).ToString();
+            remainingProgress = cooldownState.SuppressProgressOverlay
+                ? 0f
+                : Math.Clamp(cooldownState.Progress, 0f, 1f);
+            remainingText = cooldownState.SuppressCounterText
+                ? string.Empty
+                : string.IsNullOrWhiteSpace(cooldownState.CounterText)
+                    ? Math.Max(1, (int)Math.Ceiling(remainingMs / 1000f)).ToString()
+                    : cooldownState.CounterText;
             return true;
         }
 

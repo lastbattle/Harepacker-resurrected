@@ -1,9 +1,11 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
+using MapleLib.WzLib.WzStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using MapleLib.WzLib.WzStructure.Data;
 using System;
 
 namespace HaCreator.MapSimulator
@@ -179,14 +181,40 @@ namespace HaCreator.MapSimulator
 
             // Client evidence:
             // - CUIRevive::OnCreate checks soul-stone state first.
-            // - It then gates the upgrade-tomb branch on a field helper plus Wheel of Fortune ownership.
+            // - It then gates the upgrade-tomb branch on is_fieldtype_upgradetomb_usable plus Wheel of Fortune ownership.
             // - It falls through to the premium/default revive-owner branch otherwise.
             // The simulator can currently back only the inventory-owned item cases directly.
             return ReviveOwnerRuntime.ResolveClientVariant(
                 hasSoulStone: false,
-                hasUpgradeTombChoice: wheelOfFortuneCount > 0,
+                hasUpgradeTombChoice: wheelOfFortuneCount > 0 && IsUpgradeTombReviveUsable(),
                 hasPremiumSafetyCharm: premiumSafetyCharmCount > 0,
                 hasSafetyCharm: safetyCharmCount > 0);
+        }
+
+        private bool IsUpgradeTombReviveUsable()
+        {
+            // Client evidence: is_fieldtype_upgradetomb_usable(0x4b7a30)
+            // blocks field types 1, 3, 4, 5, 7, 10, 11, and 15, and also
+            // rejects maps in the 9xxxxxxx, 200090xxx, and 390xxxxxx ranges.
+            MapInfo mapInfo = _mapBoard?.MapInfo;
+            int mapId = mapInfo?.id ?? 0;
+            FieldType? fieldType = mapInfo?.fieldType;
+
+            if (fieldType is FieldType.FIELDTYPE_SNOWBALL
+                or FieldType.FIELDTYPE_TOURNAMENT
+                or FieldType.FIELDTYPE_COCONUT
+                or FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM
+                or FieldType.FIELDTYPE_PARTYRAID
+                or FieldType.FIELDTYPE_GUILDBOSS
+                or FieldType.FIELDTYPE_PARTYRAID_BOSS
+                or FieldType.FIELDTYPE_SPACEGAGA)
+            {
+                return false;
+            }
+
+            return mapId / 100000000 != 9
+                && mapId / 1000 != 200090
+                && mapId / 1000000 != 390;
         }
 
         private static string BuildPremiumReviveDetail(ReviveOwnerVariant variant, string ownerLabel, Vector2 deathPoint)

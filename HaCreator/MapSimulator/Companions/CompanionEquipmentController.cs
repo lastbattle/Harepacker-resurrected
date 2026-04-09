@@ -950,6 +950,99 @@ namespace HaCreator.MapSimulator.Companions
             return true;
         }
 
+        public bool TryApplyExternalSnapshot(
+            CharacterBuild ownerBuild,
+            IReadOnlyDictionary<MechanicEquipSlot, int> requestedItems,
+            out string rejectReason)
+        {
+            _ownerBuild = ownerBuild;
+            rejectReason = null;
+            if (!HasOwnerState)
+            {
+                rejectReason = "Mechanic equipment is only available to Mechanic job paths.";
+                return false;
+            }
+
+            Dictionary<MechanicEquipSlot, CompanionEquipItem> resolvedItems = new();
+            foreach (MechanicEquipSlot slot in Enum.GetValues<MechanicEquipSlot>())
+            {
+                if (requestedItems == null
+                    || !requestedItems.TryGetValue(slot, out int itemId)
+                    || itemId <= 0)
+                {
+                    continue;
+                }
+
+                if (!CompanionEquipmentController.TryResolveMechanicSlot(itemId, out MechanicEquipSlot resolvedSlot)
+                    || resolvedSlot != slot)
+                {
+                    rejectReason = "Packet-authored mechanic state targeted the wrong machine slot.";
+                    return false;
+                }
+
+                CompanionEquipItem item = _loader.LoadMechanicEquipment(itemId);
+                if (item == null)
+                {
+                    rejectReason = "Packet-authored mechanic state referenced a machine part that could not be loaded from Character/Mechanic.";
+                    return false;
+                }
+
+                if (!CompanionEquipmentController.MeetsEquipRequirements(item, _ownerBuild, out rejectReason))
+                {
+                    return false;
+                }
+
+                if (!CompanionEquipmentController.CanEquipUniqueItem(item, resolvedItems.Values, out rejectReason))
+                {
+                    return false;
+                }
+
+                resolvedItems[slot] = item.Clone();
+            }
+
+            _equippedItems.Clear();
+            foreach ((MechanicEquipSlot slot, CompanionEquipItem item) in resolvedItems)
+            {
+                _equippedItems[slot] = item;
+            }
+
+            return true;
+        }
+
+        public bool TryApplyExternalSlotMutation(
+            CharacterBuild ownerBuild,
+            MechanicEquipSlot slot,
+            int itemId,
+            out string rejectReason)
+        {
+            Dictionary<MechanicEquipSlot, int> requestedItems = new();
+            foreach ((MechanicEquipSlot equippedSlot, CompanionEquipItem equippedItem) in _equippedItems)
+            {
+                if (equippedItem?.ItemId > 0)
+                {
+                    requestedItems[equippedSlot] = equippedItem.ItemId;
+                }
+            }
+
+            if (itemId > 0)
+            {
+                requestedItems[slot] = itemId;
+            }
+            else
+            {
+                requestedItems.Remove(slot);
+            }
+
+            return TryApplyExternalSnapshot(ownerBuild, requestedItems, out rejectReason);
+        }
+
+        public void ResetToDefaults(CharacterBuild ownerBuild)
+        {
+            _ownerBuild = ownerBuild;
+            _equippedItems.Clear();
+            EnsureDefaults(ownerBuild);
+        }
+
         internal int ComputeStateToken()
         {
             unchecked

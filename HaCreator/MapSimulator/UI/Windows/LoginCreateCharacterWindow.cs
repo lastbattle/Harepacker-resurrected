@@ -36,10 +36,14 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Rectangle NameInputBounds = new(36, 108, 120, 15);
         private static readonly Rectangle PreviewBounds = new(260, 82, 160, 190);
         private static readonly Rectangle StatusBounds = new(232, 282, 252, 68);
+        private static readonly Rectangle AvatarActionPanelBounds = new(24, 324, 177, 53);
+        private static readonly Rectangle NameActionPanelBounds = new(15, 171, 177, 53);
         private static readonly Point RaceConfirmDialogOffset = new(303, 204);
         private static readonly Rectangle RaceConfirmDialogBounds = new(0, 0, 214, 112);
         private static readonly Rectangle RaceConfirmOkBounds = new(42, 77, 50, 23);
         private static readonly Rectangle RaceConfirmCancelBounds = new(114, 77, 50, 23);
+        private const int ActionPanelSlotWidth = 81;
+        private const int ActionPanelSlotGap = 15;
         private static readonly Rectangle[] AvatarArrowOffsets =
         {
             new(0, 0, 15, 16),
@@ -154,7 +158,11 @@ namespace HaCreator.MapSimulator.UI
             _checkButton = checkButton;
             if (_checkButton != null)
             {
-                _checkButton.ButtonClickReleased += _ => DuplicateCheckRequested?.Invoke();
+                _checkButton.ButtonClickReleased += _ =>
+                {
+                    _softKeyboardActive = false;
+                    DuplicateCheckRequested?.Invoke();
+                };
                 AddButton(_checkButton);
             }
         }
@@ -220,6 +228,10 @@ namespace HaCreator.MapSimulator.UI
             {
                 _softKeyboardActive = false;
                 ClearCompositionText();
+            }
+            else
+            {
+                _softKeyboardActive = true;
             }
 
             ConfigureButtons();
@@ -923,7 +935,7 @@ namespace HaCreator.MapSimulator.UI
                 (_confirmButton.X, _confirmButton.Y) = _fixedStage switch
                 {
                     LoginCreateCharacterStage.RaceSelect => (stageOrigin.X + 26, stageOrigin.Y + 144),
-                    LoginCreateCharacterStage.AvatarSelect => (stageOrigin.X + 37, stageOrigin.Y + 330),
+                    LoginCreateCharacterStage.AvatarSelect => GetActionPanelButtonPosition(stageOrigin, AvatarActionPanelBounds, _confirmButton, secondarySlot: false),
                     LoginCreateCharacterStage.NameSelect => (stageOrigin.X + 27, stageOrigin.Y + 178),
                     _ => (stageOrigin.X + 18, stageOrigin.Y + 238)
                 };
@@ -937,8 +949,8 @@ namespace HaCreator.MapSimulator.UI
                 (_cancelButton.X, _cancelButton.Y) = _fixedStage switch
                 {
                     LoginCreateCharacterStage.RaceSelect => (stageOrigin.X + 110, stageOrigin.Y + 144),
-                    LoginCreateCharacterStage.AvatarSelect => (stageOrigin.X + 111, stageOrigin.Y + 330),
-                    LoginCreateCharacterStage.NameSelect => (stageOrigin.X + 101, stageOrigin.Y + 178),
+                    LoginCreateCharacterStage.AvatarSelect => GetActionPanelButtonPosition(stageOrigin, AvatarActionPanelBounds, _cancelButton, secondarySlot: true),
+                    LoginCreateCharacterStage.NameSelect => GetActionPanelButtonPosition(stageOrigin, NameActionPanelBounds, _cancelButton, secondarySlot: true),
                     _ => (stageOrigin.X + 102, stageOrigin.Y + 238)
                 };
             }
@@ -951,9 +963,31 @@ namespace HaCreator.MapSimulator.UI
                 if (showCheckButton)
                 {
                     Point stageOrigin = GetStageOrigin();
-                    (_checkButton.X, _checkButton.Y) = (stageOrigin.X + 27, stageOrigin.Y + 178);
+                    (_checkButton.X, _checkButton.Y) = GetActionPanelButtonPosition(
+                        stageOrigin,
+                        NameActionPanelBounds,
+                        _checkButton,
+                        secondarySlot: false,
+                        centerWithinSlot: true);
                 }
             }
+        }
+
+        private static (int X, int Y) GetActionPanelButtonPosition(
+            Point stageOrigin,
+            Rectangle actionPanelBounds,
+            UIObject button,
+            bool secondarySlot,
+            bool centerWithinSlot = false)
+        {
+            int buttonWidth = Math.Max(1, button?.CanvasSnapshotWidth ?? 1);
+            int buttonHeight = Math.Max(1, button?.CanvasSnapshotHeight ?? 1);
+            int slotX = actionPanelBounds.X + (secondarySlot ? ActionPanelSlotWidth + ActionPanelSlotGap : 0);
+            int x = centerWithinSlot
+                ? slotX + Math.Max(0, (ActionPanelSlotWidth - buttonWidth) / 2)
+                : slotX;
+            int y = actionPanelBounds.Y + Math.Max(0, (actionPanelBounds.Height - buttonHeight) / 2);
+            return (stageOrigin.X + x, stageOrigin.Y + y);
         }
 
         private void DrawAvatarValueLabel(SpriteBatch sprite, int index, Rectangle rowBounds)

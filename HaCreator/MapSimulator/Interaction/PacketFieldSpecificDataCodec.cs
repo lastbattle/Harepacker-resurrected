@@ -156,7 +156,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             char separator = value[prefix.Length];
-            if (separator is not (':' or '/' or '.'))
+            if (separator is not (':' or '/' or '.' or '|'))
             {
                 return false;
             }

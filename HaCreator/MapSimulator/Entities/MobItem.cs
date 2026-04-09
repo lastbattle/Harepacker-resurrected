@@ -338,39 +338,22 @@ namespace HaCreator.MapSimulator.Entities
         /// </summary>
         public Rectangle GetBodyHitbox(int tickCount)
         {
-            if (AI?.IsDoomed == true)
+            IReadOnlyList<Rectangle> worldHitboxes = GetBodyHitboxes(tickCount);
+            if (worldHitboxes.Count > 0)
             {
-                return new Rectangle(
-                    CurrentX + DoomBodyOffsetLeft,
-                    CurrentY + DoomBodyOffsetTop,
-                    DoomBodyWidth,
-                    DoomBodyHeight);
+                Rectangle union = worldHitboxes[0];
+                for (int i = 1; i < worldHitboxes.Count; i++)
+                {
+                    union = Rectangle.Union(union, worldHitboxes[i]);
+                }
+
+                return union;
             }
 
             IDXObject frame = GetCurrentAnimationFrame(tickCount) ?? GetCurrentFrame();
             if (frame == null)
             {
                 return Rectangle.Empty;
-            }
-
-            MobAnimationSet.FrameMetadata frameMetadata = GetCurrentAnimationFrameMetadata();
-            if (frameMetadata != null)
-            {
-                Rectangle bodyBounds = frameMetadata.EffectiveBodyBounds;
-                if (flip)
-                {
-                    bodyBounds = new Rectangle(
-                        -(bodyBounds.X + bodyBounds.Width),
-                        bodyBounds.Y,
-                        bodyBounds.Width,
-                        bodyBounds.Height);
-                }
-
-                return new Rectangle(
-                    CurrentX + bodyBounds.X,
-                    CurrentY + bodyBounds.Y,
-                    bodyBounds.Width,
-                    bodyBounds.Height);
             }
 
             int positionOffsetX = 0;
@@ -394,12 +377,58 @@ namespace HaCreator.MapSimulator.Entities
             return new Rectangle(worldX, worldY, frame.Width, frame.Height);
         }
 
+        public IReadOnlyList<Rectangle> GetBodyHitboxes(int tickCount)
+        {
+            if (AI?.IsDoomed == true)
+            {
+                return new[]
+                {
+                    new Rectangle(
+                        CurrentX + DoomBodyOffsetLeft,
+                        CurrentY + DoomBodyOffsetTop,
+                        DoomBodyWidth,
+                        DoomBodyHeight)
+                };
+            }
+
+            IDXObject frame = GetCurrentAnimationFrame(tickCount) ?? GetCurrentFrame();
+            if (frame == null)
+            {
+                return Array.Empty<Rectangle>();
+            }
+
+            MobAnimationSet.FrameMetadata frameMetadata = GetCurrentAnimationFrameMetadata();
+            if (frameMetadata != null)
+            {
+                IReadOnlyList<Rectangle> localBounds = frameMetadata.MultiBodyBounds;
+                if (localBounds != null && localBounds.Count > 0)
+                {
+                    Rectangle[] worldBounds = new Rectangle[localBounds.Count];
+                    for (int i = 0; i < localBounds.Count; i++)
+                    {
+                        worldBounds[i] = TranslateMobBodyBoundsToWorld(localBounds[i]);
+                    }
+
+                    return worldBounds;
+                }
+
+                return new[] { TranslateMobBodyBoundsToWorld(frameMetadata.EffectiveBodyBounds) };
+            }
+
+            return Array.Empty<Rectangle>();
+        }
+
         /// <summary>
         /// Gets the mob's current body bounds in world space using the current system tick.
         /// </summary>
         public Rectangle GetBodyHitbox()
         {
             return GetBodyHitbox(Environment.TickCount);
+        }
+
+        public IReadOnlyList<Rectangle> GetBodyHitboxes()
+        {
+            return GetBodyHitboxes(Environment.TickCount);
         }
 
         /// <summary>
@@ -1478,6 +1507,24 @@ namespace HaCreator.MapSimulator.Entities
             return _animationSet?.GetFrameMetadata(
                 _animationController.CurrentAction,
                 _animationController.CurrentFrameIndex);
+        }
+
+        private Rectangle TranslateMobBodyBoundsToWorld(Rectangle bodyBounds)
+        {
+            if (flip)
+            {
+                bodyBounds = new Rectangle(
+                    -(bodyBounds.X + bodyBounds.Width),
+                    bodyBounds.Y,
+                    bodyBounds.Width,
+                    bodyBounds.Height);
+            }
+
+            return new Rectangle(
+                CurrentX + bodyBounds.X,
+                CurrentY + bodyBounds.Y,
+                bodyBounds.Width,
+                bodyBounds.Height);
         }
 
         private IReadOnlyList<IDXObject> ResolveDoomAnimationFrames()

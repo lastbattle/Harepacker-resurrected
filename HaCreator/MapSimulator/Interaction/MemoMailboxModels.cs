@@ -16,6 +16,16 @@ namespace HaCreator.MapSimulator.Interaction
         QuickSend
     }
 
+    [Flags]
+    internal enum ParcelDialogTabAvailability
+    {
+        None = 0,
+        Receive = 1 << 0,
+        Send = 1 << 1,
+        QuickSend = 1 << 2,
+        All = Receive | Send | QuickSend
+    }
+
     internal enum MemoDraftAttachmentKind
     {
         None,
@@ -81,6 +91,7 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public IReadOnlyList<MemoMailboxEntrySnapshot> Entries { get; init; } = Array.Empty<MemoMailboxEntrySnapshot>();
         public ParcelDialogTab ActiveTab { get; init; }
+        public ParcelDialogTabAvailability AvailableTabs { get; init; } = ParcelDialogTabAvailability.All;
         public int UnreadCount { get; init; }
         public int ClaimableCount { get; init; }
         public string LastActionSummary { get; init; } = string.Empty;

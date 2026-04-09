@@ -93,7 +93,7 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.AdminShopWishListCategory;
         public override bool CapturesKeyboardInput => IsVisible;
 
-        public void ShowFor(AdminShopWishListUI owner)
+        public void PrepareForShow(AdminShopWishListUI owner)
         {
             _owner = owner;
             _categoryTree = owner?.GetWishlistCategoryTree() ?? Array.Empty<AdminShopDialogUI.WishlistCategoryNode>();
@@ -102,7 +102,6 @@ namespace HaCreator.MapSimulator.UI
             RefreshCategoryRows();
             EnsureSelectedCategoryVisible();
             PositionRelativeToOwner(owner);
-            Show();
         }
 
         public void HideForOwner(string message)

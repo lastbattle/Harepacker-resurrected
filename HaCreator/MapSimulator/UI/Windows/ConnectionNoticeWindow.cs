@@ -18,6 +18,10 @@ namespace HaCreator.MapSimulator.UI
         private const int NoticeBodySpacingY = 6;
         private const int CancelButtonOffsetX = 100;
         private const int CancelButtonOffsetY = 106;
+        private const int SecurityQuestionYesButtonX = 59;
+        private const int SecurityQuestionNoButtonX = 129;
+        private const int NoticeNexonButtonX = 89;
+        private const int DialogButtonY = 106;
         private const int ProgressOffsetX = 87;
         private const int ProgressOffsetY = 34;
         private const int ProgressWidth = 109;
@@ -35,14 +39,24 @@ namespace HaCreator.MapSimulator.UI
         private readonly IReadOnlyDictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>> _animationFramesByVariant;
         private readonly IReadOnlyDictionary<int, Texture2D> _noticeTextTextures;
         private readonly UIObject _cancelButton;
+        private readonly UIObject _questionYesButton;
+        private readonly UIObject _questionNoButton;
+        private readonly UIObject _nexonButton;
         private readonly int _screenWidth;
         private readonly int _screenHeight;
         private string _title = "Connection Notice";
         private string _body = string.Empty;
+        private string _primaryLabel = string.Empty;
+        private string _secondaryLabel = string.Empty;
         private float _progress;
         private bool _showProgress;
         private int? _noticeTextIndex;
         private ConnectionNoticeWindowVariant _variant = ConnectionNoticeWindowVariant.Notice;
+        private LoginUtilityDialogButtonLayout _buttonLayout = LoginUtilityDialogButtonLayout.Ok;
+        private UIObject _activePrimaryButton;
+        private UIObject _activeSecondaryButton;
+        private bool _drawPrimaryButtonLabel;
+        private bool _drawSecondaryButtonLabel;
 
         public ConnectionNoticeWindow(
             IReadOnlyDictionary<ConnectionNoticeWindowVariant, IDXObject> framesByVariant,
@@ -50,6 +64,9 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyDictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>> animationFramesByVariant,
             IReadOnlyDictionary<int, Texture2D> noticeTextTextures,
             UIObject cancelButton,
+            UIObject questionYesButton,
+            UIObject questionNoButton,
+            UIObject nexonButton,
             int screenWidth,
             int screenHeight)
             : base((framesByVariant != null && framesByVariant.TryGetValue(ConnectionNoticeWindowVariant.Notice, out IDXObject frame))
@@ -61,6 +78,9 @@ namespace HaCreator.MapSimulator.UI
             _animationFramesByVariant = animationFramesByVariant ?? new Dictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>>();
             _noticeTextTextures = noticeTextTextures ?? new Dictionary<int, Texture2D>();
             _cancelButton = RegisterButton(cancelButton);
+            _questionYesButton = RegisterPrimaryButton(questionYesButton);
+            _questionNoButton = RegisterSecondaryButton(questionNoButton);
+            _nexonButton = RegisterPrimaryButton(nexonButton);
             _screenWidth = screenWidth;
             _screenHeight = screenHeight;
         }
@@ -75,6 +95,8 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public event Action CancelRequested;
+        public event Action PrimaryRequested;
+        public event Action SecondaryRequested;
 
         public void Configure(
             string title,
@@ -82,7 +104,10 @@ namespace HaCreator.MapSimulator.UI
             bool showProgress,
             float progress,
             ConnectionNoticeWindowVariant variant,
-            int? noticeTextIndex = null)
+            int? noticeTextIndex = null,
+            LoginUtilityDialogButtonLayout buttonLayout = LoginUtilityDialogButtonLayout.Ok,
+            string primaryLabel = null,
+            string secondaryLabel = null)
         {
             _title = string.IsNullOrWhiteSpace(title) ? "Connection Notice" : title;
             _body = body ?? string.Empty;
@@ -90,6 +115,11 @@ namespace HaCreator.MapSimulator.UI
             _progress = MathHelper.Clamp(progress, 0f, 1f);
             _variant = variant;
             _noticeTextIndex = noticeTextIndex;
+            _buttonLayout = buttonLayout;
+            _primaryLabel = primaryLabel ?? string.Empty;
+            _secondaryLabel = secondaryLabel ?? string.Empty;
+            _drawPrimaryButtonLabel = !string.IsNullOrWhiteSpace(primaryLabel);
+            _drawSecondaryButtonLabel = !string.IsNullOrWhiteSpace(secondaryLabel);
             if (!_framesByVariant.TryGetValue(_variant, out IDXObject frame) ||
                 frame == null)
             {
@@ -160,6 +190,29 @@ namespace HaCreator.MapSimulator.UI
                     new Vector2(Position.X + BodyOffsetX, y),
                     new Color(232, 232, 232));
                 y += WindowLineSpacing;
+            }
+        }
+
+        protected override void DrawOverlay(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            if (_drawPrimaryButtonLabel)
+            {
+                DrawButtonLabel(sprite, _activePrimaryButton, _primaryLabel);
+            }
+
+            if (_drawSecondaryButtonLabel)
+            {
+                DrawButtonLabel(sprite, _activeSecondaryButton, _secondaryLabel);
             }
         }
 
@@ -237,6 +290,19 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void DrawButtonLabel(SpriteBatch sprite, UIObject button, string text)
+        {
+            if (WindowFont == null || button == null || !button.ButtonVisible || string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            Vector2 size = ClientTextDrawing.Measure((GraphicsDevice)null, text, 1.0f, WindowFont);
+            float x = Position.X + button.X + ((button.CanvasSnapshotWidth - size.X) / 2f);
+            float y = Position.Y + button.Y + ((button.CanvasSnapshotHeight - size.Y) / 2f) - 1f;
+            SelectorWindowDrawing.DrawShadowedText(sprite, WindowFont, text, new Vector2(x, y), Color.White);
+        }
+
         private UIObject RegisterButton(UIObject button)
         {
             if (button == null)
@@ -251,18 +317,82 @@ namespace HaCreator.MapSimulator.UI
             return button;
         }
 
+        private UIObject RegisterPrimaryButton(UIObject button)
+        {
+            UIObject registeredButton = RegisterButton(button);
+            if (registeredButton != null)
+            {
+                registeredButton.ButtonClickReleased -= HandlePrimaryButtonReleased;
+                registeredButton.ButtonClickReleased += HandlePrimaryButtonReleased;
+            }
+
+            return registeredButton;
+        }
+
+        private UIObject RegisterSecondaryButton(UIObject button)
+        {
+            UIObject registeredButton = RegisterButton(button);
+            if (registeredButton != null)
+            {
+                registeredButton.ButtonClickReleased -= HandleSecondaryButtonReleased;
+                registeredButton.ButtonClickReleased += HandleSecondaryButtonReleased;
+            }
+
+            return registeredButton;
+        }
+
+        private void HandlePrimaryButtonReleased(UIObject _)
+        {
+            PrimaryRequested?.Invoke();
+        }
+
+        private void HandleSecondaryButtonReleased(UIObject _)
+        {
+            SecondaryRequested?.Invoke();
+        }
+
         private void ConfigureButtons()
         {
+            _activePrimaryButton = null;
+            _activeSecondaryButton = null;
+
             if (_cancelButton == null)
+            {
+                HideButton(_questionYesButton);
+                HideButton(_questionNoButton);
+                HideButton(_nexonButton);
+            }
+            else
+            {
+                bool showCancelButton = _variant is ConnectionNoticeWindowVariant.Loading or ConnectionNoticeWindowVariant.LoadingSingleGauge;
+                _cancelButton.X = CancelButtonOffsetX;
+                _cancelButton.Y = CancelButtonOffsetY;
+                _cancelButton.SetVisible(showCancelButton);
+                _cancelButton.SetEnabled(showCancelButton);
+            }
+
+            HideButton(_questionYesButton);
+            HideButton(_questionNoButton);
+            HideButton(_nexonButton);
+
+            if (_variant is ConnectionNoticeWindowVariant.Loading or ConnectionNoticeWindowVariant.LoadingSingleGauge)
             {
                 return;
             }
 
-            bool showCancelButton = _variant is ConnectionNoticeWindowVariant.Loading or ConnectionNoticeWindowVariant.LoadingSingleGauge;
-            _cancelButton.X = CancelButtonOffsetX;
-            _cancelButton.Y = CancelButtonOffsetY;
-            _cancelButton.SetVisible(showCancelButton);
-            _cancelButton.SetEnabled(showCancelButton);
+            switch (_buttonLayout)
+            {
+                case LoginUtilityDialogButtonLayout.YesNo:
+                    _activePrimaryButton = _questionYesButton;
+                    _activeSecondaryButton = _questionNoButton;
+                    PositionButton(_activePrimaryButton, SecurityQuestionYesButtonX, DialogButtonY);
+                    PositionButton(_activeSecondaryButton, SecurityQuestionNoButtonX, DialogButtonY);
+                    break;
+                case LoginUtilityDialogButtonLayout.Nexon:
+                    _activePrimaryButton = _nexonButton;
+                    PositionButton(_activePrimaryButton, NoticeNexonButtonX, DialogButtonY);
+                    break;
+            }
         }
 
         private void CenterFrame(IDXObject frame)
@@ -272,6 +402,30 @@ namespace HaCreator.MapSimulator.UI
             Position = new Point(
                 Math.Max(24, (_screenWidth / 2) - (width / 2)),
                 Math.Max(24, (_screenHeight / 2) - (height / 2)));
+        }
+
+        private static void HideButton(UIObject button)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            button.SetVisible(false);
+            button.SetEnabled(false);
+        }
+
+        private static void PositionButton(UIObject button, int x, int y)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            button.X = x;
+            button.Y = y;
+            button.SetVisible(true);
+            button.SetEnabled(true);
         }
     }
 }

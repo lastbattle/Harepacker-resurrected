@@ -98,6 +98,27 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string BackspaceCandidateQuery() => _runtime.BackspaceCandidateQuery();
 
+        internal string AppendPutQuantityDigit(UIWindowManager windowManager, char value)
+        {
+            string message = _runtime.AppendPutQuantityDigit(value);
+            KeepWindowVisible(windowManager);
+            return message;
+        }
+
+        internal string BackspacePutQuantityDigit(UIWindowManager windowManager)
+        {
+            string message = _runtime.BackspacePutQuantityDigit();
+            KeepWindowVisible(windowManager);
+            return message;
+        }
+
+        internal string CancelTransientPrompt(UIWindowManager windowManager)
+        {
+            string message = _runtime.CancelTransientPrompt();
+            KeepWindowVisible(windowManager);
+            return message;
+        }
+
         internal string PutSelected(UIWindowManager windowManager)
         {
             string message = _runtime.TryPutSelectedItem();
@@ -129,7 +150,15 @@ namespace HaCreator.MapSimulator.Interaction
         internal string Confirm(UIWindowManager windowManager)
         {
             string message = _runtime.ConfirmInput();
-            windowManager?.HideWindow(MapSimulatorWindowNames.WeddingWishList);
+            if (_runtime.BuildSnapshot().IsOpen)
+            {
+                KeepWindowVisible(windowManager);
+            }
+            else
+            {
+                windowManager?.HideWindow(MapSimulatorWindowNames.WeddingWishList);
+            }
+
             return message;
         }
 

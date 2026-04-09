@@ -100,15 +100,22 @@ namespace HaCreator.MapSimulator.Effects
         private const int CountMissY = 55;
         private const int CountSkillX = 80;
         private const int CountSkillY = 85;
-        private const int GaugeWidth = 262;
         private const int GaugeFillWidth = 259;
-        private const int GaugeHeight = 9;
-        private const int GaugeOffsetX = -93;
-        private const int GaugeY = 78;
-        private const int GaugeFillOffsetX = 4;
-        private const int GaugeFillOffsetY = 6;
-        private const int GaugeLabelOffsetY = -8;
         private const int GaugeFillHeight = 9;
+        private const int GaugeBackgroundAnchorX = -149;
+        private const int GaugeBackgroundAnchorY = 64;
+        private const int GaugeTextAnchorX = -149;
+        private const int GaugeTextAnchorY = 64;
+        private const int GaugeDangerBackgroundAnchorX = -149;
+        private const int GaugeDangerBackgroundAnchorY = 64;
+        private const int GaugeDangerTextAnchorX = -149;
+        private const int GaugeDangerTextAnchorY = 64;
+        private const int GaugeDangerIconAnchorX = -178;
+        private const int GaugeDangerIconAnchorY = 63;
+        private const int GaugeDangerAnchorX = -149;
+        private const int GaugeDangerAnchorY = 85;
+        private const int GaugeFillRightX = 140;
+        private const int GaugeFillY = 71;
         private const int KeyAnimationX = 7;
         private const int KeyAnimationY = 135;
         private const int ClearEffectDurationMs = 2200;
@@ -217,8 +224,8 @@ namespace HaCreator.MapSimulator.Effects
         private int _countEffectPresentationStage;
         private GraphicsDevice _device;
         private bool _assetsLoaded;
-        private Texture2D _gaugeBackgroundTexture;
-        private Texture2D _gaugeTextTexture;
+        private MassacreCanvasFrame _gaugeBackgroundFrame;
+        private MassacreCanvasFrame _gaugeTextFrame;
         private Texture2D _gaugePixelTexture;
         private Texture2D _countBoardTexture;
         private Texture2D _countBoardSkillTexture;
@@ -799,18 +806,17 @@ namespace HaCreator.MapSimulator.Effects
         }
         private void DrawGaugeHud(SpriteBatch spriteBatch, Texture2D pixelTexture, Viewport viewport)
         {
-            int gaugeX = viewport.Width / 2 + GaugeOffsetX;
-            Rectangle fillBounds = new(gaugeX + GaugeFillOffsetX, GaugeY + GaugeFillOffsetY, GaugeFillWidth, GaugeFillHeight);
-            if (_gaugeBackgroundTexture != null)
+            Vector2 centerTop = new(viewport.Width / 2f, 0f);
+            if (_gaugeBackgroundFrame.Texture != null)
             {
-                spriteBatch.Draw(_gaugeBackgroundTexture, new Vector2(gaugeX, GaugeY), Color.White);
+                DrawFrame(spriteBatch, _gaugeBackgroundFrame, centerTop + new Vector2(GaugeBackgroundAnchorX, GaugeBackgroundAnchorY));
             }
             else
             {
-                Rectangle fallbackBounds = new(gaugeX, GaugeY, GaugeWidth + (GaugeFillOffsetX * 2), GaugeHeight + GaugeFillOffsetY);
+                Rectangle fallbackBounds = new(viewport.Width / 2 + GaugeBackgroundAnchorX + 25, GaugeFillY - 6, 270, 21);
                 spriteBatch.Draw(pixelTexture, fallbackBounds, new Color(25, 18, 16, 224));
             }
-            Rectangle maskBounds = GetGaugeMaskBounds(fillBounds);
+            Rectangle maskBounds = GetGaugeMaskBounds(viewport.Width / 2);
             if (maskBounds.Width > 0)
             {
                 Texture2D gaugeFillTexture = _gaugePixelTexture ?? pixelTexture;
@@ -819,14 +825,14 @@ namespace HaCreator.MapSimulator.Effects
             }
             if (ShouldDrawDangerOverlay())
             {
-                DrawAnimation(spriteBatch, _dangerBackgroundFrames, Environment.TickCount, 0, new Vector2(fillBounds.X, fillBounds.Y), repeat: true);
-                DrawAnimation(spriteBatch, _dangerFrames, Environment.TickCount, 0, new Vector2(fillBounds.Right - 115f, GaugeY - 2f), repeat: true);
-                DrawAnimation(spriteBatch, _dangerTextFrames, Environment.TickCount, 0, new Vector2(gaugeX - 3f, GaugeY - 3f), repeat: true);
-                DrawAnimation(spriteBatch, _dangerIconFrames, Environment.TickCount, 0, new Vector2(gaugeX + 214f, GaugeY - 5f), repeat: true);
+                DrawAnimation(spriteBatch, _dangerBackgroundFrames, Environment.TickCount, 0, centerTop + new Vector2(GaugeDangerBackgroundAnchorX, GaugeDangerBackgroundAnchorY), repeat: true);
+                DrawAnimation(spriteBatch, _dangerFrames, Environment.TickCount, 0, centerTop + new Vector2(GaugeDangerAnchorX, GaugeDangerAnchorY), repeat: true);
+                DrawAnimation(spriteBatch, _dangerTextFrames, Environment.TickCount, 0, centerTop + new Vector2(GaugeDangerTextAnchorX, GaugeDangerTextAnchorY), repeat: true);
+                DrawAnimation(spriteBatch, _dangerIconFrames, Environment.TickCount, 0, centerTop + new Vector2(GaugeDangerIconAnchorX, GaugeDangerIconAnchorY), repeat: true);
             }
-            else if (_gaugeTextTexture != null)
+            else if (_gaugeTextFrame.Texture != null)
             {
-                spriteBatch.Draw(_gaugeTextTexture, new Vector2(gaugeX, GaugeY + GaugeLabelOffsetY), Color.White);
+                DrawFrame(spriteBatch, _gaugeTextFrame, centerTop + new Vector2(GaugeTextAnchorX, GaugeTextAnchorY));
             }
         }
         private void DrawCountBoard(SpriteBatch spriteBatch, SpriteFont font)
@@ -1042,8 +1048,8 @@ namespace HaCreator.MapSimulator.Effects
             _countBoardSkillTexture = LoadCanvasTexture(FindFirstUiProperty(uiImages, "MonsterKilling/Count/backgrd1") as WzCanvasProperty);
             // CField_Massacre::Init maps StringPool ids 0x1519/0x151A and 0x1516-0x1518/0x151B
             // onto the normal and danger gauge layers recovered from MonsterKilling/Gauge.
-            _gaugeBackgroundTexture = LoadCanvasTexture(FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/backgrd") as WzCanvasProperty);
-            _gaugeTextTexture = LoadCanvasTexture(FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/text") as WzCanvasProperty);
+            _gaugeBackgroundFrame = LoadFrame(FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/backgrd") as WzCanvasProperty, _device);
+            _gaugeTextFrame = LoadFrame(FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/text") as WzCanvasProperty, _device);
             _gaugePixelTexture = LoadCanvasTexture(FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/pixel") as WzCanvasProperty);
             _dangerFrames = LoadAnimationFrames(gauge?["danger"]);
             _dangerIconFrames = LoadAnimationFrames(gauge?["iconD"]);
@@ -1598,13 +1604,13 @@ namespace HaCreator.MapSimulator.Effects
             {
                 return false;
             }
-            float depletion = Math.Clamp(_gaugeDepletion / (float)_maxGauge, 0f, 1f);
-            return depletion >= DangerDepletionThreshold;
+            int depletion = Math.Clamp(_gaugeDepletion, 0, _maxGauge);
+            return (100 * depletion / _maxGauge) < (int)(DangerDepletionThreshold * 100f);
         }
-        private Rectangle GetGaugeMaskBounds(Rectangle fillBounds)
+        private Rectangle GetGaugeMaskBounds(int viewportCenterX)
         {
             int maskWidth = GetGaugeMaskWidth();
-            return new Rectangle(fillBounds.Right - maskWidth, fillBounds.Y, maskWidth, fillBounds.Height);
+            return new Rectangle(viewportCenterX + GaugeFillRightX - maskWidth, GaugeFillY, maskWidth, GaugeFillHeight);
         }
         private int GetGaugeMaskWidth()
         {

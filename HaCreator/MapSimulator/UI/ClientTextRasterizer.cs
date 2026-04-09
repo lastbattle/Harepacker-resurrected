@@ -20,6 +20,7 @@ namespace HaCreator.MapSimulator.UI
     {
         private const int RasterPadding = 2;
         private const int EmbeddedFontSignatureScanWindow = 8192;
+        private const int EmbeddedCompressionSignatureScanWindow = 8192;
         private const int MaxEmbeddedFontDecompressedBytes = 8 * 1024 * 1024;
         private const byte KoreanGdiCharset = 129;
         private const string ClientTextFontPathEnvironmentVariable = "MAPSIM_CLIENT_TEXT_FONT_PATH";
@@ -486,10 +487,14 @@ namespace HaCreator.MapSimulator.UI
             IEnumerable<string> preferredPrivateFontFamilyCandidates,
             bool preferEmbeddedPrivateFontSources)
         {
+            IReadOnlyList<string> privateFontFamilyCandidates = BuildPrivateFontSearchFamilyCandidates(
+                requestedFamily,
+                preferredPrivateFontFamilyCandidates);
+
             if (TryResolveConfiguredFontFamily(
                     fontPathEnvironmentVariable,
                     fontFaceEnvironmentVariable,
-                    preferredPrivateFontFamilyCandidates,
+                    privateFontFamilyCandidates,
                     out string configuredFamily))
             {
                 return configuredFamily;
@@ -501,7 +506,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (TryResolveDefaultPrivateFontFamily(
-                    preferredPrivateFontFamilyCandidates,
+                    privateFontFamilyCandidates,
                     preferEmbeddedPrivateFontSources,
                     out string privateFontFamily))
             {
@@ -518,6 +523,13 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return ResolveInstalledFontFamilyName(DefaultFontFamilyCandidates);
+        }
+
+        internal static IReadOnlyList<string> BuildPrivateFontSearchFamilyCandidatesForTesting(
+            string requestedFamily,
+            IEnumerable<string> preferredPrivateFontFamilyCandidates = null)
+        {
+            return BuildPrivateFontSearchFamilyCandidates(requestedFamily, preferredPrivateFontFamilyCandidates);
         }
 
         private static bool TryResolveConfiguredFontFamily(out string fontFamilyName)
@@ -667,6 +679,40 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        private static IReadOnlyList<string> BuildPrivateFontSearchFamilyCandidates(
+            string requestedFamily,
+            IEnumerable<string> preferredFamilyNames)
+        {
+            HashSet<string> seenFamilyNames = new(StringComparer.OrdinalIgnoreCase);
+            List<string> familyNames = new();
+
+            void AddFamilyName(string familyName)
+            {
+                if (string.IsNullOrWhiteSpace(familyName))
+                {
+                    return;
+                }
+
+                string trimmedFamilyName = familyName.Trim();
+                if (seenFamilyNames.Add(trimmedFamilyName))
+                {
+                    familyNames.Add(trimmedFamilyName);
+                }
+            }
+
+            AddFamilyName(requestedFamily);
+
+            if (preferredFamilyNames != null)
+            {
+                foreach (string familyName in preferredFamilyNames)
+                {
+                    AddFamilyName(familyName);
+                }
+            }
+
+            return familyNames;
         }
 
         private static IReadOnlyList<string> BuildPreferredPrivateFontFamilyCandidates(IEnumerable<string> preferredFamilyNames)
@@ -1598,7 +1644,27 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            return TryDecompressWithGzip(sourceBytes, out decompressedBytes);
+            if (TryDecompressWithGzip(sourceBytes, out decompressedBytes))
+            {
+                return true;
+            }
+
+            foreach (int compressionOffset in EnumerateEmbeddedCompressionHeaderOffsets(sourceBytes))
+            {
+                byte[] compressedSlice = SliceBytes(sourceBytes, compressionOffset);
+                if (TryDecompressWithZlib(compressedSlice, out decompressedBytes))
+                {
+                    return true;
+                }
+
+                if (TryDecompressWithGzip(compressedSlice, out decompressedBytes))
+                {
+                    return true;
+                }
+            }
+
+            decompressedBytes = null;
+            return false;
         }
 
         private static bool TryDecompressWithZlib(byte[] sourceBytes, out byte[] decompressedBytes)
@@ -1679,6 +1745,33 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return ((cmf << 8) + flg) % 31 == 0;
+        }
+
+        private static IEnumerable<int> EnumerateEmbeddedCompressionHeaderOffsets(byte[] sourceBytes)
+        {
+            if (sourceBytes == null || sourceBytes.Length < 2)
+            {
+                yield break;
+            }
+
+            int maxOffset = Math.Min(sourceBytes.Length - 2, EmbeddedCompressionSignatureScanWindow);
+            for (int offset = 1; offset <= maxOffset; offset++)
+            {
+                if (LooksLikeZlibHeader(sourceBytes.AsSpan(offset).ToArray()) ||
+                    LooksLikeGzipHeader(sourceBytes, offset))
+                {
+                    yield return offset;
+                }
+            }
+        }
+
+        private static bool LooksLikeGzipHeader(byte[] sourceBytes, int offset = 0)
+        {
+            return sourceBytes != null
+                && offset >= 0
+                && offset + 1 < sourceBytes.Length
+                && sourceBytes[offset] == 0x1F
+                && sourceBytes[offset + 1] == 0x8B;
         }
 
         private static byte[] SliceBytes(byte[] sourceBytes, int offset)

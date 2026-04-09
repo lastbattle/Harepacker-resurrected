@@ -1,9 +1,9 @@
 using System;
-using System;
 using System.Linq;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Animation;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary;
@@ -717,6 +717,33 @@ namespace HaCreator.MapSimulator.Loaders
                 IsAngerAttack = InfoTool.GetInt(infoNode["AngerAttack"], 0) > 0
             };
 
+            if (explicitInfoHitAttach == int.MinValue
+                && infoAliasHitAttach == int.MinValue)
+            {
+                foreach ((int frameIndex, bool attach) in ReadIndexedHitMetadataFlags(
+                             infoHitNode,
+                             "attach",
+                             "bHitAttach",
+                             "hitAttach"))
+                {
+                    metadata.FrameHitAttachOverrides[frameIndex] = attach;
+                }
+            }
+
+            if (explicitInfoFacingAttach == int.MinValue
+                && infoAliasFacingAttach == int.MinValue)
+            {
+                foreach ((int frameIndex, bool attachFacing) in ReadIndexedHitMetadataFlags(
+                             infoHitNode,
+                             "attachfacing",
+                             "bFacingAttach",
+                             "bFacingAttatch",
+                             "facingAttach"))
+                {
+                    metadata.FrameFacingAttachOverrides[frameIndex] = attachFacing;
+                }
+            }
+
             WzSubProperty rangeNode = infoNode["range"] as WzSubProperty;
             if (rangeNode != null)
             {
@@ -834,6 +861,22 @@ namespace HaCreator.MapSimulator.Loaders
             return metadata;
         }
 
+        private static IEnumerable<(int FrameIndex, bool Value)> ReadIndexedHitMetadataFlags(
+            WzImageProperty infoHitNode,
+            params string[] propertyNames)
+        {
+            foreach ((int frameIndex, WzImageProperty metadataNode) in EnumerateIndexedInfoHitMetadataNodes(infoHitNode))
+            {
+                int value = ReadOptionalInt(metadataNode, int.MinValue, propertyNames);
+                if (value == int.MinValue)
+                {
+                    continue;
+                }
+
+                yield return (frameIndex, value > 0);
+            }
+        }
+
         private static void AppendMobActionFrameMetadata(WzImageProperty source, List<MobAnimationSet.FrameMetadata> metadata)
         {
             if (source == null || metadata == null)
@@ -883,11 +926,14 @@ namespace HaCreator.MapSimulator.Loaders
         {
             System.Drawing.PointF originPoint = canvasProperty?.GetCanvasOriginPosition() ?? System.Drawing.PointF.Empty;
             Point origin = new Point((int)originPoint.X, (int)originPoint.Y);
+            Point canvasSize = new Point(
+                Math.Max(1, canvasProperty?.PngProperty?.Width ?? 1),
+                Math.Max(1, canvasProperty?.PngProperty?.Height ?? 1));
             Rectangle fallbackBounds = new Rectangle(
                 -origin.X,
                 -origin.Y,
-                Math.Max(1, canvasProperty?.PngProperty?.Width ?? 1),
-                Math.Max(1, canvasProperty?.PngProperty?.Height ?? 1));
+                canvasSize.X,
+                canvasSize.Y);
 
             Rectangle frameBounds = TryBuildRect(canvasProperty?["lt"], canvasProperty?["rb"], out Rectangle authoredBounds)
                 ? authoredBounds
@@ -898,6 +944,9 @@ namespace HaCreator.MapSimulator.Loaders
 
             return new MobAnimationSet.FrameMetadata
             {
+                FrameOrigin = origin,
+                CanvasSize = canvasSize,
+                VisualBounds = fallbackBounds,
                 FrameBounds = frameBounds,
                 HasHeadAnchor = headAnchor.HasValue,
                 HeadAnchor = headAnchor ?? Point.Zero,
@@ -937,6 +986,9 @@ namespace HaCreator.MapSimulator.Loaders
         {
             return new MobAnimationSet.FrameMetadata
             {
+                FrameOrigin = Point.Zero,
+                CanvasSize = new Point(1, 1),
+                VisualBounds = new Rectangle(0, 0, 1, 1),
                 FrameBounds = new Rectangle(0, 0, 1, 1),
                 HasHeadAnchor = false,
                 HeadAnchor = Point.Zero,
@@ -1243,6 +1295,34 @@ namespace HaCreator.MapSimulator.Loaders
             }
         }
 
+        private static IEnumerable<(int FrameIndex, WzImageProperty MetadataNode)> EnumerateIndexedInfoHitMetadataNodes(WzImageProperty infoHitNode)
+        {
+            WzImageProperty resolvedInfoHitNode = WzInfoTools.GetRealProperty(infoHitNode);
+            if (resolvedInfoHitNode == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty frameProperty in resolvedInfoHitNode.WzProperties
+                         .Where(property => int.TryParse(property?.Name, out _))
+                         .OrderBy(property => int.Parse(property.Name)))
+            {
+                if (!int.TryParse(frameProperty.Name, out int frameIndex))
+                {
+                    continue;
+                }
+
+                WzImageProperty resolvedFrameProperty = WzInfoTools.GetRealProperty(frameProperty);
+                if (resolvedFrameProperty == null)
+                {
+                    continue;
+                }
+
+                WzImageProperty nestedHitNode = WzInfoTools.GetRealProperty(resolvedFrameProperty["hit"]);
+                yield return (frameIndex, nestedHitNode ?? resolvedFrameProperty);
+            }
+        }
+
         private static bool HasRenderableHitFrames(WzImageProperty hitNode)
         {
             if (hitNode == null)
@@ -1516,13 +1596,19 @@ namespace HaCreator.MapSimulator.Loaders
         /// <returns></returns>
         public static NpcItem CreateNpcFromProperty(
             TexturePool texturePool, NpcInstance npcInstance, float UserScreenScaleFactor,
-            GraphicsDevice device, ConcurrentBag<WzObject> usedProps, bool includeTooltips = true)
+            GraphicsDevice device, ConcurrentBag<WzObject> usedProps, bool includeTooltips = true,
+            CharacterGender? localPlayerGender = null)
         {
             NpcInfo npcInfo = (NpcInfo)npcInstance.BaseInfo;
             WzImage source = npcInfo.LinkedWzImage;
 
             // Match the client-owned NPC action seam: resolve a single action set, then materialize only that set's actions.
-            NpcAnimationSet animationSet = NpcClientActionSetLoader.LoadAnimationSet(texturePool, npcInstance, device, usedProps);
+            NpcAnimationSet animationSet = NpcClientActionSetLoader.LoadAnimationSet(
+                texturePool,
+                npcInstance,
+                device,
+                usedProps,
+                localPlayerGender);
             if (animationSet.ActionCount == 0) // fix japan ms v186, (9000021.img「ガガ」) なぜだ？;(
                 return null;
 

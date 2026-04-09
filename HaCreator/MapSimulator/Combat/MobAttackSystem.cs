@@ -21,6 +21,7 @@ namespace HaCreator.MapSimulator.Combat
             public MobAttackEntry Attack { get; set; }
             public MobTargetInfo TargetInfo { get; set; }
             public List<IDXObject> Frames { get; set; }
+            public Vector2 PreviousPosition { get; set; }
             public Vector2 Position { get; set; }
             public Vector2 Velocity { get; set; }
             public Vector2 Target { get; set; }
@@ -43,7 +44,7 @@ namespace HaCreator.MapSimulator.Combat
                 IDXObject frame = Frames != null && Frames.Count > 0
                     ? Frames[ResolveFrameIndex(Frames, currentTime, LaunchTime)]
                     : null;
-                return CreateFrameAnchoredHitbox(frame, Position, Flip, 16);
+                return CreateProjectileTransitHitbox(frame, PreviousPosition, Position, Flip, 16);
             }
         }
 
@@ -420,6 +421,7 @@ namespace HaCreator.MapSimulator.Combat
                     Attack = attack,
                     TargetInfo = laneAssignment.TargetInfo?.Clone(),
                     Frames = mobItem.GetAttackProjectileFrames(attack.AnimationName),
+                    PreviousPosition = spawn,
                     Position = spawn,
                     Velocity = direction * speed,
                     Target = projectileDestination,
@@ -590,6 +592,7 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
+                projectile.PreviousPosition = projectile.Position;
                 projectile.Position += projectile.Velocity * deltaSeconds;
 
                 bool targetedSummoned = projectile.TargetInfo?.TargetType == MobTargetType.Summoned;
@@ -2179,8 +2182,12 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
-                Rectangle mobHitbox = mob.GetBodyHitbox(currentTime);
-                if (mobHitbox.IsEmpty || !IntersectsOrNear(laneSearch, mobHitbox, 50f))
+                Rectangle mobHitbox = SelectBestProjectileLaneBodyHitbox(
+                    mob.GetBodyHitboxes(currentTime),
+                    laneSearch,
+                    lanePosition,
+                    sourceFacesRight);
+                if (mobHitbox.IsEmpty)
                 {
                     continue;
                 }
@@ -2779,8 +2786,7 @@ namespace HaCreator.MapSimulator.Combat
                 return false;
             }
 
-            Rectangle targetHitbox = targetMob.GetBodyHitbox(currentTime);
-            if (targetHitbox.IsEmpty || !targetHitbox.Intersects(hitbox))
+            if (!IntersectsAnyBodyHitbox(targetMob.GetBodyHitboxes(currentTime), hitbox))
             {
                 return false;
             }
@@ -2866,8 +2872,7 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
-                Rectangle targetHitbox = mob.GetBodyHitbox(currentTime);
-                if (targetHitbox.IsEmpty || !targetHitbox.Intersects(hitbox))
+                if (!IntersectsAnyBodyHitbox(mob.GetBodyHitboxes(currentTime), hitbox))
                 {
                     continue;
                 }
@@ -2984,6 +2989,41 @@ namespace HaCreator.MapSimulator.Combat
                 (int)MathF.Round(anchor.Y) - originY,
                 width,
                 height);
+        }
+
+        internal static Rectangle CreateProjectileTransitHitbox(
+            IDXObject frame,
+            Vector2 previousAnchor,
+            Vector2 currentAnchor,
+            bool flip,
+            int minimumSize = 16)
+        {
+            Rectangle previousHitbox = CreateFrameAnchoredHitbox(frame, previousAnchor, flip, minimumSize);
+            Rectangle currentHitbox = CreateFrameAnchoredHitbox(frame, currentAnchor, flip, minimumSize);
+            return UnionRectangles(previousHitbox, currentHitbox);
+        }
+
+        private static Rectangle UnionRectangles(Rectangle left, Rectangle right)
+        {
+            if (left.IsEmpty)
+            {
+                return right;
+            }
+
+            if (right.IsEmpty)
+            {
+                return left;
+            }
+
+            int unionLeft = Math.Min(left.Left, right.Left);
+            int unionTop = Math.Min(left.Top, right.Top);
+            int unionRight = Math.Max(left.Right, right.Right);
+            int unionBottom = Math.Max(left.Bottom, right.Bottom);
+            return new Rectangle(
+                unionLeft,
+                unionTop,
+                Math.Max(1, unionRight - unionLeft),
+                Math.Max(1, unionBottom - unionTop));
         }
 
         private static int ResolveFrameIndex(List<IDXObject> frames, int currentTime, int startTime)
@@ -3162,6 +3202,59 @@ namespace HaCreator.MapSimulator.Combat
             return targetMob?.AI != null && !targetMob.AI.IsDead
                 ? targetMob.GetBodyHitbox(currentTime)
                 : Rectangle.Empty;
+        }
+
+        internal static bool IntersectsAnyBodyHitbox(IReadOnlyList<Rectangle> bodyHitboxes, Rectangle hitbox)
+        {
+            if (bodyHitboxes == null || hitbox.IsEmpty)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < bodyHitboxes.Count; i++)
+            {
+                if (!bodyHitboxes[i].IsEmpty && bodyHitboxes[i].Intersects(hitbox))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static Rectangle SelectBestProjectileLaneBodyHitbox(
+            IReadOnlyList<Rectangle> bodyHitboxes,
+            Rectangle laneSearch,
+            Vector2 lanePosition,
+            bool sourceFacesRight)
+        {
+            if (bodyHitboxes == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            Rectangle bestHitbox = Rectangle.Empty;
+            float bestScore = float.MaxValue;
+            for (int i = 0; i < bodyHitboxes.Count; i++)
+            {
+                Rectangle bodyHitbox = bodyHitboxes[i];
+                if (bodyHitbox.IsEmpty || !IntersectsOrNear(laneSearch, bodyHitbox, 50f))
+                {
+                    continue;
+                }
+
+                Vector2 candidatePoint = ResolveProjectileDestinationPoint(bodyHitbox, lanePosition.Y, sourceFacesRight);
+                float candidateScore = ScoreLaneTarget(lanePosition, candidatePoint);
+                if (candidateScore >= bestScore)
+                {
+                    continue;
+                }
+
+                bestScore = candidateScore;
+                bestHitbox = bodyHitbox;
+            }
+
+            return bestHitbox;
         }
 
         private static bool TryGetLockedTargetAdmissionSource(MobItem sourceMob, MobAttackEntry attack, bool sourceFacesRight, out Vector2 sourcePoint)

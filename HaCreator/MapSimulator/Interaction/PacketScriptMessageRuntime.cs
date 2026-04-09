@@ -32,6 +32,7 @@ namespace HaCreator.MapSimulator.Interaction
             Func<int, NpcItem> findNpcById,
             NpcItem activeNpc,
             Func<long, PacketScriptPetSelectionCandidate> resolveSelectablePet,
+            Action<PacketScriptClientOwnerRuntimeSync> syncClientOwnerRuntime,
             out PacketScriptMessageOpenRequest request,
             out string message)
         {
@@ -75,6 +76,7 @@ namespace HaCreator.MapSimulator.Interaction
                 };
                 NpcInteractionEntry entry = decoded.Entry;
                 PacketScriptResponsePacket autoResponse = decoded.AutoResponse;
+                syncClientOwnerRuntime?.Invoke(decoded.ClientOwnerRuntimeSync);
 
                 if (stream.Position != stream.Length)
                 {
@@ -103,6 +105,7 @@ namespace HaCreator.MapSimulator.Interaction
                     new NpcInteractionState
                     {
                         NpcName = speaker.DisplayName,
+                        SpeakerTemplateId = speakerTemplateId,
                         Entries = new[] { entry },
                         SelectedEntryId = entry.EntryId,
                         PresentationStyle = NpcInteractionPresentationStyle.PacketScriptUtilDialog
@@ -116,7 +119,7 @@ namespace HaCreator.MapSimulator.Interaction
                     entry.Title,
                     messageType,
                     param,
-                    speaker.TemplateId,
+                    speakerTemplateId,
                     speaker.NpcId);
 
                 _statusMessage = $"Opened packet-authored script dialog: {entry.Title} for {speaker.DisplayName}.";
@@ -397,6 +400,7 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     result = CreateDecodedResult(
                         null,
+                        clientOwnerRuntimeSync: PacketScriptClientOwnerRuntimeSync.CreateClose(PacketScriptClientOwnerRuntimeKind.InitialQuiz),
                         closeExistingDialog: true,
                         statusMessage: $"Closed packet-authored quiz owner for {speaker.DisplayName}: client mode 1 destroys `CUIInitialQuiz`.");
                     return true;
@@ -433,7 +437,14 @@ namespace HaCreator.MapSimulator.Interaction
                         CreateNumericResponseChoice("OK", "OK", 1),
                         CreateNumericResponseChoice("Next", "Next", 2),
                         CreateNumericResponseChoice("Give Up", "Give Up", 0)
-                    }));
+                    }),
+                    clientOwnerRuntimeSync: PacketScriptClientOwnerRuntimeSync.CreateInitialQuiz(
+                        title,
+                        problemText,
+                        hintText,
+                        correctAnswer,
+                        questionNumber,
+                        remainingSeconds));
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)
@@ -484,6 +495,7 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     result = CreateDecodedResult(
                         null,
+                        clientOwnerRuntimeSync: PacketScriptClientOwnerRuntimeSync.CreateClose(PacketScriptClientOwnerRuntimeKind.SpeedQuiz),
                         closeExistingDialog: true,
                         statusMessage: $"Closed packet-authored speed-quiz owner for {speaker.DisplayName}: client mode 1 destroys `CUISpeedQuiz`.");
                     return true;
@@ -519,7 +531,13 @@ namespace HaCreator.MapSimulator.Interaction
                         CreateNumericResponseChoice("OK", "OK", 1),
                         CreateNumericResponseChoice("Next", "Next", 2),
                         CreateNumericResponseChoice("Give Up", "Give Up", 0)
-                    }));
+                    }),
+                    clientOwnerRuntimeSync: PacketScriptClientOwnerRuntimeSync.CreateSpeedQuiz(
+                        currentQuestion,
+                        totalQuestions,
+                        correctAnswers,
+                        remainingQuestions,
+                        remainingSeconds));
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)
@@ -861,9 +879,10 @@ namespace HaCreator.MapSimulator.Interaction
             PacketScriptResponsePacket autoResponse = null,
             bool closeExistingDialog = false,
             bool suppressDialogMutation = false,
-            string statusMessage = null)
+            string statusMessage = null,
+            PacketScriptClientOwnerRuntimeSync clientOwnerRuntimeSync = null)
         {
-            return new PacketScriptDecodeResult(entry, autoResponse, closeExistingDialog, suppressDialogMutation, statusMessage);
+            return new PacketScriptDecodeResult(entry, autoResponse, closeExistingDialog, suppressDialogMutation, statusMessage, clientOwnerRuntimeSync);
         }
 
         private static PacketScriptDecodeResult DecodeIgnoredUnsupportedMessage(BinaryReader reader, PacketScriptSpeaker speaker, int messageType, byte param)
@@ -1504,7 +1523,8 @@ namespace HaCreator.MapSimulator.Interaction
             PacketScriptResponsePacket AutoResponse = null,
             bool CloseExistingDialog = false,
             bool SuppressDialogMutation = false,
-            string StatusMessage = null);
+            string StatusMessage = null,
+            PacketScriptClientOwnerRuntimeSync ClientOwnerRuntimeSync = null);
         internal sealed record PacketScriptResponsePacket(
             int MessageType,
             byte Param,
@@ -1527,6 +1547,74 @@ namespace HaCreator.MapSimulator.Interaction
             public PacketScriptSpeaker WithOverrideTemplateId(int templateId)
             {
                 return this with { TemplateId = templateId };
+            }
+        }
+
+        internal enum PacketScriptClientOwnerRuntimeKind
+        {
+            InitialQuiz,
+            SpeedQuiz
+        }
+
+        internal sealed record PacketScriptClientOwnerRuntimeSync(
+            PacketScriptClientOwnerRuntimeKind Kind,
+            bool CloseExistingOwner,
+            string Title,
+            string ProblemText,
+            string HintText,
+            int CorrectAnswer,
+            int QuestionNumber,
+            int TotalQuestions,
+            int CorrectAnswers,
+            int RemainingQuestions,
+            int RemainingSeconds)
+        {
+            internal static PacketScriptClientOwnerRuntimeSync CreateClose(PacketScriptClientOwnerRuntimeKind kind)
+            {
+                return new PacketScriptClientOwnerRuntimeSync(kind, true, string.Empty, string.Empty, string.Empty, 0, 0, 0, 0, 0, 0);
+            }
+
+            internal static PacketScriptClientOwnerRuntimeSync CreateInitialQuiz(
+                string title,
+                string problemText,
+                string hintText,
+                int correctAnswer,
+                int questionNumber,
+                int remainingSeconds)
+            {
+                return new PacketScriptClientOwnerRuntimeSync(
+                    PacketScriptClientOwnerRuntimeKind.InitialQuiz,
+                    false,
+                    title ?? string.Empty,
+                    problemText ?? string.Empty,
+                    hintText ?? string.Empty,
+                    correctAnswer,
+                    questionNumber,
+                    0,
+                    0,
+                    0,
+                    Math.Max(0, remainingSeconds));
+            }
+
+            internal static PacketScriptClientOwnerRuntimeSync CreateSpeedQuiz(
+                int currentQuestion,
+                int totalQuestions,
+                int correctAnswers,
+                int remainingQuestions,
+                int remainingSeconds)
+            {
+                return new PacketScriptClientOwnerRuntimeSync(
+                    PacketScriptClientOwnerRuntimeKind.SpeedQuiz,
+                    false,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    0,
+                    currentQuestion,
+                    totalQuestions,
+                    correctAnswers,
+                    remainingQuestions,
+                    Math.Max(0, remainingSeconds));
             }
         }
     }

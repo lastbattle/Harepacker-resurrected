@@ -6,11 +6,21 @@ using System.Linq;
 using System.Text;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Managers;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 
 namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class PacketStageTransitionRuntime
     {
+        private static readonly InventoryType[] CharacterDataInventoryOrder =
+        {
+            InventoryType.EQUIP,
+            InventoryType.USE,
+            InventoryType.SETUP,
+            InventoryType.ETC,
+            InventoryType.CASH
+        };
+
         private int _boundMapId = int.MinValue;
         private string _stageStatus = "Packet-owned stage transition idle.";
         private string _mapLoadStatus = "Packet-owned map-load presentation idle.";
@@ -135,6 +145,8 @@ namespace HaCreator.MapSimulator.Interaction
             short subJob = 0,
             byte friendMax = 0,
             string linkedCharacterName = "",
+            int? meso = null,
+            IReadOnlyDictionary<InventoryType, int> inventorySlotLimits = null,
             int damageSeed1 = 0,
             int damageSeed2 = 0,
             int damageSeed3 = 0,
@@ -161,6 +173,16 @@ namespace HaCreator.MapSimulator.Interaction
             if (useCharacterDataDecodeLayout)
             {
                 ulong characterDataFlags = 0x1UL;
+                if (meso.HasValue)
+                {
+                    characterDataFlags |= 0x2UL;
+                }
+
+                if (inventorySlotLimits != null)
+                {
+                    characterDataFlags |= 0x80UL;
+                }
+
                 if (HasAnyAvatarLookEquipment(visibleEquipmentByBodyPart, hiddenEquipmentByBodyPart, weaponStickerItemId))
                 {
                     characterDataFlags |= 0x4UL;
@@ -198,6 +220,16 @@ namespace HaCreator.MapSimulator.Interaction
                     subJob,
                     friendMax,
                     linkedCharacterName);
+
+                if (meso.HasValue)
+                {
+                    writer.Write(meso.Value);
+                }
+
+                if (inventorySlotLimits != null)
+                {
+                    WriteCharacterDataInventorySlotLimits(writer, inventorySlotLimits);
+                }
 
                 if ((characterDataFlags & 0x4UL) != 0)
                 {
@@ -412,6 +444,19 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             writer.Write((short)0);
+        }
+
+        private static void WriteCharacterDataInventorySlotLimits(
+            BinaryWriter writer,
+            IReadOnlyDictionary<InventoryType, int> inventorySlotLimits)
+        {
+            foreach (InventoryType inventoryType in CharacterDataInventoryOrder)
+            {
+                int slotLimit = inventorySlotLimits != null && inventorySlotLimits.TryGetValue(inventoryType, out int configuredValue)
+                    ? configuredValue
+                    : 24;
+                writer.Write((byte)Math.Clamp(slotLimit, 0, byte.MaxValue));
+            }
         }
 
         private static void WriteCharacterDataEquipItem(BinaryWriter writer, int itemId)
@@ -903,6 +948,7 @@ namespace HaCreator.MapSimulator.Interaction
                     snapshot = decoratedSnapshot;
                 }
 
+                snapshot = DecodeCharacterDataOwnedPreludeSections(reader, characterDataFlags, snapshot);
                 if (TryDecodeCharacterDataAvatarLook(reader, characterDataFlags, snapshot, out PacketCharacterDataSnapshot avatarDecoratedSnapshot))
                 {
                     snapshot = avatarDecoratedSnapshot;
@@ -921,6 +967,47 @@ namespace HaCreator.MapSimulator.Interaction
                 consumedBytes = 0;
                 return false;
             }
+        }
+
+        private static PacketCharacterDataSnapshot DecodeCharacterDataOwnedPreludeSections(
+            BinaryReader reader,
+            ulong characterDataFlags,
+            PacketCharacterDataSnapshot snapshot)
+        {
+            if ((characterDataFlags & 0x2UL) != 0)
+            {
+                snapshot = snapshot with
+                {
+                    Meso = Math.Max(0, reader.ReadInt32())
+                };
+            }
+
+            if ((characterDataFlags & 0x80UL) != 0)
+            {
+                snapshot = snapshot with
+                {
+                    InventorySlotLimits = ReadCharacterDataInventorySlotLimits(reader)
+                };
+            }
+
+            if ((characterDataFlags & 0x100000UL) != 0)
+            {
+                _ = reader.ReadInt32();
+                _ = reader.ReadInt32();
+            }
+
+            return snapshot;
+        }
+
+        private static IReadOnlyDictionary<InventoryType, int> ReadCharacterDataInventorySlotLimits(BinaryReader reader)
+        {
+            Dictionary<InventoryType, int> slotLimits = new(CharacterDataInventoryOrder.Length);
+            foreach (InventoryType inventoryType in CharacterDataInventoryOrder)
+            {
+                slotLimits[inventoryType] = Math.Max(0, (int)reader.ReadByte());
+            }
+
+            return slotLimits;
         }
 
         private static bool TryDecodeCharacterDataAvatarLook(
@@ -1366,10 +1453,12 @@ namespace HaCreator.MapSimulator.Interaction
         int FieldId,
         byte PortalIndex,
         int PlayTime,
-        short SubJob,
-        byte FriendMax,
-        string LinkedCharacterName,
-        LoginAvatarLook AvatarLook = null);
+            short SubJob,
+            byte FriendMax,
+            string LinkedCharacterName,
+            int? Meso = null,
+            IReadOnlyDictionary<InventoryType, int> InventorySlotLimits = null,
+            LoginAvatarLook AvatarLook = null);
 
     internal readonly record struct PacketCharacterDataItemSlot(byte ItemType, int ItemId);
 

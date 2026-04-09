@@ -51,11 +51,14 @@ namespace HaCreator.MapSimulator.Interaction
         internal int ActiveMessageExpiresAt { get; private set; } = int.MinValue;
         internal int MessageSequenceId { get; private set; }
         internal string StatusMessage { get; private set; } = "Tutor runtime idle.";
+        internal IReadOnlyList<int> ClientTutorSkillIds => _clientTutorSkillIds;
+        internal bool HasClientTutorSkillSlots => _clientTutorSkillIds.Count > 0;
         internal IReadOnlyList<int> RegisteredTutorSkillIds => _registeredTutorVariants.ConvertAll(snapshot => snapshot.SkillId);
         internal IReadOnlyList<TutorVariantSnapshot> RegisteredTutorVariants => _registeredTutorVariants;
         internal bool HasRegisteredTutorVariants => _registeredTutorVariants.Count > 0;
         internal int RegisteredTutorVariantCount => _registeredTutorVariants.Count;
 
+        private readonly List<int> _clientTutorSkillIds = new();
         private readonly List<TutorVariantSnapshot> _registeredTutorVariants = new();
 
         internal bool HasVisibleMessage(int currentTick)
@@ -159,14 +162,14 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 LastRegistryMutationTick = currentTick;
                 StatusMessage = BoundCharacterId > 0
-                    ? $"Tutor runtime reset for runtime character {BoundCharacterId}."
-                    : "Tutor runtime reset.";
+                    ? $"Tutor runtime reset for runtime character {BoundCharacterId}. Client tutor slots preserved: {DescribeClientTutorSkillSlots()}."
+                    : $"Tutor runtime reset. Client tutor slots preserved: {DescribeClientTutorSkillSlots()}.";
                 return;
             }
 
             StatusMessage = BoundCharacterId > 0
-                ? $"Tutor runtime reset for runtime character {BoundCharacterId}; registered variants preserved: {DescribeActiveTutorVariants()}."
-                : $"Tutor runtime reset; registered variants preserved: {DescribeActiveTutorVariants()}.";
+                ? $"Tutor runtime reset for runtime character {BoundCharacterId}; client tutor slots preserved: {DescribeClientTutorSkillSlots()}; registered variants preserved: {DescribeActiveTutorVariants()}."
+                : $"Tutor runtime reset; client tutor slots preserved: {DescribeClientTutorSkillSlots()}; registered variants preserved: {DescribeActiveTutorVariants()}.";
         }
 
         internal void ResetActiveTutorForRuntimeCharacter(int runtimeCharacterId, int currentTick)
@@ -192,11 +195,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             StatusMessage = hadActor
                 ? BoundCharacterId > 0
-                    ? $"Tutor actor reset for runtime character {BoundCharacterId}; registered variants preserved: {DescribeActiveTutorVariants()}."
-                    : $"Tutor actor reset; registered variants preserved: {DescribeActiveTutorVariants()}."
+                    ? $"Tutor actor reset for runtime character {BoundCharacterId}; client tutor slots preserved: {DescribeClientTutorSkillSlots()}; registered variants preserved: {DescribeActiveTutorVariants()}."
+                    : $"Tutor actor reset; client tutor slots preserved: {DescribeClientTutorSkillSlots()}; registered variants preserved: {DescribeActiveTutorVariants()}."
                 : BoundCharacterId > 0
-                    ? $"Tutor actor already idle for runtime character {BoundCharacterId}; registered variants preserved: {DescribeActiveTutorVariants()}."
-                    : $"Tutor actor already idle; registered variants preserved: {DescribeActiveTutorVariants()}.";
+                    ? $"Tutor actor already idle for runtime character {BoundCharacterId}; client tutor slots preserved: {DescribeClientTutorSkillSlots()}; registered variants preserved: {DescribeActiveTutorVariants()}."
+                    : $"Tutor actor already idle; client tutor slots preserved: {DescribeClientTutorSkillSlots()}; registered variants preserved: {DescribeActiveTutorVariants()}.";
         }
 
         internal void ApplyHireRequest(int requestedSkillId, int actorHeight, int currentTick, int runtimeCharacterId)
@@ -205,6 +208,7 @@ namespace HaCreator.MapSimulator.Interaction
             int normalizedSkillId = NormalizeTutorSkillId(requestedSkillId);
             if (normalizedSkillId > 0)
             {
+                InsertClientTutorSkillSlot(normalizedSkillId);
                 UpsertRegisteredTutorVariant(
                     normalizedSkillId,
                     actorHeight,
@@ -238,6 +242,7 @@ namespace HaCreator.MapSimulator.Interaction
             bool hadActor = IsActive;
             if (normalizedSkillId > 0)
             {
+                RemoveClientTutorSkillSlot(normalizedSkillId);
                 UpsertRegisteredTutorVariant(
                     normalizedSkillId,
                     ActiveActorHeight,
@@ -263,6 +268,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal IReadOnlyList<int> SnapshotRegisteredTutorVariants()
         {
             return _registeredTutorVariants.ConvertAll(snapshot => snapshot.SkillId).ToArray();
+        }
+
+        internal IReadOnlyList<int> SnapshotClientTutorSkillSlots()
+        {
+            return _clientTutorSkillIds.ToArray();
         }
 
         internal void ApplyIndexedMessage(int index, int durationMs, int currentTick)
@@ -327,7 +337,23 @@ namespace HaCreator.MapSimulator.Interaction
                 return "none";
             }
 
-            return string.Join(", ", _registeredTutorVariants.ConvertAll(DescribeRegisteredTutorVariant));
+            return string.Join(", ", EnumerateRegisteredTutorVariantsInDisplayOrder());
+        }
+
+        internal string DescribeClientTutorSkillSlots()
+        {
+            if (_clientTutorSkillIds.Count == 0)
+            {
+                return "none";
+            }
+
+            List<string> slots = new(_clientTutorSkillIds.Count);
+            for (int i = 0; i < _clientTutorSkillIds.Count; i++)
+            {
+                slots.Add($"[{i}]={_clientTutorSkillIds[i]}");
+            }
+
+            return string.Join(", ", slots);
         }
 
         internal bool HasRegisteredTutorVariant(int skillId)
@@ -416,6 +442,51 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             LastRegistryMutationTick = currentTick;
+        }
+
+        private IEnumerable<string> EnumerateRegisteredTutorVariantsInDisplayOrder()
+        {
+            HashSet<int> emittedSkillIds = new();
+            for (int i = 0; i < _clientTutorSkillIds.Count; i++)
+            {
+                int slotSkillId = _clientTutorSkillIds[i];
+                int variantIndex = FindRegisteredTutorVariantIndex(slotSkillId);
+                if (variantIndex < 0 || !emittedSkillIds.Add(slotSkillId))
+                {
+                    continue;
+                }
+
+                yield return DescribeRegisteredTutorVariant(_registeredTutorVariants[variantIndex]);
+            }
+
+            for (int i = 0; i < _registeredTutorVariants.Count; i++)
+            {
+                TutorVariantSnapshot variant = _registeredTutorVariants[i];
+                if (emittedSkillIds.Add(variant.SkillId))
+                {
+                    yield return DescribeRegisteredTutorVariant(variant);
+                }
+            }
+        }
+
+        private void InsertClientTutorSkillSlot(int skillId)
+        {
+            if (skillId <= 0 || _clientTutorSkillIds.Contains(skillId))
+            {
+                return;
+            }
+
+            _clientTutorSkillIds.Add(skillId);
+        }
+
+        private void RemoveClientTutorSkillSlot(int skillId)
+        {
+            if (skillId <= 0)
+            {
+                return;
+            }
+
+            _clientTutorSkillIds.Remove(skillId);
         }
 
         private static int ResolveFallbackActorHeight(int skillId)

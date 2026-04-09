@@ -55,7 +55,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsOnline => true;
     }
 
-    internal readonly record struct MessengerInviteResultPacket(string ContactName, bool Accepted);
+    internal readonly record struct MessengerInviteResultPacket(string ContactName, bool InviteSent);
 
     internal readonly record struct MessengerLeaveSlotPacket(int SlotIndex);
 
@@ -109,7 +109,22 @@ namespace HaCreator.MapSimulator.Interaction
             try
             {
                 PacketReader reader = new(payload);
-                string contactName = reader.ReadString8();
+                string contactName = reader.ReadString16();
+                if (reader.HasRemaining)
+                {
+                    reader.ReadByte();
+                }
+
+                if (reader.HasRemaining)
+                {
+                    reader.ReadInt32();
+                }
+
+                if (reader.HasRemaining)
+                {
+                    reader.ReadByte();
+                }
+
                 if (string.IsNullOrWhiteSpace(contactName))
                 {
                     error = "Messenger invite packet contact name is empty.";
@@ -309,15 +324,15 @@ namespace HaCreator.MapSimulator.Interaction
             try
             {
                 PacketReader reader = new(payload);
-                string contactName = reader.ReadString8();
-                bool accepted = reader.ReadByte() != 0;
+                string contactName = reader.ReadString16();
+                bool inviteSent = reader.ReadByte() != 0;
                 if (string.IsNullOrWhiteSpace(contactName))
                 {
                     error = "Messenger invite-result packet contact name is empty.";
                     return false;
                 }
 
-                packet = new MessengerInviteResultPacket(contactName.Trim(), accepted);
+                packet = new MessengerInviteResultPacket(contactName.Trim(), inviteSent);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -501,6 +516,8 @@ namespace HaCreator.MapSimulator.Interaction
                 _payload = payload;
                 _offset = 0;
             }
+
+            public bool HasRemaining => _offset < _payload.Length;
 
             public byte ReadByte()
             {

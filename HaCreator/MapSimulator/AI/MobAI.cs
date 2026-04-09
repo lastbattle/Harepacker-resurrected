@@ -330,6 +330,7 @@ namespace HaCreator.MapSimulator.AI
         private int _skillForbidUntil = 0;
         private bool _actionAnimationCompleted;
         private int _actionRecoveryUntil;
+        private Func<MobSkillEntry, int, bool> _autoSkillSelectionEvaluator;
 
         // Stats
         private int _maxHp = 100;
@@ -569,6 +570,11 @@ namespace HaCreator.MapSimulator.AI
                 Range = range,
                 Cooldown = cooldown
             });
+        }
+
+        public void SetAutoSkillSelectionEvaluator(Func<MobSkillEntry, int, bool> evaluator)
+        {
+            _autoSkillSelectionEvaluator = evaluator;
         }
         #endregion
 
@@ -1566,6 +1572,24 @@ namespace HaCreator.MapSimulator.AI
             return cleared;
         }
 
+        public bool HasNegativeStatusEffects()
+        {
+            if (_statusEntries.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (KeyValuePair<MobStatusEffect, MobStatusEntry> pair in _statusEntries)
+            {
+                if (IsNegativeStatusEffect(pair.Key, pair.Value))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         public int ClearPositiveStatusEffects()
         {
             if (_statusEntries.Count == 0)
@@ -2046,7 +2070,12 @@ namespace HaCreator.MapSimulator.AI
                 return false;
             }
 
-            return IsSkillPrerequisiteSatisfied(skill);
+            if (!IsSkillPrerequisiteSatisfied(skill))
+            {
+                return false;
+            }
+
+            return _autoSkillSelectionEvaluator?.Invoke(skill, currentTick) != false;
         }
 
         private bool IsSkillPrerequisiteSatisfied(MobSkillEntry skill)

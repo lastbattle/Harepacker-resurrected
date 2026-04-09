@@ -91,31 +91,34 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Dictionary<int, VegaModifierProfile> VegaModifierProfileCache = new Dictionary<int, VegaModifierProfile>();
         private static readonly Dictionary<int, VegaCompatibleScrollProfile> VegaCompatibleScrollProfileCache = new Dictionary<int, VegaCompatibleScrollProfile>();
         private static readonly Dictionary<int, IReadOnlyCollection<EquipSlot>> ScrollTargetSlotCache = new Dictionary<int, IReadOnlyCollection<EquipSlot>>();
-        private static readonly Regex PercentRateRegex = new Regex(@"Success\s*rate\s*:\s*(\d+)\s*%", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex PercentRateRegex = new Regex(@"Success\s*rate\s*:?\s*(\d+)\s*%", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex VegaModifierRegex = new Regex(@"enables\s+a\s+(\d+)\s*%\s+success\s+rate\s+on\s+a\s+(\d+)\s*%\s+scroll", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex ScrollTargetRegex = new Regex(@"Scroll\s+for\s+(.+?)\s+for\s", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex PercentChanceRegex = new Regex(@"(\d+)\s*%\s+chance", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex WeaponAttackBonusRegex = new Regex(@"(?:Weapon\s+Attack|(?<![A-Za-z.])ATT(?![A-Za-z]))\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex MagicAttackBonusRegex = new Regex(@"(?:Magic\s+Attack|M\.?\s*ATT)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex WeaponDefenseBonusRegex = new Regex(@"(?:Weapon\s+Defense|(?<![A-Za-z.])DEF(?![A-Za-z]))\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex MagicDefenseBonusRegex = new Regex(@"(?:Magic\s+Defense|M\.?\s*DEF)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex StrengthBonusRegex = new Regex(@"(?<![A-Za-z])STR\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex DexterityBonusRegex = new Regex(@"(?<![A-Za-z])DEX\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex IntelligenceBonusRegex = new Regex(@"(?<![A-Za-z])INT\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex LuckBonusRegex = new Regex(@"(?<![A-Za-z])LUK\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex MaxHpBonusRegex = new Regex(@"(?:Max\s*HP|HP)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex MaxMpBonusRegex = new Regex(@"(?:Max\s*MP|MP)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex AccuracyBonusRegex = new Regex(@"(?:Accuracy|ACC)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex AvoidabilityBonusRegex = new Regex(@"(?:Avoidability|Avoid)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex SpeedBonusRegex = new Regex(@"Speed\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex JumpBonusRegex = new Regex(@"Jump\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex HandsBonusRegex = new Regex(@"(?:Diligence|Hands|Craft)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex AllStatsBonusRegex = new Regex(@"All\s+stats?\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex WeaponMagicAttackBonusRegex = new Regex(@"(?:Weapon|Physical)\s*(?:\/|&|and)\s*(?:Magic|M\.?\s*)\s*(?:ATT|Attack)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex WeaponMagicDefenseBonusRegex = new Regex(@"(?:Weapon|Physical)\s*(?:\/|&|and)\s*(?:Magic|M\.?\s*)\s*(?:DEF|Defense)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex AccuracyAvoidabilityBonusRegex = new Regex(@"Accuracy\s*(?:\/|&|and)\s*(?:Avoidability|Aviodability|Avoid)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex HpMpBonusRegex = new Regex(@"(?:Max\s*)?HP\s*(?:\/|&|and)\s*(?:Max\s*)?MP\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex SpeedJumpBonusRegex = new Regex(@"(?:Movement\s+)?Speed\s*(?:\/|&|and)\s*Jump\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex DestroyChanceRegex = new Regex(@"(?:chance\s+of\s+being\s+destroyed|destroyed\s+in\s+a)\s*(\d+)\s*%\s*(?:rate)?|(\d+)\s*%\s+chance\s+of\s+being\s+destroyed", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex CompleteDestroyRegex = new Regex(@"(?:if\s+(?:it\s+)?fails?|upon\s+failure).*completely\s+destroyed", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex WeaponAttackBonusRegex = new Regex(@"(?:Weapon\s+Attack|Physical\s+Attack(?:\s+Power)?|Attack\s+Power|(?<![A-Za-z.])ATT(?![A-Za-z]))(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex MagicAttackBonusRegex = new Regex(@"(?:Magic(?:al)?\s+Attack(?:\s+Power)?|Magical\s+Power|Magic\s+Power|M\.?\s*ATT)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex WeaponDefenseBonusRegex = new Regex(@"(?:Weapon\s+Defense|Physical\s+Defense|Weapon\s+Def(?:ense)?|PDD|(?<![A-Za-z.])DEF(?![A-Za-z]))(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex MagicDefenseBonusRegex = new Regex(@"(?:Magic(?:al)?\s+Defense|Magic\s+Def(?:ense)?|M\.?\s*DEF|MDD)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex StrengthBonusRegex = new Regex(@"(?:STR|Strength)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex DexterityBonusRegex = new Regex(@"(?:DEX|Dexterity)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex IntelligenceBonusRegex = new Regex(@"(?:INT|Intelligence)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex LuckBonusRegex = new Regex(@"(?:LUK|Luck)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex MaxHpBonusRegex = new Regex(@"(?:Max\s*HP|HP)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex MaxMpBonusRegex = new Regex(@"(?:Max\s*MP|MP)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex AccuracyBonusRegex = new Regex(@"(?:Accuracy|ACC)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex AvoidabilityBonusRegex = new Regex(@"(?:Avoidability|Aviodability|Avoid)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex SpeedBonusRegex = new Regex(@"(?:Movement\s+)?Speed(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex JumpBonusRegex = new Regex(@"Jump(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex HandsBonusRegex = new Regex(@"(?:Diligence|Hands|Craft)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex AllStatsBonusRegex = new Regex(@"All\s+stats?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex FourStatBonusRegex = new Regex(@"STR\s*\/\s*INT\s*\/\s*DEX\s*\/\s*LUK\s*(?:\+\s*(\d+)|by\s*(\d+))", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex WeaponMagicAttackBonusRegex = new Regex(@"(?:Weapon|Physical)\s*(?:\/|&|and)\s*(?:Magic|M\.?\s*)\s*(?:ATT|Attack)\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex WeaponMagicDefenseBonusRegex = new Regex(@"(?:Weapon|Physical|PDD)\s*(?:\/|&|and)\s*(?:Magic|Magical|M\.?\s*|MDD)\s*(?:DEF|Defense)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex AccuracyAvoidabilityBonusRegex = new Regex(@"Accuracy\s*(?:\/|&|and)\s*(?:Avoidability|Aviodability|Avoid)\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex HpMpBonusRegex = new Regex(@"(?:Max\s*)?HP\s*(?:\/|&|and)\s*(?:Max\s*)?MP\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex SpeedJumpBonusRegex = new Regex(@"(?:Movement\s+)?Speed\s*(?:\/|&|and)\s*Jump\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly IReadOnlyDictionary<int, EnhancementConsumableDefinition> ConsumableDefinitions =
             new Dictionary<int, EnhancementConsumableDefinition>
             {
@@ -2851,7 +2854,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            destroyChance = ResolveDestroyChanceFromWzInfo(info);
+            destroyChance = ResolveDestroyChanceFromWzInfo(info, description);
             statDeltaProfile = ResolveAuthoredStatDeltaProfile(info, description);
             if (statDeltaProfile.IsEmpty &&
                 !TryGetScrollTargetSlots(itemId, out IReadOnlyCollection<EquipSlot> targetSlots))
@@ -2878,10 +2881,39 @@ namespace HaCreator.MapSimulator.UI
             return MathHelper.Clamp(success / 100f, 0f, 1.0f);
         }
 
-        private static float ResolveDestroyChanceFromWzInfo(WzSubProperty info)
+        private static float ResolveDestroyChanceFromWzInfo(WzSubProperty info, string description)
         {
             int cursed = ResolveWzInfoIntValue(info, "cursed");
+            if (cursed <= 0)
+            {
+                cursed = ResolveDestroyChanceFromDescription(description);
+            }
+
             return MathHelper.Clamp(cursed / 100f, 0f, 1.0f);
+        }
+
+        private static int ResolveDestroyChanceFromDescription(string description)
+        {
+            if (string.IsNullOrWhiteSpace(description))
+            {
+                return 0;
+            }
+
+            Match match = DestroyChanceRegex.Match(description);
+            if (match.Success)
+            {
+                foreach (Group group in match.Groups.Cast<Group>().Skip(1))
+                {
+                    if (group.Success && int.TryParse(group.Value, out int percent))
+                    {
+                        return Math.Clamp(percent, 0, 100);
+                    }
+                }
+            }
+
+            return CompleteDestroyRegex.IsMatch(description)
+                ? 100
+                : 0;
         }
 
         private static int ResolveWzInfoIntValue(WzSubProperty info, string propertyName)
@@ -3264,20 +3296,22 @@ namespace HaCreator.MapSimulator.UI
         private static AuthoredStatDeltaProfile ResolveSharedDescriptionStatDeltas(string description)
         {
             int allStats = ResolveDescriptionBonus(description, AllStatsBonusRegex);
+            int fourStats = ResolveDescriptionBonus(description, FourStatBonusRegex);
             int weaponAndMagicAttack = ResolveDescriptionBonus(description, WeaponMagicAttackBonusRegex);
             int weaponAndMagicDefense = ResolveDescriptionBonus(description, WeaponMagicDefenseBonusRegex);
             int accuracyAndAvoidability = ResolveDescriptionBonus(description, AccuracyAvoidabilityBonusRegex);
             int hpAndMp = ResolveDescriptionBonus(description, HpMpBonusRegex);
             int speedAndJump = ResolveDescriptionBonus(description, SpeedJumpBonusRegex);
+            int sharedAllStats = Math.Max(allStats, fourStats);
             return new AuthoredStatDeltaProfile(
                 weaponAndMagicAttack,
                 weaponAndMagicAttack,
                 weaponAndMagicDefense,
                 weaponAndMagicDefense,
-                allStats,
-                allStats,
-                allStats,
-                allStats,
+                sharedAllStats,
+                sharedAllStats,
+                sharedAllStats,
+                sharedAllStats,
                 hpAndMp,
                 hpAndMp,
                 accuracyAndAvoidability,
@@ -3320,9 +3354,20 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Match match = regex.Match(description);
-            return match.Success && int.TryParse(match.Groups[1].Value, out int value)
-                ? Math.Max(0, value)
-                : 0;
+            if (!match.Success)
+            {
+                return 0;
+            }
+
+            foreach (Group group in match.Groups.Cast<Group>().Skip(1))
+            {
+                if (group.Success && int.TryParse(group.Value, out int value))
+                {
+                    return Math.Max(0, value);
+                }
+            }
+
+            return 0;
         }
 
         private static string BuildAuthoredStatSummary(AuthoredStatDeltaProfile statDeltaProfile, int multiplier)
@@ -3614,6 +3659,11 @@ namespace HaCreator.MapSimulator.UI
             return ResolveAuthoredStatDeltaProfile(description);
         }
 
+        internal static float ResolveDestroyChanceFromDescriptionForTesting(string description)
+        {
+            return MathHelper.Clamp(ResolveDestroyChanceFromDescription(description) / 100f, 0f, 1.0f);
+        }
+
         // For Vega-marked scrolls, the authored item name is the stronger target-family signal when it disagrees with the description text.
         private static HashSet<EquipSlot> ResolveTargetSlotsFromText(string text)
         {
@@ -3635,7 +3685,19 @@ namespace HaCreator.MapSimulator.UI
                 targetSlots.Add(EquipSlot.FaceAccessory);
             }
 
+            if (normalized.IndexOf("face eqp", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("face equipment", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.FaceAccessory);
+            }
+
             if (normalized.IndexOf("eye accessory", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.EyeAccessory);
+            }
+
+            if (normalized.IndexOf("eye eqp", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("eye equipment", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 targetSlots.Add(EquipSlot.EyeAccessory);
             }

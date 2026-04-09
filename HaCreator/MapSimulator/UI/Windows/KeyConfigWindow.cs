@@ -512,6 +512,8 @@ namespace HaCreator.MapSimulator.UI
                 footerBounds.Y + padding,
                 footerBounds.Right - infoBounds.Right - (padding * 2),
                 footerBounds.Height - (padding * 2));
+            int selectedPaletteIndex = GetSelectedPaletteIndex();
+            Texture2D selectedPaletteTexture = GetSelectedPaletteTexture(selectedPaletteIndex);
 
             sprite.Draw(_highlightTexture, footerBounds, new Color(20, 25, 37, 225));
             sprite.Draw(_highlightTexture, infoBounds, new Color(36, 46, 62, 220));
@@ -532,6 +534,21 @@ namespace HaCreator.MapSimulator.UI
 
             if (_selectedAction.HasValue)
             {
+                Rectangle previewBounds = new(infoBounds.X + 6, infoBounds.Y + 49, 40, 40);
+                sprite.Draw(_highlightTexture, previewBounds, new Color(56, 68, 92, 215));
+                if (selectedPaletteTexture != null)
+                {
+                    Vector2 previewPosition = new(
+                        previewBounds.Center.X - (selectedPaletteTexture.Width * 0.55f * 0.5f),
+                        previewBounds.Center.Y - (selectedPaletteTexture.Height * 0.55f * 0.5f));
+                    sprite.Draw(selectedPaletteTexture, previewPosition, null, Color.White, 0f, Vector2.Zero, 0.55f, SpriteEffects.None, 0f);
+                }
+
+                string paletteSlotText = selectedPaletteIndex >= 0
+                    ? $"Palette slot {selectedPaletteIndex}"
+                    : "No WZ slot mapped";
+                sprite.DrawString(_font, paletteSlotText, new Vector2(previewBounds.Right + 8, previewBounds.Y + 4), new Color(220, 220, 220), 0f, Vector2.Zero, 0.34f, SpriteEffects.None, 0f);
+
                 Rectangle bindingBounds = new(infoBounds.X + 6, infoBounds.Bottom - 28, infoBounds.Width - 12, 22);
                 sprite.Draw(_highlightTexture, bindingBounds, new Color(56, 68, 92, 215));
                 DrawBindingValue(sprite, bindingBounds, GetBinding(_selectedAction.Value));
@@ -562,12 +579,45 @@ namespace HaCreator.MapSimulator.UI
                     iconOriginY + (row * iconCell) - 1,
                     iconCell,
                     iconCell);
-                sprite.Draw(_highlightTexture, cellBounds, _selectedAction.HasValue ? new Color(52, 62, 86, 180) : new Color(34, 40, 58, 160));
+                bool selectedIcon = i == selectedPaletteIndex;
+                sprite.Draw(
+                    _highlightTexture,
+                    cellBounds,
+                    selectedIcon
+                        ? new Color(232, 194, 102, 220)
+                        : _selectedAction.HasValue
+                            ? new Color(52, 62, 86, 180)
+                            : new Color(34, 40, 58, 160));
                 Vector2 iconPosition = new(
                     iconOriginX + (column * iconCell),
                     iconOriginY + (row * iconCell));
                 sprite.Draw(texture, iconPosition, null, Color.White, 0f, Vector2.Zero, iconScale, SpriteEffects.None, 0f);
             }
+        }
+
+        private int GetSelectedPaletteIndex()
+        {
+            if (!_selectedAction.HasValue || _page != KeyConfigPage.Main)
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < _bindingRows.Count; i++)
+            {
+                if (_bindingRows[i].Action == _selectedAction.Value)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private Texture2D GetSelectedPaletteTexture(int paletteIndex)
+        {
+            return paletteIndex >= 0 && paletteIndex < _paletteTextures.Count
+                ? _paletteTextures[paletteIndex]
+                : null;
         }
 
         private Texture2D GetStatusNoticeTexture()

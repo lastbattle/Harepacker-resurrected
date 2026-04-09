@@ -84,6 +84,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class NpcInteractionState
     {
         public string NpcName { get; init; } = "NPC";
+        public int SpeakerTemplateId { get; init; }
         public IReadOnlyList<NpcInteractionEntry> Entries { get; init; } = Array.Empty<NpcInteractionEntry>();
         public int SelectedEntryId { get; init; }
         public NpcInteractionPresentationStyle PresentationStyle { get; init; }

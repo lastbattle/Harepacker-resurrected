@@ -2193,7 +2193,8 @@ namespace HaCreator.MapSimulator.Pools
             int currentTime,
             int localCharacterId,
             Func<PacketDropLeaveReason, RemoteDropLeavePacket, string> actorNameResolver = null,
-            Func<PacketDropLeaveReason, RemoteDropLeavePacket, Vector2?> actorPositionResolver = null)
+            Func<PacketDropLeaveReason, RemoteDropLeavePacket, Vector2?> actorPositionResolver = null,
+            Func<RemoteDropLeavePacket, int> petPickupActorIdResolver = null)
         {
             if (!_dropById.TryGetValue(packet.DropId, out DropItem drop))
             {
@@ -2244,7 +2245,7 @@ namespace HaCreator.MapSimulator.Pools
                 case PacketDropLeaveReason.PetPickup:
                     if (packet.ActorId == localCharacterId)
                     {
-                        int localPetId = packet.SecondaryActorId != 0 ? packet.SecondaryActorId : packet.ActorId;
+                        int localPetId = petPickupActorIdResolver?.Invoke(packet) ?? packet.ActorId;
                         return CompletePickup(
                             drop,
                             localPetId,
@@ -2255,9 +2256,10 @@ namespace HaCreator.MapSimulator.Pools
                             pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet));
                     }
 
+                    int remotePetActorId = petPickupActorIdResolver?.Invoke(packet) ?? packet.ActorId;
                     return ResolveRemotePickup(
                         drop,
-                        packet.SecondaryActorId != 0 ? packet.SecondaryActorId : packet.ActorId,
+                        remotePetActorId,
                         currentTime,
                         DropPickupActorKind.Pet,
                         actorNameResolver?.Invoke(packet.Reason, packet),

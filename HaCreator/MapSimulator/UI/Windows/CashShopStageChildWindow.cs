@@ -81,11 +81,14 @@ namespace HaCreator.MapSimulator.UI
             public int SelectorCount { get; init; } = 2;
             public int SelectorStartX { get; init; } = 2;
             public int SelectorStartY { get; init; } = 2;
+            public string TodaySelectorLabel { get; init; } = "Today";
+            public string PreviousSelectorLabel { get; init; } = "Previous";
             public bool HasKeyFocusCanvas { get; init; }
             public bool HasPlateCanvas { get; init; }
             public bool HasPlateBigCanvas { get; init; }
             public int NumberCanvasCount { get; init; }
             public int PlateCount { get; init; } = 3;
+            public int PreviousOfferCount { get; init; } = 10;
             public string PlateCanvasBaseName { get; init; } = "NoItem";
             public string ShortcutHelpCanvasName { get; init; } = "ShortcutHelp";
             public int Hour { get; init; }
@@ -575,9 +578,21 @@ namespace HaCreator.MapSimulator.UI
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
             lineY += _font.LineSpacing;
+            string todayLabel = string.IsNullOrWhiteSpace(state.TodaySelectorLabel) ? "Today" : state.TodaySelectorLabel.Trim();
+            string previousLabel = string.IsNullOrWhiteSpace(state.PreviousSelectorLabel) ? "Previous" : state.PreviousSelectorLabel.Trim();
             sprite.DrawString(
                 _font,
-                $"Selector {_oneADaySelectorIndex.ToString(CultureInfo.InvariantCulture)}/{Math.Max(0, state.SelectorCount - 1).ToString(CultureInfo.InvariantCulture)} @ {state.SelectorStartX.ToString(CultureInfo.InvariantCulture)},{state.SelectorStartY.ToString(CultureInfo.InvariantCulture)}  Plate {ResolveOneADayPlateName(state)}",
+                $"Selector {(_oneADaySelectorIndex == 0 ? ">" : " ")} {todayLabel}  {(_oneADaySelectorIndex == 1 ? ">" : " ")} {previousLabel}  @ {state.SelectorStartX.ToString(CultureInfo.InvariantCulture)},{state.SelectorStartY.ToString(CultureInfo.InvariantCulture)}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                accentColor);
+            lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                _oneADayShortcutHelpActive
+                    ? $"Shortcut surface {ResolveOneADayPlateName(state)} is active beside the reward owner."
+                    : _oneADaySelectorIndex == 0
+                        ? $"Current reward plate {ResolveOneADayPlateName(state)}  Pending {(state.IsPending ? "yes" : "no")}"
+                        : $"Previous slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)}/{Math.Max(0, state.PreviousOfferCount - 1).ToString(CultureInfo.InvariantCulture)}  Buy lane armed from the recovered 10-slot history.",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 accentColor);
             lineY += _font.LineSpacing;
@@ -813,7 +828,15 @@ namespace HaCreator.MapSimulator.UI
             SyncOneADayOwnerState();
             if (wheelDelta != 0)
             {
-                StepOneADayPlate(state, wheelDelta > 0 ? -1 : 1);
+                if (_oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive)
+                {
+                    StepOneADayPreviousOffer(state, wheelDelta > 0 ? -1 : 1);
+                }
+                else
+                {
+                    StepOneADayPlate(state, wheelDelta > 0 ? -1 : 1);
+                }
+
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
                 return true;
             }
@@ -834,10 +857,14 @@ namespace HaCreator.MapSimulator.UI
             {
                 SelectOneADaySelector(mouseState.X < rowsBounds.Center.X ? 0 : 1, state);
             }
+            else if (_oneADayShortcutHelpActive)
+            {
+                ApplyOneADayButtonState("BtClose");
+                ApplyStatusMessage(InvokeExternalAction("BtClose"));
+            }
             else if (_oneADaySelectorIndex == 1)
             {
-                ApplyOneADayButtonState("BtShortcut");
-                ApplyStatusMessage(InvokeExternalAction("BtShortcut"));
+                SelectOneADayPreviousOfferFromMouse(state, rowsBounds, mouseState.Position);
             }
             else
             {
@@ -959,24 +986,24 @@ namespace HaCreator.MapSimulator.UI
             switch (actionKey)
             {
                 case "BtJoin":
-                    SelectOneADaySelector(0, state);
-                    if (!_oneADayPending)
+                    _oneADayShortcutHelpActive = false;
+                    if (_oneADaySelectorIndex == 1)
                     {
-                        _oneADaySessionState = "CCSWnd_OneADay kept the selector on the join owner but no packet-armed reward session is pending.";
+                        _oneADaySessionState = $"CCSWnd_OneADay routed previous reward slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)} through the recovered previous-item purchase lane.";
                         break;
                     }
 
-                    _oneADayShortcutHelpActive = false;
-                    _oneADaySessionState = "CCSWnd_OneADay joined the packet-armed reward session and kept the plate owner on NoItem.";
+                    SelectOneADaySelector(0, state);
+                    _oneADaySessionState = !_oneADayPending
+                        ? "CCSWnd_OneADay kept the Today selector active but no packet-armed reward session is pending."
+                        : "CCSWnd_OneADay routed the Today selector through the packet-armed purchase lane.";
                     break;
                 case "BtShortcut":
-                    SelectOneADaySelector(1, state);
                     _oneADayShortcutHelpActive = true;
-                    _oneADaySessionState = "CCSWnd_OneADay switched from the reward plate to the ShortcutHelp owner canvas.";
+                    _oneADaySessionState = $"CCSWnd_OneADay opened the dedicated {ResolveOneADayPlateName(state)} help surface without leaving the current selector lane.";
                     break;
                 case "BtClose":
                     _oneADayShortcutHelpActive = false;
-                    _oneADaySelectorIndex = 0;
                     _oneADaySessionState = "CCSWnd_OneADay dismissed the current reward preview while keeping the owner shell alive.";
                     break;
             }
@@ -1157,37 +1184,89 @@ namespace HaCreator.MapSimulator.UI
             }
             else if (WasPressed(keyboardState, Keys.Left))
             {
-                StepOneADayPlate(state, -1);
+                if (_oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive)
+                {
+                    StepOneADayPreviousOffer(state, -1);
+                }
+                else
+                {
+                    StepOneADayPlate(state, -1);
+                }
             }
             else if (WasPressed(keyboardState, Keys.Right))
             {
-                StepOneADayPlate(state, 1);
+                if (_oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive)
+                {
+                    StepOneADayPreviousOffer(state, 1);
+                }
+                else
+                {
+                    StepOneADayPlate(state, 1);
+                }
             }
             else if (WasPressed(keyboardState, Keys.PageUp))
             {
-                StepOneADayPlate(state, -1);
+                if (_oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive)
+                {
+                    StepOneADayPreviousOffer(state, -5);
+                }
+                else
+                {
+                    StepOneADayPlate(state, -1);
+                }
             }
             else if (WasPressed(keyboardState, Keys.PageDown))
             {
-                StepOneADayPlate(state, 1);
+                if (_oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive)
+                {
+                    StepOneADayPreviousOffer(state, 5);
+                }
+                else
+                {
+                    StepOneADayPlate(state, 1);
+                }
             }
             else if (WasPressed(keyboardState, Keys.Home))
             {
-                _oneADayShortcutHelpActive = false;
-                _oneADayPlateFocusIndex = 0;
-                _oneADaySessionState = $"CCSWnd_OneADay snapped the plate owner back to {ResolveOneADayPlateName(state)}.";
+                if (_oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive)
+                {
+                    _oneADayPlateFocusIndex = 0;
+                    _oneADaySessionState = "CCSWnd_OneADay snapped the previous-item selector back to the first recovered history slot.";
+                }
+                else
+                {
+                    _oneADayShortcutHelpActive = false;
+                    _oneADayPlateFocusIndex = 0;
+                    _oneADaySessionState = $"CCSWnd_OneADay snapped the plate owner back to {ResolveOneADayPlateName(state)}.";
+                }
+
                 _statusMessage = _oneADaySessionState;
             }
             else if (WasPressed(keyboardState, Keys.End))
             {
-                _oneADayShortcutHelpActive = false;
-                _oneADayPlateFocusIndex = Math.Max(0, state.PlateCount - 1);
-                _oneADaySessionState = $"CCSWnd_OneADay advanced the plate owner to {ResolveOneADayPlateName(state)}.";
+                if (_oneADaySelectorIndex == 1 && !_oneADayShortcutHelpActive)
+                {
+                    _oneADayPlateFocusIndex = Math.Max(0, state.PreviousOfferCount - 1);
+                    _oneADaySessionState = "CCSWnd_OneADay advanced the previous-item selector to the last recovered history slot.";
+                }
+                else
+                {
+                    _oneADayShortcutHelpActive = false;
+                    _oneADayPlateFocusIndex = Math.Max(0, state.PlateCount - 1);
+                    _oneADaySessionState = $"CCSWnd_OneADay advanced the plate owner to {ResolveOneADayPlateName(state)}.";
+                }
+
                 _statusMessage = _oneADaySessionState;
             }
             else if (WasPressed(keyboardState, Keys.Enter))
             {
-                string actionKey = _oneADaySelectorIndex == 0 ? "BtJoin" : "BtShortcut";
+                string actionKey = "BtJoin";
+                ApplyOneADayButtonState(actionKey);
+                ApplyStatusMessage(InvokeExternalAction(actionKey));
+            }
+            else if (WasPressed(keyboardState, Keys.F1))
+            {
+                string actionKey = _oneADayShortcutHelpActive ? "BtClose" : "BtShortcut";
                 ApplyOneADayButtonState(actionKey);
                 ApplyStatusMessage(InvokeExternalAction(actionKey));
             }
@@ -1276,14 +1355,50 @@ namespace HaCreator.MapSimulator.UI
             _statusMessage = _oneADaySessionState;
         }
 
+        private void StepOneADayPreviousOffer(OneADayOwnerState state, int delta)
+        {
+            if (state == null)
+            {
+                return;
+            }
+
+            int previousOfferCount = Math.Max(1, state.PreviousOfferCount);
+            int step = delta == 0 ? 0 : Math.Sign(delta);
+            if (Math.Abs(delta) >= 5)
+            {
+                _oneADayPlateFocusIndex = Math.Clamp(_oneADayPlateFocusIndex + delta, 0, previousOfferCount - 1);
+            }
+            else
+            {
+                _oneADayPlateFocusIndex = (_oneADayPlateFocusIndex + previousOfferCount + step) % previousOfferCount;
+            }
+
+            _oneADaySessionState = $"CCSWnd_OneADay moved the previous-item selector to slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)} of {Math.Max(0, previousOfferCount - 1).ToString(CultureInfo.InvariantCulture)}.";
+            _statusMessage = _oneADaySessionState;
+        }
+
+        private void SelectOneADayPreviousOfferFromMouse(OneADayOwnerState state, Rectangle rowsBounds, Point mousePosition)
+        {
+            int previousOfferCount = Math.Max(1, state?.PreviousOfferCount ?? 10);
+            int columns = Math.Min(5, previousOfferCount);
+            int rows = Math.Max(1, (int)Math.Ceiling(previousOfferCount / (double)columns));
+            int rowHeight = Math.Max(18, rowsBounds.Height / rows);
+            int columnWidth = Math.Max(18, rowsBounds.Width / columns);
+            int columnIndex = Math.Clamp((mousePosition.X - rowsBounds.X) / columnWidth, 0, columns - 1);
+            int rowIndex = Math.Clamp((mousePosition.Y - rowsBounds.Y) / rowHeight, 0, rows - 1);
+            int offerIndex = Math.Clamp((rowIndex * columns) + columnIndex, 0, previousOfferCount - 1);
+            _oneADayPlateFocusIndex = offerIndex;
+            _oneADaySessionState = $"CCSWnd_OneADay focused previous reward slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)} from the recovered history grid.";
+            _statusMessage = _oneADaySessionState;
+        }
+
         private void SelectOneADaySelector(int selectorIndex, OneADayOwnerState state)
         {
             int selectorCount = Math.Max(1, state?.SelectorCount ?? 2);
             _oneADaySelectorIndex = Math.Clamp(selectorIndex, 0, selectorCount - 1);
-            _oneADayShortcutHelpActive = _oneADaySelectorIndex == 1;
             _oneADaySessionState = _oneADaySelectorIndex == 0
-                ? "CCSWnd_OneADay moved keyboard focus to the join selector."
-                : "CCSWnd_OneADay moved keyboard focus to the shortcut-help selector.";
+                ? "CCSWnd_OneADay moved keyboard focus to the Today selector."
+                : "CCSWnd_OneADay moved keyboard focus to the Previous selector.";
             _statusMessage = _oneADaySessionState;
         }
 
@@ -1305,15 +1420,16 @@ namespace HaCreator.MapSimulator.UI
 
             _oneADayPending = state.IsPending;
             _oneADaySelectorIndex = Math.Clamp(state.SelectorIndex, 0, Math.Max(0, state.SelectorCount - 1));
-            _oneADayShortcutHelpActive = _oneADaySelectorIndex == 1 && !state.IsPending;
-            _oneADayPlateFocusIndex = Math.Clamp(_oneADayPlateFocusIndex, 0, Math.Max(0, state.PlateCount - 1));
+            _oneADayShortcutHelpActive = force ? false : _oneADayShortcutHelpActive;
+            int activeOfferCount = _oneADaySelectorIndex == 1 ? state.PreviousOfferCount : state.PlateCount;
+            _oneADayPlateFocusIndex = Math.Clamp(_oneADayPlateFocusIndex, 0, Math.Max(0, activeOfferCount - 1));
             _oneADayRemainingSeconds = nextRemainingSeconds;
             _oneADayCountdownDeadlineTick = nextRemainingSeconds > 0
                 ? Environment.TickCount + (nextRemainingSeconds * 1000)
                 : int.MinValue;
             _oneADaySessionState = state.IsPending
-                ? "CCSWnd_OneADay::ChangeState(0,1) armed the pending reward selector, key-focus, and plate canvases."
-                : "CCSWnd_OneADay::ChangeState(0,1) left the owner idle while keeping the selector seam alive.";
+                ? "CCSWnd_OneADay::ChangeState(0,1) armed the Today/Previous selector, key-focus canvas, and reward plate surfaces."
+                : "CCSWnd_OneADay::ChangeState(0,1) left the owner idle while keeping the Today/Previous selector seam alive.";
             _statusMessage = _oneADaySessionState;
         }
 

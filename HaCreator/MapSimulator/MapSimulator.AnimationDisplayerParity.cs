@@ -20,6 +20,7 @@ namespace HaCreator.MapSimulator
         private const string AnimationDisplayerQuestDeliveryEffectBaseUol = "Effect/OnUserEff.img/itemEffect/quest";
         private const int AnimationDisplayerQuestDeliveryFallbackEffectItemId = 2430071;
         private const int AnimationDisplayerNewYearSoundStringPoolId = 0x125C;
+        private static readonly string[] AnimationDisplayerNewYearWeatherAliases = { "newyear", "happyNewyear" };
         private const int AnimationDisplayerUserStateOffsetY = -70;
         private const int AnimationDisplayerTransientLayerWidth = 800;
         private const int AnimationDisplayerTransientLayerHeight = 600;
@@ -704,7 +705,7 @@ namespace HaCreator.MapSimulator
 
             string normalizedPath = weatherPath?.Replace('\\', '/').Trim();
             if (string.Equals(normalizedPath, AnimationDisplayerNewYearEffectUol, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalizedPath, "Map/MapHelper.img/weather/newyear", StringComparison.OrdinalIgnoreCase))
+                || IsAnimationDisplayerNewYearWeatherPath(normalizedPath))
             {
                 return AnimationDisplayerTransientEffectKind.NewYear;
             }
@@ -717,6 +718,28 @@ namespace HaCreator.MapSimulator
             }
 
             return AnimationDisplayerTransientEffectKind.None;
+        }
+
+        private static bool IsAnimationDisplayerNewYearWeatherPath(string weatherPath)
+        {
+            string normalizedPath = NormalizeAnimationDisplayerPath(weatherPath);
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < AnimationDisplayerNewYearWeatherAliases.Length; i++)
+            {
+                string alias = AnimationDisplayerNewYearWeatherAliases[i];
+                if (normalizedPath.EndsWith($"/weather/{alias}", StringComparison.OrdinalIgnoreCase)
+                    || normalizedPath.EndsWith($"/weather/{alias}.img", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(normalizedPath, alias, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static IReadOnlyList<(int UpdateIntervalMs, int UpdateCount)> GetAnimationDisplayerFireCrackerBurstSchedule()

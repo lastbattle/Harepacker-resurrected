@@ -72,6 +72,7 @@ namespace HaCreator.MapSimulator.Entities
         private readonly Dictionary<int, int> _stateHitDurations;
         private readonly Dictionary<int, AuthoredStateTransition[]> _stateTransitions;
         private readonly int[] _availableStates;
+        private readonly int _templateLayerMode;
         private readonly int _originWorldX;
         private readonly int _originWorldY;
         private int _activeState;
@@ -94,6 +95,7 @@ namespace HaCreator.MapSimulator.Entities
             _stateHitDurations = new Dictionary<int, int>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
             _availableStates = Array.Empty<int>();
+            _templateLayerMode = 0;
             _originWorldX = reactorInstance?.X ?? 0;
             _originWorldY = reactorInstance?.Y ?? 0;
         }
@@ -105,6 +107,7 @@ namespace HaCreator.MapSimulator.Entities
             _stateFrames = new Dictionary<int, IDXObject[]>();
             _stateHitDurations = LoadStateHitDurations(reactorInstance);
             _stateTransitions = LoadStateTransitions(reactorInstance);
+            _templateLayerMode = LoadTemplateLayerMode(reactorInstance);
             _originWorldX = reactorInstance?.X ?? 0;
             _originWorldY = reactorInstance?.Y ?? 0;
 
@@ -131,9 +134,14 @@ namespace HaCreator.MapSimulator.Entities
             _stateHitDurations = new Dictionary<int, int>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
             _availableStates = Array.Empty<int>();
+            _templateLayerMode = 0;
             _originWorldX = reactorInstance?.X ?? 0;
             _originWorldY = reactorInstance?.Y ?? 0;
         }
+
+        public int RenderSortKey { get; set; }
+
+        public int TemplateLayerMode => _templateLayerMode;
 
         public void SetAnimationState(int state, int tickCount)
         {
@@ -362,6 +370,21 @@ namespace HaCreator.MapSimulator.Entities
             return _stateHitDurations.TryGetValue(resolvedState, out int duration)
                 ? duration
                 : 0;
+        }
+
+        internal bool TryResolveAutoHitEventIndex(int currentState, ReactorType reactorType, out int eventIndex)
+        {
+            AuthoredStateTransition[] transitions = GetAuthoredTransitions(
+                ResolveState(currentState),
+                new ReactorTransitionRequest(ReactorActivationType.Hit, reactorType));
+            if (transitions.Length == 0)
+            {
+                eventIndex = -1;
+                return false;
+            }
+
+            eventIndex = transitions[0].Order;
+            return true;
         }
 
         public Rectangle GetCurrentBounds(int tickCount)
@@ -726,6 +749,17 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return totalDuration;
+        }
+
+        private static int LoadTemplateLayerMode(ReactorInstance reactorInstance)
+        {
+            WzImage linkedImage = reactorInstance?.ReactorInfo?.LinkedWzImage;
+            if (linkedImage == null)
+            {
+                return 0;
+            }
+
+            return TryReadOptionalInt(WzInfoTools.GetRealProperty(linkedImage["info"])?["layer"]) ?? 0;
         }
 
         private static AuthoredStateTransition? TryCreateTransition(WzSubProperty eventNode, int order)

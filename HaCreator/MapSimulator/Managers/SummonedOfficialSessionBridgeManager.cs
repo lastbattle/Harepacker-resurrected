@@ -124,19 +124,23 @@ namespace HaCreator.MapSimulator.Managers
 
         public string DescribeStatus()
         {
-            string lifecycle = IsRunning
-                ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
-                : "inactive";
-            string session = HasConnectedSession
-                ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
-                : "no active Maple session";
-            string lastOutbound = LastSentOpcode >= 0
-                ? $" lastOut=0x{LastSentOpcode:X}[{Convert.ToHexString(LastSentRawPacket)}]."
-                : string.Empty;
-            string lastQueued = LastQueuedOpcode >= 0
-                ? $" lastQueued=0x{LastQueuedOpcode:X}[{Convert.ToHexString(LastQueuedRawPacket)}]."
-                : string.Empty;
-            return $"Summoned official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; sg88Pending={_pendingSg88ManualAttackCaptures.Count}; sg88Recent={_recentSg88ManualAttackCaptures.Count}; inbound opcodes=0x116-0x11B; outbound=raw passthrough plus live capture history.{lastOutbound}{lastQueued} {LastStatus}";
+            lock (_sync)
+            {
+                PruneExpiredSg88ManualAttackCaptures(Environment.TickCount);
+                string lifecycle = IsRunning
+                    ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
+                    : "inactive";
+                string session = HasConnectedSession
+                    ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                    : "no active Maple session";
+                string lastOutbound = LastSentOpcode >= 0
+                    ? $" lastOut=0x{LastSentOpcode:X}[{Convert.ToHexString(LastSentRawPacket)}]."
+                    : string.Empty;
+                string lastQueued = LastQueuedOpcode >= 0
+                    ? $" lastQueued=0x{LastQueuedOpcode:X}[{Convert.ToHexString(LastQueuedRawPacket)}]."
+                    : string.Empty;
+                return $"Summoned official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; sg88Pending={_pendingSg88ManualAttackCaptures.Count}; sg88Recent={_recentSg88ManualAttackCaptures.Count}; inbound opcodes=0x116-0x11B; outbound=raw passthrough plus live capture history.{lastOutbound}{lastQueued} {LastStatus}";
+            }
         }
 
         public string DescribeRecentOutboundPackets(int maxCount = 10)
@@ -144,6 +148,7 @@ namespace HaCreator.MapSimulator.Managers
             int normalizedCount = Math.Clamp(maxCount, 1, MaxRecentOutboundPackets);
             lock (_sync)
             {
+                PruneExpiredSg88ManualAttackCaptures(Environment.TickCount);
                 if (_recentOutboundPackets.Count == 0)
                 {
                     return "Summoned official-session bridge outbound history is empty.";
@@ -167,6 +172,7 @@ namespace HaCreator.MapSimulator.Managers
             int normalizedCount = Math.Clamp(maxCount, 1, MaxRecentSg88ManualAttackRequests);
             lock (_sync)
             {
+                PruneExpiredSg88ManualAttackCaptures(Environment.TickCount);
                 IEnumerable<Sg88ManualAttackCapture> entries = _recentSg88ManualAttackCaptures
                     .Reverse()
                     .Concat(_pendingSg88ManualAttackCaptures.AsEnumerable().Reverse())
@@ -401,6 +407,7 @@ namespace HaCreator.MapSimulator.Managers
 
             lock (_sync)
             {
+                PruneExpiredSg88ManualAttackCaptures(trace.ObservedAt);
                 trace = TryBindSg88ManualAttackCapture(trace);
                 while (_recentOutboundPackets.Count >= MaxRecentOutboundPackets)
                 {
@@ -431,6 +438,7 @@ namespace HaCreator.MapSimulator.Managers
             int captureWindowEndAt = CalculateCaptureWindowEndAt(requestedAt, baseDelayMs, followUpDelayMs);
             lock (_sync)
             {
+                PruneExpiredSg88ManualAttackCaptures(requestedAt);
                 for (int i = _pendingSg88ManualAttackCaptures.Count - 1; i >= 0; i--)
                 {
                     Sg88ManualAttackCapture pendingCapture = _pendingSg88ManualAttackCaptures[i];
@@ -838,6 +846,21 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return trace;
+        }
+
+        private void PruneExpiredSg88ManualAttackCaptures(int currentTime)
+        {
+            for (int i = _pendingSg88ManualAttackCaptures.Count - 1; i >= 0; i--)
+            {
+                Sg88ManualAttackCapture pendingCapture = _pendingSg88ManualAttackCaptures[i];
+                if (currentTime <= pendingCapture.CaptureWindowEndAt)
+                {
+                    continue;
+                }
+
+                ArchiveSg88ManualAttackCapture(pendingCapture, "expired");
+                _pendingSg88ManualAttackCaptures.RemoveAt(i);
+            }
         }
 
         private void ArchiveSg88ManualAttackCapture(Sg88ManualAttackCapture capture, string resolutionSource)

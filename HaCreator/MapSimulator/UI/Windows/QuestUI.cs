@@ -1189,31 +1189,78 @@ namespace HaCreator.MapSimulator.UI
 
                 bool enabled = !hiddenAreaCodes.Contains(slot.Entry.AreaCode);
                 Rectangle bounds = slot.Bounds;
+                string labelText = Truncate(slot.Entry.AreaName, 14);
                 string countText = slot.Entry.Count.ToString();
+                float labelScale = 0.38f;
                 float countScale = 0.38f;
+                Vector2 labelMeasure = ClientTextDrawing.Measure((GraphicsDevice)null, labelText, labelScale, _font);
                 Vector2 countMeasure = ClientTextDrawing.Measure((GraphicsDevice)null, countText, countScale, _font);
                 Color labelColor = enabled ? new Color(70, 45, 24) : new Color(106, 98, 88);
                 Color countColor = enabled ? new Color(108, 76, 42) : new Color(128, 120, 108);
+                Color leaderColor = enabled ? new Color(153, 121, 80) : new Color(156, 148, 136);
                 int textX = HasClientCategoryButtonArt() ? bounds.X + ClientCategoryTextLeft : bounds.X + 6;
                 int textY = HasClientCategoryButtonArt()
                     ? bounds.Y + GetCategoryRowTextTopOffset(visibleSlots, slot)
                     : bounds.Y + 3;
                 int countRight = HasClientCategoryButtonArt() ? bounds.X + ClientCategoryCountRight : bounds.Right - 5;
+                int countLeft = (int)(countRight - countMeasure.X);
+                int availableLabelWidth = Math.Max(16, countLeft - textX - 6);
 
                 DrawText(
                     sprite,
-                    Truncate(slot.Entry.AreaName, 14),
+                    labelText,
                     new Vector2(textX, textY),
                     labelColor,
-                    0.38f,
-                    Math.Max(16, countRight - textX - 6 - (int)countMeasure.X));
+                    labelScale,
+                    availableLabelWidth);
+                DrawCategoryLeaderText(
+                    sprite,
+                    textX + labelMeasure.X,
+                    textY,
+                    Math.Max(0f, countLeft - (textX + labelMeasure.X) - 3f),
+                    leaderColor,
+                    labelScale);
                 DrawText(
                     sprite,
                     countText,
-                    new Vector2(countRight - countMeasure.X, textY),
+                    new Vector2(countLeft, textY),
                     countColor,
                     countScale);
             }
+        }
+
+        private void DrawCategoryLeaderText(SpriteBatch sprite, float left, float top, float width, Color color, float scale)
+        {
+            if (_font == null || width <= 0f)
+            {
+                return;
+            }
+
+            string leaderText = BuildCategoryLeaderText(width, scale);
+            if (string.IsNullOrEmpty(leaderText))
+            {
+                return;
+            }
+
+            DrawText(sprite, leaderText, new Vector2(left, top), color, scale, (int)Math.Ceiling(width));
+        }
+
+        private string BuildCategoryLeaderText(float width, float scale)
+        {
+            if (_font == null || width <= 0f)
+            {
+                return string.Empty;
+            }
+
+            const string leaderUnit = ".";
+            float unitWidth = ClientTextDrawing.Measure((GraphicsDevice)null, leaderUnit, scale, _font).X;
+            if (unitWidth <= 0f)
+            {
+                return string.Empty;
+            }
+
+            int repeatCount = Math.Max(0, (int)Math.Floor(width / unitWidth));
+            return repeatCount > 0 ? new string('.', repeatCount) : string.Empty;
         }
 
         private void DrawCategoryButtons(SpriteBatch sprite)

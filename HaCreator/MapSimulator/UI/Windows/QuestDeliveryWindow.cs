@@ -100,14 +100,16 @@ namespace HaCreator.MapSimulator.UI
                     ? $"Item {_itemId}"
                     : "Unknown delivery item";
 
-            int previousQuestId = GetSelectedEntry()?.QuestId ?? _questId;
+            DeliveryEntry previousEntry = GetSelectedEntry();
+            int previousSelectionQuestId = GetSelectionQuestId(previousEntry) ?? _questId;
+            int previousQuestId = previousEntry?.QuestId ?? _questId;
             _entries.Clear();
             if (entries != null)
             {
                 _entries.AddRange(entries.Where(entry => entry != null));
             }
 
-            _selectedIndex = ResolveSelectedIndex(previousQuestId);
+            _selectedIndex = ResolveSelectedIndex(previousSelectionQuestId, previousQuestId);
             _scrollOffset = ClampScrollOffset(_scrollOffset);
             EnsureSelectedVisible();
             UpdateButtonStates();
@@ -415,11 +417,20 @@ namespace HaCreator.MapSimulator.UI
                 : null;
         }
 
-        private int ResolveSelectedIndex(int preferredQuestId)
+        private int ResolveSelectedIndex(int preferredSelectionQuestId, int preferredQuestId)
         {
             if (_entries.Count == 0)
             {
                 return -1;
+            }
+
+            if (preferredSelectionQuestId > 0)
+            {
+                int preferredIndex = _entries.FindIndex(entry => GetSelectionQuestId(entry) == preferredSelectionQuestId);
+                if (preferredIndex >= 0)
+                {
+                    return preferredIndex;
+                }
             }
 
             if (preferredQuestId > 0)
@@ -433,6 +444,20 @@ namespace HaCreator.MapSimulator.UI
 
             int actionableIndex = _entries.FindIndex(entry => entry.CanConfirm);
             return actionableIndex >= 0 ? actionableIndex : 0;
+        }
+
+        private static int? GetSelectionQuestId(DeliveryEntry entry)
+        {
+            if (entry == null)
+            {
+                return null;
+            }
+
+            return entry.IsSeriesRepresentative && entry.DisplayQuestId > 0
+                ? entry.DisplayQuestId
+                : entry.QuestId > 0
+                    ? entry.QuestId
+                    : null;
         }
 
         private void EnsureSelectedVisible()

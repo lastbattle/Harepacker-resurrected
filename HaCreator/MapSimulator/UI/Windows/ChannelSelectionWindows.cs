@@ -23,6 +23,46 @@ namespace HaCreator.MapSimulator.UI
         public bool IsEmpty => Texture == null;
     }
 
+    public readonly struct SelectorAnimatedOverlayFrame
+    {
+        public SelectorAnimatedOverlayFrame(Texture2D texture, Point offset)
+        {
+            Texture = texture;
+            Offset = offset;
+        }
+
+        public Texture2D Texture { get; }
+        public Point Offset { get; }
+        public bool IsEmpty => Texture == null;
+    }
+
+    public sealed class SelectorAnimatedOverlay
+    {
+        private readonly IReadOnlyList<SelectorAnimatedOverlayFrame> _frames;
+
+        public SelectorAnimatedOverlay(IReadOnlyList<SelectorAnimatedOverlayFrame> frames, int frameDelayMs)
+        {
+            _frames = frames ?? Array.Empty<SelectorAnimatedOverlayFrame>();
+            FrameDelayMs = frameDelayMs <= 0 ? 100 : frameDelayMs;
+        }
+
+        public int FrameDelayMs { get; }
+        public bool IsEmpty => _frames.Count == 0 || _frames.All(frame => frame.IsEmpty);
+
+        public SelectorAnimatedOverlayFrame GetFrame(int tickCount)
+        {
+            if (_frames.Count == 0)
+            {
+                return default;
+            }
+
+            int frameIndex = _frames.Count == 1
+                ? 0
+                : Math.Abs(tickCount / FrameDelayMs) % _frames.Count;
+            return _frames[frameIndex];
+        }
+    }
+
     public enum SelectorAvailability
     {
         Available = 0,
@@ -127,6 +167,8 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientViewButtonY = 238;
         private const int ClientViewChoiceX = 78;
         private const int ClientViewAllX = 192;
+        private const int ClientWorldStateIconOffsetX = 78;
+        private const int ClientWorldStateIconOffsetY = 6;
 
         private sealed class WorldButtonEntry
         {
@@ -151,6 +193,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _frameOverlayTexture;
         private readonly Point _frameOverlayOffset;
         private readonly Texture2D _highlightTexture;
+        private readonly IReadOnlyDictionary<byte, SelectorAnimatedOverlay> _worldStateAnimations;
         private readonly UIObject _viewChoiceButton;
         private readonly UIObject _viewAllButton;
         private readonly SelectorOverlayFrame _viewAllKeyFocusedFrame;
@@ -169,6 +212,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D frameOverlayTexture,
             Point frameOverlayOffset,
             Texture2D highlightTexture,
+            IReadOnlyDictionary<byte, SelectorAnimatedOverlay> worldStateAnimations,
             IEnumerable<(int worldId, UIObject button, Texture2D icon, SelectorOverlayFrame keyFocusedFrame)> worldButtons,
             IEnumerable<UIObject> emptySlotButtons = null,
             UIObject viewChoiceButton = null,
@@ -179,6 +223,7 @@ namespace HaCreator.MapSimulator.UI
             _frameOverlayTexture = frameOverlayTexture;
             _frameOverlayOffset = frameOverlayOffset;
             _highlightTexture = highlightTexture;
+            _worldStateAnimations = worldStateAnimations ?? new Dictionary<byte, SelectorAnimatedOverlay>();
             _viewChoiceButton = viewChoiceButton;
             _viewAllButton = viewAllButton;
             _viewAllKeyFocusedFrame = viewAllKeyFocusedFrame;
@@ -393,6 +438,7 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            DrawWorldStateOverlays(sprite, TickCount);
             DrawFocusedWorldOverlay(sprite);
             DrawViewAllFocusOverlay(sprite);
 
@@ -488,6 +534,35 @@ namespace HaCreator.MapSimulator.UI
                     Position.X + focusedEntry.Button.X + focusedEntry.KeyFocusedFrame.Offset.X,
                     Position.Y + focusedEntry.Button.Y + focusedEntry.KeyFocusedFrame.Offset.Y),
                 Color.White);
+        }
+
+        private void DrawWorldStateOverlays(SpriteBatch sprite, int tickCount)
+        {
+            foreach (WorldButtonEntry entry in _worldButtons)
+            {
+                if (!entry.Button.ButtonVisible ||
+                    !_worldStates.TryGetValue(entry.WorldId, out WorldSelectionState state) ||
+                    state.WorldState <= 0 ||
+                    !_worldStateAnimations.TryGetValue(state.WorldState, out SelectorAnimatedOverlay overlay) ||
+                    overlay == null ||
+                    overlay.IsEmpty)
+                {
+                    continue;
+                }
+
+                SelectorAnimatedOverlayFrame frame = overlay.GetFrame(tickCount);
+                if (frame.IsEmpty)
+                {
+                    continue;
+                }
+
+                sprite.Draw(
+                    frame.Texture,
+                    new Vector2(
+                        Position.X + entry.Button.X + ClientWorldStateIconOffsetX + frame.Offset.X,
+                        Position.Y + entry.Button.Y + ClientWorldStateIconOffsetY + frame.Offset.Y),
+                    Color.White);
+            }
         }
 
         private void DrawViewAllFocusOverlay(SpriteBatch sprite)

@@ -106,6 +106,7 @@ namespace HaCreator.MapSimulator.Pools
         public int PacketStateEndTime { get; set; }
         public int PacketAnimationEndTime { get; set; }
         public int PacketAnimationSourceState { get; set; } = -1;
+        public int PacketPendingVisualState { get; set; } = -1;
         public int PacketProperEventIndex { get; set; } = -1;
         internal ReactorActivationTypeMask SupportedActivationTypes { get; set; } = ReactorActivationTypeMask.None;
         public int? RequiredItemId { get; set; }
@@ -237,6 +238,7 @@ namespace HaCreator.MapSimulator.Pools
                     PacketStateEndTime = 0,
                     PacketAnimationEndTime = 0,
                     PacketAnimationSourceState = -1,
+                    PacketPendingVisualState = -1,
                     PacketProperEventIndex = -1,
                     RequiredItemId = interactionMetadata.RequiredItemId,
                     RequiredQuestId = interactionMetadata.RequiredQuestId,
@@ -920,6 +922,7 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketStateEndTime = 0;
             data.PacketAnimationEndTime = 0;
             data.PacketAnimationSourceState = -1;
+            data.PacketPendingVisualState = -1;
             data.PacketProperEventIndex = -1;
             data.PreferredAuthoredEventOrder = -1;
             data.PreferredAuthoredActivationType = ReactorActivationType.None;
@@ -1170,6 +1173,7 @@ namespace HaCreator.MapSimulator.Pools
                     data.PacketStateEndTime = 0;
                     data.PacketAnimationEndTime = 0;
                     data.PacketAnimationSourceState = -1;
+                    data.PacketPendingVisualState = -1;
                     data.PacketProperEventIndex = -1;
                     data.ScriptStatePublished = false;
                     data.PreferredAuthoredEventOrder = -1;
@@ -1331,6 +1335,7 @@ namespace HaCreator.MapSimulator.Pools
                 PacketStateEndTime = currentTick + 800,
                 PacketAnimationEndTime = 0,
                 PacketAnimationSourceState = -1,
+                PacketPendingVisualState = -1,
                 PacketProperEventIndex = -1,
                 PreferredAuthoredEventOrder = -1,
                 PreferredAuthoredActivationType = ReactorActivationType.None
@@ -1379,12 +1384,18 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int previousVisualState = data.VisualState;
-            ApplyPacketReactorState(index, state, x, y, reactor.ReactorInstance?.Flip ?? false, currentTick);
-            data.PacketHitStartTime = ResolvePacketClientHitStartTime(currentTick, hitStartDelayMs);
+            bool wasAnimationClockRunning = IsPacketAnimationClockRunning(data);
+            ApplyPacketReactorState(index, state, x, y, reactor.ReactorInstance?.Flip ?? false, currentTick, applyAnimationState: false);
+            if (!wasAnimationClockRunning)
+            {
+                data.PacketHitStartTime = ResolvePacketClientHitStartTime(currentTick, hitStartDelayMs);
+            }
+
             ApplyPacketProperEventIndexPreference(data, properEventIndex);
             data.PacketStateEndTime = ResolvePacketStateEndTime(currentTick, stateEndDelayTicks);
             data.PacketAnimationEndTime = 0;
             data.PacketAnimationSourceState = previousVisualState;
+            data.PacketPendingVisualState = state;
             data.State = ReactorState.Activated;
             data.StateStartTime = currentTick;
             SyncPacketScriptPublication(reactor, data, currentTick);
@@ -1438,11 +1449,13 @@ namespace HaCreator.MapSimulator.Pools
 
             int previousVisualState = data.VisualState;
             int remainingCurrentAnimationDuration = reactor.GetRemainingAnimationDuration(currentTick);
-            ApplyPacketReactorState(index, state, x, y, reactor.ReactorInstance?.Flip ?? false, currentTick);
+            ApplyPacketReactorState(index, state, x, y, reactor.ReactorInstance?.Flip ?? false, currentTick, applyAnimationState: false);
             data.PacketLeavePending = true;
             data.PacketProperEventIndex = -2;
             data.PacketAnimationSourceState = previousVisualState;
-            data.PacketHitStartTime = ResolvePacketLeaveHitStartTime(currentTick, reactor.HasAuthoredEventInfo(state));
+            bool hasAuthoredStateEvents = reactor.HasAuthoredEventInfo(state);
+            data.PacketPendingVisualState = hasAuthoredStateEvents ? -1 : state;
+            data.PacketHitStartTime = ResolvePacketLeaveHitStartTime(currentTick, hasAuthoredStateEvents);
             data.PacketAnimationEndTime = data.PacketHitStartTime == 0
                 ? ResolvePacketAnimationEndTime(currentTick, remainingCurrentAnimationDuration)
                 : 0;
@@ -1480,6 +1493,7 @@ namespace HaCreator.MapSimulator.Pools
                         if (data.PacketHitStartTime > 0 && currentTick >= data.PacketHitStartTime)
                         {
                             data.PacketHitStartTime = 0;
+                            ApplyPendingPacketVisualState(reactor, data, currentTick);
                             data.PacketAnimationEndTime = ResolvePacketAnimationEndTime(
                                 currentTick,
                                 ResolvePacketHitAnimationDuration(reactor, data));
@@ -1499,6 +1513,7 @@ namespace HaCreator.MapSimulator.Pools
                         && currentTick >= data.PacketHitStartTime)
                     {
                         data.PacketHitStartTime = 0;
+                        ApplyPendingPacketVisualState(reactor, data, currentTick);
                         data.PacketAnimationEndTime = ResolvePacketAnimationEndTime(
                             currentTick,
                             ResolvePacketHitAnimationDuration(reactor, data));
@@ -1788,7 +1803,7 @@ namespace HaCreator.MapSimulator.Pools
             data.ScriptNames = interactionMetadata.ScriptNames;
         }
 
-        private void ApplyPacketReactorState(int index, int state, int x, int y, bool flip, int currentTick)
+        private void ApplyPacketReactorState(int index, int state, int x, int y, bool flip, int currentTick, bool applyAnimationState = true)
         {
             ReactorRuntimeData data = GetReactorData(index);
             ReactorItem reactor = GetReactor(index);
@@ -1799,7 +1814,11 @@ namespace HaCreator.MapSimulator.Pools
 
             reactor.SetWorldPosition(x, y);
             reactor.SetFlipState(flip);
-            reactor.SetAnimationState(state, currentTick);
+            if (applyAnimationState)
+            {
+                reactor.SetAnimationState(state, currentTick);
+            }
+
             data.VisualState = state;
             data.StateFrame = 0;
             data.StateStartTime = currentTick;
@@ -1809,6 +1828,7 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketStateEndTime = 0;
             data.PacketAnimationEndTime = 0;
             data.PacketAnimationSourceState = -1;
+            data.PacketPendingVisualState = applyAnimationState ? -1 : state;
             ClearPreferredAuthoredOrder(data);
 
             if (index < _spawnPoints.Count)
@@ -1820,6 +1840,26 @@ namespace HaCreator.MapSimulator.Pools
                 spawnPoint.IsActive = true;
                 spawnPoint.CurrentReactor = reactor;
             }
+        }
+
+        private static bool IsPacketAnimationClockRunning(ReactorRuntimeData data)
+        {
+            return data != null
+                && (data.PacketLeavePending
+                    || data.PacketHitStartTime > 0
+                    || data.PacketAnimationEndTime > 0);
+        }
+
+        private static void ApplyPendingPacketVisualState(ReactorItem reactor, ReactorRuntimeData data, int currentTick)
+        {
+            if (reactor == null || data == null || data.PacketPendingVisualState < 0)
+            {
+                return;
+            }
+
+            reactor.SetAnimationState(data.PacketPendingVisualState, currentTick);
+            data.PacketAnimationSourceState = data.PacketPendingVisualState;
+            data.PacketPendingVisualState = -1;
         }
 
         private void SyncPacketScriptPublication(ReactorItem reactor, ReactorRuntimeData data, int currentTick)

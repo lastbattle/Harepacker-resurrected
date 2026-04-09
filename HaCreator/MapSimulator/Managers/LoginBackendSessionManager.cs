@@ -203,7 +203,12 @@ namespace HaCreator.MapSimulator.Managers
                     break;
 
                 case LoginViewAllCharResultKind.Completion:
-                    if (_viewAllEntries.Count > 0)
+                    if (ViewAllRemainingServerCount > 0)
+                    {
+                        ViewAllRemainingServerCount--;
+                    }
+
+                    if (ViewAllRemainingServerCount <= 0 && _viewAllEntries.Count > 0)
                     {
                         ViewAllCharRosterProfile ??= CreateRosterProfile(
                             _viewAllEntries,
@@ -212,8 +217,6 @@ namespace HaCreator.MapSimulator.Managers
                             false);
                         CacheViewAllWorldProfiles(ViewAllCharRosterProfile);
                     }
-
-                    ViewAllRemainingServerCount = 0;
                     break;
             }
         }
@@ -956,20 +959,21 @@ namespace HaCreator.MapSimulator.Managers
             LoginSelectWorldResultProfile profile,
             int worldId)
         {
+            int normalizedPersistentBuyCharacterCount = NormalizePersistentBuyCharacterCount(profile?.BuyCharacterCount ?? 0);
             LoginSelectWorldCharacterEntry[] normalizedEntries = profile?.Entries?
                 .Where(entry => entry != null)
                 .Select(entry => CloneEntryForWorld(entry, worldId))
                 .ToArray()
                 ?? Array.Empty<LoginSelectWorldCharacterEntry>();
 
-            return NormalizeRosterEntitlement(new LoginSelectWorldResultProfile
+            return new LoginSelectWorldResultProfile
             {
                 ResultCode = profile?.ResultCode ?? 0,
                 Entries = normalizedEntries,
                 LoginOpt = profile?.LoginOpt ?? false,
                 SlotCount = Math.Max(0, profile?.SlotCount ?? 0),
-                BuyCharacterCount = Math.Max(0, profile?.BuyCharacterCount ?? 0)
-            });
+                BuyCharacterCount = normalizedPersistentBuyCharacterCount
+            };
         }
 
         private static bool UpsertCharacterInEntries(

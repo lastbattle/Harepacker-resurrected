@@ -21,6 +21,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int MechanicPrototypeSkillId = 35001002;
         private const int FlameLauncherSkillId = 35001001;
         private const int EnhancedFlameLauncherSkillId = 35101009;
+        private const int EvanIceBreathSkillId = 22121000;
+        private const int EvanFireBreathSkillId = 22151001;
         private const int NightWalkerPoisonBombSkillId = 14111006;
         private const int HermitTauntSkillId = 4121003;
         private const int NightlordTauntSkillId = 4341003;
@@ -104,6 +106,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             if (IsPrepareBombSkill(skill.SkillId))
+            {
+                return player.Physics.IsOnLadderOrRope
+                    ? "This prepared skill cannot be used while on a ladder or rope."
+                    : null;
+            }
+
+            if (AllowsAirbornePreparedStart(skill.SkillId))
             {
                 return player.Physics.IsOnLadderOrRope
                     ? "This prepared skill cannot be used while on a ladder or rope."
@@ -219,6 +228,12 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return skillId == FlameLauncherSkillId
                    || skillId == EnhancedFlameLauncherSkillId;
+        }
+
+        private static bool AllowsAirbornePreparedStart(int skillId)
+        {
+            return skillId == EvanIceBreathSkillId
+                   || skillId == EvanFireBreathSkillId;
         }
 
         private static bool UsesLadderOrRopeCastGate(SkillData skill)

@@ -322,6 +322,30 @@ namespace HaCreator.MapSimulator.Interaction
             return _loginAccountSecondaryPasswordVerified;
         }
 
+        public bool ApplyPacketOwnedAccountPicVerification(bool verified)
+        {
+            if (!CanCurrentCharacterAccess || !_isAccessSessionActive)
+            {
+                _loginAccountPicVerified = false;
+                return false;
+            }
+
+            _loginAccountPicVerified = !HasAccountPic || verified;
+            return _loginAccountPicVerified;
+        }
+
+        public bool ApplyPacketOwnedAccountSecondaryPasswordVerification(bool verified)
+        {
+            if (!CanCurrentCharacterAccess || !_isAccessSessionActive)
+            {
+                _loginAccountSecondaryPasswordVerified = false;
+                return false;
+            }
+
+            _loginAccountSecondaryPasswordVerified = !HasAccountSecondaryPassword || verified;
+            return _loginAccountSecondaryPasswordVerified;
+        }
+
         public bool TrySetSecondaryPassword(string password)
         {
             if (!CanCurrentCharacterAccess || !_isAccessSessionActive)

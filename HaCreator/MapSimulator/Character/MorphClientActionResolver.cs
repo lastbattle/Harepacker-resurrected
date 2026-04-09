@@ -70,6 +70,9 @@ namespace HaCreator.MapSimulator.Character
         {
             "stabO1",
             "stabO2",
+            "stabOF",
+            "stabT1",
+            "stabT2",
             "stabTF"
         };
 

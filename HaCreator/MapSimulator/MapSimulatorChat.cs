@@ -109,6 +109,7 @@ namespace HaCreator.MapSimulator
         private bool _isActive = false;
         private readonly StringBuilder _inputText = new StringBuilder(128);
         private readonly List<ChatMessage> _messages = new List<ChatMessage>();
+        internal event Action<string, int, int> ClientChatMessageAdded;
         private int _cursorBlinkTimer = 0;
         private int _lastTickCount = 0;
         private int _cursorPosition = 0; // Position within input text
@@ -776,6 +777,7 @@ namespace HaCreator.MapSimulator
                 chatLogType,
                 whisperTargetCandidate,
                 channelId);
+            ClientChatMessageAdded?.Invoke(text, chatLogType, tickCount);
         }
 
         public void AddMessage(string text, Color color, int tickCount, int chatLogType, string whisperTargetCandidate)
@@ -1017,7 +1019,7 @@ namespace HaCreator.MapSimulator
 
         public void SelectWhisperTargetPickerCandidate(string whisperTarget, int tickCount)
         {
-            OpenWhisperTargetPicker(tickCount, whisperTarget);
+            OpenWhisperTargetPicker(tickCount, whisperTarget, _whisperTargetPickerPresentation);
             ConfirmWhisperTargetPicker(tickCount);
         }
 

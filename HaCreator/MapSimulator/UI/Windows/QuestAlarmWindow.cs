@@ -744,7 +744,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (_autoButton != null)
             {
-                _autoButton.SetButtonState(_autoTrackEnabled ? UIObjectState.Pressed : UIObjectState.Normal);
+                _autoButton.SetEnabled(_autoTrackEnabled);
             }
 
             if (_questButton != null)
@@ -1062,9 +1062,10 @@ namespace HaCreator.MapSimulator.UI
             QuestAlarmSnapshot snapshot = RefreshFilteredSnapshot();
             string questTitle = TryGetQuestTitle(snapshot, questId);
             _trackedQuestIds.Remove(questId);
+            bool hiddenFromAutoRegister = false;
             if (_autoTrackEnabled)
             {
-                _hiddenAutoQuestIds.Add(questId);
+                hiddenFromAutoRegister = _hiddenAutoQuestIds.Add(questId);
             }
 
             if (_selectedQuestId == questId)
@@ -1078,7 +1079,10 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
             SavePersistedState();
 
-            StatusMessageRequested?.Invoke(QuestAlarmOwnerStringPoolText.FormatDeleteNotice(questTitle));
+            if (hiddenFromAutoRegister)
+            {
+                StatusMessageRequested?.Invoke(QuestAlarmOwnerStringPoolText.FormatDeleteNotice(questTitle));
+            }
         }
 
         private void DismissAll(QuestAlarmSnapshot snapshot)

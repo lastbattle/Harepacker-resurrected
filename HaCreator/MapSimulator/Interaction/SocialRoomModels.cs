@@ -574,6 +574,18 @@ namespace HaCreator.MapSimulator.Interaction
         public IReadOnlyList<SocialRoomRemoteInventoryEntry> RemoteInventoryEntries => _remoteInventoryEntries;
         public IReadOnlyList<EntrustedShopVisitLogEntrySnapshot> EntrustedVisitLogEntries => _entrustedVisitLogEntries;
         public int RemoteInventoryMeso => _remoteInventoryMeso;
+        public string RemoteTraderName => ResolveRemoteTraderName();
+        public int TradeLocalOfferMeso => _tradeLocalOfferMeso;
+        public int TradeRemoteOfferMeso => _tradeRemoteOfferMeso;
+        public bool TradeLocalLocked => _tradeLocalLocked;
+        public bool TradeRemoteLocked => _tradeRemoteLocked;
+        public bool TradeLocalAccepted => _tradeLocalAccepted;
+        public bool TradeRemoteAccepted => _tradeRemoteAccepted;
+        public bool TradeVerificationPending => _tradeVerificationPending;
+        public bool TradeLocalVerificationReady => _tradeLocalVerificationReady;
+        public bool TradeRemoteVerificationReady => _tradeRemoteVerificationReady;
+        public int TradeLocalVerificationCount => _tradeLocalVerificationEntries.Count;
+        public int TradeRemoteVerificationCount => _tradeRemoteVerificationEntries.Count;
         public int PersonalShopTotalSoldGross => _personalShopTotalSoldGross;
         public int PersonalShopTotalReceivedNet => _personalShopTotalReceivedNet;
         public int MiniRoomOmokBoardSizeValue => MiniRoomOmokBoardSize;
@@ -1458,28 +1470,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryDispatchEmployeePoolPacket(ushort opcode, byte[] payload, int tickCount, out string message)
         {
-            bool handled;
-            string detail;
-            switch (opcode)
-            {
-                case EmployeeEnterFieldOpcode:
-                    handled = TryApplyEmployeeEnterFieldPacket(payload, out detail);
-                    break;
-                case EmployeeLeaveFieldOpcode:
-                    handled = TryApplyEmployeeLeaveFieldPacket(payload, out detail);
-                    break;
-                case EmployeeMiniRoomBalloonOpcode:
-                    handled = TryApplyEmployeeMiniRoomBalloonPacket(payload, out detail);
-                    break;
-                default:
-                    detail = $"Employee-pool opcode {opcode} is not modeled for this room.";
-                    handled = false;
-                    break;
-            }
-
-            TrackPacketOwnerSummary("CEmployeePool::OnPacket", opcode, tickCount, handled, detail);
-            message = detail;
-            return handled;
+            message = $"Employee-pool opcode {opcode} is packet-owned. Apply it through {nameof(PacketOwnedEmployeePoolDispatcher)} and sync room presentation from pooled snapshots.";
+            TrackPacketOwnerSummary("CEmployeePool::OnPacket", opcode, tickCount, handled: false, message);
+            return false;
         }
 
         public bool TryDispatchSyntheticDialogPacket(byte packetType, byte[] payload, int tickCount, out string message)
@@ -1492,105 +1485,6 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return TryDispatchPacketBytes(packetBytes, tickCount, out message);
-        }
-
-        public bool TryApplyEmployeeEnterFieldPacket(byte[] packetBytes, out string message)
-        {
-            message = null;
-            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
-            {
-                message = "Employee field packets only apply to personal-shop and entrusted-shop rooms.";
-                return false;
-            }
-
-            if (packetBytes == null || packetBytes.Length == 0)
-            {
-                message = "Employee field packet payload is empty.";
-                return false;
-            }
-
-            if (!_employeePoolRuntime.TryApplyEnterField(packetBytes, out string detail))
-            {
-                message = detail;
-                return false;
-            }
-
-            _employeeHasPacketData = true;
-            SyncLegacyEmployeePacketStateFromPool();
-            StatusMessage = detail;
-            PersistState();
-            message = StatusMessage;
-            return true;
-        }
-
-        private bool TryApplyEmployeeLeaveFieldPacket(byte[] packetBytes, out string message)
-        {
-            message = null;
-            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
-            {
-                message = "Employee leave-field packets only apply to personal-shop and entrusted-shop rooms.";
-                return false;
-            }
-
-            if (packetBytes == null || packetBytes.Length == 0)
-            {
-                message = "Employee leave-field packet payload is empty.";
-                return false;
-            }
-
-            if (!SocialRoomEmployeePoolCodec.TryDecodeLeaveField(packetBytes, out SocialRoomEmployeePoolCodec.LeaveFieldPacket packet, out string error))
-            {
-                message = error;
-                return false;
-            }
-
-            if (!_employeePoolRuntime.TryApplyLeaveField(packetBytes, out string detail))
-            {
-                message = detail;
-                return false;
-            }
-
-            _employeeHasPacketData = true;
-            SyncLegacyEmployeePacketStateFromPool(packet.EmployerId);
-            StatusMessage = detail;
-            PersistState();
-            message = StatusMessage;
-            return true;
-        }
-
-        private bool TryApplyEmployeeMiniRoomBalloonPacket(byte[] packetBytes, out string message)
-        {
-            message = null;
-            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
-            {
-                message = "Employee mini-room balloon packets only apply to personal-shop and entrusted-shop rooms.";
-                return false;
-            }
-
-            if (packetBytes == null || packetBytes.Length == 0)
-            {
-                message = "Employee mini-room balloon packet payload is empty.";
-                return false;
-            }
-
-            if (!SocialRoomEmployeePoolCodec.TryDecodeMiniRoomBalloon(packetBytes, out SocialRoomEmployeePoolCodec.MiniRoomBalloonPacket packet, out string error))
-            {
-                message = error;
-                return false;
-            }
-
-            if (!_employeePoolRuntime.TryApplyMiniRoomBalloon(packetBytes, out string detail))
-            {
-                message = detail;
-                return false;
-            }
-
-            _employeeHasPacketData = true;
-            SyncLegacyEmployeePacketStateFromPool(packet.EmployerId);
-            StatusMessage = detail;
-            PersistState();
-            message = StatusMessage;
-            return true;
         }
 
         private bool TryDispatchMiniRoomPacket(PacketReader reader, byte packetType, int tickCount, out string message)
@@ -2663,8 +2557,7 @@ namespace HaCreator.MapSimulator.Interaction
             List<SocialRoomChatEntry> decodedChatEntries = new();
             for (int i = 0; i < Math.Max(0, chatCount); i++)
             {
-                decodedChatEntries.Add(new SocialRoomChatEntry(reader.ReadMapleString(), SocialRoomChatTone.Neutral));
-                reader.ReadByte();
+                decodedChatEntries.Add(DecodeEntrustedShopEnterChatEntry(reader));
             }
 
             string employerName = NormalizeName(reader.ReadMapleString());
@@ -2751,11 +2644,20 @@ namespace HaCreator.MapSimulator.Interaction
             }
             else
             {
-                RoomState = "Ledger review";
-                ModeName = decodedOwnerLedger ? "Ledger review" : "Open shop";
-                StatusMessage = decodedOwnerLedger
-                    ? $"CEntrustedShopDlg::OnEnterResult restored employer '{OwnerName}', title '{RoomTitle}', {_soldItems.Count} sold entr{(_soldItems.Count == 1 ? "y" : "ies")}, total received {Math.Max(0L, totalReceived):N0} meso, and synchronized {payload.OccupantCount} occupant entr{(payload.OccupantCount == 1 ? "y" : "ies")} for {ResolveMiniRoomTypeLabel(payload.RoomType)}. Local seat {Math.Max(0, payload.MyPosition)} with client max-users {Math.Max(0, payload.MaxUsers)}."
-                    : $"CEntrustedShopDlg::OnEnterResult restored employer '{OwnerName}', title '{RoomTitle}', and synchronized {payload.OccupantCount} occupant entr{(payload.OccupantCount == 1 ? "y" : "ies")} for {ResolveMiniRoomTypeLabel(payload.RoomType)}. Local seat {Math.Max(0, payload.MyPosition)} with client max-users {Math.Max(0, payload.MaxUsers)}.";
+                if (decodedOwnerLedger)
+                {
+                    RoomState = soldDialogVisible ? "Ledger review" : "Permit active";
+                    ModeName = soldDialogVisible ? "Ledger review" : "Open shop";
+                    StatusMessage = soldDialogVisible
+                        ? $"CEntrustedShopDlg::OnEnterResult restored employer '{OwnerName}', title '{RoomTitle}', {_soldItems.Count} sold entr{(_soldItems.Count == 1 ? "y" : "ies")}, total received {Math.Max(0L, totalReceived):N0} meso, opened the sold-item ledger, and synchronized {payload.OccupantCount} occupant entr{(payload.OccupantCount == 1 ? "y" : "ies")} for {ResolveMiniRoomTypeLabel(payload.RoomType)}. Local seat {Math.Max(0, payload.MyPosition)} with client max-users {Math.Max(0, payload.MaxUsers)}."
+                        : $"CEntrustedShopDlg::OnEnterResult restored employer '{OwnerName}', title '{RoomTitle}', {_soldItems.Count} sold entr{(_soldItems.Count == 1 ? "y" : "ies")}, total received {Math.Max(0L, totalReceived):N0} meso, reopened the live entrusted shop, and synchronized {payload.OccupantCount} occupant entr{(payload.OccupantCount == 1 ? "y" : "ies")} for {ResolveMiniRoomTypeLabel(payload.RoomType)}. Local seat {Math.Max(0, payload.MyPosition)} with client max-users {Math.Max(0, payload.MaxUsers)}.";
+                }
+                else
+                {
+                    RoomState = "Ledger review";
+                    ModeName = "Open shop";
+                    StatusMessage = $"CEntrustedShopDlg::OnEnterResult restored employer '{OwnerName}', title '{RoomTitle}', and synchronized {payload.OccupantCount} occupant entr{(payload.OccupantCount == 1 ? "y" : "ies")} for {ResolveMiniRoomTypeLabel(payload.RoomType)}. Local seat {Math.Max(0, payload.MyPosition)} with client max-users {Math.Max(0, payload.MaxUsers)}.";
+                }
             }
 
             PersistState();
@@ -2773,6 +2675,47 @@ namespace HaCreator.MapSimulator.Interaction
             title = reader.ReadMapleString();
             itemMaxCount = reader.ReadByte();
             return TryDecodeMiniRoomBaseEnterResultPayload(reader, out payload, out message);
+        }
+
+        private SocialRoomChatEntry DecodeEntrustedShopEnterChatEntry(PacketReader reader)
+        {
+            string rawText = reader.ReadMapleString();
+            byte toneByte = reader.ReadByte();
+            return new SocialRoomChatEntry(
+                NormalizeEntrustedShopEnterChatText(rawText),
+                ResolveEntrustedShopEnterChatTone(toneByte));
+        }
+
+        private static string NormalizeEntrustedShopEnterChatText(string rawText)
+        {
+            const string ChatDelimiter = " : ";
+
+            string normalized = string.IsNullOrWhiteSpace(rawText) ? string.Empty : rawText.Trim();
+            int delimiterIndex = normalized.IndexOf(ChatDelimiter, StringComparison.Ordinal);
+            if (delimiterIndex < 0)
+            {
+                return normalized;
+            }
+
+            string speaker = normalized[..delimiterIndex].Trim();
+            string message = normalized[(delimiterIndex + ChatDelimiter.Length)..].Trim();
+            if (speaker.Length == 0 || message.Length == 0)
+            {
+                return normalized;
+            }
+
+            return $"{speaker}{ChatDelimiter}{message}";
+        }
+
+        private static SocialRoomChatTone ResolveEntrustedShopEnterChatTone(byte toneByte)
+        {
+            return toneByte switch
+            {
+                1 => SocialRoomChatTone.LocalSpeaker,
+                2 => SocialRoomChatTone.Warning,
+                3 => SocialRoomChatTone.System,
+                _ => SocialRoomChatTone.Neutral
+            };
         }
 
         private bool TryDecodeMiniRoomBaseEnterResultPayload(PacketReader reader, out MiniRoomBaseEnterResultPayload payload, out string message)

@@ -35,6 +35,9 @@ namespace HaCreator.MapSimulator.Animation
     {
         public sealed class FrameMetadata
         {
+            public Point FrameOrigin { get; init; }
+            public Point CanvasSize { get; init; }
+            public Rectangle VisualBounds { get; init; }
             public Rectangle FrameBounds { get; init; }
             public bool HasHeadAnchor { get; init; }
             public Point HeadAnchor { get; init; }
@@ -65,6 +68,8 @@ namespace HaCreator.MapSimulator.Animation
             public int AttackType { get; set; } = -1;
             public bool HitAttach { get; set; }
             public bool FacingAttach { get; set; }
+            public Dictionary<int, bool> FrameHitAttachOverrides { get; } = new();
+            public Dictionary<int, bool> FrameFacingAttachOverrides { get; } = new();
             public bool EffectFacingAttach { get; set; }
             public bool HasRangeBounds { get; set; }
             public Rectangle RangeBounds { get; set; }
@@ -83,6 +88,22 @@ namespace HaCreator.MapSimulator.Animation
             public bool IsJumpAttack { get; set; }
             public bool Tremble { get; set; }
             public bool IsAngerAttack { get; set; }
+
+            public bool ResolveHitAttach(int frameIndex)
+            {
+                return frameIndex >= 0
+                       && FrameHitAttachOverrides.TryGetValue(frameIndex, out bool overrideValue)
+                    ? overrideValue
+                    : HitAttach;
+            }
+
+            public bool ResolveFacingAttach(int frameIndex)
+            {
+                return frameIndex >= 0
+                       && FrameFacingAttachOverrides.TryGetValue(frameIndex, out bool overrideValue)
+                    ? overrideValue
+                    : FacingAttach;
+            }
         }
 
         public sealed class AttackEffectNode

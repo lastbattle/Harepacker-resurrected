@@ -6,6 +6,7 @@ using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -133,6 +134,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            ApplyPacketOwnedCharacterInventorySnapshot(snapshot);
             CharacterBuild activeBuild = _playerManager?.Player?.Build;
             if (activeBuild != null)
             {
@@ -228,6 +230,35 @@ namespace HaCreator.MapSimulator
             if (snapshot.HairId > 0)
             {
                 targetBuild.Hair = loader.LoadHair(snapshot.HairId) ?? targetBuild.Hair;
+            }
+        }
+
+        private void ApplyPacketOwnedCharacterInventorySnapshot(PacketCharacterDataSnapshot snapshot)
+        {
+            if (snapshot == null || uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
+            {
+                return;
+            }
+
+            if (snapshot.Meso.HasValue)
+            {
+                inventoryWindow.MesoCount = Math.Max(0, snapshot.Meso.Value);
+            }
+
+            IReadOnlyDictionary<InventoryType, int> slotLimits = snapshot.InventorySlotLimits;
+            if (slotLimits == null)
+            {
+                return;
+            }
+
+            foreach ((InventoryType inventoryType, int slotLimit) in slotLimits)
+            {
+                if (inventoryType == InventoryType.NONE)
+                {
+                    continue;
+                }
+
+                inventoryWindow.SetSlotLimit(inventoryType, slotLimit);
             }
         }
 

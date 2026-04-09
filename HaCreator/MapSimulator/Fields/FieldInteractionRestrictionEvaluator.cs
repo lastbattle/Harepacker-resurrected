@@ -231,12 +231,14 @@ namespace HaCreator.MapSimulator.Fields
             bool hasRecoveryEffect,
             bool hasTemporaryBuffEffect,
             bool hasMorphEffect,
-            bool hasCureEffect)
+            bool hasCureEffect,
+            bool hasEnvironmentalProtectionEffect = false)
         {
             return hasRecoveryEffect
                 || hasTemporaryBuffEffect
                 || hasMorphEffect
-                || hasCureEffect;
+                || hasCureEffect
+                || hasEnvironmentalProtectionEffect;
         }
 
         public static IReadOnlyList<string> GetFieldEntryItemRestrictionMessages(long fieldLimit)

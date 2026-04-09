@@ -410,6 +410,13 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int group = itemId / 10000;
+            if (inventoryType == InventoryType.CASH && group == 500)
+            {
+                category = "Item";
+                imagePath = $"Pet/{itemId:D7}.img";
+                return true;
+            }
+
             string folderName = inventoryType switch
             {
                 InventoryType.USE => "Consume",
@@ -669,6 +676,7 @@ namespace HaCreator.MapSimulator.UI
         {
             List<string> effectLines = new();
             AppendInfoEffectLines(effectLines, infoProperty);
+            AppendChairRecoveryEffectLines(effectLines, infoProperty);
             AppendPetFoodEffectLine(effectLines, specProperty);
             AppendScriptedUseEffectLines(effectLines, specProperty);
             AppendPickupModifierEffectLines(effectLines, specProperty);
@@ -860,6 +868,41 @@ namespace HaCreator.MapSimulator.UI
                 (string key, string label) = InfoFlatEffectKeys[i];
                 AppendStatEffectLine(effectLines, label, TryGetPositiveInt(infoProperty[key]), isPercent: false);
             }
+        }
+
+        private static void AppendChairRecoveryEffectLines(List<string> effectLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            int recoveryHp = GetIntOrStringValue(infoProperty["recoveryHP"]);
+            int recoveryMp = GetIntOrStringValue(infoProperty["recoveryMP"]);
+            if (recoveryHp <= 0 && recoveryMp <= 0)
+            {
+                return;
+            }
+
+            int waitSeconds = GetIntOrStringValue(infoProperty["waittime"]);
+            string intervalSuffix = waitSeconds > 0
+                ? $" every {FormatSecondDuration(waitSeconds)}"
+                : string.Empty;
+
+            if (recoveryHp > 0 && recoveryMp > 0)
+            {
+                effectLines.Add(
+                    $"Recovers {recoveryHp.ToString("N0", CultureInfo.InvariantCulture)} HP / {recoveryMp.ToString("N0", CultureInfo.InvariantCulture)} MP{intervalSuffix} while seated");
+                return;
+            }
+
+            if (recoveryHp > 0)
+            {
+                effectLines.Add($"Recovers {recoveryHp.ToString("N0", CultureInfo.InvariantCulture)} HP{intervalSuffix} while seated");
+                return;
+            }
+
+            effectLines.Add($"Recovers {recoveryMp.ToString("N0", CultureInfo.InvariantCulture)} MP{intervalSuffix} while seated");
         }
 
         private static void AppendCureEffectLine(List<string> effectLines, WzSubProperty specProperty)
@@ -1085,7 +1128,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            effectLines.Add($"Thaw {FormatSignedValue(thaw)}");
+            effectLines.Add($"Reduces environmental damage by {Math.Abs(thaw).ToString(CultureInfo.InvariantCulture)}");
         }
 
         private static void AppendCrossContinentEffectLine(List<string> effectLines, WzImageProperty property)
@@ -1357,6 +1400,17 @@ namespace HaCreator.MapSimulator.UI
             if (GetIntValue(infoProperty["timeLimited"]) == 1)
             {
                 metadataLines.Add("Time-limited item");
+            }
+
+            if (GetIntValue(infoProperty["buffchair"]) == 1)
+            {
+                metadataLines.Add("Buff Chair");
+            }
+
+            int cooltimeSeconds = GetIntOrStringValue(infoProperty["cooltime"]);
+            if (cooltimeSeconds > 0)
+            {
+                metadataLines.Add($"Cooldown: {FormatSecondDuration(cooltimeSeconds)}");
             }
 
             if (GetIntValue(infoProperty["dropBlock"]) == 1)
@@ -1739,6 +1793,11 @@ namespace HaCreator.MapSimulator.UI
             return BuildEffectLines(0, null, null, specProperty);
         }
 
+        public static IReadOnlyList<string> BuildEffectLinesForTests(WzSubProperty infoProperty, WzSubProperty specProperty)
+        {
+            return BuildEffectLines(0, null, infoProperty, specProperty);
+        }
+
         public static IReadOnlyList<string> BuildQuestRequirementMetadataLinesForTests(WzSubProperty infoProperty)
         {
             List<string> lines = new();
@@ -1801,6 +1860,36 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return $"{Math.Max(1, (int)Math.Round(duration.TotalSeconds)).ToString(CultureInfo.InvariantCulture)} sec";
+        }
+
+        private static string FormatSecondDuration(int seconds)
+        {
+            TimeSpan duration = TimeSpan.FromSeconds(seconds);
+            if (duration.TotalDays >= 1d && Math.Abs(duration.TotalDays - Math.Round(duration.TotalDays)) < 0.0001d)
+            {
+                int wholeDays = Math.Max(1, (int)Math.Round(duration.TotalDays));
+                return FormatDayCount(wholeDays);
+            }
+
+            if (duration.TotalHours >= 1d && Math.Abs(duration.TotalHours - Math.Round(duration.TotalHours)) < 0.0001d)
+            {
+                int wholeHours = Math.Max(1, (int)Math.Round(duration.TotalHours));
+                return wholeHours == 1
+                    ? "1 hour"
+                    : $"{wholeHours.ToString(CultureInfo.InvariantCulture)} hours";
+            }
+
+            if (duration.TotalMinutes >= 1d && Math.Abs(duration.TotalMinutes - Math.Round(duration.TotalMinutes)) < 0.0001d)
+            {
+                int wholeMinutes = Math.Max(1, (int)Math.Round(duration.TotalMinutes));
+                return wholeMinutes == 1
+                    ? "1 minute"
+                    : $"{wholeMinutes.ToString(CultureInfo.InvariantCulture)} minutes";
+            }
+
+            return seconds == 1
+                ? "1 second"
+                : $"{seconds.ToString(CultureInfo.InvariantCulture)} seconds";
         }
 
         private static string FormatDayCount(int days)

@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator
                 FindNpcById,
                 _activeNpcInteractionNpc,
                 ResolvePacketScriptSelectablePet,
+                _ => { },
                 out PacketScriptMessageRuntime.PacketScriptMessageOpenRequest request,
                 out message))
             {
@@ -111,9 +112,15 @@ namespace HaCreator.MapSimulator
             _activeNpcInteractionNpc = npc;
             _activeNpcInteractionNpcId = request.SpeakerNpcId;
 
+            int publishedScriptTemplateId = request.State?.SpeakerTemplateId ?? 0;
+            if (publishedScriptTemplateId <= 0)
+            {
+                publishedScriptTemplateId = request.SpeakerNpcId;
+            }
+
             IReadOnlyList<string> publishedScriptNames = npc != null
                 ? FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames(npc.NpcInstance)
-                : FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames(request.SpeakerNpcId);
+                : FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames(publishedScriptTemplateId);
             PublishDynamicObjectTagStatesForScriptNames(publishedScriptNames, currTickCount);
 
             _npcInteractionOverlay.Open(request.State);

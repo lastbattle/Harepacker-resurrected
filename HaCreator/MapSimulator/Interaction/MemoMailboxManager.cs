@@ -53,6 +53,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly List<MemoState> _memos = new();
         private readonly MemoDraftState _draft = new();
         private ParcelDialogTab _activeTab = ParcelDialogTab.Receive;
+        private ParcelDialogTabAvailability _availableTabs = ParcelDialogTabAvailability.All;
         private ParcelComposeMode _composeMode = ParcelComposeMode.Send;
         private bool _showTaxInfo;
         private int _nextMemoId = 1;
@@ -92,6 +93,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 Entries = entries,
                 ActiveTab = _activeTab,
+                AvailableTabs = _availableTabs,
                 UnreadCount = entries.Count(entry => !entry.IsRead),
                 ClaimableCount = entries.Count(entry => entry.CanClaimAttachment),
                 LastActionSummary = _lastActionSummary
@@ -206,6 +208,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal void ReplacePacketOwnedParcelSession(
             IReadOnlyList<PacketOwnedParcelDecodedEntry> entries,
+            ParcelDialogTabAvailability availableTabs,
             ParcelDialogTab activeTab,
             out string message)
         {
@@ -239,6 +242,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
+            ApplyTabAvailability(availableTabs);
             ApplyActiveTab(activeTab, activeTab == ParcelDialogTab.QuickSend
                 ? "Packet-owned quick-delivery owner opened."
                 : "Packet-owned parcel receive owner opened.");
@@ -353,6 +357,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal void SetActiveTab(ParcelDialogTab tab)
         {
+            if (!IsTabAvailable(tab))
+            {
+                tab = ResolveFallbackActiveTab();
+            }
+
             ApplyActiveTab(
                 tab,
                 tab switch
@@ -389,6 +398,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _memos.Clear();
             _nextMemoId = 1;
+            ResetTabAvailability();
             _lastActionSummary = "Cleared the parcel receive session.";
         }
 
@@ -396,8 +406,26 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _memos.Clear();
             _nextMemoId = 1;
+            ResetTabAvailability();
             SeedDefaultParcels();
             _lastActionSummary = "Restored the seeded parcel receive session.";
+        }
+
+        internal void ApplyPacketOwnedDialogMode(int dialogMode)
+        {
+            ParcelDialogTabAvailability availability = dialogMode switch
+            {
+                1 => ParcelDialogTabAvailability.QuickSend,
+                2 => ParcelDialogTabAvailability.Receive,
+                _ => ParcelDialogTabAvailability.Receive | ParcelDialogTabAvailability.Send
+            };
+
+            ApplyTabAvailability(availability);
+            SetActiveTab(dialogMode switch
+            {
+                1 => ParcelDialogTab.QuickSend,
+                _ => ParcelDialogTab.Receive
+            });
         }
 
         internal bool TryDeliverPacketOwnedParcel(
@@ -712,6 +740,11 @@ namespace HaCreator.MapSimulator.Interaction
             _draft.Attachment = null;
         }
 
+        private void ResetTabAvailability()
+        {
+            _availableTabs = ParcelDialogTabAvailability.All;
+        }
+
         private void SetDraftRecipient(string recipient, bool announce)
         {
             _draft.Recipient = recipient?.Trim() ?? string.Empty;
@@ -1011,6 +1044,46 @@ namespace HaCreator.MapSimulator.Interaction
                 : ParcelComposeMode.Send;
             _showTaxInfo = false;
             _lastActionSummary = actionSummary;
+        }
+
+        private void ApplyTabAvailability(ParcelDialogTabAvailability availableTabs)
+        {
+            _availableTabs = availableTabs == ParcelDialogTabAvailability.None
+                ? ParcelDialogTabAvailability.Receive
+                : availableTabs;
+
+            if (!IsTabAvailable(_activeTab))
+            {
+                _activeTab = ResolveFallbackActiveTab();
+            }
+        }
+
+        private bool IsTabAvailable(ParcelDialogTab tab)
+        {
+            ParcelDialogTabAvailability flag = tab switch
+            {
+                ParcelDialogTab.Receive => ParcelDialogTabAvailability.Receive,
+                ParcelDialogTab.Send => ParcelDialogTabAvailability.Send,
+                ParcelDialogTab.QuickSend => ParcelDialogTabAvailability.QuickSend,
+                _ => ParcelDialogTabAvailability.None
+            };
+
+            return (_availableTabs & flag) != 0;
+        }
+
+        private ParcelDialogTab ResolveFallbackActiveTab()
+        {
+            if ((_availableTabs & ParcelDialogTabAvailability.Receive) != 0)
+            {
+                return ParcelDialogTab.Receive;
+            }
+
+            if ((_availableTabs & ParcelDialogTabAvailability.Send) != 0)
+            {
+                return ParcelDialogTab.Send;
+            }
+
+            return ParcelDialogTab.QuickSend;
         }
 
         private string ResolveDraftParcelLabel(string fallback = "Parcel delivery")

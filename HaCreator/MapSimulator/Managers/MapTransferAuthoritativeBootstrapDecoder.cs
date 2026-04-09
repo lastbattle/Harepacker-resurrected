@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -12,18 +14,21 @@ namespace HaCreator.MapSimulator.Managers
 
         internal static bool TryFindBootstrapBooks(
             ReadOnlySpan<byte> payload,
+            ulong characterDataFlags,
             Func<int, bool> isPlausibleMapId,
             out int[] regularFields,
             out int[] continentFields,
             out int matchedOffset,
             out bool ignoredTrailingLogoutGiftConfig,
-            out bool matchedExactTailBoundary)
+            out bool matchedExactTailBoundary,
+            out bool matchedKnownCharacterDataTail)
         {
             regularFields = null;
             continentFields = null;
             matchedOffset = -1;
             ignoredTrailingLogoutGiftConfig = false;
             matchedExactTailBoundary = false;
+            matchedKnownCharacterDataTail = false;
 
             if (payload.Length < BootstrapBookByteLength || isPlausibleMapId == null)
             {
@@ -35,10 +40,12 @@ namespace HaCreator.MapSimulator.Managers
                 ReadOnlySpan<byte> leadingPayload = payload[..^LogoutGiftConfigByteLength];
                 if (TryFindBootstrapBooksAtExactTail(
                         leadingPayload,
+                        characterDataFlags,
                         isPlausibleMapId,
                         out regularFields,
                         out continentFields,
-                        out matchedOffset))
+                        out matchedOffset,
+                        out matchedKnownCharacterDataTail))
                 {
                     ignoredTrailingLogoutGiftConfig = true;
                     matchedExactTailBoundary = true;
@@ -47,10 +54,12 @@ namespace HaCreator.MapSimulator.Managers
 
                 if (TryFindBootstrapBooksCore(
                         leadingPayload,
+                        characterDataFlags,
                         isPlausibleMapId,
                         out regularFields,
                         out continentFields,
-                        out matchedOffset))
+                        out matchedOffset,
+                        out matchedKnownCharacterDataTail))
                 {
                     ignoredTrailingLogoutGiftConfig = true;
                     return true;
@@ -59,10 +68,12 @@ namespace HaCreator.MapSimulator.Managers
 
             if (TryFindBootstrapBooksAtExactTail(
                     payload,
+                    characterDataFlags,
                     isPlausibleMapId,
                     out regularFields,
                     out continentFields,
-                    out matchedOffset))
+                    out matchedOffset,
+                    out matchedKnownCharacterDataTail))
             {
                 matchedExactTailBoundary = true;
                 return true;
@@ -70,22 +81,27 @@ namespace HaCreator.MapSimulator.Managers
 
             return TryFindBootstrapBooksCore(
                 payload,
+                characterDataFlags,
                 isPlausibleMapId,
                 out regularFields,
                 out continentFields,
-                out matchedOffset);
+                out matchedOffset,
+                out matchedKnownCharacterDataTail);
         }
 
         private static bool TryFindBootstrapBooksAtExactTail(
             ReadOnlySpan<byte> payload,
+            ulong characterDataFlags,
             Func<int, bool> isPlausibleMapId,
             out int[] regularFields,
             out int[] continentFields,
-            out int matchedOffset)
+            out int matchedOffset,
+            out bool matchedKnownCharacterDataTail)
         {
             regularFields = null;
             continentFields = null;
             matchedOffset = -1;
+            matchedKnownCharacterDataTail = false;
 
             if (payload.Length < BootstrapBookByteLength)
             {
@@ -96,24 +112,28 @@ namespace HaCreator.MapSimulator.Managers
             return TryReadBootstrapBooksAtOffset(
                 payload,
                 tailOffset,
+                characterDataFlags,
                 isPlausibleMapId,
                 out regularFields,
                 out continentFields,
-                out matchedOffset);
+                out matchedOffset,
+                out matchedKnownCharacterDataTail);
         }
 
         private static bool TryFindBootstrapBooksCore(
             ReadOnlySpan<byte> payload,
+            ulong characterDataFlags,
             Func<int, bool> isPlausibleMapId,
             out int[] regularFields,
             out int[] continentFields,
-            out int matchedOffset)
+            out int matchedOffset,
+            out bool matchedKnownCharacterDataTail)
         {
             regularFields = null;
             continentFields = null;
             matchedOffset = -1;
+            matchedKnownCharacterDataTail = false;
 
-            int slotCount = MapTransferRuntimeManager.RegularCapacity + MapTransferRuntimeManager.ContinentCapacity;
             if (payload.Length < BootstrapBookByteLength || isPlausibleMapId == null)
             {
                 return false;
@@ -124,10 +144,12 @@ namespace HaCreator.MapSimulator.Managers
                 if (TryReadBootstrapBooksAtOffset(
                         payload,
                         offset,
+                        characterDataFlags,
                         isPlausibleMapId,
                         out regularFields,
                         out continentFields,
-                        out matchedOffset))
+                        out matchedOffset,
+                        out matchedKnownCharacterDataTail))
                 {
                     return true;
                 }
@@ -139,14 +161,17 @@ namespace HaCreator.MapSimulator.Managers
         private static bool TryReadBootstrapBooksAtOffset(
             ReadOnlySpan<byte> payload,
             int offset,
+            ulong characterDataFlags,
             Func<int, bool> isPlausibleMapId,
             out int[] regularFields,
             out int[] continentFields,
-            out int matchedOffset)
+            out int matchedOffset,
+            out bool matchedKnownCharacterDataTail)
         {
             regularFields = null;
             continentFields = null;
             matchedOffset = -1;
+            matchedKnownCharacterDataTail = false;
 
             int slotCount = MapTransferRuntimeManager.RegularCapacity + MapTransferRuntimeManager.ContinentCapacity;
             if (offset < 0 || payload.Length - offset < BootstrapBookByteLength || isPlausibleMapId == null)
@@ -186,9 +211,18 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (!TryValidatePostMapTransferTail(
+                    payload[(offset + BootstrapBookByteLength)..],
+                    characterDataFlags,
+                    out bool matchedKnownTail))
+            {
+                return false;
+            }
+
             regularFields = candidateRegular;
             continentFields = candidateContinent;
             matchedOffset = offset;
+            matchedKnownCharacterDataTail = matchedKnownTail;
             return true;
         }
 
@@ -197,6 +231,88 @@ namespace HaCreator.MapSimulator.Managers
             return mapId == 0 ||
                    mapId == MapTransferRuntimeManager.EmptyDestinationMapId ||
                    isPlausibleMapId(mapId);
+        }
+
+        private static bool TryValidatePostMapTransferTail(
+            ReadOnlySpan<byte> payload,
+            ulong characterDataFlags,
+            out bool matchedKnownTail)
+        {
+            matchedKnownTail = false;
+            if (payload.Length == 0)
+            {
+                matchedKnownTail = true;
+                return true;
+            }
+
+            const ulong unsupportedTailFlags =
+                0x40000UL | // New Year card records
+                0x200000UL; // Wild Hunter info
+            bool hasUnsupportedTailFlags = (characterDataFlags & unsupportedTailFlags) != 0;
+            if (hasUnsupportedTailFlags)
+            {
+                return true;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload.ToArray(), writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+
+                if ((characterDataFlags & 0x80000UL) != 0)
+                {
+                    int questExCount = reader.ReadUInt16();
+                    for (int i = 0; i < questExCount; i++)
+                    {
+                        _ = reader.ReadUInt16();
+                        _ = ReadMapleString(reader);
+                    }
+                }
+
+                if ((characterDataFlags & 0x400000UL) != 0)
+                {
+                    int questCompleteCount = reader.ReadUInt16();
+                    for (int i = 0; i < questCompleteCount; i++)
+                    {
+                        _ = reader.ReadUInt16();
+                        _ = reader.ReadInt64();
+                    }
+                }
+
+                if ((characterDataFlags & 0x800000UL) != 0)
+                {
+                    int visitorQuestCount = reader.ReadUInt16();
+                    for (int i = 0; i < visitorQuestCount; i++)
+                    {
+                        _ = reader.ReadUInt16();
+                        _ = reader.ReadUInt16();
+                    }
+                }
+
+                matchedKnownTail = stream.Position == stream.Length;
+                return matchedKnownTail;
+            }
+            catch (Exception) when (payload.Length > 0)
+            {
+                return false;
+            }
+        }
+
+        private static string ReadMapleString(BinaryReader reader)
+        {
+            int length = reader.ReadUInt16();
+            if (length <= 0)
+            {
+                return string.Empty;
+            }
+
+            byte[] bytes = reader.ReadBytes(length);
+            if (bytes.Length != length)
+            {
+                throw new EndOfStreamException("Maple string exceeded the remaining post-map-transfer tail payload.");
+            }
+
+            return Encoding.Default.GetString(bytes);
         }
     }
 }

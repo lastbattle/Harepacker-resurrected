@@ -148,6 +148,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly HashSet<string> _unlockedHiddenRecipeKeys = new(StringComparer.Ordinal);
         private readonly HashSet<int> _discoveredRecipeIds = new();
         private readonly HashSet<int> _unlockedHiddenRecipeIds = new();
+        private readonly HashSet<string> _packetOwnedAuthoritativeHiddenRecipeKeys = new(StringComparer.Ordinal);
+        private readonly HashSet<int> _packetOwnedAuthoritativeHiddenRecipeIds = new();
         private readonly Random _random = new();
         private readonly Texture2D _pixel;
 
@@ -170,6 +172,10 @@ namespace HaCreator.MapSimulator.UI
         private Func<int, int, bool> _matchesQuestRequirement;
         private string _launchContextLabel;
         private MakerLaunchFilter _launchFilter;
+        private PacketOwnedItemMakerDisassemblyTargetEntry[] _packetOwnedAuthoritativeDisassemblyTargets = Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>();
+        private bool _packetOwnedHasAuthoritativeDisassemblyTargets;
+        private bool _packetOwnedHasAuthoritativeHiddenRecipeList;
+        private bool _packetOwnedServerOwnsCraftExecution;
         private bool _isCrafting;
         private bool _isCategorySelectorExpanded;
         private bool _isItemSelectorExpanded;
@@ -280,6 +286,74 @@ namespace HaCreator.MapSimulator.UI
             message = ignoredEntries > 0
                 ? $"Packet-owned maker hidden unlock resolved {resolvedCount} hidden row(s); ignored {ignoredEntries} unmatched row(s)."
                 : $"Packet-owned maker hidden unlock resolved {resolvedCount} hidden row(s).";
+            return true;
+        }
+
+        internal bool TryApplyPacketOwnedSession(PacketOwnedItemMakerSession packetSession, out string message)
+        {
+            message = "Item Maker session is unavailable.";
+            if (packetSession == null)
+            {
+                return false;
+            }
+
+            ClearPacketOwnedSessionState();
+            _packetOwnedServerOwnsCraftExecution = packetSession.ServerOwnsCraftExecution;
+            _packetOwnedHasAuthoritativeDisassemblyTargets = packetSession.HasAuthoritativeDisassemblyTargets;
+            _packetOwnedHasAuthoritativeHiddenRecipeList = packetSession.HasAuthoritativeHiddenRecipeList;
+            _packetOwnedAuthoritativeDisassemblyTargets = packetSession.DisassemblyTargets?.ToArray()
+                ?? Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>();
+
+            int resolvedHiddenEntries = 0;
+            int ignoredHiddenEntries = 0;
+            if (_packetOwnedHasAuthoritativeHiddenRecipeList)
+            {
+                foreach (PacketOwnedItemMakerSessionHiddenEntry entry in packetSession.HiddenRecipeEntries ?? Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>())
+                {
+                    ItemMakerRecipe recipe = ResolveHiddenRecipeForPacketUnlock(entry.BucketKey, entry.OutputItemId);
+                    if (recipe == null)
+                    {
+                        ignoredHiddenEntries++;
+                        continue;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(recipe.RecipeKey))
+                    {
+                        _packetOwnedAuthoritativeHiddenRecipeKeys.Add(recipe.RecipeKey);
+                    }
+                    else if (recipe.OutputItemId > 0)
+                    {
+                        _packetOwnedAuthoritativeHiddenRecipeIds.Add(recipe.OutputItemId);
+                    }
+
+                    resolvedHiddenEntries++;
+                }
+            }
+
+            RebuildVisiblePages();
+
+            List<string> parts = new();
+            parts.Add(_packetOwnedServerOwnsCraftExecution
+                ? "packet-owned craft execution enabled"
+                : "local craft execution retained");
+
+            if (_packetOwnedHasAuthoritativeDisassemblyTargets)
+            {
+                int visibleDisassemblyTargets = ResolveAuthoritativeDisassemblyTargets(
+                    _inventory?.GetSlots(InventoryType.EQUIP),
+                    _packetOwnedAuthoritativeDisassemblyTargets).Count;
+                parts.Add($"authoritative disassembly targets {visibleDisassemblyTargets}/{_packetOwnedAuthoritativeDisassemblyTargets.Length}");
+            }
+
+            if (_packetOwnedHasAuthoritativeHiddenRecipeList)
+            {
+                parts.Add(ignoredHiddenEntries > 0
+                    ? $"authoritative hidden list {resolvedHiddenEntries} row(s), {ignoredHiddenEntries} unmatched"
+                    : $"authoritative hidden list {resolvedHiddenEntries} row(s)");
+            }
+
+            message = $"Applied maker session: {string.Join("; ", parts)}.";
+            RefreshStatusMessage(message);
             return true;
         }
 
@@ -635,6 +709,12 @@ namespace HaCreator.MapSimulator.UI
             string masteryText = BuildMasteryDisplayText(selectedRecipe);
             sprite.DrawString(_font, masteryText, new Vector2(detailOrigin.X, y), new Color(153, 210, 255));
             y += 18;
+
+            if (_packetOwnedServerOwnsCraftExecution)
+            {
+                sprite.DrawString(_font, "Packet-owned profession session is authoring craft completion.", new Vector2(detailOrigin.X, y), new Color(214, 196, 255));
+                y += 18;
+            }
 
             if (selectedRecipe.IsHidden)
             {
@@ -1084,6 +1164,14 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (_packetOwnedServerOwnsCraftExecution)
+            {
+                _craftingRecipeIndex = -1;
+                RebuildVisiblePages();
+                RefreshStatusMessage("Craft request staged. Apply an OnMakerResult(248) payload to resolve the packet-owned profession result.");
+                return;
+            }
+
             if (recipe.MesoCost > 0 && !_inventory.TryConsumeMeso(recipe.MesoCost))
             {
                 _craftingRecipeIndex = -1;
@@ -1352,7 +1440,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (!CanAcceptCraftReward(recipe))
+            if (!_packetOwnedServerOwnsCraftExecution && !CanAcceptCraftReward(recipe))
             {
                 failureReason = "Inventory is full for the crafting result.";
                 return false;
@@ -1395,8 +1483,20 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _statusMessage = CanCraftRecipe(recipe, out string failureReason)
-                ? "Ready to craft."
+                ? _packetOwnedServerOwnsCraftExecution
+                    ? "Ready to send packet-owned craft request."
+                    : "Ready to craft."
                 : failureReason;
+        }
+
+        private void ClearPacketOwnedSessionState()
+        {
+            _packetOwnedAuthoritativeDisassemblyTargets = Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>();
+            _packetOwnedAuthoritativeHiddenRecipeKeys.Clear();
+            _packetOwnedAuthoritativeHiddenRecipeIds.Clear();
+            _packetOwnedHasAuthoritativeDisassemblyTargets = false;
+            _packetOwnedHasAuthoritativeHiddenRecipeList = false;
+            _packetOwnedServerOwnsCraftExecution = false;
         }
 
         private string BuildHiddenRecipeLockHint(ItemMakerRecipe recipe)
@@ -2090,10 +2190,21 @@ namespace HaCreator.MapSimulator.UI
             }
 
             IReadOnlyList<InventorySlotData> equipSlots = _inventory.GetSlots(InventoryType.EQUIP);
-            List<ItemMakerRecipe> recipes = new(equipSlots.Count);
-            for (int i = 0; i < equipSlots.Count; i++)
+            List<(int SlotIndex, int ItemId)> targetEntries = _packetOwnedHasAuthoritativeDisassemblyTargets
+                ? ResolveAuthoritativeDisassemblyTargets(equipSlots, _packetOwnedAuthoritativeDisassemblyTargets)
+                : Enumerable.Range(0, equipSlots.Count)
+                    .Select(i => (i, equipSlots[i]?.ItemId ?? 0))
+                    .ToList();
+            List<ItemMakerRecipe> recipes = new(targetEntries.Count);
+            for (int i = 0; i < targetEntries.Count; i++)
             {
-                InventorySlotData slot = equipSlots[i];
+                (int slotIndex, int itemId) = targetEntries[i];
+                if (slotIndex < 0 || slotIndex >= equipSlots.Count)
+                {
+                    continue;
+                }
+
+                InventorySlotData slot = equipSlots[slotIndex];
                 if (slot == null || slot.ItemId <= 0 || slot.IsDisabled)
                 {
                     continue;
@@ -2101,7 +2212,7 @@ namespace HaCreator.MapSimulator.UI
 
                 recipes.Add(new ItemMakerRecipe
                 {
-                    RecipeKey = string.Format(CultureInfo.InvariantCulture, "disassemble/{0}/{1}", i, slot.ItemId),
+                    RecipeKey = string.Format(CultureInfo.InvariantCulture, "disassemble/{0}/{1}", slotIndex, itemId),
                     CategoryKey = DisassembleCategoryKey,
                     Mode = ItemMakerRecipeMode.Disassemble,
                     Family = ItemMakerRecipeFamily.Generic,
@@ -2111,11 +2222,41 @@ namespace HaCreator.MapSimulator.UI
                     OutputInventoryType = InventoryType.EQUIP,
                     OutputItemId = slot.ItemId,
                     OutputQuantity = 1,
-                    SourceSlotIndex = i
+                    SourceSlotIndex = slotIndex
                 });
             }
 
             return recipes;
+        }
+
+        internal static List<(int SlotIndex, int ItemId)> ResolveAuthoritativeDisassemblyTargets(
+            IReadOnlyList<InventorySlotData> equipSlots,
+            IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry> authoritativeTargets)
+        {
+            List<(int SlotIndex, int ItemId)> targets = new();
+            if (equipSlots == null || authoritativeTargets == null)
+            {
+                return targets;
+            }
+
+            for (int i = 0; i < authoritativeTargets.Count; i++)
+            {
+                PacketOwnedItemMakerDisassemblyTargetEntry entry = authoritativeTargets[i];
+                if (entry.SlotIndex < 0 || entry.SlotIndex >= equipSlots.Count)
+                {
+                    continue;
+                }
+
+                InventorySlotData slot = equipSlots[entry.SlotIndex];
+                if (slot == null || slot.IsDisabled || slot.ItemId <= 0 || slot.ItemId != entry.ItemId)
+                {
+                    continue;
+                }
+
+                targets.Add((entry.SlotIndex, entry.ItemId));
+            }
+
+            return targets;
         }
 
         private bool TryResolveDisassemblySource(ItemMakerRecipe recipe, out InventorySlotData slotData)
@@ -2185,7 +2326,9 @@ namespace HaCreator.MapSimulator.UI
             List<ItemMakerRecipe> launchFilteredRecipes = ApplyLaunchFilter(allowedRecipes);
             List<ItemMakerRecipe> disassemblyRecipes = BuildDisassemblyRecipes();
             SyncDiscoveredRecipes(launchFilteredRecipes.Where(static recipe => !recipe.IsHidden));
-            SyncUnlockedHiddenRecipes(launchFilteredRecipes.Where(static recipe => recipe.IsHidden));
+            SyncUnlockedHiddenRecipes(_packetOwnedHasAuthoritativeHiddenRecipeList
+                ? launchFilteredRecipes.Where(static recipe => recipe.IsHidden).Where(IsVisibleInPacketOwnedHiddenSelector)
+                : launchFilteredRecipes.Where(static recipe => recipe.IsHidden));
 
             List<ItemMakerRecipe> normalRecipes = launchFilteredRecipes
                 .Where(ShouldExposeRecipeInSelector)
@@ -2193,6 +2336,7 @@ namespace HaCreator.MapSimulator.UI
                 .ToList();
             List<ItemMakerRecipe> hiddenRecipes = launchFilteredRecipes
                 .Where(static recipe => recipe.IsHidden)
+                .Where(IsVisibleInPacketOwnedHiddenSelector)
                 .ToList();
 
             _pages.Clear();
@@ -2468,6 +2612,38 @@ namespace HaCreator.MapSimulator.UI
                 passesPersistentGate,
                 passesTransientGate,
                 HasExplicitHiddenUnlockGate(recipe));
+        }
+
+        private bool IsVisibleInPacketOwnedHiddenSelector(ItemMakerRecipe recipe)
+        {
+            return IsVisibleInPacketOwnedHiddenSelector(
+                _packetOwnedHasAuthoritativeHiddenRecipeList,
+                _packetOwnedAuthoritativeHiddenRecipeKeys,
+                _packetOwnedAuthoritativeHiddenRecipeIds,
+                recipe?.RecipeKey,
+                recipe?.OutputItemId ?? 0,
+                IsHiddenRecipeUnlocked(recipe));
+        }
+
+        internal static bool IsVisibleInPacketOwnedHiddenSelector(
+            bool hasAuthoritativeHiddenRecipeList,
+            IReadOnlySet<string> authoritativeRecipeKeys,
+            IReadOnlySet<int> authoritativeRecipeIds,
+            string recipeKey,
+            int outputItemId,
+            bool isUnlocked)
+        {
+            if (!hasAuthoritativeHiddenRecipeList || isUnlocked)
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(recipeKey) && authoritativeRecipeKeys?.Contains(recipeKey) == true)
+            {
+                return true;
+            }
+
+            return outputItemId > 0 && authoritativeRecipeIds?.Contains(outputItemId) == true;
         }
 
         private bool IsHiddenRecipeUnlocked(ItemMakerRecipe recipe)

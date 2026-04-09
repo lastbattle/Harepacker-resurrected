@@ -156,12 +156,14 @@ namespace HaCreator.MapSimulator
             byte[] trailingPayload = packet.TrailingPayload ?? Array.Empty<byte>();
             if (!MapTransferAuthoritativeBootstrapDecoder.TryFindBootstrapBooks(
                     trailingPayload,
+                    packet.CharacterDataFlags,
                     IsPlausibleAuthoritativeMapTransferMapId,
                     out int[] regularFields,
                     out int[] continentFields,
                     out int matchedOffset,
                     out bool ignoredTrailingLogoutGiftConfig,
-                    out bool matchedExactTailBoundary))
+                    out bool matchedExactTailBoundary,
+                    out bool matchedKnownCharacterDataTail))
             {
                 _lastAuthoritativeMapTransferBootstrapSummary =
                     $"CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} exposed the client-owned map-transfer branch, but no authoritative 5+10 slot array could be recovered from the remaining {trailingPayload.Length.ToString(CultureInfo.InvariantCulture)} byte payload tail.";
@@ -176,8 +178,11 @@ namespace HaCreator.MapSimulator
             string tailBoundarySuffix = matchedExactTailBoundary
                 ? " using the exact payload-tail boundary the client keeps after CharacterData::Decode"
                 : string.Empty;
+            string knownTailSuffix = matchedKnownCharacterDataTail
+                ? " matched against a known CharacterData tail layout"
+                : string.Empty;
             _lastAuthoritativeMapTransferBootstrapSummary =
-                $"Hydrated authoritative map-transfer books for {build.Name ?? "Character"} from CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} at payload offset {matchedOffset.ToString(CultureInfo.InvariantCulture)}{logoutGiftSuffix}{tailBoundarySuffix}.";
+                $"Hydrated authoritative map-transfer books for {build.Name ?? "Character"} from CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} at payload offset {matchedOffset.ToString(CultureInfo.InvariantCulture)}{logoutGiftSuffix}{tailBoundarySuffix}{knownTailSuffix}.";
         }
 
         private bool IsPlausibleAuthoritativeMapTransferMapId(int mapId)

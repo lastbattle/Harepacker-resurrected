@@ -38,6 +38,8 @@ namespace HaCreator.MapSimulator.UI
         void ConfigureLoginAccountSecurity(string picCode, bool secondaryPasswordEnabled, string secondaryPassword);
         bool TryVerifyAccountPic(string password);
         bool TryVerifyAccountSecondaryPassword(string password);
+        bool ApplyPacketOwnedAccountPicVerification(bool verified);
+        bool ApplyPacketOwnedAccountSecondaryPasswordVerification(bool verified);
         bool TrySetSecondaryPassword(string password);
         bool TryVerifySecondaryPassword(string password);
         void ClearSecondaryPasswordVerification();

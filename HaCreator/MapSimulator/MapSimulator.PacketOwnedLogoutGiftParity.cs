@@ -16,6 +16,8 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedLogoutGiftEntryCount = 3;
         private const int PacketOwnedLogoutGiftSelectionOpcode = 313;
         private const string PacketOwnedLogoutGiftUiPath = "LogoutGift/backgrnd";
+        private const int PacketOwnedLogoutGiftCompletionStringPoolId = 0x16AB;
+        private const string PacketOwnedLogoutGiftCompletionFallbackText = "Congratulations! Please come back in 3 days. Thank you!";
         private const int PacketOwnedLogoutGiftPredictQuitContextDwordIndex = 4137;
         private const int PacketOwnedLogoutGiftCommodityContextDwordIndex = 4138;
 
@@ -121,6 +123,11 @@ namespace HaCreator.MapSimulator
                 return "Logout-gift selection is outside the client owner slot range.";
             }
 
+            if (!ShouldShowPacketOwnedLogoutGiftOwner())
+            {
+                return "Logout-gift selection is unavailable because CWvsContext::m_bPredictQuit is false, so the client would not surface the owner.";
+            }
+
             _packetOwnedLogoutGiftSelectedIndex = index;
             int commoditySerialNumber = Math.Max(0, _packetOwnedLogoutGiftCommoditySerialNumbers[index]);
             _lastPacketOwnedLogoutGiftSelectionRequestIndex = index;
@@ -128,15 +135,20 @@ namespace HaCreator.MapSimulator
             string commoditySuffix = commoditySerialNumber > 0
                 ? $" Commodity SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)} remains cached for preview."
                 : " The cached slot is empty, but the client still emits the slot index.";
+            string followUpMessage = BuildPacketOwnedLogoutGiftCompletionMessage();
+            uiWindowManager?.HideWindow(MapSimulatorWindowNames.LogoutGift);
             _lastPacketOwnedLogoutGiftSummary =
-                $"Simulated CUILogoutGift::OnButtonClicked outpacket {PacketOwnedLogoutGiftSelectionOpcode} with slot index {index.ToString(CultureInfo.InvariantCulture)} (button {1000 + index}).{commoditySuffix} {DispatchPacketOwnedLogoutGiftSelectionRequest(index)}";
+                $"Simulated CUILogoutGift::OnButtonClicked outpacket {PacketOwnedLogoutGiftSelectionOpcode} with slot index {index.ToString(CultureInfo.InvariantCulture)} (button {1000 + index}).{commoditySuffix} {DispatchPacketOwnedLogoutGiftSelectionRequest(index)} Client follow-up util dialog (StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)}): {followUpMessage}";
             return _lastPacketOwnedLogoutGiftSummary;
         }
 
         private string ClosePacketOwnedLogoutGiftWindow()
         {
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.LogoutGift);
-            return "Closed the packet-owned logout-gift owner.";
+            string completionMessage = BuildPacketOwnedLogoutGiftCompletionMessage();
+            _lastPacketOwnedLogoutGiftSummary =
+                $"Closed the packet-owned logout-gift owner. Client TryShowLogoutGiftDialog follow-up util dialog (StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)}): {completionMessage}";
+            return _lastPacketOwnedLogoutGiftSummary;
         }
 
         private bool TryApplyPacketOwnedLogoutGiftPayload(byte[] payload, out string message)
@@ -149,6 +161,21 @@ namespace HaCreator.MapSimulator
                 message = "CWvsContext::OnLogoutGift routed, but no logout-gift commodity cache is available from the current SetField state.";
                 _lastPacketOwnedLogoutGiftSummary = message;
                 return false;
+            }
+
+            if (!ShouldShowPacketOwnedLogoutGiftOwner())
+            {
+                uiWindowManager?.HideWindow(MapSimulatorWindowNames.LogoutGift);
+                string ignoredPayloadSuffix = payload != null && payload.Length > 0
+                    ? $" Ignored {payload.Length.ToString(CultureInfo.InvariantCulture)} unexpected payload byte(s) because the client bridge only refreshes the existing owner."
+                    : string.Empty;
+                string preservedTrailingSuffix = _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
+                    ? $" Preserved {DescribePacketOwnedLogoutGiftLeadingTail()} ahead of the client 12-byte logout-gift cache."
+                    : string.Empty;
+                message =
+                    $"CWvsContext::OnLogoutGift arrived, but `CUILogoutGift::TryShowLogoutGiftDialog` would keep the owner closed because CWvsContext::m_bPredictQuit is false while the cached commodity SNs remain {FormatPacketOwnedLogoutGiftCommodityList()}.{preservedTrailingSuffix}{ignoredPayloadSuffix}";
+                _lastPacketOwnedLogoutGiftSummary = message;
+                return true;
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LogoutGift) is not LogoutGiftWindow window)
@@ -170,7 +197,8 @@ namespace HaCreator.MapSimulator
             string trailingSuffix = _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
                 ? $" Preserved {DescribePacketOwnedLogoutGiftLeadingTail()} ahead of the client 12-byte logout-gift cache."
                 : string.Empty;
-            message = $"CWvsContext::OnLogoutGift refreshed the dedicated logout-gift owner using cached commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()}.{trailingSuffix}{payloadSuffix}";
+            message =
+                $"CWvsContext::OnLogoutGift refreshed the dedicated logout-gift owner using cached commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()} and the same CWvsContext::m_bPredictQuit gate that `CUILogoutGift::TryShowLogoutGiftDialog` checks before modal show.{trailingSuffix}{payloadSuffix}";
             _lastPacketOwnedLogoutGiftSummary = message;
             return true;
         }
@@ -325,11 +353,25 @@ namespace HaCreator.MapSimulator
         private string BuildPacketOwnedLogoutGiftSubtitle(int entryCount)
         {
             string predictQuitPrefix = _packetOwnedLogoutGiftHasPredictQuitFlag
-                ? $"CWvsContext m_bPredictQuit={(_packetOwnedLogoutGiftPredictQuitRawValue != 0 ? "true" : "false")} "
+                ? $"CWvsContext m_bPredictQuit={(_packetOwnedLogoutGiftPredictQuitRawValue != 0 ? "true" : "false")} (TryShowLogoutGiftDialog gate) "
                 : string.Empty;
             return _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
                 ? $"{predictQuitPrefix}cached {entryCount} logout-gift slots plus {DescribePacketOwnedLogoutGiftLeadingTail()}."
                 : $"{predictQuitPrefix}cached {entryCount} logout-gift commodity slot(s).";
+        }
+
+        private bool ShouldShowPacketOwnedLogoutGiftOwner()
+        {
+            return !_packetOwnedLogoutGiftHasPredictQuitFlag || _packetOwnedLogoutGiftPredictQuitRawValue != 0;
+        }
+
+        private static string BuildPacketOwnedLogoutGiftCompletionMessage()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                PacketOwnedLogoutGiftCompletionStringPoolId,
+                PacketOwnedLogoutGiftCompletionFallbackText,
+                appendFallbackSuffix: true,
+                minimumHexWidth: 4);
         }
 
         private string DispatchPacketOwnedLogoutGiftSelectionRequest(int index)
@@ -407,7 +449,7 @@ namespace HaCreator.MapSimulator
             {
                 parts.Add(
                     string.Equals(field.SemanticName, "CWvsContext::m_bPredictQuit", StringComparison.Ordinal)
-                        ? $"{field.SemanticName}@0x{field.ByteOffset.ToString("X", CultureInfo.InvariantCulture)}={field.Value.ToString(CultureInfo.InvariantCulture)} ({(field.Value != 0 ? "true" : "false")})"
+                        ? $"{field.SemanticName}@0x{field.ByteOffset.ToString("X", CultureInfo.InvariantCulture)}={field.Value.ToString(CultureInfo.InvariantCulture)} ({(field.Value != 0 ? "true" : "false")}, TryShowLogoutGiftDialog gate)"
                         : $"CWvsContext dword[{field.DwordIndex.ToString(CultureInfo.InvariantCulture)}]@0x{field.ByteOffset.ToString("X", CultureInfo.InvariantCulture)}={field.Value.ToString(CultureInfo.InvariantCulture)}");
             }
 

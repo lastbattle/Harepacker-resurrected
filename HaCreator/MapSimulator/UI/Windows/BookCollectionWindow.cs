@@ -52,6 +52,11 @@ namespace HaCreator.MapSimulator.UI
         private const int CandidateWindowPadding = 4;
         private const int SearchKeyRepeatInitialDelayMs = KeyboardTextInputHelper.ClientRepeatInitialDelayMs;
         private const int SearchKeyRepeatIntervalMs = KeyboardTextInputHelper.ClientRepeatDelayMs;
+        private const uint CandidateWindowStyleRect = 0x0001;
+        private const uint CandidateWindowStylePoint = 0x0002;
+        private const uint CandidateWindowStyleForcePosition = 0x0020;
+        private const uint CandidateWindowStyleCandidatePosition = 0x0040;
+        private const uint CandidateWindowStyleExclude = 0x0080;
 
         private static readonly Point CardSlotOrigin = new(24, 22);
         private static readonly Point InfoPageOrigin = new(278, 36);
@@ -162,6 +167,7 @@ namespace HaCreator.MapSimulator.UI
         public Action OpenRequested { get; set; }
         public Action ClosingRequested { get; set; }
         public Action CloseRequested { get; set; }
+        internal Func<int, int, bool> OnImeCandidateSelected { get; set; }
         public override void SetFont(SpriteFont font)
         {
             _font = font;
@@ -723,6 +729,20 @@ namespace HaCreator.MapSimulator.UI
 
             if (leftReleased)
             {
+                if (IsPointInImeCandidateWindow(point.X, point.Y))
+                {
+                    EnterSearchMode();
+                    int candidateIndex = ResolveImeCandidateIndexFromPoint(point.X, point.Y);
+                    if (candidateIndex >= 0)
+                    {
+                        OnImeCandidateSelected?.Invoke(_candidateListState.ListIndex, candidateIndex);
+                    }
+
+                    _caretBlinkTick = Environment.TickCount;
+                    _previousMouseState = mouse;
+                    return;
+                }
+
                 if (_contextMenuVisible && !GetContextMenuBounds().Contains(point)) _contextMenuVisible = false;
                 if (!UsesCollectionLayout && OffsetBounds(SearchBoxBounds, InfoPageOrigin).Contains(point))
                 {
@@ -1128,9 +1148,8 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            float pageInset = isRightPage ? 4f : 0f;
-            DrawTextLine(sprite, page.Title, new Vector2(pageBounds.X + 16 + pageInset, pageBounds.Y + 14), GetBookStyle(0), pageBounds.Width - 32, HorizontalAlignment.Center);
-            DrawTextLine(sprite, page.Subtitle, new Vector2(pageBounds.X + 16 + pageInset, pageBounds.Y + 34), GetBookStyle(10), pageBounds.Width - 32, HorizontalAlignment.Center);
+            DrawTextLine(sprite, page.Title, new Vector2(pageBounds.X + 16, pageBounds.Y + 14), GetBookStyle(0), pageBounds.Width - 32, HorizontalAlignment.Center);
+            DrawTextLine(sprite, page.Subtitle, new Vector2(pageBounds.X + 16, pageBounds.Y + 34), GetBookStyle(10), pageBounds.Width - 32, HorizontalAlignment.Center);
             DrawRule(sprite, new Rectangle(pageBounds.X + 15, pageBounds.Y + 56, pageBounds.Width - 30, 1));
 
             for (int row = 0; row < CollectionEntriesPerPage; row++)
@@ -1140,7 +1159,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawRule(sprite, new Rectangle(pageBounds.X + 15, pageBounds.Bottom - 28, pageBounds.Width - 30, 1));
-            DrawTextLine(sprite, page.Footer, new Vector2(pageBounds.X + 16 + pageInset, pageBounds.Bottom - 21), GetBookStyle(11), pageBounds.Width - 32, HorizontalAlignment.Center);
+            DrawTextLine(sprite, page.Footer, new Vector2(pageBounds.X + 16, pageBounds.Bottom - 21), GetBookStyle(11), pageBounds.Width - 32, HorizontalAlignment.Center);
         }
 
         private void DrawCollectionEntry(SpriteBatch sprite, Rectangle bounds, CollectionBookEntrySnapshot entry)
@@ -1162,7 +1181,6 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            float pageInset = isRightPage ? 4f : 0f;
             switch (record.Type)
             {
                 case CollectionBookRecordType.Rule:
@@ -1175,7 +1193,7 @@ namespace HaCreator.MapSimulator.UI
                         CollectionBookTextAlignment.Right => HorizontalAlignment.Right,
                         _ => HorizontalAlignment.Left
                     };
-                    float anchorX = pageBounds.X + record.Left + pageInset;
+                    float anchorX = pageBounds.X + record.Left;
                     if (alignment == HorizontalAlignment.Right)
                     {
                         anchorX += record.Width;
@@ -2354,7 +2372,7 @@ namespace HaCreator.MapSimulator.UI
             width = Math.Max(64, Math.Min(Math.Min(viewportWidth, availableWidth), width));
             height = Math.Max(4, Math.Min(Math.Min(viewportHeight, availableHeight), height));
 
-            Point origin = ResolveCandidateWindowOrigin();
+            Point origin = ResolveCandidateWindowOrigin(viewport, width, height);
             int minX = Math.Max(0, ownerBounds.X);
             int maxX = Math.Min(viewportWidth, ownerBounds.Right) - width;
             if (maxX < minX)
@@ -2379,8 +2397,13 @@ namespace HaCreator.MapSimulator.UI
             return new Rectangle(x, y, width, height);
         }
 
-        private Point ResolveCandidateWindowOrigin()
+        private Point ResolveCandidateWindowOrigin(Viewport viewport, int width, int height)
         {
+            if (TryResolveCandidateWindowOriginFromWindowForm(viewport, width, height, out Point windowFormOrigin))
+            {
+                return windowFormOrigin;
+            }
+
             Rectangle bounds = OffsetBounds(SearchBoxBounds, InfoPageOrigin);
             SearchInputVisualState searchVisual = BuildSearchInputVisualState();
             int anchorIndex = searchVisual.VisibleCompositionLength > 0
@@ -2396,6 +2419,56 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return new Point(x, bounds.Bottom + 1);
+        }
+
+        private bool TryResolveCandidateWindowOriginFromWindowForm(Viewport viewport, int width, int height, out Point origin)
+        {
+            ImeCandidateWindowForm windowForm = _candidateListState?.WindowForm;
+            if (windowForm == null || !windowForm.HasPlacementData)
+            {
+                origin = Point.Zero;
+                return false;
+            }
+
+            int viewportWidth = Math.Max(1, viewport.Width);
+            int viewportHeight = Math.Max(1, viewport.Height);
+            uint style = windowForm.Style;
+
+            int x = windowForm.CurrentX;
+            int y = windowForm.CurrentY;
+
+            if ((style & CandidateWindowStyleExclude) != 0 && windowForm.AreaWidth > 0 && windowForm.AreaHeight > 0)
+            {
+                x = windowForm.CurrentX;
+                y = windowForm.AreaY + windowForm.AreaHeight + 1;
+                if (y + height > viewportHeight)
+                {
+                    y = windowForm.AreaY - height - 1;
+                }
+            }
+            else if ((style & (CandidateWindowStyleForcePosition | CandidateWindowStyleCandidatePosition | CandidateWindowStylePoint)) != 0)
+            {
+                y = windowForm.CurrentY + 1;
+            }
+            else if ((style & CandidateWindowStyleRect) != 0 && windowForm.AreaWidth > 0 && windowForm.AreaHeight > 0)
+            {
+                x = windowForm.AreaX;
+                y = windowForm.AreaY + windowForm.AreaHeight + 1;
+                if (y + height > viewportHeight)
+                {
+                    y = windowForm.AreaY - height - 1;
+                }
+            }
+            else
+            {
+                origin = Point.Zero;
+                return false;
+            }
+
+            x = Math.Clamp(x, 0, Math.Max(0, viewportWidth - width));
+            y = Math.Clamp(y, 0, Math.Max(0, viewportHeight - height));
+            origin = new Point(x, y);
+            return true;
         }
 
         private int GetVisibleCandidateCount()
@@ -2478,6 +2551,39 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return Math.Max(10, (int)Math.Ceiling(lineHeight));
+        }
+
+        private bool IsPointInImeCandidateWindow(int mouseX, int mouseY)
+        {
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(_graphicsDevice?.Viewport ?? default);
+            return !candidateBounds.IsEmpty && candidateBounds.Contains(mouseX, mouseY);
+        }
+
+        private int ResolveImeCandidateIndexFromPoint(int mouseX, int mouseY)
+        {
+            if (!_candidateListState.HasCandidates)
+            {
+                return -1;
+            }
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
+            if (count <= 0)
+            {
+                return -1;
+            }
+
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(_graphicsDevice?.Viewport ?? default);
+            int localIndex = SkillMacroImeCandidateWindowLayout.HitTestCandidate(
+                candidateBounds,
+                new Point(mouseX, mouseY),
+                _candidateListState.Vertical,
+                count,
+                GetCandidateRowHeight(),
+                GetHorizontalCandidateCellWidth());
+            return localIndex >= 0
+                ? start + localIndex
+                : -1;
         }
     }
 }

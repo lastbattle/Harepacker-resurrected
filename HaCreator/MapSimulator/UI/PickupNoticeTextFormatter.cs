@@ -58,7 +58,7 @@ namespace HaCreator.MapSimulator.UI
             int bonusMesoAmount = 0)
         {
             string chatMessage = pickedByPet
-                ? FormatClientString(MesoPetChatStringPoolId, $"{FormatActorLabel(sourceName, "Your pet")} picked up some mesos.")
+                ? FormatClientString(MesoPetChatStringPoolId, "Your pet has picked up some mesos.")
                 : string.Empty;
 
             string secondaryScreenMessage = bonusMesoAmount > 0

@@ -8,7 +8,7 @@ namespace HaCreator.MapSimulator.Combat
 {
     internal static class MobStatusRewardParity
     {
-        public static int ResolveKillExperience(MobItem mob)
+        public static int ResolveKillExperience(MobItem mob, int externalBonusPercent = 0)
         {
             int baseExp = Math.Max(0, mob?.AI?.Exp ?? 0);
             if (baseExp <= 0)
@@ -16,15 +16,15 @@ namespace HaCreator.MapSimulator.Combat
                 return 0;
             }
 
-            int showdownBonusPercent = ResolveShowdownBonusPercent(mob?.AI);
-            return ApplyRewardBonus(baseExp, showdownBonusPercent);
+            int totalBonusPercent = ResolveShowdownBonusPercent(mob?.AI) + Math.Max(0, externalBonusPercent);
+            return ApplyRewardBonus(baseExp, totalBonusPercent);
         }
 
-        public static int ResolveMesoAmount(MobItem mob, int baseAmount)
+        public static int ResolveMesoAmount(MobItem mob, int baseAmount, int externalBonusPercent = 0)
         {
             int mesoAmount = Math.Max(0, baseAmount);
             MobAI mobAI = mob?.AI;
-            int totalBonusPercent = ResolveMesoBonusPercent(mobAI);
+            int totalBonusPercent = ResolveMesoBonusPercent(mobAI) + Math.Max(0, externalBonusPercent);
             if (totalBonusPercent <= 0)
             {
                 return mesoAmount;
@@ -33,14 +33,14 @@ namespace HaCreator.MapSimulator.Combat
             return ApplyRewardBonus(mesoAmount, totalBonusPercent);
         }
 
-        public static int ResolveItemQuantity(MobItem mob, int baseQuantity)
+        public static int ResolveItemQuantity(MobItem mob, int baseQuantity, int externalBonusPercent = 0)
         {
-            return ResolveItemQuantity(mob?.AI, baseQuantity);
+            return ResolveItemQuantity(mob?.AI, baseQuantity, externalBonusPercent);
         }
 
-        public static int ResolveDropItemQuantity(MobItem mob, int itemId, int baseQuantity)
+        public static int ResolveDropItemQuantity(MobItem mob, int itemId, int baseQuantity, int externalBonusPercent = 0)
         {
-            return ResolveDropItemQuantity(mob?.AI, itemId, baseQuantity);
+            return ResolveDropItemQuantity(mob?.AI, itemId, baseQuantity, externalBonusPercent);
         }
 
         internal static int ApplyRewardBonus(int baseAmount, int percentBonus)
@@ -55,7 +55,11 @@ namespace HaCreator.MapSimulator.Combat
             return Math.Max(0, (int)MathF.Round(amount * (1f + bonusPercent / 100f)));
         }
 
-        internal static int ResolveItemQuantity(MobAI mobAI, int baseQuantity, int bonusRollPercent = -1)
+        internal static int ResolveItemQuantity(
+            MobAI mobAI,
+            int baseQuantity,
+            int externalBonusPercent = 0,
+            int bonusRollPercent = -1)
         {
             int quantity = Math.Max(0, baseQuantity);
             if (quantity <= 0)
@@ -63,7 +67,7 @@ namespace HaCreator.MapSimulator.Combat
                 return 0;
             }
 
-            int percentBonus = ResolveShowdownBonusPercent(mobAI);
+            int percentBonus = ResolveShowdownBonusPercent(mobAI) + Math.Max(0, externalBonusPercent);
             if (percentBonus <= 0)
             {
                 return quantity;
@@ -86,7 +90,12 @@ namespace HaCreator.MapSimulator.Combat
             return quantity + guaranteedExtra;
         }
 
-        internal static int ResolveDropItemQuantity(MobAI mobAI, int itemId, int baseQuantity, int bonusRollPercent = -1)
+        internal static int ResolveDropItemQuantity(
+            MobAI mobAI,
+            int itemId,
+            int baseQuantity,
+            int externalBonusPercent = 0,
+            int bonusRollPercent = -1)
         {
             int quantity = Math.Max(0, baseQuantity);
             if (quantity <= 0)
@@ -100,7 +109,7 @@ namespace HaCreator.MapSimulator.Combat
                 return quantity;
             }
 
-            return ResolveItemQuantity(mobAI, quantity, bonusRollPercent);
+            return ResolveItemQuantity(mobAI, quantity, externalBonusPercent, bonusRollPercent);
         }
 
         internal static int ResolveAuthoredRewardItemId(System.Collections.Generic.IReadOnlyList<int> rewardItemIds, int selectionRoll = -1)
@@ -118,7 +127,6 @@ namespace HaCreator.MapSimulator.Combat
 
         internal static int ResolveStableAuthoredRewardItemId(
             int mobId,
-            int poolId,
             System.Collections.Generic.IReadOnlyList<int> rewardItemIds)
         {
             if (rewardItemIds == null || rewardItemIds.Count == 0)
@@ -126,7 +134,7 @@ namespace HaCreator.MapSimulator.Combat
                 return 0;
             }
 
-            int stableSeed = HashCode.Combine(Math.Max(0, mobId), Math.Max(0, poolId));
+            int stableSeed = Math.Max(0, mobId);
             int index = (stableSeed & int.MaxValue) % rewardItemIds.Count;
             return Math.Max(0, rewardItemIds[index]);
         }

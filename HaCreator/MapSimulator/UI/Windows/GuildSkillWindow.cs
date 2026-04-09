@@ -61,13 +61,23 @@ namespace HaCreator.MapSimulator.UI
         private const int ScrollBarWidth = 12;
         private const int ScrollBarHeight = RowHeight * VisibleRows;
         private const int ScrollButtonHeight = 12;
-        private const int TooltipWidth = 250;
+        private const int TooltipWidth = 244;
+        private const int TooltipPadding = 6;
+        private const int TooltipGapX = 8;
+        private const int TooltipTopPadding = 5;
+        private const int TooltipBottomPadding = 7;
+        private const int TooltipBlankLineHeight = 6;
         private const int SummaryStripX = 15;
         private const int SummaryStripY = 329;
         private const int SummaryStripStepY = 16;
         private const int SummaryTextPaddingX = 6;
         private const int SummaryTextPaddingY = 3;
         private const float SummaryTextScale = 0.3f;
+
+        private readonly record struct TooltipRenderLine(string Text, bool IsTitle)
+        {
+            internal bool IsBlank => string.IsNullOrEmpty(Text);
+        }
 
         public GuildSkillWindow(
             IDXObject frame,
@@ -243,7 +253,7 @@ namespace HaCreator.MapSimulator.UI
             DrawEntries(sprite, snapshot);
             DrawScrollBar(sprite, snapshot);
             DrawSummary(sprite, snapshot);
-            DrawTooltip(sprite, snapshot);
+            DrawTooltip(sprite, snapshot, renderParameters.RenderWidth, renderParameters.RenderHeight);
         }
 
         private GuildSkillSnapshot RefreshSnapshot()
@@ -360,7 +370,7 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 int maxTextWidth = Math.Max(16, stripBounds.Width - (SummaryTextPaddingX * 2));
-                IReadOnlyList<string> wrappedLines = WrapText(snapshot.SummaryLines[i], maxTextWidth, SummaryTextScale, sprite.GraphicsDevice).ToArray();
+                IReadOnlyList<string> wrappedLines = WrapText(snapshot.SummaryLines[i], maxTextWidth, SummaryTextScale, preserveBlankLines: false, sprite.GraphicsDevice).ToArray();
                 if (wrappedLines.Count == 0)
                 {
                     continue;
@@ -674,7 +684,7 @@ namespace HaCreator.MapSimulator.UI
             return keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
         }
 
-        private void DrawTooltip(SpriteBatch sprite, GuildSkillSnapshot snapshot)
+        private void DrawTooltip(SpriteBatch sprite, GuildSkillSnapshot snapshot, int renderWidth, int renderHeight)
         {
             int tooltipIndex = _hoveredIndex >= 0 ? _hoveredIndex : snapshot.SelectedIndex;
             if (tooltipIndex < 0 || tooltipIndex >= snapshot.Entries.Count)
@@ -683,7 +693,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             GuildSkillEntrySnapshot entry = snapshot.Entries[tooltipIndex];
-            List<string> lines = BuildTooltipLines(entry);
+            List<TooltipRenderLine> lines = BuildTooltipLines(entry);
             if (lines.Count == 0)
             {
                 return;
@@ -692,18 +702,31 @@ namespace HaCreator.MapSimulator.UI
             float titleScale = 0.36f;
             float bodyScale = 0.31f;
             int lineSpacing = 12;
-            int contentHeight = 8;
-            foreach (string line in lines)
+            int contentHeight = TooltipTopPadding + TooltipBottomPadding;
+            foreach (TooltipRenderLine line in lines)
             {
-                float scale = line == lines[0] ? titleScale : bodyScale;
+                if (line.IsBlank)
+                {
+                    contentHeight += TooltipBlankLineHeight;
+                    continue;
+                }
+
+                float scale = line.IsTitle ? titleScale : bodyScale;
                 contentHeight += Math.Max(lineSpacing, (int)Math.Ceiling(_font.LineSpacing * scale));
             }
 
             int visibleIndex = Math.Clamp(tooltipIndex - _firstVisibleIndex, 0, VisibleRows - 1);
             Rectangle rowBounds = GetRowBounds(visibleIndex);
-            int tooltipX = rowBounds.Right + 8;
-            int tooltipY = rowBounds.Y;
-            Rectangle tooltipBounds = new Rectangle(tooltipX, tooltipY, TooltipWidth, contentHeight + 8);
+            int tooltipX = rowBounds.Right + TooltipGapX;
+            if (tooltipX + TooltipWidth > renderWidth - TooltipPadding)
+            {
+                tooltipX = rowBounds.X - TooltipGapX - TooltipWidth;
+            }
+
+            tooltipX = Math.Clamp(tooltipX, TooltipPadding, Math.Max(TooltipPadding, renderWidth - TooltipPadding - TooltipWidth));
+            int maxTooltipY = Math.Max(TooltipPadding, renderHeight - TooltipPadding - contentHeight);
+            int tooltipY = Math.Clamp(rowBounds.Y, TooltipPadding, maxTooltipY);
+            Rectangle tooltipBounds = new Rectangle(tooltipX, tooltipY, TooltipWidth, contentHeight);
 
             sprite.Draw(_pixel, tooltipBounds, new Color(12, 18, 28, 232));
             sprite.Draw(_pixel, new Rectangle(tooltipBounds.X - 1, tooltipBounds.Y - 1, tooltipBounds.Width + 2, 1), new Color(112, 132, 156));
@@ -711,43 +734,50 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_pixel, new Rectangle(tooltipBounds.X - 1, tooltipBounds.Y, 1, tooltipBounds.Height), new Color(112, 132, 156));
             sprite.Draw(_pixel, new Rectangle(tooltipBounds.Right, tooltipBounds.Y, 1, tooltipBounds.Height), new Color(112, 132, 156));
 
-            int y = tooltipBounds.Y + 5;
+            int y = tooltipBounds.Y + TooltipTopPadding;
             for (int i = 0; i < lines.Count; i++)
             {
-                float scale = i == 0 ? titleScale : bodyScale;
-                Color color = i == 0
+                if (lines[i].IsBlank)
+                {
+                    y += TooltipBlankLineHeight;
+                    continue;
+                }
+
+                float scale = lines[i].IsTitle ? titleScale : bodyScale;
+                Color color = lines[i].IsTitle
                     ? new Color(255, 236, 173)
                     : new Color(224, 229, 236);
-                ClientTextDrawing.Draw(sprite, lines[i], new Vector2(tooltipBounds.X + 6, y), color, scale, _font);
+                ClientTextDrawing.Draw(sprite, lines[i].Text, new Vector2(tooltipBounds.X + TooltipPadding, y), color, scale, _font);
                 y += Math.Max(lineSpacing, (int)Math.Ceiling(_font.LineSpacing * scale));
             }
         }
 
-        private List<string> BuildTooltipLines(GuildSkillEntrySnapshot entry)
+        private List<TooltipRenderLine> BuildTooltipLines(GuildSkillEntrySnapshot entry)
         {
-            List<string> lines = new();
+            List<TooltipRenderLine> lines = new();
             IReadOnlyList<string> rawLines = GuildSkillTooltipContentBuilder.BuildLines(entry);
             for (int i = 0; i < rawLines.Count; i++)
             {
-                AddWrappedLine(lines, rawLines[i]);
+                AddWrappedLine(lines, rawLines[i], i == 0);
             }
             return lines;
         }
 
-        private void AddWrappedLine(List<string> lines, string text)
+        private void AddWrappedLine(List<TooltipRenderLine> lines, string text, bool isTitle)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
                 return;
             }
 
-            foreach (string wrappedLine in WrapText(text, TooltipWidth - 12, 0.31f))
+            float scale = isTitle ? 0.36f : 0.31f;
+            foreach (string wrappedLine in WrapText(text, TooltipWidth - (TooltipPadding * 2), scale, preserveBlankLines: true))
             {
-                lines.Add(wrappedLine);
+                lines.Add(new TooltipRenderLine(wrappedLine, isTitle));
             }
         }
 
-        private IEnumerable<string> WrapText(string text, int maxWidth, float scale, GraphicsDevice graphicsDevice = null)
+        private IEnumerable<string> WrapText(string text, int maxWidth, float scale, bool preserveBlankLines, GraphicsDevice graphicsDevice = null)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -764,6 +794,11 @@ namespace HaCreator.MapSimulator.UI
                 string paragraph = paragraphs[paragraphIndex].Trim();
                 if (paragraph.Length == 0)
                 {
+                    if (preserveBlankLines)
+                    {
+                        yield return string.Empty;
+                    }
+
                     continue;
                 }
 

@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
@@ -7,6 +8,7 @@ using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace HaCreator.MapSimulator
@@ -51,6 +53,14 @@ namespace HaCreator.MapSimulator
             (8, InputAction.ToggleQuest),
             (9, InputAction.ToggleKeyConfig),
             (15, InputAction.ToggleQuickSlot),
+        };
+        private static readonly (string EntryName, int ClientFunctionId, int StringPoolId, string FallbackFormat)[] PacketOwnedStatusBarShortcutTooltipBindings =
+        {
+            ("BtEquip", 0, 0x989, "Equip ({0})"),
+            ("BtItem", 1, 0x98A, "Inventory ({0})"),
+            ("BtStat", 2, 0x98B, "Stats ({0})"),
+            ("BtSkill", 3, 0x98C, "Skills ({0})"),
+            ("BtQuest", 8, 0x18ED, "Quest ({0})"),
         };
 
         private readonly PacketOwnedFuncKeyConfigStore _packetOwnedFuncKeyConfigStore = new();
@@ -401,12 +411,68 @@ namespace HaCreator.MapSimulator
 
             int appliedHotkeyBindings = ApplyPacketOwnedCastMappingsToLiveInput(input);
             SyncPacketOwnedUtilityWindowBindings(input);
+            UpdatePacketOwnedStatusBarShortcutTooltips();
             return appliedFunctionBindings + appliedHotkeyBindings;
         }
 
         private void SyncPacketOwnedUtilityWindowBindings(PlayerInput input = null)
         {
             uiWindowManager?.SyncKeyBindingsFromPlayerInput(input ?? _playerManager?.Input);
+        }
+
+        private void UpdatePacketOwnedStatusBarShortcutTooltips()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Menu) is not StatusBarPopupMenuWindow menuWindow)
+            {
+                return;
+            }
+
+            for (int i = 0; i < PacketOwnedStatusBarShortcutTooltipBindings.Length; i++)
+            {
+                (string entryName, int clientFunctionId, int stringPoolId, string fallbackFormat) = PacketOwnedStatusBarShortcutTooltipBindings[i];
+                string tooltipText = BuildPacketOwnedStatusBarShortcutTooltip(clientFunctionId, stringPoolId, fallbackFormat);
+                menuWindow.SetEntryTooltip(entryName, tooltipText);
+            }
+        }
+
+        private string BuildPacketOwnedStatusBarShortcutTooltip(int clientFunctionId, int stringPoolId, string fallbackFormat)
+        {
+            if (!TryResolvePacketOwnedBindingKey(clientFunctionId, out Keys key) || key == Keys.None)
+            {
+                return string.Empty;
+            }
+
+            string keyText = FormatPacketOwnedStatusBarShortcutKey(key);
+            if (string.IsNullOrWhiteSpace(keyText))
+            {
+                return string.Empty;
+            }
+
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                stringPoolId,
+                fallbackFormat,
+                maxPlaceholderCount: 1,
+                out _);
+            return string.Format(CultureInfo.InvariantCulture, format, keyText);
+        }
+
+        private static string FormatPacketOwnedStatusBarShortcutKey(Keys key)
+        {
+            return key switch
+            {
+                Keys.None => string.Empty,
+                Keys.LeftControl => "Ctrl",
+                Keys.RightControl => "Ctrl",
+                Keys.LeftAlt => "Alt",
+                Keys.RightAlt => "Alt",
+                Keys.PageUp => "PageUp",
+                Keys.PageDown => "PageDown",
+                Keys.Insert => "Ins",
+                Keys.Delete => "Del",
+                >= Keys.D0 and <= Keys.D9 => ((int)(key - Keys.D0)).ToString(CultureInfo.InvariantCulture),
+                >= Keys.NumPad0 and <= Keys.NumPad9 => ((int)(key - Keys.NumPad0)).ToString(CultureInfo.InvariantCulture),
+                _ => key.ToString()
+            };
         }
 
         private void UpdatePacketOwnedPetConsumeMpRuntime(int currentTime)

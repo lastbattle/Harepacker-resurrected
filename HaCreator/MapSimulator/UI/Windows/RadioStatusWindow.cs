@@ -14,6 +14,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientTopInset = 3;
         private const int ClientRightInset = 3;
         private const int ClientLeftModeExtraRightInset = 40;
+        private const int IndicatorFadeDurationMs = 100;
         private const float TooltipScale = 0.38f;
         private const int TooltipPadding = 6;
         private const int TooltipOffsetY = 20;
@@ -41,11 +42,14 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _inactiveTexture;
 
         private SpriteFont _font;
-        private Func<bool> _indicatorActiveProvider;
+        private Func<bool> _indicatorPlaybackProvider;
+        private Func<bool> _indicatorMutedProvider;
         private Func<bool> _clientLeftInsetProvider;
         private Func<string> _trackNameProvider;
         private Func<IReadOnlyList<string>> _detailLinesProvider;
         private Func<string> _footerProvider;
+        private float _activeOverlayAlpha;
+        private int _lastIndicatorStateTick = int.MinValue;
 
         internal RadioStatusWindow(
             GraphicsDevice device,
@@ -73,7 +77,7 @@ namespace HaCreator.MapSimulator.UI
 
             _pixel = new Texture2D(device ?? throw new ArgumentNullException(nameof(device)), 1, 1);
             _pixel.SetData(new[] { Color.White });
-            Frame = CacheFrame(ResolveIndicatorTexture(Environment.TickCount));
+            Frame = CacheFrame(_inactiveTexture);
         }
 
         public override string WindowName => _windowName;
@@ -86,7 +90,12 @@ namespace HaCreator.MapSimulator.UI
 
         internal void SetIndicatorActiveProvider(Func<bool> indicatorActiveProvider)
         {
-            _indicatorActiveProvider = indicatorActiveProvider;
+            _indicatorPlaybackProvider = indicatorActiveProvider;
+        }
+
+        internal void SetIndicatorMutedProvider(Func<bool> indicatorMutedProvider)
+        {
+            _indicatorMutedProvider = indicatorMutedProvider;
         }
 
         internal void SetClientLeftInsetProvider(Func<bool> clientLeftInsetProvider)
@@ -127,7 +136,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             UpdateAnchoredPosition(renderParameters);
-            Frame = CacheFrame(ResolveIndicatorTexture(TickCount));
+            UpdateIndicatorOverlayState(TickCount);
+            Frame = CacheFrame(_inactiveTexture);
             base.Draw(
                 sprite,
                 skeletonMeshRenderer,
@@ -231,6 +241,32 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        protected override void DrawOverlay(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            if (_activeOverlayAlpha <= 0f)
+            {
+                return;
+            }
+
+            Texture2D activeTexture = ResolveActiveIndicatorTexture(TickCount);
+            if (activeTexture == null)
+            {
+                return;
+            }
+
+            sprite.Draw(activeTexture, Position.ToVector2(), Color.White * _activeOverlayAlpha);
+        }
+
         private void UpdateAnchoredPosition(RenderParameters renderParameters)
         {
             // CUIRadio::CreateLayer anchors the widget to Origin_RT, then applies
@@ -314,9 +350,21 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private Texture2D ResolveIndicatorTexture(int tickCount)
+        private void UpdateIndicatorOverlayState(int tickCount)
         {
-            if (_indicatorActiveProvider?.Invoke() == true && _activeFrames.Count > 0)
+            bool ownsPlayback = _indicatorPlaybackProvider?.Invoke() == true;
+            bool muted = _indicatorMutedProvider?.Invoke() == true;
+            int elapsedMs = _lastIndicatorStateTick == int.MinValue
+                ? IndicatorFadeDurationMs
+                : Math.Max(0, tickCount - _lastIndicatorStateTick);
+
+            _activeOverlayAlpha = StepIndicatorAlpha(_activeOverlayAlpha, ownsPlayback, muted, elapsedMs);
+            _lastIndicatorStateTick = tickCount;
+        }
+
+        private Texture2D ResolveActiveIndicatorTexture(int tickCount)
+        {
+            if (_activeFrames.Count > 0)
             {
                 int totalDelay = 0;
                 for (int i = 0; i < _activeFrames.Count; i++)
@@ -343,7 +391,29 @@ namespace HaCreator.MapSimulator.UI
                 return _activeFrames[_activeFrames.Count - 1].Texture;
             }
 
-            return _inactiveTexture;
+            return null;
+        }
+
+        internal static float ResolveTargetIndicatorAlpha(bool ownsPlayback, bool muted)
+        {
+            return ownsPlayback && !muted ? 1f : 0f;
+        }
+
+        internal static float StepIndicatorAlpha(float currentAlpha, bool ownsPlayback, bool muted, int elapsedMs)
+        {
+            float targetAlpha = ResolveTargetIndicatorAlpha(ownsPlayback, muted);
+            if (elapsedMs <= 0)
+            {
+                return currentAlpha;
+            }
+
+            if (elapsedMs >= IndicatorFadeDurationMs)
+            {
+                return targetAlpha;
+            }
+
+            float step = elapsedMs / (float)IndicatorFadeDurationMs;
+            return MathHelper.Clamp(currentAlpha + ((targetAlpha - currentAlpha) * step), 0f, 1f);
         }
 
         private IDXObject CacheFrame(Texture2D texture)

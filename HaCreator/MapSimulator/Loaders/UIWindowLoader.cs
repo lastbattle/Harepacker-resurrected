@@ -1066,7 +1066,7 @@ namespace HaCreator.MapSimulator.Loaders
                 normalNameTagStyle,
                 selectedNameTagStyle,
                 jobDecorations,
-                emptySlotTexture,
+                new AvatarPreviewCarouselWindow.PreviewCanvasFrame(emptySlotTexture, Point.Zero),
                 buyCharacterFrames,
                 cardButtons,
                 prevPageButton,
@@ -1386,6 +1386,9 @@ namespace HaCreator.MapSimulator.Loaders
                 animationFramesByVariant,
                 noticeTextTextures,
                 cancelButton,
+                null,
+                null,
+                null,
                 screenWidth,
                 screenHeight)
             {
@@ -2363,6 +2366,7 @@ namespace HaCreator.MapSimulator.Loaders
                 overlayTexture,
                 overlayOffset,
                 null,
+                null,
                 worldButtons,
                 emptyWorldButtons,
                 LoadButton(loginWorldSelectProperty, "BtViewChoice", clickSound, overSound, device),
@@ -2601,9 +2605,7 @@ namespace HaCreator.MapSimulator.Loaders
                         return;
                     }
 
-
-                    wishListWindow.ShowFor(sourceDialog);
-                    manager.BringToFront(wishListWindow);
+                    manager.ShowWindow(wishListWindow, () => wishListWindow.PrepareForShow(sourceDialog));
                 };
 
                 if (defaultMode == AdminShopServiceMode.CashShop
@@ -2657,8 +2659,7 @@ namespace HaCreator.MapSimulator.Loaders
                 {
                     wishListWindow.ShowCategoryAddOnRequested = owner =>
                     {
-                        categoryWindow.ShowFor(owner);
-                        manager.BringToFront(categoryWindow);
+                        manager.ShowWindow(categoryWindow, () => categoryWindow.PrepareForShow(owner));
                     };
                     wishListWindow.HideCategoryAddOnRequested = () =>
                     {
@@ -2674,8 +2675,7 @@ namespace HaCreator.MapSimulator.Loaders
                 {
                     wishListWindow.ShowSearchResultAddOnRequested = (owner, results) =>
                     {
-                        searchResultWindow.ShowFor(owner, results);
-                        manager.BringToFront(searchResultWindow);
+                        manager.ShowWindow(searchResultWindow, () => searchResultWindow.PrepareForShow(owner, results));
                     };
                     wishListWindow.HideSearchResultAddOnRequested = () =>
                     {
@@ -3735,13 +3735,20 @@ namespace HaCreator.MapSimulator.Loaders
                     position);
             }
 
+            AttachCanvasLayer(window, tradeProperty, "backgrnd2", device);
+            AttachCanvasLayer(window, tradeProperty, "backgrnd3", device);
 
             WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
-            window.BindButton(LoadButton(tradeProperty, "BtTrade", clickSound, overSound, device), () => runtime.ToggleTradeLock(out _));
-            window.BindButton(LoadButton(tradeProperty, "BtReset", clickSound, overSound, device), runtime.ResetTrade);
-            window.BindButton(LoadButton(tradeProperty, "BtCoin", clickSound, overSound, device), runtime.IncreaseTradeOffer);
-            window.BindButton(LoadButton(tradeProperty, "BtClame", clickSound, overSound, device), () => runtime.ToggleTradeAcceptance(out _));
+            UIObject tradeButton = LoadButton(tradeProperty, "BtTrade", clickSound, overSound, device);
+            UIObject resetButton = LoadButton(tradeProperty, "BtReset", clickSound, overSound, device);
+            UIObject coinButton = LoadButton(tradeProperty, "BtCoin", clickSound, overSound, device);
+            UIObject acceptButton = LoadButton(tradeProperty, "BtClame", clickSound, overSound, device);
+            window.BindButton(tradeButton, () => runtime.ToggleTradeLock(out _));
+            window.BindButton(resetButton, runtime.ResetTrade);
+            window.BindButton(coinButton, runtime.IncreaseTradeOffer);
+            window.BindButton(acceptButton, () => runtime.ToggleTradeAcceptance(out _));
+            window.RegisterTradingRoomButtons(tradeButton, resetButton, coinButton, acceptButton);
             return window;
         }
 
@@ -8057,7 +8064,7 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 string dialogResourcePath = PacketOwnedRewardResultRuntime.GetRandomMesoBagDialogResourcePath(rank);
                 Texture2D backgroundTexture = LoadCanvasTexture(sourceProperty, $"Back{rank}", device)
-                    ?? LoadTextureFromUiPath(uiWindowImage, dialogResourcePath, device);
+                    ?? LoadTextureFromUiPath(dialogResourcePath, device, uiWindowImage, uiWindow2Image);
                 if (backgroundTexture != null)
                 {
                     backgrounds[rank] = new DXObject(0, 0, backgroundTexture, 0);
@@ -8097,40 +8104,64 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
             UIObject okButton = LoadButton(sourceProperty, "BtOk", btClickSound, btOverSound, device)
-                ?? LoadButtonFromUiPath(uiWindowImage, PacketOwnedRewardResultRuntime.GetRandomMesoBagOkButtonResourcePath(), btClickSound, btOverSound, device)
+                ?? LoadButtonFromUiPath(PacketOwnedRewardResultRuntime.GetRandomMesoBagOkButtonResourcePath(), btClickSound, btOverSound, device, uiWindowImage, uiWindow2Image)
                 ?? LoadButton(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, "BtOK", btClickSound, btOverSound, device)
                 ?? LoadButton(sourceProperty, "BtOK", btClickSound, btOverSound, device);
             window.InitializeButtons(okButton);
             return window;
         }
 
-        private static Texture2D LoadTextureFromUiPath(WzImage uiWindowImage, string fullPath, GraphicsDevice device)
+        private static Texture2D LoadTextureFromUiPath(string fullPath, GraphicsDevice device, params WzImage[] uiImages)
         {
-            WzCanvasProperty canvas = ResolveUiCanvasProperty(uiWindowImage, fullPath);
-            return canvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            if (uiImages == null)
+            {
+                return null;
+            }
+
+            foreach (WzImage uiImage in uiImages)
+            {
+                WzCanvasProperty canvas = ResolveUiCanvasProperty(uiImage, fullPath);
+                Texture2D texture = canvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+                if (texture != null)
+                {
+                    return texture;
+                }
+            }
+
+            return null;
         }
 
         private static UIObject LoadButtonFromUiPath(
-            WzImage uiWindowImage,
             string fullPath,
             WzBinaryProperty clickSound,
             WzBinaryProperty overSound,
-            GraphicsDevice device)
+            GraphicsDevice device,
+            params WzImage[] uiImages)
         {
-            WzSubProperty buttonProperty = ResolveUiProperty(uiWindowImage, fullPath) as WzSubProperty;
-            if (buttonProperty == null)
+            if (uiImages == null)
             {
                 return null;
             }
 
-            try
+            foreach (WzImage uiImage in uiImages)
             {
-                return new UIObject(buttonProperty, clickSound, overSound, false, Point.Zero, device);
+                WzSubProperty buttonProperty = ResolveUiProperty(uiImage, fullPath) as WzSubProperty;
+                if (buttonProperty == null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    return new UIObject(buttonProperty, clickSound, overSound, false, Point.Zero, device);
+                }
+                catch
+                {
+                    // Try the next UI image before falling back to the simulator notice shell.
+                }
             }
-            catch
-            {
-                return null;
-            }
+
+            return null;
         }
 
         private static WzCanvasProperty ResolveUiCanvasProperty(WzImage uiWindowImage, string fullPath)
@@ -8146,10 +8177,13 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             string normalizedPath = fullPath.Replace('\\', '/');
-            string imagePrefix = $"UI/{uiWindowImage.Name}/";
-            if (normalizedPath.StartsWith(imagePrefix, StringComparison.OrdinalIgnoreCase))
+            if (normalizedPath.StartsWith("UI/", StringComparison.OrdinalIgnoreCase))
             {
-                normalizedPath = normalizedPath[imagePrefix.Length..];
+                int imagePrefixEnd = normalizedPath.IndexOf('/', 3);
+                if (imagePrefixEnd >= 0 && imagePrefixEnd + 1 < normalizedPath.Length)
+                {
+                    normalizedPath = normalizedPath[(imagePrefixEnd + 1)..];
+                }
             }
 
             return ResolveProperty(uiWindowImage, normalizedPath);

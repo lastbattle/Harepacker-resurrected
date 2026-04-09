@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Linq;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Animation;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Pools;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
@@ -26,6 +27,7 @@ namespace HaCreator.MapSimulator.Loaders
             NpcInstance npcInstance,
             GraphicsDevice device,
             ConcurrentBag<WzObject> usedProps,
+            CharacterGender? localPlayerGender = null,
             int requestedClientActionSetIndex = AutomaticClientActionSetIndex)
         {
             WzImage source = npcInstance?.NpcInfo?.LinkedWzImage;
@@ -34,7 +36,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             var animationSet = new NpcAnimationSet
             {
-                ClientActionSetIndex = ResolveClientActionSetIndex(actionSets, requestedClientActionSetIndex)
+                ClientActionSetIndex = ResolveClientActionSetIndex(actionSets, localPlayerGender, requestedClientActionSetIndex)
             };
 
             foreach (NpcActionDescriptor action in EnumerateActionsForIndex(actionSets, animationSet.ClientActionSetIndex))
@@ -73,6 +75,7 @@ namespace HaCreator.MapSimulator.Loaders
 
         internal static int ResolveClientActionSetIndex(
             IReadOnlyList<NpcClientActionSetDefinition> actionSets,
+            CharacterGender? localPlayerGender = null,
             int requestedClientActionSetIndex = AutomaticClientActionSetIndex)
         {
             if (actionSets == null || actionSets.Count == 0)
@@ -94,7 +97,15 @@ namespace HaCreator.MapSimulator.Loaders
 
             foreach (NpcClientActionSetDefinition actionSet in actionSets)
             {
-                if (!actionSet.HasQuestConditions)
+                if (MatchesLocalPlayerGender(actionSet, localPlayerGender) && !actionSet.HasQuestConditions)
+                {
+                    return actionSet.Index;
+                }
+            }
+
+            foreach (NpcClientActionSetDefinition actionSet in actionSets)
+            {
+                if (MatchesLocalPlayerGender(actionSet, localPlayerGender))
                 {
                     return actionSet.Index;
                 }
@@ -152,7 +163,12 @@ namespace HaCreator.MapSimulator.Loaders
             List<WzImageProperty> rootActions = GetActionProperties(source.WzProperties, includeConditionContainers: false);
             if (rootActions.Count > 0)
             {
-                actionSets.Add(new NpcClientActionSetDefinition(0, HasQuestConditions: false, rootActions));
+                actionSets.Add(new NpcClientActionSetDefinition(
+                    0,
+                    HasQuestConditions: false,
+                    RequiredGender: null,
+                    Hide: GetHideFlag(source.WzProperties),
+                    Actions: rootActions));
             }
 
             int nextIndex = actionSets.Count;
@@ -165,7 +181,12 @@ namespace HaCreator.MapSimulator.Loaders
                 }
 
                 bool hasQuestConditions = conditionProperty.WzProperties.Any(IsQuestConditionProperty);
-                actionSets.Add(new NpcClientActionSetDefinition(nextIndex++, hasQuestConditions, actions));
+                actionSets.Add(new NpcClientActionSetDefinition(
+                    nextIndex++,
+                    hasQuestConditions,
+                    GetRequiredGender(conditionProperty.WzProperties),
+                    GetHideFlag(conditionProperty.WzProperties),
+                    actions));
             }
 
             return actionSets;
@@ -292,9 +313,48 @@ namespace HaCreator.MapSimulator.Loaders
             return int.TryParse(property?.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
         }
 
+        private static bool MatchesLocalPlayerGender(
+            NpcClientActionSetDefinition actionSet,
+            CharacterGender? localPlayerGender)
+        {
+            return !actionSet.RequiredGender.HasValue
+                   || !localPlayerGender.HasValue
+                   || actionSet.RequiredGender.Value == localPlayerGender.Value;
+        }
+
+        private static CharacterGender? GetRequiredGender(IEnumerable<WzImageProperty> properties)
+        {
+            int? rawGender = properties?
+                .FirstOrDefault(property => string.Equals(property?.Name, "gender", StringComparison.OrdinalIgnoreCase))
+                ?.GetInt();
+
+            return rawGender switch
+            {
+                1 => CharacterGender.Male,
+                2 => CharacterGender.Female,
+                _ => null
+            };
+        }
+
+        private static bool GetHideFlag(IEnumerable<WzImageProperty> properties)
+        {
+            WzImageProperty directHide = properties?
+                .FirstOrDefault(property => string.Equals(property?.Name, "hide", StringComparison.OrdinalIgnoreCase));
+            if (directHide != null)
+            {
+                return directHide.GetInt() != 0;
+            }
+
+            WzImageProperty infoProperty = properties?
+                .FirstOrDefault(property => string.Equals(property?.Name, "info", StringComparison.OrdinalIgnoreCase));
+            return infoProperty?["hide"]?.GetInt() != 0;
+        }
+
         internal readonly record struct NpcClientActionSetDefinition(
             int Index,
             bool HasQuestConditions,
+            CharacterGender? RequiredGender,
+            bool Hide,
             IReadOnlyList<WzImageProperty> Actions);
 
         private readonly record struct NpcActionCacheKey(int TemplateId, int ClientActionSetIndex, string ActionName);

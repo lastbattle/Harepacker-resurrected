@@ -820,6 +820,11 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
+            if (tamingMobPart.TamingMobActionFrameOwner?.SupportsAction(tamingMobPart, actionName) == true)
+            {
+                return true;
+            }
+
             if (tamingMobPart.GetAnimation(actionName) != null)
             {
                 return true;
@@ -1049,6 +1054,11 @@ namespace HaCreator.MapSimulator.Character
 
             if (part.Type == CharacterPartType.TamingMob)
             {
+                if (part.TamingMobActionFrameOwner != null)
+                {
+                    return part.TamingMobActionFrameOwner.GetAnimation(part, actionName);
+                }
+
                 if (part.Animations.TryGetValue(actionName, out CharacterAnimation mountAnimation))
                 {
                     return mountAnimation;

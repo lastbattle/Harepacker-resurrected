@@ -102,10 +102,6 @@ namespace HaCreator.MapSimulator
                 AddClientChatMessage = (text, chatLogType, whisperTargetCandidate) =>
                 {
                     _chat?.AddClientChatMessage(text, currTickCount, chatLogType, whisperTargetCandidate);
-                    if (ShouldTriggerPetSpecialistFeedbackForClientChatLogType(chatLogType))
-                    {
-                        TryTriggerSpecialistPetSocialFeedback(text, currTickCount);
-                    }
                 },
                 ShowUtilityFeedback = ShowUtilityFeedbackMessage,
                 ShowModalWarning = ShowPacketOwnedFieldWarning,
@@ -281,6 +277,7 @@ namespace HaCreator.MapSimulator
             bool queued = QueueMapTransfer(mapId, null);
             if (queued)
             {
+                SetPendingMapSpawnTarget(x, y);
                 ShowUtilityFeedbackMessage(
                     $"Queued packet-owned whisper follow transfer to {ResolveMapTransferDisplayName(mapId, null)} ({x}, {y}).");
             }

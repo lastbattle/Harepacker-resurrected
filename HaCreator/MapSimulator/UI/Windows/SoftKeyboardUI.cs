@@ -155,6 +155,8 @@ namespace HaCreator.MapSimulator.UI
         private int _switchingStartedTick;
         private string _statusMessage = string.Empty;
 
+        public Action<ISoftKeyboardHost> AfterDismiss { get; set; }
+
         public SoftKeyboardUI(
             IDXObject frame,
             Texture2D compactBackgroundTexture,
@@ -255,6 +257,7 @@ namespace HaCreator.MapSimulator.UI
 
         public void Dismiss()
         {
+            ISoftKeyboardHost dismissedHost = _host;
             base.Hide();
             _host?.SetSoftKeyboardCompositionText(string.Empty);
             _host = null;
@@ -266,6 +269,7 @@ namespace HaCreator.MapSimulator.UI
             ClearSwitchingCharacter();
             ResetDigitOrder();
             ResetVisualState();
+            AfterDismiss?.Invoke(dismissedHost);
         }
 
         public override void Update(GameTime gameTime)

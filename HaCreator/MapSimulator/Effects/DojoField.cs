@@ -351,6 +351,7 @@ namespace HaCreator.MapSimulator.Effects
                 _resultEffectStartTick = int.MinValue;
             }
             _pendingTransferMapId = -1;
+            _pendingTransferPortalName = string.Empty;
             _pendingTransferAtTick = int.MinValue;
         }
         public void SetRuntimeState(int? playerHp, int? playerMaxHp, float? bossHpPercent)
@@ -561,7 +562,7 @@ namespace HaCreator.MapSimulator.Effects
                 : "--";
             string timerText = _timeOverTick == int.MinValue ? "stopped" : FormatTimer(RemainingSeconds);
             string transferText = _pendingTransferMapId > 0 ? $", pendingReturn={_pendingTransferMapId}" : string.Empty;
-            string transferPortalText = string.IsNullOrWhiteSpace(_pendingTransferPortalName)
+            string transferPortalText = _pendingTransferMapId > 0 && !string.IsNullOrWhiteSpace(_pendingTransferPortalName)
                 ? string.Empty
                 : $", pendingPortal={_pendingTransferPortalName}";
             string clockPacketText = _lastDecodedClockType >= 0
@@ -922,7 +923,7 @@ namespace HaCreator.MapSimulator.Effects
 
             return true;
         }
-        private static bool TryParseTransferPacketPayload(
+        internal static bool TryParseTransferPacketPayload(
             byte[] payload,
             bool allowPortalName,
             out int mapId,

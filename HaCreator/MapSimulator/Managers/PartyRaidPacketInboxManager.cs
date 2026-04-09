@@ -134,10 +134,15 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string trimmed = text.Trim();
+            if (TryParsePipeDelimitedPacketLine(trimmed, out scope, out key, out value))
+            {
+                return true;
+            }
+
             string[] parts = trimmed.Split((char[])null, 3, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 2)
             {
-                error = "Party Raid inbox line must be '<scope> <key> <value>'.";
+                error = "Party Raid inbox line must be '<scope> <key> <value>' or '<scope>|<key>|<value>'.";
                 return false;
             }
 
@@ -165,6 +170,39 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return true;
+        }
+
+        private static bool TryParsePipeDelimitedPacketLine(string text, out PartyRaidPacketScope scope, out string key, out string value)
+        {
+            scope = PartyRaidPacketScope.Field;
+            key = string.Empty;
+            value = string.Empty;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string[] parts = text.Split('|', 3, StringSplitOptions.None);
+            if (parts.Length < 2 || !TryParseScope(parts[0], out scope))
+            {
+                return false;
+            }
+
+            key = parts[1]?.Trim() ?? string.Empty;
+            value = parts.Length >= 3 ? parts[2].Trim() : string.Empty;
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return false;
+            }
+
+            if (scope == PartyRaidPacketScope.Clock && parts.Length == 2)
+            {
+                value = key;
+            }
+
+            return !(scope == PartyRaidPacketScope.Clock
+                && string.IsNullOrWhiteSpace(value)
+                && !string.Equals(key, "clear", StringComparison.OrdinalIgnoreCase));
         }
 
         private async Task ListenLoopAsync(CancellationToken cancellationToken)

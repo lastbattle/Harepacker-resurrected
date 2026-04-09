@@ -30,7 +30,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "summonedpacket",
                 "Inspect or drive packet-owned summoned-pool traffic",
-                "/summonedpacket [status|packet <create|remove|move|attack|skill|hit|0x116-0x11B> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|sendraw <hex>|queueraw <hex>|stop]]",
+                "/summonedpacket [status|packet <create|remove|move|attack|skill|hit|0x116-0x11B> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|sg88history [count]|clearhistory|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|sendraw <hex>|queueraw <hex>|stop]]",
                 HandlePacketOwnedSummonedCommand);
         }
 
@@ -375,7 +375,7 @@ namespace HaCreator.MapSimulator
 
             if (!rawHex && !string.Equals(args[0], "packet", StringComparison.OrdinalIgnoreCase))
             {
-            return ChatCommandHandler.CommandResult.Error("Usage: /summonedpacket [status|packet <type> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|sendraw <hex>|queueraw <hex>|stop]]");
+            return ChatCommandHandler.CommandResult.Error("Usage: /summonedpacket [status|packet <type> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|sg88history [count]|clearhistory|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|sendraw <hex>|queueraw <hex>|stop]]");
             }
 
             if (args.Length < 2 || !SummonedPacketInboxManager.TryParsePacketType(args[1], out int packetType))
@@ -437,6 +437,19 @@ namespace HaCreator.MapSimulator
 
                 return ChatCommandHandler.CommandResult.Info(
                     _summonedOfficialSessionBridge.DescribeRecentOutboundPackets(historyCount));
+            }
+
+            if (string.Equals(args[0], "sg88history", StringComparison.OrdinalIgnoreCase))
+            {
+                int historyCount = 10;
+                if (args.Length >= 2
+                    && (!int.TryParse(args[1], out historyCount) || historyCount <= 0))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /summonedpacket session sg88history [count]");
+                }
+
+                return ChatCommandHandler.CommandResult.Info(
+                    _summonedOfficialSessionBridge.DescribeRecentSg88ManualAttackRequests(historyCount));
             }
 
             if (string.Equals(args[0], "clearhistory", StringComparison.OrdinalIgnoreCase))

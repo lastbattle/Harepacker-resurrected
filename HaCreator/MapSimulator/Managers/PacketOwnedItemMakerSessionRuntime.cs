@@ -32,7 +32,7 @@ namespace HaCreator.MapSimulator.Managers
 
     internal static class PacketOwnedItemMakerSessionRuntime
     {
-        public const int PacketType = 1023;
+        public const int PacketType = 1024;
 
         public static bool TryDecode(byte[] payload, out PacketOwnedItemMakerSession result, out string error)
         {

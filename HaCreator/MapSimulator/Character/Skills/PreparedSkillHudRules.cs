@@ -9,6 +9,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     internal static class PreparedSkillHudRules
     {
         private const int DefaultKeyDownGaugeDurationMs = 2000;
+        private const int MinimumReleaseChargeDurationMs = 30;
         private const int MonkeyWaveSkillId = 5311002;
         private const int WildHunterSwallowSkillId = 33101005;
         private const int WildHunterSwallowAttackSkillId = 33101007;
@@ -142,7 +143,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            if (skillId == WildHunterSwallowAttackSkillId && followUpValue.HasValue)
+            if (skillId == WildHunterSwallowAttackSkillId)
             {
                 preparedSkillId = WildHunterSwallowSkillId;
                 return true;
@@ -193,6 +194,26 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return ResolveGaugeDuration(skillId);
+        }
+
+        public static int ResolveReleaseChargeElapsedMs(int skillId, int elapsedMs, int gaugeDurationMs = 0)
+        {
+            int normalizedElapsedMs = Math.Max(0, elapsedMs);
+            if (!UsesReleaseTriggeredExecution(skillId))
+            {
+                return normalizedElapsedMs;
+            }
+
+            int normalizedGaugeDurationMs = gaugeDurationMs > 0
+                ? gaugeDurationMs
+                : ResolveGaugeDuration(skillId);
+            int clampedElapsedMs = Math.Max(MinimumReleaseChargeDurationMs, normalizedElapsedMs);
+            if (normalizedGaugeDurationMs > 0)
+            {
+                clampedElapsedMs = Math.Min(clampedElapsedMs, normalizedGaugeDurationMs);
+            }
+
+            return clampedElapsedMs;
         }
 
         public static void ResolveRemotePreparedSkillPhases(

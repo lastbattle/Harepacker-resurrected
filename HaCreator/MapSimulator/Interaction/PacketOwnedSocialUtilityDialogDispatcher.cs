@@ -143,6 +143,22 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryApplyMessengerPacket(MessengerPacketType packetType, byte[] payload, out string message)
+        {
+            payload ??= Array.Empty<byte>();
+            if (!TryValidateMessengerPacketPayload(packetType, payload, out message))
+            {
+                _lastMessengerDispatchSummary = $"CUIMessenger packet-owned {DescribeMessengerPacketType(packetType)} payload rejected.";
+                _lastDispatchSummary = _lastMessengerDispatchSummary;
+                return false;
+            }
+
+            message = _messengerRuntime.ApplyPacketPayload(packetType, payload);
+            _lastMessengerDispatchSummary = $"CUIMessenger packet-owned {DescribeMessengerPacketType(packetType)} payload applied.";
+            _lastDispatchSummary = _lastMessengerDispatchSummary;
+            return true;
+        }
+
         internal string DescribeMapleTvStatus(int currentTick)
         {
             return $"{_mapleTvRuntime.DescribeStatus(currentTick)} Dispatcher: {_lastMapleTvDispatchSummary}";
@@ -172,6 +188,105 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 return snapshot?.IsShowingMessage == true || snapshot?.QueueExists == true;
             }
+        }
+
+        private static bool TryValidateMessengerPacketPayload(MessengerPacketType packetType, byte[] payload, out string message)
+        {
+            message = null;
+            switch (packetType)
+            {
+                case MessengerPacketType.Invite:
+                case MessengerPacketType.InviteAccept:
+                case MessengerPacketType.InviteReject:
+                case MessengerPacketType.Leave:
+                    if (!MessengerPacketCodec.TryParseInvite(payload, out _, out message))
+                    {
+                        return false;
+                    }
+
+                    return true;
+                case MessengerPacketType.RoomChat:
+                case MessengerPacketType.Whisper:
+                    if (!MessengerPacketCodec.TryParseChat(payload, out _, out message))
+                    {
+                        return false;
+                    }
+
+                    return true;
+                case MessengerPacketType.MemberInfo:
+                    if (!MessengerPacketCodec.TryParseMemberInfo(payload, out _, out message))
+                    {
+                        return false;
+                    }
+
+                    return true;
+                case MessengerPacketType.Blocked:
+                    if (!MessengerPacketCodec.TryParseBlocked(payload, out _, out message))
+                    {
+                        return false;
+                    }
+
+                    return true;
+                case MessengerPacketType.Avatar:
+                    if (!MessengerPacketCodec.TryParseAvatar(payload, out _, out message))
+                    {
+                        return false;
+                    }
+
+                    return true;
+                case MessengerPacketType.Enter:
+                    if (!MessengerPacketCodec.TryParseEnter(payload, out _, out message))
+                    {
+                        return false;
+                    }
+
+                    return true;
+                case MessengerPacketType.InviteResult:
+                    if (!MessengerPacketCodec.TryParseInviteResult(payload, out _, out message))
+                    {
+                        return false;
+                    }
+
+                    return true;
+                case MessengerPacketType.Migrated:
+                    if (!MessengerPacketCodec.TryParseMigrated(payload, out _, out message))
+                    {
+                        return false;
+                    }
+
+                    return true;
+                case MessengerPacketType.SelfEnterResult:
+                    if (!MessengerPacketCodec.TryParseSelfEnterResult(payload, out _, out message))
+                    {
+                        return false;
+                    }
+
+                    return true;
+                default:
+                    message = $"Messenger packet type '{packetType}' is not modeled.";
+                    return false;
+            }
+        }
+
+        private static string DescribeMessengerPacketType(MessengerPacketType packetType)
+        {
+            return packetType switch
+            {
+                MessengerPacketType.Invite => "invite",
+                MessengerPacketType.InviteAccept => "invite-accept",
+                MessengerPacketType.InviteReject => "invite-reject",
+                MessengerPacketType.Leave => "leave",
+                MessengerPacketType.RoomChat => "room-chat",
+                MessengerPacketType.Whisper => "whisper",
+                MessengerPacketType.MemberInfo => "member-info",
+                MessengerPacketType.Blocked => "blocked",
+                MessengerPacketType.Avatar => "avatar",
+                MessengerPacketType.Enter => "enter",
+                MessengerPacketType.InviteResult => "invite-result",
+                MessengerPacketType.Migrated => "migrated",
+                MessengerPacketType.SelfEnterResult => "self-enter-result",
+                _ => packetType.ToString()
+            };
         }
     }
 
@@ -220,7 +335,7 @@ namespace HaCreator.MapSimulator.Interaction
                     _openCount++;
                     IsOpen = true;
                     _currentDialogMode = 1;
-                    _memoMailbox.SetActiveTab(ParcelDialogTab.QuickSend);
+                    _memoMailbox.ApplyPacketOwnedDialogMode(_currentDialogMode);
                     StatusMessage = "CParcelDlg packet 26 opened the packet-owned quick-delivery owner.";
                     message = StatusMessage;
                     return true;
@@ -315,7 +430,15 @@ namespace HaCreator.MapSimulator.Interaction
             _openCount++;
             IsOpen = true;
             _currentDialogMode = modeTwoOpen ? 2 : 0;
-            _memoMailbox.ReplacePacketOwnedParcelSession(session.ReceiveEntries, ParcelDialogTab.Receive, out string sessionMessage);
+            _memoMailbox.ReplacePacketOwnedParcelSession(
+                session.ReceiveEntries,
+                _currentDialogMode switch
+                {
+                    2 => ParcelDialogTabAvailability.Receive,
+                    _ => ParcelDialogTabAvailability.Receive | ParcelDialogTabAvailability.Send
+                },
+                ParcelDialogTab.Receive,
+                out string sessionMessage);
             if (session.ArrivalNoticeEntries.Count > 0)
             {
                 _arrivalNoticeCount += session.ArrivalNoticeEntries.Count;
