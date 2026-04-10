@@ -6124,10 +6124,10 @@ namespace HaCreator.MapSimulator.Interaction
                 EndNpcId = ParseNpcId(endCheck?["npc"]),
                 MinLevel = ParseInt(startCheck?["lvmin"]),
                 MaxLevel = ParseInt(startCheck?["lvmax"]) ?? ParseInt(endCheck?["lvmax"]),
-                StartAvailableFrom = ParseQuestDateTime(startCheck?["start"]),
-                StartAvailableUntil = ParseQuestDateTime(startCheck?["end"]),
-                EndAvailableFrom = ParseQuestDateTime(endCheck?["start"]),
-                EndAvailableUntil = ParseQuestDateTime(endCheck?["end"]),
+                StartAvailableFrom = ParseQuestDateTime(startCheck?["start"], startCheck?["start_t"]),
+                StartAvailableUntil = ParseQuestDateTime(startCheck?["end"], startCheck?["end_t"]),
+                EndAvailableFrom = ParseQuestDateTime(endCheck?["start"], endCheck?["start_t"]),
+                EndAvailableUntil = ParseQuestDateTime(endCheck?["end"], endCheck?["end_t"]),
                 StartFameRequirement = ParsePositiveInt(startCheck?["pop"]),
                 StartSubJobFlagsRequirement = ParsePositiveInt(startCheck?["subJobFlags"]).GetValueOrDefault(),
                 EndMesoRequirement = ParsePositiveInt(endCheck?["endmeso"]).GetValueOrDefault(),
@@ -6357,6 +6357,11 @@ namespace HaCreator.MapSimulator.Interaction
         private static DateTime? ParseQuestDateTime(WzImageProperty property)
         {
             return (property as WzStringProperty)?.GetDateTime();
+        }
+
+        internal static DateTime? ParseQuestDateTime(WzImageProperty property, WzImageProperty fallbackProperty)
+        {
+            return ParseQuestDateTime(property) ?? ParseQuestDateTime(fallbackProperty);
         }
 
         private static IReadOnlyList<DayOfWeek> ParseAllowedDays(WzImageProperty property)
@@ -7243,11 +7248,14 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (!string.IsNullOrWhiteSpace(text) || choices.Count > 0)
                 {
+                    bool flipSpeaker = ResolveConversationFlipSpeaker(pageProperty) ||
+                        ResolveConversationFlipSpeaker(rootChoiceProperty);
                     pages[i] = new NpcInteractionPage
                     {
                         RawText = rawText ?? string.Empty,
                         Text = text,
-                        Choices = choices
+                        Choices = choices,
+                        FlipSpeaker = flipSpeaker
                     };
                 }
             }
@@ -7479,7 +7487,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 RawText = rawText ?? string.Empty,
                 Text = text,
-                Choices = choices
+                Choices = choices,
+                FlipSpeaker = ResolveConversationFlipSpeaker(property)
             };
         }
 
@@ -7707,7 +7716,9 @@ namespace HaCreator.MapSimulator.Interaction
                     allowPositionFallback: !continueToNextPages);
                 if (selectionPages.Count == 0 && continueToNextPages)
                 {
-                    selectionPages = nextPages;
+                    selectionPages = ShouldFlipStopSelectionPages(stopProperties)
+                        ? ApplyFlipSpeakerToPages(nextPages)
+                        : nextPages;
                 }
 
                 if (selectionPages.Count == 0)
@@ -7789,6 +7800,55 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return Array.Empty<NpcInteractionPage>();
+        }
+
+        private static bool ShouldFlipStopSelectionPages(IReadOnlyList<WzImageProperty> stopProperties)
+        {
+            if (stopProperties == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < stopProperties.Count; i++)
+            {
+                if (ResolveConversationFlipSpeaker(stopProperties[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static IReadOnlyList<NpcInteractionPage> ApplyFlipSpeakerToPages(IReadOnlyList<NpcInteractionPage> pages)
+        {
+            if (pages == null || pages.Count == 0)
+            {
+                return Array.Empty<NpcInteractionPage>();
+            }
+
+            var flippedPages = new NpcInteractionPage[pages.Count];
+            for (int i = 0; i < pages.Count; i++)
+            {
+                NpcInteractionPage page = pages[i];
+                flippedPages[i] = page == null
+                    ? null
+                    : new NpcInteractionPage
+                    {
+                        RawText = page.RawText,
+                        Text = page.Text,
+                        Choices = page.Choices,
+                        InputRequest = page.InputRequest,
+                        FlipSpeaker = true
+                    };
+            }
+
+            return flippedPages;
+        }
+
+        private static bool ResolveConversationFlipSpeaker(WzImageProperty property)
+        {
+            return GetIntValue(property?["flip"]) > 0;
         }
 
         private static WzImageProperty ResolveStopAnswerProperty(IReadOnlyList<WzImageProperty> stopProperties)

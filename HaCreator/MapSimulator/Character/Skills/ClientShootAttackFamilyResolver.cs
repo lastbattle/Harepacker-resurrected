@@ -3,6 +3,8 @@ namespace HaCreator.MapSimulator.Character.Skills;
 internal static class ClientShootAttackFamilyResolver
 {
     public const int QueuedFinalAttackShootRange0 = 65;
+    private const int DefaultShootAttackPointYOffset = -28;
+    private const int MechanicTamingMobItemId = 1932016;
 
     public static bool UsesClientShootAttackLane(int skillId)
     {
@@ -36,5 +38,57 @@ internal static class ClientShootAttackFamilyResolver
         return skill?.AttackType == SkillAttackType.Ranged && skill.Projectile == null
             ? QueuedFinalAttackShootRange0
             : 0;
+    }
+
+    internal static int ResolveFallbackShootAttackPointYOffset(
+        int skillId,
+        int jobId,
+        int mountedTamingMobItemId = 0,
+        int bodyRelMoveY = 0,
+        bool mountedBodyRelMoveVehicle = false)
+    {
+        int offsetY = DefaultShootAttackPointYOffset;
+
+        if (IsPositionUpSkillOnRiding(skillId, jobId))
+        {
+            if (mountedBodyRelMoveVehicle)
+            {
+                offsetY += bodyRelMoveY;
+            }
+            else if (mountedTamingMobItemId == MechanicTamingMobItemId)
+            {
+                offsetY -= 17;
+            }
+        }
+
+        return skillId switch
+        {
+            33101007 => offsetY - 12,
+            33121005 => offsetY + 11,
+            35111015 => offsetY + 10,
+            35001004 or 33101001 or 35101010 => offsetY + 5,
+            _ => offsetY
+        };
+    }
+
+    private static bool IsPositionUpSkillOnRiding(int skillId, int jobId)
+    {
+        return skillId switch
+        {
+            33001000 or 33100009 or 33101001 or 33111001 or 33121001 or 33121003 or 33121005
+                or 33121009 or 35001004 or 35101010 or 35111004 or 35111015 or 35121005 or 35121013 => true,
+            0 => IsWildHunterJob(jobId) || IsMechanicJob(jobId),
+            _ => false
+        };
+    }
+
+    private static bool IsWildHunterJob(int jobId)
+    {
+        return jobId / 100 == 33;
+    }
+
+    private static bool IsMechanicJob(int jobId)
+    {
+        return jobId / 100 == 35;
     }
 }

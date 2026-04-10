@@ -102,6 +102,13 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0FF2] = "Effect/BasicEff.img/SkillBook/Success/1",
             [0x0FF3] = "Effect/BasicEff.img/SkillBook/Failure/0",
             [0x0FF4] = "Effect/BasicEff.img/SkillBook/Failure/1",
+            // Recovered from MapleStory.exe v95 `CUIAccountMoreInfo::LoadCountryName`
+            // and `CUIAccountMoreInfo::OnSaveAccountMoreInfoResult`. The generated
+            // table drifts in this block, so keep these account-more-info owner
+            // literals explicit instead of resolving unrelated FriendRecommendations
+            // resource paths.
+            [0x16B7] = "Fail. Please try again later.",
+            [0x16B8] = "Select",
             // Recovered from MapleStory.exe v95 `CDragon::UpdateQuestInfo`. The generated table
             // resolves 0x19BC to an unrelated UI list frame in this workspace, but the client
             // formats the dragon quest-info layer path from this string-pool slot with the raw

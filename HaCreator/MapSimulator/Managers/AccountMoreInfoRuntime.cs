@@ -40,38 +40,36 @@ namespace HaCreator.MapSimulator.Managers
         internal const int ClientOpcode = 193;
         private const int LoadResultPayloadLength = 17;
         private const int SaveResultPayloadLength = 2;
-        private const int DefaultBirthYear = 1990;
-
         private static readonly string[] PlayStyleLabels =
         {
-            "Play style 1",
-            "Play style 2",
-            "Play style 3",
-            "Play style 4",
-            "Play style 5",
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
         };
 
         private static readonly string[] ActivityLabels =
         {
-            "Activity 1",
-            "Activity 2",
-            "Activity 3",
-            "Activity 4",
-            "Activity 5",
-            "Activity 6",
-            "Activity 7",
-            "Activity 8",
-            "Activity 9",
-            "Activity 10",
-            "Activity 11",
-            "Activity 12",
-            "Activity 13",
-            "Activity 14",
-            "Activity 15",
-            "Activity 16",
-            "Activity 17",
-            "Activity 18",
-            "Activity 19",
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
         };
 
         private bool _isOpen;
@@ -81,7 +79,7 @@ namespace HaCreator.MapSimulator.Managers
         private bool _savePending;
         private int _areaGroup;
         private int _areaDetail;
-        private int _birthYear = DefaultBirthYear;
+        private int _birthYear = GetDefaultBirthYear();
         private int _birthMonth = 1;
         private int _birthDay = 1;
         private uint _playStyleMask;
@@ -145,7 +143,7 @@ namespace HaCreator.MapSimulator.Managers
             BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(13, 4), _activityMask);
             _savePending = true;
             _isFirstEntry = false;
-            _statusText = "Queued an account-more-info save request and disabled further saves until subtype 3 returns.";
+            _statusText = "Queued an account-more-info save request and disabled further saves until server subtype 4 returns.";
             return payload;
         }
 
@@ -170,13 +168,13 @@ namespace HaCreator.MapSimulator.Managers
 
             _areaGroup = (int)(area & 0xFF);
             _areaDetail = (int)((area >> 8) & 0xFF);
-            _birthYear = Math.Max(1900, (int)(birthday / 10000));
+            _birthYear = ClampBirthYear((int)(birthday / 10000));
             _birthMonth = Math.Clamp((int)((birthday / 100) % 100), 1, 12);
             _birthDay = Math.Clamp((int)(birthday % 100), 1, DateTime.DaysInMonth(_birthYear, _birthMonth));
             _hasLoadedProfile = true;
             _loadPending = false;
             _savePending = false;
-            _statusText = "Applied subtype 1 load result onto the dedicated account-more-info owner.";
+            _statusText = "Applied server subtype 2 load result onto the dedicated account-more-info owner.";
             message = $"Applied account-more-info load result: area=0x{area:X8}, birthday={birthday}, playMask=0x{_playStyleMask:X8}, activityMask=0x{_activityMask:X8}.";
             return true;
         }
@@ -205,7 +203,7 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
-            _statusText = "Subtype 3 save result failed, so the owner stayed open and re-enabled saving.";
+            _statusText = "Server subtype 4 save result failed, so the owner stayed open and re-enabled saving.";
             message = "Applied account-more-info save result: failure.";
             return true;
         }
@@ -228,7 +226,7 @@ namespace HaCreator.MapSimulator.Managers
                     break;
 
                 case AccountMoreInfoEditableField.BirthYear:
-                    _birthYear = Wrap(_birthYear + delta, 1900, 2099);
+                    _birthYear = Wrap(_birthYear + delta, GetMinimumBirthYear(), DateTime.Now.Year);
                     _birthDay = Math.Min(_birthDay, DateTime.DaysInMonth(_birthYear, _birthMonth));
                     break;
 
@@ -324,6 +322,21 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return minInclusive + normalized;
+        }
+
+        private static int GetMinimumBirthYear()
+        {
+            return DateTime.Now.Year - 100;
+        }
+
+        private static int GetDefaultBirthYear()
+        {
+            return DateTime.Now.Year - 15;
+        }
+
+        private static int ClampBirthYear(int year)
+        {
+            return Math.Clamp(year, GetMinimumBirthYear(), DateTime.Now.Year);
         }
 
         private string BuildGenderStatusText()

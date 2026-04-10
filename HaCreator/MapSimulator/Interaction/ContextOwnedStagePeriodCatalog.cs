@@ -105,14 +105,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
-            if (!TryLoadImage(stageKeywordPath, out WzImage stageKeywordImage))
+            if (TryLoadImage(stageKeywordPath, out WzImage stageKeywordImage))
             {
-                error = $"Context-owned stage-period validation could not load {stageKeywordPath}, so the simulator cannot mirror CStageSystem::BuildCacheData acceptance yet.";
-                return null;
+                stageKeywordImage.ParseImage();
+                ApplyStageKeywordAugmentations(themes, stageKeywordImage.WzProperties.OfType<WzImageProperty>());
             }
-
-            stageKeywordImage.ParseImage();
-            ApplyStageKeywordAugmentations(themes, stageKeywordImage.WzProperties.OfType<WzImageProperty>());
 
             Dictionary<int, IReadOnlyList<ContextOwnedStageAffectedMapEntry>> affectedMapsByFieldId = new();
             if (TryLoadImage(stageAffectedMapPath, out WzImage stageAffectedMapImage))
@@ -139,13 +136,10 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
-            if (stageKeywordRoot == null)
+            if (stageKeywordRoot != null)
             {
-                error = "Context-owned stage-period validation requires a StageKeyword root to mirror CStageSystem::BuildCacheData acceptance.";
-                return null;
+                ApplyStageKeywordAugmentations(themes, stageKeywordRoot.WzProperties.OfType<WzImageProperty>());
             }
-
-            ApplyStageKeywordAugmentations(themes, stageKeywordRoot.WzProperties.OfType<WzImageProperty>());
 
             Dictionary<int, IReadOnlyList<ContextOwnedStageAffectedMapEntry>> affectedMapsByFieldId = stageAffectedMapRoot != null
                 ? BuildAffectedMapCatalog(stageAffectedMapRoot.WzProperties.OfType<WzImageProperty>())

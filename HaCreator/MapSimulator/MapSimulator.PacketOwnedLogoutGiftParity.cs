@@ -365,11 +365,9 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            bool hasCommodity = false;
             for (int i = 0; i < PacketOwnedLogoutGiftEntryCount; i++)
             {
                 _packetOwnedLogoutGiftCommoditySerialNumbers[i] = commoditySerialNumbers[i];
-                hasCommodity |= _packetOwnedLogoutGiftCommoditySerialNumbers[i] > 0;
             }
 
             _packetOwnedLogoutGiftLeadingOpaqueBytes = leadingOpaqueBytes ?? Array.Empty<byte>();
@@ -379,15 +377,16 @@ namespace HaCreator.MapSimulator
             _packetOwnedLogoutGiftHasPredictQuitFlag = TryResolvePacketOwnedLogoutGiftPredictQuit(
                 _packetOwnedLogoutGiftLeadingContextFields,
                 out _packetOwnedLogoutGiftPredictQuitRawValue);
-            _packetOwnedLogoutGiftHasConfig = hasCommodity;
+            _packetOwnedLogoutGiftHasConfig = HasDecodedPacketOwnedLogoutGiftConfig(commoditySerialNumbers);
             _packetOwnedLogoutGiftSelectedIndex = ResolveFirstPacketOwnedLogoutGiftSelection();
-            _lastPacketOwnedLogoutGiftSummary = hasCommodity
+            bool hasCommodity = HasAnyPacketOwnedLogoutGiftCommodity(commoditySerialNumbers);
+            _lastPacketOwnedLogoutGiftSummary = _packetOwnedLogoutGiftHasConfig
                 ? _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
-                    ? $"Split the character-data SetField tail into {DescribePacketOwnedLogoutGiftLeadingTail()} plus the client `CWvsContext` logout-gift cache at dword[{PacketOwnedLogoutGiftCommodityContextDwordIndex.ToString(CultureInfo.InvariantCulture)}..{(PacketOwnedLogoutGiftCommodityContextDwordIndex + PacketOwnedLogoutGiftEntryCount - 1).ToString(CultureInfo.InvariantCulture)}]: {FormatPacketOwnedLogoutGiftCommodityList()}."
-                    : $"Cached logout-gift commodity SNs from character-data SetField: {FormatPacketOwnedLogoutGiftCommodityList()}. Packet 432 now refreshes the dedicated owner instead of leaving the values hidden in stage payload tail bytes."
-                : _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
-                    ? $"Decoded the trailing client 12-byte logout-gift cache after preserving {DescribePacketOwnedLogoutGiftLeadingTail()}, but all three commodity slots were zero."
-                    : "Decoded the explicit logout-gift cache payload from SetField, but all three commodity slots were zero.";
+                    ? $"Split the character-data SetField tail into {DescribePacketOwnedLogoutGiftLeadingTail()} plus the client `CWvsContext` logout-gift cache at dword[{PacketOwnedLogoutGiftCommodityContextDwordIndex.ToString(CultureInfo.InvariantCulture)}..{(PacketOwnedLogoutGiftCommodityContextDwordIndex + PacketOwnedLogoutGiftEntryCount - 1).ToString(CultureInfo.InvariantCulture)}]: {FormatPacketOwnedLogoutGiftCommodityList()}.{(hasCommodity ? string.Empty : " All three commodity slots are zero, but the decoded cache remains owned by the logout-gift context fields.")}"
+                    : hasCommodity
+                        ? $"Cached logout-gift commodity SNs from character-data SetField: {FormatPacketOwnedLogoutGiftCommodityList()}. Packet 432 now refreshes the dedicated owner instead of leaving the values hidden in stage payload tail bytes."
+                        : "Decoded the explicit logout-gift cache payload from SetField with all three commodity slots zero; the simulator preserves the client cache as present rather than collapsing it to missing config."
+                : "Character-data SetField did not decode a complete logout-gift cache payload.";
             NotifyEventAlarmOwnerActivity("packet-owned logout gift");
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LogoutGift) is LogoutGiftWindow window && window.IsVisible)
@@ -830,6 +829,29 @@ namespace HaCreator.MapSimulator
         internal static bool IsPacketOwnedLogoutGiftOwnerSingletonPresent(bool ownerInstantiated, bool ownerVisible)
         {
             return ownerInstantiated || ownerVisible;
+        }
+
+        internal static bool HasDecodedPacketOwnedLogoutGiftConfig(int[] commoditySerialNumbers)
+        {
+            return commoditySerialNumbers != null && commoditySerialNumbers.Length == PacketOwnedLogoutGiftEntryCount;
+        }
+
+        internal static bool HasAnyPacketOwnedLogoutGiftCommodity(int[] commoditySerialNumbers)
+        {
+            if (commoditySerialNumbers == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < commoditySerialNumbers.Length; i++)
+            {
+                if (commoditySerialNumbers[i] > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static PacketOwnedLogoutGiftRefreshDisposition ResolvePacketOwnedLogoutGiftRefreshDisposition(

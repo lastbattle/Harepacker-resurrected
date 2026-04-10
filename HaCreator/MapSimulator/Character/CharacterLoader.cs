@@ -2609,7 +2609,7 @@ namespace HaCreator.MapSimulator.Character
 
         private void AttachTamingMobOverlayResolver(CharacterPart part)
         {
-            if (part?.ItemId / 10000 != 191)
+            if (part?.ItemId / 10000 is not (191 or 192))
             {
                 return;
             }
@@ -2744,6 +2744,7 @@ namespace HaCreator.MapSimulator.Character
                 180 => EquipSlot.TamingMob,
                 198 => EquipSlot.TamingMob,
                 191 => EquipSlot.Saddle,
+                192 => EquipSlot.TamingMobAccessory,
                 199 => EquipSlot.TamingMob,
                 >= 190 and < 200 => EquipSlot.TamingMob,
                 _ => EquipSlot.None
@@ -4361,9 +4362,19 @@ namespace HaCreator.MapSimulator.Character
                 .Where(static part => part?.TamingMobActionOverlayResolver != null)
                 .Where(part => !ReferenceEquals(part, activeTamingMobPart))
                 .Where(part => part.Slot != EquipSlot.TamingMob)
-                .OrderBy(part => part.Slot == EquipSlot.Saddle ? 0 : 1)
+                .OrderBy(GetTamingMobActionOverlayOrder)
                 .ThenBy(part => (int)part.Slot)
                 .ToArray();
+        }
+
+        private static int GetTamingMobActionOverlayOrder(CharacterPart part)
+        {
+            return part?.Slot switch
+            {
+                EquipSlot.Saddle => 0,
+                EquipSlot.TamingMobAccessory => 1,
+                _ => 2
+            };
         }
 
         internal static CharacterPart MergeTamingMobActionOverlayParts(

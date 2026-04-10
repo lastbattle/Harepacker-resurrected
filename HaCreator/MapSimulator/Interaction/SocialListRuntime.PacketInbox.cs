@@ -82,10 +82,14 @@ namespace HaCreator.MapSimulator.Interaction
             return packet.Kind switch
             {
                 SocialListRosterPacketKind.Replace => ApplyPacketOwnedRosterReplace(tab, packet),
+                SocialListRosterPacketKind.ReplaceWithIds => ApplyPacketOwnedRosterReplace(tab, packet),
                 SocialListRosterPacketKind.Upsert => ApplyPacketOwnedRosterUpsert(tab, packet),
+                SocialListRosterPacketKind.UpsertWithId => ApplyPacketOwnedRosterUpsert(tab, packet),
                 SocialListRosterPacketKind.Remove => RemovePacketEntry(tab, packet.Name),
+                SocialListRosterPacketKind.RemoveById => RemovePacketEntryByMemberId(tab, packet.MemberId),
                 SocialListRosterPacketKind.Clear => ApplyPacketOwnedRosterClear(tab, packet.Summary),
                 SocialListRosterPacketKind.Select => SelectEntryByName(tab, packet.Name),
+                SocialListRosterPacketKind.SelectById => SelectEntryByMemberId(tab, packet.MemberId),
                 SocialListRosterPacketKind.Summary => SetPacketSyncSummary(tab, packet.Summary),
                 SocialListRosterPacketKind.Resolve => ApplyPacketOwnedRosterResolve(tab, packet),
                 SocialListRosterPacketKind.Request => ApplyPacketOwnedRosterRequest(tab, packet),
@@ -119,6 +123,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return packet.Kind switch
             {
+                SocialListClientGuildResultKind.GradeChange => ApplyPacketOwnedGradeChange(SocialListTab.Guild, packet.GradeChange, _guildRankTitles, packet.GuildId, "guild"),
                 SocialListClientGuildResultKind.Ranking => SetPacketGuildRankingEntries(packet.RankingEntries, packet.GuildId),
                 SocialListClientGuildResultKind.RankTitles => SetPacketGuildRankTitles(packet.RankTitles, packet.GuildId),
                 SocialListClientGuildResultKind.Notice => SetPacketGuildNoticeText(packet.Notice, packet.GuildId),
@@ -132,6 +137,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return packet.Kind switch
             {
+                SocialListClientAllianceResultKind.GradeChange => ApplyPacketOwnedGradeChange(SocialListTab.Alliance, packet.GradeChange, _allianceRankTitles, packet.AllianceId, "alliance"),
                 SocialListClientAllianceResultKind.RankTitles => SetPacketAllianceRankTitles(packet.RankTitles, packet.AllianceId),
                 SocialListClientAllianceResultKind.Notice => SetPacketAllianceNoticeText(packet.Notice, packet.AllianceId),
                 _ => $"Unsupported client alliance-result subtype {(byte)packet.Kind}."
@@ -141,6 +147,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string ApplyPacketOwnedRosterReplace(SocialListTab tab, SocialListRosterPacket packet)
         {
             List<SocialEntryState> entries = _entriesByTab[tab];
+            SocialEntryState localState = ResolveLocalEntryState(tab);
             entries.Clear();
 
             for (int i = 0; i < packet.Entries.Count; i++)
@@ -156,12 +163,12 @@ namespace HaCreator.MapSimulator.Interaction
                     packetEntry.IsLeader,
                     packetEntry.IsBlocked)
                 {
+                    MemberId = packetEntry.MemberId,
                     IsLocalPlayer = packetEntry.IsLocalPlayer
                 };
 
                 if (nextEntry.IsLocalPlayer)
                 {
-                    SocialEntryState localState = ResolveLocalEntryState(tab);
                     nextEntry = MergePacketOwnedLocalEntry(nextEntry, localState);
                 }
 
@@ -197,7 +204,111 @@ namespace HaCreator.MapSimulator.Interaction
                 entry.IsOnline,
                 entry.IsLeader,
                 entry.IsBlocked,
-                entry.IsLocalPlayer);
+                entry.IsLocalPlayer,
+                entry.MemberId);
+        }
+
+        private string RemovePacketEntryByMemberId(SocialListTab tab, int? memberId)
+        {
+            if (!memberId.HasValue || memberId.Value <= 0)
+            {
+                return $"Provide a positive {GetHeaderTitle(tab)} member id to remove.";
+            }
+
+            int removed = _entriesByTab[tab].RemoveAll(entry => entry.MemberId == memberId.Value);
+            _packetOwnedRosterByTab[tab] = true;
+            _lastPendingRequestByTab[tab] = null;
+            _lastPacketSyncSummaryByTab[tab] = removed > 0
+                ? $"Packet member-id remove deleted {removed} entr{(removed == 1 ? "y" : "ies")} for member #{memberId.Value}."
+                : $"Packet member-id remove for #{memberId.Value} did not match any current roster row.";
+            SyncPacketGuildUiStateFromRoster(tab);
+            ResetSelectionAfterMutation(tab);
+            return removed > 0
+                ? $"Member #{memberId.Value} was removed from the packet-owned {GetHeaderTitle(tab)} roster."
+                : $"Member #{memberId.Value} was not present in the current {GetHeaderTitle(tab)} roster.";
+        }
+
+        private string SelectEntryByMemberId(SocialListTab tab, int? memberId)
+        {
+            if (!memberId.HasValue || memberId.Value <= 0)
+            {
+                return $"Provide a positive {GetHeaderTitle(tab)} member id to select.";
+            }
+
+            IReadOnlyList<SocialEntryState> entries = GetFilteredEntries(tab);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                if (entries[i].MemberId != memberId.Value)
+                {
+                    continue;
+                }
+
+                _selectedIndexByTab[tab] = i;
+                EnsureSelectionVisible(tab, entries.Count);
+                return $"Member #{memberId.Value} ({entries[i].Name}) is now selected on the {GetHeaderTitle(tab)} roster.";
+            }
+
+            return $"Member #{memberId.Value} is not present in the current {GetHeaderTitle(tab)} roster.";
+        }
+
+        private string ApplyPacketOwnedGradeChange(
+            SocialListTab tab,
+            SocialListGradeChangePacket gradeChange,
+            IReadOnlyList<string> rankTitles,
+            int ownerId,
+            string ownerLabel)
+        {
+            if (gradeChange.MemberId <= 0)
+            {
+                return $"Client {ownerLabel}-result grade-change member id must be positive.";
+            }
+
+            if (!gradeChange.AbsoluteGrade.HasValue)
+            {
+                return $"Client {ownerLabel}-result grade-change payload did not include an absolute grade.";
+            }
+
+            int absoluteGrade = gradeChange.AbsoluteGrade.Value;
+            int rankIndex = absoluteGrade - 1;
+            if (rankTitles == null || rankTitles.Count == 0 || rankIndex < 0 || rankIndex >= rankTitles.Count)
+            {
+                return $"Client {ownerLabel}-result grade {absoluteGrade} is outside the current rank-title range.";
+            }
+
+            List<SocialEntryState> entries = _entriesByTab[tab];
+            int entryIndex = entries.FindIndex(entry => entry.MemberId == gradeChange.MemberId);
+            if (entryIndex < 0)
+            {
+                _packetOwnedRosterByTab[tab] = true;
+                _lastPacketSyncSummaryByTab[tab] =
+                    $"Client {ownerLabel}-result grade change for member #{gradeChange.MemberId} could not be mapped onto the packet-owned roster.";
+                return $"Client {ownerLabel}-result grade change for member #{gradeChange.MemberId} did not match any {GetHeaderTitle(tab)} roster row.";
+            }
+
+            SocialEntryState entry = entries[entryIndex];
+            string nextTitle = rankTitles[rankIndex];
+            entries[entryIndex] = new SocialEntryState(
+                entry.Name,
+                nextTitle,
+                entry.SecondaryText,
+                entry.LocationSummary,
+                entry.Channel,
+                entry.IsOnline,
+                rankIndex == 0,
+                entry.IsBlocked)
+            {
+                MemberId = entry.MemberId,
+                IsLocalPlayer = entry.IsLocalPlayer
+            };
+
+            _packetOwnedRosterByTab[tab] = true;
+            _lastPendingRequestByTab[tab] = null;
+            _lastPacketSyncSummaryByTab[tab] =
+                $"Client {ownerLabel}-result grade change set {entry.Name} (#{gradeChange.MemberId}) to grade {absoluteGrade} ({nextTitle})"
+                + (ownerId > 0 ? $" for {ownerLabel} {ownerId}." : ".");
+            ResetSelectionAfterMutation(tab);
+            NotifySocialChatObserved($"{entry.Name}'s {ownerLabel} grade changed to {nextTitle}.");
+            return _lastPacketSyncSummaryByTab[tab];
         }
 
         private string ApplyPacketOwnedRosterClear(SocialListTab tab, string summary)

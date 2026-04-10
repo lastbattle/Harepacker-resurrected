@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
@@ -20,6 +21,7 @@ namespace HaCreator.MapSimulator
         private const byte VegaPacketOwnedSuccessTerminalCode = 69;
         private const byte VegaPacketOwnedFailPreludeCode = 73;
         private const byte VegaPacketOwnedFailTerminalCode = 71;
+        private const int VegaConsumeCashLaunchPayloadLength = sizeof(int) + sizeof(short) + sizeof(int);
         private const string VegaResultLoopSoundKey = "PacketOwnedSound:Sound/UI.img/EnchantDelay:VegaLoop";
         private ActiveVegaModifierSelectionState _activeVegaModifierSelection;
         private bool _vegaExclusiveRequestSent;
@@ -109,6 +111,31 @@ namespace HaCreator.MapSimulator
                 RequestedAtTick = currTickCount,
                 ReadyAtTick = currTickCount + VegaOwnerLaunchDelayMs
             };
+        }
+
+        private void QueuePacketOwnedVegaSpellWindowLaunch(int itemId, InventoryType inventoryType, int slotIndex, string source)
+        {
+            if (!ItemUpgradeUI.IsVegaSpellConsumable(itemId))
+            {
+                return;
+            }
+
+            int slotPosition = slotIndex >= 0 ? slotIndex + 1 : 0;
+            byte[] payload = BuildVegaConsumeCashLaunchPayload(slotPosition, itemId, currTickCount);
+            _localUtilityPacketInbox.EnqueueLocal(
+                LocalUtilityPacketInboxManager.ConsumeCashItemUseRequestPacketType,
+                payload,
+                string.IsNullOrWhiteSpace(source)
+                    ? "CWvsContext::SendConsumeCashItemUseRequest"
+                    : source.Trim());
+            _activeVegaModifierSelection = new ActiveVegaModifierSelectionState
+            {
+                ModifierItemId = itemId,
+                InventoryType = inventoryType,
+                SlotIndex = slotIndex,
+                Source = string.IsNullOrWhiteSpace(source) ? "consume-cash-item request" : source.Trim()
+            };
+            StampPacketOwnedUtilityRequestState();
         }
 
         private void UpdateVegaSpellOwnerState()
@@ -399,6 +426,18 @@ namespace HaCreator.MapSimulator
             BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 5) + sizeof(short), sizeof(int)), scrollSlotPosition);
             BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 6) + sizeof(short), sizeof(int)), useWhiteScroll ? 1 : 0);
             BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 7) + sizeof(short), sizeof(int)), updateTick);
+            return payload;
+        }
+
+        private static byte[] BuildVegaConsumeCashLaunchPayload(
+            int modifierSlotPosition,
+            int modifierItemId,
+            int updateTick)
+        {
+            byte[] payload = new byte[VegaConsumeCashLaunchPayloadLength];
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), updateTick);
+            BinaryPrimitives.WriteInt16LittleEndian(payload.AsSpan(sizeof(int), sizeof(short)), (short)Math.Max(0, modifierSlotPosition));
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) + sizeof(short), sizeof(int)), modifierItemId);
             return payload;
         }
 
@@ -781,6 +820,14 @@ namespace HaCreator.MapSimulator
                 updateTick);
         }
 
+        internal static byte[] BuildVegaConsumeCashLaunchPayloadForTests(
+            int modifierSlotPosition,
+            int modifierItemId,
+            int updateTick)
+        {
+            return BuildVegaConsumeCashLaunchPayload(modifierSlotPosition, modifierItemId, updateTick);
+        }
+
         internal static (byte PrimaryCode, byte SecondaryCode) ResolveVegaResultCodesForTests(bool success)
         {
             return ResolveVegaResultCodes(success);
@@ -1006,10 +1053,28 @@ namespace HaCreator.MapSimulator
             InventoryType inventoryType = fallbackInventoryType;
             int slotIndex = fallbackSlotIndex;
             bool hasExplicitSlot = false;
+            bool decodedConsumeCashPrefix = false;
             if (payload != null && modifierOffset >= 0)
             {
+                if (modifierOffset >= sizeof(short))
+                {
+                    short precedingSlotPosition = BinaryPrimitives.ReadInt16LittleEndian(
+                        payload.AsSpan(modifierOffset - sizeof(short), sizeof(short)));
+                    if (precedingSlotPosition > 0)
+                    {
+                        slotIndex = precedingSlotPosition - 1;
+                        hasExplicitSlot = true;
+                        if (inventoryType == InventoryType.NONE)
+                        {
+                            inventoryType = InventoryType.CASH;
+                        }
+
+                        decodedConsumeCashPrefix = modifierOffset == sizeof(int) + sizeof(short);
+                    }
+                }
+
                 int nextOffset = modifierOffset + sizeof(int);
-                if (payload.Length >= nextOffset + (sizeof(int) * 2))
+                if (!decodedConsumeCashPrefix && payload.Length >= nextOffset + (sizeof(int) * 2))
                 {
                     int encodedInventoryType = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(nextOffset, sizeof(int)));
                     int encodedSlotIndex = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(nextOffset + sizeof(int), sizeof(int)));
@@ -1024,7 +1089,7 @@ namespace HaCreator.MapSimulator
                         hasExplicitSlot = true;
                     }
                 }
-                else if (payload.Length >= nextOffset + sizeof(short))
+                else if (!decodedConsumeCashPrefix && payload.Length >= nextOffset + sizeof(short))
                 {
                     short encodedSlotIndex = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(nextOffset, sizeof(short)));
                     if (encodedSlotIndex >= 0)

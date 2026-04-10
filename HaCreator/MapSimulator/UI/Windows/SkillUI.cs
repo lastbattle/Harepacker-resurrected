@@ -2026,6 +2026,7 @@ namespace HaCreator.MapSimulator.UI
     {
         private const int HiddenMechanicSiegeSkillId = 4321001;
         private const int HiddenBeginnerSkillId = 1014;
+        private const int HiddenCygnusMobilitySkillId = 10001015;
         private const int DualBladeHiddenRogueSkillId = 4000001;
         private const int DualBladeHiddenMasterySkillId = 4001344;
 
@@ -2034,8 +2035,12 @@ namespace HaCreator.MapSimulator.UI
             if (skill == null)
                 return false;
 
-            if (skill.SkillId == HiddenMechanicSiegeSkillId || skill.SkillId == HiddenBeginnerSkillId)
+            if (skill.SkillId == HiddenMechanicSiegeSkillId ||
+                skill.SkillId == HiddenBeginnerSkillId ||
+                skill.SkillId == HiddenCygnusMobilitySkillId)
+            {
                 return false;
+            }
 
             if (useDualBladeRules &&
                 (skill.SkillId == DualBladeHiddenRogueSkillId || skill.SkillId == DualBladeHiddenMasterySkillId))

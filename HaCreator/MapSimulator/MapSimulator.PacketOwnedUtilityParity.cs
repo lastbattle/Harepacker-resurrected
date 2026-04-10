@@ -179,6 +179,8 @@ namespace HaCreator.MapSimulator
         private static readonly Lazy<HashSet<int>> PacketOwnedVengeanceSkillIdCatalog = new(CreatePacketOwnedVengeanceSkillIdCatalog);
         private static readonly Lazy<HashSet<int>> PacketOwnedExJablinSkillIdCatalog = new(CreatePacketOwnedExJablinSkillIdCatalog);
         private static readonly Lazy<int[]> PacketOwnedTimeBombInvincibilityOptionIds = new(CreatePacketOwnedTimeBombInvincibilityOptionIds);
+        private static readonly Lazy<IReadOnlyDictionary<string, int>> PacketOwnedVisiblePotentialItemOptionIdsByLine = new(CreatePacketOwnedVisiblePotentialItemOptionIdsByLine);
+        private static readonly Lazy<HashSet<int>> PacketOwnedVisiblePotentialItemOptionIds = new(CreatePacketOwnedVisiblePotentialItemOptionIdSet);
         private static readonly Lazy<IReadOnlyDictionary<int, int[]>> PacketOwnedSkillIdAliasCandidates = new(CreatePacketOwnedSkillIdAliasCandidates);
         private LocalOverlayBalloonSkin _packetOwnedTutorBalloonSkin;
         private readonly Dictionary<int, List<IDXObject>> _packetOwnedTutorCueFramesByIndex = new();
@@ -224,6 +226,9 @@ namespace HaCreator.MapSimulator
         private readonly List<EventAlarmLineSnapshot> _packetOwnedEventAlarmLines = new();
         private string _lastPacketOwnedEventAlarmSummary = string.Empty;
         private int _lastPacketOwnedEventAlarmTick = int.MinValue;
+        private readonly List<RankingEntrySnapshot> _packetOwnedRankingEntries = new();
+        private string _lastPacketOwnedRankingSummary = string.Empty;
+        private int _lastPacketOwnedRankingTick = int.MinValue;
         private readonly List<EventEntrySnapshot> _packetOwnedEventCalendarEntries = new();
         private string _lastPacketOwnedEventCalendarSummary = string.Empty;
         private int _lastPacketOwnedEventCalendarTick = int.MinValue;
@@ -1980,6 +1985,9 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.EventCalendarEntriesPacketType:
                     return TryApplyPacketOwnedEventCalendarEntriesPayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.RankingPagePacketType:
+                    return TryApplyPacketOwnedRankingPagePayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.BuffzoneEffectPacketType:
                 case LocalUtilityPacketInboxManager.BuffzoneEffectClientPacketType:
                     return TryApplyPacketOwnedStringPayload(payload, ApplyPacketOwnedBuffzoneEffect, "Buff-zone payload is missing.", out message);
@@ -1997,6 +2005,9 @@ namespace HaCreator.MapSimulator
 
                 case LocalUtilityPacketInboxManager.RadioScheduleClientPacketType:
                     return TryApplyPacketOwnedRadioSchedulePayload(payload, requireExactClientPayload: true, out message);
+
+                case LocalUtilityPacketInboxManager.RadioCreateLayerContextPacketType:
+                    return TryApplyPacketOwnedRadioCreateLayerContextPayload(payload, out message);
 
                   case LocalUtilityPacketInboxManager.LogoutGiftClientPacketType:
                       return TryApplyPacketOwnedLogoutGiftPayload(payload, out message);
@@ -2118,8 +2129,14 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.MechanicEquipStatePacketType:
                     return TryApplyPacketOwnedMechanicEquipPayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.CharacterEquipStatePacketType:
+                    return TryApplyPacketOwnedCharacterEquipPayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.RepairDurabilityResultPacketType:
                     return TryApplyRepairDurabilityResultPayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.ConsumeCashItemUseRequestPacketType:
+                    return TryApplyPacketOwnedVegaLaunchPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.VegaLaunchPacketType:
                     if (TryApplyPacketOwnedEventAlarmTextPayload(payload, out message))
@@ -3798,6 +3815,48 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        private bool TryApplyPacketOwnedRadioCreateLayerContextPayload(byte[] payload, out string message)
+        {
+            if (!TryDecodePacketOwnedRadioCreateLayerContextPayload(payload, out bool hasOverride, out bool bLeft, out message))
+            {
+                return false;
+            }
+
+            message = hasOverride
+                ? SetPacketOwnedRadioCreateLayerContext(bLeft, "packet-radioctx")
+                : ClearPacketOwnedRadioCreateLayerContext("packet-radioctx-clear");
+            ShowUtilityFeedbackMessage($"{message} {DescribePacketOwnedRadioCreateLayerContextStatus()}");
+            return true;
+        }
+
+        internal static bool TryDecodePacketOwnedRadioCreateLayerContextPayload(
+            byte[] payload,
+            out bool hasOverride,
+            out bool bLeft,
+            out string message)
+        {
+            hasOverride = false;
+            bLeft = false;
+            message = "Radio CreateLayer context payload is missing.";
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (payload.Length > 2)
+            {
+                message = "Radio CreateLayer context payload must be [0] to clear, [1] to set left, or [1,<bLeft>] to set right/left explicitly.";
+                return false;
+            }
+
+            hasOverride = payload[0] != 0;
+            bLeft = hasOverride && (payload.Length == 1 || payload[1] != 0);
+            message = hasOverride
+                ? $"Decoded packet-authored CWvsContext[3562] radio bLeft={(bLeft ? 1 : 0)}."
+                : "Decoded packet-authored CWvsContext[3562] radio bLeft clear.";
+            return true;
+        }
+
         internal static bool TryDecodePacketOwnedRadioSchedulePayload(
             byte[] payload,
             bool requireExactClientPayload,
@@ -4882,6 +4941,11 @@ namespace HaCreator.MapSimulator
                 out SkillData skill,
                 out int level,
                 out string errorMessage);
+            bool appliedSpecialEffect = TryRegisterAnimationDisplayerLocalSkillUseBranchAtWorldOrigin(
+                normalizedSkillId,
+                "special",
+                timeBombPosition,
+                currTickCount);
 
             int appliedHitPeriodMs = 0;
             int appliedDamage = damage;
@@ -4907,8 +4971,8 @@ namespace HaCreator.MapSimulator
 
             string skillName = skill?.Name ?? $"Skill {normalizedSkillId}";
             string message = appliedPacketOwnedAttack
-                ? $"Applied packet-owned Time Bomb attack for {skillName} Lv.{level} (target {timeBombX}, {timeBombY}, hit {appliedHitPeriodMs} ms, impact {impactPercent}%, damage {appliedDamage})."
-                : $"Applied packet-owned Time Bomb reaction for {skillName} without a resolved melee-attack branch ({errorMessage}) (target {timeBombX}, {timeBombY}, hit {appliedHitPeriodMs} ms, impact {impactPercent}%, damage {appliedDamage}).";
+                ? $"Applied packet-owned Time Bomb attack for {skillName} Lv.{level} (target {timeBombX}, {timeBombY}, hit {appliedHitPeriodMs} ms, impact {impactPercent}%, damage {appliedDamage}, special effect {(appliedSpecialEffect ? "registered" : "unavailable")})."
+                : $"Applied packet-owned Time Bomb reaction for {skillName} without a resolved melee-attack branch ({errorMessage}) (target {timeBombX}, {timeBombY}, hit {appliedHitPeriodMs} ms, impact {impactPercent}%, damage {appliedDamage}, special effect {(appliedSpecialEffect ? "registered" : "unavailable")}).";
             ShowUtilityFeedbackMessage(message);
             return message;
         }
@@ -5038,6 +5102,10 @@ namespace HaCreator.MapSimulator
                 mountPart.Durability = boundedMaxDurability > 0
                     ? Math.Clamp(remainingUnits, 0, boundedMaxDurability)
                     : Math.Max(0, remainingUnits);
+                _playerManager.Skills.SetAuthoritativeVehicleDurabilityPresentation(
+                    PacketOwnedBattleshipSkillId,
+                    mountPart.Durability ?? Math.Max(0, remainingUnits),
+                    mountPart.MaxDurability ?? maxDurability);
             }
             else
             {
@@ -5647,7 +5715,7 @@ namespace HaCreator.MapSimulator
             int capturedMutationSequence,
             int liveContextMutationSequence)
         {
-            return !sessionActive && capturedMutationSequence != liveContextMutationSequence;
+            return sessionActive && capturedMutationSequence != liveContextMutationSequence;
         }
 
         internal static bool ShouldResetPacketOwnedRadioForRuntimeCharacterChange(
@@ -5679,22 +5747,32 @@ namespace HaCreator.MapSimulator
 
         private string SetPacketOwnedRadioCreateLayerContext(bool bLeft)
         {
+            return SetPacketOwnedRadioCreateLayerContext(bLeft, "manual-radioctx");
+        }
+
+        private string SetPacketOwnedRadioCreateLayerContext(bool bLeft, string source)
+        {
             int runtimeCharacterId = ResolvePacketOwnedRadioRuntimeCharacterId();
             _packetOwnedLocalUtilityContext.SetRadioCreateLayerLeftContextValue(
                 bLeft,
-                source: "manual-radioctx",
+                source: source,
                 currentTick: Environment.TickCount,
-                runtimeCharacterId);
+                runtimeCharacterId: runtimeCharacterId);
             return $"Set packet-owned local utility CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] (radio bLeft) to {(bLeft ? 1 : 0)}.";
         }
 
         private string ClearPacketOwnedRadioCreateLayerContext()
         {
+            return ClearPacketOwnedRadioCreateLayerContext("manual-radioctx-clear");
+        }
+
+        private string ClearPacketOwnedRadioCreateLayerContext(string source)
+        {
             int runtimeCharacterId = ResolvePacketOwnedRadioRuntimeCharacterId();
             _packetOwnedLocalUtilityContext.ClearRadioCreateLayerLeftContextValue(
-                source: "manual-radioctx-clear",
+                source: source,
                 currentTick: Environment.TickCount,
-                runtimeCharacterId);
+                runtimeCharacterId: runtimeCharacterId);
             return $"Cleared packet-owned local utility CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] (radio bLeft) override.";
         }
 
@@ -7609,6 +7687,87 @@ namespace HaCreator.MapSimulator
             return mergedIds;
         }
 
+        internal static IReadOnlyList<int> MergePacketOwnedVisiblePotentialItemOptionIds(
+            IEnumerable<int> existingItemOptionIds,
+            IEnumerable<string> potentialLines)
+        {
+            return MergePacketOwnedVisiblePotentialItemOptionIds(
+                existingItemOptionIds,
+                potentialLines,
+                PacketOwnedVisiblePotentialItemOptionIdsByLine.Value);
+        }
+
+        internal static IReadOnlyList<int> MergePacketOwnedVisiblePotentialItemOptionIds(
+            IEnumerable<int> existingItemOptionIds,
+            IEnumerable<string> potentialLines,
+            IReadOnlyDictionary<string, int> optionIdsByNormalizedLine)
+        {
+            IReadOnlyList<int> inferredIds = InferPacketOwnedVisiblePotentialItemOptionIds(potentialLines, optionIdsByNormalizedLine);
+            HashSet<int> visiblePotentialOptionIds = optionIdsByNormalizedLine?.Values
+                .Where(static itemOptionId => itemOptionId > 0)
+                .ToHashSet()
+                ?? new HashSet<int>();
+            var mergedIds = new List<int>();
+            var seenIds = new HashSet<int>();
+
+            if (existingItemOptionIds != null)
+            {
+                foreach (int itemOptionId in existingItemOptionIds)
+                {
+                    if (visiblePotentialOptionIds.Contains(itemOptionId) || !seenIds.Add(itemOptionId))
+                    {
+                        continue;
+                    }
+
+                    mergedIds.Add(itemOptionId);
+                }
+            }
+
+            foreach (int itemOptionId in inferredIds)
+            {
+                if (seenIds.Add(itemOptionId))
+                {
+                    mergedIds.Add(itemOptionId);
+                }
+            }
+
+            return mergedIds;
+        }
+
+        internal static IReadOnlyList<int> InferPacketOwnedVisiblePotentialItemOptionIds(IEnumerable<string> potentialLines)
+        {
+            return InferPacketOwnedVisiblePotentialItemOptionIds(
+                potentialLines,
+                PacketOwnedVisiblePotentialItemOptionIdsByLine.Value);
+        }
+
+        internal static IReadOnlyList<int> InferPacketOwnedVisiblePotentialItemOptionIds(
+            IEnumerable<string> potentialLines,
+            IReadOnlyDictionary<string, int> optionIdsByNormalizedLine)
+        {
+            if (potentialLines == null || optionIdsByNormalizedLine == null || optionIdsByNormalizedLine.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            var inferredIds = new List<int>();
+            var seenIds = new HashSet<int>();
+            foreach (string potentialLine in potentialLines)
+            {
+                string normalizedLine = NormalizePacketOwnedPotentialLineText(potentialLine);
+                if (normalizedLine.Length == 0
+                    || !optionIdsByNormalizedLine.TryGetValue(normalizedLine, out int optionId)
+                    || !seenIds.Add(optionId))
+                {
+                    continue;
+                }
+
+                inferredIds.Add(optionId);
+            }
+
+            return inferredIds;
+        }
+
         internal static string RenderPacketOwnedTimeBombInvincibilityOptionLine(
             string displayTemplate,
             PacketOwnedTimeBombInvincibilityOptionLevelData levelData)
@@ -7862,6 +8021,143 @@ namespace HaCreator.MapSimulator
         internal static bool IsPacketOwnedTimeBombInvincibilityOptionId(int itemOptionId)
         {
             return itemOptionId > 0 && PacketOwnedTimeBombInvincibilityOptionIds.Value.Contains(itemOptionId);
+        }
+
+        internal static bool IsPacketOwnedVisiblePotentialItemOptionId(int itemOptionId)
+        {
+            return itemOptionId > 0 && PacketOwnedVisiblePotentialItemOptionIds.Value.Contains(itemOptionId);
+        }
+
+        private static HashSet<int> CreatePacketOwnedVisiblePotentialItemOptionIdSet()
+        {
+            return PacketOwnedVisiblePotentialItemOptionIdsByLine.Value.Values
+                .Where(static itemOptionId => itemOptionId > 0)
+                .ToHashSet();
+        }
+
+        private static IReadOnlyDictionary<string, int> CreatePacketOwnedVisiblePotentialItemOptionIdsByLine()
+        {
+            WzImage itemOptionImage = Program.DataSource?.GetImage("Item", "ItemOption.img");
+            if (itemOptionImage == null)
+            {
+                return BuildPacketOwnedVisiblePotentialLineLookup(
+                    PacketOwnedFallbackTimeBombInvincibilityOptionDefinitions.SelectMany(
+                        static pair => EnumeratePacketOwnedItemOptionLineCandidates(pair.Key, pair.Value.DisplayTemplate, pair.Value.Levels)));
+            }
+
+            itemOptionImage.ParseImage();
+            return BuildPacketOwnedVisiblePotentialLineLookup(
+                itemOptionImage.WzProperties
+                    .OfType<WzImageProperty>()
+                    .SelectMany(EnumeratePacketOwnedItemOptionLineCandidates));
+        }
+
+        private static IEnumerable<(int OptionId, string RenderedLine)> EnumeratePacketOwnedItemOptionLineCandidates(WzImageProperty optionRoot)
+        {
+            if (optionRoot == null
+                || !int.TryParse(optionRoot.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int optionId)
+                || optionId <= 0)
+            {
+                yield break;
+            }
+
+            string displayTemplate = optionRoot["info"]?["string"]?.GetString() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(displayTemplate)
+                || optionRoot["level"] is not WzSubProperty levelProperty)
+            {
+                yield break;
+            }
+
+            foreach (WzSubProperty levelEntry in levelProperty.WzProperties.OfType<WzSubProperty>())
+            {
+                Dictionary<string, int> levelValues = levelEntry.WzProperties
+                    .OfType<WzIntProperty>()
+                    .Where(static property => !string.IsNullOrWhiteSpace(property.Name))
+                    .ToDictionary(static property => property.Name, static property => property.Value, StringComparer.OrdinalIgnoreCase);
+                if (levelValues.Count == 0)
+                {
+                    continue;
+                }
+
+                string renderedLine = RenderPacketOwnedItemOptionLine(displayTemplate, levelValues);
+                if (!string.IsNullOrWhiteSpace(renderedLine))
+                {
+                    yield return (optionId, renderedLine);
+                }
+            }
+        }
+
+        private static IEnumerable<(int OptionId, string RenderedLine)> EnumeratePacketOwnedItemOptionLineCandidates(
+            int optionId,
+            string displayTemplate,
+            IEnumerable<PacketOwnedTimeBombInvincibilityOptionLevelData> levels)
+        {
+            if (optionId <= 0 || string.IsNullOrWhiteSpace(displayTemplate) || levels == null)
+            {
+                yield break;
+            }
+
+            foreach (PacketOwnedTimeBombInvincibilityOptionLevelData levelData in levels)
+            {
+                if (levelData.DurationMs <= 0 && levelData.ProbabilityPercent <= 0)
+                {
+                    continue;
+                }
+
+                string renderedLine = RenderPacketOwnedTimeBombInvincibilityOptionLine(displayTemplate, levelData);
+                if (!string.IsNullOrWhiteSpace(renderedLine))
+                {
+                    yield return (optionId, renderedLine);
+                }
+            }
+        }
+
+        internal static IReadOnlyDictionary<string, int> BuildPacketOwnedVisiblePotentialLineLookup(
+            IEnumerable<(int OptionId, string RenderedLine)> candidates)
+        {
+            var lookup = new Dictionary<string, int>(StringComparer.Ordinal);
+            if (candidates == null)
+            {
+                return lookup;
+            }
+
+            foreach ((int optionId, string renderedLine) in candidates)
+            {
+                string normalizedLine = NormalizePacketOwnedPotentialLineText(renderedLine);
+                if (optionId > 0 && normalizedLine.Length > 0)
+                {
+                    lookup.TryAdd(normalizedLine, optionId);
+                }
+            }
+
+            return lookup;
+        }
+
+        internal static string RenderPacketOwnedItemOptionLine(
+            string displayTemplate,
+            IReadOnlyDictionary<string, int> levelValues)
+        {
+            if (string.IsNullOrWhiteSpace(displayTemplate))
+            {
+                return string.Empty;
+            }
+
+            string renderedLine = displayTemplate;
+            if (levelValues != null)
+            {
+                foreach ((string key, int value) in levelValues.OrderByDescending(static pair => pair.Key?.Length ?? 0))
+                {
+                    if (!string.IsNullOrWhiteSpace(key))
+                    {
+                        renderedLine = renderedLine.Replace(
+                            $"#{key}",
+                            Math.Max(0, value).ToString(CultureInfo.InvariantCulture),
+                            StringComparison.OrdinalIgnoreCase);
+                    }
+                }
+            }
+
+            return renderedLine.Trim();
         }
 
         private static Dictionary<string, int> BuildPacketOwnedTimeBombPotentialLineLookup(
@@ -9398,6 +9694,40 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryApplyPacketOwnedRankingPagePayload(byte[] payload, out string message)
+        {
+            if (!TryDecodePacketOwnedRankingPagePayload(
+                    payload,
+                    out bool clearRequested,
+                    out RankingEntrySnapshot[] entries,
+                    out string summary,
+                    out string decodeMessage))
+            {
+                message = decodeMessage ?? "Ranking-page payload could not be decoded.";
+                return false;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+            _packetOwnedRankingEntries.Clear();
+            if (!clearRequested)
+            {
+                _packetOwnedRankingEntries.AddRange(entries ?? Array.Empty<RankingEntrySnapshot>());
+            }
+
+            _lastPacketOwnedRankingTick = Environment.TickCount;
+            _lastPacketOwnedRankingSummary = string.IsNullOrWhiteSpace(summary)
+                ? clearRequested
+                    ? "Packet-authored CUIRanking page rows cleared."
+                    : $"Packet-authored CUIRanking page now carries {_packetOwnedRankingEntries.Count.ToString(CultureInfo.InvariantCulture)} row(s)."
+                : summary;
+            TryShowRecordedProgressionUtilityWindow(
+                MapSimulatorWindowNames.Ranking,
+                "packet-owned ranking page",
+                allowVisibleReset: false);
+            message = _lastPacketOwnedRankingSummary;
+            return true;
+        }
+
         private static bool TryDecodePacketOwnedEventAlarmTextPayload(
             byte[] payload,
             out bool clearRequested,
@@ -9643,6 +9973,222 @@ namespace HaCreator.MapSimulator
             out string message)
         {
             return TryDecodePacketOwnedEventCalendarEntriesPayload(payload, out clearRequested, out replaceExistingEntries, out entries, out summary, out message);
+        }
+
+        private static bool TryDecodePacketOwnedRankingPagePayload(
+            byte[] payload,
+            out bool clearRequested,
+            out RankingEntrySnapshot[] entries,
+            out string summary,
+            out string message)
+        {
+            clearRequested = false;
+            entries = Array.Empty<RankingEntrySnapshot>();
+            summary = string.Empty;
+            message = "Ranking-page payload is missing.";
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (!TryDecodePacketOwnedStringPayload(payload, out string decodedText))
+            {
+                message = "Ranking-page payload must decode to MapleString, UTF-8 text, or a JSON text body.";
+                return false;
+            }
+
+            if (TryDecodePacketOwnedRankingPageJsonPayload(decodedText, out clearRequested, out entries, out summary, out message))
+            {
+                return clearRequested || entries.Length > 0;
+            }
+
+            string normalizedText = decodedText.Trim();
+            if (string.Equals(normalizedText, "clear", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedText, "reset", StringComparison.OrdinalIgnoreCase))
+            {
+                clearRequested = true;
+                summary = "Cleared packet-authored CUIRanking page rows.";
+                message = summary;
+                return true;
+            }
+
+            List<RankingEntrySnapshot> parsedEntries = new();
+            string[] rowLines = normalizedText.Split(
+                new[] { "\r\n", "\n" },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (int i = 0; i < rowLines.Length; i++)
+            {
+                if (TryParsePacketOwnedRankingTextEntry(rowLines[i], out RankingEntrySnapshot parsedEntry))
+                {
+                    parsedEntries.Add(parsedEntry);
+                }
+            }
+
+            if (parsedEntries.Count == 0)
+            {
+                message = "Ranking-page payload did not contain any usable owner rows.";
+                return false;
+            }
+
+            entries = parsedEntries.ToArray();
+            summary = $"Applied packet-authored CUIRanking page payload with {entries.Length.ToString(CultureInfo.InvariantCulture)} row(s).";
+            message = summary;
+            return true;
+        }
+
+        internal static bool TryDecodePacketOwnedRankingPagePayloadForTests(
+            byte[] payload,
+            out bool clearRequested,
+            out RankingEntrySnapshot[] entries,
+            out string summary,
+            out string message)
+        {
+            return TryDecodePacketOwnedRankingPagePayload(payload, out clearRequested, out entries, out summary, out message);
+        }
+
+        private static bool TryDecodePacketOwnedRankingPageJsonPayload(
+            string payloadText,
+            out bool clearRequested,
+            out RankingEntrySnapshot[] entries,
+            out string summary,
+            out string message)
+        {
+            clearRequested = false;
+            entries = Array.Empty<RankingEntrySnapshot>();
+            summary = string.Empty;
+            message = "Ranking-page JSON payload did not contain any usable owner rows.";
+            if (string.IsNullOrWhiteSpace(payloadText))
+            {
+                return false;
+            }
+
+            string trimmed = payloadText.Trim();
+            if (!trimmed.StartsWith("{", StringComparison.Ordinal)
+                && !trimmed.StartsWith("[", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(trimmed);
+                JsonElement root = document.RootElement;
+                List<RankingEntrySnapshot> parsedEntries = new();
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    if (TryGetJsonBoolean(root, "clear", out bool parsedClear))
+                    {
+                        clearRequested = parsedClear;
+                    }
+
+                    if (TryGetJsonString(root, "summary", out string parsedSummary))
+                    {
+                        summary = parsedSummary;
+                    }
+
+                    if (root.TryGetProperty("entries", out JsonElement entryArray))
+                    {
+                        AppendPacketOwnedRankingJsonEntries(entryArray, parsedEntries);
+                    }
+                    else if (root.TryGetProperty("rows", out JsonElement rowArray))
+                    {
+                        AppendPacketOwnedRankingJsonEntries(rowArray, parsedEntries);
+                    }
+                }
+                else if (root.ValueKind == JsonValueKind.Array)
+                {
+                    AppendPacketOwnedRankingJsonEntries(root, parsedEntries);
+                }
+
+                entries = parsedEntries.ToArray();
+                if (string.IsNullOrWhiteSpace(summary))
+                {
+                    summary = clearRequested
+                        ? "Cleared packet-authored CUIRanking page rows."
+                        : entries.Length > 0
+                            ? $"Applied packet-authored CUIRanking JSON page with {entries.Length.ToString(CultureInfo.InvariantCulture)} row(s)."
+                            : string.Empty;
+                }
+
+                message = summary;
+                return clearRequested || entries.Length > 0;
+            }
+            catch (JsonException ex)
+            {
+                message = $"Ranking-page JSON payload could not be parsed: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static void AppendPacketOwnedRankingJsonEntries(JsonElement element, ICollection<RankingEntrySnapshot> destination)
+        {
+            if (destination == null || element.ValueKind != JsonValueKind.Array)
+            {
+                return;
+            }
+
+            foreach (JsonElement item in element.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String)
+                {
+                    string text = item.GetString()?.Trim();
+                    if (!string.IsNullOrWhiteSpace(text)
+                        && TryParsePacketOwnedRankingTextEntry(text, out RankingEntrySnapshot textEntry))
+                    {
+                        destination.Add(textEntry);
+                    }
+
+                    continue;
+                }
+
+                if (item.ValueKind != JsonValueKind.Object
+                    || !TryGetJsonString(item, "label", out string label)
+                    || string.IsNullOrWhiteSpace(label))
+                {
+                    continue;
+                }
+
+                string value = TryGetJsonString(item, "value", out string parsedValue)
+                    ? parsedValue
+                    : string.Empty;
+                string detail = TryGetJsonString(item, "detail", out string parsedDetail)
+                    ? parsedDetail
+                    : TryGetJsonString(item, "description", out string parsedDescription)
+                        ? parsedDescription
+                        : string.Empty;
+                destination.Add(CreatePacketOwnedRankingEntry(label, value, detail));
+            }
+        }
+
+        private static bool TryParsePacketOwnedRankingTextEntry(string line, out RankingEntrySnapshot entry)
+        {
+            entry = null;
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return false;
+            }
+
+            string[] tokens = line.Split('|', 3);
+            string label = tokens[0].Trim();
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                return false;
+            }
+
+            string value = tokens.Length > 1 ? tokens[1].Trim() : string.Empty;
+            string detail = tokens.Length > 2 ? tokens[2].Trim() : string.Empty;
+            entry = CreatePacketOwnedRankingEntry(label, value, detail);
+            return true;
+        }
+
+        private static RankingEntrySnapshot CreatePacketOwnedRankingEntry(string label, string value, string detail)
+        {
+            return new RankingEntrySnapshot
+            {
+                Label = label?.Trim() ?? string.Empty,
+                Value = value?.Trim() ?? string.Empty,
+                Detail = detail?.Trim() ?? string.Empty
+            };
         }
 
         private static bool TryDecodePacketOwnedEventCalendarJsonPayload(
@@ -10298,7 +10844,7 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                    "Usage: /localutility [status|inbox [status|start [port]|stop|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|minimaponoff|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|timebomb|vengeance|exjablin|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|skillcooltime|193|231|232|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1020|1021|classcompetition|classcompetitionauth|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv] [accept|complete|none]|classcompetition|skillguide|radioctx <status|left|right|on|off|1|0|reset>|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|release|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|timebomb|vengeance|exjablin|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|classcompetitionauth|skillguide|hiretutor|tutormsg|minimaponoff|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|232|242|243|250|251|252|255|256|258|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1020|1021> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
+                    "Usage: /localutility [status|inbox [status|start [port]|stop|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|minimaponoff|radioctx|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|timebomb|vengeance|exjablin|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|skillcooltime|193|231|232|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1020|1021|classcompetition|classcompetitionauth|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv] [accept|complete|none]|classcompetition|skillguide|radioctx <status|left|right|on|off|1|0|reset>|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|release|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|timebomb|vengeance|exjablin|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|classcompetitionauth|skillguide|hiretutor|tutormsg|minimaponoff|radioctx|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|232|242|243|250|251|252|255|256|258|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1020|1021|1035> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
             }
         }
 
@@ -10484,6 +11030,11 @@ namespace HaCreator.MapSimulator
                 case "mechequip":
                 case "mechanicpane":
                     applied = TryApplyPacketOwnedMechanicEquipPayload(payload, out message);
+                    break;
+                case "characterequip":
+                case "equipauthority":
+                case "equipwindowauthority":
+                    applied = TryApplyPacketOwnedCharacterEquipPayload(payload, out message);
                     break;
                 case "repeatskillmodeend":
                 case "repeatskillmodeendack":

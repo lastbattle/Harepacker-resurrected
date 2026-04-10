@@ -144,7 +144,7 @@ namespace HaCreator.MapSimulator
             }
             else
             {
-                ShowUtilityFeedbackMessage("Account-more-info save failed.");
+                ShowUtilityFeedbackMessage(AccountMoreInfoOwnerStringPoolText.ResolveSaveFailedNotice());
             }
 
             return true;

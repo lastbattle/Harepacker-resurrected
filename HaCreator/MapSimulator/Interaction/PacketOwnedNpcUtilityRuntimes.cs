@@ -980,8 +980,7 @@ namespace HaCreator.MapSimulator.Interaction
             internal short PetAttribute { get; init; }
             internal ushort Skill { get; init; }
             internal int RemainingLife { get; init; }
-            internal short Attribute { get; init; }
-            internal short Fatigue { get; init; }
+            internal short ItemAttribute { get; init; }
         }
 
         private sealed class StoreBankItemEntry
@@ -1108,6 +1107,31 @@ namespace HaCreator.MapSimulator.Interaction
                 69,
                 new byte[] { 27 },
                 $"Mirrored CStoreBankDlg::SendGetAllRequest for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) and fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)} (opcode 69, mode 27).");
+            return true;
+        }
+
+        internal bool TryBuildCloseOutboundRequest(out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
+            request = default;
+            if (!IsOpen)
+            {
+                StatusMessage = "CStoreBankDlg ignored close because the owner is already closed.";
+                AppendNote(StatusMessage);
+                message = StatusMessage;
+                return false;
+            }
+
+            ResetTransientRequestState();
+            HasPendingGetAllRequest = false;
+            GetAllRequestWasAccepted = false;
+            IsOpen = false;
+            StatusMessage = "CStoreBankDlg::SetRet closed the owner and mirrored the return packet.";
+            AppendNote(StatusMessage);
+            request = new PacketOwnedNpcUtilityOutboundRequest(
+                69,
+                new byte[] { 28 },
+                "Mirrored CStoreBankDlg::SetRet close/return request (opcode 69, mode 28).");
+            message = StatusMessage;
             return true;
         }
 
@@ -2017,9 +2041,14 @@ namespace HaCreator.MapSimulator.Interaction
                     parts.Add($"PetLife {item.PetData.RemainingLife.ToString(CultureInfo.InvariantCulture)}");
                 }
 
-                if (item.PetData.Fatigue > 0)
+                if (item.PetData.PetAttribute != 0)
                 {
-                    parts.Add($"PetFatigue {item.PetData.Fatigue.ToString(CultureInfo.InvariantCulture)}");
+                    parts.Add($"PetAttr 0x{(ushort)item.PetData.PetAttribute:X4}");
+                }
+
+                if (item.PetData.ItemAttribute != 0)
+                {
+                    parts.Add($"PetItemAttr 0x{(ushort)item.PetData.ItemAttribute:X4}");
                 }
             }
 
@@ -2313,7 +2342,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            short remainingUpgradeCount = reader.ReadInt16();
+            short remainingUpgradeCount = reader.ReadByte();
             byte upgradeCount = reader.ReadByte();
             short strength = reader.ReadInt16();
             short dexterity = reader.ReadInt16();
@@ -2506,21 +2535,21 @@ namespace HaCreator.MapSimulator.Interaction
             short closeness = reader.ReadInt16();
             byte fullness = reader.ReadByte();
             long dateDead = reader.ReadInt64();
-            short attribute = reader.ReadInt16();
+            short petAttribute = reader.ReadInt16();
             ushort skill = reader.ReadUInt16();
             int remainingLife = reader.ReadInt32();
-            short fatigue = reader.ReadInt16();
-            metadataSummary = BuildPetMetadataSummary(level, closeness, fullness, attribute, skill, remainingLife, fatigue);
+            short itemAttribute = reader.ReadInt16();
+            metadataSummary = BuildPetMetadataSummary(level, closeness, fullness, petAttribute, skill, remainingLife, itemAttribute);
             petData = new StoreBankPetData
             {
                 Level = level,
                 Closeness = closeness,
                 Fullness = fullness,
                 DateDead = dateDead,
-                Attribute = attribute,
+                PetAttribute = petAttribute,
                 Skill = skill,
                 RemainingLife = remainingLife,
-                Fatigue = fatigue
+                ItemAttribute = itemAttribute
             };
             return true;
         }
@@ -2655,10 +2684,10 @@ namespace HaCreator.MapSimulator.Interaction
             byte level,
             short closeness,
             byte fullness,
-            short attribute,
+            short petAttribute,
             ushort skill,
             int remainingLife,
-            short fatigue)
+            short itemAttribute)
         {
             List<string> parts = new()
             {
@@ -2666,9 +2695,9 @@ namespace HaCreator.MapSimulator.Interaction
                 $"Closeness {closeness}",
                 $"Fullness {fullness}"
             };
-            if (attribute != 0)
+            if (petAttribute != 0)
             {
-                parts.Add($"Attr 0x{(ushort)attribute:X4}");
+                parts.Add($"PetAttr 0x{(ushort)petAttribute:X4}");
             }
 
             if (skill > 0)
@@ -2681,9 +2710,9 @@ namespace HaCreator.MapSimulator.Interaction
                 parts.Add($"Life {remainingLife}");
             }
 
-            if (fatigue > 0)
+            if (itemAttribute != 0)
             {
-                parts.Add($"Fatigue {fatigue}");
+                parts.Add($"ItemAttr 0x{(ushort)itemAttribute:X4}");
             }
 
             return string.Join(", ", parts);

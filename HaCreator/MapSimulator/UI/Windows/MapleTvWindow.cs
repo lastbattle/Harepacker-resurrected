@@ -213,7 +213,7 @@ namespace HaCreator.MapSimulator.UI
                 Point idleOverlayOrigin = ResolveClientOwnedSurfaceOrigin(
                     renderWidth,
                     WorldOverlayTopMargin,
-                    CreateBaseSurfaceBounds(MapleTvSurfaceWidth, MapleTvIdleSurfaceHeight));
+                    ResolveClientOwnedSurfaceBounds(MapleTvSurfaceWidth, MapleTvIdleSurfaceHeight, idleFrames));
                 DrawAnimationFrame(sprite, idleFrame, idleOverlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
                 return;
             }
@@ -231,7 +231,7 @@ namespace HaCreator.MapSimulator.UI
             Point overlayOrigin = ResolveClientOwnedSurfaceOrigin(
                 renderWidth,
                 WorldOverlayTopMargin,
-                CreateBaseSurfaceBounds(MapleTvSurfaceWidth, MapleTvMediaSurfaceHeight));
+                ResolveClientOwnedSurfaceBounds(MapleTvSurfaceWidth, MapleTvMediaSurfaceHeight, mediaFrames));
             DrawAnimationFrame(sprite, mediaFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawAnimationFrame(sprite, onFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawAnimationFrame(sprite, chatFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
@@ -589,6 +589,24 @@ namespace HaCreator.MapSimulator.UI
         internal static Rectangle CreateBaseSurfaceBounds(int width, int height)
         {
             return new Rectangle(0, -Math.Max(1, height), Math.Max(1, width), Math.Max(1, height));
+        }
+
+        internal static Rectangle ResolveClientOwnedSurfaceBounds(
+            int fallbackWidth,
+            int fallbackHeight,
+            IReadOnlyList<MapleTvAnimationFrame> frames)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return CreateBaseSurfaceBounds(fallbackWidth, fallbackHeight);
+            }
+
+            Rectangle familyBounds = ResolveCompositeBounds(fallbackWidth, fallbackHeight, frames);
+            return new Rectangle(
+                0,
+                familyBounds.Top,
+                Math.Max(1, fallbackWidth),
+                Math.Max(1, familyBounds.Height));
         }
 
         private static Rectangle NormalizeBounds(Rectangle bounds)

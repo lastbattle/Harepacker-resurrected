@@ -112,7 +112,7 @@ namespace HaCreator.MapSimulator.UI
 
         private const int RecipeRowHeight = 36;
         private const int SelectorDropdownRowHeight = 20;
-        private const int CraftDurationMs = 1400;
+        internal const int ClientCraftDurationMs = 5100;
         private const int VisibleRecipeCount = 6;
         private const int AllCategoryKey = -1;
         private const int DisassembleCategoryKey = 998;
@@ -492,7 +492,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int now = Environment.TickCount;
-            if (now - _craftStartTick >= CraftDurationMs)
+            if (now - _craftStartTick >= ClientCraftDurationMs)
             {
                 CompleteCraft();
             }
@@ -942,7 +942,7 @@ namespace HaCreator.MapSimulator.UI
             float progress = 0f;
             if (_isCrafting)
             {
-                progress = MathHelper.Clamp((Environment.TickCount - _craftStartTick) / (float)CraftDurationMs, 0f, 1f);
+                progress = MathHelper.Clamp((Environment.TickCount - _craftStartTick) / (float)ClientCraftDurationMs, 0f, 1f);
             }
 
             int fillWidth = Math.Max(0, (int)Math.Round((gaugeRect.Width - 2) * progress));

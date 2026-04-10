@@ -11,7 +11,7 @@ namespace HaCreator.MapSimulator
         private const int NotifyCloseCandidate = 0x0011;
         private const int NotifyCompositionString = 0x0015;
         private const uint CancelComposition = 0x0004;
-        private const int CandidateListCount = 4;
+        private const int CandidateListCount = ImeCandidateListInterop.CandidateListCount;
 
         internal static bool TryUpdatePlacement(IntPtr windowHandle, UI.SkillMacroImeWindowPlacement placement)
         {
@@ -81,7 +81,20 @@ namespace HaCreator.MapSimulator
 
                 bool updated = ImmSetCompositionWindow(inputContext, ref compositionForm);
                 updated = ImmNotifyIME(inputContext, NotifyCompositionString, CancelComposition, 0) || updated;
-                updated = ImmNotifyIME(inputContext, NotifyCloseCandidate, 0, 0) || updated;
+                for (uint index = 0; index < CandidateListCount; index++)
+                {
+                    CANDIDATEFORM candidateForm = new()
+                    {
+                        dwIndex = index,
+                        dwStyle = ImeDefaultStyle,
+                        ptCurrentPos = default,
+                        rcArea = default
+                    };
+
+                    updated = ImmSetCandidateWindow(inputContext, ref candidateForm) || updated;
+                    updated = ImmNotifyIME(inputContext, NotifyCloseCandidate, index, 0) || updated;
+                }
+
                 return updated;
             }
             finally

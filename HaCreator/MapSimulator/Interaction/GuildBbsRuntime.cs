@@ -50,6 +50,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int MaxThreadBodyLength = 600;
         private const int MaxReplyBodyLength = 25;
         private const int EnterTextStringPoolId = 0xEB1;
+        private const int DeletePostPromptStringPoolId = 0xEB2;
 
         private sealed class GuildBbsCommentState
         {
@@ -516,7 +517,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            promptBody = $"Delete Guild BBS thread \"{selectedThread.Title}\"?";
+            promptBody = GetDeletePostPrompt();
             return true;
         }
 
@@ -639,15 +640,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            string bodyPreview = comment.Body?.Trim() ?? string.Empty;
-            if (bodyPreview.Length > 18)
-            {
-                bodyPreview = bodyPreview[..18] + "...";
-            }
-
-            promptBody = string.IsNullOrWhiteSpace(bodyPreview)
-                ? $"Delete {comment.Author}'s Guild BBS reply?"
-                : $"Delete {comment.Author}'s reply \"{bodyPreview}\"?";
+            promptBody = GetDeletePostPrompt();
             return true;
         }
 
@@ -1307,6 +1300,15 @@ namespace HaCreator.MapSimulator.Interaction
             return MapleStoryStringPool.GetOrFallback(
                 EnterTextStringPoolId,
                 "Please enter the text.",
+                appendFallbackSuffix: false,
+                minimumHexWidth: 0);
+        }
+
+        internal static string GetDeletePostPrompt()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                DeletePostPromptStringPoolId,
+                "Are you sure you want to delete the post?",
                 appendFallbackSuffix: false,
                 minimumHexWidth: 0);
         }

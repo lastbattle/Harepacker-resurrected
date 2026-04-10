@@ -404,7 +404,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private readonly record struct PacketOwnedTradeItem(
             byte SlotType,
-            long SerialNumber,
+            long? BaseExpirationTime,
             int ItemId,
             int Quantity,
             InventoryType InventoryType,
@@ -1719,6 +1719,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        private bool TryDispatchPersonalShopPacket(PacketReader reader, byte packetType, int tickCount, out string message)
+        {
+            return TryDispatchPersonalShopPacket(reader, packetType, out message);
+        }
+
         private bool TryDispatchEntrustedShopPacket(PacketReader reader, byte packetType, out string message)
         {
             switch (packetType)
@@ -2011,16 +2016,17 @@ namespace HaCreator.MapSimulator.Interaction
                 payload.Slice(1),
                 slotType,
                 out long serialNumber,
-                out int itemId,
-                out int quantity,
-                out bool hasCashSerialNumber,
-                out long cashSerialNumber,
-                out string title,
-                out string metadataSummary,
-                out long? nonCashSerialNumber,
-                out long? expirationTime,
-                out int? tailValue,
-                out string tailMetadataSummary))
+            out int itemId,
+            out int quantity,
+            out bool hasCashSerialNumber,
+            out long cashSerialNumber,
+            out string title,
+            out string metadataSummary,
+            out long? nonCashSerialNumber,
+            out long? baseExpirationTime,
+            out long? expirationTime,
+            out int? tailValue,
+            out string tailMetadataSummary))
             {
                 error = "Trading-room item payload did not contain a recognizable MapleStory item row.";
                 return false;
@@ -2035,7 +2041,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             item = new PacketOwnedTradeItem(
                 slotType,
-                serialNumber,
+                baseExpirationTime,
                 itemId,
                 quantity,
                 inventoryType,
@@ -2061,6 +2067,7 @@ namespace HaCreator.MapSimulator.Interaction
             out string title,
             out string metadataSummary,
             out long? nonCashSerialNumber,
+            out long? baseExpirationTime,
             out long? expirationTime,
             out int? tailValue,
             out string tailMetadataSummary)
@@ -2073,6 +2080,7 @@ namespace HaCreator.MapSimulator.Interaction
             title = string.Empty;
             metadataSummary = string.Empty;
             nonCashSerialNumber = null;
+            baseExpirationTime = null;
             expirationTime = null;
             tailValue = null;
             tailMetadataSummary = string.Empty;
@@ -2106,7 +2114,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            serialNumber = reader.ReadInt64();
+            baseExpirationTime = reader.ReadInt64();
             return slotType switch
             {
                 1 => TryDecodePacketOwnedEquipBody(reader, hasCashSerialNumber, out title, out metadataSummary, out nonCashSerialNumber, out expirationTime, out tailValue, out tailMetadataSummary),
@@ -2118,7 +2126,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string BuildTradingRoomPacketItemDetail(string ownerLabel, int slotIndex, PacketOwnedTradeItem item)
         {
-            string serialText = item.SerialNumber > 0 ? $" | Serial {item.SerialNumber}" : string.Empty;
+            string baseExpirationText = BuildTradeDateDetail("Expire", item.BaseExpirationTime);
             string cashText = item.HasCashSerialNumber && item.CashSerialNumber > 0
                 ? $" | CashSN {item.CashSerialNumber}"
                 : string.Empty;
@@ -2131,14 +2139,13 @@ namespace HaCreator.MapSimulator.Interaction
             string nonCashText = item.NonCashSerialNumber.HasValue && item.NonCashSerialNumber.Value > 0
                 ? $" | NonCashSN {item.NonCashSerialNumber.Value}"
                 : string.Empty;
-            string expirationText = BuildTradeExpirationDetail(item.ExpirationTime);
             string tailText = item.TailValue.HasValue && item.TailValue.Value != 0
                 ? $" | Tail {item.TailValue.Value}"
                 : string.Empty;
             string tailMetadataText = string.IsNullOrWhiteSpace(item.TailMetadataSummary)
                 ? string.Empty
                 : $" | {item.TailMetadataSummary}";
-            return $"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}{serialText}{cashText}{titleText}{metadataText}{nonCashText}{expirationText}{tailText}{tailMetadataText}";
+            return $"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}{baseExpirationText}{cashText}{titleText}{metadataText}{nonCashText}{tailText}{tailMetadataText}";
         }
 
         private static bool TryDecodePacketOwnedEquipBody(
@@ -2164,7 +2171,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            short remainingUpgradeCount = reader.ReadInt16();
+            byte remainingUpgradeCount = reader.ReadByte();
             byte upgradeCount = reader.ReadByte();
             short strength = reader.ReadInt16();
             short dexterity = reader.ReadInt16();
@@ -2187,7 +2194,8 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             const int tailLength = sizeof(short) + (sizeof(byte) * 2) + (sizeof(int) * 3) + (sizeof(byte) * 2) + (sizeof(short) * 5);
-            if (stream.Length - stream.Position < tailLength + sizeof(long) + sizeof(int))
+            int requiredTailLength = tailLength + (hasCashSerialNumber ? 0 : sizeof(long)) + sizeof(long) + sizeof(int);
+            if (stream.Length - stream.Position < requiredTailLength)
             {
                 return false;
             }
@@ -2350,7 +2358,7 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private static string BuildEquipTradeMetadataSummary(
-            short remainingUpgradeCount,
+            byte remainingUpgradeCount,
             byte upgradeCount,
             short strength,
             short dexterity,
@@ -2459,7 +2467,7 @@ namespace HaCreator.MapSimulator.Interaction
             string expirationText = FormatTradePacketFileTime(expirationTime);
             if (!string.IsNullOrWhiteSpace(expirationText))
             {
-                parts.Add($"Expire {expirationText}");
+                parts.Add($"Equipped {expirationText}");
             }
 
             if (tailValue.HasValue && tailValue.Value != 0)
@@ -2523,18 +2531,18 @@ namespace HaCreator.MapSimulator.Interaction
             string expirationText = FormatTradePacketFileTime(expirationTime);
             if (!string.IsNullOrWhiteSpace(expirationText))
             {
-                parts.Add($"Expire {expirationText}");
+                parts.Add($"PetDead {expirationText}");
             }
 
             return string.Join(", ", parts);
         }
 
-        private static string BuildTradeExpirationDetail(long? expirationTime)
+        private static string BuildTradeDateDetail(string label, long? fileTime)
         {
-            string expirationText = FormatTradePacketFileTime(expirationTime);
-            return string.IsNullOrWhiteSpace(expirationText)
+            string dateText = FormatTradePacketFileTime(fileTime);
+            return string.IsNullOrWhiteSpace(dateText)
                 ? string.Empty
-                : $" | Expire {expirationText}";
+                : $" | {label} {dateText}";
         }
 
         private static string FormatTradePacketFileTime(long? fileTime)
@@ -7054,7 +7062,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal static bool TryDecodePacketOwnedTradeItemForTest(
             byte[] payload,
             out byte slotType,
-            out long serialNumber,
+            out long baseExpirationTime,
             out int itemId,
             out int quantity,
             out InventoryType inventoryType,
@@ -7066,7 +7074,7 @@ namespace HaCreator.MapSimulator.Interaction
             out string error)
         {
             slotType = 0;
-            serialNumber = 0;
+            baseExpirationTime = 0;
             itemId = 0;
             quantity = 0;
             inventoryType = InventoryType.NONE;
@@ -7082,7 +7090,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             slotType = item.SlotType;
-            serialNumber = item.SerialNumber;
+            baseExpirationTime = item.BaseExpirationTime ?? 0;
             itemId = item.ItemId;
             quantity = item.Quantity;
             inventoryType = item.InventoryType;

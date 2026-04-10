@@ -632,7 +632,7 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 return CreateAbilityWindowBigBang(uiWindow2Image, uiWindow1Image, basicImage, soundUIImage, device, screenWidth, screenHeight);
             }
-            return CreateAbilityWindowPreBB(uiWindow1Image, basicImage, soundUIImage, device, screenWidth, screenHeight);
+            return CreateAbilityWindowPreBB(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight);
         }
 
 
@@ -640,7 +640,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// Create the Ability/Stat window from UI.wz/UIWindow.img/Stat (Pre-Big Bang)
         /// </summary>
         public static AbilityUI CreateAbilityWindowPreBB(
-            WzImage uiWindowImage, WzImage basicImage, WzImage soundUIImage,
+            WzImage uiWindowImage, WzImage uiWindow2Image, WzImage basicImage, WzImage soundUIImage,
             GraphicsDevice device, int screenWidth, int screenHeight)
         {
             WzSubProperty statProperty = (WzSubProperty)uiWindowImage?["Stat"];
@@ -669,6 +669,11 @@ namespace HaCreator.MapSimulator.Loaders
             AbilityUI ability = new AbilityUI(frame, device);
 
             ability.Position = new Point(50, 50);
+
+            WzSubProperty bigBangStatMainProperty = (WzSubProperty)uiWindow2Image?["Stat"]?["main"];
+            ability.SetBeginnerCovers(
+                LoadCanvasObject(bigBangStatMainProperty, "cover0", device, out Point _),
+                LoadCanvasObject(bigBangStatMainProperty, "cover1", device, out Point _));
 
 
 

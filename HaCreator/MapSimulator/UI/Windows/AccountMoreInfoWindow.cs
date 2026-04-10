@@ -271,16 +271,19 @@ namespace HaCreator.MapSimulator.UI
                     }
                 }
 
-                string label = i < safeLabels.Count && !string.IsNullOrWhiteSpace(safeLabels[i])
-                    ? safeLabels[i]
+                string label = i < safeLabels.Count
+                    ? safeLabels[i] ?? string.Empty
                     : (startingLabelNumber + i + 1).ToString();
-                DrawWindowText(
-                    sprite,
-                    label,
-                    new Vector2(bounds.Right + 3, bounds.Y - 1),
-                    selected ? new Color(160, 255, 190) : new Color(210, 210, 210),
-                    SmallTextScale,
-                    66f);
+                if (!string.IsNullOrWhiteSpace(label))
+                {
+                    DrawWindowText(
+                        sprite,
+                        label,
+                        new Vector2(bounds.Right + 3, bounds.Y - 1),
+                        selected ? new Color(160, 255, 190) : new Color(210, 210, 210),
+                        SmallTextScale,
+                        66f);
+                }
             }
         }
 

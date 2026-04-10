@@ -466,6 +466,7 @@ namespace HaCreator.MapSimulator
         private readonly MemoryGameOfficialSessionBridgeManager _memoryGameOfficialSessionBridge = new MemoryGameOfficialSessionBridgeManager();
         private readonly SocialRoomEmployeeOfficialSessionBridgeManager _socialRoomEmployeeOfficialSessionBridge = new SocialRoomEmployeeOfficialSessionBridgeManager();
         private readonly TradingRoomPacketInboxManager _tradingRoomPacketInbox = new TradingRoomPacketInboxManager();
+        private readonly TradingRoomOfficialSessionBridgeManager _tradingRoomOfficialSessionBridge = new TradingRoomOfficialSessionBridgeManager();
         private bool _tradingRoomPacketInboxEnabled = EnablePacketConnectionsByDefault;
         private int _tradingRoomPacketInboxConfiguredPort = TradingRoomPacketInboxManager.DefaultPort;
         private readonly PacketOwnedEmployeePoolDispatcher _packetOwnedEmployeePoolDispatcher = new PacketOwnedEmployeePoolDispatcher();
@@ -2481,7 +2482,7 @@ namespace HaCreator.MapSimulator
                     return;
                 }
 
-                ShowUtilityFeedbackMessage("Quick Send does not allow item packages. Use the meso field or /memo draft meso <amount>.");
+                ShowUtilityFeedbackMessage("Quick Send does not allow item packages. Use the parcel-owner meso field instead.");
                 return;
             }
 
@@ -2538,7 +2539,7 @@ namespace HaCreator.MapSimulator
                     _memoMailbox.ClearDraftAttachment();
                 }
 
-                ShowUtilityFeedbackMessage("Quick Send does not allow item packages. Use the meso field or /memo draft meso <amount>.");
+                ShowUtilityFeedbackMessage("Quick Send does not allow item packages. Use the parcel-owner meso field instead.");
                 return true;
             }
 
@@ -4913,7 +4914,7 @@ namespace HaCreator.MapSimulator
 
         private void OpenVegaSpellWindowForConsumable(int itemId, InventoryType inventoryType, int slotIndex)
         {
-            QueueVegaSpellWindowLaunch(itemId, inventoryType, slotIndex, "consume-cash-item request");
+            QueuePacketOwnedVegaSpellWindowLaunch(itemId, inventoryType, slotIndex, "consume-cash-item request");
         }
 
 
@@ -16042,6 +16043,7 @@ namespace HaCreator.MapSimulator
             _imeCompositionMonitor.Attach(Window.Handle);
             _chat.MessageSubmitted = HandleChatMessageSubmitted;
             _chat.ClientChatMessageAdded += HandleClientChatMessageAdded;
+            _fieldMessageBoxRuntime.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
             _specialFieldRuntime.SetCookieHousePointProvider(ResolveCookieHouseContextPoint);
 
 
@@ -16426,6 +16428,7 @@ namespace HaCreator.MapSimulator
             _coconutOfficialSessionBridge.Dispose();
             _socialRoomEmployeeOfficialSessionBridge.Dispose();
             _tradingRoomPacketInbox.Dispose();
+            _tradingRoomOfficialSessionBridge.Dispose();
 
             _ariantArenaPacketInbox.Dispose();
             _monsterCarnivalPacketInbox.Dispose();
@@ -16456,6 +16459,7 @@ namespace HaCreator.MapSimulator
             _mapTransferOfficialSessionBridge.Dispose();
             _summonedPacketInbox.Dispose();
             _mobAttackPacketInbox.Dispose();
+            _fieldMessageBoxOfficialSessionBridge.Dispose();
             _packetScriptReplyTransport.Dispose();
 
 
@@ -20433,7 +20437,7 @@ namespace HaCreator.MapSimulator
                     : InventoryType.NONE;
                 string itemName = itemId > 0 ? ResolvePickupNoticeItemName(itemId) : null;
                 string itemTypeName = itemId > 0 ? ResolvePickupItemTypeName(itemId, inventoryType) : null;
-                if (PickupNoticeTextFormatter.TryFormatItemPickup(itemName, itemTypeName, drop.Quantity, out string screenMessage))
+                if (PickupNoticeTextFormatter.TryFormatItemPickup(itemName, itemTypeName, drop.Quantity, MeasurePickupNoticeTextWidth, out string screenMessage))
                 {
                     Texture2D itemIcon = LoadInventoryItemIcon(itemId);
                     _pickupNoticeUI.AddFormattedNotice(
@@ -20459,7 +20463,7 @@ namespace HaCreator.MapSimulator
                     : InventoryType.NONE;
                 string itemName = itemId > 0 ? ResolvePickupNoticeItemName(itemId) : null;
                 string itemTypeName = itemId > 0 ? ResolvePickupItemTypeName(itemId, inventoryType) : null;
-                if (PickupNoticeTextFormatter.TryFormatQuestItemPickup(itemName, itemTypeName, out string screenMessage))
+                if (PickupNoticeTextFormatter.TryFormatQuestItemPickup(itemName, itemTypeName, MeasurePickupNoticeTextWidth, out string screenMessage))
                 {
                     Texture2D itemIcon = LoadInventoryItemIcon(itemId);
                     _pickupNoticeUI.AddFormattedNotice(
@@ -20478,6 +20482,11 @@ namespace HaCreator.MapSimulator
         private void HandlePickupAttemptFailed(Pools.DropPickupAttemptResult result)
         {
             HandlePickupAttemptFailed(result, 0, false);
+        }
+
+        private float MeasurePickupNoticeTextWidth(string text)
+        {
+            return ClientTextDrawing.Measure((GraphicsDevice)null, text, 1f, _fontChat).X;
         }
 
 
@@ -23145,7 +23154,11 @@ namespace HaCreator.MapSimulator
             {
                 if (actor == null
                     || string.IsNullOrWhiteSpace(actor.Name)
-                    || (!actor.HelperMarkerType.HasValue && !actor.BattlefieldTeamId.HasValue))
+                    || !RemoteUserActorPool.ShouldIncludePacketAuthoredMinimapHelper(
+                        actor.IsVisibleInWorld,
+                        actor.HiddenLikeClient,
+                        actor.HelperMarkerType.HasValue,
+                        actor.BattlefieldTeamId))
                 {
                     continue;
                 }
@@ -24739,12 +24752,13 @@ namespace HaCreator.MapSimulator
 
 
             Array.Clear(_reactorVisibilityBuffer, 0, _reactorsArray.Length);
-            foreach (var (reactor, index, _) in _reactorPool.GetRenderableReactors())
+            foreach (var (reactor, index, alpha) in _reactorPool.GetRenderableReactors())
             {
                 if (reactor == null || index < 0 || index >= _reactorsArray.Length)
                     continue;
 
 
+                reactor.LayerAlpha = alpha;
                 _reactorVisibilityBuffer[index] = true;
 
 
@@ -25008,46 +25022,27 @@ namespace HaCreator.MapSimulator
             for (int i = 0; i < mesoIds.Length; i++)
             {
                 var iconRaw = (mesoImage[mesoIds[i]] as WzSubProperty)?["iconRaw"];
-                if (iconRaw is WzSubProperty animFrames)
-                    LoadAnimationFrames(animFrames, _mesoAnimFrames[i]);
-                else if (iconRaw is WzCanvasProperty canvas)
-                    LoadSingleFrame(canvas, _mesoAnimFrames[i]);
+                if (iconRaw is not WzImageProperty iconRawProperty)
+                {
+                    continue;
+                }
+
+                var usedProps = new ConcurrentBag<WzObject>();
+                List<IDXObject> frames = MapSimulatorLoader.LoadFrames(
+                    _texturePool,
+                    iconRawProperty,
+                    0,
+                    0,
+                    GraphicsDevice,
+                    usedProps,
+                    fallbackDelay: PacketOwnedMesoAnimationPresentation.ResolveLayerDelayMs(i));
+                if (frames.Count > 0)
+                {
+                    _mesoAnimFrames[i].AddRange(frames);
+                }
             }
 
             ApplyMesoAnimationsToDropPool();
-        }
-
-
-        private void LoadAnimationFrames(WzSubProperty container, List<IDXObject> frames)
-        {
-            for (int f = 0; f < 10; f++)
-            {
-                if (container[f.ToString()] is not WzCanvasProperty canvas) break;
-                LoadSingleFrame(canvas, frames);
-            }
-        }
-
-
-        private void LoadSingleFrame(WzCanvasProperty canvas, List<IDXObject> frames)
-        {
-            var bitmap = canvas.GetLinkedWzCanvasBitmap();
-            if (bitmap == null) return;
-
-
-            var texture = bitmap.ToTexture2D(GraphicsDevice);
-
-            if (texture == null) return;
-
-
-
-            var origin = canvas["origin"] as WzVectorProperty;
-            int ox = origin?.X?.Value ?? texture.Width / 2;
-            int oy = origin?.Y?.Value ?? texture.Height;
-            int delay = (canvas["delay"] as WzIntProperty)?.Value ?? 100;
-
-
-            frames.Add(new DXObject(-ox, -oy, texture, delay));
-
         }
 
 
@@ -25133,7 +25128,6 @@ namespace HaCreator.MapSimulator
             {
                 return;
             }
-
 
             float mobX = mob.MovementInfo.X;
 
@@ -25433,7 +25427,8 @@ namespace HaCreator.MapSimulator
                     HasLiveFieldInterface: HasPassiveTransferFieldInterface(),
                     AllowsTransferField: ResolvePassiveTransferFieldRuntimeTransferAllowance(),
                     HasPendingSpecialTransfer: _specialFieldRuntime.HasPendingTransfer,
-                    HasPendingPacketOwnedTransfer: HasPendingPassiveTransferFieldPacketTransferOwnership()));
+                    HasPendingPacketOwnedTransfer: HasPendingPassiveTransferFieldPacketTransferOwnership(),
+                    HasBlockingScriptedSequence: _specialFieldRuntime.HasBlockingScriptedSequence));
         }
 
         private bool HasPassiveTransferFieldInterface()
@@ -25517,15 +25512,17 @@ namespace HaCreator.MapSimulator
                 string temporaryTargetPortalName = null;
                 string temporaryTargetResolutionSummary = "temporary portal destination coordinates";
                 string[] temporaryTargetPortalNameCandidates = Array.Empty<string>();
+                int temporaryTargetPortalIndex = -1;
                 if (temporaryPortalDestination.MapId == _mapBoard.MapInfo.id)
                 {
                     if (TryResolvePacketOwnedTeleportPortalByPosition(
                         temporaryPortalDestination.X,
                         temporaryPortalDestination.Y,
-                        out _,
+                        out int resolvedTemporarySameMapTargetPortalIndex,
                         out PortalInstance resolvedTemporaryTargetPortal))
                     {
                         temporaryTargetPortalName = resolvedTemporaryTargetPortal.pn;
+                        temporaryTargetPortalIndex = resolvedTemporarySameMapTargetPortalIndex;
                         temporaryTargetResolutionSummary = $"current-field portal '{temporaryTargetPortalName}'";
                     }
                 }
@@ -25537,11 +25534,13 @@ namespace HaCreator.MapSimulator
                     null,
                     out string resolvedTemporaryCrossMapTargetPortalName,
                     out string resolvedTemporaryCrossMapTargetSummary,
-                    out string[] resolvedTemporaryCrossMapTargetCandidates))
+                    out string[] resolvedTemporaryCrossMapTargetCandidates,
+                    out int resolvedTemporaryCrossMapTargetPortalIndex))
                 {
                     temporaryTargetPortalName = resolvedTemporaryCrossMapTargetPortalName;
                     temporaryTargetResolutionSummary = resolvedTemporaryCrossMapTargetSummary;
                     temporaryTargetPortalNameCandidates = resolvedTemporaryCrossMapTargetCandidates;
+                    temporaryTargetPortalIndex = resolvedTemporaryCrossMapTargetPortalIndex;
                 }
 
                 TryResolvePacketOwnedTemporarySourcePortal(
@@ -25558,9 +25557,11 @@ namespace HaCreator.MapSimulator
                     && TryResolvePacketOwnedTargetPortalNameFromSourcePortal(
                         temporarySourcePortal,
                         temporaryPortalDestination.MapId,
-                        out string directTemporarySameMapTargetPortalName))
+                        out string directTemporarySameMapTargetPortalName,
+                        out int directTemporarySameMapTargetPortalIndex))
                 {
                     temporaryTargetPortalName = directTemporarySameMapTargetPortalName;
+                    temporaryTargetPortalIndex = directTemporarySameMapTargetPortalIndex;
                     temporaryTargetPortalNameCandidates = new[] { directTemporarySameMapTargetPortalName };
                     temporaryTargetResolutionSummary = $"current-field portal '{directTemporarySameMapTargetPortalName}' from source portal '{temporarySourcePortal?.pn}'";
                 }
@@ -25575,11 +25576,13 @@ namespace HaCreator.MapSimulator
                         temporarySourcePortalName,
                         out string refreshedTemporaryTargetPortalName,
                         out string refreshedTemporaryTargetSummary,
-                        out string[] refreshedTemporaryTargetCandidates))
+                        out string[] refreshedTemporaryTargetCandidates,
+                        out int refreshedTemporaryTargetPortalIndex))
                 {
                     temporaryTargetPortalName = refreshedTemporaryTargetPortalName;
                     temporaryTargetResolutionSummary = refreshedTemporaryTargetSummary;
                     temporaryTargetPortalNameCandidates = refreshedTemporaryTargetCandidates;
+                    temporaryTargetPortalIndex = refreshedTemporaryTargetPortalIndex;
                 }
 
                 if (temporaryPortalDestination.MapId != _mapBoard.MapInfo.id
@@ -25587,9 +25590,11 @@ namespace HaCreator.MapSimulator
                     && TryResolvePacketOwnedTargetPortalNameFromSourcePortal(
                         temporarySourcePortal,
                         temporaryPortalDestination.MapId,
-                        out string directTemporaryCrossMapTargetPortalName))
+                        out string directTemporaryCrossMapTargetPortalName,
+                        out int directTemporaryCrossMapTargetPortalIndex))
                 {
                     temporaryTargetPortalName = directTemporaryCrossMapTargetPortalName;
+                    temporaryTargetPortalIndex = directTemporaryCrossMapTargetPortalIndex;
                     temporaryTargetPortalNameCandidates = new[] { directTemporaryCrossMapTargetPortalName };
                     temporaryTargetResolutionSummary = $"target-map portal '{directTemporaryCrossMapTargetPortalName}' from source portal '{temporarySourcePortal?.pn}'";
                 }
@@ -25623,7 +25628,6 @@ namespace HaCreator.MapSimulator
 
                 if (temporaryPortalDestination.MapId == _mapBoard.MapInfo.id)
                 {
-                    int temporaryTargetPortalIndex = -1;
                     if (TryResolvePacketOwnedTeleportPortalByPosition(
                         temporaryPortalDestination.X,
                         temporaryPortalDestination.Y,
@@ -25655,6 +25659,7 @@ namespace HaCreator.MapSimulator
                         temporaryPortalDestination.MapId,
                         sourcePortalName: temporarySourcePortalName,
                         targetPortalName: temporaryTargetPortalName,
+                        targetPortalIndex: temporaryTargetPortalIndex,
                         fallbackX: temporaryPortalDestination.X,
                         fallbackY: temporaryPortalDestination.Y,
                         targetPortalNameCandidates: temporaryTargetPortalNameCandidates);
@@ -25663,7 +25668,7 @@ namespace HaCreator.MapSimulator
                             _gameState.PendingMapId = temporaryPortalDestination.MapId;
                             _gameState.PendingPortalName = temporaryTargetPortalName;
                             _gameState.PendingPortalNameCandidates = temporaryTargetPortalNameCandidates ?? Array.Empty<string>();
-                            _gameState.PendingPortalIndex = -1;
+                            _gameState.PendingPortalIndex = temporaryTargetPortalIndex;
                 }
 
 
@@ -25887,17 +25892,19 @@ namespace HaCreator.MapSimulator
             TryResolvePacketOwnedPendingCrossMapPortalNames(
                 portal,
                 out string targetPortalName,
-                out string[] targetPortalNameCandidates);
+                out string[] targetPortalNameCandidates,
+                out int targetPortalIndex);
             StagePendingCrossMapTeleport(
                 portal.tm,
                 sourcePortalName: portal.pn,
                 targetPortalName: targetPortalName,
+                targetPortalIndex: targetPortalIndex,
                 targetPortalNameCandidates: targetPortalNameCandidates);
             _gameState.PendingMapChange = true;
             _gameState.PendingMapId = portal.tm;
             _gameState.PendingPortalName = targetPortalName;
             _gameState.PendingPortalNameCandidates = targetPortalNameCandidates ?? Array.Empty<string>();
-            _gameState.PendingPortalIndex = -1;
+            _gameState.PendingPortalIndex = targetPortalIndex;
             RegisterPortalCollisionRequestSource(portalIndex);
             PlayPortalSE();
             return true;
@@ -25924,7 +25931,8 @@ namespace HaCreator.MapSimulator
             }
 
 
-            bool allowLocalPreview = !_guildBossOfficialSessionBridge.HasConnectedSession
+            bool allowLocalPreview = !_guildBossOfficialSessionBridge.IsRunning
+                && !_guildBossOfficialSessionBridge.HasAttachedClient
                 && !_guildBossTransport.HasConnectedClients;
             if (!guildBoss.TryHandleLocalPulleyAttack(attackHitbox, currentTime, allowLocalPreview, out string message))
             {
@@ -25934,11 +25942,13 @@ namespace HaCreator.MapSimulator
 
             if (!allowLocalPreview && guildBoss.TryConsumePulleyPacketRequest(out GuildBossField.PulleyPacketRequest request))
             {
-                if (_guildBossOfficialSessionBridge.HasConnectedSession)
+                if (_guildBossOfficialSessionBridge.IsRunning || _guildBossOfficialSessionBridge.HasAttachedClient)
                 {
-                    if (_guildBossOfficialSessionBridge.TrySendPulleyRequest(request, out string sessionStatus))
+                    if (_guildBossOfficialSessionBridge.TrySendOrQueuePulleyRequest(request, out bool queued, out string sessionStatus))
                     {
-                        message = $"{message} Waiting for live session reply.";
+                        message = queued
+                            ? $"{message} Queued for live session."
+                            : $"{message} Waiting for live session reply.";
                     }
                     else if (_guildBossTransport.HasConnectedClients
                         && _guildBossTransport.TrySendPulleyRequest(request, out string transportStatus))
@@ -26003,12 +26013,13 @@ namespace HaCreator.MapSimulator
             int sourceMapId = -1,
             string sourcePortalName = null,
             string targetPortalName = null,
+            int targetPortalIndex = -1,
             float? fallbackX = null,
             float? fallbackY = null,
             string[] targetPortalNameCandidates = null)
         {
             _pendingCrossMapTeleportTarget = targetMapId > 0
-                ? new PendingCrossMapTeleportTarget(targetMapId, sourceMapId, sourcePortalName, targetPortalName, fallbackX, fallbackY, targetPortalNameCandidates)
+                ? new PendingCrossMapTeleportTarget(targetMapId, sourceMapId, sourcePortalName, targetPortalName, targetPortalIndex, fallbackX, fallbackY, targetPortalNameCandidates)
                 : null;
             _packetOwnedTeleportRequestActive = _pendingCrossMapTeleportTarget != null;
         }
@@ -26942,10 +26953,27 @@ namespace HaCreator.MapSimulator
             }
 
 
-            return PublishDynamicObjectTagStatesForScriptNames(
+            bool publishedAny = PublishDynamicObjectTagStatesForScriptNames(
                 QuestRuntimeManager.ParseScriptNames(portal.script),
                 currentTickCount);
+            if (publishedAny || !IsScriptOwnedDynamicObjectPortal(portal.pt))
+            {
+                return publishedAny;
+            }
 
+            return PublishDynamicObjectTagStatesForScriptNames(
+                QuestRuntimeManager.ParseScriptNames(portal.pn),
+                currentTickCount);
+
+        }
+
+        private static bool IsScriptOwnedDynamicObjectPortal(PortalType portalType)
+        {
+            return portalType == PortalType.Script
+                   || portalType == PortalType.ScriptInvisible
+                   || portalType == PortalType.CollisionScript
+                   || portalType == PortalType.ScriptHidden
+                   || portalType == PortalType.ScriptHiddenUng;
         }
 
         private bool PublishDynamicObjectTagStatesForNpc(int npcTemplateId, int currentTickCount, NpcItem preferredNpc = null)
@@ -27297,6 +27325,7 @@ namespace HaCreator.MapSimulator
 
             _playerManager.SetAffectedAreaPool(_affectedAreaPool);
             _playerManager.SetRemoteAffectedAreaDamageBlockEvaluator(IsRemoteAffectedAreaProtectionActive);
+            _playerManager.SetRemoteAffectedAreaDamageShareHandler(ApplyRemoteAffectedAreaDamageShareToOwner);
             _playerManager.SetAffectedAreaOwnerPartyMembershipEvaluator(IsAffectedAreaOwnerPartyMember);
             _playerManager.SetAffectedAreaOwnerTeamMembershipEvaluator(IsAffectedAreaOwnerSameTeamMember);
 
@@ -27751,7 +27780,7 @@ namespace HaCreator.MapSimulator
             SnowBallField snowBall = _specialFieldRuntime?.Minigames?.SnowBall;
             return new FieldSkillRestrictionEvaluator.RuntimeState
             {
-                CoconutBasicActionOwned = _specialFieldRuntime?.Minigames?.Coconut?.IsRoundActive == true,
+                CoconutBasicActionOwned = _specialFieldRuntime?.Minigames?.Coconut?.IsLocalBasicActionOwnerActive == true,
                 SnowBallBasicActionOwned = snowBall?.IsLocalBasicActionOwnerActive == true,
                 GuildBossBasicActionOwned = IsGuildBossBasicActionOwnerActive()
             };

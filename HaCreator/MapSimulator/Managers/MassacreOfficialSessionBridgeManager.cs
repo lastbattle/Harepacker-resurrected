@@ -476,6 +476,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             byte[] payload = rawPacket.Skip(sizeof(short)).ToArray();
+            SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref opcode, ref payload);
             message = new MassacrePacketInboxMessage(
                 MassacrePacketInboxMessageKind.Packet,
                 source,

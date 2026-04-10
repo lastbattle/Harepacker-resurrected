@@ -151,6 +151,11 @@ namespace HaCreator.MapSimulator.Pools
 
     public readonly record struct ReactorFootholdPlacement(int Page, int ZMass);
 
+    internal readonly record struct PacketEnterAuthoredReactorCandidate(
+        int Index,
+        bool IsLocallyTouched,
+        int VisualState);
+
     /// <summary>
     /// Reactor Pool System - Manages reactors, spawning, and touch/skill detection
     /// Based on CReactorPool from MapleStory client
@@ -1504,7 +1509,7 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            if (TryFindAuthoredReactorForPacketEnter(reactorId, x, y, flip, name, out int authoredIndex))
+            if (TryFindAuthoredReactorForPacketEnter(reactorId, initialState, x, y, flip, name, out int authoredIndex))
             {
                 ApplyPacketOwnershipToReactor(authoredIndex, packetObjectId, canRespawn: false);
                 ApplyPacketReactorState(authoredIndex, initialState, x, y, flip, currentTick);
@@ -2399,6 +2404,7 @@ namespace HaCreator.MapSimulator.Pools
 
         private bool TryFindAuthoredReactorForPacketEnter(
             string reactorId,
+            int initialState,
             int x,
             int y,
             bool flip,
@@ -2406,8 +2412,7 @@ namespace HaCreator.MapSimulator.Pools
             out int index)
         {
             index = -1;
-            int matchCount = 0;
-            int touchedMatch = -1;
+            var candidates = new List<PacketEnterAuthoredReactorCandidate>();
 
             for (int i = 0; i < GetReactorCount(); i++)
             {
@@ -2436,42 +2441,53 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                matchCount++;
-                if (matchCount == 1)
-                {
-                    index = i;
-                }
-
-                if (IsLocallyTouchedReactor(index: i, data))
-                {
-                    if (touchedMatch >= 0)
-                    {
-                        index = -1;
-                        return false;
-                    }
-
-                    touchedMatch = i;
-                }
+                candidates.Add(new PacketEnterAuthoredReactorCandidate(
+                    i,
+                    IsLocallyTouchedReactor(index: i, data),
+                    data.VisualState));
             }
 
-            if (matchCount <= 0)
+            return TrySelectAuthoredReactorCandidateForPacketEnter(candidates, initialState, out index);
+        }
+
+        internal static bool TrySelectAuthoredReactorCandidateForPacketEnter(
+            IReadOnlyList<PacketEnterAuthoredReactorCandidate> candidates,
+            int initialState,
+            out int index)
+        {
+            index = -1;
+            if (candidates == null || candidates.Count == 0)
             {
-                index = -1;
                 return false;
             }
 
-            if (matchCount == 1)
+            if (candidates.Count == 1)
             {
+                index = candidates[0].Index;
                 return true;
             }
 
-            if (touchedMatch >= 0)
+            List<PacketEnterAuthoredReactorCandidate> touchedCandidates = candidates
+                .Where(static candidate => candidate.IsLocallyTouched)
+                .ToList();
+            if (touchedCandidates.Count == 1)
             {
-                index = touchedMatch;
+                index = touchedCandidates[0].Index;
                 return true;
             }
 
-            index = -1;
+            IReadOnlyList<PacketEnterAuthoredReactorCandidate> stateScope = touchedCandidates.Count > 1
+                ? touchedCandidates
+                : candidates;
+            List<PacketEnterAuthoredReactorCandidate> stateMatches = stateScope
+                .Where(candidate => candidate.VisualState == initialState)
+                .ToList();
+            if (stateMatches.Count == 1)
+            {
+                index = stateMatches[0].Index;
+                return true;
+            }
+
             return false;
         }
 
@@ -2958,12 +2974,12 @@ namespace HaCreator.MapSimulator.Pools
                     data.HitOption,
                     data.ReactorType,
                     out int properEventIndex,
-                    out bool hasAuthoredHitEvent))
+                    out bool shouldLoadHitLayer))
             {
                 return 0;
             }
 
-            if (!hasAuthoredHitEvent)
+            if (!shouldLoadHitLayer)
             {
                 return 0;
             }
@@ -2993,13 +3009,13 @@ namespace HaCreator.MapSimulator.Pools
             int hitOption,
             ReactorType reactorType,
             out int properEventIndex,
-            out bool hasAuthoredHitEvent)
+            out bool shouldLoadHitLayer)
         {
             properEventIndex = packetProperEventIndex;
-            hasAuthoredHitEvent = false;
+            shouldLoadHitLayer = false;
             if (packetProperEventIndex != -2)
             {
-                hasAuthoredHitEvent = packetProperEventIndex >= 0;
+                shouldLoadHitLayer = true;
                 return true;
             }
 
@@ -3009,7 +3025,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            hasAuthoredHitEvent = properEventIndex >= 0;
+            shouldLoadHitLayer = properEventIndex >= 0;
             return true;
         }
 

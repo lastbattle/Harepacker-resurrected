@@ -25,6 +25,7 @@ namespace HaCreator.MapSimulator.UI
         public string Name { get; init; } = string.Empty;
         public int Level { get; init; }
         public int MaxHp { get; init; }
+        public int MaxMp { get; init; }
         public int Exp { get; init; }
         public bool IsBoss { get; init; }
         public int OwnedCopies { get; init; }
@@ -1145,6 +1146,7 @@ namespace HaCreator.MapSimulator.UI
 
     internal sealed class DragonBoxWindowSnapshot
     {
+        public const int FirstDragonBallItemId = 4001168;
         public int OrbMask { get; init; }
         public int CollectedOrbCount { get; init; }
         public int RemainingTimeSeconds { get; init; }

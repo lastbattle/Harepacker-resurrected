@@ -283,17 +283,20 @@ namespace HaCreator.MapSimulator.Character
             public MirrorImageRenderableSourceLayer(
                 Texture2D preparedSnapshotTexture,
                 Rectangle positionBounds,
+                Point origin,
                 bool facingRight,
                 int transitionStartTime)
             {
                 PreparedSnapshotTexture = preparedSnapshotTexture;
                 PositionBounds = positionBounds;
+                Origin = origin;
                 FacingRight = facingRight;
                 TransitionStartTime = transitionStartTime;
             }
 
             public Texture2D PreparedSnapshotTexture { get; }
             public Rectangle PositionBounds { get; }
+            public Point Origin { get; }
             public bool FacingRight { get; }
             public int TransitionStartTime { get; }
         }
@@ -649,14 +652,14 @@ namespace HaCreator.MapSimulator.Character
 
             CharacterAction newAction = newState switch
             {
-                PlayerState.Walking => CharacterAction.Walk1,
+                PlayerState.Walking => ResolveClientWalkAction(),
                 PlayerState.Jumping or PlayerState.Falling => CharacterAction.Jump,
                 PlayerState.Ladder => CharacterAction.Ladder,
                 PlayerState.Rope => CharacterAction.Rope,
                 PlayerState.Swimming => CharacterAction.Swim,
                 PlayerState.Flying => CharacterAction.Fly,
                 PlayerState.Dead => CharacterAction.Dead,
-                _ => CharacterAction.Stand1
+                _ => ResolveClientStandAction()
             };
 
             string newActionName = CharacterPart.GetActionString(newAction);
@@ -1912,8 +1915,8 @@ namespace HaCreator.MapSimulator.Character
         {
             CharacterAction newAction = State switch
             {
-                PlayerState.Standing => CharacterAction.Stand1,
-                PlayerState.Walking => CharacterAction.Walk1,
+                PlayerState.Standing => ResolveClientStandAction(),
+                PlayerState.Walking => ResolveClientWalkAction(),
                 PlayerState.Jumping or PlayerState.Falling => CharacterAction.Jump,
                 PlayerState.Ladder => CharacterAction.Ladder,
                 PlayerState.Rope => CharacterAction.Rope,
@@ -1922,9 +1925,9 @@ namespace HaCreator.MapSimulator.Character
                 PlayerState.Swimming => CharacterAction.Swim,
                 PlayerState.Flying => CharacterAction.Fly,
                 PlayerState.Attacking => GetAttackAction(),
-                PlayerState.Hit => CharacterAction.Stand1,
+                PlayerState.Hit => ResolveClientStandAction(),
                 PlayerState.Dead => CharacterAction.Dead,
-                _ => CharacterAction.Stand1
+                _ => ResolveClientStandAction()
             };
 
             string newActionName;
@@ -2383,6 +2386,12 @@ namespace HaCreator.MapSimulator.Character
 
         private CharacterAction GetAttackAction()
         {
+            if (_currentAttackType != AttackType.None
+                && Build?.GetWeapon() is WeaponPart weapon)
+            {
+                return CharacterPart.ParseActionString(weapon.ResolveClientBasicAttackActionName(_currentAttackType));
+            }
+
             return _currentAttackType switch
             {
                 AttackType.Stab => CharacterAction.StabO1,
@@ -2391,6 +2400,16 @@ namespace HaCreator.MapSimulator.Character
                 AttackType.ProneStab => CharacterAction.ProneStab,
                 _ => CharacterAction.SwingO1
             };
+        }
+
+        private CharacterAction ResolveClientWalkAction()
+        {
+            return Build?.GetWeapon()?.ResolveClientWalkAction() ?? CharacterAction.Walk1;
+        }
+
+        private CharacterAction ResolveClientStandAction()
+        {
+            return Build?.GetWeapon()?.ResolveClientStandAction() ?? CharacterAction.Stand1;
         }
 
         private int GetAttackCooldown()
@@ -4338,6 +4357,7 @@ namespace HaCreator.MapSimulator.Character
                     spriteBatch,
                     renderableLayer.Value.PreparedSnapshotTexture,
                     renderableLayer.Value.PositionBounds,
+                    renderableLayer.Value.Origin,
                     adjustedX,
                     adjustedY,
                     renderableLayer.Value.FacingRight,
@@ -4349,6 +4369,7 @@ namespace HaCreator.MapSimulator.Character
             SpriteBatch spriteBatch,
             Texture2D snapshotTexture,
             Rectangle snapshotBounds,
+            Point snapshotOrigin,
             int screenX,
             int adjustedY,
             bool flip,
@@ -4362,7 +4383,7 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            Point drawPosition = ResolveMirrorImagePreparedSnapshotDrawPosition(screenX, adjustedY, snapshotBounds, flip);
+            Point drawPosition = ResolveMirrorImagePreparedSnapshotDrawPosition(screenX, adjustedY, snapshotBounds, snapshotOrigin, flip);
             spriteBatch.Draw(
                 snapshotTexture,
                 new Vector2(drawPosition.X, drawPosition.Y),
@@ -4389,13 +4410,18 @@ namespace HaCreator.MapSimulator.Character
             }
 
             string actionName = CurrentActionName ?? string.Empty;
+            string previousPreparedActionName = _activeMirrorImage.PreparedActionName;
+            int sourceLayerCurrentTime = GetRenderAnimationTime(currentTime);
             _activeMirrorImage.PreparedActionName = actionName;
             _activeMirrorImage.PreparedFrameIndex = currentFrameIndex;
             _activeMirrorImage.PreparedFeetOffset = frame.FeetOffset;
             _activeMirrorImage.PreparedSourceLayers = BuildPreparedMirrorImageSourceLayers(
                 frame.AvatarRenderLayers,
                 _activeMirrorImage.PreparedSourceLayers,
+                previousPreparedActionName,
+                actionName,
                 FacingRight,
+                sourceLayerCurrentTime,
                 currentTime);
         }
 
@@ -4440,7 +4466,10 @@ namespace HaCreator.MapSimulator.Character
         private MirrorImagePreparedSourceLayer[] BuildPreparedMirrorImageSourceLayers(
             IReadOnlyList<AssembledPart>[] sourceLayers,
             MirrorImagePreparedSourceLayer[] existingLayers,
+            string previousPreparedActionName,
+            string currentActionName,
             bool facingRight,
+            int sourceLayerCurrentTime,
             int currentTime)
         {
             if (sourceLayers == null || sourceLayers.Length == 0)
@@ -4465,6 +4494,13 @@ namespace HaCreator.MapSimulator.Character
                     sourceParts,
                     sourceSignature,
                     facingRight,
+                    CanPreserveMirrorImagePreparedSourceLayerObject(
+                        previousPreparedActionName,
+                        currentActionName,
+                        existingLayer?.PreparedFacingRight ?? false,
+                        facingRight,
+                        existingLayer?.Parts?.Count ?? 0),
+                    sourceLayerCurrentTime,
                     currentTime);
             }
 
@@ -4508,6 +4544,7 @@ namespace HaCreator.MapSimulator.Character
                     ResolveMirrorImageRenderablePositionBounds(
                         preparedLayer.Bounds,
                         CalculateMirrorImageSourceLayerBounds(liveSourceParts)),
+                    preparedLayer.Origin,
                     FacingRight,
                     ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedCurrentTime));
             }
@@ -4526,6 +4563,7 @@ namespace HaCreator.MapSimulator.Character
                 ResolveMirrorImageRenderablePositionBounds(
                     preparedLayer.Bounds,
                     ResolveMirrorImageLiveRenderBounds(frame, preparedLayer.RenderLayer)),
+                preparedLayer.Origin,
                 ResolveMirrorImagePreparedFallbackFacing(preparedLayer.PreparedFacingRight, FacingRight),
                 ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedCurrentTime));
         }
@@ -4568,6 +4606,8 @@ namespace HaCreator.MapSimulator.Character
             IReadOnlyList<AssembledPart> sourceParts,
             int sourceSignature,
             bool facingRight,
+            bool preservesExistingLayerObject,
+            int sourceLayerCurrentTime,
             int currentTime)
         {
             MirrorImagePreparedSourceLayer preparedLayer = existingLayer ?? new MirrorImagePreparedSourceLayer();
@@ -4588,7 +4628,9 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.PreparedCurrentTime = ResolveMirrorImagePreparedSourceLayerUpdateTime(
                     preparedLayer.PreparedCurrentTime,
                     reusesExistingLayer: true,
+                    preservesExistingLayerObject: true,
                     currentTime);
+                preparedLayer.PreparedSourceLayerCurrentTime = sourceLayerCurrentTime;
                 preparedLayer.PreparedFacingRight = facingRight;
                 preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
                 return preparedLayer;
@@ -4608,11 +4650,13 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.Bounds = bounds;
             preparedLayer.Origin = bounds.IsEmpty
                 ? Point.Zero
-                : new Point(-bounds.X, -bounds.Y);
+                : ResolveMirrorImageSourceLayerOrigin(bounds);
             preparedLayer.PreparedCurrentTime = ResolveMirrorImagePreparedSourceLayerUpdateTime(
                 preparedLayer.PreparedCurrentTime,
                 reusesExistingLayer: false,
+                preservesExistingLayerObject,
                 currentTime);
+            preparedLayer.PreparedSourceLayerCurrentTime = sourceLayerCurrentTime;
             preparedLayer.PreparedFacingRight = facingRight;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
             preparedLayer.Parts = clonedParts;
@@ -4631,6 +4675,7 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.Bounds = Rectangle.Empty;
             preparedLayer.Origin = Point.Zero;
             preparedLayer.PreparedCurrentTime = int.MinValue;
+            preparedLayer.PreparedSourceLayerCurrentTime = int.MinValue;
             preparedLayer.PreparedFacingRight = false;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
             preparedLayer.Parts = Array.Empty<AssembledPart>();
@@ -4672,12 +4717,28 @@ namespace HaCreator.MapSimulator.Character
                    && existingFacingRight == facingRight;
         }
 
+        internal static bool CanPreserveMirrorImagePreparedSourceLayerObject(
+            string previousActionName,
+            string currentActionName,
+            bool existingFacingRight,
+            bool currentFacingRight,
+            int existingPartCount)
+        {
+            return existingPartCount > 0
+                   && existingFacingRight == currentFacingRight
+                   && string.Equals(
+                       previousActionName ?? string.Empty,
+                       currentActionName ?? string.Empty,
+                       StringComparison.OrdinalIgnoreCase);
+        }
+
         internal static int ResolveMirrorImagePreparedSourceLayerUpdateTime(
             int existingPreparedCurrentTime,
             bool reusesExistingLayer,
+            bool preservesExistingLayerObject,
             int currentTime)
         {
-            if (reusesExistingLayer && existingPreparedCurrentTime != int.MinValue)
+            if ((reusesExistingLayer || preservesExistingLayerObject) && existingPreparedCurrentTime != int.MinValue)
             {
                 return existingPreparedCurrentTime;
             }
@@ -4775,6 +4836,13 @@ namespace HaCreator.MapSimulator.Character
             return signature.ToHashCode();
         }
 
+        internal static Point ResolveMirrorImageSourceLayerOrigin(Rectangle bounds)
+        {
+            return bounds.IsEmpty
+                ? Point.Zero
+                : new Point(-bounds.X, -bounds.Y);
+        }
+
         private static Rectangle CalculateMirrorImageSourceLayerBounds(IReadOnlyList<AssembledPart> sourceParts)
         {
             if (sourceParts == null || sourceParts.Count == 0)
@@ -4815,15 +4883,30 @@ namespace HaCreator.MapSimulator.Character
             Rectangle snapshotBounds,
             bool flip)
         {
+            return ResolveMirrorImagePreparedSnapshotDrawPosition(
+                screenX,
+                adjustedY,
+                snapshotBounds,
+                ResolveMirrorImageSourceLayerOrigin(snapshotBounds),
+                flip);
+        }
+
+        internal static Point ResolveMirrorImagePreparedSnapshotDrawPosition(
+            int screenX,
+            int adjustedY,
+            Rectangle snapshotBounds,
+            Point snapshotOrigin,
+            bool flip)
+        {
             if (snapshotBounds.Width <= 0 || snapshotBounds.Height <= 0)
             {
                 return new Point(screenX, adjustedY);
             }
 
             int drawX = flip
-                ? screenX - snapshotBounds.Width - snapshotBounds.X
-                : screenX + snapshotBounds.X;
-            int drawY = adjustedY + snapshotBounds.Y;
+                ? screenX + snapshotOrigin.X - snapshotBounds.Width
+                : screenX - snapshotOrigin.X;
+            int drawY = adjustedY - snapshotOrigin.Y;
             return new Point(drawX, drawY);
         }
 

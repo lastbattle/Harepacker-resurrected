@@ -85,6 +85,7 @@ namespace HaCreator.MapSimulator.Effects
         private const int PacketTypeAvatarModified = 223;
         private const int PacketTypeTemporaryStatSet = 225;
         private const int PacketTypeTemporaryStatReset = 226;
+        private const int PacketTypeGuildNameChanged = 228;
         private const int PacketTypeCoupleRecordAdd = -1101;
         private const int PacketTypeCoupleRecordRemove = -1102;
         private const int PacketTypeFriendRecordAdd = -1103;
@@ -185,7 +186,11 @@ namespace HaCreator.MapSimulator.Effects
 
 
         #region Public Properties
-        public bool IsActive => _isActive;
+        public bool IsActive => _isActive || IsWeddingPhotoSceneOwnerActive;
+        public bool HasWeddingPacketOwner => _isActive;
+        public bool IsWeddingPhotoSceneOwnerActive { get; private set; }
+        public string WeddingPhotoSceneOwnerDescription { get; private set; }
+        public Rectangle? WeddingPhotoSceneViewport { get; private set; }
         public int CurrentStep => _currentStep;
         public bool IsBlessEffectActive => _blessEffectActive;
         public bool IsCeremonyTextOverlayActive => _ceremonyTextOverlayActive;
@@ -235,6 +240,9 @@ namespace HaCreator.MapSimulator.Effects
         public void Enable(int mapId)
         {
             _isActive = true;
+            IsWeddingPhotoSceneOwnerActive = false;
+            WeddingPhotoSceneOwnerDescription = null;
+            WeddingPhotoSceneViewport = null;
             _mapId = mapId;
             _currentStep = 0;
 
@@ -273,6 +281,39 @@ namespace HaCreator.MapSimulator.Effects
 
             System.Diagnostics.Debug.WriteLine($"[WeddingField] Enabled for map {mapId}, NPC {_npcId}");
 
+        }
+
+
+        public void BindWeddingPhotoSceneOwner(int mapId, string sourceDescription, Rectangle? viewport)
+        {
+            if (_isActive)
+            {
+                return;
+            }
+
+            IsWeddingPhotoSceneOwnerActive = true;
+            WeddingPhotoSceneOwnerDescription = sourceDescription ?? "CField_WeddingPhoto scene owner";
+            WeddingPhotoSceneViewport = viewport;
+            _mapId = mapId;
+            _currentStep = 0;
+            _blessEffectActive = false;
+            _currentDialog = null;
+            _dialogQueue.Clear();
+            _ceremonyTextOverlayActive = false;
+            _ceremonyCardOverlayActive = false;
+            _ceremonyCelebrationActive = false;
+            _ceremonyPetals.Clear();
+            _ceremonyHearts.Clear();
+            _lastPacketResponse = null;
+            _lastPacketType = null;
+        }
+
+
+        public void ClearWeddingPhotoSceneOwner()
+        {
+            IsWeddingPhotoSceneOwnerActive = false;
+            WeddingPhotoSceneOwnerDescription = null;
+            WeddingPhotoSceneViewport = null;
         }
 
 
@@ -329,6 +370,8 @@ namespace HaCreator.MapSimulator.Effects
                         return TryApplyRemoteTemporaryStatSetPacket(payload, out errorMessage);
                     case PacketTypeTemporaryStatReset:
                         return TryApplyRemoteTemporaryStatResetPacket(payload, out errorMessage);
+                    case PacketTypeGuildNameChanged:
+                        return TryApplyRemoteGuildNameChangedPacket(payload, out errorMessage);
                     case PacketTypeCoupleRecordAdd:
                     case PacketTypeFriendRecordAdd:
                     case PacketTypeMarriageRecordAdd:
@@ -1262,6 +1305,23 @@ namespace HaCreator.MapSimulator.Effects
             return true;
         }
 
+        private bool TryApplyRemoteGuildNameChangedPacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!RemoteUserPacketCodec.TryParseGuildNameChanged(payload, out RemoteUserGuildNameChangedPacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            if (!TryResolveParticipantForTemporaryStats(packet.CharacterId, out WeddingRemoteParticipant participant, out errorMessage))
+            {
+                return false;
+            }
+
+            ApplyParticipantGuildNameChanged(participant, packet.GuildName);
+            return true;
+        }
+
         private bool TryApplyRemoteItemEffectPacket(byte[] payload, out string errorMessage)
         {
             errorMessage = null;
@@ -1455,6 +1515,17 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             participant.ActionName = ResolveVisibleParticipantActionName(participant, participant.BaseActionName);
+        }
+
+        private static void ApplyParticipantGuildNameChanged(WeddingRemoteParticipant participant, string guildName)
+        {
+            if (participant?.Build == null)
+            {
+                return;
+            }
+
+            participant.Build.GuildName = string.IsNullOrWhiteSpace(guildName) ? string.Empty : guildName.Trim();
+            participant.Build.HasAuthoritativeProfileGuild = true;
         }
 
         private bool TryResolveParticipantForTemporaryStats(int characterId, out WeddingRemoteParticipant participant, out string errorMessage)
@@ -1839,6 +1910,7 @@ namespace HaCreator.MapSimulator.Effects
                 PacketTypeAvatarModified => "avatarmodified (223)",
                 PacketTypeTemporaryStatSet => "tempset (225)",
                 PacketTypeTemporaryStatReset => "tempreset (226)",
+                PacketTypeGuildNameChanged => "guildnamechanged (228)",
                 PacketTypeCoupleRecordAdd => "couplerecordadd (-1101)",
                 PacketTypeCoupleRecordRemove => "couplerecordremove (-1102)",
                 PacketTypeFriendRecordAdd => "friendrecordadd (-1103)",
@@ -2391,6 +2463,14 @@ namespace HaCreator.MapSimulator.Effects
                 : _ceremonyCelebrationActive
                     ? "celebration particles active"
                     : "no scene overlay";
+            if (IsWeddingPhotoSceneOwnerActive)
+            {
+                string viewport = WeddingPhotoSceneViewport.HasValue
+                    ? $" viewport={WeddingPhotoSceneViewport.Value.Left},{WeddingPhotoSceneViewport.Value.Top},{WeddingPhotoSceneViewport.Value.Right},{WeddingPhotoSceneViewport.Value.Bottom}"
+                    : " viewport=<none>";
+                return $"Wedding photo scene owner map {_mapId}: {WeddingPhotoSceneOwnerDescription}.{viewport} Packet owner remains CField_WeddingPhoto, not CField_Wedding::OnPacket.";
+            }
+
             return $"Wedding map {_mapId}: step {_currentStep}, role {role}, dialog {dialog}, scene {scene}, coupleActors={_participantActors.Count}, audienceActors={_audienceActors.Count}, remoteLoaded={_loadedExternalRemoteActorIds.Count}, remotePending={_pendingExternalRemoteActorLoadIds.Count}, groom {groomPosition}, bride {bridePosition}, last packet {lastPacket}, last remote packet {lastRemotePacket}.";
         }
 
@@ -3550,6 +3630,9 @@ namespace HaCreator.MapSimulator.Effects
         {
             _clearBgmOverride?.Invoke();
             _isActive = false;
+            IsWeddingPhotoSceneOwnerActive = false;
+            WeddingPhotoSceneOwnerDescription = null;
+            WeddingPhotoSceneViewport = null;
             _currentStep = 0;
             _blessEffectActive = false;
             _ceremonyTextOverlayActive = false;

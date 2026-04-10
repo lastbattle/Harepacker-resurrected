@@ -66,7 +66,8 @@ namespace HaCreator.MapSimulator.Fields
         Request = 4,
         MemberState = 5,
         DeathState = 6,
-        ResultRoute = 7
+        ResultRoute = 7,
+        UiWindow = 8
     }
 
     internal readonly record struct MonsterCarnivalStringPoolMessage(int StringPoolId, string FallbackFormat);
@@ -142,6 +143,97 @@ namespace HaCreator.MapSimulator.Fields
         public MonsterCarnivalTeam Team { get; }
         public int ReactorHitCount { get; set; }
         public int ReactorRequiredHits { get; set; }
+    }
+
+    public sealed class MonsterCarnivalUiWindowState
+    {
+        public bool IsCreated { get; private set; }
+        public int MobRows { get; private set; }
+        public int SkillRows { get; private set; }
+        public int GuardianRows { get; private set; }
+        public int ResetCount { get; private set; }
+        public MonsterCarnivalTeam? Team { get; private set; }
+        public int PersonalCp { get; private set; }
+        public int PersonalTotalCp { get; private set; }
+        public int MyTeamCp { get; private set; }
+        public int MyTeamTotalCp { get; private set; }
+        public int EnemyTeamCp { get; private set; }
+        public int EnemyTeamTotalCp { get; private set; }
+        public int? LastRequestCooldownResetTick { get; private set; }
+        public string LastRequestOwnerName { get; private set; }
+        public int LastRequestTab { get; private set; } = -1;
+        public int LastRequestIndex { get; private set; } = -1;
+
+        public int TotalRows => MobRows + SkillRows + GuardianRows;
+
+        public void Reset()
+        {
+            IsCreated = false;
+            MobRows = 0;
+            SkillRows = 0;
+            GuardianRows = 0;
+            ResetCount = 0;
+            Team = null;
+            PersonalCp = 0;
+            PersonalTotalCp = 0;
+            MyTeamCp = 0;
+            MyTeamTotalCp = 0;
+            EnemyTeamCp = 0;
+            EnemyTeamTotalCp = 0;
+            LastRequestCooldownResetTick = null;
+            LastRequestOwnerName = null;
+            LastRequestTab = -1;
+            LastRequestIndex = -1;
+        }
+
+        public void CreateFromDefinition(MonsterCarnivalFieldDefinition definition)
+        {
+            IsCreated = true;
+            MobRows = definition?.MobEntries.Count ?? 0;
+            SkillRows = definition?.SkillEntries.Count ?? 0;
+            GuardianRows = definition?.GuardianEntries.Count ?? 0;
+            ResetCount++;
+        }
+
+        public void ApplyEnter(
+            MonsterCarnivalTeam team,
+            int personalCp,
+            int personalTotalCp,
+            int myTeamCp,
+            int myTeamTotalCp,
+            int enemyTeamCp,
+            int enemyTeamTotalCp)
+        {
+            Team = team;
+            PersonalCp = Math.Max(0, personalCp);
+            PersonalTotalCp = Math.Max(PersonalCp, personalTotalCp);
+            MyTeamCp = Math.Max(0, myTeamCp);
+            MyTeamTotalCp = Math.Max(MyTeamCp, myTeamTotalCp);
+            EnemyTeamCp = Math.Max(0, enemyTeamCp);
+            EnemyTeamTotalCp = Math.Max(EnemyTeamCp, enemyTeamTotalCp);
+        }
+
+        public void MarkRequestCooldownReset(int tickCount, string ownerName, int tabCode, int entryIndex)
+        {
+            LastRequestCooldownResetTick = tickCount;
+            LastRequestOwnerName = string.IsNullOrWhiteSpace(ownerName) ? null : ownerName.Trim();
+            LastRequestTab = tabCode;
+            LastRequestIndex = entryIndex;
+        }
+
+        public string DescribeStatus()
+        {
+            if (!IsCreated)
+            {
+                return "CUIMonsterCarnival: not created.";
+            }
+
+            string teamText = Team.HasValue ? MonsterCarnivalField.FormatTeam(Team.Value) : "unset";
+            string requestText = LastRequestCooldownResetTick.HasValue
+                ? $"requestReset={LastRequestTab}/{LastRequestIndex}@{LastRequestCooldownResetTick.Value}"
+                : "requestReset=none";
+            return $"CUIMonsterCarnival: created | rows mob/skill/guardian={MobRows}/{SkillRows}/{GuardianRows} total={TotalRows} | ResetUI={ResetCount} | team={teamText} | personalCP={PersonalCp}/{PersonalTotalCp} | myTeamCP={MyTeamCp}/{MyTeamTotalCp} | enemyTeamCP={EnemyTeamCp}/{EnemyTeamTotalCp} | {requestText}";
+        }
     }
 
     public sealed class MonsterCarnivalFieldDefinition
@@ -2813,7 +2905,7 @@ namespace HaCreator.MapSimulator.Fields
             _statusMessageUntil = tickCount + StatusDurationMs;
         }
 
-        private static string FormatTeam(MonsterCarnivalTeam team)
+        internal static string FormatTeam(MonsterCarnivalTeam team)
         {
             return team == MonsterCarnivalTeam.Team0 ? "Red Team" : "Blue Team";
         }

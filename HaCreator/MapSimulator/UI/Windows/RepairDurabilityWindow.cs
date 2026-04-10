@@ -121,7 +121,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ScrollBarHeight = 203;
         private const int ScrollBarThumbWidth = 8;
         private const int ScrollBarThumbMinHeight = 18;
-        private const int HoverIconHitWidth = 46;
+        private const int HoverIconHitWindowRight = 46;
         private const int HoverTooltipCursorGap = 20;
         private const float TextScale = 0.68f;
         private const float SecondaryTextScale = 0.58f;
@@ -1565,17 +1565,11 @@ namespace HaCreator.MapSimulator.UI
 
         private int ResolveHoveredTooltipIndex(Point mousePosition)
         {
-            Rectangle rowArea = GetRowAreaBounds();
-            if (!rowArea.Contains(mousePosition) || mousePosition.X >= rowArea.X + HoverIconHitWidth)
-            {
-                return -1;
-            }
-
-            return ResolveClientItemIndexFromRelativePoint(
+            return ResolveClientTooltipItemIndexFromWindowRelativePoint(
                 _entries.Count,
                 _scrollOffset,
-                mousePosition.X - rowArea.X,
-                mousePosition.Y - rowArea.Y);
+                mousePosition.X - Position.X,
+                mousePosition.Y - Position.Y);
         }
 
         internal static int ResolveClientItemIndexFromRelativePoint(int itemCount, int scrollOffset, int relativeX, int relativeY)
@@ -1589,6 +1583,34 @@ namespace HaCreator.MapSimulator.UI
             for (int row = 0, rowTop = 0; row < visibleCount; row++, rowTop += RowPitch)
             {
                 Rectangle bounds = new(RowLeft - RowLeft, rowTop, 210 - RowLeft, RowHeight);
+                if (!bounds.Contains(relativeX, relativeY))
+                {
+                    continue;
+                }
+
+                int index = scrollOffset + row;
+                return index >= 0 && index < itemCount ? index : -1;
+            }
+
+            return -1;
+        }
+
+        internal static int ResolveClientTooltipItemIndexFromWindowRelativePoint(int itemCount, int scrollOffset, int relativeX, int relativeY)
+        {
+            if (relativeX >= HoverIconHitWindowRight)
+            {
+                return -1;
+            }
+
+            if (itemCount <= 0)
+            {
+                return -1;
+            }
+
+            int visibleCount = Math.Min(itemCount, VisibleRowCount);
+            for (int row = 0, rowTop = RowTop; row < visibleCount; row++, rowTop += RowPitch)
+            {
+                Rectangle bounds = new(RowLeft, rowTop, 210 - RowLeft, RowHeight);
                 if (!bounds.Contains(relativeX, relativeY))
                 {
                     continue;

@@ -157,6 +157,7 @@ namespace HaCreator.MapSimulator.Managers
             try
             {
                 payload = Convert.FromHexString(compactHex);
+                SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref packetType, ref payload);
                 return true;
             }
             catch (FormatException)
@@ -202,6 +203,7 @@ namespace HaCreator.MapSimulator.Managers
 
                 packetType = opcode;
                 payload = rawPacket.Skip(sizeof(ushort)).ToArray();
+                SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref packetType, ref payload);
                 return true;
             }
             catch (FormatException)

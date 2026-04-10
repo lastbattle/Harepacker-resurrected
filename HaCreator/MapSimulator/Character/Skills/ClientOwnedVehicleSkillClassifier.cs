@@ -106,6 +106,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static readonly string[] ClientConfirmedMechanicVehicleVehicleIdOnlyActionNames =
         {
+            "swingT1",
+            "swingT2",
             "paralyze",
             "shoot6",
             "arrowRain",

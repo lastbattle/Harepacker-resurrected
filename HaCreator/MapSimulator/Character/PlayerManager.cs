@@ -77,6 +77,7 @@ namespace HaCreator.MapSimulator.Character
         private MobSkillEffectLoader _mobSkillEffectLoader;
         private AffectedAreaPool _affectedAreaPool;
         private Func<int, bool> _remoteAffectedAreaDamageBlockEvaluator;
+        private Action<int, int, int> _remoteAffectedAreaDamageShareHandler;
         private Func<int, bool> _affectedAreaOwnerPartyMembershipEvaluator;
         private Func<int, bool> _affectedAreaOwnerTeamMembershipEvaluator;
         private Func<int, int, MobSkillRuntimeData> _mobSkillRuntimeResolver;
@@ -331,6 +332,15 @@ namespace HaCreator.MapSimulator.Character
             _remoteAffectedAreaDamageBlockEvaluator = evaluator;
         }
 
+        public void SetRemoteAffectedAreaDamageShareHandler(Action<int, int, int> handler)
+        {
+            _remoteAffectedAreaDamageShareHandler = handler;
+            if (Skills != null)
+            {
+                Skills.OnExternalAreaDamageSharingApplied = handler;
+            }
+        }
+
         public void SetAffectedAreaOwnerPartyMembershipEvaluator(Func<int, bool> evaluator)
         {
             _affectedAreaOwnerPartyMembershipEvaluator = evaluator;
@@ -415,6 +425,7 @@ namespace HaCreator.MapSimulator.Character
                 Skills.SetTamingMobLoader(Loader.LoadTamingMob);
                 Skills.OnAttackAreaResolved = _reactorAttackAreaHandler;
                 Skills.OnRepeatSkillModeEndRequested = HandleRepeatSkillModeEndRequested;
+                Skills.OnExternalAreaDamageSharingApplied = _remoteAffectedAreaDamageShareHandler;
                 build.SkillStatBonusProvider = stat => Skills.GetPassiveBonus(stat) + Skills.GetBuffStat(stat);
                 build.SkillMasteryProvider = () => Skills.GetMastery(build.GetWeapon());
 
@@ -1758,10 +1769,10 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         private bool TryDoingBasicMeleeAttack(int currentTime)
         {
-            // Trigger swing animation
-            Player.TriggerSkillAnimation("swingO1");
-            Skills?.UpdateBasicMeleeAfterImageState("swingO1", currentTime);
-            System.Diagnostics.Debug.WriteLine($"[Attack] TryDoingBasicMeleeAttack - swingO1 triggered");
+            string actionName = ResolveClientBasicAttackActionName(AttackType.Swing);
+            Player.TriggerSkillAnimation(actionName);
+            Skills?.UpdateBasicMeleeAfterImageState(actionName, currentTime);
+            System.Diagnostics.Debug.WriteLine($"[Attack] TryDoingBasicMeleeAttack - {actionName} triggered");
 
             // Apply damage to nearby mobs if mob pool is available
             if (_mobPool != null)
@@ -1817,9 +1828,9 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         private bool TryDoingBasicShoot(int currentTime)
         {
-            // Trigger shoot animation
-            Player.TriggerSkillAnimation("shoot1");
-            System.Diagnostics.Debug.WriteLine($"[Attack] TryDoingBasicShoot - shoot1 triggered");
+            string actionName = ResolveClientBasicAttackActionName(AttackType.Shoot);
+            Player.TriggerSkillAnimation(actionName);
+            System.Diagnostics.Debug.WriteLine($"[Attack] TryDoingBasicShoot - {actionName} triggered");
             // Note: Projectile spawning requires SkillManager
             return true;
         }
@@ -1829,9 +1840,9 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         private bool TryDoingBasicMagicAttack(int currentTime)
         {
-            // Trigger magic animation
-            Player.TriggerSkillAnimation("swingO1");
-            System.Diagnostics.Debug.WriteLine($"[Attack] TryDoingBasicMagicAttack - swingO1 triggered");
+            string actionName = ResolveClientBasicAttackActionName(AttackType.Swing);
+            Player.TriggerSkillAnimation(actionName);
+            System.Diagnostics.Debug.WriteLine($"[Attack] TryDoingBasicMagicAttack - {actionName} triggered");
 
             // Apply damage to closest mob if mob pool is available
             if (_mobPool != null)
@@ -1892,6 +1903,14 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return true;
+        }
+
+        private string ResolveClientBasicAttackActionName(AttackType fallbackAttackType)
+        {
+            return Player?.Build?.GetWeapon()?.ResolveClientBasicAttackActionName(fallbackAttackType)
+                   ?? CharacterPart.GetActionString(fallbackAttackType == AttackType.Shoot
+                       ? CharacterAction.Shoot1
+                       : CharacterAction.SwingO1);
         }
 
         private void ApplyMobReflectDamage(MobItem mob, int currentTime, MobDamageType damageType)

@@ -245,6 +245,8 @@ namespace HaCreator.MapSimulator.Entities
 
         public int CurrentWorldY => _currentWorldY;
 
+        public float LayerAlpha { get; set; } = 1f;
+
         internal WzImageProperty TransientHitLayerSourceProperty => _transientHitLayerSourceProperty;
 
         internal int TransientHitLayerSourceState => _transientHitLayerSourceState;
@@ -892,6 +894,12 @@ namespace HaCreator.MapSimulator.Entities
             RenderParameters renderParameters,
             int TickCount)
         {
+            float layerAlpha = NormalizeLayerAlpha(LayerAlpha);
+            if (layerAlpha <= 0f)
+            {
+                return;
+            }
+
             if (_stateFrames.Count > 0)
             {
                 IDXObject drawFrame = GetStateFrame(TickCount);
@@ -908,8 +916,35 @@ namespace HaCreator.MapSimulator.Entities
                     renderParameters.RenderHeight))
                     return;
 
-                drawFrame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
+                DrawLayerFrame(drawFrame, sprite, skeletonMeshRenderer, gameTime,
                     shiftCenteredX - Position.X, shiftCenteredY - Position.Y,
+                    layerAlpha,
+                    flip,
+                    drawReflectionInfo);
+                return;
+            }
+
+            if (layerAlpha < 1f)
+            {
+                IDXObject drawFrame = LastFrameDrawn ?? Frame0;
+                if (drawFrame == null)
+                {
+                    return;
+                }
+
+                int shiftCenteredX = mapShiftX - centerX;
+                int shiftCenteredY = mapShiftY - centerY;
+                if (!IsFrameWithinView(
+                    drawFrame,
+                    shiftCenteredX - Position.X,
+                    shiftCenteredY - Position.Y,
+                    renderParameters.RenderWidth,
+                    renderParameters.RenderHeight))
+                    return;
+
+                DrawLayerFrame(drawFrame, sprite, skeletonMeshRenderer, gameTime,
+                    shiftCenteredX - Position.X, shiftCenteredY - Position.Y,
+                    layerAlpha,
                     flip,
                     drawReflectionInfo);
                 return;
@@ -920,6 +955,44 @@ namespace HaCreator.MapSimulator.Entities
                 drawReflectionInfo,
                 renderParameters,
                 TickCount);
+        }
+
+        internal static float NormalizeLayerAlphaForTesting(float layerAlpha)
+        {
+            return NormalizeLayerAlpha(layerAlpha);
+        }
+
+        private static float NormalizeLayerAlpha(float layerAlpha)
+        {
+            return MathHelper.Clamp(layerAlpha, 0f, 1f);
+        }
+
+        private static void DrawLayerFrame(
+            IDXObject frame,
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int shiftCenteredX,
+            int shiftCenteredY,
+            float layerAlpha,
+            bool flip,
+            ReflectionDrawableBoundary drawReflectionInfo)
+        {
+            if (layerAlpha >= 1f)
+            {
+                frame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
+                    shiftCenteredX, shiftCenteredY,
+                    flip,
+                    drawReflectionInfo);
+                return;
+            }
+
+            frame.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
+                frame.X - shiftCenteredX,
+                frame.Y - shiftCenteredY,
+                Color.White * layerAlpha,
+                flip,
+                drawReflectionInfo);
         }
 
         private IDXObject GetStateFrame(int tickCount)
@@ -1148,8 +1221,13 @@ namespace HaCreator.MapSimulator.Entities
                     .Where(transition => transition.SelectorValues.Length == 0)
                     .ToArray();
 
-                return genericTransitions.Length > 0
-                    ? genericTransitions
+                if (genericTransitions.Length > 0)
+                {
+                    return genericTransitions;
+                }
+
+                return ShouldRejectSelectorDrivenTransitionWithoutSelector(request.ActivationType)
+                    ? Array.Empty<AuthoredStateTransition>()
                     : transitions;
             }
 
@@ -1175,6 +1253,13 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return transition.SelectorValues.Length == 0 ? 1 : 2;
+        }
+
+        internal static bool ShouldRejectSelectorDrivenTransitionWithoutSelector(ReactorActivationType activationType)
+        {
+            return activationType == ReactorActivationType.Item
+                || activationType == ReactorActivationType.Skill
+                || activationType == ReactorActivationType.Quest;
         }
 
         private static int GetEventTypePriority(int eventType, ReactorTransitionRequest request)

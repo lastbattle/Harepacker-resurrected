@@ -12,16 +12,20 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private const int EquipmentChangeResponseDelayMs = 50;
+        private const int CharacterEquipmentPacketAuthorityTimeoutMs = 350;
         private const int MechanicEquipmentPacketAuthorityTimeoutMs = 350;
         private int _nextEquipmentChangeRequestId = 1;
         private int _lastEquipmentExclusiveRequestSentTick = int.MinValue;
         private readonly Dictionary<int, PendingEquipmentChangeEnvelope> _pendingEquipmentChangeRequests = new();
+        private readonly Dictionary<int, EquipmentChangeResult> _pendingCharacterEquipmentPacketResults = new();
         private readonly Dictionary<int, EquipmentChangeResult> _pendingMechanicEquipmentPacketResults = new();
 
         private sealed class PendingEquipmentChangeEnvelope
         {
             public EquipmentChangeRequest Request { get; init; }
             public int ReadyAtTick { get; init; }
+            public bool AwaitingCharacterPacketAuthority { get; set; }
+            public int CharacterPacketAuthorityDeadlineAtTick { get; set; }
             public bool AwaitingMechanicPacketAuthority { get; set; }
             public int MechanicPacketAuthorityDeadlineAtTick { get; set; }
         }
@@ -56,7 +60,13 @@ namespace HaCreator.MapSimulator
                 Request = request,
                 ReadyAtTick = currTickCount + EquipmentChangeResponseDelayMs
             };
-            if (IsMechanicEquipmentRequest(request)
+            if (IsCharacterEquipmentRequest(request)
+                && TryDispatchCharacterEquipmentAuthorityRequest(request, out _))
+            {
+                envelope.AwaitingCharacterPacketAuthority = true;
+                envelope.CharacterPacketAuthorityDeadlineAtTick = currTickCount + CharacterEquipmentPacketAuthorityTimeoutMs;
+            }
+            else if (IsMechanicEquipmentRequest(request)
                 && TryDispatchMechanicEquipmentAuthorityRequest(request, out _))
             {
                 envelope.AwaitingMechanicPacketAuthority = true;
@@ -123,11 +133,24 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
+            if (_pendingCharacterEquipmentPacketResults.TryGetValue(resolutionQuery.RequestId, out EquipmentChangeResult characterPacketResult))
+            {
+                _pendingCharacterEquipmentPacketResults.Remove(resolutionQuery.RequestId);
+                _pendingEquipmentChangeRequests.Remove(resolutionQuery.RequestId);
+                return characterPacketResult;
+            }
+
             if (_pendingMechanicEquipmentPacketResults.TryGetValue(resolutionQuery.RequestId, out EquipmentChangeResult packetResult))
             {
                 _pendingMechanicEquipmentPacketResults.Remove(resolutionQuery.RequestId);
                 _pendingEquipmentChangeRequests.Remove(resolutionQuery.RequestId);
                 return packetResult;
+            }
+
+            if (pendingEnvelope.AwaitingCharacterPacketAuthority
+                && unchecked(currTickCount - pendingEnvelope.CharacterPacketAuthorityDeadlineAtTick) < 0)
+            {
+                return null;
             }
 
             if (pendingEnvelope.AwaitingMechanicPacketAuthority
@@ -196,6 +219,38 @@ namespace HaCreator.MapSimulator
                 resolvedCompanionStateToken);
         }
 
+        private bool IsCharacterEquipmentRequest(EquipmentChangeRequest request)
+        {
+            return request != null
+                && (request.Kind == EquipmentChangeRequestKind.InventoryToCharacter
+                    || request.Kind == EquipmentChangeRequestKind.CharacterToCharacter
+                    || request.Kind == EquipmentChangeRequestKind.CharacterToInventory);
+        }
+
+        private bool TryDispatchCharacterEquipmentAuthorityRequest(EquipmentChangeRequest request, out string status)
+        {
+            status = "Character equipment authority dispatch is unavailable.";
+            if (!IsCharacterEquipmentRequest(request))
+            {
+                status = "Equipment request does not target the character equipment owner.";
+                return false;
+            }
+
+            byte[] payload = CharacterEquipmentPacketParity.EncodeAuthorityRequestPayload(request);
+            const int opcode = LocalUtilityPacketInboxManager.CharacterEquipStatePacketType;
+            MechanicAuthorityTransportOutcome outcome = MechanicAuthorityTransportPlanner.DispatchRequest(
+                request.RequestId,
+                opcode,
+                payload,
+                _localUtilityOfficialSessionBridgeEnabled,
+                _localUtilityOfficialSessionBridge.TrySendOutboundPacket,
+                _localUtilityPacketOutbox.TrySendOutboundPacket,
+                _localUtilityOfficialSessionBridge.TryQueueOutboundPacket,
+                _localUtilityPacketOutbox.TryQueueOutboundPacket);
+            status = outcome.Status;
+            return outcome.Accepted;
+        }
+
         private bool IsMechanicEquipmentRequest(EquipmentChangeRequest request)
         {
             return request != null
@@ -230,6 +285,209 @@ namespace HaCreator.MapSimulator
         private byte[] BuildMechanicEquipmentAuthorityRequestPayload(EquipmentChangeRequest request)
         {
             return MechanicEquipmentPacketParity.EncodeAuthorityRequestPayload(request);
+        }
+
+        private bool TryApplyPacketOwnedCharacterEquipPayload(byte[] payload, out string message)
+        {
+            if (!CharacterEquipmentPacketParity.TryDecodePayload(payload, out CharacterEquipmentAuthorityPayload decodedPayload, out message))
+            {
+                return false;
+            }
+
+            return decodedPayload.Mode switch
+            {
+                CharacterEquipmentAuthorityPayloadMode.AuthorityRequest => TryResolvePacketOwnedCharacterAuthorityRequest(decodedPayload, out message),
+                CharacterEquipmentAuthorityPayloadMode.AuthorityResult => TryQueuePacketOwnedCharacterAuthorityResult(decodedPayload, out message),
+                _ => FailPacketOwnedCharacterAuthorityPayload("Unsupported character equipment authority payload mode.", out message)
+            };
+        }
+
+        private bool TryResolvePacketOwnedCharacterAuthorityRequest(
+            CharacterEquipmentAuthorityPayload payload,
+            out string message)
+        {
+            message = null;
+            if (payload.Mode != CharacterEquipmentAuthorityPayloadMode.AuthorityRequest)
+            {
+                message = "Character equipment authority payload is not a request.";
+                return false;
+            }
+
+            if (payload.RequestId <= 0
+                || !_pendingEquipmentChangeRequests.TryGetValue(payload.RequestId, out PendingEquipmentChangeEnvelope pendingEnvelope)
+                || pendingEnvelope?.Request == null)
+            {
+                message = $"Character equipment authority request did not match a pending request id ({payload.RequestId}).";
+                return false;
+            }
+
+            EquipmentChangeRequest request = pendingEnvelope.Request;
+            if (!IsCharacterEquipmentRequest(request))
+            {
+                message = $"Pending request {payload.RequestId} is not owned by a character equipment pane.";
+                return false;
+            }
+
+            if (request.RequestedAtTick != payload.RequestedAtTick)
+            {
+                message = $"Character equipment authority request for {payload.RequestId} did not match the pending request timestamp.";
+                return false;
+            }
+
+            if (request.Kind != payload.RequestKind
+                || request.OwnerKind != payload.OwnerKind
+                || request.OwnerSessionId != payload.OwnerSessionId
+                || request.ExpectedCharacterId != payload.ExpectedCharacterId
+                || request.ExpectedBuildStateToken != payload.ExpectedBuildStateToken
+                || request.ItemId != payload.ItemId
+                || request.SourceInventoryType != payload.SourceInventoryType
+                || request.SourceInventoryIndex != payload.SourceInventoryIndex
+                || request.SourceEquipSlot != payload.SourceEquipSlot
+                || request.TargetEquipSlot != payload.TargetEquipSlot)
+            {
+                message = $"Character equipment authority request {payload.RequestId} did not match the pending request state.";
+                return false;
+            }
+
+            return TryQueuePacketOwnedCharacterAuthorityResult(
+                new CharacterEquipmentAuthorityPayload(
+                    CharacterEquipmentAuthorityPayloadMode.AuthorityResult,
+                    payload.RequestId,
+                    payload.RequestedAtTick,
+                    ResultKind: CharacterEquipmentAuthorityResultKind.LocalRequestAccept),
+                out message);
+        }
+
+        private bool TryQueuePacketOwnedCharacterAuthorityResult(
+            CharacterEquipmentAuthorityPayload payload,
+            out string message)
+        {
+            message = null;
+            if (payload.Mode != CharacterEquipmentAuthorityPayloadMode.AuthorityResult)
+            {
+                message = "Character equipment authority payload is not a result.";
+                return false;
+            }
+
+            if (payload.RequestId <= 0
+                || !_pendingEquipmentChangeRequests.TryGetValue(payload.RequestId, out PendingEquipmentChangeEnvelope pendingEnvelope)
+                || pendingEnvelope?.Request == null)
+            {
+                message = $"Character equipment authority result did not match a pending request id ({payload.RequestId}).";
+                return false;
+            }
+
+            EquipmentChangeRequest request = pendingEnvelope.Request;
+            if (!IsCharacterEquipmentRequest(request))
+            {
+                message = $"Pending request {payload.RequestId} is not owned by a character equipment pane.";
+                return false;
+            }
+
+            if (request.RequestedAtTick != payload.RequestedAtTick)
+            {
+                message = $"Character equipment authority result for request {payload.RequestId} did not match the pending request timestamp.";
+                return false;
+            }
+
+            CharacterBuild build = _playerManager?.Player?.Build;
+            if (build == null)
+            {
+                message = "Character equipment runtime is unavailable.";
+                return false;
+            }
+
+            if (payload.ResultKind == CharacterEquipmentAuthorityResultKind.Reject)
+            {
+                EquipmentChangeResult rejectResult = EquipmentChangeResult.Reject(
+                    string.IsNullOrWhiteSpace(payload.RejectReason)
+                        ? "The character equipment request was rejected by packet authority."
+                        : payload.RejectReason)
+                    .WithCompletionMetadata(
+                        payload.RequestId,
+                        payload.RequestedAtTick,
+                        currTickCount,
+                        payload.ResolvedBuildStateToken != 0 ? payload.ResolvedBuildStateToken : build.ComputeEquipmentStateToken());
+                return TryQueueCharacterEquipmentPacketResult(payload.RequestId, payload.RequestedAtTick, rejectResult, out message);
+            }
+
+            if (EquipmentChangeRequestValidator.TryGetRequestStateRejectReason(
+                    request,
+                    build,
+                    out string requestStateRejectReason))
+            {
+                EquipmentChangeResult staleReject = EquipmentChangeResult.Reject(requestStateRejectReason)
+                    .WithCompletionMetadata(
+                        payload.RequestId,
+                        payload.RequestedAtTick,
+                        currTickCount,
+                        build.ComputeEquipmentStateToken());
+                return TryQueueCharacterEquipmentPacketResult(payload.RequestId, payload.RequestedAtTick, staleReject, out message);
+            }
+
+            if (payload.ResultKind != CharacterEquipmentAuthorityResultKind.LocalRequestAccept)
+            {
+                message = $"Character equipment authority result kind {payload.ResultKind} is unsupported.";
+                return false;
+            }
+
+            EquipmentChangeResult acceptedResult = request.Kind switch
+            {
+                EquipmentChangeRequestKind.InventoryToCharacter => HandleInventoryToCharacterChange(request, build),
+                EquipmentChangeRequestKind.CharacterToCharacter => HandleCharacterToCharacterChange(request, build),
+                EquipmentChangeRequestKind.CharacterToInventory => HandleCharacterToInventoryChange(request, build),
+                _ => EquipmentChangeResult.Reject("Unsupported character equipment authority request kind.")
+            };
+
+            acceptedResult = acceptedResult.WithCompletionMetadata(
+                payload.RequestId,
+                payload.RequestedAtTick,
+                currTickCount,
+                payload.ResolvedBuildStateToken != 0 ? payload.ResolvedBuildStateToken : build.ComputeEquipmentStateToken());
+            return TryQueueCharacterEquipmentPacketResult(payload.RequestId, payload.RequestedAtTick, acceptedResult, out message);
+        }
+
+        private bool TryQueueCharacterEquipmentPacketResult(
+            int requestId,
+            int requestedAtTick,
+            EquipmentChangeResult result,
+            out string message)
+        {
+            message = null;
+            if (requestId <= 0
+                || !_pendingEquipmentChangeRequests.TryGetValue(requestId, out PendingEquipmentChangeEnvelope pendingEnvelope)
+                || pendingEnvelope?.Request == null)
+            {
+                message = $"Character equipment packet result did not match a pending request id ({requestId}).";
+                return false;
+            }
+
+            EquipmentChangeRequest request = pendingEnvelope.Request;
+            if (!IsCharacterEquipmentRequest(request))
+            {
+                message = $"Pending request {requestId} is not owned by a character equipment pane.";
+                return false;
+            }
+
+            if (request.RequestedAtTick != requestedAtTick)
+            {
+                message = $"Character equipment packet result for request {requestId} did not match the pending request timestamp.";
+                return false;
+            }
+
+            _pendingCharacterEquipmentPacketResults[requestId] = result;
+            pendingEnvelope.AwaitingCharacterPacketAuthority = false;
+            pendingEnvelope.CharacterPacketAuthorityDeadlineAtTick = currTickCount;
+            message = result.Accepted
+                ? $"Queued packet-authored character equipment result for request {requestId}."
+                : $"Queued packet-authored character equipment rejection for request {requestId}.";
+            return true;
+        }
+
+        private static bool FailPacketOwnedCharacterAuthorityPayload(string rejectReason, out string message)
+        {
+            message = rejectReason;
+            return false;
         }
 
         private bool TryQueueMechanicEquipmentPacketResult(

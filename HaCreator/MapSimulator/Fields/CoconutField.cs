@@ -231,6 +231,7 @@ namespace HaCreator.MapSimulator.Fields
         public int TimeRemaining => _timeRemaining;
         public bool IsActive => _runtimeActive;
         public bool IsRoundActive => _gameActive;
+        public bool IsLocalBasicActionOwnerActive => ResolveLocalBasicActionOwnerActive(Environment.TickCount);
         public bool AwaitingFinalScore => _awaitingFinalScore;
         public int PendingAttackPacketRequestCount => _pendingAttackPacketRequests.Count;
         public int PendingUndispatchedAttackPacketRequestCount => _pendingAttackPacketRequests.Count(static request => !request.TransportDispatched);
@@ -782,7 +783,7 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     int remainingMs = _finishTick - tickCount;
                     _timeRemaining = remainingMs > 0
-                        ? (remainingMs + 999) / 1000
+                        ? remainingMs / 1000
                         : 0;
                     if (remainingMs <= 0)
                     {
@@ -828,6 +829,28 @@ namespace HaCreator.MapSimulator.Fields
         {
             _pendingAttackPacketRequests.Add(new AttackPacketRequest(targetId, delayMs, requestedAtTick));
         }
+
+        internal bool ResolveLocalBasicActionOwnerActive(int currentTick)
+        {
+            if (!_gameActive || _pendingAttackPacketRequests.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = _pendingAttackPacketRequests.Count - 1; i >= 0; i--)
+            {
+                AttackPacketRequest request = _pendingAttackPacketRequests[i];
+                int ownershipWindowMs = Math.Max(DefaultLocalNormalAttackDelayMs, request.DelayMs) + DefaultLocalNormalAttackDelayMs;
+                int elapsedMs = unchecked(currentTick - request.RequestedAtTick);
+                if (elapsedMs >= 0 && elapsedMs <= ownershipWindowMs)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private void AcknowledgeAttackPacketRequest(int targetId)
         {
             if (_pendingAttackPacketRequests.Count == 0)

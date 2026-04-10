@@ -189,7 +189,8 @@ namespace HaCreator.MapSimulator.Effects
                 return true;
             }
 
-            if (TryResolveAmbiguousTransferPacketType(payload, candidates, -1, null, -1, out packetType, out reason, out _))
+            if (TryResolveAmbiguousTransferPacketType(payload, candidates, -1, null, -1, out packetType, out reason, out bool isStableResolution)
+                && isStableResolution)
             {
                 return true;
             }

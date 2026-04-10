@@ -34,6 +34,7 @@ namespace HaCreator.MapSimulator.Managers
             public string Name { get; init; } = string.Empty;
             public int Level { get; init; }
             public int MaxHp { get; init; }
+            public int MaxMp { get; init; }
             public int Exp { get; init; }
             public bool IsBoss { get; init; }
             public string EpisodeText { get; init; } = string.Empty;
@@ -106,6 +107,7 @@ namespace HaCreator.MapSimulator.Managers
                         Name = definition.Name,
                         Level = definition.Level,
                         MaxHp = definition.MaxHp,
+                        MaxMp = definition.MaxMp,
                         Exp = definition.Exp,
                         IsBoss = definition.IsBoss,
                         OwnedCopies = Math.Clamp(ownedCopies, 0, 5),
@@ -414,6 +416,7 @@ namespace HaCreator.MapSimulator.Managers
                         out string mobName,
                         out int level,
                         out int maxHp,
+                        out int maxMp,
                         out int exp,
                         out bool isBoss,
                         out string episodeText,
@@ -430,6 +433,7 @@ namespace HaCreator.MapSimulator.Managers
                         Name = string.IsNullOrWhiteSpace(mobName) ? $"Mob #{mobId}" : mobName,
                         Level = Math.Max(0, level),
                         MaxHp = Math.Max(0, maxHp),
+                        MaxMp = Math.Max(0, maxMp),
                         Exp = Math.Max(0, exp),
                         IsBoss = isBoss,
                         EpisodeText = episodeText,
@@ -455,6 +459,7 @@ namespace HaCreator.MapSimulator.Managers
             out string mobName,
             out int level,
             out int maxHp,
+            out int maxMp,
             out int exp,
             out bool isBoss,
             out string episodeText,
@@ -465,6 +470,7 @@ namespace HaCreator.MapSimulator.Managers
             mobName = ResolveMobName(mobId);
             level = 0;
             maxHp = 0;
+            maxMp = 0;
             exp = 0;
             isBoss = false;
             string mobType = string.Empty;
@@ -504,6 +510,7 @@ namespace HaCreator.MapSimulator.Managers
 
                 level = mobData.Level;
                 maxHp = mobData.MaxHP;
+                maxMp = mobData.MaxMP;
                 exp = mobData.Exp;
                 isBoss = mobData.IsBoss;
 
@@ -517,6 +524,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 level = 0;
                 maxHp = 0;
+                maxMp = 0;
                 exp = 0;
                 isBoss = false;
             }

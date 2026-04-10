@@ -128,6 +128,11 @@ namespace HaCreator.MapSimulator.Pools
         public IEnumerable<ActiveAffectedArea> ActiveAreas => _areas.Values;
         public int Count => _areas.Count;
 
+        public bool TryGetArea(int objectId, out ActiveAffectedArea area)
+        {
+            return _areas.TryGetValue(objectId, out area);
+        }
+
         public bool Upsert(AffectedAreaCreateInfo createInfo, int currentTime)
         {
             if (createInfo.ObjectId <= 0 || createInfo.SkillId <= 0 || createInfo.WorldBounds.Width <= 0 || createInfo.WorldBounds.Height <= 0)

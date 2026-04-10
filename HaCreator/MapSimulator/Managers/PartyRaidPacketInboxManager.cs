@@ -243,6 +243,7 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
+                SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref packetType, ref payload);
                 return true;
             }
 
@@ -264,6 +265,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref packetType, ref payload);
             return true;
         }
 

@@ -453,15 +453,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
-            string preferredRetryBranch = UsesFlyStyleEmptyActionRetry(skill)
+            return UsesFlyStyleEmptyActionRetry(skill)
                 ? ResolveNamedSummonBranch(skill, "fly")
                 : ResolveNamedSummonBranch(skill, "stand");
-            if (!string.IsNullOrWhiteSpace(preferredRetryBranch))
-            {
-                return preferredRetryBranch;
-            }
-
-            return ResolveIdlePlaybackBranch(skill);
         }
 
         private static int ResolveBeholderLocalSupportActionCode(SkillData skill, string branchName)
@@ -521,6 +515,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (skill == null)
             {
                 return null;
+            }
+
+            if (skill.SelfDestructMinion)
+            {
+                string selfDestructBranch = ResolveNamedSummonBranch(
+                    skill,
+                    EnumeratePacketSelfDestructAttackBranchCandidates(skill));
+                if (!string.IsNullOrWhiteSpace(selfDestructBranch))
+                {
+                    return selfDestructBranch;
+                }
             }
 
             if (skill.SkillId == BeholderSummonSkillId)
@@ -938,14 +943,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                     "attack1",
                     "attack",
                     "attack0"),
-                ClientSupportOwnedAttackAction => ResolveNamedSummonBranch(
+            ClientSupportOwnedAttackAction => ResolveNamedSummonBranch(
+                skill,
+                EnumeratePacketSupportOwnedAttackBranchCandidates(skill)),
+                PacketSkillActionSubsummon => ResolveNamedSummonBranch(
                     skill,
-                    EnumeratePacketSupportOwnedAttackBranchCandidates(skill)),
-                ClientSelfDestructAttackAction => ResolveNamedSummonBranch(
-                    skill,
-                    EnumeratePacketSelfDestructAttackBranchCandidates(skill)),
-                _ => null
-            };
+                    "subsummon",
+                    "skill1",
+                    "skill2")
+                   ?? ResolveAuthoredCustomSummonSkillBranch(skill, 0),
+            ClientSelfDestructAttackAction => ResolveNamedSummonBranch(
+                skill,
+                EnumeratePacketSelfDestructAttackBranchCandidates(skill)),
+            _ => null
+        };
         }
 
         private static string ResolveClientSummonedActionBranch(SkillData skill, int normalizedAction)

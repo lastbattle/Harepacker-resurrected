@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator.UI
         private Func<ReviveOwnerSnapshot> _snapshotProvider;
         private Func<string> _premiumHandler;
         private Func<string> _normalHandler;
+        private Func<string> _defaultButtonHandler;
         private Action<string> _feedbackHandler;
         private ReviveOwnerSnapshot _snapshot = new();
 
@@ -70,11 +71,16 @@ namespace HaCreator.MapSimulator.UI
             _snapshot = _snapshotProvider?.Invoke() ?? new ReviveOwnerSnapshot();
         }
 
-        internal void SetActionHandlers(Func<string> premiumHandler, Func<string> normalHandler, Action<string> feedbackHandler)
+        internal void SetActionHandlers(
+            Func<string> premiumHandler,
+            Func<string> normalHandler,
+            Action<string> feedbackHandler,
+            Func<string> defaultButtonHandler = null)
         {
             _premiumHandler = premiumHandler;
             _normalHandler = normalHandler;
             _feedbackHandler = feedbackHandler;
+            _defaultButtonHandler = defaultButtonHandler ?? normalHandler;
         }
 
         internal void InitializeButtons(UIObject premiumButton, UIObject declineButton, UIObject defaultButton, UIObject closeButton)
@@ -99,7 +105,7 @@ namespace HaCreator.MapSimulator.UI
             if (_defaultButton != null && !ReferenceEquals(_defaultButton, _declineButton))
             {
                 AddButton(_defaultButton);
-                _defaultButton.ButtonClickReleased += _ => ShowFeedback(_normalHandler?.Invoke());
+                _defaultButton.ButtonClickReleased += _ => ShowFeedback(_defaultButtonHandler?.Invoke());
             }
 
             if (_closeButton != null)
@@ -120,7 +126,7 @@ namespace HaCreator.MapSimulator.UI
             KeyboardState keyboardState = Keyboard.GetState();
             if (IsVisible && Pressed(keyboardState, Keys.Enter))
             {
-                ShowFeedback(_snapshot.HasPremiumChoice ? _premiumHandler?.Invoke() : _normalHandler?.Invoke());
+                ShowFeedback(_snapshot.HasPremiumChoice ? _premiumHandler?.Invoke() : _defaultButtonHandler?.Invoke());
             }
 
             if (IsVisible && (Pressed(keyboardState, Keys.Escape) || Pressed(keyboardState, Keys.N)))

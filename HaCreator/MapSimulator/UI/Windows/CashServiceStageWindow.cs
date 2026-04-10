@@ -1170,6 +1170,12 @@ namespace HaCreator.MapSimulator.UI
             _cashCharacterSlotCount = Math.Max(0, (int)reader.ReadInt16());
             _cashBuyCharacterCount = Math.Max(0, (int)reader.ReadInt16());
             _cashCharacterCount = Math.Max(0, (int)reader.ReadInt16());
+            _cashLockerPacketEntries.Clear();
+            foreach (CashItemInfoPacketSnapshot snapshot in snapshots)
+            {
+                _cashLockerPacketEntries.Add(BuildCashItemInfoPacketEntry(snapshot, "Locker item", "CCSWnd_Locker", "Locker"));
+            }
+
             string firstLockerDetail = snapshots.Count > 0
                 ? DescribeCashItemInfoPacketSnapshot(snapshots[0], includeSerialNumber: true)
                 : string.Empty;
@@ -1201,21 +1207,11 @@ namespace HaCreator.MapSimulator.UI
                     return false;
                 }
 
-                int rowNumber = i + 1;
-                string itemTitle = ResolveCashStageGiftRowTitle(snapshot.ItemId, rowNumber, "Gift row");
-                string sender = SanitizePacketString(snapshot.Sender, "CCashShop gift inbox");
-                string giftMessage = SanitizePacketString(snapshot.Message, "No gift message.");
-                entries.Add(new PacketCatalogEntry
-                {
-                    Title = itemTitle,
-                    Detail = $"Gift row {rowNumber.ToString(CultureInfo.InvariantCulture)} from {sender} carries item {Math.Max(0, snapshot.ItemId).ToString(CultureInfo.InvariantCulture)} / serial {snapshot.SerialNumber.ToString(CultureInfo.InvariantCulture)}. {giftMessage}",
-                    Seller = sender,
-                    PriceLabel = $"Item {Math.Max(0, snapshot.ItemId).ToString(CultureInfo.InvariantCulture)}",
-                    StateLabel = "Pending receive",
-                    ListingId = rowNumber
-                });
+                entries.Add(BuildGiftListPacketEntry(snapshot, i + 1));
             }
 
+            _cashGiftPacketEntries.Clear();
+            _cashGiftPacketEntries.AddRange(entries);
             ReplaceCashPacketCatalogEntries("Packet gifts", "Gift", entries);
             _noticeState = entries.Count > 0
                 ? $"Gift inbox refreshed with {entries.Count.ToString(CultureInfo.InvariantCulture)} gift row(s). {entries[0].Detail}"
@@ -1277,11 +1273,36 @@ namespace HaCreator.MapSimulator.UI
             using BinaryReader reader = new(stream);
             if (!TryReadCashItemInfoPacketSnapshot(reader, out CashItemInfoPacketSnapshot snapshot))
             {
+                stream.Position = 0;
+                if (stream.Length < 1 + 55)
+                {
+                    return false;
+                }
+
+                _ = reader.ReadByte();
+                if (!TryReadCashItemInfoPacketSnapshot(reader, out snapshot))
+                {
+                    return false;
+                }
+            }
+
+            if (snapshot.ItemId <= 0 && payload.Length >= 1 + 55)
+            {
+                stream.Position = 1;
+                if (!TryReadCashItemInfoPacketSnapshot(reader, out snapshot))
+                {
+                    return false;
+                }
+            }
+
+            if (snapshot.ItemId <= 0 && snapshot.CommodityId <= 0)
+            {
                 return false;
             }
 
             _cashLockerItemCount = Math.Max(0, _cashLockerItemCount + 1);
             PacketCatalogEntry entry = BuildCashItemInfoPacketEntry(snapshot, "Purchased", "CCSWnd_Locker", "Bought");
+            UpsertCashLockerPacketEntry(entry);
             AppendCashPacketCatalogEntry("Packet purchase", "Buy", entry);
             _noticeState = $"A purchased cash item was appended to the locker (now {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)} item(s)). {DescribeCashItemInfoPacketSnapshot(snapshot, includeSerialNumber: true)}";
             message = $"CCashShop::OnCashItemResBuyDone appended one decoded GW_CashItemInfo body to CCSWnd_Locker: {DescribeCashItemInfoPacketSnapshot(snapshot, includeSerialNumber: true)}";
@@ -1311,6 +1332,16 @@ namespace HaCreator.MapSimulator.UI
             _cashGiftLastSummary =
                 $"Gifted item {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)} x{quantity.ToString(CultureInfo.InvariantCulture)} to {SanitizePacketString(recipient, "gift recipient")} for {prepaidCost.ToString("N0", CultureInfo.InvariantCulture)} NX Prepaid.";
             AppendCashPacketCatalogEntry("Packet gifts", "Gift", new PacketCatalogEntry
+            {
+                Title = $"Gifted item {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)}",
+                Detail = _cashGiftLastSummary,
+                Seller = SanitizePacketString(recipient, "gift recipient"),
+                PriceLabel = prepaidCost.ToString("N0", CultureInfo.InvariantCulture),
+                StateLabel = "Gift sent",
+                ItemId = Math.Max(0, itemId),
+                Quantity = quantity
+            });
+            _cashGiftPacketEntries.Insert(0, new PacketCatalogEntry
             {
                 Title = $"Gifted item {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)}",
                 Detail = _cashGiftLastSummary,
@@ -1410,7 +1441,9 @@ namespace HaCreator.MapSimulator.UI
             {
                 for (int i = snapshots.Count - 1; i >= 0; i--)
                 {
-                    AppendCashPacketCatalogEntry("Packet package", "Package", BuildCashItemInfoPacketEntry(snapshots[i], "Package item", "CCSWnd_Locker", "Package"));
+                    PacketCatalogEntry entry = BuildCashItemInfoPacketEntry(snapshots[i], "Package item", "CCSWnd_Locker", "Package");
+                    UpsertCashLockerPacketEntry(entry);
+                    AppendCashPacketCatalogEntry("Packet package", "Package", entry);
                 }
             }
 
@@ -1453,6 +1486,16 @@ namespace HaCreator.MapSimulator.UI
                 Seller = SanitizePacketString(recipient, "gift recipient"),
                 PriceLabel = prepaidCost.ToString("N0", CultureInfo.InvariantCulture),
                 StateLabel = "Gift package",
+                ItemId = Math.Max(0, itemId),
+                Quantity = Math.Max(1, itemCount)
+            });
+            _cashGiftPacketEntries.Insert(0, new PacketCatalogEntry
+            {
+                Title = $"Gifted package {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)}",
+                Detail = _cashGiftLastSummary,
+                Seller = SanitizePacketString(recipient, "gift recipient"),
+                PriceLabel = prepaidCost.ToString("N0", CultureInfo.InvariantCulture),
+                StateLabel = "Gift package sent",
                 ItemId = Math.Max(0, itemId),
                 Quantity = Math.Max(1, itemCount)
             });
@@ -1681,6 +1724,7 @@ namespace HaCreator.MapSimulator.UI
             long serialNumber = reader.ReadInt64();
             int prepaidRefund = Math.Max(0, reader.ReadInt32());
             _cashLockerItemCount = Math.Max(0, _cashLockerItemCount - 1);
+            RemoveCashLockerPacketEntryBySerialNumber(serialNumber);
             _noticeState =
                 $"Rebate removed locker serial {serialNumber.ToString(CultureInfo.InvariantCulture)} and returned {prepaidRefund.ToString("N0", CultureInfo.InvariantCulture)} NX Prepaid.";
             message = $"CCashShop::OnCashItemResRebateDone updated CCSWnd_Locker with {_noticeState}";
@@ -2574,6 +2618,30 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        private static PacketCatalogEntry BuildGiftListPacketEntry(GiftListPacketSnapshot snapshot, int rowNumber)
+        {
+            int itemId = Math.Max(0, snapshot?.ItemId ?? 0);
+            string sender = SanitizePacketString(snapshot?.Sender, "Unknown sender");
+            string message = SanitizePacketString(snapshot?.Message, string.Empty);
+            string title = ResolveCashStageGiftRowTitle(itemId, Math.Max(1, rowNumber), "Gift");
+            string detail = string.IsNullOrWhiteSpace(message)
+                ? $"Gift row {Math.Max(1, rowNumber).ToString(CultureInfo.InvariantCulture)} from {sender}."
+                : $"Gift row {Math.Max(1, rowNumber).ToString(CultureInfo.InvariantCulture)} from {sender}: {message}";
+            return new PacketCatalogEntry
+            {
+                Title = title,
+                Detail = detail,
+                Seller = sender,
+                PriceLabel = snapshot?.SerialNumber > 0
+                    ? $"SN {snapshot.SerialNumber.ToString(CultureInfo.InvariantCulture)}"
+                    : $"Row {Math.Max(1, rowNumber).ToString(CultureInfo.InvariantCulture)}",
+                StateLabel = "Gift",
+                SerialNumber = snapshot?.SerialNumber ?? 0,
+                ItemId = itemId,
+                Quantity = 1
+            };
+        }
+
         private static string DescribeCashItemInfoPacketSnapshot(CashItemInfoPacketSnapshot snapshot, bool includeSerialNumber)
         {
             if (snapshot == null)
@@ -2680,6 +2748,39 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return "Wish";
+        }
+
+        private void UpsertCashLockerPacketEntry(PacketCatalogEntry entry)
+        {
+            if (entry == null)
+            {
+                return;
+            }
+
+            int existingIndex = _cashLockerPacketEntries.FindIndex(candidate =>
+                (entry.SerialNumber > 0 && candidate.SerialNumber == entry.SerialNumber)
+                || (entry.SerialNumber <= 0 && entry.ListingId > 0 && candidate.ListingId == entry.ListingId)
+                || (entry.SerialNumber <= 0 && entry.ListingId <= 0 && entry.ItemId > 0 && candidate.ItemId == entry.ItemId));
+
+            if (existingIndex >= 0)
+            {
+                _cashLockerPacketEntries[existingIndex] = entry;
+            }
+            else
+            {
+                _cashLockerPacketEntries.Insert(0, entry);
+            }
+        }
+
+        private void RemoveCashLockerPacketEntryBySerialNumber(long serialNumber)
+        {
+            if (serialNumber <= 0)
+            {
+                return;
+            }
+
+            _cashLockerPacketEntries.RemoveAll(entry => entry.SerialNumber == serialNumber);
+            _cashPacketCatalogEntries.RemoveAll(entry => entry.SerialNumber == serialNumber);
         }
 
         private void ApplyCashPurchaseRecordStateToCatalogEntries(int commoditySerialNumber, bool purchased)

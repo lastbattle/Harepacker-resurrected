@@ -1037,8 +1037,8 @@ namespace HaCreator.MapSimulator.Managers
 
                 ReactorInstance instance = reactorItem.ReactorInstance;
                 Rectangle rect = new Rectangle(
-                    instance.X - (int)context.ShiftCenter.X - (instance.Width - 20),
-                    instance.Y - (int)context.ShiftCenter.Y - instance.Height,
+                    reactorItem.CurrentWorldX - (int)context.ShiftCenter.X - (instance.Width - 20),
+                    reactorItem.CurrentWorldY - (int)context.ShiftCenter.Y - instance.Height,
                     Math.Max(80, instance.Width + 40),
                     Math.Max(120, instance.Height));
 

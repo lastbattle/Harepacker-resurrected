@@ -7,10 +7,14 @@ namespace HaCreator.MapSimulator.UI
     internal static class StatusBarChatLayoutRules
     {
         internal const int ClientChatLogTextLeftInset = 9;
+        internal const int ClientWhisperPickerModalWidth = 260;
         internal const int ClientWhisperPickerModalComboLeft = 21;
         internal const int ClientWhisperPickerModalComboWidth = 222;
         internal const int ClientWhisperPickerModalComboBottomOffset = 63;
         internal const int ClientWhisperPickerModalListGap = 6;
+        internal const int ClientWhisperPickerModalOkButtonLeft = 157;
+        internal const int ClientWhisperPickerModalCloseButtonLeft = 198;
+        internal const int ClientWhisperPickerModalButtonBottomOffset = 31;
         private const int ChatWrapIndentSpaces = 5;
         private const int ChatSpecialFirstLineWidthReduction = 38;
         private const int WhisperPickerModalContentPadding = 16;
@@ -270,6 +274,25 @@ namespace HaCreator.MapSimulator.UI
                 slotBounds.Y + offsetY,
                 resolvedWidth,
                 resolvedHeight);
+        }
+
+        public static Rectangle ResolveWhisperPickerButtonVisualBounds(
+            Rectangle slotBounds,
+            int textureWidth,
+            int textureHeight,
+            Point baseOrigin,
+            Point stateOrigin)
+        {
+            Rectangle centeredBounds = ResolveCenteredWhisperPickerButtonBounds(
+                slotBounds,
+                textureWidth,
+                textureHeight);
+            Point originDelta = ResolveWhisperPickerRowOriginDelta(baseOrigin, stateOrigin);
+            return new Rectangle(
+                centeredBounds.X + originDelta.X,
+                centeredBounds.Y + originDelta.Y,
+                centeredBounds.Width,
+                centeredBounds.Height);
         }
 
         public static Point ResolveWhisperPickerRowOriginDelta(

@@ -1103,23 +1103,32 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
-            string stateKey = snapshot.StateKey ?? string.Empty;
-            if (stateKey.IndexOf("expired", StringComparison.OrdinalIgnoreCase) >= 0
-                || stateKey.IndexOf("closed", StringComparison.OrdinalIgnoreCase) >= 0)
+            string statusName = ResolveMiniRoomStatusTextureName(snapshot);
+            if (string.Equals(statusName, "Disable", StringComparison.Ordinal))
             {
                 return assets.Disable;
             }
 
-            if (stateKey.IndexOf("progress", StringComparison.OrdinalIgnoreCase) >= 0
-                || stateKey.IndexOf("restock", StringComparison.OrdinalIgnoreCase) >= 0
-                || stateKey.IndexOf("updating", StringComparison.OrdinalIgnoreCase) >= 0
-                || stateKey.IndexOf("claim", StringComparison.OrdinalIgnoreCase) >= 0
-                || stateKey.IndexOf("sold", StringComparison.OrdinalIgnoreCase) >= 0)
+            return assets.Able;
+        }
+
+        internal static string ResolveMiniRoomStatusTextureNameForTesting(SocialRoomFieldActorSnapshot snapshot)
+        {
+            return ResolveMiniRoomStatusTextureName(snapshot);
+        }
+
+        private static string ResolveMiniRoomStatusTextureName(SocialRoomFieldActorSnapshot snapshot)
+        {
+            if (snapshot == null)
             {
-                return assets.Progress;
+                return string.Empty;
             }
 
-            return assets.Able;
+            byte maxUsers = ResolveMiniRoomMaxUsers(snapshot);
+            byte currentUsers = ResolveMiniRoomCurrentUsers(snapshot);
+            return maxUsers > 0 && currentUsers >= maxUsers
+                ? "Disable"
+                : "Able";
         }
 
         private static int ResolveMiniRoomBalloonVerticalAdjustment(SocialRoomFieldActorSnapshot snapshot)

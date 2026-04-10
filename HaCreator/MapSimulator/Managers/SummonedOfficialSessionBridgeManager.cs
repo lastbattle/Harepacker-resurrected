@@ -1457,10 +1457,12 @@ namespace HaCreator.MapSimulator.Managers
                     capture.PrimaryTargetMobId,
                     capture.TargetMobIds);
                 if (selectedCapture != null
-                    && !ShouldPreferSg88TemplateLanePreference(
+                    && !ShouldPreferSg88CaptureTemplateCandidate(
                         lanePreference,
+                        capture.ResolutionSource,
                         requestPacket.ObservedAt,
                         selectedLanePreference,
+                        selectedCapture.ResolutionSource,
                         selectedObservedAt))
                 {
                     return false;
@@ -1627,6 +1629,7 @@ namespace HaCreator.MapSimulator.Managers
                 preferredResolutionSource = PreferSg88TemplateResolutionSource(
                     capture.ResolutionSource,
                     existingTemplate.ResolutionSource);
+                existingTemplate.ResolutionSource = preferredResolutionSource;
                 if (existingTemplate.ObservedAt > trace.ObservedAt
                     || (existingTemplate.ObservedAt == trace.ObservedAt
                         && string.CompareOrdinal(existingTemplate.Evidence, binding.Evidence) >= 0))
@@ -1751,10 +1754,12 @@ namespace HaCreator.MapSimulator.Managers
             return new Sg88ManualAttackTemplateLanePreference(0, orderedMatchScore, leadingOrderedMatchCount, exactOrderedMatchCount);
         }
 
-        private static bool ShouldPreferSg88TemplateLanePreference(
+        internal static bool ShouldPreferSg88CaptureTemplateCandidate(
             Sg88ManualAttackTemplateLanePreference candidate,
+            string candidateResolutionSource,
             int candidateObservedAt,
             Sg88ManualAttackTemplateLanePreference selected,
+            string selectedResolutionSource,
             int selectedObservedAt)
         {
             if (candidate.LaneScore != selected.LaneScore)
@@ -1778,6 +1783,16 @@ namespace HaCreator.MapSimulator.Managers
                 && candidate.OrderedMatchScore != selected.OrderedMatchScore)
             {
                 return candidate.OrderedMatchScore > selected.OrderedMatchScore;
+            }
+
+            if (candidate.LaneScore > 0)
+            {
+                int candidateResolutionRank = GetSg88TemplateResolutionRank(candidateResolutionSource);
+                int selectedResolutionRank = GetSg88TemplateResolutionRank(selectedResolutionSource);
+                if (candidateResolutionRank != selectedResolutionRank)
+                {
+                    return candidateResolutionRank > selectedResolutionRank;
+                }
             }
 
             return candidateObservedAt >= selectedObservedAt;

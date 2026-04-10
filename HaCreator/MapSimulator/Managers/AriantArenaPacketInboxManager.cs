@@ -79,6 +79,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int PacketTypeMeleeAttack3 = 213;
         private const int PacketTypeMeleeAttack4 = 214;
         private const int PacketTypeSkillPrepare = 215;
+        private const int PacketTypeMovingShootAttackPrepare = 216;
         private const int PacketTypeSkillCancel = 217;
         private const int PacketTypeEmotion = 219;
         private const int PacketTypeSetActiveEffectItem = 220;
@@ -373,7 +374,9 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == PacketTypeMeleeAttack3
                 || packetType == PacketTypeMeleeAttack4
                 || packetType == PacketTypeSkillPrepare
+                || packetType == PacketTypeMovingShootAttackPrepare
                 || packetType == PacketTypeSkillCancel
+                || packetType == PacketTypeEmotion
                 || packetType == PacketTypeSetActiveEffectItem
                 || packetType == PacketTypeSetActivePortableChair
                 || packetType == PacketTypeAvatarModified
@@ -516,6 +519,7 @@ namespace HaCreator.MapSimulator.Managers
                 "213" or "melee3" => AssignPacketType(PacketTypeMeleeAttack3, out packetType),
                 "214" or "melee4" or "melee" or "attack" => AssignPacketType(PacketTypeMeleeAttack4, out packetType),
                 "215" or "prepare" or "skillprepare" => AssignPacketType(PacketTypeSkillPrepare, out packetType),
+                "216" or "movingshootprepare" or "movingshoot" or "shootprepare" => AssignPacketType(PacketTypeMovingShootAttackPrepare, out packetType),
                 "217" or "prepareclear" or "preparedclear" or "skillcancel" => AssignPacketType(PacketTypeSkillCancel, out packetType),
                 "219" or "emotion" => AssignPacketType(PacketTypeEmotion, out packetType),
                 "220" or "activeeffect" or "activeeffectitem" or "setactiveeffectitem" => AssignPacketType(PacketTypeSetActiveEffectItem, out packetType),
@@ -547,6 +551,7 @@ namespace HaCreator.MapSimulator.Managers
                 PacketTypeMeleeAttack3 => "melee3 (213)",
                 PacketTypeMeleeAttack4 => "melee4 (214)",
                 PacketTypeSkillPrepare => "skillprepare (215)",
+                PacketTypeMovingShootAttackPrepare => "movingshootprepare (216)",
                 PacketTypeSkillCancel => "skillcancel (217)",
                 PacketTypeEmotion => "emotion (219)",
                 PacketTypeSetActiveEffectItem => "setactiveeffectitem (220)",

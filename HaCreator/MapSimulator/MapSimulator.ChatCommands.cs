@@ -333,7 +333,7 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleTransportSessionCommand(string[] args)
         {
-            const string sessionUsage = "Usage: /transport session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]";
+            const string sessionUsage = "Usage: /transport session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|queue <historyIndex>|sendraw <hex>|queueraw <hex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]";
             string sessionAction = args.Length > 1 ? args[1] : "status";
 
             switch (sessionAction.ToLowerInvariant())
@@ -391,6 +391,48 @@ namespace HaCreator.MapSimulator
                     return _transportOfficialSessionBridge.TryReplayRecentOutboundPacket(replayIndex, out string replayStatus)
                         ? ChatCommandHandler.CommandResult.Ok(replayStatus)
                         : ChatCommandHandler.CommandResult.Error(replayStatus);
+
+                case "queue":
+                    if (args.Length < 3
+                        || !int.TryParse(args[2], out int queueIndex)
+                        || queueIndex <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                    }
+
+                    return _transportOfficialSessionBridge.TryQueueRecentOutboundPacket(queueIndex, out string queueStatus)
+                        ? ChatCommandHandler.CommandResult.Ok(queueStatus)
+                        : ChatCommandHandler.CommandResult.Error(queueStatus);
+
+                case "sendraw":
+                    string sendRawParseStatus = null;
+                    if (args.Length < 3
+                        || !TransportationOfficialSessionBridgeManager.TryParseOutboundRawPacketHex(
+                            string.Concat(args.Skip(2)),
+                            out byte[] sendRawPacket,
+                            out sendRawParseStatus))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(sendRawParseStatus ?? sessionUsage);
+                    }
+
+                    return _transportOfficialSessionBridge.TrySendRawPacket(sendRawPacket, out string sendRawStatus)
+                        ? ChatCommandHandler.CommandResult.Ok(sendRawStatus)
+                        : ChatCommandHandler.CommandResult.Error(sendRawStatus);
+
+                case "queueraw":
+                    string queueRawParseStatus = null;
+                    if (args.Length < 3
+                        || !TransportationOfficialSessionBridgeManager.TryParseOutboundRawPacketHex(
+                            string.Concat(args.Skip(2)),
+                            out byte[] queueRawPacket,
+                            out queueRawParseStatus))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(queueRawParseStatus ?? sessionUsage);
+                    }
+
+                    return _transportOfficialSessionBridge.TryQueueRawPacket(queueRawPacket, out string queueRawStatus)
+                        ? ChatCommandHandler.CommandResult.Ok(queueRawStatus)
+                        : ChatCommandHandler.CommandResult.Error(queueRawStatus);
 
                 case "sendinit":
                 {
@@ -2585,7 +2627,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "guildboss",
                 "Inspect or update guild boss healer and pulley state",
-                "/guildboss [status|transport [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]",
+                "/guildboss [status|transport [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]",
                 args =>
                 {
                     GuildBossField guildBoss = _specialFieldRuntime.SpecialEffects.GuildBoss;
@@ -2688,11 +2730,11 @@ namespace HaCreator.MapSimulator
                         {
                             if (args.Length < 5
                                 || !int.TryParse(args[2], out int listenPort)
-                                || listenPort <= 0
+                                || listenPort < 0
                                 || !int.TryParse(args[4], out int remotePort)
                                 || remotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session start <listenPort> <serverHost> <serverPort>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session start <listenPort|0> <serverHost> <serverPort>");
                             }
 
 
@@ -2708,11 +2750,11 @@ namespace HaCreator.MapSimulator
                         {
                             if (args.Length < 4
                                 || !int.TryParse(args[2], out int autoListenPort)
-                                || autoListenPort <= 0
+                                || autoListenPort < 0
                                 || !int.TryParse(args[3], out int autoRemotePort)
                                 || autoRemotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]");
                             }
 
 
@@ -2722,7 +2764,7 @@ namespace HaCreator.MapSimulator
                             {
                                 if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]");
                                 }
 
 
@@ -2745,7 +2787,7 @@ namespace HaCreator.MapSimulator
                         }
 
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]");
 
                     }
 
@@ -2841,7 +2883,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss [status|transport [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss [status|transport [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]");
 
                 });
             _chat.CommandHandler.RegisterCommand(
@@ -3279,7 +3321,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "transport",
                 "Inspect or drive the transit/voyage transport packet inbox and official-session bridge",
-                        "/transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
+                        "/transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|queue <historyIndex>|sendraw <hex>|queueraw <hex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
                 args =>
                 {
                     bool transportActive = IsTransitVoyageWrapperMap(_mapBoard?.MapInfo) && _transportField.HasRouteConfiguration;
@@ -3436,7 +3478,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|queue <historyIndex>|sendraw <hex>|queueraw <hex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
 
                 });
 
@@ -8439,7 +8481,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "messagebox",
                 "Inspect or drive the field message-box and chalkboard pool",
-                "/messagebox [status|create [itemId] <text>|leave <id> [fade|immediate]|clear|fail|packet <325|326|327> [payloadhex=..|payloadb64=..]|packetraw <325|326|327> [hex]]",
+                "/messagebox [status|create [itemId] <text>|leave <id> [fade|immediate]|clear|fail|packet <325|326|327> [payloadhex=..|payloadb64=..]|packetraw <325|326|327> [hex]|session [status|discover|start|startauto|stop]]",
                 args =>
                 {
                     _fieldMessageBoxRuntime.Initialize(GraphicsDevice);
@@ -8568,8 +8610,14 @@ namespace HaCreator.MapSimulator
 
 
 
+                        case "session":
+                        case "bridge":
+                            return HandleFieldMessageBoxSessionCommand(args.Skip(1).ToArray());
+
+
+
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /messagebox [status|create [itemId] <text>|leave <id> [fade|immediate]|clear|fail|packet <325|326|327> [payloadhex=..|payloadb64=..]|packetraw <325|326|327> [hex]]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /messagebox [status|create [itemId] <text>|leave <id> [fade|immediate]|clear|fail|packet <325|326|327> [payloadhex=..|payloadb64=..]|packetraw <325|326|327> [hex]|session [status|discover|start|startauto|stop]]");
                     }
                 });
 

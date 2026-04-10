@@ -67,6 +67,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, int> _animationDisplayerFollowAnimationIds = new();
         private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
         private int _animationDisplayerLocalQuestDeliveryItemId;
+        private int _packetOwnedAnimationDisplayerFollowDriverId;
 
         internal enum AnimationDisplayerTransientEffectKind
         {
@@ -86,7 +87,8 @@ namespace HaCreator.MapSimulator
         private readonly record struct AnimationDisplayerSkillUseBranchRequest(
             string BranchName,
             Point OriginOffset,
-            bool FollowOwnerFacing = true);
+            bool FollowOwnerFacing = true,
+            bool FollowOwnerPosition = true);
 
         private void RegisterAnimationDisplayerChatCommand()
         {
@@ -235,6 +237,7 @@ namespace HaCreator.MapSimulator
             ClearAnimationDisplayerFollowAnimations();
             _packetOwnedAnimationDisplayerAreaAnimationIds.Clear();
             _animationDisplayerLocalQuestDeliveryItemId = 0;
+            _packetOwnedAnimationDisplayerFollowDriverId = 0;
             ResetAnimationDisplayerLocalFadeLayer();
         }
 
@@ -544,6 +547,7 @@ namespace HaCreator.MapSimulator
                     SpawnRelativeToTarget = relativeEmission,
                     SpawnArea = BuildAnimationDisplayerFollowEmissionArea(),
                     SpawnUsesEmissionBox = !relativeEmission,
+                    SpawnAppliesEmissionBias = relativeEmission,
                     SpawnVerticalEmissionBias = AnimationDisplayerFollowEmissionVerticalBias,
                     SpawnOffsetMin = BuildAnimationDisplayerFollowSpawnOffsetMin(relativeEmission),
                     SpawnOffsetMax = BuildAnimationDisplayerFollowSpawnOffsetMax(relativeEmission)
@@ -888,6 +892,44 @@ namespace HaCreator.MapSimulator
             TryRegisterAnimationDisplayerSkillUse(castInfo);
         }
 
+        private bool TryRegisterAnimationDisplayerLocalSkillUseBranchAtWorldOrigin(
+            int skillId,
+            string branchName,
+            Vector2 worldOrigin,
+            int currentTime,
+            bool followOwnerFacing = false)
+        {
+            if (skillId <= 0 || string.IsNullOrWhiteSpace(branchName) || _animationEffects == null)
+            {
+                return false;
+            }
+
+            PlayerCharacter localPlayer = _playerManager?.Player;
+            int localCharacterId = localPlayer?.Build?.Id ?? 0;
+            bool facingRight = localPlayer?.FacingRight ?? true;
+            int delayRate = _playerManager?.Skills?.ResolveSharedSkillUseDelayRate(skillId) ?? 1000;
+            TryResolveAnimationDisplayerSkillUseOwner(
+                localCharacterId,
+                out _,
+                out Func<bool> getOwnerFacingRight);
+
+            return TryRegisterAnimationDisplayerSkillUseBranch(
+                localCharacterId,
+                skillId,
+                new AnimationDisplayerSkillUseBranchRequest(
+                    branchName,
+                    Point.Zero,
+                    FollowOwnerFacing: followOwnerFacing,
+                    FollowOwnerPosition: false),
+                worldOrigin.X,
+                worldOrigin.Y,
+                facingRight,
+                currentTime,
+                delayRate,
+                getOwnerPosition: null,
+                getOwnerFacingRight: followOwnerFacing ? getOwnerFacingRight : null);
+        }
+
         private SkillCastInfo BuildAnimationDisplayerLocalSkillUseRequest(
             int skillId,
             SkillData skillData,
@@ -967,12 +1009,15 @@ namespace HaCreator.MapSimulator
             bool hasOriginOffset = branchRequest.OriginOffset != Point.Zero;
             float branchX = casterX + branchRequest.OriginOffset.X;
             float branchY = casterY + branchRequest.OriginOffset.Y;
-            Func<Vector2> branchOwnerPosition = getOwnerPosition;
-            if (hasOriginOffset && getOwnerPosition != null)
+            Func<Vector2> branchOwnerPosition = branchRequest.FollowOwnerPosition
+                ? getOwnerPosition
+                : null;
+            if (hasOriginOffset && branchOwnerPosition != null)
             {
+                Func<Vector2> ownerPositionProvider = branchOwnerPosition;
                 branchOwnerPosition = () =>
                 {
-                    Vector2 ownerPosition = getOwnerPosition();
+                    Vector2 ownerPosition = ownerPositionProvider();
                     ownerPosition.X += branchRequest.OriginOffset.X;
                     ownerPosition.Y += branchRequest.OriginOffset.Y;
                     return ownerPosition;
@@ -1230,7 +1275,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            variant = animation.ZOrder < 0
+            variant = ClientOwnedAvatarEffectParity.PrefersUnderFaceAvatarEffectPlane(animation)
                 ? new AnimationDisplayerSkillUseAvatarEffectVariant { UnderFaceAnimation = animation }
                 : new AnimationDisplayerSkillUseAvatarEffectVariant { OverlayAnimation = animation };
             return true;
@@ -2430,6 +2475,7 @@ namespace HaCreator.MapSimulator
             }
 
             _animationDisplayerFollowAnimationIds.Clear();
+            _packetOwnedAnimationDisplayerFollowDriverId = 0;
         }
 
         private void ClearAnimationDisplayerFollow(int ownerCharacterId)
@@ -2449,6 +2495,12 @@ namespace HaCreator.MapSimulator
                 _animationEffects.RemoveFollow(followId);
                 _animationDisplayerFollowAnimationIds.Remove(registrationKey);
             }
+
+            if (registrationKey < 0
+                && (registrationKey & AnimationDisplayerPacketOwnedFollowRegistrationMask) == AnimationDisplayerPacketOwnedFollowRegistrationMask)
+            {
+                _packetOwnedAnimationDisplayerFollowDriverId = 0;
+            }
         }
 
         private void SyncPacketOwnedAnimationDisplayerFollow()
@@ -2458,6 +2510,7 @@ namespace HaCreator.MapSimulator
             if (localCharacterId <= 0 || registrationKey == 0)
             {
                 ClearAnimationDisplayerFollowRegistration(registrationKey);
+                _packetOwnedAnimationDisplayerFollowDriverId = 0;
                 return;
             }
 
@@ -2465,14 +2518,25 @@ namespace HaCreator.MapSimulator
             if (_localFollowRuntime.AttachedDriverId <= 0 || player == null)
             {
                 ClearAnimationDisplayerFollowRegistration(registrationKey);
+                _packetOwnedAnimationDisplayerFollowDriverId = 0;
                 return;
             }
 
-            TryRegisterAnimationDisplayerFollow(
+            int attachedDriverId = _localFollowRuntime.AttachedDriverId;
+            if (_packetOwnedAnimationDisplayerFollowDriverId == attachedDriverId
+                && _animationDisplayerFollowAnimationIds.ContainsKey(registrationKey))
+            {
+                return;
+            }
+
+            if (TryRegisterAnimationDisplayerFollow(
                 registrationKey,
                 localCharacterId,
                 () => _playerManager?.Player?.Position ?? player.Position,
-                relativeEmission: true);
+                relativeEmission: true))
+            {
+                _packetOwnedAnimationDisplayerFollowDriverId = attachedDriverId;
+            }
         }
 
         private void ClearAnimationDisplayerLocalQuestDeliveryOwner()

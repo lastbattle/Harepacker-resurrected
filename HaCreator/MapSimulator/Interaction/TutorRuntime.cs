@@ -266,6 +266,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             BindRuntimeCharacter(runtimeCharacterId);
             int normalizedSkillId = NormalizeTutorSkillId(requestedSkillId);
+            DeactivateActiveTutorVariantsForCharacterExcept(normalizedSkillId, BoundCharacterId, currentTick);
             if (normalizedSkillId > 0)
             {
                 InsertClientTutorSkillSlot(normalizedSkillId);
@@ -334,6 +335,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
+            DeactivateActiveTutorVariantsForCharacterExcept(normalizedSkillId, normalizedCharacterId, currentTick);
             InsertClientTutorSkillSlot(normalizedSkillId);
             UpsertRegisteredTutorVariant(
                 normalizedSkillId,
@@ -855,6 +857,38 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 SharedClientTutorSkillIds.Remove(skillId);
+            }
+        }
+
+        private void DeactivateActiveTutorVariantsForCharacterExcept(int activeSkillId, int runtimeCharacterId, int currentTick)
+        {
+            int normalizedCharacterId = Math.Max(0, runtimeCharacterId);
+            if (activeSkillId <= 0 || normalizedCharacterId <= 0)
+            {
+                return;
+            }
+
+            IReadOnlyList<TutorVariantSnapshot> variants = SnapshotSharedRegisteredTutorVariants();
+            for (int i = 0; i < variants.Count; i++)
+            {
+                TutorVariantSnapshot variant = variants[i];
+                if (!variant.IsActive
+                    || variant.SkillId <= 0
+                    || variant.SkillId == activeSkillId
+                    || variant.BoundCharacterId != normalizedCharacterId)
+                {
+                    continue;
+                }
+
+                UpsertRegisteredTutorVariant(
+                    variant.SkillId,
+                    variant.ActorHeight,
+                    normalizedCharacterId,
+                    currentTick,
+                    isActive: false,
+                    markRemoval: true);
+                RemoveSharedTutorMessageSnapshot(variant.SkillId, normalizedCharacterId);
+                RemoveClientTutorSkillSlot(variant.SkillId);
             }
         }
 

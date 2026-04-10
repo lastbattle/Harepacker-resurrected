@@ -577,6 +577,32 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        private void ApplyRemoteAffectedAreaDamageShareToOwner(int areaObjectId, int sharedDamage, int currentTime)
+        {
+            if (areaObjectId <= 0
+                || sharedDamage <= 0
+                || _affectedAreaPool?.TryGetArea(areaObjectId, out ActiveAffectedArea area) != true
+                || area?.SourceKind != AffectedAreaSourceKind.PlayerSkill
+                || !area.IsActive(currentTime)
+                || area.OwnerId <= 0
+                || _remoteUserPool?.TryGetActor(area.OwnerId, out RemoteUserActor ownerActor) != true
+                || ownerActor?.Build == null)
+            {
+                return;
+            }
+
+            ownerActor.Build.HP = Math.Max(0, ownerActor.Build.HP - sharedDamage);
+            if (ownerActor.IsVisibleInWorld)
+            {
+                _combatEffects?.AddPartyDamage(
+                    sharedDamage,
+                    ownerActor.Position.X,
+                    ownerActor.Position.Y - 60f,
+                    isCritical: false,
+                    currentTime);
+            }
+        }
+
         private bool IsAffectedAreaOwnerPartyMember(int ownerId)
         {
             if (ownerId <= 0 || !_remoteUserPool.TryGetActor(ownerId, out RemoteUserActor actor) || string.IsNullOrWhiteSpace(actor?.Name))

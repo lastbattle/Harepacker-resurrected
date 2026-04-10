@@ -261,6 +261,18 @@ namespace HaCreator.MapSimulator.Fields
             return relayPayload;
         }
 
+        public static void NormalizeCurrentWrapperRelayPacket(ref int packetType, ref byte[] payload)
+        {
+            payload ??= Array.Empty<byte>();
+            if (packetType == CurrentWrapperRelayOpcode)
+            {
+                return;
+            }
+
+            payload = BuildCurrentWrapperRelayPayload(packetType, payload);
+            packetType = CurrentWrapperRelayOpcode;
+        }
+
         internal static bool TryDecodeCurrentWrapperRelayPayload(byte[] relayPayload, out int packetType, out byte[] wrapperPayload, out string error)
         {
             packetType = 0;

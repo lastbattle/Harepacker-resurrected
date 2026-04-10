@@ -47,6 +47,10 @@ namespace HaCreator.MapSimulator.UI
         private const int ComposeBodyClientMaxLineWidth = 240;
         private const int ComposeScrollBarWidth = 12;
         private const int CommentScrollBarWidth = 10;
+        private const int PromptBoxWidth = 250;
+        private const int PromptBoxHeight = 98;
+        private const int PromptButtonWidth = 64;
+        private const int PromptButtonHeight = 22;
         private const int KeyRepeatDelayMs = 400;
         private const int KeyRepeatRateMs = 35;
 
@@ -80,6 +84,9 @@ namespace HaCreator.MapSimulator.UI
         private bool _isDraggingCommentScrollBar;
         private int _commentScrollDragOffsetY;
         private int _lastDetailThreadId = -1;
+        private PendingPrompt _pendingPrompt;
+        private int _pendingPromptVisibleReplyIndex = -1;
+        private bool _ignorePromptMouseRelease;
 
         private Func<GuildBbsSnapshot> _snapshotProvider;
         private Action<int> _selectThreadHandler;
@@ -125,6 +132,14 @@ namespace HaCreator.MapSimulator.UI
             ComposeTitle,
             ComposeBody,
             ReplyBody
+        }
+
+        private enum PendingPrompt
+        {
+            None,
+            DeleteThread,
+            DeleteLatestReply,
+            DeleteReply
         }
 
         private sealed class RowLayout
@@ -302,14 +317,14 @@ namespace HaCreator.MapSimulator.UI
             ConfigureButton(_noticeButton, () => ShowFeedback(_toggleNoticeHandler?.Invoke()));
             ConfigureButton(_writeButton, HandleBeginWrite);
             ConfigureButton(_retouchButton, HandleEditSelected);
-            ConfigureButton(_deleteButton, () => ShowFeedback(_deleteHandler?.Invoke()));
+            ConfigureButton(_deleteButton, OpenDeleteThreadPrompt);
             ConfigureButton(_quitButton, Hide);
             ConfigureButton(_replyButton, HandleSubmitReply);
-            ConfigureButton(_replyDeleteButton, () => ShowFeedback(_replyDeleteHandler?.Invoke()));
+            ConfigureButton(_replyDeleteButton, OpenDeleteLatestReplyPrompt);
             for (int index = 0; index < _commentDeleteButtons.Length; index++)
             {
                 int visibleIndex = index;
-                ConfigureButton(_commentDeleteButtons[index], () => ShowFeedback(_deleteReplyAtVisibleIndexHandler?.Invoke(visibleIndex)));
+                ConfigureButton(_commentDeleteButtons[index], () => OpenDeleteReplyPrompt(visibleIndex));
             }
             ConfigureButton(_emoticonLeftButton, () => MoveCashEmoticonPage(-1));
             ConfigureButton(_emoticonRightButton, () => MoveCashEmoticonPage(1));
@@ -339,7 +354,18 @@ namespace HaCreator.MapSimulator.UI
             bool releasedComposeDrag = _isDraggingComposeScrollBar && leftReleased;
             bool releasedDetailBodyDrag = _isDraggingDetailBodyScrollBar && leftReleased;
             bool releasedCommentDrag = _isDraggingCommentScrollBar && leftReleased;
-            if (leftReleased && ContainsPoint(mouseState.X, mouseState.Y))
+            if (leftReleased && _pendingPrompt != PendingPrompt.None)
+            {
+                if (_ignorePromptMouseRelease)
+                {
+                    _ignorePromptMouseRelease = false;
+                }
+                else
+                {
+                    HandlePromptMouseClick(mouseState.Position);
+                }
+            }
+            else if (leftReleased && ContainsPoint(mouseState.X, mouseState.Y))
             {
                 if (!releasedComposeDrag && !releasedDetailBodyDrag && !releasedCommentDrag)
                 {
@@ -408,6 +434,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 DrawDetailPane(sprite, snapshot, TickCount);
             }
+
+            DrawPromptOverlay(sprite);
         }
 
         private void ConfigureButton(UIObject button, Action action)
@@ -485,6 +513,86 @@ namespace HaCreator.MapSimulator.UI
             {
                 DeactivateInput(clearText: true);
             }
+        }
+
+        private void OpenDeleteThreadPrompt()
+        {
+            GuildBbsSnapshot snapshot = RefreshSnapshot();
+            if (snapshot.SelectedThread == null || snapshot.Permission?.CanDeleteSelectedThread != true)
+            {
+                ShowFeedback(_deleteHandler?.Invoke());
+                return;
+            }
+
+            OpenPrompt(PendingPrompt.DeleteThread, -1);
+        }
+
+        private void OpenDeleteReplyPrompt(int visibleIndex)
+        {
+            GuildBbsSnapshot snapshot = RefreshSnapshot();
+            GuildBbsThreadSnapshot selectedThread = snapshot.SelectedThread;
+            bool canDelete = selectedThread?.Comments != null
+                && visibleIndex >= 0
+                && visibleIndex < selectedThread.Comments.Count
+                && selectedThread.Comments[visibleIndex].CanDelete;
+            if (!canDelete)
+            {
+                ShowFeedback(_deleteReplyAtVisibleIndexHandler?.Invoke(visibleIndex));
+                return;
+            }
+
+            OpenPrompt(PendingPrompt.DeleteReply, visibleIndex);
+        }
+
+        private void OpenDeleteLatestReplyPrompt()
+        {
+            GuildBbsSnapshot snapshot = RefreshSnapshot();
+            bool canDeleteReply = snapshot.Permission?.CanDeleteReply == true;
+            if (!canDeleteReply)
+            {
+                ShowFeedback(_replyDeleteHandler?.Invoke());
+                return;
+            }
+
+            OpenPrompt(PendingPrompt.DeleteLatestReply, -1);
+        }
+
+        private void OpenPrompt(PendingPrompt prompt, int visibleReplyIndex)
+        {
+            _pendingPrompt = prompt;
+            _pendingPromptVisibleReplyIndex = visibleReplyIndex;
+            _ignorePromptMouseRelease = true;
+            DeactivateInput(clearText: false);
+            ShowFeedback($"{GuildBbsRuntime.GetDeletePostPrompt()} [StringPool 0xEB2]");
+        }
+
+        private void ConfirmPrompt()
+        {
+            PendingPrompt prompt = _pendingPrompt;
+            int visibleReplyIndex = _pendingPromptVisibleReplyIndex;
+            ClearPrompt();
+
+            string message = prompt switch
+            {
+                PendingPrompt.DeleteThread => _deleteHandler?.Invoke(),
+                PendingPrompt.DeleteLatestReply => _replyDeleteHandler?.Invoke(),
+                PendingPrompt.DeleteReply => _deleteReplyAtVisibleIndexHandler?.Invoke(visibleReplyIndex),
+                _ => null
+            };
+            ShowFeedback(message);
+        }
+
+        private void CancelPrompt()
+        {
+            ClearPrompt();
+            ShowFeedback("Guild BBS delete request canceled.");
+        }
+
+        private void ClearPrompt()
+        {
+            _pendingPrompt = PendingPrompt.None;
+            _pendingPromptVisibleReplyIndex = -1;
+            _ignorePromptMouseRelease = false;
         }
 
         private void HandleMouseClick(GuildBbsSnapshot snapshot, Point mousePosition)
@@ -695,6 +803,23 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleKeyboardInput(KeyboardState keyboardState, GuildBbsSnapshot snapshot, int tickCount)
         {
+            if (_pendingPrompt != PendingPrompt.None)
+            {
+                if ((keyboardState.IsKeyDown(Keys.Enter) && _previousKeyboardState.IsKeyUp(Keys.Enter))
+                    || (keyboardState.IsKeyDown(Keys.Y) && _previousKeyboardState.IsKeyUp(Keys.Y)))
+                {
+                    ConfirmPrompt();
+                }
+                else if ((keyboardState.IsKeyDown(Keys.Escape) && _previousKeyboardState.IsKeyUp(Keys.Escape))
+                    || (keyboardState.IsKeyDown(Keys.N) && _previousKeyboardState.IsKeyUp(Keys.N)))
+                {
+                    CancelPrompt();
+                }
+
+                ResetKeyRepeat();
+                return;
+            }
+
             if (_activeInputTarget == InputTarget.None)
             {
                 ResetKeyRepeat();
@@ -1556,6 +1681,53 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void DrawPromptOverlay(SpriteBatch sprite)
+        {
+            if (_pendingPrompt == PendingPrompt.None || _font == null)
+            {
+                return;
+            }
+
+            GetPromptLayout(out Rectangle promptBox, out Rectangle yesRect, out Rectangle noRect);
+            sprite.Draw(_pixel, new Rectangle(Position.X, Position.Y, 734, 526), new Color(0, 0, 0, 74));
+            sprite.Draw(_pixel, promptBox, new Color(247, 241, 224, 245));
+            sprite.Draw(_pixel, new Rectangle(promptBox.X, promptBox.Y, promptBox.Width, 1), new Color(122, 98, 64));
+            sprite.Draw(_pixel, new Rectangle(promptBox.X, promptBox.Bottom - 1, promptBox.Width, 1), new Color(122, 98, 64));
+            sprite.Draw(_pixel, new Rectangle(promptBox.X, promptBox.Y, 1, promptBox.Height), new Color(122, 98, 64));
+            sprite.Draw(_pixel, new Rectangle(promptBox.Right - 1, promptBox.Y, 1, promptBox.Height), new Color(122, 98, 64));
+
+            DrawString(sprite, "Confirm", promptBox.X + 10, promptBox.Y + 8, new Color(75, 52, 29), 0.44f);
+            DrawWrappedText(
+                sprite,
+                GuildBbsRuntime.GetDeletePostPrompt(),
+                new Rectangle(promptBox.X + 10, promptBox.Y + 30, promptBox.Width - 20, 28),
+                0.37f,
+                new Color(51, 55, 63),
+                2);
+            DrawPromptButton(sprite, yesRect, "Yes", true);
+            DrawPromptButton(sprite, noRect, "No", true);
+        }
+
+        private void DrawPromptButton(SpriteBatch sprite, Rectangle bounds, string label, bool enabled)
+        {
+            sprite.Draw(_pixel, bounds, enabled ? new Color(91, 112, 143, 230) : new Color(141, 146, 154, 160));
+            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(47, 61, 82));
+            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(47, 61, 82));
+            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), new Color(47, 61, 82));
+            sprite.Draw(_pixel, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), new Color(47, 61, 82));
+            Vector2 labelSize = _font.MeasureString(label) * 0.38f;
+            sprite.DrawString(
+                _font,
+                label,
+                new Vector2(bounds.X + ((bounds.Width - labelSize.X) / 2f), bounds.Y + 3),
+                Color.White,
+                0f,
+                Vector2.Zero,
+                0.38f,
+                SpriteEffects.None,
+                0f);
+        }
+
         private void DrawInlineEmoticon(SpriteBatch sprite, GuildBbsEmoticonSnapshot emoticon, Point position, bool isSmall)
         {
             if (emoticon == null)
@@ -1621,6 +1793,28 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle GetDetailBodyScrollBarNextBounds() => BuildScrollBarNextBounds(GetDetailBodyScrollBarBounds());
         private Rectangle GetCommentScrollBarPrevBounds() => BuildScrollBarPrevBounds(GetCommentScrollBarBounds());
         private Rectangle GetCommentScrollBarNextBounds() => BuildScrollBarNextBounds(GetCommentScrollBarBounds());
+
+        private void HandlePromptMouseClick(Point mousePosition)
+        {
+            GetPromptLayout(out Rectangle promptBox, out Rectangle yesRect, out Rectangle noRect);
+            if (yesRect.Contains(mousePosition))
+            {
+                ConfirmPrompt();
+            }
+            else if (noRect.Contains(mousePosition) || !promptBox.Contains(mousePosition))
+            {
+                CancelPrompt();
+            }
+        }
+
+        private void GetPromptLayout(out Rectangle promptBox, out Rectangle yesRect, out Rectangle noRect)
+        {
+            int promptX = Position.X + ((734 - PromptBoxWidth) / 2);
+            int promptY = Position.Y + ((526 - PromptBoxHeight) / 2);
+            promptBox = new Rectangle(promptX, promptY, PromptBoxWidth, PromptBoxHeight);
+            yesRect = new Rectangle(promptBox.X + 26, promptBox.Bottom - 30, PromptButtonWidth, PromptButtonHeight);
+            noRect = new Rectangle(promptBox.Right - 26 - PromptButtonWidth, promptBox.Bottom - 30, PromptButtonWidth, PromptButtonHeight);
+        }
 
         private void DrawString(SpriteBatch sprite, string text, float x, float y, Color color, float scale)
         {

@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using HaCreator.MapSimulator.Fields;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -452,6 +453,7 @@ namespace HaCreator.MapSimulator.Managers
 
                 int packetType = BinaryPrimitives.ReadUInt16LittleEndian(rawPacket);
                 byte[] payload = rawPacket.Length == sizeof(short) ? Array.Empty<byte>() : rawPacket[sizeof(short)..];
+                SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref packetType, ref payload);
                 message = new MassacrePacketInboxMessage(MassacrePacketInboxMessageKind.Packet, "massacre-inbox", trimmed, packetType: packetType, payload: payload);
                 return true;
             }
@@ -464,6 +466,7 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
+                SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref packetType, ref payload);
                 message = new MassacrePacketInboxMessage(MassacrePacketInboxMessageKind.Packet, "massacre-inbox", trimmed, packetType: packetType, payload: payload);
                 return true;
             }
@@ -479,6 +482,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref barePacketType, ref barePayload);
             message = new MassacrePacketInboxMessage(MassacrePacketInboxMessageKind.Packet, "massacre-inbox", trimmed, packetType: barePacketType, payload: barePayload);
             return true;
         }

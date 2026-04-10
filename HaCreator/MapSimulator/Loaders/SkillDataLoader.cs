@@ -1078,9 +1078,19 @@ namespace HaCreator.MapSimulator.Loaders
                 label = "Avoidability";
             }
             else if (normalizedClause.Contains("critical rate", StringComparison.Ordinal)
-                     || normalizedClause.Contains("critical hit rate", StringComparison.Ordinal))
+                     || normalizedClause.Contains("critical hit rate", StringComparison.Ordinal)
+                     || normalizedClause.Contains("crit rate", StringComparison.Ordinal))
             {
                 label = "Critical Rate";
+            }
+            else if (normalizedClause.Contains("chance", StringComparison.Ordinal))
+            {
+                label = "Chance";
+            }
+            else if (normalizedClause.Contains("number of attacks", StringComparison.Ordinal)
+                     || normalizedClause.Contains("attack count", StringComparison.Ordinal))
+            {
+                label = "Attack Count";
             }
             else if (normalizedClause.Contains("damage over time", StringComparison.Ordinal))
             {
@@ -1109,8 +1119,21 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 label = "Max Combo Orbs";
             }
+            else if (normalizedClause.Contains("max hp", StringComparison.Ordinal))
+            {
+                label = "Max HP";
+            }
+            else if (normalizedClause.Contains("max mp", StringComparison.Ordinal))
+            {
+                label = "Max MP";
+            }
+            else if (normalizedClause.Contains("max stack", StringComparison.Ordinal))
+            {
+                label = "Max Stacks";
+            }
             else if ((normalizedClause.Contains("monster", StringComparison.Ordinal)
                       || normalizedClause.Contains("enemy", StringComparison.Ordinal)
+                      || normalizedClause.Contains("enemies", StringComparison.Ordinal)
                       || normalizedClause.Contains("mob", StringComparison.Ordinal)
                       || normalizedClause.Contains("robot", StringComparison.Ordinal))
                      && (normalizedClause.Contains("up to", StringComparison.Ordinal)
@@ -1121,6 +1144,17 @@ namespace HaCreator.MapSimulator.Loaders
             else if (normalizedClause.Contains("range", StringComparison.Ordinal))
             {
                 label = "Range";
+            }
+            else if (normalizedClause.Contains("every", StringComparison.Ordinal)
+                     && normalizedClause.Contains(" sec", StringComparison.Ordinal))
+            {
+                label = "Interval";
+            }
+            else if (normalizedClause.Contains("duration", StringComparison.Ordinal)
+                     || normalizedClause.Contains(" for ", StringComparison.Ordinal)
+                     && normalizedClause.Contains(" sec", StringComparison.Ordinal))
+            {
+                label = "Duration";
             }
             else if (normalizedClause.Contains("jump", StringComparison.Ordinal))
             {
@@ -1181,6 +1215,10 @@ namespace HaCreator.MapSimulator.Loaders
                 "Avoidability" => FormatSignedValue,
                 "Speed" => FormatSignedValue,
                 "Jump" => FormatSignedValue,
+                "Max HP" => FormatSignedValue,
+                "Max MP" => FormatSignedValue,
+                "Duration" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
+                "Interval" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
                 _ => null
             };
         }

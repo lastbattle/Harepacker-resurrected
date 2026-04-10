@@ -181,6 +181,7 @@ namespace HaCreator.MapSimulator
                     out bool ignoredTrailingLogoutGiftConfig,
                     out bool matchedExactTailBoundary,
                     out bool matchedKnownLeadingCharacterDataTail,
+                    out int matchedOpaquePreMapTransferByteCount,
                     out bool matchedKnownCharacterDataTail))
             {
                 _lastAuthoritativeMapTransferBootstrapSummary =

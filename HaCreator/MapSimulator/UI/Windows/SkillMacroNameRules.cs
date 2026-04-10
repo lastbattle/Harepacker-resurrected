@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace HaCreator.MapSimulator.UI
@@ -7,6 +8,11 @@ namespace HaCreator.MapSimulator.UI
     internal static class SkillMacroNameRules
     {
         internal const int MaxNameBytes = 12;
+
+        static SkillMacroNameRules()
+        {
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        }
 
         internal static int GetByteCount(string text, Encoding encoding = null)
         {
@@ -374,12 +380,23 @@ namespace HaCreator.MapSimulator.UI
 
         private static Encoding GetStrictEncoding(Encoding encoding)
         {
-            Encoding sourceEncoding = encoding ?? Encoding.Default;
+            Encoding sourceEncoding = encoding ?? GetActiveAnsiEncoding();
             return Encoding.GetEncoding(
                 sourceEncoding.CodePage,
                 EncoderFallback.ExceptionFallback,
                 DecoderFallback.ExceptionFallback);
         }
+
+        internal static Encoding GetActiveAnsiEncoding()
+        {
+            int codePage = OperatingSystem.IsWindows()
+                ? GetACP()
+                : CultureInfo.CurrentCulture.TextInfo.ANSICodePage;
+            return Encoding.GetEncoding(codePage);
+        }
+
+        [DllImport("kernel32.dll")]
+        private static extern int GetACP();
 
         private static bool TryGetBlacklistedCharacterError(string text, out string error)
         {

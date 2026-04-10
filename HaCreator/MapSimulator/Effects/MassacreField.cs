@@ -328,6 +328,9 @@ namespace HaCreator.MapSimulator.Effects
         public bool HasCountEffectPresentation => _countEffectPresentationStartTick != int.MinValue;
         public int ActiveCountEffectStage => _countEffectPresentationStage;
         public bool HasResultPresentation => _resultPresentation != MassacreResultPresentation.None;
+        public int ResultKillCount => _hitCount;
+        public int ResultCoolCount => _coolCount;
+        public int ResultMissCount => _missCount;
         public int ResultKillRate => _resultKillRate;
         public int ResultCoolRate => _resultCoolRate;
         public int ResultMissRate => _resultMissRate;
@@ -671,7 +674,7 @@ namespace HaCreator.MapSimulator.Effects
             string countEffectText = HasCountEffectPresentation ? $", countFx=stage{_countEffectPresentationStage}" : string.Empty;
             string bonusText = HasBonusPresentation ? ", bonusFx=active" : string.Empty;
             string resultText = HasResultPresentation
-                ? $", result={_resultPresentation}:{_resultRank}:{_resultScore}:{_resultKillRate}/{_resultCoolRate}/{_resultMissRate}"
+                ? $", result={_resultPresentation}:{_resultRank}:{_resultScore}:counts={_hitCount}/{_coolCount}/{_missCount}:rates={_resultKillRate}/{_resultCoolRate}/{_resultMissRate}"
                 : string.Empty;
             string evidenceText = string.Join(
                 "; ",
@@ -1223,9 +1226,9 @@ namespace HaCreator.MapSimulator.Effects
                 spriteBatch.Draw(_resultBoardTexture, boardPos, Color.White);
                 DrawAnimation(spriteBatch, _resultBoardPulseFrames, currentTimeMs, _resultPresentationStartTick, resultStatusAnchor, repeat: repeatResultLayer);
                 DrawResultRank(spriteBatch, resultStatusAnchor);
-                DrawResultRate(spriteBatch, font, _resultKillRate, boardPos + new Vector2(ResultKillRateX, ResultKillRateY));
-                DrawResultRate(spriteBatch, font, _resultCoolRate, boardPos + new Vector2(ResultCoolRateX, ResultCoolRateY));
-                DrawResultRate(spriteBatch, font, _resultMissRate, boardPos + new Vector2(ResultMissRateX, ResultMissRateY));
+                DrawResultRate(spriteBatch, font, _hitCount, boardPos + new Vector2(ResultKillRateX, ResultKillRateY));
+                DrawResultRate(spriteBatch, font, _coolCount, boardPos + new Vector2(ResultCoolRateX, ResultCoolRateY));
+                DrawResultRate(spriteBatch, font, _missCount, boardPos + new Vector2(ResultMissRateX, ResultMissRateY));
                 DrawResultRate(spriteBatch, font, _resultKillRate, boardPos + new Vector2(ResultKillPercentX, ResultKillPercentY));
                 DrawResultRate(spriteBatch, font, _resultCoolRate, boardPos + new Vector2(ResultCoolPercentX, ResultCoolPercentY));
                 DrawResultRate(spriteBatch, font, _resultMissRate, boardPos + new Vector2(ResultMissPercentX, ResultMissPercentY));

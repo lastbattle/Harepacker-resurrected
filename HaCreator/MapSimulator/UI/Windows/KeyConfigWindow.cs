@@ -81,13 +81,24 @@ namespace HaCreator.MapSimulator.UI
 
         public readonly struct ShortcutVisualState
         {
+            public enum ClientDrawLayer
+            {
+                None = 0,
+                Skill = 1,
+                ItemStack = 2,
+                ItemUnavailable = 3,
+                CashItem = 7,
+                Macro = 8,
+            }
+
             public ShortcutVisualState(
                 Texture2D iconTexture,
                 string title,
                 string detail,
                 string badgeText = "",
                 string quantityText = "",
-                bool unavailable = false)
+                bool unavailable = false,
+                ClientDrawLayer drawLayer = ClientDrawLayer.None)
             {
                 IconTexture = iconTexture;
                 Title = title ?? string.Empty;
@@ -95,6 +106,7 @@ namespace HaCreator.MapSimulator.UI
                 BadgeText = badgeText ?? string.Empty;
                 QuantityText = quantityText ?? string.Empty;
                 Unavailable = unavailable;
+                DrawLayer = drawLayer;
             }
 
             public Texture2D IconTexture { get; }
@@ -103,6 +115,7 @@ namespace HaCreator.MapSimulator.UI
             public string BadgeText { get; }
             public string QuantityText { get; }
             public bool Unavailable { get; }
+            public ClientDrawLayer DrawLayer { get; }
             public bool HasVisual => IconTexture != null;
             public bool HasDetails => !string.IsNullOrWhiteSpace(Title) || !string.IsNullOrWhiteSpace(Detail);
         }
@@ -843,6 +856,11 @@ namespace HaCreator.MapSimulator.UI
                 bounds.Center.Y - ((iconTexture.Height * scale) * 0.5f));
             Color tint = shortcutVisualState.Unavailable ? new Color(170, 170, 170, 210) : Color.White;
             sprite.Draw(iconTexture, drawPosition, null, tint, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+
+            if (shortcutVisualState.DrawLayer == ShortcutVisualState.ClientDrawLayer.ItemUnavailable)
+            {
+                sprite.Draw(_highlightTexture, bounds, new Color(128, 128, 128, 160));
+            }
 
             if (!string.IsNullOrWhiteSpace(shortcutVisualState.QuantityText))
             {

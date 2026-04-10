@@ -329,9 +329,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (!hitbox.IsEmpty)
             {
-                return new Vector2(
-                    hitbox.Left + random.Next(Math.Max(1, hitbox.Width)),
-                    hitbox.Top + random.Next(Math.Max(1, hitbox.Height)));
+                return ResolvePacketOwnedDetachedMobAttackHitAnchor(hitbox, summonPosition, attackInfo, random);
             }
 
             if (attackInfo?.HasRangeOrigin == true)
@@ -341,6 +339,32 @@ namespace HaCreator.MapSimulator.Pools
                     ResolvePacketOwnedAuthoredHitOffset(attackInfo),
                     facingAttach,
                     facingRight);
+            }
+
+            return summonPosition;
+        }
+
+        internal static Vector2 ResolvePacketOwnedDetachedMobAttackHitAnchor(
+            Rectangle hitbox,
+            Vector2 summonPosition,
+            MobAnimationSet.AttackInfoMetadata attackInfo,
+            Random random)
+        {
+            if (!hitbox.IsEmpty)
+            {
+                Random resolvedRandom = random ?? Random.Shared;
+                return new Vector2(
+                    hitbox.Left + resolvedRandom.Next(Math.Max(1, hitbox.Width)),
+                    hitbox.Top + resolvedRandom.Next(Math.Max(1, hitbox.Height)));
+            }
+
+            if (attackInfo?.HasRangeOrigin == true)
+            {
+                return ResolvePacketOwnedAttachedHitPosition(
+                    summonPosition,
+                    ResolvePacketOwnedAuthoredHitOffset(attackInfo),
+                    mirrorOffsetWithFacing: false,
+                    facingRight: true);
             }
 
             return summonPosition;

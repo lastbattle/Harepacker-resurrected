@@ -111,8 +111,8 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientOptionCollapsed = 2;
         private const int ClientTopRowButtonTop = 4;
         private const int ClientTopRowButtonRightPadding = 6;
-        private const int ClientOptionButtonBottomPadding = 4;
-        private const int ClientOptionButtonRightPadding = 17;
+        private const int ClientOptionButtonRightOffset = 30;
+        private const int ClientOptionButtonBottomOffset = 16;
 
         // Player position on minimap (in minimap coordinates, not world coordinates)
         private int _playerMinimapX = 0;
@@ -1147,8 +1147,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return new ClientButtonPlacement(
-                Math.Max(0, frameWidth - optionButtonWidth - ClientOptionButtonRightPadding),
-                Math.Max(0, frameHeight - optionButtonHeight - ClientOptionButtonBottomPadding),
+                Math.Max(0, frameWidth - ClientOptionButtonRightOffset),
+                Math.Max(0, frameHeight - ClientOptionButtonBottomOffset),
                 Visible: true);
         }
 

@@ -849,6 +849,8 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     return retryAnimation;
                 }
+
+                return null;
             }
 
             return isSkillAction
@@ -2053,6 +2055,11 @@ namespace HaCreator.MapSimulator.Pools
             if (retryAnimation?.Frames.Count > 0)
             {
                 return retryAnimation;
+            }
+
+            if (!string.IsNullOrWhiteSpace(summon.CurrentAnimationBranchName))
+            {
+                return null;
             }
 
             return skill.SummonAttackAnimation;
@@ -4133,10 +4140,17 @@ namespace HaCreator.MapSimulator.Pools
             Vector2 hitPosition = ResolvePacketHitEffectPosition(summon, attackInfo, currentTime, hitFrameIndex: 0);
             bool followSummon = attackInfo?.ResolveHitAttach(0) == true;
             bool followSummonFacing = followSummon || attackInfo?.ResolveFacingAttach(0) == true;
+            Vector2 detachedFallbackPosition = followSummon
+                ? PacketOwnedSummonUpdateRules.ResolvePacketOwnedDetachedMobAttackHitAnchor(
+                    GetSummonHitbox(summon, currentTime),
+                    new Vector2(summon.PositionX, summon.PositionY),
+                    attackInfo,
+                    _random)
+                : hitPosition;
             _mobAttackHitEffects.Add(new PacketOwnedMobAttackHitEffectDisplay
             {
-                X = hitPosition.X,
-                Y = hitPosition.Y,
+                X = detachedFallbackPosition.X,
+                Y = detachedFallbackPosition.Y,
                 AttachedSummonObjectId = summon.ObjectId,
                 FollowSummon = followSummon,
                 FollowSummonFacing = followSummonFacing,
@@ -4872,6 +4886,11 @@ namespace HaCreator.MapSimulator.Pools
                 return retryAnimation;
             }
 
+            if (!string.IsNullOrWhiteSpace(summon.CurrentAnimationBranchName))
+            {
+                return null;
+            }
+
             return skill.SummonAttackAnimation;
         }
 
@@ -4953,24 +4972,20 @@ namespace HaCreator.MapSimulator.Pools
                 return 0;
             }
 
-            SkillAnimation prepareAnimation = skill.SummonAttackPrepareAnimation;
-            int prepareDuration = GetSkillAnimationDuration(prepareAnimation) ?? 0;
-
-            SkillAnimation branchAnimation = null;
-            bool hasBranchAnimation = !string.IsNullOrWhiteSpace(summon.CurrentAnimationBranchName)
-                && skill.SummonNamedAnimations != null
-                && skill.SummonNamedAnimations.TryGetValue(summon.CurrentAnimationBranchName, out branchAnimation)
-                && branchAnimation?.Frames.Count > 0;
-            SkillAnimation attackAnimation = hasBranchAnimation
-                ? branchAnimation
-                : skill.SummonAttackAnimation;
+            SkillAnimation attackAnimation = ResolveAttackAnimation(summon);
             int attackDuration = GetSkillAnimationDuration(attackAnimation) ?? 0;
             if (attackDuration <= 0)
             {
                 return 0;
             }
 
-            return (hasBranchAnimation ? 0 : prepareDuration) + attackDuration;
+            if (!string.IsNullOrWhiteSpace(summon.CurrentAnimationBranchName))
+            {
+                return attackDuration;
+            }
+
+            int prepareDuration = GetSkillAnimationDuration(skill.SummonAttackPrepareAnimation) ?? 0;
+            return prepareDuration + attackDuration;
         }
 
         private static string ResolveSelfDestructAttackBranch(ActiveSummon summon)

@@ -811,7 +811,6 @@ namespace HaCreator.MapSimulator.Interaction
             try
             {
                 int slideMenuType = reader.ReadInt32();
-                string buttonInfo = ReadMapleString(reader);
                 if (slideMenuType is not (0 or 1))
                 {
                     result = CreateDecodedResult(
@@ -826,8 +825,17 @@ namespace HaCreator.MapSimulator.Interaction
                     return true;
                 }
 
-                IReadOnlyList<string> options = SplitSlideMenuOptions(buttonInfo);
-                result = CreateDecodedResult(CreateSlideMenuEntry(speaker, param, slideMenuType, buttonInfo, options, "Decoded"));
+                int initialSelectionId = reader.ReadInt32();
+                string buttonInfo = ReadMapleString(reader);
+                IReadOnlyList<SlideMenuOption> options = ParseSlideMenuButtonInfo(buttonInfo);
+                result = CreateDecodedResult(CreateSlideMenuEntry(
+                    speaker,
+                    param,
+                    slideMenuType,
+                    initialSelectionId,
+                    buttonInfo,
+                    options,
+                    "Decoded"));
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)
@@ -842,25 +850,28 @@ namespace HaCreator.MapSimulator.Interaction
         {
             string rawText = ReadMapleString(reader);
             byte slideMenuType = reader.ReadByte();
-            IReadOnlyList<string> options = TryReadMapleStringList(reader, out IReadOnlyList<string> decodedOptions)
+            IReadOnlyList<SlideMenuOption> options = TryReadMapleStringList(reader, out IReadOnlyList<string> decodedOptions)
                 ? decodedOptions
-                : Array.Empty<string>();
-            return CreateSlideMenuEntry(speaker, param, slideMenuType, rawText, options, "Compact helper payload exposed");
+                    .Select((option, index) => new SlideMenuOption(index, option))
+                    .ToArray()
+                : Array.Empty<SlideMenuOption>();
+            return CreateSlideMenuEntry(speaker, param, slideMenuType, 0, rawText, options, "Compact helper payload exposed");
         }
 
         private static NpcInteractionEntry CreateSlideMenuEntry(
             PacketScriptSpeaker speaker,
             byte param,
             int slideMenuType,
+            int initialSelectionId,
             string rawText,
-            IReadOnlyList<string> options,
+            IReadOnlyList<SlideMenuOption> options,
             string decodedPrefix)
         {
             List<NpcInteractionChoice> choices = options
                 .Select((option, index) => CreateNumericResponseChoice(
-                    $"{index + 1}. {NpcDialogueTextFormatter.Format(option)}",
-                    $"index={index}",
-                    index))
+                    $"{index + 1}. {NpcDialogueTextFormatter.Format(option.Label)}",
+                    $"selectionId={option.SelectionId}",
+                    option.SelectionId))
                 .ToList();
 
             return CreateEntry(
@@ -872,6 +883,7 @@ namespace HaCreator.MapSimulator.Interaction
                     choices.Count == 0
                         ? $"Slide-menu type {slideMenuType} did not expose any options."
                         : $"{decodedPrefix} {choices.Count} slide-menu option(s) for type {slideMenuType}.",
+                    $"Initial selection id: {initialSelectionId}.",
                     slideMenuType switch
                     {
                         0 => "Client type 0 opens the extended `CSlideMenuDlgEX` owner backed by `UIWindow(.img|2.img)/SlideMenu/0`.",
@@ -1335,17 +1347,58 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private static IReadOnlyList<string> SplitSlideMenuOptions(string buttonInfo)
+        private static IReadOnlyList<SlideMenuOption> ParseSlideMenuButtonInfo(string buttonInfo)
         {
             if (string.IsNullOrWhiteSpace(buttonInfo))
             {
-                return Array.Empty<string>();
+                return Array.Empty<SlideMenuOption>();
+            }
+
+            List<SlideMenuOption> parsedOptions = new();
+            string normalized = buttonInfo.EndsWith("#", StringComparison.Ordinal)
+                ? buttonInfo
+                : $"{buttonInfo}#";
+            int cursor = 0;
+            while (cursor < normalized.Length)
+            {
+                int numberStart = normalized.IndexOf('#', cursor);
+                if (numberStart < 0 || numberStart + 1 >= normalized.Length)
+                {
+                    break;
+                }
+
+                int numberEnd = normalized.IndexOf('#', numberStart + 1);
+                if (numberEnd < 0)
+                {
+                    break;
+                }
+
+                int labelEnd = normalized.IndexOf('#', numberEnd + 1);
+                if (labelEnd < 0)
+                {
+                    break;
+                }
+
+                string numberText = normalized.Substring(numberStart + 1, numberEnd - numberStart - 1);
+                string labelText = normalized.Substring(numberEnd + 1, labelEnd - numberEnd - 1);
+                if (int.TryParse(numberText, out int selectionId) && !string.IsNullOrWhiteSpace(labelText))
+                {
+                    parsedOptions.Add(new SlideMenuOption(selectionId, labelText.Trim()));
+                }
+
+                cursor = labelEnd + 1;
+            }
+
+            if (parsedOptions.Count > 0)
+            {
+                return parsedOptions;
             }
 
             return buttonInfo
                 .Replace("\\n", "\n", StringComparison.Ordinal)
                 .Split(new[] { '\r', '\n', '|'}, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Where(static option => !string.IsNullOrWhiteSpace(option))
+                .Select((option, index) => new SlideMenuOption(index, option))
+                .Where(static option => !string.IsNullOrWhiteSpace(option.Label))
                 .ToArray();
         }
 
@@ -1577,6 +1630,8 @@ namespace HaCreator.MapSimulator.Interaction
             byte Param,
             int SpeakerTemplateId,
             int SpeakerNpcId);
+
+        private sealed record SlideMenuOption(int SelectionId, string Label);
 
         private sealed record PacketScriptSpeaker(int SpeakerTypeId, int TemplateId, int NpcId, string DisplayName)
         {

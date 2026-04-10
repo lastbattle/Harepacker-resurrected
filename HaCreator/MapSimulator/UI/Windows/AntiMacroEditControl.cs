@@ -361,12 +361,22 @@ namespace HaCreator.MapSimulator.UI
             bool ctrlHeld = keyboardState.IsKeyDown(Keys.LeftControl) || keyboardState.IsKeyDown(Keys.RightControl);
             bool shiftHeld = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
 
-            if (ctrlHeld && Pressed(keyboardState, previousKeyboardState, Keys.A))
+            if (ctrlHeld && Pressed(keyboardState, previousKeyboardState, Keys.C))
             {
-                SelectAll();
+                CopySelectionToClipboard();
             }
 
             if (ctrlHeld && Pressed(keyboardState, previousKeyboardState, Keys.V))
+            {
+                PasteClipboardText();
+            }
+
+            if (ctrlHeld && Pressed(keyboardState, previousKeyboardState, Keys.X))
+            {
+                CutSelectionToClipboard();
+            }
+
+            if (shiftHeld && Pressed(keyboardState, previousKeyboardState, Keys.Insert))
             {
                 PasteClipboardText();
             }
@@ -390,7 +400,11 @@ namespace HaCreator.MapSimulator.UI
 
             if (Pressed(keyboardState, previousKeyboardState, Keys.Delete))
             {
-                if (_compositionText.Length > 0)
+                if (shiftHeld)
+                {
+                    CutSelectionToClipboard();
+                }
+                else if (_compositionText.Length > 0)
                 {
                     ClearCompositionText();
                 }
@@ -709,6 +723,33 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void CopySelectionToClipboard()
+        {
+            if (!HasSelection)
+            {
+                return;
+            }
+
+            try
+            {
+                System.Windows.Forms.Clipboard.SetText(_inputText.Substring(GetSelectionStart(), GetSelectionLength()));
+            }
+            catch
+            {
+            }
+        }
+
+        private void CutSelectionToClipboard()
+        {
+            if (!HasSelection)
+            {
+                return;
+            }
+
+            CopySelectionToClipboard();
+            DeleteSelectionIfAny();
+        }
+
         private void PasteClipboardText()
         {
             try
@@ -970,19 +1011,6 @@ namespace HaCreator.MapSimulator.UI
         private void ClearSelection()
         {
             _selectionAnchorIndex = -1;
-        }
-
-        private void SelectAll()
-        {
-            if (string.IsNullOrEmpty(_inputText))
-            {
-                ClearSelection();
-                return;
-            }
-
-            _selectionAnchorIndex = 0;
-            _caretIndex = _inputText.Length;
-            _caretBlinkTick = Environment.TickCount;
         }
 
         private void MoveCaret(int newCaretIndex, bool extendSelection)

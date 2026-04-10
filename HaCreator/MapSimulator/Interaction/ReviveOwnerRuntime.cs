@@ -15,13 +15,20 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal readonly struct ReviveOwnerResolution
     {
-        public ReviveOwnerResolution(bool handled, bool premium, bool timedOut, ReviveOwnerVariant variant, string summary)
+        public ReviveOwnerResolution(
+            bool handled,
+            bool premium,
+            bool timedOut,
+            ReviveOwnerVariant variant,
+            string summary,
+            bool clientPremiumFlag = false)
         {
             Handled = handled;
             Premium = premium;
             TimedOut = timedOut;
             Variant = variant;
             Summary = summary ?? string.Empty;
+            ClientPremiumFlag = clientPremiumFlag;
         }
 
         public bool Handled { get; }
@@ -29,22 +36,30 @@ namespace HaCreator.MapSimulator.Interaction
         public bool TimedOut { get; }
         public ReviveOwnerVariant Variant { get; }
         public string Summary { get; }
+        public bool ClientPremiumFlag { get; }
     }
 
     internal readonly struct ReviveOwnerTransferRequest
     {
-        public ReviveOwnerTransferRequest(bool premium, bool timedOut, ReviveOwnerVariant variant, string summary)
+        public ReviveOwnerTransferRequest(
+            bool premium,
+            bool timedOut,
+            ReviveOwnerVariant variant,
+            string summary,
+            bool clientPremiumFlag = false)
         {
             Premium = premium;
             TimedOut = timedOut;
             Variant = variant;
             Summary = summary ?? string.Empty;
+            ClientPremiumFlag = clientPremiumFlag;
         }
 
         public bool Premium { get; }
         public bool TimedOut { get; }
         public ReviveOwnerVariant Variant { get; }
         public string Summary { get; }
+        public bool ClientPremiumFlag { get; }
     }
 
     internal sealed class ReviveOwnerSnapshot
@@ -69,6 +84,9 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private const int AutoResolveMs = 0x927C0;
         private const float PremiumChoiceMinDistanceSquared = 1f;
+        internal const int ClientCloseButtonId = 1;
+        internal const int ClientYesButtonId = 6;
+        internal const int ClientNoButtonId = 7;
 
         private int _openedAtTick = int.MinValue;
         private string _mapName = string.Empty;
@@ -138,6 +156,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             ReviveOwnerVariant variant = Variant;
             bool resolvedPremium = premium && HasPremiumChoice;
+            bool clientPremiumFlag = premium;
             string ownerLabel = string.IsNullOrWhiteSpace(_ownerLabel) ? "revive owner" : _ownerLabel;
             string summary = resolvedPremium
                 ? $"CUIRevive premium recovery branch confirmed through {ownerLabel}."
@@ -146,7 +165,17 @@ namespace HaCreator.MapSimulator.Interaction
                     : $"CUIRevive default recovery branch confirmed through {ownerLabel}.";
 
             Close();
-            return new ReviveOwnerResolution(true, resolvedPremium, timedOut, variant, summary);
+            return new ReviveOwnerResolution(true, resolvedPremium, timedOut, variant, summary, clientPremiumFlag);
+        }
+
+        public ReviveOwnerResolution ResolveClientButtonClick(int buttonId)
+        {
+            return buttonId switch
+            {
+                ClientYesButtonId => Resolve(premium: true),
+                ClientNoButtonId or ClientCloseButtonId => Resolve(premium: false),
+                _ => default
+            };
         }
 
         public static ReviveOwnerTransferRequest CreateTransferRequest(ReviveOwnerResolution resolution)
@@ -155,7 +184,8 @@ namespace HaCreator.MapSimulator.Interaction
                 resolution.Premium,
                 resolution.TimedOut,
                 resolution.Variant,
-                resolution.Summary);
+                resolution.Summary,
+                resolution.ClientPremiumFlag);
         }
 
         public static ReviveOwnerVariant ResolveClientVariant(

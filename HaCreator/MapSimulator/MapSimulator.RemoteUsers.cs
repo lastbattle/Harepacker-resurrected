@@ -20,7 +20,7 @@ namespace HaCreator.MapSimulator
         private const string RemoteUserCommandUsage =
             "/remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw|inbox> ...";
         private const string RemoteUserPacketTokenUsage =
-            "<-1101|-1102|-1103|-1104|-1105|-1106|-1107|-1108|-1109|-1110|179|180|181|182|183|184|210|211|212|213|214|215|219|220|221|222|223|225|226|228|coupleadd|coupleremove|friendadd|friendremove|marriageadd|marriageremove|newyearadd|newyearremove|couplechairadd|couplechairremove|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|emotion|activeeffect|upgradetomb|officialchair|pickup|melee|effect|avatarmodified|tempset|tempreset|guildname>";
+            "<-1101|-1102|-1103|-1104|-1105|-1106|-1107|-1108|-1109|-1110|179|180|181|182|183|184|210|211|212|213|214|215|216|219|220|221|222|223|225|226|228|coupleadd|coupleremove|friendadd|friendremove|marriageadd|marriageremove|newyearadd|newyearremove|couplechairadd|couplechairremove|enter|leave|move|state|helper|team|follow|chair|mount|prepare|movingshootprepare|preparedclear|emotion|activeeffect|upgradetomb|officialchair|pickup|melee|effect|avatarmodified|tempset|tempreset|guildname>";
         private readonly RemoteUserPacketInboxManager _remoteUserPacketInbox = new();
         private readonly PacketOwnedRelationshipRecordRuntime _packetOwnedRelationshipRecordRuntime = new();
         private readonly PacketOwnedPortableChairRecordRuntime _packetOwnedPortableChairRecordRuntime = new();
@@ -873,6 +873,24 @@ namespace HaCreator.MapSimulator
                 return preparedApplied;
             }
 
+            if (packetType == (int)RemoteUserPacketType.UserMovingShootAttackPrepareOfficial)
+            {
+                if (!RemoteUserPacketCodec.TryParseMovingShootAttackPrepare(payload, out RemoteUserMovingShootAttackPreparePacket officialMovingShootPacket, out string movingShootError))
+                {
+                    result = movingShootError;
+                    return false;
+                }
+
+                bool movingShootApplied = _remoteUserPool.TryApplyMovingShootAttackPrepare(
+                    officialMovingShootPacket,
+                    currentTime,
+                    out string movingShootMessage);
+                result = movingShootApplied
+                    ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {officialMovingShootPacket.CharacterId}."
+                    : movingShootMessage;
+                return movingShootApplied;
+            }
+
             if (packetType == (int)RemoteUserPacketType.UserPreparedSkillClearOfficial)
             {
                 if (!RemoteUserPacketCodec.TryParsePreparedSkillClear(payload, out RemoteUserPreparedSkillClearPacket officialClearPacket, out string clearError))
@@ -1050,7 +1068,7 @@ namespace HaCreator.MapSimulator
                             RememberRemoteTownPortalOwnerFieldObservation(
                                 (uint)leavePacket.CharacterId,
                                 leavePosition.Value,
-                                TemporaryPortalField.RemoteTownPortalObservationSource.MovementSnapshot);
+                                TemporaryPortalField.RemoteTownPortalObservationSource.LastLiveLeaveField);
                         }
                     }
 
@@ -1656,6 +1674,7 @@ namespace HaCreator.MapSimulator
                 "chair" => (int)RemoteUserPacketType.UserPortableChair,
                 "mount" => (int)RemoteUserPacketType.UserMount,
                 "prepare" => (int)RemoteUserPacketType.UserPreparedSkill,
+                "movingshootprepare" or "movingshoot" or "movingprepare" => (int)RemoteUserPacketType.UserMovingShootAttackPrepareOfficial,
                 "preparedclear" => (int)RemoteUserPacketType.UserPreparedSkillClear,
                 "pickup" or "droppickup" => (int)RemoteUserPacketType.UserDropPickup,
                 "melee" or "attack" or "meleeattack" => (int)RemoteUserPacketType.UserMeleeAttack,
@@ -1700,6 +1719,7 @@ namespace HaCreator.MapSimulator
                 (int)RemoteUserPacketType.UserTemporaryStatReset => "remote user remote temporary-stat reset packet",
                 (int)RemoteUserPacketType.UserEmotionOfficial => "remote user official emotion packet",
                 (int)RemoteUserPacketType.UserActiveEffectItemOfficial => "remote user official active-effect-item packet",
+                (int)RemoteUserPacketType.UserMovingShootAttackPrepareOfficial => "remote user official moving-shoot prepare packet",
                 (int)RemoteUserPacketType.UserPortableChairOfficial => "remote user official portable-chair packet",
                 _ => $"remote user packet {packetType}"
             };

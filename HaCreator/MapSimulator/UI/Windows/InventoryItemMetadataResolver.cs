@@ -378,7 +378,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             WzSubProperty itemProperty = LoadItemProperty(itemId);
-            return IsPetFoodSpec(itemProperty?["spec"] as WzSubProperty);
+            return IsPetFoodSpec(itemId, itemProperty?["spec"] as WzSubProperty);
         }
 
         public static bool TryResolveItemInfoPath(int itemId, out string path)
@@ -975,7 +975,7 @@ namespace HaCreator.MapSimulator.UI
             List<string> effectLines = new();
             AppendInfoEffectLines(effectLines, infoProperty);
             AppendChairRecoveryEffectLines(effectLines, infoProperty);
-            AppendPetFoodEffectLine(effectLines, specProperty);
+            AppendPetFoodEffectLine(effectLines, itemId, specProperty);
             AppendBuffItemEffectLines(effectLines, itemProperty?["buff"] as WzSubProperty);
             AppendScriptedUseEffectLines(effectLines, specProperty);
             AppendPickupModifierEffectLines(effectLines, specProperty);
@@ -1312,10 +1312,10 @@ namespace HaCreator.MapSimulator.UI
             effectLines.Add($"Attack Speed {FormatSignedValue(booster)}");
         }
 
-        private static void AppendPetFoodEffectLine(List<string> effectLines, WzSubProperty specProperty)
+        private static void AppendPetFoodEffectLine(List<string> effectLines, int itemId, WzSubProperty specProperty)
         {
             int fullnessIncrease = GetIntValue(specProperty?["inc"]);
-            if (fullnessIncrease <= 0 || !IsPetFoodSpec(specProperty))
+            if (fullnessIncrease <= 0 || !IsPetFoodSpec(itemId, specProperty))
             {
                 return;
             }
@@ -2191,6 +2191,11 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add("Auto Buff item");
             }
 
+            if (GetIntValue(infoProperty["add"]) == 1)
+            {
+                metadataLines.Add("Adds pet utility skill");
+            }
+
             if (GetIntValue(infoProperty["flatRate"]) == 1)
             {
                 metadataLines.Add("Flat-rate item");
@@ -2373,9 +2378,19 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add("Automatically loots items");
             }
 
+            if (GetIntValue(infoProperty["pickupMeso"]) == 1)
+            {
+                metadataLines.Add("Automatically loots mesos");
+            }
+
             if (GetIntValue(infoProperty["pickupAll"]) == 1)
             {
                 metadataLines.Add("Automatically loots items and mesos");
+            }
+
+            if (GetIntValue(infoProperty["pickupOthers"]) == 1)
+            {
+                metadataLines.Add("Automatically loots other players' drops");
             }
 
             if (GetIntValue(infoProperty["ignorePickup"]) == 1)
@@ -2383,7 +2398,8 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add("Ignores pet looting");
             }
 
-            if (GetIntValue(infoProperty["sweepForDrop"]) == 1)
+            if (GetIntValue(infoProperty["sweepForDrop"]) == 1
+                || GetIntValue(infoProperty["dropSweep"]) == 1)
             {
                 metadataLines.Add("Sweeps nearby drops");
             }
@@ -2391,6 +2407,11 @@ namespace HaCreator.MapSimulator.UI
             if (GetIntValue(infoProperty["longRange"]) == 1)
             {
                 metadataLines.Add("Extended pet pickup range");
+            }
+
+            if (GetIntValue(infoProperty["multiPet"]) == 1)
+            {
+                metadataLines.Add("Supports multi-pet ownership");
             }
 
             if (GetIntValue(infoProperty["consumeHP"]) == 1)
@@ -2417,6 +2438,14 @@ namespace HaCreator.MapSimulator.UI
             {
                 metadataLines.Add("Cannot be revived");
             }
+        }
+
+        internal static IReadOnlyList<string> BuildPetUtilityMetadataLinesForTesting(WzSubProperty infoProperty)
+        {
+            List<string> metadataLines = new();
+            AppendCashAvailabilityMetadataLines(metadataLines, infoProperty);
+            AppendPetUtilityMetadataLines(metadataLines, infoProperty);
+            return metadataLines;
         }
 
         private static void AppendPersonalityExperienceMetadataLines(
@@ -2466,10 +2495,20 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
-        private static bool IsPetFoodSpec(WzSubProperty specProperty)
+        internal static bool IsPetFoodSpecForTesting(int itemId, WzSubProperty specProperty)
         {
-            return GetIntValue(specProperty?["inc"]) > 0
-                   && HasNumericChildEntries(specProperty, "inc");
+            return IsPetFoodSpec(itemId, specProperty);
+        }
+
+        private static bool IsPetFoodSpec(int itemId, WzSubProperty specProperty)
+        {
+            if (GetIntValue(specProperty?["inc"]) <= 0)
+            {
+                return false;
+            }
+
+            return itemId / 10000 == 212
+                   || HasNumericChildEntries(specProperty, "inc");
         }
 
         private static string ResolveMapName(int mapId)

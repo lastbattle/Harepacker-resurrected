@@ -1609,9 +1609,10 @@ namespace HaCreator.MapSimulator.Fields
             {
                 RemoteTownPortalObservationSource.MovementSnapshot => 1,
                 RemoteTownPortalObservationSource.InferredSourceField => 2,
-                RemoteTownPortalObservationSource.EnterField => 3,
-                RemoteTownPortalObservationSource.FollowTransfer => 4,
-                RemoteTownPortalObservationSource.PacketCast => 5,
+                RemoteTownPortalObservationSource.LastLiveLeaveField => 3,
+                RemoteTownPortalObservationSource.EnterField => 4,
+                RemoteTownPortalObservationSource.FollowTransfer => 5,
+                RemoteTownPortalObservationSource.PacketCast => 6,
                 _ => 0
             };
         }
@@ -1623,6 +1624,7 @@ namespace HaCreator.MapSimulator.Fields
                 RemoteTownPortalObservationSource.PacketCast => 3,
                 RemoteTownPortalObservationSource.EnterField => 2,
                 RemoteTownPortalObservationSource.FollowTransfer => 2,
+                RemoteTownPortalObservationSource.LastLiveLeaveField => 1,
                 RemoteTownPortalObservationSource.InferredSourceField => 1,
                 RemoteTownPortalObservationSource.MovementSnapshot => 1,
                 _ => 0
@@ -2005,6 +2007,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             MovementSnapshot,
             InferredSourceField,
+            LastLiveLeaveField,
             EnterField,
             FollowTransfer,
             PacketCast

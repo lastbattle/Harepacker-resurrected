@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
+using SD = System.Drawing;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -112,6 +113,8 @@ namespace HaCreator.MapSimulator.UI
         private int? _previousScrollWheelValue;
         private int _logScrollOffset;
         private int _summaryScrollOffset;
+        private ClientTextRasterizer _clientRegularTextRasterizer;
+        private ClientTextRasterizer _clientEmphasisTextRasterizer;
 
         public QuestDetailWindow(IDXObject frame, string windowName)
             : base(frame)
@@ -971,6 +974,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
+                Vector2 measuredToken = MeasureRichTextToken(token, scale, currentStyle);
                 if (token.Kind == RichTextTokenKind.Space)
                 {
                     if (!lineHasContent)
@@ -978,7 +982,7 @@ namespace HaCreator.MapSimulator.UI
                         continue;
                     }
 
-                    if ((currentX - lineStartX) + token.Width > maxWidth)
+                    if ((currentX - lineStartX) + measuredToken.X > maxWidth)
                     {
                         currentY += lineHeight;
                         currentX = lineStartX;
@@ -987,7 +991,7 @@ namespace HaCreator.MapSimulator.UI
                         continue;
                     }
                 }
-                else if (lineHasContent && (currentX - lineStartX) + token.Width > maxWidth)
+                else if (lineHasContent && (currentX - lineStartX) + measuredToken.X > maxWidth)
                 {
                     currentY += lineHeight;
                     currentX = lineStartX;
@@ -995,14 +999,14 @@ namespace HaCreator.MapSimulator.UI
                     lineHasContent = false;
                 }
 
-                if (token.Width <= 0 && token.Height <= 0)
+                if (measuredToken.X <= 0f && measuredToken.Y <= 0f)
                 {
                     continue;
                 }
 
                 drawToken?.Invoke(token, new Vector2(currentX, currentY), currentStyle);
-                currentX += token.Width;
-                lineHeight = Math.Max(lineHeight, token.Height > 0 ? token.Height : baselineHeight);
+                currentX += measuredToken.X;
+                lineHeight = Math.Max(lineHeight, measuredToken.Y > 0f ? measuredToken.Y : baselineHeight);
                 if (token.Kind != RichTextTokenKind.Space)
                 {
                     lineHasContent = true;
@@ -1010,6 +1014,16 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return lineHasContent ? currentY + lineHeight : currentY;
+        }
+
+        private Vector2 MeasureRichTextToken(RichTextToken token, float scale, RichTextStyleState style)
+        {
+            if (token.Kind == RichTextTokenKind.Text || token.Kind == RichTextTokenKind.Space)
+            {
+                return MeasureText(token.Text, scale, style.Emphasized);
+            }
+
+            return new Vector2(token.Width, token.Height);
         }
 
         private IEnumerable<RichTextToken> EnumerateRichTextTokens(string text, float scale)
@@ -1586,11 +1600,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Vector2 textSize = MeasureText(text, scale);
+            Vector2 textSize = MeasureText(text, scale, emphasized);
             Rectangle lineRect = new(
                 (int)position.X,
                 (int)position.Y,
-                Math.Max(1, (int)Math.Ceiling(textSize.X) + (emphasized ? 1 : 0)),
+                Math.Max(1, (int)Math.Ceiling(textSize.X)),
                 Math.Max(1, (int)Math.Ceiling(GetLineHeight(scale))));
             if (!lineRect.Intersects(clipRect))
             {
@@ -1609,17 +1623,37 @@ namespace HaCreator.MapSimulator.UI
 
             if (emphasized)
             {
+                ClientTextRasterizer emphasisRasterizer = ResolveQuestDetailTextRasterizer(emphasized: true);
+                if (emphasisRasterizer != null)
+                {
+                    emphasisRasterizer.DrawString(sprite, text, position, color, scale);
+                    return;
+                }
+
                 ClientTextDrawing.Draw(sprite, text, position + new Vector2(1f, 0f), color, scale, _font);
+            }
+
+            ClientTextRasterizer regularRasterizer = ResolveQuestDetailTextRasterizer(emphasized: false);
+            if (regularRasterizer != null)
+            {
+                regularRasterizer.DrawString(sprite, text, position, color, scale);
+                return;
             }
 
             ClientTextDrawing.Draw(sprite, text, position, color, scale, _font);
         }
 
-        private Vector2 MeasureText(string text, float scale)
+        private Vector2 MeasureText(string text, float scale, bool emphasized = false)
         {
             if (string.IsNullOrEmpty(text))
             {
                 return Vector2.Zero;
+            }
+
+            ClientTextRasterizer rasterizer = ResolveQuestDetailTextRasterizer(emphasized);
+            if (rasterizer != null)
+            {
+                return rasterizer.MeasureString(text, scale);
             }
 
             return ClientTextDrawing.Measure(GetTextGraphicsDevice(), text, scale, _font);
@@ -1644,6 +1678,24 @@ namespace HaCreator.MapSimulator.UI
                 ?? _bottomPanel?.Texture?.GraphicsDevice
                 ?? _summaryPanel?.Texture?.GraphicsDevice
                 ?? _detailTip?.Texture?.GraphicsDevice;
+        }
+
+        private ClientTextRasterizer ResolveQuestDetailTextRasterizer(bool emphasized)
+        {
+            GraphicsDevice graphicsDevice = GetTextGraphicsDevice();
+            if (graphicsDevice == null)
+            {
+                return null;
+            }
+
+            if (emphasized)
+            {
+                _clientEmphasisTextRasterizer ??= new ClientTextRasterizer(graphicsDevice, fontStyle: SD.FontStyle.Bold);
+                return _clientEmphasisTextRasterizer;
+            }
+
+            _clientRegularTextRasterizer ??= new ClientTextRasterizer(graphicsDevice);
+            return _clientRegularTextRasterizer;
         }
 
         private void RegisterQuestSurfaceTexture(string surfaceKey, Texture2D texture)

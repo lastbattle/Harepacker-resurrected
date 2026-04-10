@@ -185,19 +185,21 @@ namespace HaCreator.MapSimulator
                     _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
                 }
             }
-            else if (!leftPressed)
-            {
-                _initialQuizOwnerPressedOkButton = false;
-            }
-
             if (justReleased)
             {
-                bool confirm = _initialQuizOwnerPressedOkButton && _initialQuizOwnerHoveringOkButton;
+                bool confirm = ShouldSubmitInitialQuizOwnerOkButtonRelease(
+                    _initialQuizOwnerPressedOkButton,
+                    _initialQuizOwnerHoveringOkButton,
+                    showInput);
                 _initialQuizOwnerPressedOkButton = false;
                 if (confirm)
                 {
                     SubmitInitialQuizOwnerResult(_initialQuizOwnerInput.ToString(), currentTickCount, showFeedback: true);
                 }
+            }
+            else if (!leftPressed)
+            {
+                _initialQuizOwnerPressedOkButton = false;
             }
 
             return true;
@@ -743,6 +745,11 @@ namespace HaCreator.MapSimulator
             return keyFocused
                 ? InitialQuizOwnerButtonVisualState.KeyFocused
                 : InitialQuizOwnerButtonVisualState.Normal;
+        }
+
+        internal static bool ShouldSubmitInitialQuizOwnerOkButtonRelease(bool pressedOkButton, bool hoveringOkButton, bool enabled)
+        {
+            return enabled && pressedOkButton && hoveringOkButton;
         }
 
         internal static bool ShouldDrawInitialQuizOwnerCursor(int currentTickCount, int cursorBlinkStartedAt)

@@ -761,10 +761,16 @@ namespace HaCreator.MapSimulator.Loaders
             int height,
             GraphicsDevice device)
         {
+            // CUtilDlg::OnCreate draws the bottom slice at m_height - 0x0F, so the
+            // frame canvas clips to the first 15 pixels of UtilDlgEx/s.
+            const int clientVisibleBottomHeight = 15;
+
             int frameWidth = Math.Max(1, width);
             int frameHeight = Math.Max(1, height);
             int topHeight = Math.Min(topTexture.Height, frameHeight);
-            int bottomHeight = Math.Min(bottomTexture.Height, Math.Max(0, frameHeight - topHeight));
+            int bottomHeight = Math.Min(
+                Math.Min(bottomTexture.Height, clientVisibleBottomHeight),
+                Math.Max(0, frameHeight - topHeight));
             int centerHeight = Math.Max(0, frameHeight - topHeight - bottomHeight);
 
             Color[] topData = GetTextureData(topTexture);
@@ -784,8 +790,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             if (bottomHeight > 0)
             {
-                int sourceY = Math.Max(0, bottomTexture.Height - bottomHeight);
-                BlitTextureStrip(frameData, frameWidth, frameHeight - bottomHeight, bottomData, bottomTexture.Width, bottomHeight, frameWidth, sourceY);
+                BlitTextureStrip(frameData, frameWidth, frameHeight - bottomHeight, bottomData, bottomTexture.Width, bottomHeight, frameWidth);
             }
 
             Texture2D frameTexture = new Texture2D(device, frameWidth, frameHeight);

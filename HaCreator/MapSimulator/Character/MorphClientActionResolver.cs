@@ -96,7 +96,23 @@ namespace HaCreator.MapSimulator.Character
                 ["homing"] = new[] { "doublefire" },
                 ["rapidfire"] = new[] { "doublefire" },
                 ["cannon"] = new[] { "doublefire" },
-                ["torpedo"] = new[] { "doublefire" }
+                ["torpedo"] = new[] { "doublefire" },
+                // The current WZ export publishes cannon-family skill actions under
+                // Skill/501, 530, 531, and 532, but pirate Morph/*.img still exposes
+                // no verbatim cannon combat branches. Keep them on the same loader-
+                // owned gun surface as the older raw `cannon` and `torpedo` names.
+                ["flamesplash"] = new[] { "doublefire" },
+                ["swiftShot"] = new[] { "doublefire" },
+                ["cannonSmash"] = new[] { "doublefire" },
+                ["giganticBackstep"] = new[] { "doublefire" },
+                ["rushBoom"] = new[] { "doublefire" },
+                ["cannonSlam"] = new[] { "doublefire" },
+                ["counterCannon"] = new[] { "doublefire" },
+                ["cannonSpike"] = new[] { "doublefire" },
+                ["superCannon"] = new[] { "doublefire" },
+                ["magneticCannon"] = new[] { "doublefire" },
+                ["bombExplosion"] = new[] { "doublefire" },
+                ["monkeyBoomboom"] = new[] { "doublefire" }
             };
 
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedGenericMorphFallbackAliases =

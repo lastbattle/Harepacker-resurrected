@@ -479,6 +479,14 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (TryResolvePendingCrossMapTeleportPortalIndexByPreservedSlot(
+                portalPool,
+                target,
+                out portalIndex))
+            {
+                return true;
+            }
+
             if (TryResolvePendingCrossMapTeleportPortalIndexBySourceMetadata(
                 portalPool,
                 target,
@@ -495,6 +503,47 @@ namespace HaCreator.MapSimulator
                     out portalIndex,
                     out _))
             {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryResolvePendingCrossMapTeleportPortalIndexByPreservedSlot(
+            PortalPool portalPool,
+            PendingCrossMapTeleportTarget target,
+            out int portalIndex)
+        {
+            portalIndex = -1;
+            if (portalPool == null || target == null || target.TargetPortalIndex < 0)
+            {
+                return false;
+            }
+
+            PortalInstance portalInstance = portalPool.GetPortal(target.TargetPortalIndex)?.PortalInstance;
+            if (portalInstance == null)
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(target.TargetPortalName)
+                && string.Equals(portalInstance.pn, target.TargetPortalName, StringComparison.OrdinalIgnoreCase))
+            {
+                portalIndex = target.TargetPortalIndex;
+                return true;
+            }
+
+            if (target.TargetPortalNameCandidates?.Any(
+                    candidate => string.Equals(candidate, portalInstance.pn, StringComparison.OrdinalIgnoreCase)) == true)
+            {
+                portalIndex = target.TargetPortalIndex;
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(target.TargetPortalName)
+                && (target.TargetPortalNameCandidates == null || target.TargetPortalNameCandidates.Length == 0))
+            {
+                portalIndex = target.TargetPortalIndex;
                 return true;
             }
 
@@ -903,6 +952,7 @@ namespace HaCreator.MapSimulator
                 _mapBoard?.MapInfo?.id ?? -1,
                 null,
                 out targetPortalName,
+                out _,
                 out _,
                 out _);
         }
@@ -1334,9 +1384,11 @@ namespace HaCreator.MapSimulator
         private bool TryResolvePacketOwnedTargetPortalNameFromSourcePortal(
             PortalInstance sourcePortal,
             int targetMapId,
-            out string targetPortalName)
+            out string targetPortalName,
+            out int targetPortalIndex)
         {
             targetPortalName = null;
+            targetPortalIndex = -1;
             if (sourcePortal == null
                 || sourcePortal.tm != targetMapId
                 || string.IsNullOrWhiteSpace(sourcePortal.tn))
@@ -1350,22 +1402,26 @@ namespace HaCreator.MapSimulator
             if (!TryResolvePacketOwnedPortalRequestTargetFromBoardPortals(
                 targetPortals,
                 sourcePortal.tn,
-                out PortalInstance resolvedTargetPortal))
+                out PortalInstance resolvedTargetPortal,
+                out int resolvedTargetPortalIndex))
             {
                 return false;
             }
 
             targetPortalName = resolvedTargetPortal.pn;
+            targetPortalIndex = resolvedTargetPortalIndex;
             return true;
         }
 
         private bool TryResolvePacketOwnedPendingCrossMapPortalNames(
             PortalInstance sourcePortal,
             out string targetPortalName,
-            out string[] candidatePortalNames)
+            out string[] candidatePortalNames,
+            out int targetPortalIndex)
         {
             targetPortalName = sourcePortal?.tn;
             candidatePortalNames = Array.Empty<string>();
+            targetPortalIndex = -1;
             if (sourcePortal == null)
             {
                 return false;
@@ -1375,13 +1431,24 @@ namespace HaCreator.MapSimulator
             AddPacketOwnedTeleportCandidateName(candidates, sourcePortal.tn);
 
             int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
+            IEnumerable<PortalInstance> targetPortals = null;
             if (sourcePortal.tm > 0
                 && sourcePortal.tm != MapConstants.MaxMap
                 && sourcePortal.tm != currentMapId
                 && _loadMapCallback != null)
             {
                 Tuple<Board, string> targetMap = _loadMapCallback(sourcePortal.tm);
-                IEnumerable<PortalInstance> targetPortals = targetMap?.Item1?.BoardItems?.Portals;
+                targetPortals = targetMap?.Item1?.BoardItems?.Portals;
+                if (!string.IsNullOrWhiteSpace(sourcePortal.tn)
+                    && TryResolvePacketOwnedPortalRequestTargetFromBoardPortals(
+                        targetPortals,
+                        sourcePortal.tn,
+                        out _,
+                        out int directTargetPortalIndex))
+                {
+                    targetPortalIndex = directTargetPortalIndex;
+                }
+
                 if (TryCollectPacketOwnedPortalRequestTargetNamesByReciprocalLink(
                     targetPortals,
                     currentMapId,
@@ -1408,6 +1475,7 @@ namespace HaCreator.MapSimulator
                 && TryResolvePacketOwnedTeleportUniqueCandidatePortalName(candidatePortalNames, out string uniqueCandidatePortalName))
             {
                 targetPortalName = uniqueCandidatePortalName;
+                targetPortalIndex = GetPacketOwnedPortalListIndex(targetPortals, targetPortalName);
             }
 
             return !string.IsNullOrWhiteSpace(targetPortalName) || candidatePortalNames.Length > 0;
@@ -1421,11 +1489,13 @@ namespace HaCreator.MapSimulator
             string sourcePortalName,
             out string targetPortalName,
             out string resolutionSummary,
-            out string[] candidatePortalNames)
+            out string[] candidatePortalNames,
+            out int targetPortalIndex)
         {
             targetPortalName = null;
             resolutionSummary = "temporary portal destination coordinates";
             candidatePortalNames = Array.Empty<string>();
+            targetPortalIndex = -1;
             if (targetMapId <= 0
                 || targetMapId == MapConstants.MaxMap
                 || _loadMapCallback == null)
@@ -1455,6 +1525,7 @@ namespace HaCreator.MapSimulator
                     out string uniqueCoordinatePortalName))
                 {
                     targetPortalName = uniqueCoordinatePortalName;
+                    targetPortalIndex = GetPacketOwnedPortalListIndex(targetPortals, targetPortalName);
                     resolutionSummary = $"target-map portal '{targetPortalName}' in map {targetMapId}";
                     candidatePortalNames = candidateNames.ToArray();
                     return true;
@@ -1483,6 +1554,7 @@ namespace HaCreator.MapSimulator
                         out string reciprocalCoordinateTargetName))
                 {
                     targetPortalName = reciprocalCoordinateTargetName;
+                    targetPortalIndex = GetPacketOwnedPortalListIndex(targetPortals, targetPortalName);
                     resolutionSummary = $"reciprocal target-map portal '{targetPortalName}' at destination coordinates linked back to source portal '{sourcePortalName}'";
                     candidatePortalNames = candidateNames.ToArray();
                     return true;
@@ -1506,6 +1578,7 @@ namespace HaCreator.MapSimulator
                         out string mapOnlyCoordinateTargetName))
                 {
                     targetPortalName = mapOnlyCoordinateTargetName;
+                    targetPortalIndex = GetPacketOwnedPortalListIndex(targetPortals, mapOnlyPortal);
                     resolutionSummary = $"single target-map portal '{targetPortalName}' at destination coordinates that returns to map {currentMapId}";
                     candidatePortalNames = candidateNames.ToArray();
                     return true;
@@ -1519,6 +1592,7 @@ namespace HaCreator.MapSimulator
                 && TryResolvePacketOwnedTeleportUniqueCandidatePortalName(candidatePortalNames, out string uniqueCandidatePortalName))
             {
                 targetPortalName = uniqueCandidatePortalName;
+                targetPortalIndex = GetPacketOwnedPortalListIndex(targetPortals, targetPortalName);
             }
 
             return !string.IsNullOrWhiteSpace(targetPortalName) || candidatePortalNames.Length > 0;
@@ -2114,23 +2188,84 @@ namespace HaCreator.MapSimulator
             string targetPortalName,
             out PortalInstance portalInstance)
         {
+            return TryResolvePacketOwnedPortalRequestTargetFromBoardPortals(
+                portals,
+                targetPortalName,
+                out portalInstance,
+                out _);
+        }
+
+        private static bool TryResolvePacketOwnedPortalRequestTargetFromBoardPortals(
+            IEnumerable<PortalInstance> portals,
+            string targetPortalName,
+            out PortalInstance portalInstance,
+            out int portalIndex)
+        {
             portalInstance = null;
+            portalIndex = -1;
             if (portals == null || string.IsNullOrWhiteSpace(targetPortalName))
             {
                 return false;
             }
 
+            int index = 0;
             foreach (PortalInstance portal in portals)
             {
                 if (portal != null
                     && string.Equals(portal.pn, targetPortalName, StringComparison.OrdinalIgnoreCase))
                 {
                     portalInstance = portal;
+                    portalIndex = index;
                     return true;
                 }
+
+                index++;
             }
 
             return false;
+        }
+
+        private static int GetPacketOwnedPortalListIndex(IEnumerable<PortalInstance> portals, PortalInstance targetPortal)
+        {
+            if (portals == null || targetPortal == null)
+            {
+                return -1;
+            }
+
+            int index = 0;
+            foreach (PortalInstance portal in portals)
+            {
+                if (ReferenceEquals(portal, targetPortal))
+                {
+                    return index;
+                }
+
+                index++;
+            }
+
+            return GetPacketOwnedPortalListIndex(portals, targetPortal.pn);
+        }
+
+        private static int GetPacketOwnedPortalListIndex(IEnumerable<PortalInstance> portals, string targetPortalName)
+        {
+            if (portals == null || string.IsNullOrWhiteSpace(targetPortalName))
+            {
+                return -1;
+            }
+
+            int index = 0;
+            foreach (PortalInstance portal in portals)
+            {
+                if (portal != null
+                    && string.Equals(portal.pn, targetPortalName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return index;
+                }
+
+                index++;
+            }
+
+            return -1;
         }
 
         private bool TryBuildPacketOwnedTeleportPortalRequest(
@@ -2204,7 +2339,8 @@ namespace HaCreator.MapSimulator
                     sourcePortalName,
                     out string resolvedTargetPortalName,
                     out string resolvedTargetResolutionSummary,
-                    out string[] resolvedTargetCandidates))
+                    out string[] resolvedTargetCandidates,
+                    out _))
             {
                 targetPortalName ??= resolvedTargetPortalName;
                 targetResolutionSummary = resolvedTargetResolutionSummary;

@@ -13,6 +13,7 @@ namespace HaCreator.MapSimulator.Managers
         private const ulong CharacterDataRelationshipRecordFlag = 0x800UL;
         internal const ulong CharacterDataMapTransferFlag = 0x1000UL;
         private const ulong CharacterDataSkillCooldownFlag = 0x4000UL;
+        private const ulong CharacterDataOpaquePreMapTransferFlag = 0x8000UL;
         private const ulong CharacterDataQuestRecordFlag = 0x10000UL;
         private const ulong CharacterDataShortFileTimeRecordFlag = 0x20000UL;
         private const int LogoutGiftConfigByteLength = 3 * sizeof(int);
@@ -39,6 +40,7 @@ namespace HaCreator.MapSimulator.Managers
             out bool ignoredTrailingLogoutGiftConfig,
             out bool matchedExactTailBoundary,
             out bool matchedKnownLeadingCharacterDataTail,
+            out int matchedOpaquePreMapTransferByteCount,
             out bool matchedKnownCharacterDataTail)
         {
             regularFields = null;
@@ -47,6 +49,7 @@ namespace HaCreator.MapSimulator.Managers
             ignoredTrailingLogoutGiftConfig = false;
             matchedExactTailBoundary = false;
             matchedKnownLeadingCharacterDataTail = false;
+            matchedOpaquePreMapTransferByteCount = -1;
             matchedKnownCharacterDataTail = false;
 
             if (payload.Length < BootstrapBookByteLength || isPlausibleMapId == null)
@@ -66,6 +69,7 @@ namespace HaCreator.MapSimulator.Managers
                         out continentFields,
                         out matchedOffset,
                         out matchedKnownLeadingCharacterDataTail,
+                        out matchedOpaquePreMapTransferByteCount,
                         out matchedKnownCharacterDataTail))
                 {
                     ignoredTrailingLogoutGiftConfig = true;
@@ -82,6 +86,7 @@ namespace HaCreator.MapSimulator.Managers
                         out continentFields,
                         out matchedOffset,
                         out matchedKnownLeadingCharacterDataTail,
+                        out matchedOpaquePreMapTransferByteCount,
                         out matchedKnownCharacterDataTail))
                 {
                     ignoredTrailingLogoutGiftConfig = true;
@@ -97,6 +102,7 @@ namespace HaCreator.MapSimulator.Managers
                         out continentFields,
                         out matchedOffset,
                         out matchedKnownLeadingCharacterDataTail,
+                        out matchedOpaquePreMapTransferByteCount,
                         out matchedKnownCharacterDataTail))
                 {
                     ignoredTrailingLogoutGiftConfig = true;
@@ -113,6 +119,7 @@ namespace HaCreator.MapSimulator.Managers
                     out continentFields,
                     out matchedOffset,
                     out matchedKnownLeadingCharacterDataTail,
+                    out matchedOpaquePreMapTransferByteCount,
                     out matchedKnownCharacterDataTail))
             {
                 matchedExactTailBoundary = true;
@@ -128,6 +135,7 @@ namespace HaCreator.MapSimulator.Managers
                     out continentFields,
                     out matchedOffset,
                     out matchedKnownLeadingCharacterDataTail,
+                    out matchedOpaquePreMapTransferByteCount,
                     out matchedKnownCharacterDataTail))
             {
                 return true;
@@ -142,6 +150,7 @@ namespace HaCreator.MapSimulator.Managers
                 out continentFields,
                 out matchedOffset,
                 out matchedKnownLeadingCharacterDataTail,
+                out matchedOpaquePreMapTransferByteCount,
                 out matchedKnownCharacterDataTail);
         }
 
@@ -154,12 +163,14 @@ namespace HaCreator.MapSimulator.Managers
             out int[] continentFields,
             out int matchedOffset,
             out bool matchedKnownLeadingCharacterDataTail,
+            out int matchedOpaquePreMapTransferByteCount,
             out bool matchedKnownCharacterDataTail)
         {
             regularFields = null;
             continentFields = null;
             matchedOffset = -1;
             matchedKnownLeadingCharacterDataTail = false;
+            matchedOpaquePreMapTransferByteCount = -1;
             matchedKnownCharacterDataTail = false;
 
             if (payload.Length < BootstrapBookByteLength)
@@ -178,6 +189,7 @@ namespace HaCreator.MapSimulator.Managers
                 out continentFields,
                 out matchedOffset,
                 out matchedKnownLeadingCharacterDataTail,
+                out matchedOpaquePreMapTransferByteCount,
                 out matchedKnownCharacterDataTail);
         }
 
@@ -190,12 +202,14 @@ namespace HaCreator.MapSimulator.Managers
             out int[] continentFields,
             out int matchedOffset,
             out bool matchedKnownLeadingCharacterDataTail,
+            out int matchedOpaquePreMapTransferByteCount,
             out bool matchedKnownCharacterDataTail)
         {
             regularFields = null;
             continentFields = null;
             matchedOffset = -1;
             matchedKnownLeadingCharacterDataTail = false;
+            matchedOpaquePreMapTransferByteCount = -1;
             matchedKnownCharacterDataTail = false;
 
             if (payload.Length < BootstrapBookByteLength || isPlausibleMapId == null)
@@ -215,6 +229,7 @@ namespace HaCreator.MapSimulator.Managers
                         out continentFields,
                         out matchedOffset,
                         out matchedKnownLeadingCharacterDataTail,
+                        out matchedOpaquePreMapTransferByteCount,
                         out matchedKnownCharacterDataTail))
                 {
                     return true;
@@ -234,12 +249,14 @@ namespace HaCreator.MapSimulator.Managers
             out int[] continentFields,
             out int matchedOffset,
             out bool matchedKnownLeadingCharacterDataTail,
+            out int matchedOpaquePreMapTransferByteCount,
             out bool matchedKnownCharacterDataTail)
         {
             regularFields = null;
             continentFields = null;
             matchedOffset = -1;
             matchedKnownLeadingCharacterDataTail = false;
+            matchedOpaquePreMapTransferByteCount = -1;
             matchedKnownCharacterDataTail = false;
 
             int slotCount = MapTransferRuntimeManager.RegularCapacity + MapTransferRuntimeManager.ContinentCapacity;
@@ -305,12 +322,14 @@ namespace HaCreator.MapSimulator.Managers
             out int[] continentFields,
             out int matchedOffset,
             out bool matchedKnownLeadingCharacterDataTail,
+            out int matchedOpaquePreMapTransferByteCount,
             out bool matchedKnownCharacterDataTail)
         {
             regularFields = null;
             continentFields = null;
             matchedOffset = -1;
             matchedKnownLeadingCharacterDataTail = false;
+            matchedOpaquePreMapTransferByteCount = -1;
             matchedKnownCharacterDataTail = false;
 
             if (payload.Length < BootstrapBookByteLength || isPlausibleMapId == null)
@@ -318,10 +337,11 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            HashSet<int> candidateOffsets = new();
+            Dictionary<int, int> candidateOffsets = new();
             AddKnownLeadingLayoutOffsets(payload, characterDataFlags, candidateOffsets);
-            foreach (int candidateOffset in candidateOffsets)
+            foreach (KeyValuePair<int, int> candidate in candidateOffsets)
             {
+                int candidateOffset = candidate.Key;
                 if (candidateOffset <= 0)
                 {
                     continue;
@@ -337,9 +357,11 @@ namespace HaCreator.MapSimulator.Managers
                         out continentFields,
                         out matchedOffset,
                         out _,
+                        out _,
                         out matchedKnownCharacterDataTail))
                 {
                     matchedKnownLeadingCharacterDataTail = true;
+                    matchedOpaquePreMapTransferByteCount = candidate.Value;
                     return true;
                 }
             }
@@ -347,16 +369,16 @@ namespace HaCreator.MapSimulator.Managers
             return false;
         }
 
-        private static void AddKnownLeadingLayoutOffsets(ReadOnlySpan<byte> payload, ulong characterDataFlags, ISet<int> offsets)
+        private static void AddKnownLeadingLayoutOffsets(ReadOnlySpan<byte> payload, ulong characterDataFlags, IDictionary<int, int> offsets)
         {
             if (offsets == null || payload.Length < sizeof(ushort) + BootstrapBookByteLength)
             {
                 return;
             }
 
-            HashSet<int> candidateStarts = new()
+            HashSet<KnownLeadingOffsetCandidate> candidateStarts = new()
             {
-                0
+                new(0, -1)
             };
 
             if ((characterDataFlags & CharacterDataSkillRecordFlag) != 0)
@@ -372,6 +394,11 @@ namespace HaCreator.MapSimulator.Managers
             if ((characterDataFlags & CharacterDataSkillCooldownFlag) != 0)
             {
                 candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipInt16ValueRecordGroup));
+            }
+
+            if ((characterDataFlags & CharacterDataOpaquePreMapTransferFlag) != 0)
+            {
+                candidateStarts = ExpandOpaquePreMapTransferOffsets(candidateStarts, payload);
             }
 
             if ((characterDataFlags & CharacterDataQuestRecordFlag) != 0)
@@ -394,29 +421,61 @@ namespace HaCreator.MapSimulator.Managers
                 candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipRelationshipRecordGroups));
             }
 
-            foreach (int candidateOffset in candidateStarts)
+            foreach (KnownLeadingOffsetCandidate candidate in candidateStarts)
             {
-                offsets.Add(candidateOffset);
+                if (!offsets.TryGetValue(candidate.Offset, out int existingOpaqueByteCount) ||
+                    existingOpaqueByteCount < 0 ||
+                    (candidate.OpaquePreMapTransferByteCount >= 0 &&
+                     candidate.OpaquePreMapTransferByteCount < existingOpaqueByteCount))
+                {
+                    offsets[candidate.Offset] = candidate.OpaquePreMapTransferByteCount;
+                }
             }
         }
 
-        private static HashSet<int> ExtendKnownLeadingOffsets(
-            IEnumerable<int> sourceOffsets,
+        private static HashSet<KnownLeadingOffsetCandidate> ExtendKnownLeadingOffsets(
+            IEnumerable<KnownLeadingOffsetCandidate> sourceOffsets,
             ReadOnlySpan<byte> payload,
             CollectNextOffsets collectNextOffsets)
         {
-            HashSet<int> extended = new();
-            foreach (int sourceOffset in sourceOffsets)
+            HashSet<KnownLeadingOffsetCandidate> extended = new();
+            foreach (KnownLeadingOffsetCandidate source in sourceOffsets)
             {
-                extended.Add(sourceOffset);
-                foreach (int nextOffset in collectNextOffsets(payload, sourceOffset))
+                extended.Add(source);
+                foreach (int nextOffset in collectNextOffsets(payload, source.Offset))
                 {
-                    extended.Add(nextOffset);
+                    extended.Add(source with { Offset = nextOffset });
                 }
             }
 
             return extended;
         }
+
+        private static HashSet<KnownLeadingOffsetCandidate> ExpandOpaquePreMapTransferOffsets(
+            IEnumerable<KnownLeadingOffsetCandidate> sourceOffsets,
+            ReadOnlySpan<byte> payload)
+        {
+            HashSet<KnownLeadingOffsetCandidate> expanded = new();
+            int maximumOffset = Math.Max(0, payload.Length - BootstrapBookByteLength);
+            foreach (KnownLeadingOffsetCandidate source in sourceOffsets)
+            {
+                if ((uint)source.Offset > maximumOffset)
+                {
+                    continue;
+                }
+
+                for (int nextOffset = source.Offset; nextOffset <= maximumOffset; nextOffset++)
+                {
+                    expanded.Add(new KnownLeadingOffsetCandidate(
+                        nextOffset,
+                        nextOffset - source.Offset));
+                }
+            }
+
+            return expanded;
+        }
+
+        private readonly record struct KnownLeadingOffsetCandidate(int Offset, int OpaquePreMapTransferByteCount);
 
         private delegate IEnumerable<int> CollectNextOffsets(ReadOnlySpan<byte> payload, int offset);
         private delegate bool TrySkipRecordGroup(ReadOnlySpan<byte> payload, int offset, out int nextOffset);

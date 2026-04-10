@@ -233,6 +233,7 @@ namespace HaCreator.MapSimulator.Managers
                 59 => EquipSlot.Pendant2,
                 18 => EquipSlot.TamingMob,
                 19 => EquipSlot.Saddle,
+                20 => EquipSlot.TamingMobAccessory,
                 49 => EquipSlot.Medal,
                 50 => EquipSlot.Belt,
                 51 => EquipSlot.Shoulder,
@@ -382,6 +383,7 @@ namespace HaCreator.MapSimulator.Managers
                 167 => 167,
                 180 => 18,
                 191 => 19,
+                192 => 20,
                 198 or 199 => 18,
                 >= 190 and < 200 => 18,
                 _ when IsWeaponCategory(category) => 11,
@@ -422,6 +424,7 @@ namespace HaCreator.MapSimulator.Managers
                 167 => bodyPart == 167,
                 180 => bodyPart == 18,
                 191 => bodyPart == 19,
+                192 => bodyPart == 20,
                 198 or 199 => bodyPart == 18,
                 >= 190 and < 200 => bodyPart == 18,
                 _ => IsWeaponCategory(category) && bodyPart == 11

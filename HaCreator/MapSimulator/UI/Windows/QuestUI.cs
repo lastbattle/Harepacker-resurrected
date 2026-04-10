@@ -31,6 +31,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientCategoryButtonTopInset = 5;
         private const int ClientCategoryTextLeft = 31;
         private const int ClientCategoryCountRight = 188;
+        private const int ClientCategoryTrailingTextGap = 3;
         private const int TAB_AVAILABLE = 0;
         private const int TAB_IN_PROGRESS = 1;
         private const int TAB_COMPLETED = 2;
@@ -1227,7 +1228,6 @@ namespace HaCreator.MapSimulator.UI
                 float labelScale = 0.38f;
                 string countText = slot.Entry.Count.ToString();
                 float countScale = 0.38f;
-                Vector2 countMeasure = MeasureClientText(countText, countScale);
                 Color labelColor = enabled ? new Color(70, 45, 24) : new Color(106, 98, 88);
                 Color countColor = enabled ? new Color(108, 76, 42) : new Color(128, 120, 108);
                 Color leaderColor = enabled ? new Color(153, 121, 80) : new Color(156, 148, 136);
@@ -1235,22 +1235,72 @@ namespace HaCreator.MapSimulator.UI
                 int textY = HasClientCategoryButtonArt()
                     ? bounds.Y + GetCategoryRowTextTopOffset(slot)
                     : bounds.Y + 3;
-                int countRight = HasClientCategoryButtonArt() ? bounds.X + ClientCategoryCountRight : bounds.Right - 5;
-                int countLeft = (int)MathF.Floor(countRight - countMeasure.X);
-                int availableLabelWidth = Math.Max(0, countLeft - textX - 6);
+                int availableLabelWidth = HasClientCategoryButtonArt()
+                    ? ResolveClientCategoryLabelWidth()
+                    : Math.Max(0, (int)MathF.Floor(bounds.Width * 0.68f));
                 string labelText = FitSingleLineText(slot.Entry.AreaName, availableLabelWidth, labelScale);
                 Vector2 labelMeasure = MeasureClientText(labelText, labelScale);
 
                 ClientTextDrawing.Draw(sprite, labelText, new Vector2(textX, textY), labelColor, labelScale, _font);
-                DrawCategoryLeaderText(
-                    sprite,
-                    textX + labelMeasure.X,
-                    textY,
-                    Math.Max(0f, countLeft - (textX + labelMeasure.X) - 3f),
-                    leaderColor,
-                    labelScale);
-                ClientTextDrawing.Draw(sprite, countText, new Vector2(countLeft, textY), countColor, countScale, _font);
+                if (HasClientCategoryButtonArt())
+                {
+                    int labelWidth = (int)MathF.Ceiling(labelMeasure.X);
+                    float trailingX = bounds.X + ResolveClientCategoryTrailingTextX(labelWidth);
+                    float trailingWidth = ResolveClientCategoryTrailingTextWidth(labelWidth);
+                    string trailingText = BuildCategoryTrailingText(countText, trailingWidth, countScale);
+                    if (!string.IsNullOrEmpty(trailingText))
+                    {
+                        ClientTextDrawing.Draw(sprite, trailingText, new Vector2(trailingX, textY), countColor, countScale, _font);
+                    }
+                }
+                else
+                {
+                    int countRight = bounds.Right - 5;
+                    Vector2 countMeasure = MeasureClientText(countText, countScale);
+                    int countLeft = (int)MathF.Floor(countRight - countMeasure.X);
+                    DrawCategoryLeaderText(
+                        sprite,
+                        textX + labelMeasure.X,
+                        textY,
+                        Math.Max(0f, countLeft - (textX + labelMeasure.X) - 3f),
+                        leaderColor,
+                        labelScale);
+                    ClientTextDrawing.Draw(sprite, countText, new Vector2(countLeft, textY), countColor, countScale, _font);
+                }
             }
+        }
+
+        internal static int ResolveClientCategoryLabelWidth()
+        {
+            return ClientCategoryCountRight - ClientCategoryTextLeft - ClientCategoryTrailingTextGap;
+        }
+
+        internal static int ResolveClientCategoryTrailingTextX(int labelWidth)
+        {
+            return ClientCategoryTextLeft + Math.Max(0, labelWidth) + ClientCategoryTrailingTextGap;
+        }
+
+        internal static int ResolveClientCategoryTrailingTextWidth(int labelWidth)
+        {
+            return Math.Max(0, ClientCategoryCountRight - Math.Max(0, labelWidth) - ClientCategoryTrailingTextGap);
+        }
+
+        private string BuildCategoryTrailingText(string countText, float width, float scale)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(countText) || width <= 0f)
+            {
+                return string.Empty;
+            }
+
+            string normalizedCountText = countText.Trim();
+            float countWidth = MeasureClientText(normalizedCountText, scale).X;
+            if (countWidth >= width)
+            {
+                return FitSingleLineText(normalizedCountText, width, scale);
+            }
+
+            string leaderText = BuildCategoryLeaderText(Math.Max(0f, width - countWidth), scale);
+            return leaderText + normalizedCountText;
         }
 
         private void DrawCategoryLeaderText(SpriteBatch sprite, float left, float top, float width, Color color, float scale)

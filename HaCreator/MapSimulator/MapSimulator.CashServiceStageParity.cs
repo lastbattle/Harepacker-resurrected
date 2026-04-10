@@ -242,6 +242,12 @@ namespace HaCreator.MapSimulator
                     IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> historyEntries =
                         BuildCashShopOneADayHistoryEntryStates(stageWindow);
                     int currentCommoditySerialNumber = Math.Max(0, stageWindow.CashOneADayItemSerialNumber);
+                    TryResolveCashShopOneADayRemainingTime(
+                        stageWindow.CashOneADayItemDate,
+                        DateTime.Now,
+                        out int remainingHour,
+                        out int remainingMinute,
+                        out int remainingSecond);
                     return new CashShopStageChildWindow.OneADayOwnerState
                     {
                         IsPending = stageWindow.IsOneADayPending,
@@ -263,9 +269,9 @@ namespace HaCreator.MapSimulator
                         CurrentItemLabel = ResolveCashShopOneADayCommodityLabel(currentCommoditySerialNumber),
                         CurrentDateRaw = stageWindow.CashOneADayItemDate,
                         CurrentDateLabel = FormatCashShopOneADayDate(stageWindow.CashOneADayItemDate),
-                        Hour = 0,
-                        Minute = 0,
-                        Second = 0,
+                        Hour = remainingHour,
+                        Minute = remainingMinute,
+                        Second = remainingSecond,
                         PacketStateSignature = BuildCashShopOneADayPacketStateSignature(stageWindow, historyEntries),
                         HistoryEntries = historyEntries,
                         RecentPackets = stageWindow.GetRecentPacketSummaries()
@@ -374,6 +380,43 @@ namespace HaCreator.MapSimulator
             }
 
             return rawText;
+        }
+
+        internal static bool TryResolveCashShopOneADayRemainingTime(
+            int rawDate,
+            DateTime now,
+            out int hour,
+            out int minute,
+            out int second)
+        {
+            hour = 0;
+            minute = 0;
+            second = 0;
+
+            if (rawDate <= 0)
+            {
+                return false;
+            }
+
+            string rawText = rawDate.ToString(CultureInfo.InvariantCulture);
+            if (rawText.Length != 8
+                || !DateTime.TryParseExact(rawText, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime packetDate))
+            {
+                return false;
+            }
+
+            DateTime resetTime = packetDate.Date.AddDays(1);
+            TimeSpan remaining = resetTime - now;
+            if (remaining <= TimeSpan.Zero)
+            {
+                return true;
+            }
+
+            int totalSeconds = Math.Min((int)Math.Ceiling(remaining.TotalSeconds), 24 * 60 * 60 - 1);
+            hour = totalSeconds / 3600;
+            minute = (totalSeconds / 60) % 60;
+            second = totalSeconds % 60;
+            return true;
         }
 
         private IReadOnlyList<string> BuildCashShopLockerOwnerLines(AdminShopDialogUI cashShopWindow)

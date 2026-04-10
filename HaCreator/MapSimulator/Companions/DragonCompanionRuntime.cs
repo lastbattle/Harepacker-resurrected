@@ -107,6 +107,7 @@ namespace HaCreator.MapSimulator.Companions
         private Func<MapInfo> _currentMapInfoProvider;
         private Func<int?> _questInfoStateProvider;
         private Func<bool> _dragonFuryVisibleProvider;
+        private Func<int?> _ownerPhaseActionAlphaProvider;
         private DragonAnimationSet _currentSet;
         private string _currentActionName;
         private int _currentActionStartTime;
@@ -116,6 +117,7 @@ namespace HaCreator.MapSimulator.Companions
         private Vector2 _visualAnchor;
         private Vector2 _followVelocity;
         private float _alpha;
+        private float _ownerPhaseActionAlpha = 1f;
         private float _dragonFuryAlpha;
         private float _questInfoAlpha;
         private int _lastUpdateTime = int.MinValue;
@@ -210,6 +212,11 @@ namespace HaCreator.MapSimulator.Companions
             _dragonFuryVisibleProvider = dragonFuryVisibleProvider;
         }
 
+        public void SetOwnerPhaseActionAlphaProvider(Func<int?> ownerPhaseActionAlphaProvider)
+        {
+            _ownerPhaseActionAlphaProvider = ownerPhaseActionAlphaProvider;
+        }
+
         public void Update(PlayerCharacter owner, int currentTime)
         {
             if (owner?.Build == null || !TryResolveDragonJob(owner.Build.Job, out int dragonJob))
@@ -287,6 +294,7 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             _alpha = ResolveClientLayerAlpha(!_isSuppressed);
+            _ownerPhaseActionAlpha = ResolveOwnerPhaseClampedActionLayerAlpha(_alpha, _ownerPhaseActionAlphaProvider?.Invoke());
             _hasActiveOneTimeAction = HasClientOwnedOneTimeAction(explicitActionName, currentTime);
             UpdateAuxiliaryLayers(owner, currentTime);
         }
@@ -358,6 +366,7 @@ namespace HaCreator.MapSimulator.Companions
             _visualAnchor = Vector2.Zero;
             _followVelocity = Vector2.Zero;
             _alpha = 0f;
+            _ownerPhaseActionAlpha = 1f;
             _dragonFuryAlpha = 0f;
             _questInfoAlpha = 0f;
             _lastUpdateTime = int.MinValue;
@@ -387,7 +396,7 @@ namespace HaCreator.MapSimulator.Companions
                 _ => "hidden"
             };
 
-            return $"Dragon action: {_currentActionName ?? "none"}, follow: {(_isFollowActive ? "active" : "passive")}, fury: {IsDragonFuryVisible()}, suppressed: {_isSuppressed}, quest info: {questInfoLabel}, owner: {ownerName ?? "Unknown"}";
+            return $"Dragon action: {_currentActionName ?? "none"}, follow: {(_isFollowActive ? "active" : "passive")}, fury: {IsDragonFuryVisible()}, suppressed: {_isSuppressed}, action alpha: {Math.Round(_ownerPhaseActionAlpha * 255f)}, quest info: {questInfoLabel}, owner: {ownerName ?? "Unknown"}";
         }
 
         private DragonAnimationSet GetOrLoadAnimationSet(int dragonJob)
@@ -1043,7 +1052,7 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            frameAlpha = _alpha * ResolveFrameAlpha(frame, frameElapsedMs);
+            frameAlpha = _ownerPhaseActionAlpha * ResolveFrameAlpha(frame, frameElapsedMs);
             return frameAlpha > 0.01f;
         }
 
@@ -1063,6 +1072,18 @@ namespace HaCreator.MapSimulator.Companions
         internal static float ResolveClientLayerAlpha(bool shouldShow)
         {
             return shouldShow ? 1f : 0f;
+        }
+
+        internal static float ResolveOwnerPhaseClampedActionLayerAlpha(float actionLayerAlpha, int? ownerPhaseAlpha)
+        {
+            float clampedActionAlpha = MathHelper.Clamp(actionLayerAlpha, 0f, 1f);
+            if (!ownerPhaseAlpha.HasValue)
+            {
+                return clampedActionAlpha;
+            }
+
+            float clampedOwnerPhaseAlpha = Math.Clamp(ownerPhaseAlpha.Value, 0, 255) / 255f;
+            return Math.Min(clampedActionAlpha, clampedOwnerPhaseAlpha);
         }
 
         private void UpdateAuxiliaryLayers(PlayerCharacter owner, int currentTime)

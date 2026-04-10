@@ -1159,7 +1159,7 @@ namespace HaCreator.MapSimulator
             {
                 if (entry.Type == PacketOwnedFuncKeyFunctionType
                     && entry.Id >= 0
-                    && !TryResolvePacketOwnedKnownFunctionBinding((InputAction)entry.Id, out _))
+                    && !IsPacketOwnedKnownFunctionId(entry.Id))
                 {
                     Keys functionKey = ResolvePacketOwnedScanCodeKey(scanCode);
                     if (functionKey != Keys.None
@@ -1338,6 +1338,19 @@ namespace HaCreator.MapSimulator
             }
 
             clientFunctionId = -1;
+            return false;
+        }
+
+        internal static bool IsPacketOwnedKnownFunctionId(int clientFunctionId)
+        {
+            for (int i = 0; i < PacketOwnedKnownFunctionBindings.Length; i++)
+            {
+                if (PacketOwnedKnownFunctionBindings[i].ClientFunctionId == clientFunctionId)
+                {
+                    return true;
+                }
+            }
+
             return false;
         }
 

@@ -845,7 +845,8 @@ namespace HaCreator.MapSimulator.Managers
                     continue;
                 }
 
-                if (!CookieHousePointInboxManager.TryDecodeClientContextPoint(payload, out int point, out _))
+                if (!CookieHousePointInboxManager.TryDecodeClientContextPoint(payload, out int point, out _)
+                    || point > CookieHousePointInboxManager.ClientMaximumDisplayPoint)
                 {
                     continue;
                 }

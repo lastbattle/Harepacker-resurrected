@@ -34,8 +34,11 @@ namespace HaCreator.MapSimulator.Interaction
         QuestRewardRaiseOutboundRequestKind Kind,
         int Opcode,
         IReadOnlyList<byte> Payload,
+        int ClientOpcode,
+        IReadOnlyList<byte> ClientPayload,
         string Summary)
     {
+        internal const int ClientPutItemOpcode = 286;
         internal const int PutItemAddOpcode = 283;
         internal const int PutItemReleaseOpcode = 285;
         internal const int PutItemConfirmOpcode = 286;
@@ -55,6 +58,8 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestRewardRaiseOutboundRequestKind.PutItemAdd,
                 PutItemAddOpcode,
                 Array.AsReadOnly(payload),
+                ClientPutItemOpcode,
+                Array.AsReadOnly(BuildClientPutItemPayload(piece.InventoryType, piece.SlotIndex, piece.ItemId)),
                 $"PutItem add owner #{Math.Max(0, state?.OwnerItemId ?? 0)} req #{piece.RequestId} item {piece.ItemId} slot {piece.InventoryType}:{piece.SlotIndex + 1}");
         }
 
@@ -73,6 +78,8 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestRewardRaiseOutboundRequestKind.PutItemRelease,
                 PutItemReleaseOpcode,
                 Array.AsReadOnly(payload),
+                -1,
+                Array.Empty<byte>(),
                 $"PutItem release owner #{Math.Max(0, state?.OwnerItemId ?? 0)} req #{piece.RequestId} item {piece.ItemId} slot {piece.InventoryType}:{piece.SlotIndex + 1}");
         }
 
@@ -91,6 +98,8 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestRewardRaiseOutboundRequestKind.PutItemConfirm,
                 PutItemConfirmOpcode,
                 Array.AsReadOnly(payload),
+                -1,
+                Array.Empty<byte>(),
                 $"PutItem confirm owner #{Math.Max(0, state?.OwnerItemId ?? 0)} session #{Math.Max(0, state?.ManagerSessionId ?? 0)} pieces {state?.PlacedPieces?.Count ?? 0}");
         }
 
@@ -215,6 +224,25 @@ namespace HaCreator.MapSimulator.Interaction
 
             writer.Flush();
             return stream.ToArray();
+        }
+
+        private static byte[] BuildClientPutItemPayload(InventoryType inventoryType, int slotIndex, int itemId)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write(ResolveClientItemType(inventoryType));
+            writer.Write((ushort)Math.Clamp(slotIndex + 1, 0, ushort.MaxValue));
+            writer.Write(Math.Max(0, itemId));
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        private static byte ResolveClientItemType(InventoryType inventoryType)
+        {
+            int rawValue = (int)inventoryType;
+            return rawValue > 0 && rawValue <= byte.MaxValue
+                ? (byte)rawValue
+                : (byte)0;
         }
     }
 }

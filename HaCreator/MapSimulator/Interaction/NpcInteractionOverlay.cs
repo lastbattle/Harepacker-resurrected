@@ -44,6 +44,7 @@ namespace HaCreator.MapSimulator.Interaction
         private UtilDialogButtonTextures _packetQuestResultPrevButtonTextures;
         private UtilDialogButtonTextures _packetQuestResultNextButtonTextures;
         private UtilDialogButtonTextures _packetQuestResultOkButtonTextures;
+        private UtilDialogButtonTextures _packetQuestResultCloseButtonTextures;
         private Texture2D _packetQuestResultSpeakerTexture;
         private int _packetQuestResultSpeakerTemplateId;
         private readonly List<PacketQuestResultSpeakerFrame> _packetQuestResultSpeakerFrames = new();
@@ -61,6 +62,8 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _isNextButtonHovered;
         private bool _isPrevButtonPressed;
         private bool _isNextButtonPressed;
+        private bool _isPacketQuestResultCloseButtonHovered;
+        private bool _isPacketQuestResultCloseButtonPressed;
         private PacketQuestResultUtilDialogFocusedButton _packetQuestResultFocusedButton =
             PacketQuestResultUtilDialogFocusedButton.NextOrOk;
 
@@ -252,6 +255,14 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 Close();
                 return new NpcInteractionOverlayResult(true, null, closeKind: NpcInteractionOverlayCloseKind.Dismissed);
+            }
+
+            if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog &&
+                GetPacketQuestResultCloseButtonRectangle(windowRect).Contains(mousePoint))
+            {
+                return ApplyPacketQuestResultModalResult(
+                    PacketQuestResultUtilDialogModalResult.Close,
+                    new NpcInteractionOverlayResult(true, null));
             }
 
             Rectangle entryListRect = GetEntryListRectangle(windowRect);
@@ -548,6 +559,19 @@ namespace HaCreator.MapSimulator.Interaction
                 _isNextButtonPressed,
                 IsPacketQuestResultNextButtonFocused());
 
+            if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
+            {
+                DrawNavigationButton(
+                    spriteBatch,
+                    GetPacketQuestResultCloseButtonRectangle(windowRect),
+                    string.Empty,
+                    true,
+                    ResolvePacketQuestResultCloseButtonTextures(),
+                    _isPacketQuestResultCloseButtonHovered,
+                    _isPacketQuestResultCloseButtonPressed,
+                    false);
+            }
+
             string primaryButtonText = GetPrimaryButtonText();
             if (NpcInteractionPresentationProfile.ShouldDrawPrimaryButton(_presentationStyle, primaryButtonText))
             {
@@ -606,13 +630,20 @@ namespace HaCreator.MapSimulator.Interaction
 
         private NpcInteractionInputRequest GetCurrentInputRequest()
         {
-            IReadOnlyList<NpcInteractionPage> pages = GetCurrentPages();
-            if (_currentPage < 0 || _currentPage >= pages.Count)
-            {
-                return null;
-            }
+            return GetCurrentPage()?.InputRequest;
+        }
 
-            return pages[_currentPage].InputRequest;
+        private NpcInteractionPage GetCurrentPage()
+        {
+            IReadOnlyList<NpcInteractionPage> pages = GetCurrentPages();
+            return _currentPage >= 0 && _currentPage < pages.Count
+                ? pages[_currentPage]
+                : null;
+        }
+
+        private bool GetCurrentPageFlipSpeaker()
+        {
+            return GetCurrentPage()?.FlipSpeaker == true;
         }
 
         private bool IsPrimaryActionEnabled()
@@ -661,6 +692,7 @@ namespace HaCreator.MapSimulator.Interaction
             _packetQuestResultPrevButtonTextures = LoadButtonTextures(uiWindow2Image, uiWindow1Image, "BtPrev");
             _packetQuestResultNextButtonTextures = LoadButtonTextures(uiWindow2Image, uiWindow1Image, "BtNext");
             _packetQuestResultOkButtonTextures = LoadButtonTextures(uiWindow2Image, uiWindow1Image, "BtOK");
+            _packetQuestResultCloseButtonTextures = LoadButtonTextures(uiWindow2Image, uiWindow1Image, "BtClose");
         }
 
         private void EnsurePacketQuestResultSpeakerVisualLoaded(int speakerTemplateId)
@@ -910,7 +942,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 return PacketQuestResultUtilDialogLayout.GetBodyTextRectangle(
                     windowRect,
-                    hasSpeakerPortrait: _packetQuestResultSpeakerTexture != null);
+                    hasSpeakerPortrait: _packetQuestResultSpeakerTexture != null || _packetQuestResultSpeakerFrames.Count > 0,
+                    flipSpeaker: GetCurrentPageFlipSpeaker());
             }
 
             return new Rectangle(
@@ -1106,7 +1139,10 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            Rectangle portraitBounds = PacketQuestResultUtilDialogLayout.GetSpeakerPortraitBounds(windowRect, bodyTextRect);
+            Rectangle portraitBounds = PacketQuestResultUtilDialogLayout.GetSpeakerPortraitBounds(
+                windowRect,
+                bodyTextRect,
+                GetCurrentPageFlipSpeaker());
             if (portraitBounds.Width <= 0 || portraitBounds.Height <= 0)
             {
                 return;
@@ -1603,6 +1639,14 @@ namespace HaCreator.MapSimulator.Interaction
             return new Rectangle(windowRect.Right - CloseButtonSize - 10, windowRect.Y + 8, CloseButtonSize, CloseButtonSize);
         }
 
+        private Rectangle GetPacketQuestResultCloseButtonRectangle(Rectangle windowRect)
+        {
+            Texture2D closeTexture = ResolvePacketQuestResultCloseButtonTextures().Normal;
+            int width = closeTexture?.Width ?? CloseButtonSize;
+            int height = closeTexture?.Height ?? CloseButtonSize;
+            return PacketQuestResultUtilDialogLayout.GetCloseButtonBounds(windowRect, width, height);
+        }
+
         private Rectangle GetPrevButtonRectangle(Rectangle windowRect)
         {
             if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
@@ -1671,12 +1715,19 @@ namespace HaCreator.MapSimulator.Interaction
                 : _packetQuestResultNextButtonTextures;
         }
 
+        private UtilDialogButtonTextures ResolvePacketQuestResultCloseButtonTextures()
+        {
+            return _packetQuestResultCloseButtonTextures;
+        }
+
         private void ResetPacketQuestResultButtonInteractionState()
         {
             _isPrevButtonHovered = false;
             _isNextButtonHovered = false;
             _isPrevButtonPressed = false;
             _isNextButtonPressed = false;
+            _isPacketQuestResultCloseButtonHovered = false;
+            _isPacketQuestResultCloseButtonPressed = false;
         }
 
         private void ResetPacketQuestResultKeyboardFocus()
@@ -1820,6 +1871,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _isPrevButtonHovered = GetPrevButtonRectangle(windowRect).Contains(mousePoint);
             _isNextButtonHovered = GetNextButtonRectangle(windowRect).Contains(mousePoint);
+            _isPacketQuestResultCloseButtonHovered = GetPacketQuestResultCloseButtonRectangle(windowRect).Contains(mousePoint);
 
             bool leftPressed = mouseState.LeftButton == ButtonState.Pressed;
             bool leftJustPressed = leftPressed && previousMouseState.LeftButton == ButtonState.Released;
@@ -1827,6 +1879,8 @@ namespace HaCreator.MapSimulator.Interaction
                 && (_isPrevButtonPressed || (_isPrevButtonHovered && leftJustPressed));
             _isNextButtonPressed = leftPressed
                 && (_isNextButtonPressed || (_isNextButtonHovered && leftJustPressed));
+            _isPacketQuestResultCloseButtonPressed = leftPressed
+                && (_isPacketQuestResultCloseButtonPressed || (_isPacketQuestResultCloseButtonHovered && leftJustPressed));
         }
 
         private static void EnsureParsed(WzImage image)

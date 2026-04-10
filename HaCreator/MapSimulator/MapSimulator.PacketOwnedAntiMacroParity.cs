@@ -915,14 +915,10 @@ namespace HaCreator.MapSimulator
             long remaining = reader.BaseStream.Length - start;
             if (remaining >= sizeof(int))
             {
-                int candidateLength = reader.ReadInt32();
-                if (candidateLength > 0 && candidateLength <= reader.BaseStream.Length - reader.BaseStream.Position)
+                uint candidateLength = reader.ReadUInt32();
+                if (candidateLength <= reader.BaseStream.Length - reader.BaseStream.Position)
                 {
-                    byte[] legacyLengthPrefixedBytes = reader.ReadBytes(candidateLength);
-                    if (reader.BaseStream.Position == reader.BaseStream.Length)
-                    {
-                        return legacyLengthPrefixedBytes;
-                    }
+                    return reader.ReadBytes((int)candidateLength);
                 }
 
                 reader.BaseStream.Position = start;

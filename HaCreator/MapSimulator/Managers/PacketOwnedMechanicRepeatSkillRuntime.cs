@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using System.Text;
 
@@ -17,6 +18,35 @@ namespace HaCreator.MapSimulator.Managers
     {
         public const int RepeatSkillModeEndAckPacketType = 1020;
         public const int Sg88ManualAttackConfirmPacketType = 1021;
+        public const int SkillEffectRequestOpcode = 71;
+
+        public static bool TryEncodeSkillEffectRequestPayload(
+            int skillId,
+            int skillLevel,
+            bool sendLocal,
+            out byte[] payload,
+            out string error)
+        {
+            payload = Array.Empty<byte>();
+            error = "Skill-effect request requires a positive skill id.";
+            if (skillId <= 0)
+            {
+                return false;
+            }
+
+            if (skillLevel < byte.MinValue || skillLevel > byte.MaxValue)
+            {
+                error = "Skill-effect request skill level must fit in one byte.";
+                return false;
+            }
+
+            payload = new byte[sizeof(int) + 2];
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), skillId);
+            payload[sizeof(int)] = (byte)skillLevel;
+            payload[sizeof(int) + 1] = sendLocal ? (byte)1 : (byte)0;
+            error = null;
+            return true;
+        }
 
         public static bool TryDecodeRepeatSkillModeEndAck(
             byte[] payload,

@@ -1,0 +1,248 @@
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using System;
+using System.IO;
+
+namespace HaCreator.MapSimulator.UI
+{
+    public static class CharacterEquipmentPacketParity
+    {
+        public static byte[] EncodeAuthorityRequestPayload(EquipmentChangeRequest request)
+        {
+            if (request == null)
+            {
+                return Array.Empty<byte>();
+            }
+
+            return EncodePayload(new CharacterEquipmentAuthorityPayload(
+                CharacterEquipmentAuthorityPayloadMode.AuthorityRequest,
+                request.RequestId,
+                request.RequestedAtTick,
+                request.Kind,
+                request.OwnerKind,
+                request.OwnerSessionId,
+                request.ExpectedCharacterId,
+                request.ExpectedBuildStateToken,
+                request.SourceInventoryType,
+                request.SourceInventoryIndex,
+                request.SourceEquipSlot,
+                request.TargetEquipSlot,
+                request.ItemId));
+        }
+
+        public static byte[] EncodePayload(CharacterEquipmentAuthorityPayload payload)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream);
+            writer.Write((byte)payload.Mode);
+            switch (payload.Mode)
+            {
+                case CharacterEquipmentAuthorityPayloadMode.AuthorityRequest:
+                    writer.Write(payload.RequestId);
+                    writer.Write(payload.RequestedAtTick);
+                    writer.Write((byte)payload.RequestKind);
+                    writer.Write((byte)payload.OwnerKind);
+                    writer.Write(payload.OwnerSessionId);
+                    writer.Write(payload.ExpectedCharacterId);
+                    writer.Write(payload.ExpectedBuildStateToken);
+                    writer.Write((byte)payload.SourceInventoryType);
+                    writer.Write(payload.SourceInventoryIndex);
+                    WriteOptionalEquipSlot(writer, payload.SourceEquipSlot);
+                    WriteOptionalEquipSlot(writer, payload.TargetEquipSlot);
+                    writer.Write(payload.ItemId);
+                    break;
+                case CharacterEquipmentAuthorityPayloadMode.AuthorityResult:
+                    writer.Write(payload.RequestId);
+                    writer.Write(payload.RequestedAtTick);
+                    writer.Write((byte)payload.ResultKind);
+                    writer.Write(payload.ResolvedBuildStateToken);
+                    if (payload.ResultKind == CharacterEquipmentAuthorityResultKind.Reject)
+                    {
+                        writer.Write(payload.RejectReason ?? string.Empty);
+                    }
+
+                    break;
+                default:
+                    throw new InvalidOperationException($"Unsupported character equipment payload mode '{payload.Mode}'.");
+            }
+
+            return stream.ToArray();
+        }
+
+        public static bool TryDecodePayload(
+            byte[] payload,
+            out CharacterEquipmentAuthorityPayload decodedPayload,
+            out string errorMessage)
+        {
+            decodedPayload = default;
+            errorMessage = null;
+            if (payload == null || payload.Length == 0)
+            {
+                errorMessage = "Character equipment authority payload is missing. Use mode 0 for a request or mode 1 for a result.";
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                CharacterEquipmentAuthorityPayloadMode mode = (CharacterEquipmentAuthorityPayloadMode)reader.ReadByte();
+                switch (mode)
+                {
+                    case CharacterEquipmentAuthorityPayloadMode.AuthorityRequest:
+                        return TryDecodeAuthorityRequest(reader, stream, mode, out decodedPayload, out errorMessage);
+                    case CharacterEquipmentAuthorityPayloadMode.AuthorityResult:
+                        return TryDecodeAuthorityResult(reader, stream, mode, out decodedPayload, out errorMessage);
+                    default:
+                        errorMessage = $"Character equipment authority payload mode {(byte)mode} is unsupported.";
+                        return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Character equipment authority payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static bool TryDecodeAuthorityRequest(
+            BinaryReader reader,
+            Stream stream,
+            CharacterEquipmentAuthorityPayloadMode mode,
+            out CharacterEquipmentAuthorityPayload decodedPayload,
+            out string errorMessage)
+        {
+            decodedPayload = default;
+            const long expectedLength = sizeof(int) * 9 + sizeof(byte) * 3;
+            if (stream.Length - stream.Position != expectedLength)
+            {
+                errorMessage = "Character equipment authority-request payload must contain request id, requested tick, request kind, owner kind, owner session id, expected character id, build token, source inventory type/index, source slot, target slot, and item id.";
+                return false;
+            }
+
+            int requestId = reader.ReadInt32();
+            int requestedAtTick = reader.ReadInt32();
+            byte requestKindValue = reader.ReadByte();
+            if (!Enum.IsDefined(typeof(EquipmentChangeRequestKind), (int)requestKindValue))
+            {
+                errorMessage = "Character equipment authority-request kind is invalid.";
+                return false;
+            }
+
+            byte ownerKindValue = reader.ReadByte();
+            if (!Enum.IsDefined(typeof(EquipmentChangeOwnerKind), (int)ownerKindValue))
+            {
+                errorMessage = "Character equipment authority-request owner kind is invalid.";
+                return false;
+            }
+
+            int ownerSessionId = reader.ReadInt32();
+            int expectedCharacterId = reader.ReadInt32();
+            int expectedBuildStateToken = reader.ReadInt32();
+            byte sourceInventoryTypeValue = reader.ReadByte();
+            if (!Enum.IsDefined(typeof(InventoryType), (int)sourceInventoryTypeValue))
+            {
+                errorMessage = $"Character equipment authority-request source inventory type {sourceInventoryTypeValue} is invalid.";
+                return false;
+            }
+
+            int sourceInventoryIndex = reader.ReadInt32();
+            if (!TryReadOptionalEquipSlot(reader, out HaCreator.MapSimulator.Character.EquipSlot? sourceSlot, out errorMessage)
+                || !TryReadOptionalEquipSlot(reader, out HaCreator.MapSimulator.Character.EquipSlot? targetSlot, out errorMessage))
+            {
+                return false;
+            }
+
+            decodedPayload = new CharacterEquipmentAuthorityPayload(
+                mode,
+                requestId,
+                requestedAtTick,
+                (EquipmentChangeRequestKind)requestKindValue,
+                (EquipmentChangeOwnerKind)ownerKindValue,
+                ownerSessionId,
+                expectedCharacterId,
+                expectedBuildStateToken,
+                (InventoryType)sourceInventoryTypeValue,
+                sourceInventoryIndex,
+                sourceSlot,
+                targetSlot,
+                reader.ReadInt32());
+            return true;
+        }
+
+        private static bool TryDecodeAuthorityResult(
+            BinaryReader reader,
+            Stream stream,
+            CharacterEquipmentAuthorityPayloadMode mode,
+            out CharacterEquipmentAuthorityPayload decodedPayload,
+            out string errorMessage)
+        {
+            decodedPayload = default;
+            errorMessage = null;
+            if (stream.Length - stream.Position < sizeof(int) * 3 + sizeof(byte))
+            {
+                errorMessage = "Character equipment authority-result payload must contain request id, requested tick, result kind, and build token.";
+                return false;
+            }
+
+            int requestId = reader.ReadInt32();
+            int requestedAtTick = reader.ReadInt32();
+            byte resultKindValue = reader.ReadByte();
+            if (!Enum.IsDefined(typeof(CharacterEquipmentAuthorityResultKind), (int)resultKindValue))
+            {
+                errorMessage = $"Character equipment authority-result kind {resultKindValue} is invalid.";
+                return false;
+            }
+
+            CharacterEquipmentAuthorityResultKind resultKind = (CharacterEquipmentAuthorityResultKind)resultKindValue;
+            int resolvedBuildStateToken = reader.ReadInt32();
+            string rejectReason = null;
+            if (resultKind == CharacterEquipmentAuthorityResultKind.Reject)
+            {
+                rejectReason = reader.ReadString();
+            }
+
+            if (stream.Position != stream.Length)
+            {
+                errorMessage = "Character equipment authority-result payload should not contain extra bytes.";
+                return false;
+            }
+
+            decodedPayload = new CharacterEquipmentAuthorityPayload(
+                mode,
+                requestId,
+                requestedAtTick,
+                ResultKind: resultKind,
+                ResolvedBuildStateToken: resolvedBuildStateToken,
+                RejectReason: rejectReason);
+            return true;
+        }
+
+        private static void WriteOptionalEquipSlot(BinaryWriter writer, HaCreator.MapSimulator.Character.EquipSlot? slot)
+        {
+            writer.Write(slot.HasValue ? (int)slot.Value : -1);
+        }
+
+        private static bool TryReadOptionalEquipSlot(
+            BinaryReader reader,
+            out HaCreator.MapSimulator.Character.EquipSlot? slot,
+            out string errorMessage)
+        {
+            slot = null;
+            errorMessage = null;
+            int slotValue = reader.ReadInt32();
+            if (slotValue == -1)
+            {
+                return true;
+            }
+
+            if (!Enum.IsDefined(typeof(HaCreator.MapSimulator.Character.EquipSlot), slotValue))
+            {
+                errorMessage = $"Character equipment slot value {slotValue} is invalid.";
+                return false;
+            }
+
+            slot = (HaCreator.MapSimulator.Character.EquipSlot)slotValue;
+            return true;
+        }
+    }
+}

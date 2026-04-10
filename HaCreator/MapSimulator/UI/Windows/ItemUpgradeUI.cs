@@ -2296,7 +2296,7 @@ namespace HaCreator.MapSimulator.UI
                 part.PotentialTierText = $"{state.PotentialTier} Potential";
                 part.PotentialLines = new List<string>(EnumerateVisiblePotentialLines(state));
                 part.ItemOptionIds = new List<int>(
-                    MapSimulator.MergePacketOwnedTimeBombInvincibilityOptionIds(
+                    MapSimulator.MergePacketOwnedVisiblePotentialItemOptionIds(
                         part.ItemOptionIds,
                         part.PotentialLines));
             }
@@ -2306,7 +2306,7 @@ namespace HaCreator.MapSimulator.UI
                 part.PotentialLines = new List<string>();
                 part.ItemOptionIds = new List<int>(
                     (part.ItemOptionIds ?? new List<int>())
-                        .Where(static itemOptionId => !MapSimulator.IsPacketOwnedTimeBombInvincibilityOptionId(itemOptionId)));
+                        .Where(static itemOptionId => !MapSimulator.IsPacketOwnedVisiblePotentialItemOptionId(itemOptionId)));
             }
         }
 

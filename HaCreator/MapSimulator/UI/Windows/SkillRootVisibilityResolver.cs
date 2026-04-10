@@ -8,6 +8,7 @@ namespace HaCreator.MapSimulator.UI
     {
         private const int BeginnerSkillRootId = 0;
         private const int SkillRootDivisor = 10000;
+        // v95 CSkillInfo::IsSkillVisible hard rejects these ids before record / WZ flag checks.
         private const int MechanicSiegeHiddenSkillId = 4321001;
         private const int InvisibleRecoverySkillId = 1014;
         private const int CygnusMobilityHiddenSkillId = 10001015;
@@ -41,6 +42,7 @@ namespace HaCreator.MapSimulator.UI
 
         public static IReadOnlyList<int> ResolveVisibleSkillRootIds(
             int currentJobId,
+            int currentSubJob,
             IEnumerable<int> availableSkillRootIds,
             IEnumerable<int> learnedSkillIds,
             Func<int, int, bool> rootContainsSkill)
@@ -54,7 +56,7 @@ namespace HaCreator.MapSimulator.UI
             if (availableRoots.Count == 0)
                 return Array.Empty<int>();
 
-            var visibleRoots = ResolveCurrentLineageVisibleRoots(currentJobId, availableRoots);
+            var visibleRoots = ResolveCurrentLineageVisibleRoots(currentJobId, currentSubJob, availableRoots);
 
             if (learnedSkillIds != null)
             {
@@ -88,11 +90,14 @@ namespace HaCreator.MapSimulator.UI
                 : skillId / SkillRootDivisor;
         }
 
-        private static HashSet<int> ResolveCurrentLineageVisibleRoots(int currentJobId, HashSet<int> availableRoots)
+        private static HashSet<int> ResolveCurrentLineageVisibleRoots(int currentJobId, int currentSubJob, HashSet<int> availableRoots)
         {
             var visibleRoots = new HashSet<int>();
             if (availableRoots.Contains(BeginnerSkillRootId))
                 visibleRoots.Add(BeginnerSkillRootId);
+
+            if (IsDualBladeBorn(currentJobId, currentSubJob) && availableRoots.Contains(DualBladeRogueSkillRootId))
+                visibleRoots.Add(DualBladeRogueSkillRootId);
 
             int currentSkillRootId = Math.Max(0, currentJobId);
             var visitedRoots = new HashSet<int>();

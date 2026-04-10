@@ -111,6 +111,13 @@ namespace HaCreator.MapSimulator.Pools
             public int AnimationStartTime { get; init; }
         }
 
+        private sealed class PendingRemoteTransientSkillUseAvatarEffectState
+        {
+            public int RegistrationKey { get; init; }
+            public SkillAnimation OverlayAnimation { get; init; }
+            public SkillAnimation UnderFaceAnimation { get; init; }
+        }
+
         internal readonly record struct PortableChairPairParticipant(
             int CharacterId,
             PortableChair Chair,
@@ -164,6 +171,7 @@ namespace HaCreator.MapSimulator.Pools
         private const int RemoteShadowPartnerClientBackActionOffsetYPx = 50;
         private const int RemoteShadowPartnerTransitionDurationMs = 200;
         private const int RemoteShadowPartnerAttackDelayMs = 90;
+        private const int RemoteMovingShootNoPrepareAnimationSkillId = 33121009;
         private static readonly int[] RemoteShadowPartnerSkillIds =
         {
             4111002,
@@ -273,6 +281,7 @@ namespace HaCreator.MapSimulator.Pools
         private readonly List<MinimapUI.TrackedUserMarker> _helperMarkerBuffer = new();
         private readonly HashSet<(int LeftId, int RightId)> _renderedCouplePairsBuffer = new();
         private readonly HashSet<(RemoteRelationshipOverlayType Type, int ItemId, int LeftId, int RightId)> _renderedItemEffectPairsBuffer = new();
+        private readonly Dictionary<int, List<PendingRemoteTransientSkillUseAvatarEffectState>> _pendingTransientSkillUseAvatarEffectsByCharacterId = new();
         private int _preparedSkillWorldOverlayCount;
         private int _helperMarkerCount;
         private CharacterLoader _loader;
@@ -303,6 +312,7 @@ namespace HaCreator.MapSimulator.Pools
 
             _actorsById.Clear();
             _actorIdsByName.Clear();
+            _pendingTransientSkillUseAvatarEffectsByCharacterId.Clear();
             _portableChairPairRecordsByCharacterId.Clear();
             _localPortableChairPreferredPairCharacterId = null;
             ClearRelationshipRecordTables();
@@ -327,6 +337,7 @@ namespace HaCreator.MapSimulator.Pools
                     NotifyActorRemoved(actor.CharacterId, actor.Name);
                     _actorIdsByName.Remove(actor.Name);
                     _actorsById.Remove(characterId);
+                    _pendingTransientSkillUseAvatarEffectsByCharacterId.Remove(characterId);
                 }
             }
         }
@@ -426,6 +437,7 @@ namespace HaCreator.MapSimulator.Pools
                 RegisterMeleeAfterImage(actor, 0, actor.ActionName, Environment.TickCount, 10, 0);
                 UpdateNameLookup(previousName, actor.Name, characterId);
                 SyncRelationshipOverlaysFromRecords(actor.CharacterId, Environment.TickCount);
+                ApplyPendingTransientSkillUseAvatarEffects(actor, Environment.TickCount);
                 return true;
             }
 
@@ -444,6 +456,7 @@ namespace HaCreator.MapSimulator.Pools
             _actorIdsByName[created.Name] = characterId;
             SyncTemporaryStatPresentation(created);
             SyncRelationshipOverlaysFromRecords(created.CharacterId, Environment.TickCount);
+            ApplyPendingTransientSkillUseAvatarEffects(created, Environment.TickCount);
             return true;
         }
 
@@ -867,6 +880,60 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            ApplyTransientSkillUseAvatarEffect(actor, registrationKey, overlayAnimation, underFaceAnimation, currentTime);
+            return true;
+        }
+
+        public bool TryQueueTransientSkillUseAvatarEffect(
+            int characterId,
+            int registrationKey,
+            SkillAnimation overlayAnimation,
+            SkillAnimation underFaceAnimation,
+            out string message)
+        {
+            message = null;
+            if (characterId <= 0)
+            {
+                message = "Remote character ID must be positive.";
+                return false;
+            }
+
+            if (registrationKey <= 0 || (overlayAnimation == null && underFaceAnimation == null))
+            {
+                message = "Transient skill-use avatar effect data is incomplete.";
+                return false;
+            }
+
+            if (_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
+            {
+                ApplyTransientSkillUseAvatarEffect(actor, registrationKey, overlayAnimation, underFaceAnimation, Environment.TickCount);
+                return true;
+            }
+
+            if (!_pendingTransientSkillUseAvatarEffectsByCharacterId.TryGetValue(characterId, out var pendingEffects))
+            {
+                pendingEffects = new List<PendingRemoteTransientSkillUseAvatarEffectState>();
+                _pendingTransientSkillUseAvatarEffectsByCharacterId[characterId] = pendingEffects;
+            }
+
+            pendingEffects.RemoveAll(effect => effect?.RegistrationKey == registrationKey);
+            pendingEffects.Add(new PendingRemoteTransientSkillUseAvatarEffectState
+            {
+                RegistrationKey = registrationKey,
+                OverlayAnimation = overlayAnimation,
+                UnderFaceAnimation = underFaceAnimation
+            });
+            message = $"Queued transient skill-use avatar effect for remote character {characterId}.";
+            return true;
+        }
+
+        private static void ApplyTransientSkillUseAvatarEffect(
+            RemoteUserActor actor,
+            int registrationKey,
+            SkillAnimation overlayAnimation,
+            SkillAnimation underFaceAnimation,
+            int currentTime)
+        {
             actor.TransientSkillUseAvatarEffects.RemoveAll(effect => effect?.RegistrationKey == registrationKey);
             actor.TransientSkillUseAvatarEffects.Add(new RemoteTransientSkillUseAvatarEffectState
             {
@@ -875,7 +942,35 @@ namespace HaCreator.MapSimulator.Pools
                 UnderFaceAnimation = underFaceAnimation,
                 AnimationStartTime = currentTime
             });
-            return true;
+        }
+
+        private void ApplyPendingTransientSkillUseAvatarEffects(RemoteUserActor actor, int currentTime)
+        {
+            if (actor == null ||
+                !_pendingTransientSkillUseAvatarEffectsByCharacterId.TryGetValue(actor.CharacterId, out var pendingEffects) ||
+                pendingEffects == null ||
+                pendingEffects.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < pendingEffects.Count; i++)
+            {
+                PendingRemoteTransientSkillUseAvatarEffectState pendingEffect = pendingEffects[i];
+                if (pendingEffect == null)
+                {
+                    continue;
+                }
+
+                ApplyTransientSkillUseAvatarEffect(
+                    actor,
+                    pendingEffect.RegistrationKey,
+                    pendingEffect.OverlayAnimation,
+                    pendingEffect.UnderFaceAnimation,
+                    currentTime);
+            }
+
+            _pendingTransientSkillUseAvatarEffectsByCharacterId.Remove(actor.CharacterId);
         }
 
         public bool TryApplyMoveAction(int characterId, byte moveAction, out string message)
@@ -1659,6 +1754,62 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        public bool TryApplyMovingShootAttackPrepare(
+            RemoteUserMovingShootAttackPreparePacket packet,
+            int currentTime,
+            out string message)
+        {
+            message = null;
+            if (!_actorsById.TryGetValue(packet.CharacterId, out RemoteUserActor actor))
+            {
+                message = $"Remote character {packet.CharacterId} does not exist.";
+                return false;
+            }
+
+            actor.FacingRight = packet.FacingRight;
+            actor.MovingShootPreparedSkillId = packet.SkillId;
+
+            if (packet.SkillId != RemoteMovingShootNoPrepareAnimationSkillId)
+            {
+                actor.PreparedSkill = null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(packet.ActionName))
+            {
+                actor.BeginMeleeAfterImageFade(currentTime);
+                SetActorAction(
+                    actor,
+                    packet.ActionName,
+                    actor.Build?.ActivePortableChair != null,
+                    currentTime,
+                    forceReplay: true,
+                    rawActionCode: packet.ActionCode);
+            }
+
+            actor.MovementDrivenActionSelection = false;
+            RegisterMeleeAfterImage(
+                actor,
+                packet.SkillId,
+                actor.ActionName,
+                currentTime,
+                masteryPercent: 10,
+                chargeElement: 0,
+                rawActionCode: packet.ActionCode);
+
+            if (packet.SkillId > 0 && packet.SkillId != RemoteMovingShootNoPrepareAnimationSkillId)
+            {
+                SkillUseRegistered?.Invoke(new RemoteSkillUsePresentation(
+                    actor.CharacterId,
+                    packet.SkillId,
+                    packet.ActionSpeed,
+                    actor.FacingRight,
+                    currentTime));
+            }
+
+            message = $"Remote user {packet.CharacterId} moving-shoot prepare applied for skill {packet.SkillId}.";
+            return true;
+        }
+
         public bool TryApplyEmotion(RemoteUserEmotionPacket packet, int currentTime, out string message)
         {
             message = null;
@@ -1727,6 +1878,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             actor.PreparedSkill = null;
+            actor.MovingShootPreparedSkillId = 0;
             return true;
         }
 
@@ -1757,6 +1909,7 @@ namespace HaCreator.MapSimulator.Pools
             NotifyActorRemoved(actor.CharacterId, actor.Name);
             _actorsById.Remove(characterId);
             _actorIdsByName.Remove(actor.Name);
+            _pendingTransientSkillUseAvatarEffectsByCharacterId.Remove(characterId);
             return true;
         }
 
@@ -1776,7 +1929,8 @@ namespace HaCreator.MapSimulator.Pools
 
                 ApplyFollowDriverState(actor, localPlayer);
 
-                if (actor.PreparedSkill != null && actor.PreparedSkill.DurationMs > 0)
+                if (actor.PreparedSkill != null
+                    && (actor.PreparedSkill.DurationMs > 0 || actor.PreparedSkill.AutoEnterHold))
                 {
                     if (!TryResolvePreparedSkillPhase(actor.PreparedSkill, currentTime, out _, out _, out _, out _, out _))
                     {
@@ -1962,7 +2116,7 @@ namespace HaCreator.MapSimulator.Pools
             return overlay;
         }
 
-        private static bool TryResolvePreparedSkillPhase(
+        internal static bool TryResolvePreparedSkillPhase(
             RemotePreparedSkillState prepared,
             int currentTime,
             out int remainingMs,
@@ -2098,7 +2252,12 @@ namespace HaCreator.MapSimulator.Pools
                 actor.ActionName,
                 actor.BaseActionRawCode,
                 metadata);
-            int dragonActionElapsedMs = ResolveRemoteDragonActionElapsedMs(prepared, currentTime, dragonActionName, isHolding);
+            int dragonActionElapsedMs = ResolveRemoteDragonActionElapsedMs(
+                prepared,
+                currentTime,
+                dragonActionName,
+                isHolding,
+                actor.BaseActionStartTime);
             int dragonFrameHeight = metadata.ResolveFrameHeight(dragonActionName, dragonActionElapsedMs);
             Vector2 dragonAnchor = ResolveRemoteDragonAnchor(
                 actor,
@@ -2417,20 +2576,50 @@ namespace HaCreator.MapSimulator.Pools
             RemotePreparedSkillState prepared,
             int currentTime,
             string actionName,
-            bool isHolding)
+            bool isHolding,
+            int ownerActionStartTime = int.MinValue)
         {
             if (prepared == null)
             {
                 return 0;
             }
 
-            if (isHolding)
+            bool useOwnerActionTimeline = IsExplicitRemoteDragonAction(actionName)
+                && ownerActionStartTime != int.MinValue;
+            int resolvedActionStartTime = useOwnerActionTimeline
+                ? ownerActionStartTime
+                : ResolveRemoteDragonPhaseStartTime(prepared, isHolding);
+
+            bool actionChanged = !string.Equals(prepared.DragonActionName, actionName, StringComparison.OrdinalIgnoreCase);
+            bool ownerTimelineChanged = useOwnerActionTimeline
+                && prepared.DragonOwnerActionStartTime != ownerActionStartTime;
+            bool phaseTimelineChanged = !useOwnerActionTimeline
+                && prepared.DragonActionStartTime != resolvedActionStartTime;
+            if (actionChanged
+                || ownerTimelineChanged
+                || phaseTimelineChanged
+                || prepared.DragonActionStartTime == int.MinValue)
             {
-                int holdStartTime = prepared.StartTime + Math.Max(0, prepared.PrepareDurationMs);
-                return Math.Max(0, currentTime - holdStartTime);
+                prepared.DragonActionName = actionName;
+                prepared.DragonActionStartTime = resolvedActionStartTime;
+                prepared.DragonOwnerActionStartTime = useOwnerActionTimeline
+                    ? ownerActionStartTime
+                    : int.MinValue;
             }
 
-            return Math.Max(0, currentTime - prepared.StartTime);
+            return Math.Max(0, currentTime - prepared.DragonActionStartTime);
+        }
+
+        private static int ResolveRemoteDragonPhaseStartTime(RemotePreparedSkillState prepared, bool isHolding)
+        {
+            if (prepared == null)
+            {
+                return 0;
+            }
+
+            return isHolding
+                ? prepared.StartTime + Math.Max(0, prepared.PrepareDurationMs)
+                : prepared.StartTime;
         }
 
         public IReadOnlyList<MinimapUI.TrackedUserMarker> BuildHelperMarkers()
@@ -2438,15 +2627,19 @@ namespace HaCreator.MapSimulator.Pools
             _helperMarkerCount = 0;
             foreach (RemoteUserActor actor in _actorsById.Values)
             {
-                MinimapUI.HelperMarkerType? markerType = actor.HelperMarkerType;
-                if (!markerType.HasValue && actor.BattlefieldTeamId.HasValue)
-                {
-                    markerType = MinimapUI.HelperMarkerType.Match;
-                }
-
-                if (!markerType.HasValue)
+                if (!ShouldIncludePacketAuthoredMinimapHelper(
+                        actor?.IsVisibleInWorld == true,
+                        actor?.HiddenLikeClient == true,
+                        actor?.HelperMarkerType.HasValue == true,
+                        actor?.BattlefieldTeamId))
                 {
                     continue;
+                }
+
+                MinimapUI.HelperMarkerType? markerType = actor.HelperMarkerType;
+                if (!markerType.HasValue)
+                {
+                    markerType = MinimapUI.HelperMarkerType.Match;
                 }
 
                 MinimapUI.TrackedUserMarker marker = GetOrCreateHelperMarker(_helperMarkerCount++);
@@ -2458,6 +2651,17 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return _helperMarkerBuffer;
+        }
+
+        internal static bool ShouldIncludePacketAuthoredMinimapHelper(
+            bool isVisibleInWorld,
+            bool hiddenLikeClient,
+            bool hasExplicitHelperMarker,
+            int? battlefieldTeamId)
+        {
+            return isVisibleInWorld
+                && !hiddenLikeClient
+                && (hasExplicitHelperMarker || battlefieldTeamId.HasValue);
         }
 
         public void Draw(
@@ -5484,7 +5688,7 @@ namespace HaCreator.MapSimulator.Pools
                 : nextState;
         }
 
-        private static bool TryCreateRemoteTemporaryStatAvatarEffectState(
+        internal static bool TryCreateRemoteTemporaryStatAvatarEffectState(
             int skillId,
             SkillData skill,
             int animationStartTime,
@@ -5578,7 +5782,8 @@ namespace HaCreator.MapSimulator.Pools
                 Frames = new List<SkillFrame>(animation.Frames),
                 Loop = true,
                 Origin = animation.Origin,
-                ZOrder = animation.ZOrder
+                ZOrder = animation.ZOrder,
+                PositionCode = animation.PositionCode
             };
         }
 
@@ -5594,7 +5799,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            if (animation.ZOrder < 0)
+            if (ClientOwnedAvatarEffectParity.PrefersUnderFaceAvatarEffectPlane(animation))
             {
                 underFaceAnimation ??= animation;
                 underFaceSecondaryAnimation ??= animation == underFaceAnimation ? null : animation;
@@ -7410,6 +7615,7 @@ namespace HaCreator.MapSimulator.Pools
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatFinalCutEffect { get; set; }
         public RemoteUserActorPool.RemotePacketOwnedEmotionState PacketOwnedEmotion { get; set; }
         public List<RemoteUserActorPool.RemoteTransientSkillUseAvatarEffectState> TransientSkillUseAvatarEffects { get; } = new();
+        public int MovingShootPreparedSkillId { get; set; }
         public int? CarryItemEffectId { get; set; }
         public int CompletedSetItemId { get; set; }
         public Dictionary<EquipSlot, CharacterPart> BattlefieldOriginalEquipment { get; set; }
@@ -7598,6 +7804,9 @@ namespace HaCreator.MapSimulator.Pools
         public int MaxHoldDurationMs { get; init; }
         public PreparedSkillHudTextVariant TextVariant { get; init; }
         public bool ShowText { get; init; } = true;
+        public string DragonActionName { get; set; }
+        public int DragonActionStartTime { get; set; } = int.MinValue;
+        public int DragonOwnerActionStartTime { get; set; } = int.MinValue;
     }
 
     public sealed class RemoteRelationshipOverlayState

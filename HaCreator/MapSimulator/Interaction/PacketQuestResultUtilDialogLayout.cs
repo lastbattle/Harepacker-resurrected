@@ -44,10 +44,12 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int SpeakerPortraitBottomMargin = 64;
         internal const int SpeakerPortraitRightGap = 16;
         internal const int SpeakerNameBarBottomMargin = 10;
+        internal const int CloseButtonRightMargin = 10;
+        internal const int CloseButtonTopMargin = 8;
         internal const int DefaultWindowHeight =
             DefaultTopHeight + (DefaultCenterHeight * DefaultCenterRepeatCount) + DefaultBottomHeight;
 
-        internal static Rectangle GetBodyTextRectangle(Rectangle windowRect, bool hasSpeakerPortrait)
+        internal static Rectangle GetBodyTextRectangle(Rectangle windowRect, bool hasSpeakerPortrait, bool flipSpeaker = false)
         {
             if (!hasSpeakerPortrait)
             {
@@ -59,7 +61,9 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int width = Math.Min(SpeakerBodyTextWidth, Math.Max(0, windowRect.Width - 68));
-            int x = windowRect.Right - SpeakerBodyRightMargin - width;
+            int x = flipSpeaker
+                ? windowRect.X + SpeakerBodyRightMargin
+                : windowRect.Right - SpeakerBodyRightMargin - width;
             return new Rectangle(
                 x,
                 windowRect.Y + SpeakerBodyTopMargin,
@@ -67,11 +71,15 @@ namespace HaCreator.MapSimulator.Interaction
                 windowRect.Height - SpeakerBodyBottomMargin);
         }
 
-        internal static Rectangle GetSpeakerPortraitBounds(Rectangle windowRect, Rectangle bodyTextRect)
+        internal static Rectangle GetSpeakerPortraitBounds(Rectangle windowRect, Rectangle bodyTextRect, bool flipSpeaker = false)
         {
-            int x = windowRect.X + SpeakerPortraitLeftMargin;
+            int x = flipSpeaker
+                ? bodyTextRect.Right + SpeakerPortraitRightGap
+                : windowRect.X + SpeakerPortraitLeftMargin;
             int y = windowRect.Y + SpeakerPortraitTopMargin;
-            int width = Math.Max(0, bodyTextRect.X - x - SpeakerPortraitRightGap);
+            int width = flipSpeaker
+                ? Math.Max(0, windowRect.Right - SpeakerPortraitLeftMargin - x)
+                : Math.Max(0, bodyTextRect.X - x - SpeakerPortraitRightGap);
             int height = Math.Max(0, windowRect.Height - SpeakerPortraitTopMargin - SpeakerPortraitBottomMargin);
             return new Rectangle(x, y, width, height);
         }
@@ -130,6 +138,25 @@ namespace HaCreator.MapSimulator.Interaction
             return new Rectangle(
                 Math.Clamp(anchoredX, minX, Math.Max(minX, maxX)),
                 Math.Clamp(anchoredY, minY, Math.Max(minY, maxY)),
+                width,
+                height);
+        }
+
+        internal static Rectangle GetCloseButtonBounds(
+            Rectangle windowRect,
+            int buttonWidth,
+            int buttonHeight)
+        {
+            int width = buttonWidth > 0 ? buttonWidth : 0;
+            int height = buttonHeight > 0 ? buttonHeight : 0;
+            if (width <= 0 || height <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(
+                windowRect.Right - width - CloseButtonRightMargin,
+                windowRect.Y + CloseButtonTopMargin,
                 width,
                 height);
         }

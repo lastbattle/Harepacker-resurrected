@@ -22,6 +22,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                 : 0f;
         }
 
+        internal static void ClearSnapshotCache(
+            ref int frameIndex,
+            ref SkillFrame frame,
+            ref float alpha)
+        {
+            frameIndex = -1;
+            frame = null;
+            alpha = 0f;
+        }
+
         internal static bool TryResolveSnapshot(
             CharacterAssembler assembler,
             string actionName,

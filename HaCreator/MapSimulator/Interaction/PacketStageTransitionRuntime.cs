@@ -1944,29 +1944,51 @@ namespace HaCreator.MapSimulator.Interaction
                 records.Add(new PacketCharacterDataNewYearCardRecord(
                     reader.ReadInt32(),
                     reader.ReadInt32(),
-                    TruncateClientString(ReadMapleString(reader), 12),
+                    TruncateClientAnsiBufferString(ReadMapleString(reader), 13),
                     reader.ReadByte() != 0,
                     reader.ReadInt64(),
                     reader.ReadInt32(),
-                    TruncateClientString(ReadMapleString(reader), 12),
+                    TruncateClientAnsiBufferString(ReadMapleString(reader), 13),
                     reader.ReadByte() != 0,
                     reader.ReadByte() != 0,
                     reader.ReadInt64(),
-                    TruncateClientString(ReadMapleString(reader), 120)));
+                    TruncateClientAnsiBufferString(ReadMapleString(reader), 121)));
             }
 
             return records;
         }
 
-        private static string TruncateClientString(string value, int maxCharacterCount)
+        private static string TruncateClientAnsiBufferString(string value, int bufferByteCount)
         {
             value ??= string.Empty;
-            if (value.Length <= maxCharacterCount)
+            int maxByteCount = Math.Max(0, bufferByteCount - 1);
+            if (maxByteCount == 0)
+            {
+                return string.Empty;
+            }
+
+            Encoding encoding = Encoding.Default;
+            byte[] encoded = encoding.GetBytes(value);
+            if (encoded.Length <= maxByteCount)
             {
                 return value;
             }
 
-            return value[..maxCharacterCount];
+            int byteCount = 0;
+            int characterCount = 0;
+            foreach (Rune rune in value.EnumerateRunes())
+            {
+                int runeByteCount = encoding.GetByteCount(rune.ToString());
+                if (byteCount + runeByteCount > maxByteCount)
+                {
+                    break;
+                }
+
+                byteCount += runeByteCount;
+                characterCount += rune.Utf16SequenceLength;
+            }
+
+            return value[..characterCount];
         }
 
         private static void SkipCharacterDataWildHunterInfo(BinaryReader reader)

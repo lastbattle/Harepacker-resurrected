@@ -13,6 +13,7 @@ namespace HaCreator.MapSimulator.Pools
     {
         UserFollowCharacter = -1001,
         UserDropPickup = -1002,
+        UserProfile = -1003,
         UserCoupleRecordAdd = -1101,
         UserCoupleRecordRemove = -1102,
         UserFriendRecordAdd = -1103,
@@ -269,6 +270,49 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct RemoteUserEmotionPacket(int CharacterId, int EmotionId, int DurationMs, bool ByItemOption);
     public readonly record struct RemoteUserUpgradeTombPacket(int CharacterId, int ItemId, int PositionX, int PositionY);
     public readonly record struct RemoteUserGuildNameChangedPacket(int CharacterId, string GuildName);
+    [Flags]
+    public enum RemoteUserProfilePacketFlags
+    {
+        Level = 1 << 0,
+        Job = 1 << 1,
+        Guild = 1 << 2,
+        Alliance = 1 << 3,
+        Fame = 1 << 4,
+        WorldRank = 1 << 5,
+        JobRank = 1 << 6,
+        Ride = 1 << 7,
+        PendantSlot = 1 << 8,
+        PocketSlot = 1 << 9,
+        TraitCharisma = 1 << 10,
+        TraitInsight = 1 << 11,
+        TraitWill = 1 << 12,
+        TraitCraft = 1 << 13,
+        TraitSense = 1 << 14,
+        TraitCharm = 1 << 15,
+        Medal = 1 << 16,
+        Collection = 1 << 17
+    }
+
+    public readonly record struct RemoteUserProfilePacket(
+        int CharacterId,
+        int? Level,
+        int? JobId,
+        string GuildName,
+        string AllianceName,
+        int? Fame,
+        int? WorldRank,
+        int? JobRank,
+        bool? HasRide,
+        bool? HasPendantSlot,
+        bool? HasPocketSlot,
+        int? TraitCharisma,
+        int? TraitInsight,
+        int? TraitWill,
+        int? TraitCraft,
+        int? TraitSense,
+        int? TraitCharm,
+        bool? HasMedal,
+        bool? HasCollection);
     public readonly record struct RemoteUserTemporaryStatSetPacket(int CharacterId, RemoteUserTemporaryStatSnapshot TemporaryStats, ushort Delay);
     public readonly record struct RemoteUserTemporaryStatResetPacket(int CharacterId, int[] MaskWords);
     public readonly record struct RemoteUserPreparedSkillPacket(
@@ -285,6 +329,16 @@ namespace HaCreator.MapSimulator.Pools
         string SkillName);
 
     public readonly record struct RemoteUserPreparedSkillClearPacket(int CharacterId);
+    public readonly record struct RemoteUserMovingShootAttackPreparePacket(
+        int CharacterId,
+        int CharacterLevel,
+        int SkillLevel,
+        int SkillId,
+        int ActionCode,
+        string ActionName,
+        bool FacingRight,
+        int ActionSpeed);
+
     public readonly record struct RemoteUserDropPickupPacket(
         int DropId,
         int ActorId,
@@ -332,6 +386,7 @@ namespace HaCreator.MapSimulator.Pools
         CharacterId = 2,
         NewYearCardSerial = 3
     }
+
     public readonly record struct RemoteRelationshipRecordDispatchKey(
         RemoteRelationshipRecordDispatchKeyKind Kind,
         long? Serial,
@@ -376,6 +431,11 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct RemoteUserBattlefieldTeamPacket(int CharacterId, int? TeamId);
     public static class RemoteUserPacketCodec
     {
+        private static bool HasProfileFlag(int flags, RemoteUserProfilePacketFlags flag)
+        {
+            return (flags & (int)flag) != 0;
+        }
+
         private const int HelperNumericPayloadLength = sizeof(int) + sizeof(byte) + sizeof(byte);
         private const int HelperNamedPayloadMinimumLength = sizeof(int) + sizeof(byte) + sizeof(byte);
         private const byte HelperMarkerClearValue = byte.MaxValue;
@@ -1057,6 +1117,77 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        public static bool TryParseProfile(ReadOnlySpan<byte> payload, out RemoteUserProfilePacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                int flags = reader.ReadInt32();
+
+                int? level = HasProfileFlag(flags, RemoteUserProfilePacketFlags.Level) ? reader.ReadInt32() : null;
+                int? jobId = HasProfileFlag(flags, RemoteUserProfilePacketFlags.Job) ? reader.ReadInt32() : null;
+                string guildName = HasProfileFlag(flags, RemoteUserProfilePacketFlags.Guild) ? reader.ReadString16() : null;
+                string allianceName = HasProfileFlag(flags, RemoteUserProfilePacketFlags.Alliance) ? reader.ReadString16() : null;
+                int? fame = HasProfileFlag(flags, RemoteUserProfilePacketFlags.Fame) ? reader.ReadInt32() : null;
+                int? worldRank = HasProfileFlag(flags, RemoteUserProfilePacketFlags.WorldRank) ? reader.ReadInt32() : null;
+                int? jobRank = HasProfileFlag(flags, RemoteUserProfilePacketFlags.JobRank) ? reader.ReadInt32() : null;
+                bool? hasRide = HasProfileFlag(flags, RemoteUserProfilePacketFlags.Ride) ? reader.ReadByte() != 0 : null;
+                bool? hasPendantSlot = HasProfileFlag(flags, RemoteUserProfilePacketFlags.PendantSlot) ? reader.ReadByte() != 0 : null;
+                bool? hasPocketSlot = HasProfileFlag(flags, RemoteUserProfilePacketFlags.PocketSlot) ? reader.ReadByte() != 0 : null;
+                int? traitCharisma = HasProfileFlag(flags, RemoteUserProfilePacketFlags.TraitCharisma) ? reader.ReadInt32() : null;
+                int? traitInsight = HasProfileFlag(flags, RemoteUserProfilePacketFlags.TraitInsight) ? reader.ReadInt32() : null;
+                int? traitWill = HasProfileFlag(flags, RemoteUserProfilePacketFlags.TraitWill) ? reader.ReadInt32() : null;
+                int? traitCraft = HasProfileFlag(flags, RemoteUserProfilePacketFlags.TraitCraft) ? reader.ReadInt32() : null;
+                int? traitSense = HasProfileFlag(flags, RemoteUserProfilePacketFlags.TraitSense) ? reader.ReadInt32() : null;
+                int? traitCharm = HasProfileFlag(flags, RemoteUserProfilePacketFlags.TraitCharm) ? reader.ReadInt32() : null;
+                bool? hasMedal = HasProfileFlag(flags, RemoteUserProfilePacketFlags.Medal) ? reader.ReadByte() != 0 : null;
+                bool? hasCollection = HasProfileFlag(flags, RemoteUserProfilePacketFlags.Collection) ? reader.ReadByte() != 0 : null;
+
+                if (reader.RemainingLength != 0)
+                {
+                    error = $"Remote user profile packet has {reader.RemainingLength} unread bytes remaining.";
+                    return false;
+                }
+
+                if (characterId <= 0)
+                {
+                    error = $"Remote user profile packet character ID {characterId} is invalid.";
+                    return false;
+                }
+
+                packet = new RemoteUserProfilePacket(
+                    characterId,
+                    level,
+                    jobId,
+                    guildName,
+                    allianceName,
+                    fame,
+                    worldRank,
+                    jobRank,
+                    hasRide,
+                    hasPendantSlot,
+                    hasPocketSlot,
+                    traitCharisma,
+                    traitInsight,
+                    traitWill,
+                    traitCraft,
+                    traitSense,
+                    traitCharm,
+                    hasMedal,
+                    hasCollection);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
         public static bool TryParseTemporaryStatSet(ReadOnlySpan<byte> payload, out RemoteUserTemporaryStatSetPacket packet, out string error)
         {
             packet = default;
@@ -1544,6 +1675,61 @@ namespace HaCreator.MapSimulator.Pools
 
             packet = new RemoteUserPreparedSkillClearPacket(clearPacket.CharacterId);
             return true;
+        }
+
+        public static bool TryParseMovingShootAttackPrepare(
+            ReadOnlySpan<byte> payload,
+            out RemoteUserMovingShootAttackPreparePacket packet,
+            out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                if (characterId <= 0)
+                {
+                    error = $"Remote user moving-shoot prepare packet character ID {characterId} is invalid.";
+                    return false;
+                }
+
+                int characterLevel = reader.ReadByte();
+                int skillLevel = reader.ReadByte();
+                int skillId = skillLevel != 0 ? reader.ReadInt32() : 0;
+                int actionField = (ushort)reader.ReadInt16();
+                bool facingRight = ((actionField >> 15) & 1) == 0;
+                int actionCode = actionField & 0x7FFF;
+                if (actionCode > 0x110)
+                {
+                    error = $"Remote user moving-shoot prepare packet action code {actionCode} is outside the client action table range.";
+                    return false;
+                }
+
+                int actionSpeed = reader.ReadByte();
+                if (reader.RemainingLength != 0)
+                {
+                    error = $"Remote user moving-shoot prepare packet has {reader.RemainingLength} unread byte(s) remaining.";
+                    return false;
+                }
+
+                packet = new RemoteUserMovingShootAttackPreparePacket(
+                    characterId,
+                    characterLevel,
+                    skillLevel,
+                    skillId,
+                    actionCode,
+                    ResolveActionNameFromActionCode(actionCode),
+                    facingRight,
+                    actionSpeed);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
         }
 
         public static bool TryParseDropPickup(ReadOnlySpan<byte> payload, out RemoteUserDropPickupPacket packet, out string error)
@@ -2855,6 +3041,8 @@ namespace HaCreator.MapSimulator.Pools
                     case 29:
                     case 30:
                         break;
+                    default:
+                        return false;
                 }
 
                 moveAction = reader.ReadByte();

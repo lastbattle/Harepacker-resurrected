@@ -55,6 +55,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int PacketTypeMeleeAttack3 = 213;
         private const int PacketTypeMeleeAttack4 = 214;
         private const int PacketTypeSkillPrepare = 215;
+        private const int PacketTypeMovingShootAttackPrepare = 216;
         private const int PacketTypeSkillCancel = 217;
         private const int PacketTypeEmotion = 219;
         private const int PacketTypeSetActiveEffectItem = 220;
@@ -162,6 +163,8 @@ namespace HaCreator.MapSimulator.Fields
                         return TryApplyRemoteMeleeAttackPacket(payload, currentTimeMs, out errorMessage);
                     case PacketTypeSkillPrepare:
                         return TryApplyRemotePreparedSkillPacket(payload, currentTimeMs, out errorMessage);
+                    case PacketTypeMovingShootAttackPrepare:
+                        return TryApplyRemoteMovingShootAttackPreparePacket(payload, currentTimeMs, out errorMessage);
                     case PacketTypeSkillCancel:
                         return TryApplyRemotePreparedSkillClearPacket(payload, out errorMessage);
                     case PacketTypeEmotion:
@@ -875,6 +878,23 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return _remoteUserPool.TryClearPreparedSkill(packet.CharacterId, Environment.TickCount, out errorMessage);
+        }
+
+        private bool TryApplyRemoteMovingShootAttackPreparePacket(byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!RemoteUserPacketCodec.TryParseMovingShootAttackPrepare(payload, out RemoteUserMovingShootAttackPreparePacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            if (!TryGetRemoteActor(packet.CharacterId, out _))
+            {
+                errorMessage = $"Remote Ariant actor id {packet.CharacterId} does not exist.";
+                return false;
+            }
+
+            return _remoteUserPool.TryApplyMovingShootAttackPrepare(packet, currentTimeMs, out errorMessage);
         }
 
         private bool TryApplyRemoteActiveEffectItemPacket(byte[] payload, out string errorMessage)

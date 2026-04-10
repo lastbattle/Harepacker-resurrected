@@ -48,7 +48,8 @@ namespace HaCreator.MapSimulator
             reviveWindow.SetActionHandlers(
                 () => ResolveReviveOwnerChoice(premium: true, Environment.TickCount),
                 () => ResolveReviveOwnerChoice(premium: false, Environment.TickCount),
-                ShowUtilityFeedbackMessage);
+                ShowUtilityFeedbackMessage,
+                () => ResolveReviveOwnerClientButtonClick(ReviveOwnerRuntime.ClientYesButtonId, Environment.TickCount));
 
             if (!_reviveOwnerRuntime.IsOpen)
             {
@@ -151,6 +152,18 @@ namespace HaCreator.MapSimulator
             return resolution.Summary;
         }
 
+        private string ResolveReviveOwnerClientButtonClick(int buttonId, int currentTick)
+        {
+            ReviveOwnerResolution resolution = _reviveOwnerRuntime.ResolveClientButtonClick(buttonId);
+            if (!resolution.Handled)
+            {
+                return "Revive owner is not active.";
+            }
+
+            QueueReviveOwnerTransfer(resolution, currentTick);
+            return resolution.Summary;
+        }
+
         private void QueueReviveOwnerTransfer(ReviveOwnerResolution resolution, int currentTick)
         {
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.Revive);
@@ -179,7 +192,8 @@ namespace HaCreator.MapSimulator
                             premium: false,
                             timedOut: request.TimedOut,
                             request.Variant,
-                            request.Summary)));
+                            request.Summary,
+                            clientPremiumFlag: false)));
                     _playerManager?.Respawn();
                     return;
                 }
@@ -554,7 +568,7 @@ namespace HaCreator.MapSimulator
 
         private string DispatchReviveOwnerTransferFieldRequest(ReviveOwnerTransferRequest request)
         {
-            if (!TryBuildReviveOwnerTransferFieldPayload(request.Premium, out byte[] payload))
+            if (!TryBuildReviveOwnerTransferFieldPayload(request.ClientPremiumFlag, out byte[] payload))
             {
                 return "Revive owner could not build the synthetic transfer-field request payload.";
             }

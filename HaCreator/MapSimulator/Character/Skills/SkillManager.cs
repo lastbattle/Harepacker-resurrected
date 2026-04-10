@@ -360,6 +360,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int NightLordFlashJumpSkillId = 4111006;
         private const int ShadowerFlashJumpSkillId = 4211009;
         private const int DualBladeFlashJumpSkillId = 4321003;
+        private const int NightWalkerFlashJumpSkillId = 14101004;
         private const int AuraDotTickIntervalMs = 1000;
         private const int ExclusiveRequestThrottleMs = 300;
         private const int MovingShootAntiRepeatHorizontalThresholdPx = 6;
@@ -808,6 +809,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Action<Sg88ManualAttackRequest> OnSg88ManualAttackRequested;
         public Action<Rectangle, int, int, int> OnAttackAreaResolved;
         public Action<string> OnMacroPartyNotifyRequested;
+        public Action<int, int, int> OnExternalAreaDamageSharingApplied;
         public Func<int, InventoryType, int, bool> OnItemHotkeyUseRequested;
 
         // References
@@ -1398,6 +1400,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (kv.Value == null)
                     continue;
 
+                if (kv.Key < 0 || kv.Key >= TOTAL_SLOT_COUNT)
+                    continue;
+
                 if (TryResolveStoredHotkeyItem(kv.Value.ItemId, kv.Value.InventoryType, out InventoryType resolvedInventoryType))
                 {
                     SetItemHotkeyBinding(kv.Key, kv.Value.ItemId, resolvedInventoryType);
@@ -1416,6 +1421,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             SkillData skill = FindKnownSkillData(skillId);
             if (skill == null || skill.IsPassive || skill.Invisible || skill.SuppressesStandaloneActiveCast)
+                return false;
+
+            if (!IsSkillAllowedForCurrentJob(skill))
                 return false;
 
             return GetSkillLevel(skillId) > 0;
@@ -1566,7 +1574,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             return slotIndex >= startInclusive && slotIndex < endExclusive;
         }
 
-        private static bool IsQuickSlotVisibleItemFamily(int itemId, InventoryType inventoryType)
+        internal static bool IsQuickSlotVisibleItemFamily(int itemId, InventoryType inventoryType)
         {
             if (itemId <= 0)
                 return false;
@@ -1575,8 +1583,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             return inventoryType switch
             {
                 InventoryType.USE => QuickSlotVisibleUseItemFamilies.Contains(itemFamily) || IsImmediateMobSummonItem(itemId),
-                InventoryType.CASH => GetClientCashSlotItemType(itemId) == QuickSlotCashSlotItemType ||
-                                      GetClientEtcCashItemType(itemId) == QuickSlotEtcCashItemType,
+                InventoryType.CASH => ResolveClientCashSlotItemType(itemId) == QuickSlotCashSlotItemType ||
+                                      ResolveClientEtcCashItemType(itemId) == QuickSlotEtcCashItemType,
                 _ => false
             };
         }
@@ -1586,15 +1594,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             return itemId / 1000 == 2109 || itemId == 2100067;
         }
 
-        private static int GetClientEtcCashItemType(int itemId)
+        internal static int ResolveClientEtcCashItemType(int itemId)
         {
-            int cashSlotItemType = GetClientCashSlotItemType(itemId);
+            int cashSlotItemType = ResolveClientCashSlotItemType(itemId);
             return cashSlotItemType is 1 or 2 or 3 or 4 or 5 or 6 or 7 or 36 or 37 or 40 or 42 or 46 or 55 or 58 or 59 or 60 or 63 or 77
                 ? cashSlotItemType
                 : 0;
         }
 
-        private static int GetClientCashSlotItemType(int itemId)
+        internal static int ResolveClientCashSlotItemType(int itemId)
         {
             return itemId / 10000 switch
             {
@@ -5722,6 +5730,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             return projectile.QueuedFacingRight ?? projectile.FacingRight;
         }
 
+        internal static bool ResolveQueuedProjectilePresentationFacing(ActiveProjectile projectile)
+        {
+            if (projectile == null)
+            {
+                return false;
+            }
+
+            return (projectile.IsQueuedFinalAttack || projectile.IsQueuedSparkAttack)
+                ? projectile.QueuedFacingRight ?? projectile.FacingRight
+                : projectile.FacingRight;
+        }
+
+        internal static bool ResolveProjectileFrameShouldFlip(ActiveProjectile projectile, SkillFrame frame)
+        {
+            return ResolveQueuedProjectilePresentationFacing(projectile) ^ (frame?.Flip ?? false);
+        }
+
         internal static Vector2 ResolveProjectileAttackOrigin(
             Vector2 playerPosition,
             bool playerFacingRight,
@@ -5781,6 +5806,32 @@ namespace HaCreator.MapSimulator.Character.Skills
                 _player.TryGetCurrentBodyOrigin(currentTime),
                 attackOriginOverride,
                 out usesAuthoredShootPoint);
+        }
+
+        internal static float ResolveProjectileSpawnY(
+            float attackOriginY,
+            bool usesAuthoredShootPoint,
+            float fallbackShootPointYOffset)
+        {
+            return usesAuthoredShootPoint
+                ? attackOriginY
+                : attackOriginY + fallbackShootPointYOffset;
+        }
+
+        private float ResolveClientFallbackShootAttackPointYOffset(SkillData skill)
+        {
+            return ClientShootAttackFamilyResolver.ResolveFallbackShootAttackPointYOffset(
+                skill?.SkillId ?? 0,
+                _player?.Build?.Job ?? skill?.Job ?? 0,
+                ResolveCurrentClientShootAttackVehicleId());
+        }
+
+        private int ResolveCurrentClientShootAttackVehicleId()
+        {
+            return ResolveClientOwnedVehicleCurrentActionMountItemId(
+                _player?.CurrentActionName,
+                _activeSkillMount?.MountItemId ?? 0,
+                GetEquippedTamingMobPart()?.ItemId ?? 0);
         }
 
         private Vector2 ResolveDeferredMovingShootOrigin(int currentTime, bool facingRight)
@@ -7835,9 +7886,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                     upwardSpeed = 250f + (20f * scale);
                     break;
 
-                case 13101004:
-                case 14101004:
-                    scale = effectiveLevel / 2;
+                case NightWalkerFlashJumpSkillId:
+                    // The recovered `DoActiveSkill_BoundJump` branch lists Cygnus
+                    // Flash Jump (`14101004`) with the same `nSLV / 4` growth row
+                    // as the other directly-owned flash-jump skills.
+                    scale = effectiveLevel / 4;
                     horizontalVelocity = 350f + (40f * scale);
                     upwardSpeed = 250f + (20f * scale);
                     break;
@@ -8490,7 +8543,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ResolveQueuedProjectileLaunchFacing(projectile),
                 attackOriginOverride: null,
                 out bool usesAuthoredShootPoint);
-            ApplyQueuedProjectileFireTimeOrigin(projectile, refreshedOrigin, usesAuthoredShootPoint);
+            ApplyQueuedProjectileFireTimeOrigin(
+                projectile,
+                refreshedOrigin,
+                usesAuthoredShootPoint,
+                ResolveClientFallbackShootAttackPointYOffset(skill));
 
             float speed = GetProjectileSpeed(projectile.Data, projectile.LevelData);
             TryAimProjectileAtTarget(projectile, currentTime, speed);
@@ -8508,7 +8565,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static void ApplyQueuedProjectileFireTimeOrigin(
             ActiveProjectile projectile,
             Vector2 refreshedOrigin,
-            bool usesAuthoredShootPoint)
+            bool usesAuthoredShootPoint,
+            float fallbackShootPointYOffset = -20f)
         {
             if (projectile == null)
             {
@@ -8516,9 +8574,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             Vector2 preservedOwnerRelativeOffset = ResolveQueuedProjectileOwnerRelativeLaunchOffset(projectile);
-            float projectileBaseY = usesAuthoredShootPoint ? refreshedOrigin.Y : refreshedOrigin.Y - 20f;
+            float projectileBaseY = ResolveProjectileSpawnY(
+                refreshedOrigin.Y,
+                usesAuthoredShootPoint,
+                fallbackShootPointYOffset);
 
             projectile.UsesAuthoredShootPoint = usesAuthoredShootPoint;
+            projectile.FallbackShootPointYOffset = fallbackShootPointYOffset;
             projectile.OwnerX = refreshedOrigin.X;
             projectile.OwnerY = refreshedOrigin.Y;
             projectile.X = refreshedOrigin.X + preservedOwnerRelativeOffset.X;
@@ -8538,7 +8600,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             float ownerRelativeY = projectile.Y - projectile.OwnerY;
             if (!projectile.UsesAuthoredShootPoint)
             {
-                ownerRelativeY += 20f;
+                ownerRelativeY -= projectile.FallbackShootPointYOffset;
             }
 
             return new Vector2(ownerRelativeX, ownerRelativeY);
@@ -10788,7 +10850,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 facingRight,
                 attackOriginOverride,
                 out bool usesAuthoredShootPoint);
-            float projectileSpawnY = usesAuthoredShootPoint ? attackOrigin.Y : attackOrigin.Y - 20f;
+            float fallbackShootPointYOffset = ResolveClientFallbackShootAttackPointYOffset(skill);
+            float projectileSpawnY = ResolveProjectileSpawnY(
+                attackOrigin.Y,
+                usesAuthoredShootPoint,
+                fallbackShootPointYOffset);
             ShootAmmoSelection resolvedShootAmmoSelection = LastResolvedShootAmmoSelection?.Snapshot();
             int resolvedShootWeaponCode = GetEquippedWeaponCode();
             int resolvedShootWeaponItemId = _player?.Build?.GetWeapon()?.ItemId ?? 0;
@@ -10832,6 +10898,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     OwnerX = attackOrigin.X,
                     OwnerY = attackOrigin.Y,
                     UsesAuthoredShootPoint = usesAuthoredShootPoint,
+                    FallbackShootPointYOffset = fallbackShootPointYOffset,
                     HasExplicitAttackOriginOverride = attackOriginOverride.HasValue,
                     PreferredTargetMobId = projectilePreferredTargetMobId,
                     PreferredTargetPosition = projectilePreferredTargetPosition,
@@ -11843,7 +11910,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return new Rectangle((int)anchorX - 10, (int)anchorY - 10, 20, 20);
             }
 
-            bool shouldFlip = proj.FacingRight ^ (frame?.Flip ?? false);
+            bool shouldFlip = ResolveProjectileFrameShouldFlip(proj, frame);
             int drawX = GetFrameDrawX((int)MathF.Round(anchorX), frame, shouldFlip);
             int drawY = (int)MathF.Round(anchorY) - frame.Origin.Y;
 
@@ -13062,14 +13129,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            string cycloneActionName = ResolveSkillActionName(_cycloneState.Skill);
-            if (string.IsNullOrWhiteSpace(cycloneActionName))
+            return IsBattleMageCycloneBodyAttackActionActive(
+                _player.State == PlayerState.Attacking,
+                _player.CurrentActionName);
+        }
+
+        internal static bool IsBattleMageCycloneBodyAttackActionActive(bool isAttacking, string currentActionName)
+        {
+            if (!isAttacking || string.IsNullOrWhiteSpace(currentActionName))
             {
-                return _player.State == PlayerState.Attacking;
+                return false;
             }
 
-            return _player.State == PlayerState.Attacking
-                   && string.Equals(_player.CurrentActionName, cycloneActionName, StringComparison.OrdinalIgnoreCase);
+            return string.Equals(currentActionName, "cyclone_pre", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(currentActionName, "cyclone", StringComparison.OrdinalIgnoreCase);
         }
 
         private int ResolveSummonAttackExecutionDelayMs(ActiveSummon summon, IReadOnlyCollection<MobItem> targets, int currentTime)
@@ -14255,6 +14328,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     return retryAnimation;
                 }
+
+                return null;
             }
 
             if (!string.IsNullOrWhiteSpace(skill.SummonAttackBranchName))
@@ -14836,6 +14911,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     return retryAnimation;
                 }
+
+                return null;
             }
 
             string removalBranchName = SummonRuntimeRules.ResolveRemovalPlaybackBranch(skill);
@@ -16194,6 +16271,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 reducedDamage = Math.Max(1, (int)MathF.Round(reducedDamage * (100 - damageReductionPercent) / 100f));
             }
 
+            NotifyExternalAreaDamageSharing(damage, currentTime);
+
             int redirectedDamageToMpPercent = GetActiveDamageToMpRedirectPercent(currentTime);
             if (redirectedDamageToMpPercent > 0 && _player?.Build != null)
             {
@@ -16210,6 +16289,56 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return reducedDamage;
+        }
+
+        private void NotifyExternalAreaDamageSharing(int incomingDamage, int currentTime)
+        {
+            if (incomingDamage <= 0 || OnExternalAreaDamageSharingApplied == null || _externalAreaSupportBuffIds.Count == 0)
+            {
+                return;
+            }
+
+            int[] trackedBuffIds = _externalAreaSupportBuffIds.ToArray();
+            for (int i = 0; i < trackedBuffIds.Length; i++)
+            {
+                int syntheticBuffId = trackedBuffIds[i];
+                ActiveBuff buff = _buffs.LastOrDefault(activeBuff => activeBuff.SkillId == syntheticBuffId);
+                if (buff == null
+                    || buff.IsExpired(currentTime)
+                    || !TryGetExternalAreaObjectId(syntheticBuffId, out int areaObjectId))
+                {
+                    continue;
+                }
+
+                int sharedDamage = ResolveExternalAreaDamageSharingAmount(buff, incomingDamage);
+                if (sharedDamage <= 0)
+                {
+                    continue;
+                }
+
+                OnExternalAreaDamageSharingApplied(areaObjectId, sharedDamage, currentTime);
+            }
+        }
+
+        private static int ResolveExternalAreaDamageSharingAmount(ActiveBuff buff, int incomingDamage)
+        {
+            if (buff?.SkillData == null || buff.LevelData == null || incomingDamage <= 0)
+            {
+                return 0;
+            }
+
+            if (!ContainsAny(buff.SkillData.AffectedSkillEffect, "partyDamageSharing"))
+            {
+                return 0;
+            }
+
+            int distributedShareRate = buff.LevelData.X > 0 ? buff.LevelData.X : buff.LevelData.DamageReductionRate;
+            if (distributedShareRate <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Max(1, (int)MathF.Round(incomingDamage * Math.Clamp(distributedShareRate, 0, 100) / 100f));
         }
 
         private void ApplyShadowPartner(ActiveBuff buff, int currentTime)
@@ -18318,53 +18447,71 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             Track(
-                levelData.PAD > 0
-                || levelData.AttackPercent > 0
-                || levelData.EnhancedPAD > 0
-                || HasAuthoredTemporaryStatProperty(levelData, "pad", "padX", "epad", "indiePad"),
+                ShouldUseDirectBuffIconFamily(
+                    levelData,
+                    levelData.PAD > 0 || levelData.AttackPercent > 0 || levelData.EnhancedPAD > 0,
+                    "pad", "padX", "epad"),
                 "PAD");
             Track(
-                levelData.PDD > 0
-                || levelData.DefensePercent > 0
-                || levelData.EnhancedPDD > 0
-                || HasAuthoredTemporaryStatProperty(levelData, "pdd", "pddX", "epdd", "pddR"),
+                ShouldUseDirectBuffIconFamily(
+                    levelData,
+                    levelData.PDD > 0 || levelData.DefensePercent > 0 || levelData.EnhancedPDD > 0,
+                    "pdd", "pddX", "epdd", "pddR"),
                 "PDD");
             Track(
-                levelData.MAD > 0
-                || levelData.MagicAttackPercent > 0
-                || levelData.EnhancedMAD > 0
-                || HasAuthoredTemporaryStatProperty(levelData, "mad", "madX", "emad", "indieMad"),
+                ShouldUseDirectBuffIconFamily(
+                    levelData,
+                    levelData.MAD > 0 || levelData.MagicAttackPercent > 0 || levelData.EnhancedMAD > 0,
+                    "mad", "madX", "emad"),
                 "MAD");
             Track(
-                levelData.MDD > 0
-                || levelData.MagicDefensePercent > 0
-                || levelData.EnhancedMDD > 0
-                || HasAuthoredTemporaryStatProperty(levelData, "mdd", "mddX", "emdd", "mddR"),
+                ShouldUseDirectBuffIconFamily(
+                    levelData,
+                    levelData.MDD > 0 || levelData.MagicDefensePercent > 0 || levelData.EnhancedMDD > 0,
+                    "mdd", "mddX", "emdd", "mddR"),
                 "MDD");
             Track(
-                levelData.ACC > 0
-                || levelData.AccuracyPercent > 0
-                || HasAuthoredTemporaryStatProperty(levelData, "acc", "accX", "indieAcc", "accR", "ar"),
+                ShouldUseDirectBuffIconFamily(
+                    levelData,
+                    levelData.ACC > 0 || levelData.AccuracyPercent > 0,
+                    "acc", "accX", "accR", "ar"),
                 "ACC");
             Track(
-                levelData.EVA > 0
-                || levelData.AvoidabilityPercent > 0
-                || HasAuthoredTemporaryStatProperty(levelData, "eva", "evaX", "indieEva", "evaR", "er"),
+                ShouldUseDirectBuffIconFamily(
+                    levelData,
+                    levelData.EVA > 0 || levelData.AvoidabilityPercent > 0,
+                    "eva", "evaX", "evaR", "er"),
                 "EVA");
             Track(
-                levelData.Speed > 0
-                || levelData.SpeedPercent > 0
-                || HasAuthoredTemporaryStatProperty(levelData, "speed", "indieSpeed"),
+                ShouldUseDirectBuffIconFamily(
+                    levelData,
+                    levelData.Speed > 0 || levelData.SpeedPercent > 0,
+                    "speed"),
                 "Speed");
             Track(
-                levelData.Jump > 0
-                || HasAuthoredTemporaryStatProperty(levelData, "jump", "indieJump"),
+                ShouldUseDirectBuffIconFamily(
+                    levelData,
+                    levelData.Jump > 0,
+                    "jump"),
                 "Jump");
             Track(
                 HasAuthoredTemporaryStatProperty(levelData, "incCraft"),
                 CraftBuffLabel);
 
             return labels;
+        }
+
+        private static bool ShouldUseDirectBuffIconFamily(
+            SkillLevelData levelData,
+            bool parsedValuePresent,
+            params string[] directPropertyNames)
+        {
+            if (levelData?.AuthoredPropertyOrder == null || levelData.AuthoredPropertyOrder.Count == 0)
+            {
+                return parsedValuePresent;
+            }
+
+            return HasAuthoredTemporaryStatProperty(levelData, directPropertyNames);
         }
 
         private static int GetAuthoredTemporaryStatOrder(
@@ -19661,7 +19808,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 Y = _player.Y,
                 SkillData = skill,
                 LevelData = levelData,
-                Animation = skill.ZoneAnimation,
+                Animation = ResolveInvincibleZoneAnimation(skill),
                 WorldBounds = worldBounds
             });
 
@@ -20981,7 +21128,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             int screenX = (int)proj.X - mapShiftX + centerX;
             int screenY = (int)proj.Y - mapShiftY + centerY;
 
-            bool shouldFlip = proj.FacingRight ^ frame.Flip;
+            bool shouldFlip = ResolveProjectileFrameShouldFlip(proj, frame);
 
             frame.Texture.DrawBackground(spriteBatch, null, null,
                 GetFrameDrawX(screenX, frame, shouldFlip), screenY - frame.Origin.Y,
@@ -21411,20 +21558,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ? null
                 : ResolveSummonEmptyActionRetryAnimation(summon);
 
+            bool hasActionPlayback = branchAnimation?.Frames.Count > 0
+                                     || retryAttackAnimation?.Frames.Count > 0;
             var attackAnimation = branchAnimation?.Frames.Count > 0
                 ? branchAnimation
                 : retryAttackAnimation?.Frames.Count > 0
-                ? retryAttackAnimation
-                : skill.SummonAttackAnimation;
+                    ? retryAttackAnimation
+                    : string.IsNullOrWhiteSpace(summon?.CurrentAnimationBranchName)
+                        ? skill.SummonAttackAnimation
+                        : null;
             if (attackAnimation?.Frames.Count > 0 && summon != null)
             {
                 int attackElapsed = currentTime - summon.LastAttackAnimationStartTime;
                 int prepareDuration = GetSkillAnimationDuration(prepareAnimation) ?? 0;
                 int attackDuration = GetSkillAnimationDuration(attackAnimation) ?? 0;
-                int attackSequenceDuration = prepareDuration + attackDuration;
+                int attackSequenceDuration = (hasActionPlayback ? 0 : prepareDuration) + attackDuration;
                 if (attackElapsed >= 0 && attackSequenceDuration > 0 && attackElapsed < attackSequenceDuration)
                 {
-                    if (branchAnimation == null
+                    if (!hasActionPlayback
                         && prepareAnimation?.Frames.Count > 0
                         && attackElapsed < prepareDuration)
                     {
@@ -21432,9 +21583,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                         return prepareAnimation;
                     }
 
-                    animationTime = branchAnimation == null
-                        ? Math.Max(0, attackElapsed - prepareDuration)
-                        : attackElapsed;
+                    animationTime = hasActionPlayback
+                        ? attackElapsed
+                        : Math.Max(0, attackElapsed - prepareDuration);
                     return attackAnimation;
                 }
             }
@@ -21481,6 +21632,21 @@ namespace HaCreator.MapSimulator.Character.Skills
             return skill != null
                    && (skill.SkillId == SMOKE_BOMB_SKILL_ID
                        || string.Equals(skill.ZoneType, "invincible", StringComparison.OrdinalIgnoreCase));
+        }
+
+        internal static SkillAnimation ResolveInvincibleZoneAnimation(SkillData skill)
+        {
+            if (skill?.ZoneAnimation?.Frames.Count > 0)
+            {
+                return skill.ZoneAnimation;
+            }
+
+            if (IsInvincibleZoneSkill(skill) && skill?.AvatarOverlayEffect?.Frames.Count > 0)
+            {
+                return skill.AvatarOverlayEffect;
+            }
+
+            return null;
         }
 
         private int ResolveQueuedExecutionSkillLevel(int skillId)
@@ -21571,14 +21737,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (skill == null)
                 return false;
 
-            if (!IsAdminSkillJob(skill.Job))
+            return IsSkillAllowedForJob(skill.Job, _player.Build?.Job ?? 0);
+        }
+
+        internal static bool IsSkillAllowedForJob(int skillJob, int currentJob)
+        {
+            if (!IsAdminSkillJob(skillJob))
                 return true;
 
-            int currentJob = _player.Build?.Job ?? 0;
             return currentJob switch
             {
-                910 => skill.Job == 900 || skill.Job == 910,
-                900 => skill.Job == 900,
+                910 => skillJob == 900 || skillJob == 910,
+                900 => skillJob == 900,
                 _ => false
             };
         }

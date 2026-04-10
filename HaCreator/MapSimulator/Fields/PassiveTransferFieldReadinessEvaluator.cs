@@ -4,7 +4,8 @@ namespace HaCreator.MapSimulator.Fields
         bool HasLiveFieldInterface,
         bool AllowsTransferField,
         bool HasPendingSpecialTransfer,
-        bool HasPendingPacketOwnedTransfer);
+        bool HasPendingPacketOwnedTransfer,
+        bool HasBlockingScriptedSequence);
 
     public readonly record struct PassiveTransferFieldReplayState(
         bool HasOneTimeActionCompleted,
@@ -19,7 +20,8 @@ namespace HaCreator.MapSimulator.Fields
             return state.HasLiveFieldInterface
                    && state.AllowsTransferField
                    && !state.HasPendingSpecialTransfer
-                   && !state.HasPendingPacketOwnedTransfer;
+                   && !state.HasPendingPacketOwnedTransfer
+                   && !state.HasBlockingScriptedSequence;
         }
 
         public static bool CanReplayHandleUpKeyDown(PassiveTransferFieldReplayState state)

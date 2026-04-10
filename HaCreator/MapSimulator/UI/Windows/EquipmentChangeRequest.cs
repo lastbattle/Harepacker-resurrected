@@ -31,6 +31,36 @@ namespace HaCreator.MapSimulator.UI
         BigBangWindow
     }
 
+    public enum CharacterEquipmentAuthorityPayloadMode : byte
+    {
+        AuthorityRequest = 0,
+        AuthorityResult = 1
+    }
+
+    public enum CharacterEquipmentAuthorityResultKind : byte
+    {
+        Reject = 0,
+        LocalRequestAccept = 1
+    }
+
+    public readonly record struct CharacterEquipmentAuthorityPayload(
+        CharacterEquipmentAuthorityPayloadMode Mode,
+        int RequestId,
+        int RequestedAtTick,
+        EquipmentChangeRequestKind RequestKind = default,
+        EquipmentChangeOwnerKind OwnerKind = default,
+        int OwnerSessionId = 0,
+        int ExpectedCharacterId = 0,
+        int ExpectedBuildStateToken = 0,
+        InventoryType SourceInventoryType = InventoryType.NONE,
+        int SourceInventoryIndex = -1,
+        HaCreator.MapSimulator.Character.EquipSlot? SourceEquipSlot = null,
+        HaCreator.MapSimulator.Character.EquipSlot? TargetEquipSlot = null,
+        int ItemId = 0,
+        CharacterEquipmentAuthorityResultKind ResultKind = default,
+        int ResolvedBuildStateToken = 0,
+        string RejectReason = null);
+
     public sealed class EquipmentChangeRequest
     {
         public int RequestId { get; set; }

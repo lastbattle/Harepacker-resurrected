@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Managers;
 using MapleLib.PacketLib;
 using System;
+using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -146,6 +147,94 @@ namespace HaCreator.MapSimulator.Interaction
             return writer.ToArray();
         }
 
+        public static byte[] BuildMemberInfoPayload(
+            string contactName,
+            bool isOnline,
+            int channel,
+            int level,
+            string jobName,
+            string locationSummary,
+            string statusText,
+            LoginAvatarLook avatarLook = null)
+        {
+            PacketWriter writer = new();
+            WriteString8(writer, contactName);
+            writer.WriteByte(isOnline ? (byte)1 : (byte)0);
+            writer.WriteByte((byte)Math.Clamp(channel, 1, byte.MaxValue));
+            writer.WriteShort(Math.Clamp(level, 1, short.MaxValue));
+            WriteString8(writer, jobName);
+            WriteString8(writer, locationSummary);
+            WriteString8(writer, statusText);
+            WriteLengthPrefixedAvatarLook(writer, avatarLook);
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildAvatarPayload(int slotIndex, LoginAvatarLook avatarLook)
+        {
+            if (avatarLook == null)
+            {
+                throw new ArgumentNullException(nameof(avatarLook));
+            }
+
+            PacketWriter writer = new();
+            writer.WriteByte((byte)Math.Clamp(slotIndex, 0, byte.MaxValue));
+            writer.WriteBytes(LoginAvatarLookCodec.Encode(avatarLook));
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildEnterPayload(
+            int slotIndex,
+            string contactName,
+            int channel,
+            bool isNew,
+            LoginAvatarLook avatarLook = null)
+        {
+            PacketWriter writer = new();
+            writer.WriteByte((byte)Math.Clamp(slotIndex, 0, byte.MaxValue));
+            WriteLengthPrefixedAvatarLook(writer, avatarLook);
+            WriteString8(writer, contactName);
+            writer.WriteByte((byte)Math.Clamp(channel, 1, byte.MaxValue));
+            writer.WriteByte(isNew ? (byte)1 : (byte)0);
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildInviteResultPayload(string contactName, bool inviteSent)
+        {
+            PacketWriter writer = new();
+            writer.WriteMapleString(NormalizeText(contactName));
+            writer.WriteByte(inviteSent ? (byte)1 : (byte)0);
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildSelfEnterResultPayload(int slotIndex)
+        {
+            PacketWriter writer = new();
+            writer.WriteByte((byte)Math.Clamp(slotIndex, sbyte.MinValue, byte.MaxValue));
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildMigratedPayload(IReadOnlyList<MessengerMigratedParticipantPacket> participants)
+        {
+            PacketWriter writer = new();
+            for (int slotIndex = 0; slotIndex < 3; slotIndex++)
+            {
+                MessengerMigratedParticipantPacket participant = participants != null && slotIndex < participants.Count
+                    ? participants[slotIndex]
+                    : new MessengerMigratedParticipantPacket(slotIndex, 0, string.Empty, 1, null);
+                writer.WriteByte(participant.State);
+                if (!participant.Present)
+                {
+                    continue;
+                }
+
+                WriteLengthPrefixedAvatarLook(writer, participant.AvatarLook);
+                WriteString8(writer, participant.ContactName);
+                writer.WriteByte((byte)Math.Clamp(participant.Channel, 1, byte.MaxValue));
+            }
+
+            return writer.ToArray();
+        }
+
         public static bool TryParseClientDispatch(ReadOnlySpan<byte> payload, out byte packetType, out byte[] body, out string error)
         {
             packetType = 0;
@@ -171,6 +260,19 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 writer.WriteString(normalized[..Math.Min(byte.MaxValue, normalized.Length)]);
             }
+        }
+
+        private static void WriteLengthPrefixedAvatarLook(PacketWriter writer, LoginAvatarLook avatarLook)
+        {
+            if (avatarLook == null)
+            {
+                writer.WriteInt(0);
+                return;
+            }
+
+            byte[] avatarLookPayload = LoginAvatarLookCodec.Encode(avatarLook);
+            writer.WriteInt(avatarLookPayload.Length);
+            writer.WriteBytes(avatarLookPayload);
         }
 
         private static string NormalizeText(string value)

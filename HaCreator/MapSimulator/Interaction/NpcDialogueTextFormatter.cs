@@ -323,7 +323,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 RawText = rawText ?? string.Empty,
                 Text = text,
-                Choices = choices
+                Choices = choices,
+                FlipSpeaker = page.FlipSpeaker
             };
         }
 

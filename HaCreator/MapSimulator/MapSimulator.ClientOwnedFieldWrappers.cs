@@ -933,6 +933,25 @@ namespace HaCreator.MapSimulator
             _activeWeddingPhotoSceneContract = TryBuildWeddingPhotoSceneContract(mapInfo, out WeddingPhotoSceneContract contract)
                 ? contract
                 : null;
+
+            if (_activeWeddingPhotoSceneContract is not WeddingPhotoSceneContract activeContract
+                || activeContract.Kind != WeddingPhotoWrapperKind.SceneOwner)
+            {
+                _specialFieldRuntime?.SpecialEffects?.Wedding?.ClearWeddingPhotoSceneOwner();
+                return;
+            }
+
+            Rectangle? viewport = activeContract.HasViewport
+                ? new Rectangle(
+                    activeContract.ViewportLeft,
+                    activeContract.ViewportTop,
+                    activeContract.ViewportRight - activeContract.ViewportLeft,
+                    activeContract.ViewportBottom - activeContract.ViewportTop)
+                : null;
+            _specialFieldRuntime?.SpecialEffects?.Wedding?.BindWeddingPhotoSceneOwner(
+                mapInfo?.id ?? 0,
+                $"CField_WeddingPhoto::GetFieldType = {ClientOwnedWeddingPhotoFieldType}; {activeContract.SourceDescription}; {activeContract.SceneDescription}",
+                viewport);
         }
 
         private void SyncClientOwnedTutorialTutorOwner(int currentTick)

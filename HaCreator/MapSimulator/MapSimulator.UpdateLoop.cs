@@ -421,6 +421,8 @@ namespace HaCreator.MapSimulator
             UpdatePetEventSpeechState(currTickCount);
             UpdatePetIdleSpeechState(currTickCount);
             _fieldMessageBoxRuntime.Initialize(GraphicsDevice);
+            RefreshFieldMessageBoxOfficialSessionBridgeDiscovery(currTickCount);
+            DrainFieldMessageBoxOfficialSessionBridge();
             _fieldMessageBoxRuntime.Update(currTickCount);
             _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
             _packetFieldStateRuntime.Update(currTickCount);

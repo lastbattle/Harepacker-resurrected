@@ -7,6 +7,7 @@ namespace HaCreator.MapSimulator
             int sourceMapId = -1,
             string sourcePortalName = null,
             string targetPortalName = null,
+            int targetPortalIndex = -1,
             float? fallbackX = null,
             float? fallbackY = null,
             string[] targetPortalNameCandidates = null)
@@ -15,6 +16,7 @@ namespace HaCreator.MapSimulator
             SourceMapId = sourceMapId;
             SourcePortalName = sourcePortalName;
             TargetPortalName = targetPortalName;
+            TargetPortalIndex = targetPortalIndex;
             FallbackX = fallbackX;
             FallbackY = fallbackY;
             TargetPortalNameCandidates = targetPortalNameCandidates ?? System.Array.Empty<string>();
@@ -27,6 +29,8 @@ namespace HaCreator.MapSimulator
         public string SourcePortalName { get; }
 
         public string TargetPortalName { get; }
+
+        public int TargetPortalIndex { get; }
 
         public float? FallbackX { get; }
 

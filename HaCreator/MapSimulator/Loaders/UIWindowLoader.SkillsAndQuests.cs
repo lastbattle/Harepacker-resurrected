@@ -643,6 +643,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             var visibleRootIds = SkillRootVisibilityResolver.ResolveVisibleSkillRootIds(
                 jobId,
+                0,
                 availableRootIds,
                 learnedSkillIds,
                 SkillDataLoader.SkillRootContainsSkill);

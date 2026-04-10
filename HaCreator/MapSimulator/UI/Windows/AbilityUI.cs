@@ -91,6 +91,8 @@ namespace HaCreator.MapSimulator.UI
 
         // Detail background texture (for expanded stats view)
         private IDXObject _detailBackground;
+        private IDXObject _beginnerCover0;
+        private IDXObject _beginnerCover1;
 
         // Font for rendering stats
         private SpriteFont _statsFont;
@@ -211,6 +213,12 @@ namespace HaCreator.MapSimulator.UI
         {
             _detailBackground = detailBg;
         }
+
+        public void SetBeginnerCovers(IDXObject cover0, IDXObject cover1)
+        {
+            _beginnerCover0 = cover0;
+            _beginnerCover1 = cover1;
+        }
         #endregion
 
         #region Drawing
@@ -230,6 +238,14 @@ namespace HaCreator.MapSimulator.UI
             // All positions are relative to window position
             int windowX = this.Position.X;
             int windowY = this.Position.Y;
+
+            if (ShouldDrawBeginnerCovers())
+            {
+                _beginnerCover0?.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
+                    windowX, windowY, Color.White, false, drawReflectionInfo);
+                _beginnerCover1?.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
+                    windowX, windowY, Color.White, false, drawReflectionInfo);
+            }
 
             // Y positions using client constants + compensator offsets
             // Info section uses INFO_Y_OFFSET
@@ -341,6 +357,17 @@ namespace HaCreator.MapSimulator.UI
                 TextColorDark,
                 TEXT_SCALE,
                 _statsFont);
+        }
+
+        private bool ShouldDrawBeginnerCovers()
+        {
+            if (_characterBuild == null || _characterBuild.Level > 10)
+            {
+                return false;
+            }
+
+            int absoluteJobId = Math.Abs(_characterBuild.Job);
+            return absoluteJobId % 1000 == 0 || absoluteJobId == 2001;
         }
         #endregion
 

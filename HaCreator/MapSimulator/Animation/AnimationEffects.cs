@@ -1067,6 +1067,13 @@ namespace HaCreator.MapSimulator.Animation
         CanvasLayerRecoveredMoveSettings MoveSettings);
 
     /// <summary>
+    /// Temporary canvas dimensions recovered from CAnimationDisplayer::Effect_HP CreateCanvas.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredCanvasSettings(
+        int Width,
+        int Height);
+
+    /// <summary>
     /// Recovered native layer values from CAnimationDisplayer::Effect_HP.
     /// The simulator preserves these as parity metadata even though it does not instantiate the client COM graph.
     /// </summary>
@@ -1084,9 +1091,11 @@ namespace HaCreator.MapSimulator.Animation
     /// Full recovered registration trace for the managed canvas-layer analogue.
     /// </summary>
     internal readonly record struct CanvasLayerRecoveredRegistrationTrace(
+        CanvasLayerRecoveredCanvasSettings CanvasSettings,
         CanvasLayerRecoveredLayerSettings LayerSettings,
         CanvasLayerRecoveredPositionSettings Position,
-        CanvasLayerRecoveredInsertCommand[] InsertCommands);
+        CanvasLayerRecoveredInsertCommand[] InsertCommands,
+        bool RegistersOneTimeAnimation);
 
     /// <summary>
     /// One-shot canvas-backed animation that mirrors RegisterOneTimeAnimation ownership.
@@ -1221,7 +1230,14 @@ namespace HaCreator.MapSimulator.Animation
             _insertOperations = BuildInsertOperations(insertDescriptors);
             Owner = owner;
             RecoveredLayerSettings = recoveredLayerSettings;
-            RecoveredRegistrationTrace = BuildRecoveredRegistrationTrace(left, top, insertDescriptors, recoveredLayerSettings);
+            RecoveredRegistrationTrace = BuildRecoveredRegistrationTrace(
+                left,
+                top,
+                canvasTexture.Width,
+                canvasTexture.Height,
+                insertDescriptors,
+                recoveredLayerSettings,
+                registersOneTimeAnimation: true);
         }
 
         public bool Update(int currentTimeMs)
@@ -1277,8 +1293,11 @@ namespace HaCreator.MapSimulator.Animation
         internal static CanvasLayerRecoveredRegistrationTrace BuildRecoveredRegistrationTrace(
             float left,
             float top,
+            int canvasWidth,
+            int canvasHeight,
             IReadOnlyList<CanvasLayerInsertDescriptor> insertDescriptors,
-            CanvasLayerRecoveredLayerSettings recoveredLayerSettings)
+            CanvasLayerRecoveredLayerSettings recoveredLayerSettings,
+            bool registersOneTimeAnimation)
         {
             CanvasLayerRecoveredInsertCommand[] recoveredInsertCommands;
             if (insertDescriptors == null || insertDescriptors.Count == 0)
@@ -1301,11 +1320,15 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             return new CanvasLayerRecoveredRegistrationTrace(
+                new CanvasLayerRecoveredCanvasSettings(
+                    Math.Max(0, canvasWidth),
+                    Math.Max(0, canvasHeight)),
                 recoveredLayerSettings,
                 new CanvasLayerRecoveredPositionSettings(
                     (int)Math.Round(left, MidpointRounding.AwayFromZero),
                     (int)Math.Round(top, MidpointRounding.AwayFromZero)),
-                recoveredInsertCommands);
+                recoveredInsertCommands,
+                registersOneTimeAnimation);
         }
 
         private CanvasLayerInsertOperation[] BuildInsertOperations(IReadOnlyList<CanvasLayerInsertDescriptor> insertDescriptors)
@@ -1868,6 +1891,7 @@ namespace HaCreator.MapSimulator.Animation
                                 _spawnOffsetMax,
                                 random);
                             bool useClientOffsetPath = _spawnUsesEmissionBox
+                                || _spawnAppliesEmissionBias
                                 || _spawnOffsetMin != Point.Zero
                                 || _spawnOffsetMax != Point.Zero;
                             Vector2 particleStartOffset = useClientOffsetPath

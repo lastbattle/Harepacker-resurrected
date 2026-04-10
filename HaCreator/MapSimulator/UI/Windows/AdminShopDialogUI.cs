@@ -203,6 +203,7 @@ namespace HaCreator.MapSimulator.UI
             public const int Reopen = 0;
             public const int TradeRequest = 1;
             public const int Close = 2;
+            public const int RegisterWishlistItem = 3;
         }
 
         private static class StorageExpansionFailureReason
@@ -488,6 +489,7 @@ namespace HaCreator.MapSimulator.UI
         public bool HasPendingStorageExpansionRequest => _pendingRequestEntry?.IsStorageExpansion == true;
         private const int PacketOwnedAdminShopResultMode = PacketOwnedAdminShopOutboundMode.Reopen;
         private const int PacketOwnedAdminShopCloseMode = PacketOwnedAdminShopOutboundMode.Close;
+        private const int PacketOwnedAdminShopWishlistRegisterMode = PacketOwnedAdminShopOutboundMode.RegisterWishlistItem;
 
         public AdminShopDialogUI(
             IDXObject frame,
@@ -3289,6 +3291,13 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            string wishlistRegisterSummary = string.Empty;
+            if (!alreadyWishlisted)
+            {
+                wishlistRegisterSummary = DispatchPacketOwnedAdminShopWishlistRegister(matchedEntry);
+                _packetOwnedAdminShopSession.SetLastOwnerState("CUIAdminShopWishList::SendRegisterPacket mirrored opcode 74 mode 3 for the selected item id.");
+            }
+
             matchedEntry.Wishlisted = true;
             _wishlistedEntryKeys[_currentMode].Add(entryKey);
             PersistEntrySessionState(matchedEntry);
@@ -3301,6 +3310,11 @@ namespace HaCreator.MapSimulator.UI
             message = alreadyWishlisted
                 ? $"Wish-list search focused {matchedEntry.Title}; the entry was already saved."
                 : $"Wish-list search saved {matchedEntry.Title} and focused the matching catalog row.";
+            if (!string.IsNullOrWhiteSpace(wishlistRegisterSummary))
+            {
+                message = $"{message} {wishlistRegisterSummary}";
+            }
+
             _footerMessage = message;
             return true;
         }
@@ -4688,7 +4702,7 @@ namespace HaCreator.MapSimulator.UI
             ResetPendingRequestState();
             Money = _inventory.GetMesoCount();
             RefreshDynamicUserEntries();
-            ClearPendingPacketOwnedUserSellSnapshot();
+            ApplyPendingPacketOwnedUserSellMutationParity();
             UpdateActionButtonStates();
         }
 
@@ -4860,13 +4874,16 @@ namespace HaCreator.MapSimulator.UI
             UpdateRowButtons();
         }
 
-        private static string BuildPacketOwnedAdminShopOutboundSummary(int mode, int npcTemplateId)
+        private static string BuildPacketOwnedAdminShopOutboundSummary(int mode, int value)
         {
-            return mode == PacketOwnedAdminShopCloseMode
-                ? "Mirrored CAdminShopDlg outbound opcode 74 mode 2."
-                : npcTemplateId > 0
-                    ? $"Mirrored CAdminShopDlg outbound opcode 74 mode 0 for NPC {npcTemplateId}."
-                    : "Mirrored CAdminShopDlg outbound opcode 74 mode 0.";
+            return mode switch
+            {
+                PacketOwnedAdminShopCloseMode => "Mirrored CAdminShopDlg outbound opcode 74 mode 2.",
+                PacketOwnedAdminShopWishlistRegisterMode when value > 0 => $"Mirrored CUIAdminShopWishList::SendRegisterPacket opcode 74 mode 3 for item {value}.",
+                PacketOwnedAdminShopWishlistRegisterMode => "Mirrored CUIAdminShopWishList::SendRegisterPacket opcode 74 mode 3.",
+                _ when value > 0 => $"Mirrored CAdminShopDlg outbound opcode 74 mode 0 for NPC {value}.",
+                _ => "Mirrored CAdminShopDlg outbound opcode 74 mode 0."
+            };
         }
 
         private string BuildPacketOwnedAdminShopStateSummary()
@@ -6783,21 +6800,49 @@ namespace HaCreator.MapSimulator.UI
             return resolvedSummary;
         }
 
-        private static PacketOwnedNpcUtilityOutboundRequest BuildPacketOwnedAdminShopOutboundRequest(int mode, int npcTemplateId)
+        private string DispatchPacketOwnedAdminShopWishlistRegister(AdminShopEntry entry)
         {
-            List<byte> payload = new(1 + (mode == PacketOwnedAdminShopResultMode ? sizeof(int) : 0))
+            int itemId = ResolveWishlistRegisterItemId(entry);
+            if (itemId <= 0)
+            {
+                return "CUIAdminShopWishList::SendRegisterPacket could not mirror opcode 74 mode 3 because the selected row has no item id.";
+            }
+
+            return DispatchPacketOwnedAdminShopOutbound(PacketOwnedAdminShopWishlistRegisterMode, itemId);
+        }
+
+        private static int ResolveWishlistRegisterItemId(AdminShopEntry entry)
+        {
+            if (entry == null)
+            {
+                return 0;
+            }
+
+            if (entry.RewardItemId > 0)
+            {
+                return entry.RewardItemId;
+            }
+
+            return entry.DisplayItemId > 0 ? entry.DisplayItemId : 0;
+        }
+
+        internal static PacketOwnedNpcUtilityOutboundRequest BuildPacketOwnedAdminShopOutboundRequest(int mode, int value)
+        {
+            bool hasIntPayload = mode == PacketOwnedAdminShopResultMode
+                || mode == PacketOwnedAdminShopWishlistRegisterMode;
+            List<byte> payload = new(1 + (hasIntPayload ? sizeof(int) : 0))
             {
                 (byte)mode
             };
-            if (mode == PacketOwnedAdminShopResultMode)
+            if (hasIntPayload)
             {
-                payload.AddRange(BitConverter.GetBytes(npcTemplateId));
+                payload.AddRange(BitConverter.GetBytes(value));
             }
 
             return new PacketOwnedNpcUtilityOutboundRequest(
                 74,
                 payload,
-                BuildPacketOwnedAdminShopOutboundSummary(mode, npcTemplateId));
+                BuildPacketOwnedAdminShopOutboundSummary(mode, value));
         }
 
         private static AdminShopCategory ResolveCommodityCategory(InventoryType inventoryType)

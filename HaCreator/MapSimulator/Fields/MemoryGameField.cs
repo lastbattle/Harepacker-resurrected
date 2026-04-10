@@ -354,6 +354,7 @@ namespace HaCreator.MapSimulator.Fields
         public IReadOnlyList<bool> LeaveBookingStates => _leaveBookingStates;
         public IReadOnlyList<string> PlayerNames => _playerNames;
         public string Title => _title;
+        public string StatusMessage => _statusMessage;
         public MemoryGamePacketType? LastPacketType => _lastPacketType;
         public string LastPacketSummary => _lastPacketSummary;
         public bool HasPendingPrompt => _pendingPrompt.IsActive;
@@ -839,12 +840,14 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             MemoryGamePromptState prompt = _pendingPrompt;
+            string statusMessageBeforePrompt = _statusMessageBeforePrompt;
             ClearPendingPrompt();
             string promptText = string.IsNullOrWhiteSpace(prompt.Text) ? "Match Cards prompt" : prompt.Text;
-            _statusMessage = $"Canceled: {promptText}";
-            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
+            _statusMessage = string.IsNullOrWhiteSpace(statusMessageBeforePrompt)
+                ? $"Canceled: {promptText}"
+                : statusMessageBeforePrompt;
             SyncMiniRoomRuntime();
-            message = _statusMessage;
+            message = $"Canceled Match Cards prompt: {promptText}";
             return true;
         }
 
@@ -2539,6 +2542,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            _statusMessageBeforePrompt = _statusMessage;
             _pendingPrompt = new MemoryGamePromptState(type, stringPoolId, playerIndex, text);
             _statusMessage = text;
             _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {text}");
@@ -2605,6 +2609,7 @@ namespace HaCreator.MapSimulator.Fields
         private void ClearPendingPrompt()
         {
             _pendingPrompt = default;
+            _statusMessageBeforePrompt = null;
         }
 
         private static bool AssignPromptMissing(out string message)

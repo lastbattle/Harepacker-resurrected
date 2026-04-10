@@ -29,7 +29,7 @@ namespace HaCreator.MapSimulator.Loaders
             Animation.AnimationKeys.Stand
         };
 
-        private static readonly string[] ActionTwoClientActionCandidates =
+        private static readonly string[] FirstTemplateClientActionCandidates =
         {
             "say"
         };
@@ -200,16 +200,22 @@ namespace HaCreator.MapSimulator.Loaders
 
         internal static IEnumerable<string> EnumerateClientActionNameCandidates(int clientActionId)
         {
+            return EnumerateClientActionNameCandidates(clientActionId, null);
+        }
+
+        internal static IEnumerable<string> EnumerateClientActionNameCandidates(
+            int clientActionId,
+            IEnumerable<string> authoredTemplateActionNames)
+        {
             IEnumerable<string> fixedCandidates = clientActionId switch
             {
                 0 => ActionZeroClientActionCandidates,
                 // CActionMan::LoadNpcAction indexes the static NPC action-name table before WZ lookup.
                 // Shop-style UI owners default to action 1, and WZ shop NPCs publish only `stand` for that path.
                 1 => ActionOneClientActionCandidates,
-                // CUIQuestInfoDetail::SetNPC and CUIMedalQuestInfoDetail::SetNPC switch to action 2
-                // when the authored NPC template exposes more than two acts, and WZ quest-preview NPCs
-                // in this data set commonly publish that branch as `say`.
-                2 => ActionTwoClientActionCandidates,
+                // For nAction >= 2, CActionMan::LoadNpcAction indexes CNpcTemplate::aAct[nAction - 2].bsAction.
+                // Quest-preview NPCs in this data set commonly publish that first extra template action as `say`.
+                2 => FirstTemplateClientActionCandidates,
                 _ => Array.Empty<string>()
             };
 
@@ -219,6 +225,19 @@ namespace HaCreator.MapSimulator.Loaders
                 if (!string.IsNullOrWhiteSpace(candidate) && yielded.Add(candidate))
                 {
                     yield return candidate;
+                }
+            }
+
+            if (clientActionId >= 2)
+            {
+                foreach (string candidate in EnumerateAuthoredTemplateActionCandidates(
+                    clientActionId,
+                    authoredTemplateActionNames))
+                {
+                    if (!string.IsNullOrWhiteSpace(candidate) && yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
                 }
             }
 
@@ -250,7 +269,7 @@ namespace HaCreator.MapSimulator.Loaders
                 return Animation.AnimationKeys.Stand;
             }
 
-            foreach (string candidate in EnumerateClientActionNameCandidates(clientActionId))
+            foreach (string candidate in EnumerateClientActionNameCandidates(clientActionId, availableActionOrder))
             {
                 if (!string.IsNullOrWhiteSpace(candidate) &&
                     availableActionMap.TryGetValue(candidate, out string resolvedCandidate))
@@ -280,6 +299,30 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return availableActionOrder[0];
+        }
+
+        private static IEnumerable<string> EnumerateAuthoredTemplateActionCandidates(
+            int clientActionId,
+            IEnumerable<string> authoredTemplateActionNames)
+        {
+            if (clientActionId < 2)
+            {
+                yield break;
+            }
+
+            List<string> templateActionOrder = authoredTemplateActionNames?
+                .Where(static action => !string.IsNullOrWhiteSpace(action))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(static action =>
+                    !string.Equals(action, Animation.AnimationKeys.Stand, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(action, "default", StringComparison.OrdinalIgnoreCase))
+                .ToList() ?? new List<string>();
+
+            int templateActionIndex = clientActionId - 2;
+            if (templateActionIndex >= 0 && templateActionIndex < templateActionOrder.Count)
+            {
+                yield return templateActionOrder[templateActionIndex];
+            }
         }
 
         internal static IEnumerable<string> EnumerateAuthoredSpeakFallbackActions(WzImage source)

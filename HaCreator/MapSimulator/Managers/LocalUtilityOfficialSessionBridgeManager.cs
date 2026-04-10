@@ -598,9 +598,12 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == LocalUtilityPacketInboxManager.SetStandAloneModeClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.HireTutorClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.TutorMsgClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.NotifyHpDecByFieldPacketType
+                || packetType == LocalUtilityPacketInboxManager.DamageMeterPacketType
                 || packetType == LocalUtilityPacketInboxManager.PassiveMoveClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.AntiMacroResultPacketType
+                || packetType == LocalUtilityPacketInboxManager.PetConsumeResultPacketType
                 || packetType == LocalUtilityPacketInboxManager.MechanicEquipStatePacketType;
         }
 
@@ -615,9 +618,12 @@ namespace HaCreator.MapSimulator.Managers
                 LocalUtilityPacketInboxManager.SetStandAloneModeClientPacketType => "SetStandAloneMode(254)",
                 LocalUtilityPacketInboxManager.HireTutorClientPacketType => "HireTutor(255)",
                 LocalUtilityPacketInboxManager.TutorMsgClientPacketType => "TutorMsg(256)",
+                LocalUtilityPacketInboxManager.NotifyHpDecByFieldPacketType => "NotifyHPDecByField(243)",
+                LocalUtilityPacketInboxManager.DamageMeterPacketType => "DamageMeter(267)",
                 LocalUtilityPacketInboxManager.PassiveMoveClientPacketType => "PassiveMove(269)",
                 LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType => "FollowCharacterFailed(270)",
                 LocalUtilityPacketInboxManager.AntiMacroResultPacketType => "AntiMacroResult(1011)",
+                LocalUtilityPacketInboxManager.PetConsumeResultPacketType => "PetConsumeResult(1026) / RaiseOwnerSync(1026)",
                 LocalUtilityPacketInboxManager.MechanicEquipStatePacketType => "MechanicEquipState(1023)",
                 _ => $"packet {packetType}"
             };

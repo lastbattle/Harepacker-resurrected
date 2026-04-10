@@ -46,6 +46,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int FollowCharacterFailedPacketType = 1009;
         public const int RadioSchedulePacketType = 1010;
         public const int AntiMacroResultPacketType = 1011;
+        public const int RadioCreateLayerContextPacketType = 1035;
         public const int DragonBoxClientPacketType = 164;
         public const int AccountMoreInfoPacketType = 133;
         public const int SetGenderPacketType = 58;
@@ -64,6 +65,8 @@ namespace HaCreator.MapSimulator.Managers
         public const int OpenSkillGuideClientPacketType = 262;
         public const int PlayEventSoundClientPacketType = 246;
         public const int PlayMinigameSoundClientPacketType = 247;
+        public const int AdminShopResultClientPacketType = 366;
+        public const int AdminShopOpenClientPacketType = 367;
         public const int OpenClassCompetitionPagePacketType = 250;
         public const int MakerResultClientPacketType = PacketOwnedItemMakerResultRuntime.ClientPacketType;
         public const int OpenUiClientPacketType = 251;
@@ -106,6 +109,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int RepeatSkillModeEndAckPacketType = PacketOwnedMechanicRepeatSkillRuntime.RepeatSkillModeEndAckPacketType;
         public const int Sg88ManualAttackConfirmPacketType = PacketOwnedMechanicRepeatSkillRuntime.Sg88ManualAttackConfirmPacketType;
         public const int MechanicEquipStatePacketType = 1023;
+        public const int CharacterEquipStatePacketType = 1034;
         public const int PetConsumeResultPacketType = 1026;
         public const int RepairDurabilityResultPacketType = 1025;
         public const int QuestRewardRaiseOwnerSyncPacketType = 1026;
@@ -116,6 +120,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int EventAlarmTextPacketType = 1031;
         public const int EventCalendarEntriesPacketType = 1032;
         public const int RankingPagePacketType = 1033;
+        public const int ConsumeCashItemUseRequestPacketType = 0x55;
         public const int VegaLaunchPacketType = 1031;
         public const int VegaResultClientPacketType = 429;
 
@@ -567,6 +572,15 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("radioctx", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("radiocontext", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("radiocreatelayer", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cwvscontext3562", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RadioCreateLayerContextPacketType;
+                return true;
+            }
+
             if (token.Equals("logoutgift", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("onlogoutgift", StringComparison.OrdinalIgnoreCase))
             {
@@ -645,6 +659,25 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("onmakerresult", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = MakerResultClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("adminshopresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshopreply", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshoponpacket366", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cadminshopdlg366", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = AdminShopResultClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("adminshopopen", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshop", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshopset", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshoponpacket367", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cadminshopdlg367", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = AdminShopOpenClientPacketType;
                 return true;
             }
 
@@ -813,6 +846,14 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("characterequip", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("equipauthority", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("equipwindowauthority", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = CharacterEquipStatePacketType;
+                return true;
+            }
+
             if (token.Equals("repairresult", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("repairdurabilityresult", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("repairreply", StringComparison.OrdinalIgnoreCase))
@@ -827,6 +868,15 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("cuivegaopen", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = VegaLaunchPacketType;
+                return true;
+            }
+
+            if (token.Equals("consumecash", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("consumecashitem", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("consume-cash-item", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("sendconsumecashitemuserequest", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ConsumeCashItemUseRequestPacketType;
                 return true;
             }
 
@@ -968,6 +1018,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == SetGenderPacketType
                 || packetType == RadioSchedulePacketType
                 || packetType == RadioScheduleClientPacketType
+                || packetType == RadioCreateLayerContextPacketType
                 || packetType == LogoutGiftClientPacketType
                 || packetType == AntiMacroResultPacketType
                 || packetType == InitialQuizTimerRuntime.PacketType
@@ -979,10 +1030,14 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == NotifyHpDecByFieldPacketType
                 || packetType == OpenClassCompetitionPagePacketType
                 || packetType == MakerResultClientPacketType
+                || packetType == AdminShopResultClientPacketType
+                || packetType == AdminShopOpenClientPacketType
                 || packetType == ItemMakerHiddenRecipeUnlockPacketType
                 || packetType == ItemMakerSessionPacketType
                 || packetType == MechanicEquipStatePacketType
+                || packetType == CharacterEquipStatePacketType
                 || packetType == RepairDurabilityResultPacketType
+                || packetType == ConsumeCashItemUseRequestPacketType
                 || packetType == VegaLaunchPacketType
                 || packetType == VegaResultClientPacketType
                 || packetType == DamageMeterPacketType
@@ -1133,6 +1188,7 @@ namespace HaCreator.MapSimulator.Managers
                 RadioSchedulePacketType => "RadioSchedule(1010)",
                 LogoutGiftClientPacketType => "OnLogoutGift(432)",
                 AntiMacroResultPacketType => "AntiMacroResult(1011)",
+                RadioCreateLayerContextPacketType => "RadioCreateLayerContext(1035)",
                 RankingPagePacketType => "RankingPage(1033)",
                 InitialQuizTimerRuntime.PacketType => "InitialQuizStart(43)",
                 FollowCharacterPacketType => "FollowCharacter(1012)",
@@ -1152,6 +1208,8 @@ namespace HaCreator.MapSimulator.Managers
                 NotifyHpDecByFieldPacketType => "NotifyHPDecByField(243)",
                 OpenClassCompetitionPagePacketType => "OpenClassCompetitionPage(250)",
                 MakerResultClientPacketType => "OnMakerResult(248)",
+                AdminShopResultClientPacketType => "CAdminShopDlg::OnPacket Result(366)",
+                AdminShopOpenClientPacketType => "CAdminShopDlg::OnPacket Open(367)",
                 OpenUiClientPacketType => "OpenUI(251)",
                 OpenUiWithOptionClientPacketType => "OpenUIWithOption(252)",
                 SetDirectionModeClientPacketType => "SetDirectionMode(253)",
@@ -1193,7 +1251,9 @@ namespace HaCreator.MapSimulator.Managers
                 RepeatSkillModeEndAckPacketType => "RepeatSkillModeEndAck(1020)",
                 Sg88ManualAttackConfirmPacketType => "Sg88ManualAttackConfirm(1021)",
                 MechanicEquipStatePacketType => "MechanicEquipState(1023)",
+                CharacterEquipStatePacketType => "CharacterEquipState(1034)",
                 RepairDurabilityResultPacketType => "RepairDurabilityResult(1025)",
+                ConsumeCashItemUseRequestPacketType => "SendConsumeCashItemUseRequest(85)",
                 QuestRewardRaisePutItemAddResultPacketType => "RaisePutItemAddResult(1027)",
                 QuestRewardRaisePutItemReleaseResultPacketType => "RaisePutItemReleaseResult(1028)",
                 QuestRewardRaisePutItemConfirmResultPacketType => "RaisePutItemConfirmResult(1029)",

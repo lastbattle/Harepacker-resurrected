@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int ErrorInsufficientBuffer = 122;
         private const int FirstCarnivalOpcode = 346;
         private const int LastCarnivalOpcode = 353;
+        internal const int OutboundRequestOpcode = 262;
         private const int RecentPacketCapacity = 8;
 
         private readonly ConcurrentQueue<MonsterCarnivalPacketInboxMessage> _pendingMessages = new();
@@ -544,7 +545,14 @@ namespace HaCreator.MapSimulator.Managers
 
             try
             {
-                pair.ServerSession.SendPacket(packet.ToArray());
+                byte[] raw = packet.ToArray();
+                pair.ServerSession.SendPacket((byte[])raw.Clone());
+
+                if (TryDecodeOutboundRequestPacket(raw, out int tab, out int entryIndex))
+                {
+                    RecordRecentPacket(OutboundRequestOpcode, raw, OutboundRequestOpcode, $"outbound-request tab={tab} index={entryIndex}");
+                    LastStatus = $"Forwarded live Monster Carnival request opcode {OutboundRequestOpcode} (tab={tab}, index={entryIndex}) from {pair.ClientEndpoint} to {pair.RemoteEndpoint}.";
+                }
             }
             catch (Exception ex)
             {
@@ -637,10 +645,33 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        internal static bool TryDecodeOutboundRequestPacket(byte[] rawPacket, out int tab, out int entryIndex)
+        {
+            tab = 0;
+            entryIndex = 0;
+            if (rawPacket == null || rawPacket.Length != sizeof(short) + sizeof(byte) + sizeof(int))
+            {
+                return false;
+            }
+
+            int opcode = BitConverter.ToUInt16(rawPacket, 0);
+            if (opcode != OutboundRequestOpcode)
+            {
+                return false;
+            }
+
+            tab = rawPacket[sizeof(short)];
+            entryIndex = BitConverter.ToInt32(rawPacket, sizeof(short) + sizeof(byte));
+            return tab >= 0
+                && tab <= (int)MonsterCarnivalTab.Guardian
+                && entryIndex >= 0;
+        }
+
         private static string DescribePacketType(int packetType)
         {
             return packetType switch
             {
+                OutboundRequestOpcode => "requestsend",
                 346 => "enter",
                 347 => "personalcp",
                 348 => "teamcp",

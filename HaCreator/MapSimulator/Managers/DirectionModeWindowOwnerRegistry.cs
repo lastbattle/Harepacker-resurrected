@@ -123,7 +123,9 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool IsTracking(string windowName)
         {
-            return !string.IsNullOrWhiteSpace(windowName) && _ownedWindowNames.Contains(windowName);
+            return !string.IsNullOrWhiteSpace(windowName)
+                   && (_ownedWindowNames.Contains(windowName)
+                       || _ownedOwnerPredicates.ContainsKey(windowName));
         }
 
         public bool HasVisibleOwnedWindow(Func<string, bool> isWindowVisible)

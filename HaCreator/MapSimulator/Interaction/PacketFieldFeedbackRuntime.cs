@@ -1725,8 +1725,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return 0;
             }
 
-            int elapsedSeconds = Math.Max(0, currentTick - state.StartedAtTick) / 1000;
-            return Math.Max(0, state.DurationSeconds - elapsedSeconds);
+            long elapsedMilliseconds = Math.Max(0, currentTick - state.StartedAtTick);
+            long remainingMilliseconds = ((long)Math.Max(0, state.DurationSeconds) * 1000L) - elapsedMilliseconds;
+            return (int)Math.Max(0L, remainingMilliseconds / 1000L);
         }
 
         private void DrawBossHp(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int currentTick)

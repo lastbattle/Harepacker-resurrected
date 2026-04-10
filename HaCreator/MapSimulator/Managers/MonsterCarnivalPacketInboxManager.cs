@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using HaCreator.MapSimulator.Fields;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -164,6 +165,7 @@ namespace HaCreator.MapSimulator.Managers
             try
             {
                 payload = Convert.FromHexString(compactHex);
+                SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref packetType, ref payload);
                 return true;
             }
             catch (FormatException)

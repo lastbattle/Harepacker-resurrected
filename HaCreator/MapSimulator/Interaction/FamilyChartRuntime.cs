@@ -54,6 +54,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string _remotePreviewRequestSummary;
         private FamilyPrivilegeState _activePrivilege;
         private FamilyAuthorityState _authorityState = FamilyAuthorityState.CreateSimulatorLocal();
+        private FamilyInfoPacketSnapshot _lastInfoPacketSnapshot;
 
         private int FamilyHeadId => _familyHeadId;
 
@@ -131,6 +132,11 @@ namespace HaCreator.MapSimulator.Interaction
             int specialCost = GetSpecialReputationCost(localPlayer);
             int specialUseCount = GetEntitlementUseCount(_entitlementType);
             int specialUseLimit = GetEntitlementDailyLimit(_entitlementType);
+            int currentReputation = _lastInfoPacketSnapshot?.CurrentReputation ?? localPlayer?.CurrentReputation ?? 0;
+            int totalReputation = _lastInfoPacketSnapshot?.TotalReputation ?? GetTotalFamilyReputation();
+            int todayReputation = _lastInfoPacketSnapshot?.TodayReputation ?? localPlayer?.TodayReputation ?? 0;
+            int juniorCount = _lastInfoPacketSnapshot?.ChildCount ?? Math.Max(0, localPlayer?.Children.Count ?? 0);
+            int juniorLimit = Math.Max(0, _lastInfoPacketSnapshot?.ChildLimit ?? 2);
 
             return new FamilyChartSnapshot
             {
@@ -140,10 +146,11 @@ namespace HaCreator.MapSimulator.Interaction
                 SelectedRank = GetRankLabel(localPlayer),
                 LocationSummary = localPlayer?.LocationSummary ?? _locationSummary,
                 TotalMembers = _members.Count,
-                JuniorCount = Math.Max(0, localPlayer?.Children.Count ?? 0),
-                CurrentReputation = localPlayer?.CurrentReputation ?? 0,
-                TotalReputation = GetTotalFamilyReputation(),
-                TodayReputation = localPlayer?.TodayReputation ?? 0,
+                JuniorCount = juniorCount,
+                JuniorLimit = juniorLimit,
+                CurrentReputation = currentReputation,
+                TotalReputation = totalReputation,
+                TodayReputation = todayReputation,
                 SpecialReputationCost = specialCost,
                 SpecialUseCount = specialUseCount,
                 SpecialUseLimit = specialUseLimit,
@@ -155,7 +162,7 @@ namespace HaCreator.MapSimulator.Interaction
                 CanEditPrecept = CanEditPrecept(),
                 CanPageBackward = FamilyEntitlementCount > 1,
                 CanPageForward = FamilyEntitlementCount > 1,
-                CanAddJunior = CanAddJunior(localPlayer),
+                CanAddJunior = CanAddJunior(localPlayer) && juniorCount < juniorLimit,
                 CanUseSpecial = CanUseCompactEntitlement(localPlayer, specialCost, specialUseCount, specialUseLimit),
                 Page = entitlementPage,
                 TotalPages = FamilyEntitlementCount
@@ -369,6 +376,54 @@ namespace HaCreator.MapSimulator.Interaction
             FamilyAuthorityState authorityState = ResolveAuthorityProfile(profile, out string resolvedProfile);
             _authorityState = authorityState;
             return $"Family authority now follows the {resolvedProfile} profile ({authorityState.SourceLabel}).";
+        }
+
+        internal string ApplyInfoPacketPayload(byte[] payload)
+        {
+            if (!FamilyPacketCodec.TryDecodeInfoPayload(payload, out FamilyInfoPacketSnapshot snapshot, out string error))
+            {
+                return error;
+            }
+
+            return ApplyInfoPacketSnapshot(snapshot);
+        }
+
+        internal string ApplyInfoPacketSnapshot(FamilyInfoPacketSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return "Family info packet snapshot is empty.";
+            }
+
+            _lastInfoPacketSnapshot = snapshot;
+            _familyName = string.IsNullOrWhiteSpace(snapshot.FamilyName) ? string.Empty : snapshot.FamilyName.Trim();
+            _familyPrecept = string.IsNullOrWhiteSpace(snapshot.Precept) ? string.Empty : snapshot.Precept.Trim();
+            _entitlementUseCounts.Clear();
+            foreach (KeyValuePair<int, int> pair in snapshot.PrivilegeUses)
+            {
+                if (Enum.IsDefined(typeof(FamilyEntitlementType), pair.Key))
+                {
+                    _entitlementUseCounts[(FamilyEntitlementType)pair.Key] = Math.Max(0, pair.Value);
+                }
+            }
+
+            FamilyMemberState localPlayer = GetMember(LocalPlayerId);
+            if (localPlayer != null)
+            {
+                localPlayer.CurrentReputation = snapshot.CurrentReputation;
+                localPlayer.TodayReputation = snapshot.TodayReputation;
+            }
+
+            if (snapshot.BossId > 0 && _members.ContainsKey(snapshot.BossId))
+            {
+                _familyHeadId = snapshot.BossId;
+            }
+
+            _authorityState = FamilyAuthorityState.CreatePacketInfo();
+            NormalizeRosterState();
+
+            string familyName = string.IsNullOrWhiteSpace(_familyName) ? "(unnamed)" : _familyName;
+            return $"Applied packet-authored family info for {familyName}: current/total reputation {snapshot.CurrentReputation:N0}/{snapshot.TotalReputation:N0}, today {snapshot.TodayReputation:+#,#;-#,#;0}, juniors {snapshot.ChildCount}/{snapshot.ChildLimit}, total juniors {snapshot.TotalChildCount}.";
         }
 
         private string SetPreceptCore(string precept, bool packetAuthored)
@@ -650,6 +705,7 @@ namespace HaCreator.MapSimulator.Interaction
             _activePrivilege = null;
             _selectedEmptyTreeSlot = -1;
             _authorityState = FamilyAuthorityState.CreateSimulatorLocal();
+            _lastInfoPacketSnapshot = null;
         }
 
         private void SeedDefaultFamily()
@@ -1440,6 +1496,14 @@ namespace HaCreator.MapSimulator.Interaction
                 canUsePrivileges: true,
                 canResolveCrossMapPrivileges: true);
 
+            public static FamilyAuthorityState CreatePacketInfo() => new(
+                "packet family-info",
+                canEditPrecept: true,
+                canRegisterJunior: true,
+                canRemoveMembers: false,
+                canUsePrivileges: true,
+                canResolveCrossMapPrivileges: false);
+
             public static FamilyAuthorityState CreateReadOnlyPacket() => new(
                 "packet read-only",
                 canEditPrecept: false,
@@ -1488,6 +1552,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string LocationSummary { get; init; } = string.Empty;
         public int TotalMembers { get; init; }
         public int JuniorCount { get; init; }
+        public int JuniorLimit { get; init; } = 2;
         public int CurrentReputation { get; init; }
         public int TotalReputation { get; init; }
         public int TodayReputation { get; init; }

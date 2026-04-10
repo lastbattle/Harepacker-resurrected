@@ -451,10 +451,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            string normalizedHex = rawPacketHex
-                .Replace("-", string.Empty, StringComparison.Ordinal)
-                .Replace(" ", string.Empty, StringComparison.Ordinal)
-                .Trim();
+            string normalizedHex = string.Concat(rawPacketHex.Where(ch => ch != '-' && !char.IsWhiteSpace(ch)));
             if (normalizedHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             {
                 normalizedHex = normalizedHex[2..];

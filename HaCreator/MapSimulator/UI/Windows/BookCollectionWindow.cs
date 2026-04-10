@@ -51,6 +51,8 @@ namespace HaCreator.MapSimulator.UI
         private const int CardsPerPage = 25;
         private const int MaxSearchLength = 32;
         private const int CollectionEntriesPerPage = 6;
+        private const int DetailBodyMaxLines = 6;
+        private const int DetailBodyLineStep = 17;
         private const int SearchTextInsetX = 3;
         private const int SearchKeyRepeatInitialDelayMs = KeyboardTextInputHelper.ClientRepeatInitialDelayMs;
         private const int SearchKeyRepeatIntervalMs = KeyboardTextInputHelper.ClientRepeatDelayMs;
@@ -1064,8 +1066,8 @@ namespace HaCreator.MapSimulator.UI
             MonsterBookCardSnapshot card = GetSelectedCard();
             Texture2D icon = ResolveCardIcon(card?.CardItemId ?? 0);
             if (icon != null) sprite.Draw(icon, OffsetBounds(SelectedCardIconBounds, InfoPageOrigin), Color.White);
-            DrawCenteredString(sprite, card?.IsDiscovered == true ? card.Name : "Unknown Card", OffsetBounds(SelectedCardNameBounds, InfoPageOrigin), TitleColor, 0.6f);
-            DrawCenteredString(sprite, card == null ? "No card selected." : card.IsDiscovered ? BuildDetailText(card) : "Collect this card to reveal its detail entry.", OffsetBounds(SelectedCardDetailBounds, InfoPageOrigin), MutedColor, 0.46f);
+            DrawCenteredString(sprite, card?.IsDiscovered == true ? card.Name : "Unknown Card", OffsetBounds(SelectedCardNameBounds, InfoPageOrigin), TitleColor, 0.6f, preferClientText: true);
+            DrawCenteredString(sprite, card == null ? "No card selected." : card.IsDiscovered ? BuildDetailText(card) : "Collect this card to reveal its detail entry.", OffsetBounds(SelectedCardDetailBounds, InfoPageOrigin), MutedColor, 0.46f, preferClientText: true);
             DrawDetailLines(sprite, card);
             DrawSummaryValue(sprite, 0, $"{GetCurrentGrade()?.Label ?? $"Chapter {_currentGradeIndex + 1}"} {_currentPageIndex + 1}/{Math.Max(1, GetCurrentGrade()?.Pages?.Count ?? 1)}");
             DrawSummaryValue(sprite, 1, $"{_snapshot?.OwnedCardTypes ?? 0}");
@@ -1076,20 +1078,78 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawDetailLines(SpriteBatch sprite, MonsterBookCardSnapshot card)
         {
-            IEnumerable<string> lines = _detailTab switch
-            {
-                MonsterBookDetailTab.BasicInfo => card?.IsDiscovered == true ? new[] { $"Lv. {card.Level}", $"HP {card.MaxHp}", $"EXP {card.Exp}", card.IsBoss ? "Boss classification" : "Normal classification", card.IsRegistered ? "Registered in book" : "Not registered", $"Cards {card.OwnedCopies}/{Math.Max(1, card.MaxCopies)}" } : new[] { "Collect this card to reveal", "the client detail entry." },
-                MonsterBookDetailTab.Episode => new[] { TrimToWidth(card?.EpisodeText ?? "No episode entry.", DetailBodyBounds.Width, 0.42f) },
-                MonsterBookDetailTab.Rewards => card?.RewardLines?.Count > 0 == true ? card.RewardLines.Take(6) : new[] { "No reward entries." },
-                MonsterBookDetailTab.Habitat => card?.HabitatLines?.Count > 0 == true ? card.HabitatLines.Take(6) : new[] { "No habitat entries." },
-                _ => Array.Empty<string>()
-            };
+            IEnumerable<string> lines = BuildMonsterBookDetailLines(card);
             int row = 0;
-            foreach (string line in lines.Take(6))
+            foreach (string line in lines.Take(DetailBodyMaxLines))
             {
-                DrawTrimmedString(sprite, line, new Vector2(Position.X + InfoPageOrigin.X + DetailBodyBounds.X, Position.Y + InfoPageOrigin.Y + DetailBodyBounds.Y + (row * 17)), ValueColor, 0.42f, DetailBodyBounds.Width);
+                DrawTrimmedString(
+                    sprite,
+                    line,
+                    new Vector2(Position.X + InfoPageOrigin.X + DetailBodyBounds.X, Position.Y + InfoPageOrigin.Y + DetailBodyBounds.Y + (row * DetailBodyLineStep)),
+                    ValueColor,
+                    0.42f,
+                    DetailBodyBounds.Width,
+                    preferClientText: true);
                 row++;
             }
+        }
+
+        private IReadOnlyList<string> BuildMonsterBookDetailLines(MonsterBookCardSnapshot card)
+        {
+            if (card?.IsDiscovered != true)
+            {
+                return new[] { "Collect this card to reveal", "the client detail entry." };
+            }
+
+            return _detailTab switch
+            {
+                MonsterBookDetailTab.BasicInfo => new[]
+                {
+                    $"Lv. {card.Level}",
+                    $"HP {card.MaxHp}  MP {card.MaxMp}",
+                    $"EXP {card.Exp}",
+                    card.IsBoss ? "Boss classification" : "Normal classification",
+                    card.IsRegistered ? "Registered in book" : "Not registered",
+                    $"Cards {card.OwnedCopies}/{Math.Max(1, card.MaxCopies)}"
+                },
+                MonsterBookDetailTab.Episode => WrapMonsterBookDetailText(card.EpisodeText, "No episode entry."),
+                MonsterBookDetailTab.Rewards => WrapMonsterBookDetailText(card.RewardLines, "No reward entries."),
+                MonsterBookDetailTab.Habitat => WrapMonsterBookDetailText(card.HabitatLines, "No habitat entries."),
+                _ => Array.Empty<string>()
+            };
+        }
+
+        private IReadOnlyList<string> WrapMonsterBookDetailText(IReadOnlyList<string> lines, string fallback)
+        {
+            if (lines == null || lines.Count == 0)
+            {
+                return new[] { fallback };
+            }
+
+            List<string> wrappedLines = new();
+            foreach (string line in lines)
+            {
+                wrappedLines.AddRange(WrapMonsterBookDetailText(line, string.Empty));
+                if (wrappedLines.Count >= DetailBodyMaxLines)
+                {
+                    break;
+                }
+            }
+
+            return wrappedLines.Count == 0 ? new[] { fallback } : wrappedLines;
+        }
+
+        private IReadOnlyList<string> WrapMonsterBookDetailText(string text, string fallback)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.IsNullOrEmpty(fallback) ? Array.Empty<string>() : new[] { fallback };
+            }
+
+            return QuestAlarmTextLayout.WrapText(
+                text,
+                DetailBodyBounds.Width,
+                segment => MeasureRenderedText(segment, 0.42f, preferClientText: true).X);
         }
 
         private void DrawSearchBox(SpriteBatch sprite)
@@ -1943,12 +2003,11 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_pixel, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), color);
         }
 
-        private void DrawCenteredString(SpriteBatch sprite, string text, Rectangle bounds, Color color, float scale)
+        private void DrawCenteredString(SpriteBatch sprite, string text, Rectangle bounds, Color color, float scale, bool preferClientText = false)
         {
             if (string.IsNullOrEmpty(text))
                 return;
 
-            bool preferClientText = UsesCollectionLayout;
             Vector2 size = MeasureRenderedText(text, scale, preferClientText);
             Vector2 position = new(bounds.X + ((bounds.Width - size.X) / 2f), bounds.Y + ((bounds.Height - size.Y) / 2f));
             DrawRenderedString(sprite, text, position, color, scale, preferClientText);

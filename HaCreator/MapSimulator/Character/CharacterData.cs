@@ -140,6 +140,7 @@ namespace HaCreator.MapSimulator.Character
         Pendant = 17,
         TamingMob = 18,
         Saddle = 19,
+        TamingMobAccessory = 60,
         Medal = 49,
         Belt = 50,
         Shoulder = 51,
@@ -1270,6 +1271,78 @@ namespace HaCreator.MapSimulator.Character
         public int Range { get; set; } = 100;            // Attack range in pixels
         public bool IsTwoHanded { get; set; }
 
+        public CharacterAction ResolveClientWalkAction()
+        {
+            return WalkFrameCount == 1
+                ? CharacterAction.Walk1
+                : CharacterAction.Walk2;
+        }
+
+        public CharacterAction ResolveClientStandAction()
+        {
+            return StandFrameCount == 1
+                ? CharacterAction.Stand1
+                : CharacterAction.Stand2;
+        }
+
+        public string ResolveClientBasicAttackActionName(AttackType fallbackAttackType)
+        {
+            foreach (string candidate in EnumerateClientBasicAttackActionCandidates(fallbackAttackType))
+            {
+                if (CanUseAction(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return CharacterPart.GetActionString(ResolveFallbackAttackAction(fallbackAttackType));
+        }
+
+        private IEnumerable<string> EnumerateClientBasicAttackActionCandidates(AttackType fallbackAttackType)
+        {
+            // Client CAvatar::NotifyAvatarModified caches info/attack as m_nAttackActionType.
+            // The ranged families are the clearest WZ-backed consumers: bows publish shoot1,
+            // crossbows publish shoot2, and guns publish shoot1/shoot2/shootF under attack type 9.
+            switch (AttackFrameCount)
+            {
+                case 3:
+                case 9:
+                    yield return CharacterPart.GetActionString(CharacterAction.Shoot1);
+                    break;
+                case 4:
+                    yield return CharacterPart.GetActionString(CharacterAction.Shoot2);
+                    break;
+            }
+
+            yield return CharacterPart.GetActionString(ResolveFallbackAttackAction(fallbackAttackType));
+        }
+
+        private bool CanUseAction(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return Animations.TryGetValue(actionName, out CharacterAnimation animation)
+                   ? animation?.Frames?.Count > 0
+                   : AnimationResolver != null
+                     && (AvailableAnimations == null
+                         || AvailableAnimations.Count == 0
+                         || AvailableAnimations.Contains(actionName));
+        }
+
+        private static CharacterAction ResolveFallbackAttackAction(AttackType fallbackAttackType)
+        {
+            return fallbackAttackType switch
+            {
+                AttackType.Stab => CharacterAction.StabO1,
+                AttackType.Shoot => CharacterAction.Shoot1,
+                AttackType.ProneStab => CharacterAction.ProneStab,
+                _ => CharacterAction.SwingO1
+            };
+        }
+
         public override CharacterPart Clone()
         {
             return new WeaponPart
@@ -1279,6 +1352,7 @@ namespace HaCreator.MapSimulator.Character
                 Type = Type,
                 Slot = Slot,
                 Animations = new Dictionary<string, CharacterAnimation>(Animations),
+                AvailableAnimations = new HashSet<string>(AvailableAnimations ?? Enumerable.Empty<string>(), StringComparer.OrdinalIgnoreCase),
                 VSlot = VSlot,
                 ISlot = ISlot,
                 Sfx = Sfx,
@@ -1349,7 +1423,11 @@ namespace HaCreator.MapSimulator.Character
                 StandFrameCount = StandFrameCount,
                 AttackFrameCount = AttackFrameCount,
                 Range = Range,
-                IsTwoHanded = IsTwoHanded
+                IsTwoHanded = IsTwoHanded,
+                AnimationResolver = AnimationResolver,
+                TamingMobActionOverlayResolver = TamingMobActionOverlayResolver,
+                TamingMobActionFrameOwner = TamingMobActionFrameOwner,
+                MorphActionFrameOwner = MorphActionFrameOwner
             };
         }
     }

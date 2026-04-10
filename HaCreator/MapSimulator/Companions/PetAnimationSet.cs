@@ -10,16 +10,17 @@ namespace HaCreator.MapSimulator.Companions
     {
         // CActionMan::LoadPetAction uses these fixed s_sPetAction slots for nAction 0..8
         // before falling back to CPetTemplate::GetActionName for template-specific actions.
+        // The order is decoded from the client initializer at 0xafa510.
         private static readonly string[] ClientBaseActionNames =
         {
+            "move",
             "stand0",
             "stand1",
-            "move",
             "jump",
             "fly",
             "hungry",
             "rest0",
-            "chat",
+            "rest1",
             "hang"
         };
 
@@ -27,6 +28,7 @@ namespace HaCreator.MapSimulator.Companions
         {
             "stand",
             "walk",
+            "chat",
             "rest1",
             "rest",
             "nap",

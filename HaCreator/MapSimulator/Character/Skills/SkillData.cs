@@ -1952,6 +1952,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Vector2? PreferredTargetPosition { get; set; }
         public bool PreferStoredTargetPosition { get; set; }
         public bool UsesAuthoredShootPoint { get; set; }
+        public float FallbackShootPointYOffset { get; set; } = -20f;
         public bool HasExplicitAttackOriginOverride { get; set; }
         public ShootAmmoSelection ResolvedShootAmmoSelection { get; set; }
         public int ResolvedShootWeaponCode { get; set; }

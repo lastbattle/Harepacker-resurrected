@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
+using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -15,9 +16,23 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _summonableBackground;
         private readonly Point _unsummonableBackgroundOffset;
         private readonly Point _summonableBackgroundOffset;
+        private readonly Dictionary<int, Texture2D> _orbIconCache = new();
         private UIObject _summonButton;
         private Func<DragonBoxWindowSnapshot> _snapshotProvider;
+        private Func<int, Texture2D> _itemIconProvider;
         private Action _summonRequested;
+        private static readonly Point[] ClientOrbIconPositions =
+        {
+            new(31, 75),
+            new(64, 74),
+            new(100, 75),
+            new(28, 110),
+            new(64, 111),
+            new(102, 110),
+            new(28, 143),
+            new(65, 144),
+            new(103, 144)
+        };
 
         internal DragonBoxWindow(
             IDXObject frame,
@@ -40,6 +55,12 @@ namespace HaCreator.MapSimulator.UI
         internal void SetSnapshotProvider(Func<DragonBoxWindowSnapshot> snapshotProvider)
         {
             _snapshotProvider = snapshotProvider;
+        }
+
+        internal void SetItemIconProvider(Func<int, Texture2D> itemIconProvider)
+        {
+            _itemIconProvider = itemIconProvider;
+            _orbIconCache.Clear();
         }
 
         internal void InitializeSummonButton(UIObject summonButton)
@@ -90,6 +111,8 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(background, new Vector2(Position.X + backgroundOffset.X, Position.Y + backgroundOffset.Y), Color.White);
             }
 
+            DrawCollectedOrbIcons(sprite, snapshot.OrbMask);
+
             if (!CanDrawWindowText)
             {
                 return;
@@ -127,6 +150,39 @@ namespace HaCreator.MapSimulator.UI
         private void HandleSummonButtonReleased(UIObject button)
         {
             _summonRequested?.Invoke();
+        }
+
+        private void DrawCollectedOrbIcons(SpriteBatch sprite, int orbMask)
+        {
+            for (int index = 0; index < ClientOrbIconPositions.Length; index++)
+            {
+                if ((orbMask & (1 << index)) == 0)
+                {
+                    continue;
+                }
+
+                Texture2D icon = ResolveOrbIcon(index);
+                if (icon == null)
+                {
+                    continue;
+                }
+
+                Point position = ClientOrbIconPositions[index];
+                sprite.Draw(icon, new Vector2(Position.X + position.X, Position.Y + position.Y), Color.White);
+            }
+        }
+
+        private Texture2D ResolveOrbIcon(int index)
+        {
+            int itemId = DragonBoxWindowSnapshot.FirstDragonBallItemId + Math.Max(0, index);
+            if (_orbIconCache.TryGetValue(itemId, out Texture2D icon))
+            {
+                return icon;
+            }
+
+            icon = _itemIconProvider?.Invoke(itemId);
+            _orbIconCache[itemId] = icon;
+            return icon;
         }
     }
 }
