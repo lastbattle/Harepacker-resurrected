@@ -44,6 +44,22 @@ namespace HaCreator.MapSimulator.Effects
     /// - CField_Massacre: Kill counting and gauge system (packet 173)
     /// </summary>
     #region Wedding Field (CField_Wedding)
+    public readonly struct WeddingPhotoScenePresentationPacketRecord
+    {
+        public WeddingPhotoScenePresentationPacketRecord(int packetType, string ownerName, int payloadLength, int tick)
+        {
+            PacketType = packetType;
+            OwnerName = ownerName ?? string.Empty;
+            PayloadLength = Math.Max(0, payloadLength);
+            Tick = tick;
+        }
+
+        public int PacketType { get; }
+        public string OwnerName { get; }
+        public int PayloadLength { get; }
+        public int Tick { get; }
+    }
+
     /// <summary>
     /// Wedding Field - Wedding ceremony effects and dialogs.
     ///
@@ -99,6 +115,7 @@ namespace HaCreator.MapSimulator.Effects
         private const int PacketTypeNewYearCardRecordRemove = -1108;
         private const int RemoteDelayedLoadWindowMs = 100;
         private const int RemoteDelayedLoadCooltimeMs = 1000;
+        private const int WeddingPhotoScenePresentationTrailLimit = 16;
 
 
         private static readonly Dictionary<int, Dictionary<int, string>> WeddingDialogFallbacks = new()
@@ -184,6 +201,7 @@ namespace HaCreator.MapSimulator.Effects
         private Action _clearBgmOverride;
         private Func<LoginAvatarLook, string, CharacterBuild> _remoteBuildFactory;
         private int? _lastPacketType;
+        private readonly List<WeddingPhotoScenePresentationPacketRecord> _weddingPhotoScenePresentationPacketTrail = new();
         #endregion
 
 
@@ -218,6 +236,17 @@ namespace HaCreator.MapSimulator.Effects
         public int CeremonyHeartParticleCount => _ceremonyHearts.Count;
         public int? LastPacketType => _lastPacketType;
         public bool UseExternalRemoteActorRenderer { get; set; }
+        public int WeddingPhotoScenePresentationPacketCount => _weddingPhotoScenePresentationPacketTrail.Count;
+        public int? LastWeddingPhotoScenePresentationPacketType =>
+            _weddingPhotoScenePresentationPacketTrail.Count == 0
+                ? null
+                : _weddingPhotoScenePresentationPacketTrail[^1].PacketType;
+        public string LastWeddingPhotoScenePresentationPacketOwner =>
+            _weddingPhotoScenePresentationPacketTrail.Count == 0
+                ? null
+                : _weddingPhotoScenePresentationPacketTrail[^1].OwnerName;
+        public IReadOnlyList<WeddingPhotoScenePresentationPacketRecord> WeddingPhotoScenePresentationPacketTrail =>
+            _weddingPhotoScenePresentationPacketTrail;
         #endregion
 
 
@@ -288,6 +317,7 @@ namespace HaCreator.MapSimulator.Effects
             _currentDialog = null;
             _dialogQueue.Clear();
             LocalParticipantRole = WeddingParticipantRole.Guest;
+            _weddingPhotoScenePresentationPacketTrail.Clear();
 
 
             System.Diagnostics.Debug.WriteLine($"[WeddingField] Enabled for map {mapId}, NPC {_npcId}");
@@ -341,6 +371,7 @@ namespace HaCreator.MapSimulator.Effects
             _externalRemoteActorLoadWindowEndTimeMs = 0;
             _externalRemoteActorLoadCooltimeEndTimeMs = 0;
             LocalParticipantRole = WeddingParticipantRole.Guest;
+            _weddingPhotoScenePresentationPacketTrail.Clear();
 
             if (!string.IsNullOrWhiteSpace(WeddingPhotoSceneBackgroundMusicPath))
             {
@@ -363,6 +394,7 @@ namespace HaCreator.MapSimulator.Effects
             WeddingPhotoSceneOwnerDescription = null;
             WeddingPhotoSceneViewport = null;
             WeddingPhotoSceneBackgroundMusicPath = null;
+            _weddingPhotoScenePresentationPacketTrail.Clear();
         }
 
 
@@ -393,6 +425,11 @@ namespace HaCreator.MapSimulator.Effects
                 errorMessage = "Wedding runtime inactive.";
                 return false;
             }
+            if (photoScenePresentationPacket)
+            {
+                RecordWeddingPhotoScenePresentationPacket(packetType, payload?.Length ?? 0, currentTimeMs);
+            }
+
             try
             {
                 switch (packetType)
@@ -506,6 +543,69 @@ namespace HaCreator.MapSimulator.Effects
                 default:
                     return false;
             }
+        }
+
+        private void RecordWeddingPhotoScenePresentationPacket(int packetType, int payloadLength, int currentTimeMs)
+        {
+            if (!IsWeddingPhotoSceneOwnerActive)
+            {
+                return;
+            }
+
+            if (_weddingPhotoScenePresentationPacketTrail.Count >= WeddingPhotoScenePresentationTrailLimit)
+            {
+                _weddingPhotoScenePresentationPacketTrail.RemoveAt(0);
+            }
+
+            _weddingPhotoScenePresentationPacketTrail.Add(new WeddingPhotoScenePresentationPacketRecord(
+                packetType,
+                ResolveWeddingPhotoScenePresentationOwnerName(packetType),
+                payloadLength,
+                currentTimeMs));
+        }
+
+        private static string ResolveWeddingPhotoScenePresentationOwnerName(int packetType)
+        {
+            return packetType switch
+            {
+                PacketTypeUserEnterField => "CField_WeddingPhoto remote user enter presentation",
+                PacketTypeUserLeaveField => "CField_WeddingPhoto remote user leave presentation",
+                PacketTypeUserMoveOfficial => "CField_WeddingPhoto remote user move presentation",
+                PacketTypeUserMoveOrChairAlias => "CField_WeddingPhoto remote move/chair presentation",
+                PacketTypeItemEffect => "CField_WeddingPhoto remote item-effect presentation",
+                PacketTypeUserProfile => "CField_WeddingPhoto remote profile presentation",
+                PacketTypeSetActivePortableChairLegacy => "CField_WeddingPhoto remote chair presentation",
+                PacketTypeAvatarModified => "CField_WeddingPhoto remote avatar-modified presentation",
+                PacketTypeTemporaryStatSet => "CField_WeddingPhoto remote temporary-stat set presentation",
+                PacketTypeTemporaryStatReset => "CField_WeddingPhoto remote temporary-stat reset presentation",
+                PacketTypeGuildNameChanged => "CField_WeddingPhoto remote guild-name presentation",
+                PacketTypeGuildMarkChanged => "CField_WeddingPhoto remote guild-mark presentation",
+                PacketTypeCoupleRecordAdd => "CField_WeddingPhoto remote couple-record add presentation",
+                PacketTypeCoupleRecordRemove => "CField_WeddingPhoto remote couple-record remove presentation",
+                PacketTypeFriendRecordAdd => "CField_WeddingPhoto remote friend-record add presentation",
+                PacketTypeFriendRecordRemove => "CField_WeddingPhoto remote friend-record remove presentation",
+                PacketTypeMarriageRecordAdd => "CField_WeddingPhoto remote marriage-record add presentation",
+                PacketTypeMarriageRecordRemove => "CField_WeddingPhoto remote marriage-record remove presentation",
+                PacketTypeNewYearCardRecordAdd => "CField_WeddingPhoto remote new-year-card add presentation",
+                PacketTypeNewYearCardRecordRemove => "CField_WeddingPhoto remote new-year-card remove presentation",
+                _ => "CField_WeddingPhoto remote presentation"
+            };
+        }
+
+        internal string DescribeWeddingPhotoScenePresentationState()
+        {
+            if (!IsWeddingPhotoSceneOwnerActive)
+            {
+                return string.Empty;
+            }
+
+            if (_weddingPhotoScenePresentationPacketTrail.Count == 0)
+            {
+                return "wedding-photo presentation packet trail is waiting for remote-user, chair, avatar, temporary-stat, guild, and relationship packets.";
+            }
+
+            WeddingPhotoScenePresentationPacketRecord last = _weddingPhotoScenePresentationPacketTrail[^1];
+            return $"wedding-photo presentation packet trail has {_weddingPhotoScenePresentationPacketTrail.Count} packet(s); last packet {last.PacketType} owned by {last.OwnerName}, payload {last.PayloadLength} byte(s), tick {last.Tick}.";
         }
         public void SetParticipantPosition(int characterId, Vector2 worldPosition)
         {

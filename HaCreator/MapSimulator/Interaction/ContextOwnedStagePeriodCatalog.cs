@@ -40,7 +40,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal HashSet<int> ResolveAffectedMaps(
             ContextOwnedStagePeriodCatalogEntry entry,
-            Func<int, QuestStateType> questStateProvider = null)
+            Func<int, QuestStateType> questStateProvider = null,
+            int elapsedStagePeriodMilliseconds = 0)
         {
             HashSet<int> affectedMaps = new(entry?.AffectedMapIds ?? Enumerable.Empty<int>());
             if (entry == null || entry.Keywords.Count == 0)
@@ -50,7 +51,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             foreach ((int fieldId, IReadOnlyList<ContextOwnedStageAffectedMapEntry> entries) in _affectedMapsByFieldId)
             {
-                if (entries != null && entries.Any(candidate => candidate.Matches(entry, questStateProvider)))
+                if (entries != null && entries.Any(candidate => candidate.Matches(entry, questStateProvider, elapsedStagePeriodMilliseconds)))
                 {
                     affectedMaps.Add(fieldId);
                 }
@@ -272,10 +273,68 @@ namespace HaCreator.MapSimulator.Interaction
                 if (TryParseStageBackImageEntry(child, out ContextOwnedStageBackImageEntry entry))
                 {
                     entries.Add(entry);
+                    continue;
                 }
+
+                AppendNativeStageBackImageEntries(child, entries);
             }
 
             return entries;
+        }
+
+        private static void AppendNativeStageBackImageEntries(
+            WzImageProperty stageBackImageGroup,
+            List<ContextOwnedStageBackImageEntry> entries)
+        {
+            if (stageBackImageGroup == null || entries == null)
+            {
+                return;
+            }
+
+            string backgroundSet = stageBackImageGroup.Name;
+            AppendNativeStageBackImageEntries(backgroundSet, stageBackImageGroup["back"], front: false, entries);
+            AppendNativeStageBackImageEntries(backgroundSet, stageBackImageGroup["front"], front: true, entries);
+        }
+
+        private static void AppendNativeStageBackImageEntries(
+            string backgroundSet,
+            WzImageProperty container,
+            bool front,
+            List<ContextOwnedStageBackImageEntry> entries)
+        {
+            if (string.IsNullOrWhiteSpace(backgroundSet) || container == null || entries == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty property in container.WzProperties.OfType<WzImageProperty>())
+            {
+                if (!int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int number)
+                    || number < 0)
+                {
+                    continue;
+                }
+
+                entries.Add(new ContextOwnedStageBackImageEntry(
+                    backgroundSet.Trim(),
+                    number.ToString(CultureInfo.InvariantCulture),
+                    BackgroundInfoType.Background,
+                    InfoTool.GetInt(property["x"]),
+                    InfoTool.GetInt(property["y"]),
+                    InfoTool.GetInt(property["absRX"], 1),
+                    InfoTool.GetInt(property["absRY"], 1),
+                    Cx: 0,
+                    Cy: 0,
+                    Alpha: 255,
+                    BackgroundType.Regular,
+                    front,
+                    Flip: false,
+                    Page: 0,
+                    ScreenMode: 0,
+                    InfoTool.GetInt(property["z"]),
+                    SpineAnimation: null,
+                    SpineRandomStart: false));
+            }
         }
 
         private static bool TryParseStageBackImageEntry(WzImageProperty property, out ContextOwnedStageBackImageEntry entry)
@@ -555,7 +614,7 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     foreach ((int fieldId, IReadOnlyList<ContextOwnedStageAffectedMapEntry> entries) in affectedMapsByFieldId)
                     {
-                        if (entries.Any(entry => entry.Matches(period)))
+                        if (entries.Any(entry => entry.RandomTimeSeconds <= 0 && entry.Matches(period)))
                         {
                             period.AffectedMapIds.Add(fieldId);
                         }
@@ -813,9 +872,16 @@ namespace HaCreator.MapSimulator.Interaction
     {
         internal bool Matches(
             ContextOwnedStagePeriodCatalogEntry period,
-            Func<int, QuestStateType> questStateProvider = null)
+            Func<int, QuestStateType> questStateProvider = null,
+            int elapsedStagePeriodMilliseconds = 0)
         {
             if (period == null || string.IsNullOrWhiteSpace(StageKeyword) || !period.Keywords.Contains(StageKeyword))
+            {
+                return false;
+            }
+
+            if (RandomTimeSeconds > 0
+                && elapsedStagePeriodMilliseconds < RandomTimeSeconds * 1000)
             {
                 return false;
             }

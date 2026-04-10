@@ -20,6 +20,29 @@ namespace HaCreator.MapSimulator.UI
             public bool IsPrimary { get; init; }
         }
 
+        internal sealed class CheckBoxState
+        {
+            public int ControlId { get; init; }
+            public string Label { get; init; } = string.Empty;
+            public string Detail { get; init; } = string.Empty;
+            public bool IsChecked { get; init; }
+            public bool IsEnabled { get; init; } = true;
+        }
+
+        internal sealed class ComboBoxState
+        {
+            public int ControlId { get; init; }
+            public string Label { get; init; } = string.Empty;
+            public IReadOnlyList<ComboBoxItemState> Items { get; init; } = Array.Empty<ComboBoxItemState>();
+            public int SelectedIndex { get; init; }
+        }
+
+        internal sealed class ComboBoxItemState
+        {
+            public int Value { get; init; }
+            public string Label { get; init; } = string.Empty;
+        }
+
         private const int DefaultWidth = 266;
         private const int DefaultHeight = 158;
         private const int TitleOffsetX = 16;
@@ -34,6 +57,10 @@ namespace HaCreator.MapSimulator.UI
         private const int ListRowHeight = 18;
         private const int InputHeight = 20;
         private const int InputPadding = 4;
+        private const int CheckBoxSize = 11;
+        private const int CheckBoxRowHeight = 16;
+        private const int ComboBoxHeight = 18;
+        private const int ComboBoxOptionHeight = 16;
 
         private readonly Texture2D _pixelTexture;
         private readonly string _windowName;
@@ -42,7 +69,11 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<string> _detailLines = new();
         private readonly List<string> _worldNames = new();
         private readonly List<string> _giftRows = new();
+        private readonly List<CheckBoxState> _checkBoxes = new();
+        private readonly List<ComboBoxItemState> _comboItems = new();
         private readonly Dictionary<int, Rectangle> _buttonBounds = new();
+        private readonly Dictionary<int, Rectangle> _checkBoxBounds = new();
+        private readonly Dictionary<int, Rectangle> _comboOptionBounds = new();
         private Action<int> _buttonHandler;
         private SpriteFont _font;
         private KeyboardState _previousKeyboardState;
@@ -58,7 +89,15 @@ namespace HaCreator.MapSimulator.UI
         private bool _showGiftRows;
         private bool _giftRowsSelectable;
         private bool _showWorldRows;
+        private bool _showCheckBoxes;
+        private bool _showComboBox;
+        private int _selectedCheckBoxControlId;
+        private int _comboBoxControlId;
+        private string _comboBoxLabel = string.Empty;
+        private int _selectedComboIndex;
+        private bool _comboExpanded;
         private Rectangle _inputBounds;
+        private Rectangle _comboBounds;
 
         internal CashServiceModalOwnerWindow(
             string windowName,
@@ -109,7 +148,9 @@ namespace HaCreator.MapSimulator.UI
             IEnumerable<string> giftRows = null,
             int selectedGiftIndex = 0,
             bool giftRowsSelectable = false,
-            IEnumerable<string> worldNames = null)
+            IEnumerable<string> worldNames = null,
+            IEnumerable<CheckBoxState> checkBoxes = null,
+            ComboBoxState comboBox = null)
         {
             _title = title ?? string.Empty;
             _body = body ?? string.Empty;
@@ -132,6 +173,18 @@ namespace HaCreator.MapSimulator.UI
                 _worldNames.AddRange(worldNames.Where(line => !string.IsNullOrWhiteSpace(line)).Select(line => line.Trim()));
             }
 
+            _checkBoxes.Clear();
+            if (checkBoxes != null)
+            {
+                _checkBoxes.AddRange(checkBoxes.Where(checkBox => checkBox != null && !string.IsNullOrWhiteSpace(checkBox.Label)));
+            }
+
+            _comboItems.Clear();
+            if (comboBox?.Items != null)
+            {
+                _comboItems.AddRange(comboBox.Items.Where(item => item != null && !string.IsNullOrWhiteSpace(item.Label)));
+            }
+
             Buttons = buttons?.Where(button => button != null).ToArray() ?? Array.Empty<ActionButtonState>();
             _footer = footer ?? string.Empty;
             _inputValue = inputValue ?? string.Empty;
@@ -142,11 +195,21 @@ namespace HaCreator.MapSimulator.UI
             _showGiftRows = _giftRows.Count > 0;
             _giftRowsSelectable = _showGiftRows && giftRowsSelectable;
             _showWorldRows = _worldNames.Count > 0;
+            _showCheckBoxes = _checkBoxes.Count > 0;
+            _selectedCheckBoxControlId = ResolveSelectedCheckBoxControlId(_checkBoxes);
+            _comboBoxControlId = comboBox?.ControlId ?? 0;
+            _comboBoxLabel = comboBox?.Label ?? string.Empty;
+            _selectedComboIndex = ResolveSelectedComboIndex(comboBox?.SelectedIndex ?? 0, _comboItems.Count);
+            _showComboBox = _comboItems.Count > 0;
+            _comboExpanded = false;
             UpdateLayout();
         }
 
         internal string InputValue => _inputValue;
         internal int SelectedGiftIndex => _selectedGiftIndex;
+        internal int SelectedCheckBoxControlId => _selectedCheckBoxControlId;
+        internal int SelectedComboValue => _comboItems.Count == 0 ? 0 : _comboItems[_selectedComboIndex].Value;
+        internal string SelectedComboLabel => _comboItems.Count == 0 ? string.Empty : _comboItems[_selectedComboIndex].Label;
 
         internal static int ResolveSelectedGiftIndex(int selectedGiftIndex, int giftRowCount)
         {
@@ -188,6 +251,22 @@ namespace HaCreator.MapSimulator.UI
             else if (_showGiftRows && _giftRowsSelectable && Pressed(keyboardState, Keys.Down))
             {
                 _selectedGiftIndex = Math.Min(Math.Max(0, _giftRows.Count - 1), _selectedGiftIndex + 1);
+            }
+            else if (_showCheckBoxes && Pressed(keyboardState, Keys.Left))
+            {
+                MoveSelectedCheckBox(-1);
+            }
+            else if (_showCheckBoxes && Pressed(keyboardState, Keys.Right))
+            {
+                MoveSelectedCheckBox(1);
+            }
+            else if (_showComboBox && Pressed(keyboardState, Keys.PageUp))
+            {
+                MoveSelectedComboItem(-1);
+            }
+            else if (_showComboBox && Pressed(keyboardState, Keys.PageDown))
+            {
+                MoveSelectedComboItem(1);
             }
             else if (Pressed(keyboardState, Keys.Enter))
             {
@@ -253,6 +332,66 @@ namespace HaCreator.MapSimulator.UI
 
                     _previousMouseState = mouseState;
                     return true;
+                }
+            }
+
+            if (_showCheckBoxes)
+            {
+                foreach (KeyValuePair<int, Rectangle> checkBoxBounds in _checkBoxBounds)
+                {
+                    if (!checkBoxBounds.Value.Contains(mouseState.Position))
+                    {
+                        continue;
+                    }
+
+                    CheckBoxState checkBox = _checkBoxes.FirstOrDefault(candidate => candidate.ControlId == checkBoxBounds.Key);
+                    if (checkBox?.IsEnabled == true)
+                    {
+                        mouseCursor?.SetMouseCursorMovedToClickableItem();
+                        if (Released(mouseState))
+                        {
+                            _selectedCheckBoxControlId = checkBoxBounds.Key;
+                        }
+                    }
+
+                    _previousMouseState = mouseState;
+                    return true;
+                }
+            }
+
+            if (_showComboBox)
+            {
+                if (_comboBounds.Contains(mouseState.Position))
+                {
+                    mouseCursor?.SetMouseCursorMovedToClickableItem();
+                    if (Released(mouseState))
+                    {
+                        _comboExpanded = !_comboExpanded;
+                    }
+
+                    _previousMouseState = mouseState;
+                    return true;
+                }
+
+                if (_comboExpanded)
+                {
+                    foreach (KeyValuePair<int, Rectangle> optionBounds in _comboOptionBounds)
+                    {
+                        if (!optionBounds.Value.Contains(mouseState.Position))
+                        {
+                            continue;
+                        }
+
+                        mouseCursor?.SetMouseCursorMovedToClickableItem();
+                        if (Released(mouseState))
+                        {
+                            _selectedComboIndex = optionBounds.Key;
+                            _comboExpanded = false;
+                        }
+
+                        _previousMouseState = mouseState;
+                        return true;
+                    }
                 }
             }
 
@@ -322,6 +461,18 @@ namespace HaCreator.MapSimulator.UI
                 cursor.Y += _giftRows.Count * ListRowHeight;
             }
 
+            if (_showCheckBoxes)
+            {
+                cursor.Y += ListTopPadding;
+                DrawCheckBoxes(sprite, ref cursor);
+            }
+
+            if (_showComboBox)
+            {
+                cursor.Y += ListTopPadding;
+                DrawComboBox(sprite, ref cursor);
+            }
+
             if (_showWorldRows)
             {
                 cursor.Y += ListTopPadding;
@@ -384,6 +535,83 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void DrawCheckBoxes(SpriteBatch sprite, ref Vector2 cursor)
+        {
+            _checkBoxBounds.Clear();
+            for (int i = 0; i < _checkBoxes.Count; i++)
+            {
+                CheckBoxState checkBox = _checkBoxes[i];
+                Rectangle bounds = new(Position.X + BodyOffsetX, (int)cursor.Y + 2, CheckBoxSize, CheckBoxSize);
+                Rectangle hitBounds = new(Position.X + BodyOffsetX, (int)cursor.Y, ResolveContentWidth(), CheckBoxRowHeight);
+                _checkBoxBounds[checkBox.ControlId] = hitBounds;
+
+                Color border = checkBox.IsEnabled ? new Color(196, 196, 196) : new Color(96, 96, 96);
+                Color text = checkBox.IsEnabled ? Color.White : new Color(130, 130, 130);
+                sprite.Draw(_pixelTexture, bounds, new Color(20, 20, 20, 220));
+                DrawBorder(sprite, bounds, border);
+                if (checkBox.ControlId == _selectedCheckBoxControlId)
+                {
+                    Rectangle mark = new(bounds.X + 3, bounds.Y + 3, bounds.Width - 6, bounds.Height - 6);
+                    sprite.Draw(_pixelTexture, mark, checkBox.IsEnabled ? new Color(255, 221, 141) : new Color(120, 120, 120));
+                }
+
+                string label = string.IsNullOrWhiteSpace(checkBox.Detail)
+                    ? checkBox.Label
+                    : $"{checkBox.Label}: {checkBox.Detail}";
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    _font,
+                    label,
+                    new Vector2(bounds.Right + 6, cursor.Y),
+                    text);
+                cursor.Y += CheckBoxRowHeight;
+            }
+        }
+
+        private void DrawComboBox(SpriteBatch sprite, ref Vector2 cursor)
+        {
+            if (!string.IsNullOrWhiteSpace(_comboBoxLabel))
+            {
+                SelectorWindowDrawing.DrawShadowedText(sprite, _font, _comboBoxLabel, cursor, new Color(255, 226, 158));
+                cursor.Y += _font.LineSpacing;
+            }
+
+            _comboBounds = new Rectangle(Position.X + BodyOffsetX, (int)cursor.Y, Math.Min(150, ResolveContentWidth()), ComboBoxHeight);
+            sprite.Draw(_pixelTexture, _comboBounds, new Color(238, 238, 238, 232));
+            DrawBorder(sprite, _comboBounds, new Color(153, 153, 153));
+            SelectorWindowDrawing.DrawShadowedText(
+                sprite,
+                _font,
+                SelectedComboLabel,
+                new Vector2(_comboBounds.X + 4, _comboBounds.Y + 2),
+                Color.Black);
+            Rectangle arrowBounds = new(_comboBounds.Right - 18, _comboBounds.Y, 18, _comboBounds.Height);
+            sprite.Draw(_pixelTexture, arrowBounds, new Color(198, 198, 198, 232));
+            DrawBorder(sprite, arrowBounds, new Color(153, 153, 153));
+            SelectorWindowDrawing.DrawShadowedText(sprite, _font, "v", new Vector2(arrowBounds.X + 5, arrowBounds.Y + 1), Color.Black);
+
+            cursor.Y += ComboBoxHeight;
+            _comboOptionBounds.Clear();
+            if (!_comboExpanded)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _comboItems.Count; i++)
+            {
+                Rectangle optionBounds = new(_comboBounds.X, _comboBounds.Bottom + (i * ComboBoxOptionHeight), _comboBounds.Width, ComboBoxOptionHeight);
+                _comboOptionBounds[i] = optionBounds;
+                sprite.Draw(_pixelTexture, optionBounds, i == _selectedComboIndex ? new Color(255, 226, 158, 242) : new Color(238, 238, 238, 242));
+                DrawBorder(sprite, optionBounds, new Color(153, 153, 153));
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    _font,
+                    _comboItems[i].Label,
+                    new Vector2(optionBounds.X + 4, optionBounds.Y + 1),
+                    Color.Black);
+            }
+        }
+
         private Rectangle GetGiftRowBounds(int index)
         {
             int contentStartY = Position.Y + BodyOffsetY + (_font?.LineSpacing ?? 14) * (Math.Max(1, WrapText(_body, ResolveContentWidth()).Count()) + _detailLines.Count) + ListTopPadding;
@@ -436,6 +664,16 @@ namespace HaCreator.MapSimulator.UI
             if (_showGiftRows)
             {
                 minimumHeight += ListTopPadding + (_giftRows.Count * ListRowHeight);
+            }
+
+            if (_showCheckBoxes)
+            {
+                minimumHeight += ListTopPadding + (_checkBoxes.Count * CheckBoxRowHeight);
+            }
+
+            if (_showComboBox)
+            {
+                minimumHeight += ListTopPadding + ComboBoxHeight + (string.IsNullOrWhiteSpace(_comboBoxLabel) ? 0 : lineHeight);
             }
 
             if (_showWorldRows)
@@ -546,6 +784,47 @@ namespace HaCreator.MapSimulator.UI
 
                 _inputValue += appended.Value;
             }
+        }
+
+        private void MoveSelectedCheckBox(int direction)
+        {
+            IReadOnlyList<CheckBoxState> enabledCheckBoxes = _checkBoxes.Where(checkBox => checkBox.IsEnabled).ToArray();
+            if (enabledCheckBoxes.Count == 0)
+            {
+                return;
+            }
+
+            int currentIndex = Math.Max(0, enabledCheckBoxes.ToList().FindIndex(checkBox => checkBox.ControlId == _selectedCheckBoxControlId));
+            int nextIndex = Math.Clamp(currentIndex + direction, 0, enabledCheckBoxes.Count - 1);
+            _selectedCheckBoxControlId = enabledCheckBoxes[nextIndex].ControlId;
+        }
+
+        private void MoveSelectedComboItem(int direction)
+        {
+            if (_comboItems.Count == 0)
+            {
+                return;
+            }
+
+            _selectedComboIndex = Math.Clamp(_selectedComboIndex + direction, 0, _comboItems.Count - 1);
+        }
+
+        private static int ResolveSelectedCheckBoxControlId(IReadOnlyList<CheckBoxState> checkBoxes)
+        {
+            if (checkBoxes == null || checkBoxes.Count == 0)
+            {
+                return 0;
+            }
+
+            CheckBoxState selected = checkBoxes.FirstOrDefault(checkBox => checkBox.IsEnabled && checkBox.IsChecked)
+                ?? checkBoxes.FirstOrDefault(checkBox => checkBox.IsEnabled)
+                ?? checkBoxes[0];
+            return selected.ControlId;
+        }
+
+        private static int ResolveSelectedComboIndex(int selectedIndex, int count)
+        {
+            return count <= 0 ? 0 : Math.Clamp(selectedIndex, 0, count - 1);
         }
 
         private static char? TranslateKey(Keys key, bool shift)

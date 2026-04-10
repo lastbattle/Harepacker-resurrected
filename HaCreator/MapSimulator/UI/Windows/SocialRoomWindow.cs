@@ -68,6 +68,10 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _tradingRoomResetButton;
         private UIObject _tradingRoomCoinButton;
         private UIObject _tradingRoomAcceptButton;
+        private Texture2D _entrustedBlacklistUtilDlgExFrame;
+        private UIObject _entrustedBlacklistPromptOkButton;
+        private UIObject _entrustedBlacklistPromptCloseButton;
+        private UIObject _entrustedBlacklistNoticeOkButton;
         private Texture2D[] _miniRoomOmokBlackStoneFrames = Array.Empty<Texture2D>();
         private Texture2D[] _miniRoomOmokWhiteStoneFrames = Array.Empty<Texture2D>();
         private Texture2D _miniRoomOmokLastBlackStoneTexture;
@@ -159,6 +163,18 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        public void RegisterEntrustedBlacklistModalAssets(
+            Texture2D utilDlgExFrame,
+            UIObject promptOkButton,
+            UIObject promptCloseButton,
+            UIObject noticeOkButton)
+        {
+            _entrustedBlacklistUtilDlgExFrame = utilDlgExFrame;
+            _entrustedBlacklistPromptOkButton = RegisterEntrustedBlacklistModalButton(promptOkButton, SubmitEntrustedBlacklistPrompt);
+            _entrustedBlacklistPromptCloseButton = RegisterEntrustedBlacklistModalButton(promptCloseButton, CancelEntrustedBlacklistPrompt);
+            _entrustedBlacklistNoticeOkButton = RegisterEntrustedBlacklistModalButton(noticeOkButton, DismissEntrustedBlacklistNotice);
+        }
+
         public void SetMiniRoomOmokStoneTextures(
             Texture2D[] blackStoneTextures,
             Texture2D[] whiteStoneTextures,
@@ -232,6 +248,19 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawDefaultContents(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
+        }
+
+        private UIObject RegisterEntrustedBlacklistModalButton(UIObject button, Action action)
+        {
+            if (button == null)
+            {
+                return null;
+            }
+
+            button.SetVisible(false);
+            AddButton(button);
+            button.ButtonClickReleased += _ => action?.Invoke();
+            return button;
         }
 
         public void RegisterTradingRoomButtons(UIObject tradeButton, UIObject resetButton, UIObject coinButton, UIObject acceptButton)
@@ -815,6 +844,31 @@ namespace HaCreator.MapSimulator.UI
                 _activeEntrustedBlacklistPrompt = null;
                 _entrustedBlacklistCompositionText = string.Empty;
             }
+        }
+
+        private void SubmitEntrustedBlacklistPrompt()
+        {
+            if (_activeEntrustedBlacklistPrompt == null)
+            {
+                return;
+            }
+
+            _runtime.TrySubmitEntrustedBlacklistPrompt(_entrustedBlacklistPromptText, out _, out _);
+            _activeEntrustedBlacklistPrompt = null;
+            _entrustedBlacklistCompositionText = string.Empty;
+        }
+
+        private void CancelEntrustedBlacklistPrompt()
+        {
+            _runtime.CancelEntrustedBlacklistPrompt();
+            _activeEntrustedBlacklistPrompt = null;
+            _entrustedBlacklistCompositionText = string.Empty;
+        }
+
+        private void DismissEntrustedBlacklistNotice()
+        {
+            _activeEntrustedBlacklistPrompt = null;
+            _entrustedBlacklistCompositionText = string.Empty;
         }
 
         private void DrawTradeStatePanel(SpriteBatch sprite, Rectangle panel)

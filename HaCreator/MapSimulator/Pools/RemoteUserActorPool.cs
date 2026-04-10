@@ -74,6 +74,18 @@ namespace HaCreator.MapSimulator.Pools
             string EffectPath,
             int CurrentTime,
             bool UseOwnerFacing);
+        public readonly record struct RemoteChatLogMessagePresentation(
+            int CharacterId,
+            byte EffectType,
+            int StringPoolId,
+            string Message,
+            int ChatLogType,
+            int CurrentTime);
+        public readonly record struct RemoteStatusBarEffectPresentation(
+            int CharacterId,
+            byte EffectType,
+            string EffectName,
+            int CurrentTime);
 
         private readonly record struct RemoteMechanicModePresentation(
             string StandActionName,
@@ -335,6 +347,14 @@ namespace HaCreator.MapSimulator.Pools
         private readonly HashSet<(int LeftId, int RightId)> _renderedCouplePairsBuffer = new();
         private readonly HashSet<(RemoteRelationshipOverlayType Type, int ItemId, int LeftId, int RightId)> _renderedItemEffectPairsBuffer = new();
         private readonly Dictionary<int, List<PendingRemoteTransientSkillUseAvatarEffectState>> _pendingTransientSkillUseAvatarEffectsByCharacterId = new();
+        private const int MakerSkillEffectStringPoolId = 0x931;
+        private const int MakerResultMessageStringPoolId = 0x1493;
+        private const int IncubatorMessageStringPoolId = 0x1559;
+        private const int RemoteEffectChatLogType = 7;
+        private const string MakerSkillEffectFallbackPath = "Effect/BasicEff.img/DoubleJump";
+        private const string MakerResultMessageFallbackFormat = "Maker result {0}.";
+        private const string IncubatorMessageFallbackText = "Incubator message.";
+        private const string EvolRingStatusBarEffectName = "Eff_EvolRing";
         private int _preparedSkillWorldOverlayCount;
         private int _helperMarkerCount;
         private CharacterLoader _loader;
@@ -351,6 +371,8 @@ namespace HaCreator.MapSimulator.Pools
         public event Action<RemoteHitFeedbackPresentation> HitFeedbackRegistered;
         public event Action<RemoteFieldSoundPresentation> FieldSoundRegistered;
         public event Action<RemoteStringEffectPresentation> StringEffectRegistered;
+        public event Action<RemoteChatLogMessagePresentation> ChatLogMessageRegistered;
+        public event Action<RemoteStatusBarEffectPresentation> StatusBarEffectRegistered;
         public int PreparedSkillWorldOverlayCount => _preparedSkillWorldOverlayCount;
         public int HelperMarkerCount => _helperMarkerCount;
         public Action<int, string> ActorRemovedCallback { get; set; }
@@ -2154,6 +2176,15 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
+            if (jobId is >= 1220 and <= 1222
+                && knownState.ExtendedState.HasDefenseState)
+            {
+                // WZ `Skill/122.img/skill/1220006` is Blocking: `info/type = 51`,
+                // `info/condition = damaged`, `info/mes = stun`, and an authored `special` branch.
+                // Remote temp-stat decode exposes that client defense-state surface separately from Blessing Armor.
+                TryAddCandidate(PaladinDamageReactiveSpecialSkillId);
+            }
+
             if (knownState.HasBlessingArmor)
             {
                 if (jobId is >= 1220 and <= 1222)
@@ -2270,6 +2301,19 @@ namespace HaCreator.MapSimulator.Pools
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered item-make {(itemMakeResultCode == 0 ? "success" : "failure")} presentation.";
                     return true;
 
+                case RemoteUserEffectSubtype.MakerSkill:
+                    string makerSkillEffectPath = MapleStoryStringPool.GetOrFallback(
+                        MakerSkillEffectStringPoolId,
+                        MakerSkillEffectFallbackPath);
+                    StringEffectRegistered?.Invoke(new RemoteStringEffectPresentation(
+                        packet.CharacterId,
+                        packet.EffectType,
+                        makerSkillEffectPath,
+                        currentTime,
+                        UseOwnerFacing: false));
+                    message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered maker-skill fixed effect {makerSkillEffectPath}.";
+                    return true;
+
                 case RemoteUserEffectSubtype.EffectByItem:
                     int itemEffectItemId = packet.Int32Value.GetValueOrDefault();
                     if (itemEffectItemId <= 0)
@@ -2313,6 +2357,36 @@ namespace HaCreator.MapSimulator.Pools
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered field sound {packet.StringValue}.";
                     return true;
 
+                case RemoteUserEffectSubtype.MakerResultMessage:
+                    int makerResultCode = packet.Int32Value.GetValueOrDefault();
+                    string makerResultMessage = FormatRemoteEffectChatLogMessage(
+                        MakerResultMessageStringPoolId,
+                        MakerResultMessageFallbackFormat,
+                        makerResultCode);
+                    ChatLogMessageRegistered?.Invoke(new RemoteChatLogMessagePresentation(
+                        packet.CharacterId,
+                        packet.EffectType,
+                        MakerResultMessageStringPoolId,
+                        makerResultMessage,
+                        RemoteEffectChatLogType,
+                        currentTime));
+                    message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered maker-result chat-log message {makerResultCode}.";
+                    return true;
+
+                case RemoteUserEffectSubtype.IncubatorMessage:
+                    string incubatorMessage = MapleStoryStringPool.GetOrFallback(
+                        IncubatorMessageStringPoolId,
+                        IncubatorMessageFallbackText);
+                    ChatLogMessageRegistered?.Invoke(new RemoteChatLogMessagePresentation(
+                        packet.CharacterId,
+                        packet.EffectType,
+                        IncubatorMessageStringPoolId,
+                        incubatorMessage,
+                        RemoteEffectChatLogType,
+                        currentTime));
+                    message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered incubator chat-log message.";
+                    return true;
+
                 case RemoteUserEffectSubtype.IncDecHp:
                     int delta = packet.Int32Value.GetValueOrDefault();
                     HitFeedbackRegistered?.Invoke(new RemoteHitFeedbackPresentation(
@@ -2340,9 +2414,38 @@ namespace HaCreator.MapSimulator.Pools
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} cleared quest-delivery presentation.";
                     return true;
 
+                case RemoteUserEffectSubtype.EvolRingStatusBar:
+                    StatusBarEffectRegistered?.Invoke(new RemoteStatusBarEffectPresentation(
+                        packet.CharacterId,
+                        packet.EffectType,
+                        EvolRingStatusBarEffectName,
+                        currentTime));
+                    message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered status-bar {EvolRingStatusBarEffectName} presentation.";
+                    return true;
+
                 default:
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} preserved without a recovered simulator presentation.";
                     return true;
+            }
+        }
+
+        private static string FormatRemoteEffectChatLogMessage(
+            int stringPoolId,
+            string fallbackFormat,
+            int value)
+        {
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                stringPoolId,
+                fallbackFormat,
+                maxPlaceholderCount: 1,
+                out _);
+            try
+            {
+                return string.Format(System.Globalization.CultureInfo.InvariantCulture, format, value);
+            }
+            catch (FormatException)
+            {
+                return $"{format} ({value.ToString(System.Globalization.CultureInfo.InvariantCulture)})";
             }
         }
 
@@ -2614,16 +2717,13 @@ namespace HaCreator.MapSimulator.Pools
             _preparedSkillWorldOverlayCount = 0;
             foreach (RemoteUserActor actor in _actorsById.Values)
             {
-                RemotePreparedSkillState prepared = actor.PreparedSkill;
-                if (!actor.IsVisibleInWorld
-                    || prepared == null
-                    || PreparedSkillHudRules.IsDragonOverlaySkill(prepared.SkillId))
+                if (!ShouldIncludePreparedSkillWorldOverlay(actor))
                 {
                     continue;
                 }
 
                 StatusBarPreparedSkillRenderData overlay = BuildPreparedSkillWorldOverlay(actor, currentTime, _preparedSkillWorldOverlayCount);
-                if (overlay == null || PreparedSkillHudRules.IsDragonOverlaySkill(overlay.SkillId))
+                if (overlay == null)
                 {
                     continue;
                 }
@@ -2632,6 +2732,18 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return _preparedSkillWorldOverlayBuffer;
+        }
+
+        private static bool ShouldIncludePreparedSkillWorldOverlay(RemoteUserActor actor)
+        {
+            return actor?.IsVisibleInWorld == true
+                && actor.PreparedSkill != null;
+        }
+
+        internal static bool ShouldIncludePreparedSkillWorldOverlayForTesting(bool isVisibleInWorld, RemotePreparedSkillState prepared)
+        {
+            return isVisibleInWorld
+                && prepared != null;
         }
 
         private StatusBarPreparedSkillRenderData BuildPreparedSkillWorldOverlay(RemoteUserActor actor, int currentTime, int bufferIndex)
@@ -5594,6 +5706,8 @@ namespace HaCreator.MapSimulator.Pools
                 || (preferVisibleOnly && (!left.IsVisibleInWorld || !right.IsVisibleInWorld))
                 || left.IsRelationshipOverlaySuppressed
                 || right.IsRelationshipOverlaySuppressed
+                || !CanReusePortableChairPairRecord(left, right)
+                || !CanReusePortableChairPairRecord(right, left)
                 || !PlayerCharacter.IsPortableChairActualPairActive(
                     left.Chair,
                     left.FacingRight,

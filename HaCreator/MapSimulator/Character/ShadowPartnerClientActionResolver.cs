@@ -244,6 +244,10 @@ namespace HaCreator.MapSimulator.Character
                 ["alert7"] = CreateIndexedPieces(
                     ("alert", 0, 360),
                     ("alert", 1, 300)),
+                // `Character/00002000.img/alert8/0` is another mounted indexed-alert
+                // helper row; it reuses the authored jump helper frame with its own delay.
+                ["alert8"] = CreateIndexedPieces(
+                    ("jump", 0, 30)),
                 // The mounted character action table also keeps `ladder2` and `rope2`
                 // as two-step helper rows instead of a single frame remap.
                 ["ladder2"] = CreateIndexedPieces(
@@ -263,41 +267,62 @@ namespace HaCreator.MapSimulator.Character
                     ("alert", 0, -360),
                     ("alert", 1, 270),
                     ("alert", 2, 270)),
-                ["stabD1"] = CreateIndexedPieces(
-                    ("stabO1", 0, -180),
-                    ("stabO1", 1, 240),
-                    ("swingO3", 2, 150),
-                    ("stabT1", 2, 330)),
-                ["swingD1"] = CreateIndexedPieces(
-                    ("swingO2", 0, -180),
-                    ("swingO2", 2, 300),
-                    ("swingO2", 1, 150),
-                    ("swingOF", 3, 300)),
-                ["swingD2"] = CreateIndexedPieces(
-                    ("swingO2", 0, -180),
-                    ("swingO2", 2, 300),
-                    ("swingO2", 1, 120),
-                    ("swingOF", 0, 330)),
-                ["doubleSwing"] = CreateIndexedPieces(
-                    ("swingP2", 2, -90, false),
-                    ("swingPF", 0, 90, true),
-                    ("stabTF", 0, 60, true),
-                    ("stabTF", 2, 90, true),
-                    ("stabTF", 2, 90, true)),
-                ["tripleSwing"] = CreateIndexedPieces(
-                    ("swingPF", 1, -60, false),
-                    ("proneStab", 0, -60, false),
-                    ("proneStab", 0, -60, true),
-                    ("swingPF", 2, -60, false),
-                    ("swingPF", 2, -90, false),
-                    ("swingP2", 2, 120, false),
-                    ("swingP2", 2, 120, false),
-                    ("swingP2", 2, 90, false)),
-                ["shotC1"] = CreateIndexedPieces(
-                    ("alert", 2, -210),
-                    ("stabO1", 0, 120),
-                    ("stabO1", 0, 120),
-                    ("stabO1", 0, 150))
+                // The mounted `fly2*` rows are not WZ-authored Shadow Partner branches,
+                // but their source actions are part of the generic helper surface.
+                ["fly2"] = CreateIndexedPieces(
+                    ("fly", 1)),
+                ["fly2Move"] = CreateIndexedPieces(
+                    ("fly", 0)),
+                ["fly2Skill"] = CreateIndexedPieces(
+                    ("alert", 0, -150),
+                    ("stabTF", 1, -210)),
+                ["stabD1"] = new[]
+                {
+                    CreateIndexedPiece(0, "stabO1", 0, -180),
+                    CreateIndexedPiece(1, "stabO1", 1, 240),
+                    CreateIndexedPiece(2, "swingO3", 2, 150, move: new Point(15, 0)),
+                    CreateIndexedPiece(3, "stabT1", 2, 330, move: new Point(5, 0))
+                },
+                ["swingD1"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingO2", 0, -180),
+                    CreateIndexedPiece(1, "swingO2", 2, 300),
+                    CreateIndexedPiece(2, "swingO2", 1, 150),
+                    CreateIndexedPiece(3, "swingOF", 3, 300, move: new Point(21, 0))
+                },
+                ["swingD2"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingO2", 0, -180),
+                    CreateIndexedPiece(1, "swingO2", 2, 300, move: new Point(-5, 0)),
+                    CreateIndexedPiece(2, "swingO2", 1, 120, move: new Point(-10, 0)),
+                    CreateIndexedPiece(3, "swingOF", 0, 330, move: new Point(-15, 0))
+                },
+                ["doubleSwing"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingP2", 2, -90, move: new Point(11, -1)),
+                    CreateIndexedPiece(1, "swingPF", 0, 90, flip: true, move: new Point(-2, 0)),
+                    CreateIndexedPiece(2, "stabTF", 0, 60, flip: true, move: new Point(-53, 11)),
+                    CreateIndexedPiece(3, "stabTF", 2, 90, flip: true, move: new Point(-54, 11)),
+                    CreateIndexedPiece(4, "stabTF", 2, 90, flip: true, move: new Point(-56, 14))
+                },
+                ["tripleSwing"] = new[]
+                {
+                    CreateIndexedPiece(0, "swingPF", 1, -60, move: new Point(-32, 0)),
+                    CreateIndexedPiece(1, "proneStab", 0, -60, move: new Point(-55, -31), rotationDegrees: 90),
+                    CreateIndexedPiece(2, "proneStab", 0, -60, flip: true, move: new Point(31, -45), rotationDegrees: 90),
+                    CreateIndexedPiece(3, "swingPF", 2, -60, move: new Point(-41, -30)),
+                    CreateIndexedPiece(4, "swingPF", 2, -90, move: new Point(-45, -36)),
+                    CreateIndexedPiece(5, "swingP2", 2, 120, move: new Point(-41, 0)),
+                    CreateIndexedPiece(6, "swingP2", 2, 120, move: new Point(-41, 1)),
+                    CreateIndexedPiece(7, "swingP2", 2, 90, move: new Point(-41, 2))
+                },
+                ["shotC1"] = new[]
+                {
+                    CreateIndexedPiece(0, "alert", 2, -210),
+                    CreateIndexedPiece(1, "stabO1", 0, 120, move: new Point(8, 0)),
+                    CreateIndexedPiece(2, "stabO1", 0, 120, move: new Point(9, 0)),
+                    CreateIndexedPiece(3, "stabO1", 0, 150, move: new Point(10, 0))
+                }
             };
 
         private static readonly HashSet<string> ClientAttackAliasActionNames = new(StringComparer.OrdinalIgnoreCase)
@@ -336,7 +361,11 @@ namespace HaCreator.MapSimulator.Character
             "alert4",
             "alert5",
             "alert6",
-            "alert7"
+            "alert7",
+            "alert8",
+            "fly2",
+            "fly2Move",
+            "fly2Skill"
         };
 
         private static readonly IReadOnlyDictionary<string, string> SupportedRawActionCanonicalNames =
@@ -1661,7 +1690,7 @@ namespace HaCreator.MapSimulator.Character
                     i,
                     pieceFrames[i].PieceActionName,
                     pieceFrames[i].SourceFrameIndex,
-                    pieceFrames[i].DelayOverrideMs);
+                    Math.Abs(pieceFrames[i].DelayOverrideMs));
             }
 
             return pieces;
@@ -1682,11 +1711,30 @@ namespace HaCreator.MapSimulator.Character
                     i,
                     pieceFrames[i].PieceActionName,
                     pieceFrames[i].SourceFrameIndex,
-                    pieceFrames[i].DelayOverrideMs,
+                    Math.Abs(pieceFrames[i].DelayOverrideMs),
                     pieceFrames[i].Flip);
             }
 
             return pieces;
+        }
+
+        private static ShadowPartnerActionPiece CreateIndexedPiece(
+            int slotIndex,
+            string pieceActionName,
+            int sourceFrameIndex,
+            int delayOverrideMs,
+            bool flip = false,
+            Point? move = null,
+            int rotationDegrees = 0)
+        {
+            return new ShadowPartnerActionPiece(
+                slotIndex,
+                pieceActionName,
+                sourceFrameIndex,
+                Math.Abs(delayOverrideMs),
+                flip,
+                move,
+                rotationDegrees);
         }
 
         private static IEnumerable<string> EnumerateRangedAttackCandidates(string playerActionName, bool floating)

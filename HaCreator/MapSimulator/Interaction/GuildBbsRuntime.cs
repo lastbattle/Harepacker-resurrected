@@ -37,7 +37,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int VisibleCommentCount = 4;
         private const int VisibleCashEmoticonCount = 7;
         private const int DefaultBasicEmoticonCount = 3;
-        private const int DefaultCashEmoticonCount = ClientVisibleCashEmoticonCount;
+        private const int DefaultCashEmoticonCount = ClientInventoryCashEmoticonItemCount;
         internal const int ClientVisibleCashEmoticonCount = 7;
         internal const int ClientInventoryCashEmoticonItemCount = 7;
         private const int CashEmoticonItemIdStart = 5290000;
@@ -139,7 +139,7 @@ namespace HaCreator.MapSimulator.Interaction
         public void ConfigureEmoticonCatalog(int basicEmoticonCount, int cashEmoticonCount)
         {
             _basicEmoticonCount = Math.Max(1, basicEmoticonCount);
-            _cashEmoticonCount = Math.Max(1, cashEmoticonCount);
+            _cashEmoticonCount = Math.Clamp(cashEmoticonCount, 1, ClientInventoryCashEmoticonItemCount);
             NormalizeDraftState();
         }
 
@@ -301,6 +301,7 @@ namespace HaCreator.MapSimulator.Interaction
                     CashEmoticonPageIndex = _compose.CashEmoticonPageIndex,
                     CashEmoticonPageCount = GetCashEmoticonPageCount(),
                     CashEmoticonOwnership = BuildCashEmoticonOwnershipSnapshot(),
+                    SelectableEmoticonCount = GetSelectableEmoticonCount(),
                     SelectedEmoticon = CreateEmoticonSnapshot(_compose.EmoticonKind, _compose.EmoticonSlot, _compose.CashEmoticonPageIndex)
                 },
                 ReplyDraft = new GuildBbsReplyDraftSnapshot
@@ -309,6 +310,7 @@ namespace HaCreator.MapSimulator.Interaction
                     CashEmoticonPageIndex = _replyDraft.CashEmoticonPageIndex,
                     CashEmoticonPageCount = GetCashEmoticonPageCount(),
                     CashEmoticonOwnership = BuildCashEmoticonOwnershipSnapshot(),
+                    SelectableEmoticonCount = GetSelectableEmoticonCount(),
                     SelectedEmoticon = CreateEmoticonSnapshot(_replyDraft.EmoticonKind, _replyDraft.EmoticonSlot, _replyDraft.CashEmoticonPageIndex)
                 }
             };
@@ -745,16 +747,42 @@ namespace HaCreator.MapSimulator.Interaction
 
         public string MoveComposeCashEmoticonPage(int delta)
         {
-            int nextPage = Math.Clamp(_compose.CashEmoticonPageIndex + delta, 0, GetCashEmoticonPageCount() - 1);
-            _compose.CashEmoticonPageIndex = nextPage;
-            return $"Guild BBS compose cash emoticon page {_compose.CashEmoticonPageIndex + 1}/{GetCashEmoticonPageCount()}.";
+            return MoveComposeEmoticonSelection(delta);
         }
 
         public string MoveReplyCashEmoticonPage(int delta)
         {
-            int nextPage = Math.Clamp(_replyDraft.CashEmoticonPageIndex + delta, 0, GetCashEmoticonPageCount() - 1);
-            _replyDraft.CashEmoticonPageIndex = nextPage;
-            return $"Guild BBS reply cash emoticon page {_replyDraft.CashEmoticonPageIndex + 1}/{GetCashEmoticonPageCount()}.";
+            return MoveReplyEmoticonSelection(delta);
+        }
+
+        public string MoveComposeEmoticonSelection(int delta)
+        {
+            MoveEmoticonSelection(
+                _compose.EmoticonKind,
+                _compose.EmoticonSlot,
+                delta,
+                out GuildBbsEmoticonKind resolvedKind,
+                out int resolvedSlot,
+                out int resolvedPage);
+            _compose.EmoticonKind = resolvedKind;
+            _compose.EmoticonSlot = resolvedSlot;
+            _compose.CashEmoticonPageIndex = resolvedPage;
+            return $"Compose emoticon selector moved to {DescribeEmoticon(resolvedKind, resolvedSlot, resolvedPage)}.";
+        }
+
+        public string MoveReplyEmoticonSelection(int delta)
+        {
+            MoveEmoticonSelection(
+                _replyDraft.EmoticonKind,
+                _replyDraft.EmoticonSlot,
+                delta,
+                out GuildBbsEmoticonKind resolvedKind,
+                out int resolvedSlot,
+                out int resolvedPage);
+            _replyDraft.EmoticonKind = resolvedKind;
+            _replyDraft.EmoticonSlot = resolvedSlot;
+            _replyDraft.CashEmoticonPageIndex = resolvedPage;
+            return $"Reply emoticon selector moved to {DescribeEmoticon(resolvedKind, resolvedSlot, resolvedPage)}.";
         }
 
         public string SelectComposeEmoticon(GuildBbsEmoticonKind kind, int slotIndex, int cashPageIndex)
@@ -994,6 +1022,8 @@ namespace HaCreator.MapSimulator.Interaction
                 Title = $"{_guildName} Roll Call {_draftCounter}",
                 Body = $"Field check from {_locationSummary}. Reply here so guild-room and board parity can be validated together.",
                 IsNotice = false,
+                EmoticonKind = GuildBbsEmoticonKind.Basic,
+                EmoticonSlot = 0,
                 CashEmoticonPageIndex = 0
             };
         }
@@ -1261,6 +1291,67 @@ namespace HaCreator.MapSimulator.Interaction
         private int GetCashEmoticonPageCount()
         {
             return Math.Max(1, (int)Math.Ceiling(_cashEmoticonCount / (double)VisibleCashEmoticonCount));
+        }
+
+        private int GetSelectableEmoticonCount()
+        {
+            return BuildSelectableEmoticons().Count;
+        }
+
+        private IReadOnlyList<(GuildBbsEmoticonKind Kind, int Slot)> BuildSelectableEmoticons()
+        {
+            var selections = new List<(GuildBbsEmoticonKind Kind, int Slot)>(_basicEmoticonCount + OwnedCashEmoticonCount);
+            for (int slotIndex = 0; slotIndex < _basicEmoticonCount; slotIndex++)
+            {
+                selections.Add((GuildBbsEmoticonKind.Basic, slotIndex));
+            }
+
+            foreach (int itemId in EffectiveOwnedCashEmoticonIds.OrderBy(static id => id))
+            {
+                int slotIndex = itemId - CashEmoticonItemIdStart;
+                if (slotIndex >= 0 && slotIndex < _cashEmoticonCount)
+                {
+                    selections.Add((GuildBbsEmoticonKind.Cash, slotIndex));
+                }
+            }
+
+            return selections;
+        }
+
+        private void MoveEmoticonSelection(
+            GuildBbsEmoticonKind currentKind,
+            int currentSlot,
+            int delta,
+            out GuildBbsEmoticonKind resolvedKind,
+            out int resolvedSlot,
+            out int resolvedPage)
+        {
+            IReadOnlyList<(GuildBbsEmoticonKind Kind, int Slot)> selections = BuildSelectableEmoticons();
+            if (selections.Count == 0)
+            {
+                resolvedKind = GuildBbsEmoticonKind.None;
+                resolvedSlot = -1;
+                resolvedPage = 0;
+                return;
+            }
+
+            int currentIndex = -1;
+            for (int index = 0; index < selections.Count; index++)
+            {
+                if (selections[index].Kind == currentKind && selections[index].Slot == currentSlot)
+                {
+                    currentIndex = index;
+                    break;
+                }
+            }
+
+            int nextIndex = currentIndex < 0
+                ? 0
+                : Math.Clamp(currentIndex + delta, 0, selections.Count - 1);
+            (resolvedKind, resolvedSlot) = selections[nextIndex];
+            resolvedPage = resolvedKind == GuildBbsEmoticonKind.Cash
+                ? Math.Clamp(resolvedSlot / VisibleCashEmoticonCount, 0, GetCashEmoticonPageCount() - 1)
+                : 0;
         }
 
         private bool IsCashEmoticonOwned(int slotIndex)
@@ -1912,6 +2003,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int CashEmoticonPageIndex { get; init; }
         public int CashEmoticonPageCount { get; init; }
         public IReadOnlyList<bool> CashEmoticonOwnership { get; init; } = Array.Empty<bool>();
+        public int SelectableEmoticonCount { get; init; }
         public GuildBbsEmoticonSnapshot SelectedEmoticon { get; init; }
     }
 
@@ -1921,6 +2013,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int CashEmoticonPageIndex { get; init; }
         public int CashEmoticonPageCount { get; init; }
         public IReadOnlyList<bool> CashEmoticonOwnership { get; init; } = Array.Empty<bool>();
+        public int SelectableEmoticonCount { get; init; }
         public GuildBbsEmoticonSnapshot SelectedEmoticon { get; init; }
     }
 

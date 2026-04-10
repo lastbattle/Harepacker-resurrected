@@ -23,6 +23,9 @@ namespace HaCreator.MapSimulator.Fields
         private const int NpcSummonScriptItemId = 2430011;
         private const int NpcSummonQuestItemId = 4032363;
         private const string SummonEventNpcScriptName = "summonEventNpc";
+        private const int CashPetItemGroup = 500;
+        private const int PetLifeRecoveryItemGroup = 513;
+        private const int PetFoodItemGroup = 524;
 
         public static bool CanTransferField(long fieldLimit)
         {
@@ -576,7 +579,12 @@ namespace HaCreator.MapSimulator.Fields
         {
             int itemGroup = itemId / 10000;
             if (inventoryType == InventoryType.CASH
-                && itemGroup is PetNameTagItemGroup or PetReviveItemGroup or PetSkillItemGroup)
+                && itemGroup is CashPetItemGroup
+                    or PetLifeRecoveryItemGroup
+                    or PetNameTagItemGroup
+                    or PetReviveItemGroup
+                    or PetSkillItemGroup
+                    or PetFoodItemGroup)
             {
                 return true;
             }

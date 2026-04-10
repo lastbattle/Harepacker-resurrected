@@ -94,7 +94,7 @@ namespace HaCreator.MapSimulator.UI
 
         public void ConfigureVisuals(Texture2D avatarTexture, UIObject okButton, UIObject cancelButton)
         {
-            ConfigureVisuals(avatarTexture, AvatarOrigin, okButton, cancelButton);
+            ConfigureVisuals(avatarTexture, Point.Zero, okButton, cancelButton);
         }
 
         public void Configure(string text, int stringPoolId)
@@ -147,9 +147,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 sprite.Draw(
                     _avatarTexture,
-                    new Vector2(
-                        Position.X + AvatarOrigin.X - _avatarTextureOrigin.X,
-                        Position.Y + AvatarOrigin.Y - _avatarTextureOrigin.Y),
+                    ResolveClientAvatarDrawPosition(Position, _avatarTextureOrigin).ToVector2(),
                     Color.White);
             }
 
@@ -214,6 +212,15 @@ namespace HaCreator.MapSimulator.UI
         internal static int ResolveClientNoticeTextStartY(int lineCount)
         {
             return TextBaseY - (TextVerticalCenterStride * Math.Max(1, lineCount));
+        }
+
+        internal static Point ResolveClientAvatarDrawPosition(Point windowPosition, Point avatarTextureOrigin)
+        {
+            // `CUIAntiMacroNotice::Draw` copies the admin avatar canvas to (20,20).
+            // The WZ canvas origin is only honored when an explicit recovered origin is supplied.
+            return new Point(
+                windowPosition.X + AvatarOrigin.X - avatarTextureOrigin.X,
+                windowPosition.Y + AvatarOrigin.Y - avatarTextureOrigin.Y);
         }
 
         private static int FindClientWrapIndex(string text, float wrapWidth, Func<string, float> measureTextWidth)

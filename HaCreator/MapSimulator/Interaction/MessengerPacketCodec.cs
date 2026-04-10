@@ -164,6 +164,13 @@ namespace HaCreator.MapSimulator.Interaction
             return writer.ToArray();
         }
 
+        public static byte[] BuildLeaveRequestPayload()
+        {
+            PacketWriter writer = new();
+            writer.WriteByte(2);
+            return writer.ToArray();
+        }
+
         public static byte[] BuildProcessChatRequestPayload(string localCharacterName, string message)
         {
             PacketWriter writer = new();
@@ -377,6 +384,9 @@ namespace HaCreator.MapSimulator.Interaction
                             }
 
                             summary = "messenger request invite";
+                            return true;
+                        case 2:
+                            summary = "messenger request leave";
                             return true;
                         case 5:
                             if (TryParseClientBlockedAutoRejectRequest(requestBody, out MessengerClientBlockedAutoRejectPacket blockedPacket, out _))

@@ -59,6 +59,8 @@ namespace HaCreator.MapSimulator.UI
             public int PacketRowIndex { get; set; }
             public string PacketMessage { get; set; } = string.Empty;
             public int RequestOpcode { get; set; }
+            public string PacketSource { get; set; } = string.Empty;
+            public string PacketFieldSummary { get; set; } = string.Empty;
         }
 
         private sealed class CashItemInfoPacketSnapshot
@@ -73,6 +75,8 @@ namespace HaCreator.MapSimulator.UI
             public long RawExpireFileTime { get; init; }
             public int PaybackRate { get; init; }
             public int DiscountRate { get; init; }
+            public int RawByteLength { get; init; } = CashItemInfoPacketByteLength;
+            public int BuyerCharacterIdByteLength { get; init; } = 13;
         }
 
         private sealed class CashInventoryMutationPacketSnapshot
@@ -93,6 +97,9 @@ namespace HaCreator.MapSimulator.UI
             public string Message { get; init; } = string.Empty;
             public int RowIndex { get; init; }
             public int AcceptRequestOpcode { get; init; } = 154;
+            public int RawByteLength { get; init; } = GiftListPacketByteLength;
+            public int SenderByteLength { get; init; } = 13;
+            public int MessageByteLength { get; init; } = 73;
         }
 
         public sealed class CashNameChangePossibleState
@@ -860,6 +867,10 @@ namespace HaCreator.MapSimulator.UI
                 AppendStatusDetail(detailLines, _cashGachaponAnimationOwnerSummary, suppressDefaultPrefix: "No packet-authored");
                 AppendStatusDetail(detailLines, _cashPurchaseRecordSummary, suppressDefaultPrefix: "No packet-authored");
                 AppendStatusDetail(detailLines, _cashGiftLastSummary, suppressDefaultPrefix: "No packet-authored");
+                foreach (PacketCatalogEntry entry in _cashGiftPacketEntries.Take(2))
+                {
+                    AppendStatusDetail(detailLines, entry.PacketFieldSummary);
+                }
             }
             else
             {
@@ -3245,7 +3256,9 @@ namespace HaCreator.MapSimulator.UI
                 BuyerCharacterId = snapshot?.BuyerCharacterId ?? string.Empty,
                 RawExpireFileTime = snapshot?.RawExpireFileTime ?? 0,
                 PaybackRate = snapshot?.PaybackRate ?? 0,
-                DiscountRate = snapshot?.DiscountRate ?? 0
+                DiscountRate = snapshot?.DiscountRate ?? 0,
+                PacketSource = "GW_CashItemInfo",
+                PacketFieldSummary = BuildCashItemInfoFieldSummary(snapshot)
             };
         }
 
@@ -3256,9 +3269,10 @@ namespace HaCreator.MapSimulator.UI
             string message = SanitizePacketString(snapshot?.Message, string.Empty);
             int rowNumber = Math.Max(1, snapshot?.RowIndex ?? 1);
             string title = ResolveCashStageGiftRowTitle(itemId, rowNumber, "Gift");
+            string fieldSummary = BuildGiftListFieldSummary(snapshot);
             string detail = string.IsNullOrWhiteSpace(message)
-                ? $"GW_GiftList row {rowNumber.ToString(CultureInfo.InvariantCulture)} from {sender} accepts through opcode {(snapshot?.AcceptRequestOpcode ?? 154).ToString(CultureInfo.InvariantCulture)}."
-                : $"GW_GiftList row {rowNumber.ToString(CultureInfo.InvariantCulture)} from {sender}: {message} (accept opcode {(snapshot?.AcceptRequestOpcode ?? 154).ToString(CultureInfo.InvariantCulture)}).";
+                ? $"GW_GiftList row {rowNumber.ToString(CultureInfo.InvariantCulture)} from {sender} owns item {itemId.ToString(CultureInfo.InvariantCulture)} and serial {(snapshot?.SerialNumber ?? 0).ToString(CultureInfo.InvariantCulture)}; accept opcode {(snapshot?.AcceptRequestOpcode ?? 154).ToString(CultureInfo.InvariantCulture)}."
+                : $"GW_GiftList row {rowNumber.ToString(CultureInfo.InvariantCulture)} from {sender} owns item {itemId.ToString(CultureInfo.InvariantCulture)} and serial {(snapshot?.SerialNumber ?? 0).ToString(CultureInfo.InvariantCulture)}: {message} (accept opcode {(snapshot?.AcceptRequestOpcode ?? 154).ToString(CultureInfo.InvariantCulture)}).";
             return new PacketCatalogEntry
             {
                 Title = title,
@@ -3274,8 +3288,34 @@ namespace HaCreator.MapSimulator.UI
                 Quantity = 1,
                 PacketRowIndex = rowNumber,
                 PacketMessage = message,
-                RequestOpcode = snapshot?.AcceptRequestOpcode ?? 154
+                RequestOpcode = snapshot?.AcceptRequestOpcode ?? 154,
+                PacketSource = "GW_GiftList",
+                PacketFieldSummary = fieldSummary
             };
+        }
+
+        private static string BuildCashItemInfoFieldSummary(CashItemInfoPacketSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return string.Empty;
+            }
+
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"GW_CashItemInfo[{snapshot.RawByteLength}]: liSN={snapshot.SerialNumber}, nAccountID={snapshot.AccountId}, nCharacterID={snapshot.CharacterId}, nItemID={snapshot.ItemId}, nCommodityID={snapshot.CommodityId}, nNumber={Math.Max(1, snapshot.Quantity)}, sBuyCharacterID[{snapshot.BuyerCharacterIdByteLength}]={SanitizePacketString(snapshot.BuyerCharacterId, string.Empty)}, ftExpire={snapshot.RawExpireFileTime}, nPaybackRate={snapshot.PaybackRate}, nDiscountRate={snapshot.DiscountRate}");
+        }
+
+        private static string BuildGiftListFieldSummary(GiftListPacketSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return string.Empty;
+            }
+
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"GW_GiftList[{snapshot.RawByteLength}] row {Math.Max(1, snapshot.RowIndex)}: liSN={snapshot.SerialNumber}, nItemID={snapshot.ItemId}, sFrom[{snapshot.SenderByteLength}]={SanitizePacketString(snapshot.Sender, string.Empty)}, sText[{snapshot.MessageByteLength}]={SanitizePacketString(snapshot.Message, string.Empty)}, acceptOpcode={snapshot.AcceptRequestOpcode}");
         }
 
         private static string DescribeCashItemInfoPacketSnapshot(CashItemInfoPacketSnapshot snapshot, bool includeSerialNumber)
@@ -3682,7 +3722,9 @@ namespace HaCreator.MapSimulator.UI
                 DiscountRate = source.DiscountRate,
                 PacketRowIndex = source.PacketRowIndex,
                 PacketMessage = source.PacketMessage,
-                RequestOpcode = source.RequestOpcode
+                RequestOpcode = source.RequestOpcode,
+                PacketSource = source.PacketSource,
+                PacketFieldSummary = source.PacketFieldSummary
             };
         }
 

@@ -955,6 +955,18 @@ namespace HaCreator.MapSimulator.Loaders
                 {
                     continue;
                 }
+
+                if (TryExtractAuthoredPlaceholderLabel(clause, placeholderToken, out string authoredLabel) &&
+                    ShouldPreferAuthoredPlaceholderLabel(authoredLabel, label))
+                {
+                    label = authoredLabel;
+                    formatter = ResolveDescriptionBackedContextFormatter(
+                        label,
+                        label,
+                        clause,
+                        placeholderToken);
+                }
+
                 return true;
             }
 
@@ -1438,6 +1450,18 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 label = "HP Recovery";
             }
+            else if ((normalizedClause.Contains("restores", StringComparison.Ordinal)
+                      || normalizedClause.Contains("restore", StringComparison.Ordinal)
+                      || normalizedClause.Contains("recover", StringComparison.Ordinal))
+                     && normalizedClause.Contains("hp", StringComparison.Ordinal))
+            {
+                label = "HP Recovery";
+            }
+            else if (normalizedClause.Contains("all skill levels", StringComparison.Ordinal)
+                     || normalizedClause.Contains("all skill level", StringComparison.Ordinal))
+            {
+                label = "All Skill Levels";
+            }
             else if (normalizedClause.Contains("provides", StringComparison.Ordinal)
                      && normalizedClause.Contains("potion", StringComparison.Ordinal))
             {
@@ -1546,6 +1570,7 @@ namespace HaCreator.MapSimulator.Loaders
                 "Jump" => FormatSignedValue,
                 "Max HP" => FormatSignedValue,
                 "Max MP" => FormatSignedValue,
+                "All Skill Levels" => FormatSignedValue,
                 "Teleport Distance" => FormatSignedValue,
                 "Robot Factory Duration" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
                 "Summon Interval" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
@@ -2087,15 +2112,25 @@ namespace HaCreator.MapSimulator.Loaders
             "emhp",
             "emmp",
             "str",
+            "strX",
             "dex",
+            "dexX",
             "int",
+            "intX",
             "luk",
+            "lukX",
             "pad",
+            "padX",
             "mad",
+            "madX",
             "pdd",
+            "pddX",
             "mdd",
+            "mddX",
             "acc",
+            "accX",
             "eva",
+            "evaX",
             "speed",
             "jump",
             "speedMax",
@@ -2112,11 +2147,11 @@ namespace HaCreator.MapSimulator.Loaders
             "indieMmpR",
             "indieSpeed",
             "indieJump",
+            "mhpX",
+            "mmpX",
             "hp",
             "mp",
             "mpConReduce",
-            "padX",
-            "madX",
             "bulletCount",
             "bulletSpeed",
             "morph",
@@ -2181,15 +2216,25 @@ namespace HaCreator.MapSimulator.Loaders
                 ["emhp"] = new("emhp", "HP", formatter: FormatSignedValue),
                 ["emmp"] = new("emmp", "MP", formatter: FormatSignedValue),
                 ["str"] = new("str", "STR", formatter: FormatSignedValue),
+                ["strX"] = new("strX", "STR", formatter: FormatSignedValue),
                 ["dex"] = new("dex", "DEX", formatter: FormatSignedValue),
+                ["dexX"] = new("dexX", "DEX", formatter: FormatSignedValue),
                 ["int"] = new("int", "INT", formatter: FormatSignedValue),
+                ["intX"] = new("intX", "INT", formatter: FormatSignedValue),
                 ["luk"] = new("luk", "LUK", formatter: FormatSignedValue),
+                ["lukX"] = new("lukX", "LUK", formatter: FormatSignedValue),
                 ["pad"] = new("pad", "Weapon ATT", formatter: FormatSignedValue),
+                ["padX"] = new("padX", "Weapon ATT", formatter: FormatSignedValue),
                 ["mad"] = new("mad", "Magic ATT", formatter: FormatSignedValue),
+                ["madX"] = new("madX", "Magic ATT", formatter: FormatSignedValue),
                 ["pdd"] = new("pdd", "Weapon DEF", formatter: FormatSignedValue),
+                ["pddX"] = new("pddX", "Weapon DEF", formatter: FormatSignedValue),
                 ["mdd"] = new("mdd", "Magic DEF", formatter: FormatSignedValue),
+                ["mddX"] = new("mddX", "Magic DEF", formatter: FormatSignedValue),
                 ["acc"] = new("acc", "Accuracy", formatter: FormatSignedValue),
+                ["accX"] = new("accX", "Accuracy", formatter: FormatSignedValue),
                 ["eva"] = new("eva", "Avoidability", formatter: FormatSignedValue),
+                ["evaX"] = new("evaX", "Avoidability", formatter: FormatSignedValue),
                 ["speed"] = new("speed", "Speed", formatter: FormatSignedValue),
                 ["jump"] = new("jump", "Jump", formatter: FormatSignedValue),
                 ["speedMax"] = new("speedMax", "Max Movement Speed"),
@@ -2206,11 +2251,11 @@ namespace HaCreator.MapSimulator.Loaders
                 ["indieMmpR"] = new("indieMmpR", "Max MP", isPercent: true),
                 ["indieSpeed"] = new("indieSpeed", "Speed", formatter: FormatSignedValue),
                 ["indieJump"] = new("indieJump", "Jump", formatter: FormatSignedValue),
+                ["mhpX"] = new("mhpX", "Max HP", formatter: FormatSignedValue),
+                ["mmpX"] = new("mmpX", "Max MP", formatter: FormatSignedValue),
                 ["hp"] = new("hp", "HP Recovery"),
                 ["mp"] = new("mp", "MP Recovery"),
                 ["mpConReduce"] = new("mpConReduce", "MP Consumption", formatter: FormatNegativePercentValue),
-                ["padX"] = new("padX", "Weapon ATT", formatter: FormatSignedValue),
-                ["madX"] = new("madX", "Magic ATT", formatter: FormatSignedValue),
                 ["bulletCount"] = new("bulletCount", "Bullet Count"),
                 ["bulletSpeed"] = new("bulletSpeed", "Bullet Speed"),
                 ["morph"] = new("morph", "Morph"),

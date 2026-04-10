@@ -268,6 +268,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             int elapsed = Math.Max(0, frameElapsedMs);
             List<AfterimageRenderableLayer> layers = null;
+            int frameSetElapsed = 0;
             for (int i = 0; i < frames.Count; i++)
             {
                 SkillFrame frame = frames[i];
@@ -276,16 +277,26 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                if (frame.Delay > 0 && elapsed >= frame.Delay)
+                int frameDelay = Math.Max(0, frame.Delay);
+                if (elapsed < frameSetElapsed)
                 {
+                    break;
+                }
+
+                int localFrameElapsed = elapsed - frameSetElapsed;
+                if (frameDelay > 0 && localFrameElapsed >= frameDelay)
+                {
+                    frameSetElapsed += frameDelay;
                     continue;
                 }
 
                 layers ??= new List<AfterimageRenderableLayer>(frames.Count);
                 layers.Add(new AfterimageRenderableLayer(
                     frame,
-                    ResolveFrameAlpha(frame, elapsed),
-                    ResolveFrameZoom(frame, elapsed)));
+                    ResolveFrameAlpha(frame, localFrameElapsed),
+                    ResolveFrameZoom(frame, localFrameElapsed)));
+
+                break;
             }
 
             return layers ?? (IReadOnlyList<AfterimageRenderableLayer>)Array.Empty<AfterimageRenderableLayer>();

@@ -70,6 +70,7 @@ namespace HaCreator.MapSimulator.Animation
             public int HitAnimationSourceFrameIndex { get; set; }
             public bool HitAttach { get; set; }
             public bool FacingAttach { get; set; }
+            public int HitAfterMs { get; set; }
             public Dictionary<int, bool> FrameHitAttachOverrides { get; } = new();
             public Dictionary<int, bool> FrameFacingAttachOverrides { get; } = new();
             public bool EffectFacingAttach { get; set; }

@@ -46,8 +46,11 @@ namespace HaCreator.MapSimulator.Interaction
             string allianceAuthority = _packetAllianceAuthority.HasValue
                 ? $"Alliance authority packet-owned ({_packetAllianceAuthority.Value.RoleLabel}: rank={FormatOnOff(_packetAllianceAuthority.Value.CanEditRanks)}, notice={FormatOnOff(_packetAllianceAuthority.Value.CanEditNotice)})"
                 : $"Alliance authority local-role ({GetLocalAllianceRoleLabel()})";
+            string whisperLocationInfo = string.IsNullOrWhiteSpace(_packetWhisperLocationInfo)
+                ? "Whisper user-list location idle"
+                : $"Whisper user-list location: {_packetWhisperLocationInfo}";
 
-            return string.Join(Environment.NewLine, tabLines.Concat(new[] { guildAuthority, guildUiContext, guildRankingContext, guildMarkContext, guildDialogRequestContext, allianceAuthority }));
+            return string.Join(Environment.NewLine, tabLines.Concat(new[] { guildAuthority, guildUiContext, guildRankingContext, guildMarkContext, guildDialogRequestContext, allianceAuthority, whisperLocationInfo }));
         }
 
         internal string DescribeGuildDialogRequestStatus()

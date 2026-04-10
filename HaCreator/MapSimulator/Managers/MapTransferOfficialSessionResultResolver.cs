@@ -103,10 +103,25 @@ namespace HaCreator.MapSimulator.Managers
             bool fieldListContainsRequestMap = FindMapIdSlot(authoritativeResponse.FieldList, request.MapId) >= 0;
             return request.Type switch
             {
-                MapTransferRuntimeRequestType.Register => fieldListContainsRequestMap,
+                MapTransferRuntimeRequestType.Register => MatchesAuthoritativeRegisterFieldList(request, authoritativeResponse.FieldList, fieldListContainsRequestMap),
                 MapTransferRuntimeRequestType.Delete => !fieldListContainsRequestMap,
                 _ => true
             };
+        }
+
+        private static bool MatchesAuthoritativeRegisterFieldList(
+            MapTransferRuntimeRequest request,
+            IReadOnlyList<int> fieldList,
+            bool fieldListContainsRequestMap)
+        {
+            if (request?.SlotIndex >= 0 &&
+                fieldList != null &&
+                request.SlotIndex < fieldList.Count)
+            {
+                return fieldList[request.SlotIndex] == request.MapId;
+            }
+
+            return fieldListContainsRequestMap;
         }
 
         private static int ResolveAuthoritativeFocusMapId(

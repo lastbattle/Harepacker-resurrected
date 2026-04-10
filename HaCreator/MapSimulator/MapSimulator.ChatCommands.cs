@@ -75,8 +75,8 @@ namespace HaCreator.MapSimulator
             }
 
             string employeeUsage = kind == SocialRoomKind.EntrustedShop
-                ? "Usage: /socialroom entrustedshop [packet] employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex bytes>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>"
-                : "Usage: /socialroom personalshop [packet] employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex bytes>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>";
+                ? "Usage: /socialroom entrustedshop [packet] employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <enter-field hex bytes>|packetrecv <319|320|321> <hex bytes>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>"
+                : "Usage: /socialroom personalshop [packet] employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <enter-field hex bytes>|packetrecv <319|320|321> <hex bytes>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|reset>";
             string employeeAction = args.Length > actionIndex + 1 ? args[actionIndex + 1] : "status";
 
             switch (employeeAction.ToLowerInvariant())
@@ -182,6 +182,28 @@ namespace HaCreator.MapSimulator
                     return packetApplied
                         ? ChatCommandHandler.CommandResult.Ok(packetMessage)
                         : ChatCommandHandler.CommandResult.Error(packetMessage);
+
+                case "packetrecv":
+                    if (args.Length <= actionIndex + 3)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(employeeUsage);
+                    }
+
+                    string opcodeToken = args[actionIndex + 2];
+                    if (!ushort.TryParse(opcodeToken.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? opcodeToken[2..] : opcodeToken, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out ushort opcode)
+                        && !ushort.TryParse(opcodeToken, out opcode))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(employeeUsage);
+                    }
+
+                    if (!MemoryGameField.TryParseMiniRoomPacketHex(string.Join(' ', args, actionIndex + 3, args.Length - actionIndex - 3), out byte[] payload, out string payloadParseError))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(payloadParseError);
+                    }
+
+                    return TryDispatchPacketOwnedEmployeePoolOpcode(runtime, kind, opcode, payload, currTickCount, out string packetRecvMessage)
+                        ? ChatCommandHandler.CommandResult.Ok(packetRecvMessage)
+                        : ChatCommandHandler.CommandResult.Error(packetRecvMessage);
 
                 case "session":
                     return HandleSocialRoomEmployeeSessionCommand(runtime, kind, args, actionIndex, employeeUsage);
@@ -6345,7 +6367,7 @@ namespace HaCreator.MapSimulator
                 "dojo",
 
                 "Inspect the Mu Lung Dojo HUD state, loopback inbox, or official-session bridge",
-                "/dojo [status|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|stage|clear|timeover>|unmap <opcode>|clearmap|recent|stop]]",
+                $"/dojo [status|inbox [status|start [port]|stop]|session [{DojoSessionCommandParsing.SessionUsage["Usage: /dojo session ".Length..]}]]",
                 args =>
                 {
                     static bool TryParseDojoSessionPacketType(string text, out int packetType)
@@ -6426,7 +6448,7 @@ namespace HaCreator.MapSimulator
                                 || !int.TryParse(args[2], out int discoverRemotePort)
                                 || discoverRemotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /dojo session discover <remotePort> [processName|pid] [localPort]");
+                                return ChatCommandHandler.CommandResult.Error(DojoSessionCommandParsing.DiscoverUsage);
                             }
 
                             string processSelector = args.Length >= 4 ? args[3] : null;
@@ -6435,7 +6457,7 @@ namespace HaCreator.MapSimulator
                             {
                                 if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /dojo session discover <remotePort> [processName|pid] [localPort]");
+                                    return ChatCommandHandler.CommandResult.Error(DojoSessionCommandParsing.DiscoverUsage);
                                 }
 
                                 localPortFilter = parsedLocalPort;
@@ -6448,12 +6470,11 @@ namespace HaCreator.MapSimulator
                         if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 5
-                                || !int.TryParse(args[2], out int listenPort)
-                                || listenPort < 0
+                                || !DojoSessionCommandParsing.TryParseProxyListenPort(args[2], out int listenPort)
                                 || !int.TryParse(args[4], out int remotePort)
                                 || remotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /dojo session start <listenPort|0> <serverHost> <serverPort>");
+                                return ChatCommandHandler.CommandResult.Error(DojoSessionCommandParsing.StartUsage);
                             }
 
                             return _dojoOfficialSessionBridge.TryStart(listenPort, args[3], remotePort, out string startStatus)
@@ -6467,7 +6488,7 @@ namespace HaCreator.MapSimulator
                                 || !int.TryParse(args[2], out int attachRemotePort)
                                 || attachRemotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /dojo session attach <remotePort> [processName|pid] [localPort]");
+                                return ChatCommandHandler.CommandResult.Error(DojoSessionCommandParsing.AttachUsage);
                             }
 
                             string attachProcessSelector = args.Length >= 4 ? args[3] : null;
@@ -6476,7 +6497,7 @@ namespace HaCreator.MapSimulator
                             {
                                 if (!int.TryParse(args[4], out int parsedAttachLocalPort) || parsedAttachLocalPort <= 0)
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /dojo session attach <remotePort> [processName|pid] [localPort]");
+                                    return ChatCommandHandler.CommandResult.Error(DojoSessionCommandParsing.AttachUsage);
                                 }
 
                                 attachLocalPortFilter = parsedAttachLocalPort;
@@ -6491,15 +6512,46 @@ namespace HaCreator.MapSimulator
                                 : ChatCommandHandler.CommandResult.Error(attachStatus);
                         }
 
+                        if (string.Equals(args[1], "attachproxy", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 4
+                                || !DojoSessionCommandParsing.TryParseProxyListenPort(args[2], out int attachProxyListenPort)
+                                || !int.TryParse(args[3], out int attachProxyRemotePort)
+                                || attachProxyRemotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error(DojoSessionCommandParsing.AttachProxyUsage);
+                            }
+
+                            string attachProxyProcessSelector = args.Length >= 5 ? args[4] : null;
+                            int? attachProxyLocalPortFilter = null;
+                            if (args.Length >= 6)
+                            {
+                                if (!int.TryParse(args[5], out int parsedAttachProxyLocalPort) || parsedAttachProxyLocalPort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error(DojoSessionCommandParsing.AttachProxyUsage);
+                                }
+
+                                attachProxyLocalPortFilter = parsedAttachProxyLocalPort;
+                            }
+
+                            return _dojoOfficialSessionBridge.TryAttachEstablishedSessionAndStartProxy(
+                                    attachProxyListenPort,
+                                    attachProxyRemotePort,
+                                    attachProxyProcessSelector,
+                                    attachProxyLocalPortFilter,
+                                    out string attachProxyStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(attachProxyStatus)
+                                : ChatCommandHandler.CommandResult.Error(attachProxyStatus);
+                        }
+
                         if (string.Equals(args[1], "startauto", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 4
-                                || !int.TryParse(args[2], out int autoListenPort)
-                                || autoListenPort < 0
+                                || !DojoSessionCommandParsing.TryParseProxyListenPort(args[2], out int autoListenPort)
                                 || !int.TryParse(args[3], out int autoRemotePort)
                                 || autoRemotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /dojo session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]");
+                                return ChatCommandHandler.CommandResult.Error(DojoSessionCommandParsing.StartAutoUsage);
                             }
 
                             string processSelector = args.Length >= 5 ? args[4] : null;
@@ -6508,7 +6560,7 @@ namespace HaCreator.MapSimulator
                             {
                                 if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /dojo session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]");
+                                    return ChatCommandHandler.CommandResult.Error(DojoSessionCommandParsing.StartAutoUsage);
                                 }
 
                                 localPortFilter = parsedLocalPort;
@@ -6526,7 +6578,7 @@ namespace HaCreator.MapSimulator
                                 || opcode <= 0
                                 || !TryParseDojoSessionPacketType(args[3], out int packetType))
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /dojo session map <opcode> <clock|stage|clear|timeover>");
+                                return ChatCommandHandler.CommandResult.Error(DojoSessionCommandParsing.MapUsage);
                             }
 
                             return _dojoOfficialSessionBridge.TryConfigurePacketMapping(opcode, packetType, out string mapStatus)
@@ -6540,7 +6592,7 @@ namespace HaCreator.MapSimulator
                                 || !int.TryParse(args[2], out int opcode)
                                 || opcode <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /dojo session unmap <opcode>");
+                                return ChatCommandHandler.CommandResult.Error(DojoSessionCommandParsing.UnmapUsage);
                             }
 
                             return _dojoOfficialSessionBridge.RemovePacketMapping(opcode, out string unmapStatus)
@@ -6566,12 +6618,12 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(_dojoOfficialSessionBridge.LastStatus);
                         }
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /dojo session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|stage|clear|timeover>|unmap <opcode>|clearmap|recent|stop]");
+                        return ChatCommandHandler.CommandResult.Error(DojoSessionCommandParsing.SessionUsage);
                     }
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /dojo [status|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|stage|clear|timeover>|unmap <opcode>|clearmap|recent|stop]]");
+                    return ChatCommandHandler.CommandResult.Error($"/dojo [status|inbox [status|start [port]|stop]|session [{DojoSessionCommandParsing.SessionUsage["Usage: /dojo session ".Length..]}]]");
                 });
 
 
@@ -7250,7 +7302,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "cookiepoint",
                 "Inspect or update the Cookie House event score, loopback inbox, or official-session bridge",
-                "/cookiepoint [score]|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode>|unmap <opcode>|clearmap|infer|clearinfer|recent|stop]",
+                "/cookiepoint [score]|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode>|unmap <opcode>|clearmap|infer|clearinfer|recent|stop]",
                 args =>
                 {
                     if (!_specialFieldRuntime.CookieHouse.IsActive)
@@ -7340,11 +7392,11 @@ namespace HaCreator.MapSimulator
                         {
                             if (args.Length < 5
                                 || !int.TryParse(args[2], out int listenPort)
-                                || listenPort <= 0
+                                || listenPort < 0
                                 || !int.TryParse(args[4], out int remotePort)
                                 || remotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session start <listenPort> <serverHost> <serverPort>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session start <listenPort|0> <serverHost> <serverPort>");
                             }
 
                             return _cookieHouseOfficialSessionBridge.TryStart(listenPort, args[3], remotePort, out string startStatus)
@@ -7356,11 +7408,11 @@ namespace HaCreator.MapSimulator
                         {
                             if (args.Length < 4
                                 || !int.TryParse(args[2], out int autoListenPort)
-                                || autoListenPort <= 0
+                                || autoListenPort < 0
                                 || !int.TryParse(args[3], out int autoRemotePort)
                                 || autoRemotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]");
                             }
 
                             string processSelector = args.Length >= 5 ? args[4] : null;
@@ -7369,7 +7421,7 @@ namespace HaCreator.MapSimulator
                             {
                                 if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]");
                                 }
 
                                 localPortFilter = parsedLocalPort;
@@ -7439,7 +7491,7 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(_cookieHouseOfficialSessionBridge.LastStatus);
                         }
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode>|unmap <opcode>|clearmap|infer|clearinfer|recent|stop]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /cookiepoint session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode>|unmap <opcode>|clearmap|infer|clearinfer|recent|stop]");
 
                     }
 
@@ -7733,12 +7785,12 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "memorygame",
                 "Drive the MiniRoom Match Cards runtime",
-                "/memorygame <open|ready|start|flip|tie|giveup|end|status|packet|packetraw|packetclientraw|packetrecv|remote|inbox|session> [...]",
+                "/memorygame <open|ready|start|flip|tie|giveup|end|confirm|cancel|status|packet|packetraw|packetclientraw|packetrecv|remote|inbox|session> [...]",
                 args =>
                 {
                     if (args.Length == 0)
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /memorygame <open|ready|start|flip|tie|giveup|end|status|packet|packetraw|packetclientraw|packetrecv|remote|inbox|session> [...]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /memorygame <open|ready|start|flip|tie|giveup|end|confirm|cancel|status|packet|packetraw|packetclientraw|packetrecv|remote|inbox|session> [...]");
                     }
 
 
@@ -7799,7 +7851,7 @@ namespace HaCreator.MapSimulator
                         }
                         case "tie":
                         {
-                            if (!field.TryClaimTie(out string tieMessage))
+                            if (!field.TryPromptTieRequest(out string tieMessage))
                             {
                                 return ChatCommandHandler.CommandResult.Error(tieMessage);
                             }
@@ -7810,13 +7862,35 @@ namespace HaCreator.MapSimulator
                         case "giveup":
                         {
                             int playerIndex = args.Length >= 2 && int.TryParse(args[1], out int parsedPlayer) ? parsedPlayer : 0;
-                            if (!field.TryGiveUp(playerIndex, out string giveUpMessage))
+                            if (!field.TryPromptGiveUp(playerIndex, out string giveUpMessage))
                             {
                                 return ChatCommandHandler.CommandResult.Error(giveUpMessage);
                             }
 
 
                             return ChatCommandHandler.CommandResult.Ok(giveUpMessage);
+                        }
+                        case "confirm":
+                        case "yes":
+                        {
+                            if (!field.TryConfirmPrompt(currTickCount, out string confirmMessage))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(confirmMessage);
+                            }
+
+
+                            return ChatCommandHandler.CommandResult.Ok(confirmMessage);
+                        }
+                        case "cancel":
+                        case "no":
+                        {
+                            if (!field.TryCancelPrompt(out string cancelMessage))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(cancelMessage);
+                            }
+
+
+                            return ChatCommandHandler.CommandResult.Ok(cancelMessage);
                         }
                         case "end":
                         {
@@ -11534,12 +11608,18 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg packetraw <hex>");
                             }
 
+                            string rawPacketPrefix = null;
+                            if (TryDecodePacketScriptMessageClientOpcodePacket(rawPacketPayload, out byte[] scriptMessagePayload, out string opcodeMessage))
+                            {
+                                rawPacketPayload = scriptMessagePayload;
+                                rawPacketPrefix = opcodeMessage;
+                            }
 
                             return TryApplyPacketOwnedScriptMessagePacket(rawPacketPayload, out string rawPacketMessage)
 
-                                ? ChatCommandHandler.CommandResult.Ok(rawPacketMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(string.IsNullOrWhiteSpace(rawPacketPrefix) ? rawPacketMessage : $"{rawPacketPrefix} {rawPacketMessage}")
 
-                                : ChatCommandHandler.CommandResult.Error(rawPacketMessage);
+                                : ChatCommandHandler.CommandResult.Error(string.IsNullOrWhiteSpace(rawPacketPrefix) ? rawPacketMessage : $"{rawPacketPrefix} {rawPacketMessage}");
 
 
 

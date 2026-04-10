@@ -475,8 +475,28 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            return properties.FirstOrDefault(
+            WzImageProperty directProperty = properties.FirstOrDefault(
                 candidate => string.Equals(candidate?.Name, propertyName, StringComparison.OrdinalIgnoreCase));
+            if (directProperty != null)
+            {
+                return directProperty;
+            }
+
+            foreach (WzImageProperty property in properties)
+            {
+                if (property is not WzSubProperty subProperty)
+                {
+                    continue;
+                }
+
+                WzImageProperty nestedProperty = FindReviveOwnerPropertyCandidate(subProperty.WzProperties, propertyName);
+                if (nestedProperty != null)
+                {
+                    return nestedProperty;
+                }
+            }
+
+            return null;
         }
 
         private static WzImageProperty FindReviveOwnerNestedInfoPropertyCandidate(
@@ -534,6 +554,11 @@ namespace HaCreator.MapSimulator
                     return true;
                 }
 
+                if (TryReadReviveOwnerNamedBoolean(rawValue, out value))
+                {
+                    return true;
+                }
+
                 if (int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedInt))
                 {
                     value = parsedInt != 0;
@@ -550,6 +575,28 @@ namespace HaCreator.MapSimulator
 
             value = Math.Abs(numericValue) > double.Epsilon;
             return true;
+        }
+
+        private static bool TryReadReviveOwnerNamedBoolean(string rawValue, out bool value)
+        {
+            switch (rawValue?.Trim().ToLowerInvariant())
+            {
+                case "y":
+                case "yes":
+                case "on":
+                case "enabled":
+                    value = true;
+                    return true;
+                case "n":
+                case "no":
+                case "off":
+                case "disabled":
+                    value = false;
+                    return true;
+                default:
+                    value = false;
+                    return false;
+            }
         }
 
         private static bool TryReadReviveOwnerInt(WzImageProperty property, out int value)
@@ -571,6 +618,12 @@ namespace HaCreator.MapSimulator
                 if (bool.TryParse(rawValue, out bool parsedBool))
                 {
                     value = parsedBool ? 1 : 0;
+                    return true;
+                }
+
+                if (TryReadReviveOwnerNamedBoolean(rawValue, out bool namedBool))
+                {
+                    value = namedBool ? 1 : 0;
                     return true;
                 }
 

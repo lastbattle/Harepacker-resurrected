@@ -267,6 +267,10 @@ namespace HaCreator.MapSimulator.Pools
             || HasMorewildDamageUp
             || TrailingDefenseAttByte.HasValue
             || TrailingDefenseStateByte.HasValue;
+
+        public bool HasDefenseState =>
+            DefenseStateValue.HasValue
+            || TrailingDefenseStateByte.HasValue;
     }
 
     public readonly record struct RemoteUserLeaveFieldPacket(int CharacterId);
@@ -344,6 +348,7 @@ namespace HaCreator.MapSimulator.Pools
         int? MobTemplateId,
         bool MobHitFacingLeft,
         bool HasMobHit,
+        byte MobHitDamagePercent,
         bool PowerGuard,
         int? MobId,
         byte? MobHitAction,
@@ -1228,6 +1233,7 @@ namespace HaCreator.MapSimulator.Pools
                 int? mobTemplateId = null;
                 bool mobHitFacingLeft = false;
                 bool hasMobHit = false;
+                byte mobHitDamagePercent = 0;
                 bool powerGuard = false;
                 int? mobId = null;
                 byte? mobHitAction = null;
@@ -1240,7 +1246,8 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     mobTemplateId = reader.ReadInt32();
                     mobHitFacingLeft = reader.ReadByte() != 0;
-                    hasMobHit = reader.ReadByte() != 0;
+                    mobHitDamagePercent = reader.ReadByte();
+                    hasMobHit = mobHitDamagePercent != 0;
                     if (hasMobHit)
                     {
                         powerGuard = reader.ReadByte() != 0;
@@ -1286,6 +1293,7 @@ namespace HaCreator.MapSimulator.Pools
                     mobTemplateId,
                     mobHitFacingLeft,
                     hasMobHit,
+                    mobHitDamagePercent,
                     powerGuard,
                     mobId,
                     mobHitAction,
@@ -3614,6 +3622,7 @@ namespace HaCreator.MapSimulator.Pools
                     TimeStamp = cursorTime,
                     Duration = elapsed,
                     FacingRight = facingRight,
+                    MovePathAttribute = attr,
                     StatChanged = false
                 });
 
@@ -3635,7 +3644,10 @@ namespace HaCreator.MapSimulator.Pools
                     Action = DecodeMoveAction(moveAction),
                     FootholdId = currentFoothold,
                     TimeStamp = cursorTime,
-                    FacingRight = (moveAction & 1) == 0
+                    FacingRight = (moveAction & 1) == 0,
+                    MovePathAttribute = elements.Count > 0
+                        ? elements[^1].MovePathAttribute
+                        : 0
                 },
                 elements);
             return true;

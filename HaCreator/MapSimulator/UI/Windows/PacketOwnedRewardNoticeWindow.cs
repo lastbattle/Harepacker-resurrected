@@ -24,7 +24,7 @@ namespace HaCreator.MapSimulator.UI
         private const float BodyTopY = 20f;
         private const float BodyLeftX = 20f;
         private const float BodyLineSpacing = 14f;
-        private const int CenteredButtonX = 136;
+        private const int ClientNoticeOkButtonX = 197;
         private const int ButtonBottomMargin = 15;
         private const int SeparatorTopFromBottom = 64;
         private const int CloseButtonRightMargin = 8;
@@ -74,6 +74,19 @@ namespace HaCreator.MapSimulator.UI
             int x = Math.Max(0, (Math.Max(0, frameWidth) - normalizedWidth) / 2);
             int y = Math.Max(0, Math.Max(0, frameHeight) - SeparatorTopFromBottom);
             return new Point(x, y);
+        }
+
+        internal static int ResolveOkButtonX(int frameWidth, int buttonWidth)
+        {
+            int normalizedFrameWidth = Math.Max(0, frameWidth);
+            int normalizedButtonWidth = Math.Max(0, buttonWidth);
+            int maxX = Math.Max(0, normalizedFrameWidth - normalizedButtonWidth);
+            return Math.Min(ClientNoticeOkButtonX, maxX);
+        }
+
+        internal static int ResolveOkButtonY(int frameHeight, int buttonHeight)
+        {
+            return Math.Max(0, Math.Max(0, frameHeight) - Math.Max(0, buttonHeight) - ButtonBottomMargin);
         }
 
         internal static bool ShouldDismissForKeyboard(Keys key)
@@ -376,10 +389,10 @@ namespace HaCreator.MapSimulator.UI
             BaseDXDrawableItem buttonDrawable = okButton.GetBaseDXDrawableItemByState();
             if (buttonDrawable?.Frame0 != null && buttonDrawable.Frame0.Width > 0)
             {
-                return Math.Max(0, (frameWidth - buttonDrawable.Frame0.Width) / 2);
+                return ResolveOkButtonX(frameWidth, buttonDrawable.Frame0.Width);
             }
 
-            return CenteredButtonX;
+            return ResolveOkButtonX(frameWidth, 40);
         }
 
         private int ResolveOkButtonY(UIObject okButton)
@@ -388,10 +401,10 @@ namespace HaCreator.MapSimulator.UI
             BaseDXDrawableItem buttonDrawable = okButton.GetBaseDXDrawableItemByState();
             if (buttonDrawable?.Frame0 != null && buttonDrawable.Frame0.Height > 0)
             {
-                return Math.Max(0, frameHeight - buttonDrawable.Frame0.Height - ButtonBottomMargin);
+                return ResolveOkButtonY(frameHeight, buttonDrawable.Frame0.Height);
             }
 
-            return Math.Max(0, frameHeight - ButtonBottomMargin - 16);
+            return ResolveOkButtonY(frameHeight, 16);
         }
 
         private void AnchorCloseButton(UIObject closeButton)

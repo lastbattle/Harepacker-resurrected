@@ -480,6 +480,11 @@ namespace HaCreator.MapSimulator.UI
                    || GetIntValue(specExProperty?["runOnPickup"]) == 1;
         }
 
+        internal static bool IsDeathMarkCureSpec(WzSubProperty specProperty)
+        {
+            return GetIntValue(specProperty?["deathmark"]) == 1;
+        }
+
         public static bool IsPetFoodItem(int itemId)
         {
             if (itemId <= 0)
@@ -918,6 +923,11 @@ namespace HaCreator.MapSimulator.UI
         public static bool IsRunOnPickupForTests(WzSubProperty specProperty, WzSubProperty specExProperty)
         {
             return IsRunOnPickup(specProperty, specExProperty);
+        }
+
+        public static bool IsDeathMarkCureSpecForTests(WzSubProperty specProperty)
+        {
+            return IsDeathMarkCureSpec(specProperty);
         }
 
         internal static bool TryResolveSpecScript(WzSubProperty specProperty, out string script)
@@ -1889,6 +1899,7 @@ namespace HaCreator.MapSimulator.UI
             AppendCreateMetadataLines(metadataLines, infoProperty);
             AppendReplaceMetadataLines(metadataLines, infoProperty);
             AppendRecoveryRateMetadataLines(metadataLines, infoProperty);
+            AppendScrollUpgradeMetadataLines(metadataLines, infoProperty);
             AppendRandomChairEffectMetadataLines(metadataLines, infoProperty);
             AppendAdditionalExperienceMetadataLines(metadataLines, infoProperty);
             AppendGrowthItemMetadataLines(metadataLines, infoProperty);
@@ -2346,6 +2357,34 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static void AppendScrollUpgradeMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            if (GetIntValue(infoProperty["randstat"]) == 1)
+            {
+                metadataLines.Add("Randomizes applied stat values");
+            }
+
+            if (GetIntValue(infoProperty["blackUpgrade"]) == 1)
+            {
+                metadataLines.Add("Lets the previous upgrade result be kept");
+            }
+
+            if (GetIntValue(infoProperty["recover"]) == 1)
+            {
+                metadataLines.Add("Restores failed upgrade slots");
+            }
+
+            if (GetIntValue(infoProperty["reset"]) == 1)
+            {
+                metadataLines.Add("Resets upgrade state");
+            }
+        }
+
         private static void AppendRandomChairEffectMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
         {
             if (infoProperty?["randEffect"] is not WzSubProperty randomEffectProperty
@@ -2598,6 +2637,24 @@ namespace HaCreator.MapSimulator.UI
             if (requiredSkillLevel > 0)
             {
                 metadataLines.Add($"Maker Skill Level Required: {requiredSkillLevel.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            int requiredSkillId = GetIntOrStringValue(specProperty["reqSkill"]);
+            if (requiredSkillId > 0)
+            {
+                metadataLines.Add($"Required Skill: {ResolveSkillTooltipLabel(requiredSkillId)}");
+            }
+
+            int requiredSkillProficiency = GetIntOrStringValue(specProperty["reqSkillProficiency"]);
+            if (requiredSkillProficiency > 0)
+            {
+                metadataLines.Add($"Required Skill Proficiency: {requiredSkillProficiency.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            int useLevel = GetIntOrStringValue(specProperty["useLevel"]);
+            if (useLevel > 0)
+            {
+                metadataLines.Add($"Use Level: {useLevel.ToString(CultureInfo.InvariantCulture)}");
             }
 
             int recipeUseCount = GetIntOrStringValue(specProperty["recipeUseCount"]);

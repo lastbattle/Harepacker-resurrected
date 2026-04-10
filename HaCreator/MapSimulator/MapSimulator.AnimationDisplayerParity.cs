@@ -2504,17 +2504,18 @@ namespace HaCreator.MapSimulator
                 SpawnDurationMs = spawnDurationMs,
                 SpawnOffsetMin = spawnOffsetMin,
                 SpawnOffsetMax = spawnOffsetMax,
-                UsesRelativeEmission = GetAnimationDisplayerNumericValue(effectProperty, "emission") != 0,
+                UsesRelativeEmission = ResolveAnimationDisplayerFollowEquipmentEmission(
+                    GetAnimationDisplayerNumericValue(effectProperty, "emission")),
                 SpawnRelativeToTarget = authoredRelativePosition,
                 SpawnOnlyOnOwnerMove = GetAnimationDisplayerNumericValue(effectProperty, "genOnMove")
                     == 1
                     || GetAnimationDisplayerNumericValue(effectProperty, "bGenOnMove") == 1,
-                SuppressOwnerFlip = GetAnimationDisplayerNumericValue(effectProperty, "bNoFlip")
-                    == 1
-                    || GetAnimationDisplayerNumericValue(effectProperty, "noFlip") == 1,
-                ThetaDegrees = GetAnimationDisplayerNumericValue(effectProperty, "nTheta")
-                    ?? GetAnimationDisplayerNumericValue(effectProperty, "theta")
-                    ?? AnimationDisplayerFollowThetaDegrees,
+                SuppressOwnerFlip = ResolveAnimationDisplayerFollowEquipmentNoFlip(
+                    GetAnimationDisplayerNumericValue(effectProperty, "bNoFlip"),
+                    GetAnimationDisplayerNumericValue(effectProperty, "noFlip")),
+                ThetaDegrees = ResolveAnimationDisplayerFollowEquipmentThetaDegrees(
+                    GetAnimationDisplayerNumericValue(effectProperty, "nTheta"),
+                    GetAnimationDisplayerNumericValue(effectProperty, "theta")),
                 Radius = radius
             };
         }
@@ -2633,6 +2634,21 @@ namespace HaCreator.MapSimulator
             return (authoredRelativePosition ?? true)
                 ? 0
                 : AnimationDisplayerFollowAbsoluteTravelOffsetY;
+        }
+
+        internal static bool ResolveAnimationDisplayerFollowEquipmentEmission(int? authoredEmission)
+        {
+            return authoredEmission.GetValueOrDefault() != 0;
+        }
+
+        internal static bool ResolveAnimationDisplayerFollowEquipmentNoFlip(int? authoredBNoFlip, int? authoredNoFlip)
+        {
+            return (authoredBNoFlip ?? authoredNoFlip ?? 1) != 0;
+        }
+
+        internal static int ResolveAnimationDisplayerFollowEquipmentThetaDegrees(int? authoredNTheta, int? authoredTheta)
+        {
+            return authoredNTheta ?? authoredTheta ?? 0;
         }
 
         private static Rectangle BuildAnimationDisplayerFollowEquipmentEmissionArea(WzImageProperty effectProperty)

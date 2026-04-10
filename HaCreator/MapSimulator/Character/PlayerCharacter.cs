@@ -2031,8 +2031,8 @@ namespace HaCreator.MapSimulator.Character
         {
             frame = null;
             if (Assembler == null
-                || !IsAutomaticTamingMobTransitionAction(CurrentActionName)
-                || State != PlayerState.Attacking)
+                || State != PlayerState.Attacking
+                || _sustainedSkillAnimation)
             {
                 return false;
             }
@@ -2045,10 +2045,12 @@ namespace HaCreator.MapSimulator.Character
 
             int animationTime = GetRenderAnimationTime(currentTime);
             int bodyDuration = Assembler.ResolveClientCharacterActionLayerDuration(CurrentActionName);
-            if (!AvatarActionLayerCoordinator.TryResolveMountedTransitionBodyAnimationTime(
+            if (!Assembler.TryResolveClientTamingMobActionLayerDuration(CurrentActionName, out int tamingMobDuration)
+                || !AvatarActionLayerCoordinator.TryResolveMountedOneTimeBodyAnimationTime(
                     CurrentActionName,
                     animationTime,
                     bodyDuration,
+                    tamingMobDuration,
                     out int bodyAnimationTime))
             {
                 return false;
@@ -4923,8 +4925,16 @@ namespace HaCreator.MapSimulator.Character
             bool currentFacingRight,
             int existingPartCount)
         {
-            return existingPartCount > 0
-                   && existingFacingRight == currentFacingRight;
+            return !ShouldRecreateMirrorImagePreparedSourceLayerObject(
+                existingPartCount > 0,
+                existingFacingRight == currentFacingRight);
+        }
+
+        internal static bool ShouldRecreateMirrorImagePreparedSourceLayerObject(
+            bool hasExistingLayer,
+            bool existingFlipMatchesUnderFace)
+        {
+            return !hasExistingLayer || !existingFlipMatchesUnderFace;
         }
 
         internal static bool CanPreserveMirrorImagePreparedSourceLayerArrayWhenSourceListMissing(
@@ -6392,12 +6402,13 @@ namespace HaCreator.MapSimulator.Character
 
         private bool ShouldRenderMirrorImageForCurrentAction()
         {
-            if (_activeMirrorImage == null
-                || _activeMirrorImage.SkillId != SkillData.MirrorImageSkillId
-                || Build?.ActivePortableChair != null
-                || IsMechanicTamingMobStateActive()
-                || HasActiveMorphTransform
-                || State is PlayerState.Ladder or PlayerState.Rope or PlayerState.Hit or PlayerState.Dead)
+            if (ShouldSuppressMirrorImageForClientState(
+                    _activeMirrorImage != null,
+                    _activeMirrorImage?.SkillId == SkillData.MirrorImageSkillId,
+                    Build?.ActivePortableChair != null,
+                    HasClientOwnedVehicleTamingMobStateActive(),
+                    HasActiveMorphTransform,
+                    State))
             {
                 return false;
             }
@@ -6409,6 +6420,22 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return !IsMirrorImageSuppressedAction(CurrentActionName);
+        }
+
+        internal static bool ShouldSuppressMirrorImageForClientState(
+            bool hasActiveMirrorImage,
+            bool isMirrorImageSkill,
+            bool hasPortableChair,
+            bool hasClientOwnedVehicleTamingMobState,
+            bool hasMorphTransform,
+            PlayerState state)
+        {
+            return !hasActiveMirrorImage
+                   || !isMirrorImageSkill
+                   || hasPortableChair
+                   || hasClientOwnedVehicleTamingMobState
+                   || hasMorphTransform
+                   || state is PlayerState.Ladder or PlayerState.Rope or PlayerState.Hit or PlayerState.Dead;
         }
 
         internal bool TryGetCurrentClientRawActionCode(out int rawActionCode)
@@ -6433,6 +6460,11 @@ namespace HaCreator.MapSimulator.Character
         {
             CharacterPart activeTamingMobPart = GetEquippedTamingMobPart();
             return activeTamingMobPart != null && IsClientOwnedVehicleTamingMobStateActive(activeTamingMobPart);
+        }
+
+        private bool HasClientOwnedVehicleTamingMobStateActive()
+        {
+            return _clientOwnedVehicleTamingMobActive || IsMechanicTamingMobStateActive();
         }
 
         private static bool IsMirrorImageSuppressedAction(string actionName)

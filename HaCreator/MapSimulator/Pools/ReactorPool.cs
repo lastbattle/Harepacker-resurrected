@@ -1830,17 +1830,15 @@ namespace HaCreator.MapSimulator.Pools
 
             int currentX = reactor.CurrentWorldX;
             int currentY = reactor.CurrentWorldY;
-            int moveEndTime = data.PacketStateEndTime > currentTick
-                ? data.PacketStateEndTime
-                : ResolvePacketStandaloneMoveEndTime(
-                    currentX,
-                    currentY,
-                    x,
-                    y,
-                    currentTick,
-                    data.PacketObservedMovePixelsPerMs);
-            bool usesDefaultRelMove = moveEndTime > currentTick
-                && data.PacketStateEndTime <= currentTick;
+            int moveEndTime = ResolvePacketMovePacketEndTime(
+                currentX,
+                currentY,
+                x,
+                y,
+                currentTick,
+                data.PacketStateEndTime,
+                data.PacketObservedMovePixelsPerMs);
+            bool usesDefaultRelMove = moveEndTime > currentTick;
 
             ConfigurePacketStateMovement(
                 reactor,
@@ -1872,7 +1870,7 @@ namespace HaCreator.MapSimulator.Pools
 
             data.StateStartTime = currentTick;
             RefreshReactorLayerPlacement(reactor);
-            message = moveEndTime > currentTick && data.PacketStateEndTime <= currentTick
+            message = moveEndTime > currentTick
                 ? $"Moved packet-owned reactor {packetObjectId} to ({x}, {y}) with fallback RelMove timing."
                 : $"Moved packet-owned reactor {packetObjectId} to ({x}, {y}).";
             return true;
@@ -2041,6 +2039,12 @@ namespace HaCreator.MapSimulator.Pools
                         data.State = ReactorState.Active;
                         data.StateStartTime = currentTick;
                         data.PacketAnimationPhase = PacketReactorAnimationPhase.Idle;
+                        StartPacketStateMovement(reactor, data, currentTick);
+                    }
+
+                    if (ShouldCommitPacketVisualOwnershipOnStateEnd(data, currentTick))
+                    {
+                        CommitPacketVisualOwnership(reactor, data, currentTick);
                         StartPacketStateMovement(reactor, data, currentTick);
                     }
 
@@ -2449,6 +2453,28 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return currentTick + resolvedDuration;
+        }
+
+        internal static int ResolvePacketMovePacketEndTime(
+            int startX,
+            int startY,
+            int targetX,
+            int targetY,
+            int currentTick,
+            int packetStateEndTime,
+            float observedMovePixelsPerMs = 0f)
+        {
+            // `CReactorPool::OnReactorMove` passes vtMissing for both RelMove timing
+            // variants; tStateEnd is only consumed by `LoadReactorLayer` for moving
+            // state reloads.
+            _ = packetStateEndTime;
+            return ResolvePacketStandaloneMoveEndTime(
+                startX,
+                startY,
+                targetX,
+                targetY,
+                currentTick,
+                observedMovePixelsPerMs);
         }
 
         internal static float ResolvePacketMoveProgress(
@@ -3597,7 +3623,8 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            return data.PacketPendingVisualState >= 0;
+            return data.PacketPendingVisualState >= 0
+                || ShouldPreservePacketSourceUntilStateEnd(data);
         }
 
         internal static bool ShouldApplyPendingPacketVisualStateOnStateEnd(ReactorRuntimeData data, int currentTick)
@@ -3611,12 +3638,57 @@ namespace HaCreator.MapSimulator.Pools
                 && data.PacketAnimationEndTime <= 0;
         }
 
+        internal static bool ShouldCommitPacketVisualOwnershipOnStateEnd(ReactorRuntimeData data, int currentTick)
+        {
+            return data != null
+                && data.IsPacketOwned
+                && data.State == ReactorState.Activated
+                && data.PacketPendingVisualState < 0
+                && data.PacketAnimationSourceState >= 0
+                && data.PacketStateEndTime > 0
+                && currentTick >= data.PacketStateEndTime
+                && data.PacketHitStartTime <= 0
+                && data.PacketAnimationEndTime <= 0
+                && !data.PacketLeavePending;
+        }
+
         internal static bool ShouldDelayActivatedPacketHandoffUntilStateEnd(ReactorRuntimeData data, int currentTick)
         {
             return data != null
                 && data.State == ReactorState.Activated
                 && data.PacketPendingVisualState < 0
                 && data.PacketStateEndTime > currentTick;
+        }
+
+        private static bool ShouldPreservePacketSourceUntilStateEnd(ReactorRuntimeData data)
+        {
+            return data != null
+                && data.State == ReactorState.Activated
+                && data.PacketStateEndTime > 0
+                && data.PacketHitStartTime <= 0
+                && data.PacketAnimationEndTime <= 0
+                && !data.PacketLeavePending;
+        }
+
+        private static void CommitPacketVisualOwnership(ReactorItem reactor, ReactorRuntimeData data, int currentTick)
+        {
+            if (data == null)
+            {
+                return;
+            }
+
+            if (reactor != null)
+            {
+                reactor.ClearTransientAnimation();
+                reactor.SetAnimationState(data.VisualState, currentTick, restartIfSameState: true);
+            }
+
+            data.PacketAnimationSourceState = -1;
+            data.PacketHitAnimationState = -1;
+            data.PacketStateEndTime = 0;
+            data.PacketAnimationPhase = PacketReactorAnimationPhase.Idle;
+            data.State = ReactorState.Active;
+            data.StateStartTime = currentTick;
         }
 
         internal static int ResolveReactorRenderSortKey(int page, int zMass, int templateLayerMode)

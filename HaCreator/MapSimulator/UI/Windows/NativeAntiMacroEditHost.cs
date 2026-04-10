@@ -340,7 +340,13 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            SendMessage(_editHandle, EmSetSel, new IntPtr(selectionStart - 1), new IntPtr(selectionStart));
+            int replacementStart = ResolveClientBackspaceSelectionStart(GetControlText(), selectionStart);
+            if (replacementStart >= selectionStart)
+            {
+                return false;
+            }
+
+            SendMessage(_editHandle, EmSetSel, new IntPtr(replacementStart), new IntPtr(selectionStart));
             ReplaceSelection(character.ToString());
             UpdateImePlacement();
             return true;
@@ -361,7 +367,7 @@ namespace HaCreator.MapSimulator.UI
                     return false;
                 }
 
-                selectionStart--;
+                selectionStart = ResolveClientBackspaceSelectionStart(GetControlText(), selectionStart);
             }
 
             SendMessage(_editHandle, EmSetSel, new IntPtr(selectionStart), new IntPtr(selectionEnd));
@@ -1030,12 +1036,13 @@ namespace HaCreator.MapSimulator.UI
             GetSelection(out int selectionStart, out int selectionEnd);
             if (selectionStart == selectionEnd)
             {
-                if (selectionStart >= GetWindowTextLength(_editHandle))
+                string currentText = GetControlText();
+                if (selectionStart >= currentText.Length)
                 {
                     return false;
                 }
 
-                selectionEnd = selectionStart + 1;
+                selectionEnd = ResolveClientDeleteSelectionEnd(currentText, selectionStart);
             }
 
             SendMessage(_editHandle, EmSetSel, new IntPtr(selectionStart), new IntPtr(selectionEnd));
@@ -1159,6 +1166,20 @@ namespace HaCreator.MapSimulator.UI
                 shiftHeld: false);
         }
 
+        internal static int ResolveClientBackspaceSelectionStart(string text, int caretIndex)
+        {
+            string resolvedText = text ?? string.Empty;
+            int resolvedCaret = Math.Clamp(caretIndex, 0, resolvedText.Length);
+            return ResolvePreviousTextElementBoundary(resolvedText, resolvedCaret);
+        }
+
+        internal static int ResolveClientDeleteSelectionEnd(string text, int caretIndex)
+        {
+            string resolvedText = text ?? string.Empty;
+            int resolvedCaret = Math.Clamp(caretIndex, 0, resolvedText.Length);
+            return ResolveNextTextElementBoundary(resolvedText, resolvedCaret);
+        }
+
         internal static string RemoveControlCharacters(string text)
         {
             if (string.IsNullOrEmpty(text))
@@ -1195,6 +1216,40 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return builder.ToString();
+        }
+
+        private static int ResolvePreviousTextElementBoundary(string text, int caretIndex)
+        {
+            int previousBoundary = 0;
+            TextElementEnumerator enumerator = StringInfo.GetTextElementEnumerator(text ?? string.Empty);
+            while (enumerator.MoveNext())
+            {
+                int elementEnd = enumerator.ElementIndex + enumerator.GetTextElement().Length;
+                if (elementEnd >= caretIndex)
+                {
+                    break;
+                }
+
+                previousBoundary = elementEnd;
+            }
+
+            return previousBoundary;
+        }
+
+        private static int ResolveNextTextElementBoundary(string text, int caretIndex)
+        {
+            string resolvedText = text ?? string.Empty;
+            TextElementEnumerator enumerator = StringInfo.GetTextElementEnumerator(resolvedText);
+            while (enumerator.MoveNext())
+            {
+                int elementEnd = enumerator.ElementIndex + enumerator.GetTextElement().Length;
+                if (elementEnd > caretIndex)
+                {
+                    return elementEnd;
+                }
+            }
+
+            return resolvedText.Length;
         }
 
         [DllImport("gdi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

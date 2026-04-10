@@ -811,6 +811,9 @@ namespace HaCreator.MapSimulator
             AppendCashShopStatusLine(lines, stageWindow.CashNameChangeLastSummary);
             AppendCashShopStatusLine(lines, stageWindow.CashTransferWorldLastSummary);
             AppendCashShopStatusLine(lines, stageWindow.CashGachaponLastSummary);
+            AppendCashShopStatusLine(lines, stageWindow.CashGiftLastSummary);
+            AppendCashShopStatusLine(lines, stageWindow.CashPurchaseRecordSummary);
+            AppendCashShopStatusLine(lines, stageWindow.CashItemLastSummary);
             return lines;
         }
 
@@ -822,6 +825,11 @@ namespace HaCreator.MapSimulator
             }
 
             if (summary.StartsWith("No packet-authored", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (summary.StartsWith("No cash-item", StringComparison.Ordinal))
             {
                 return;
             }
@@ -1249,7 +1257,9 @@ namespace HaCreator.MapSimulator
                 result.Add(new CashShopStageChildWindow.ListOwnerEntryState
                 {
                     Title = entry.Title,
-                    Detail = entry.Detail,
+                    Detail = string.IsNullOrWhiteSpace(entry.PacketFieldSummary)
+                        ? entry.Detail
+                        : $"{entry.Detail} {entry.PacketFieldSummary}",
                     Seller = entry.Seller,
                     PriceLabel = entry.PriceLabel,
                     StateLabel = entry.StateLabel,
@@ -1719,6 +1729,7 @@ namespace HaCreator.MapSimulator
                 {
                     $"{entry.Title} | {sender}",
                     entry.Detail,
+                    entry.PacketFieldSummary,
                     string.IsNullOrWhiteSpace(entry.PriceLabel) ? string.Empty : entry.PriceLabel,
                     string.IsNullOrWhiteSpace(entry.StateLabel) ? string.Empty : entry.StateLabel,
                     "Client evidence: OnCashItemResLoadGiftDone allocates one CUIReceiveGift per decoded GW_GiftList row and advances after each modal closes."
@@ -1846,7 +1857,13 @@ namespace HaCreator.MapSimulator
                 CashServiceStageWindow.PacketCatalogEntry entry = entries[i];
                 string sender = string.IsNullOrWhiteSpace(entry?.Seller) ? "Unknown sender" : entry.Seller;
                 string title = string.IsNullOrWhiteSpace(entry?.Title) ? "Gift" : entry.Title;
-                queueLabels.Add($"{(i + 1).ToString(CultureInfo.InvariantCulture)}. {title} / {sender}");
+                string rowLabel = entry?.PacketRowIndex > 0
+                    ? $"row {entry.PacketRowIndex.ToString(CultureInfo.InvariantCulture)}"
+                    : $"queue {(i + 1).ToString(CultureInfo.InvariantCulture)}";
+                string serialLabel = entry?.SerialNumber > 0
+                    ? $" / SN {entry.SerialNumber.ToString(CultureInfo.InvariantCulture)}"
+                    : string.Empty;
+                queueLabels.Add($"{(i + 1).ToString(CultureInfo.InvariantCulture)}. {rowLabel} / {title} / {sender}{serialLabel}");
             }
 
             return queueLabels;
@@ -1906,17 +1923,39 @@ namespace HaCreator.MapSimulator
             }
 
             int selectedGiftIndex = Math.Clamp(modalWindow.SelectedGiftIndex, 0, Math.Max(0, stageWindow.CashGiftPacketEntries.Count - 1));
+            CashServiceStageWindow.PacketCatalogEntry selectedGift = stageWindow.CashGiftPacketEntries.Count > 0
+                ? stageWindow.CashGiftPacketEntries[selectedGiftIndex]
+                : null;
             string message = buttonIndex == 0
                 ? stageWindow.CompleteReceiveGiftDialog(selectedGiftIndex, modalWindow.InputValue)
                 : "CUIReceiveGift skipped the current decoded gift row and advanced to the next modal-owner pass without sending the accept packet.";
             uiWindowManager.HideWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
             _chat?.AddSystemMessage(message, currTickCount);
+            if (buttonIndex == 0)
+            {
+                TryTriggerSpecialistPetSocialFeedback(
+                    BuildCashReceiveGiftSpecialistMessages(selectedGift, modalWindow.InputValue),
+                    currTickCount);
+            }
 
             int nextGiftIndex = buttonIndex == 0 ? selectedGiftIndex : selectedGiftIndex + 1;
             if (nextGiftIndex < stageWindow.CashGiftPacketEntries.Count)
             {
                 ShowCashReceiveGiftDialog(stageWindow, nextGiftIndex);
             }
+        }
+
+        private static IEnumerable<string> BuildCashReceiveGiftSpecialistMessages(
+            CashServiceStageWindow.PacketCatalogEntry selectedGift,
+            string replyText)
+        {
+            if (selectedGift != null)
+            {
+                yield return selectedGift.PacketMessage;
+                yield return selectedGift.Detail;
+            }
+
+            yield return replyText;
         }
 
         private void HandleCashNameChangeLicenseDialogButton(int buttonIndex)

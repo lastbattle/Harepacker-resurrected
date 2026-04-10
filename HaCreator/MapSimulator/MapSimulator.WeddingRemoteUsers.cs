@@ -45,6 +45,7 @@ namespace HaCreator.MapSimulator
                     WeddingRemoteUserSourceTag,
                     isVisibleInWorld: true);
                 TryApplyWeddingRemoteProfileMetadata(_remoteUserPool, characterId, build, out _);
+                TryApplyWeddingRemoteGuildMarkMetadata(_remoteUserPool, characterId, build, out _);
 
                 _remoteUserPool.TrySetPortableChair(
                     characterId,
@@ -143,6 +144,46 @@ namespace HaCreator.MapSimulator
             }
 
             return remoteUserPool.TryApplyProfileMetadata(characterId, level, guildName, jobId, out message);
+        }
+
+        internal static bool TryApplyWeddingRemoteGuildMarkMetadata(
+            RemoteUserActorPool remoteUserPool,
+            int characterId,
+            CharacterBuild build,
+            out string message)
+        {
+            message = null;
+            if (remoteUserPool == null)
+            {
+                message = "Remote user pool is unavailable.";
+                return false;
+            }
+
+            if (build == null)
+            {
+                message = $"Wedding remote user {characterId} does not have a build.";
+                return false;
+            }
+
+            bool hasGuildNameOwner = build.HasAuthoritativeProfileGuild;
+            bool hasGuildMarkOwner =
+                build.GuildMarkBackgroundId.HasValue
+                || build.GuildMarkBackgroundColor.HasValue
+                || build.GuildMarkId.HasValue
+                || build.GuildMarkColor.HasValue;
+            if (!hasGuildNameOwner && !hasGuildMarkOwner)
+            {
+                message = $"Wedding remote user {characterId} does not carry authoritative guild-mark metadata.";
+                return false;
+            }
+
+            return remoteUserPool.TryApplyGuildMark(
+                characterId,
+                build.GuildMarkBackgroundId ?? 0,
+                build.GuildMarkBackgroundColor ?? 0,
+                build.GuildMarkId ?? 0,
+                build.GuildMarkColor ?? 0,
+                out message);
         }
 
         private static int ResolveWeddingRemoteUserId(WeddingRemoteParticipantSnapshot snapshot)

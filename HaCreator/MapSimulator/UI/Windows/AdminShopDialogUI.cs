@@ -44,6 +44,7 @@ namespace HaCreator.MapSimulator.UI
             public Texture2D IconTexture { get; init; }
             public bool AlreadyWishlisted { get; init; }
             public int Score { get; init; }
+            public bool IsClientItemNameResult { get; init; }
         }
 
         public sealed class WishlistCategoryNode
@@ -496,6 +497,8 @@ namespace HaCreator.MapSimulator.UI
         private bool _pendingPacketOwnedAdminShopResult;
         private AdminShopEntry _pendingPacketOwnedWishlistRegisterEntry;
         private AdminShopCategory _pendingPacketOwnedWishlistRegisterCategory = AdminShopCategory.All;
+        private int _pendingPacketOwnedWishlistRegisterItemId;
+        private string _pendingPacketOwnedWishlistRegisterTitle = string.Empty;
         public Action<AdminShopDialogUI> WishlistWindowRequested { get; set; }
         public Action<AdminShopDialogUI> WindowHidden { get; set; }
         public Func<long, bool> TryConsumeCashBalance { get; set; }
@@ -769,6 +772,23 @@ namespace HaCreator.MapSimulator.UI
             _footerMessage = string.IsNullOrWhiteSpace(blockingOwner)
                 ? "Packet 367 arrived while another unique-modeless owner was active, so the admin-shop owner stayed unchanged."
                 : $"Packet 367 arrived while {blockingOwner} owned the unique-modeless slot, so the admin-shop owner stayed unchanged.";
+            UpdateActionButtonStates();
+            return _footerMessage;
+        }
+
+        internal string ApplyPacketOwnedAdminShopResultIgnoredByUniqueModelessOwner(byte subtype, byte resultCode, string blockingOwner)
+        {
+            string ownerState = string.IsNullOrWhiteSpace(blockingOwner)
+                ? "Packet 366 was ignored because no live CAdminShopDlg unique-modeless owner was present."
+                : $"Packet 366 was ignored because {blockingOwner} owned the unique-modeless slot instead of CAdminShopDlg.";
+            _packetOwnedAdminShopSession.RecordResultIgnoredByOwner(subtype, resultCode, ownerState);
+            _pendingPacketOwnedAdminShopResult = false;
+            ClearPendingPacketOwnedUserSellSnapshot();
+            ClearPendingPacketOwnedWishlistRegister();
+            ResetPendingRequestState();
+            _footerMessage = string.IsNullOrWhiteSpace(blockingOwner)
+                ? "Packet 366 arrived without a live CAdminShopDlg unique-modeless owner, so the client OnPacket gate ignored it before the request-sent check."
+                : $"Packet 366 arrived while {blockingOwner} owned the unique-modeless slot, so the client OnPacket gate ignored it before the request-sent check.";
             UpdateActionButtonStates();
             return _footerMessage;
         }

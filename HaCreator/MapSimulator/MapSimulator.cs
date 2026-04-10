@@ -4794,6 +4794,7 @@ namespace HaCreator.MapSimulator
 
             if (_socialListRuntime.TryFindTrackedEntry(characterName, out SocialTrackedEntrySnapshot trackedEntry) && trackedEntry.IsOnline)
             {
+                ApplyCharacterInfoProfileAuthorityFromSocialTrackedEntry(actor?.Build, trackedEntry);
                 if (!string.IsNullOrWhiteSpace(trackedEntry.LocationSummary))
                 {
                     locationSummary = trackedEntry.LocationSummary.Trim();
@@ -4842,6 +4843,131 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        internal static bool ApplyCharacterInfoProfileAuthorityFromSocialTrackedEntry(
+            CharacterBuild build,
+            SocialTrackedEntrySnapshot trackedEntry)
+        {
+            if (build == null || trackedEntry == null)
+            {
+                return false;
+            }
+
+            bool applied = false;
+            if (TryResolveCharacterInfoTrackedLevel(trackedEntry.PrimaryText, trackedEntry.SecondaryText, out int level))
+            {
+                build.Level = Math.Max(1, level);
+                build.HasAuthoritativeProfileLevel = true;
+                applied = true;
+            }
+
+            if (TryResolveCharacterInfoTrackedJobName(trackedEntry, out string jobName))
+            {
+                build.JobName = jobName;
+                build.HasAuthoritativeProfileJob = true;
+                applied = true;
+            }
+
+            if (trackedEntry.Tab == SocialListTab.Guild &&
+                !string.IsNullOrWhiteSpace(trackedEntry.SecondaryText) &&
+                !LooksLikeCharacterInfoTrackedLevel(trackedEntry.SecondaryText))
+            {
+                build.GuildName = trackedEntry.SecondaryText.Trim();
+                build.HasAuthoritativeProfileGuild = true;
+                applied = true;
+            }
+
+            return applied;
+        }
+
+        private static bool TryResolveCharacterInfoTrackedLevel(string primaryText, string secondaryText, out int level)
+        {
+            return TryParseCharacterInfoTrackedLevel(primaryText, out level)
+                   || TryParseCharacterInfoTrackedLevel(secondaryText, out level);
+        }
+
+        private static bool TryParseCharacterInfoTrackedLevel(string text, out int level)
+        {
+            level = 0;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string trimmed = text.Trim();
+            int lvIndex = trimmed.IndexOf("Lv", StringComparison.OrdinalIgnoreCase);
+            if (lvIndex < 0)
+            {
+                return false;
+            }
+
+            int digitStart = lvIndex + 2;
+            while (digitStart < trimmed.Length && (trimmed[digitStart] == '.' || char.IsWhiteSpace(trimmed[digitStart])))
+            {
+                digitStart++;
+            }
+
+            int digitEnd = digitStart;
+            while (digitEnd < trimmed.Length && char.IsDigit(trimmed[digitEnd]))
+            {
+                digitEnd++;
+            }
+
+            return digitEnd > digitStart
+                   && int.TryParse(trimmed[digitStart..digitEnd], NumberStyles.Integer, CultureInfo.InvariantCulture, out level)
+                   && level > 0;
+        }
+
+        private static bool LooksLikeCharacterInfoTrackedLevel(string text)
+        {
+            return TryParseCharacterInfoTrackedLevel(text, out _);
+        }
+
+        private static bool TryResolveCharacterInfoTrackedJobName(SocialTrackedEntrySnapshot trackedEntry, out string jobName)
+        {
+            jobName = null;
+            if (trackedEntry == null)
+            {
+                return false;
+            }
+
+            string candidate = trackedEntry.PrimaryText?.Trim();
+            if (string.IsNullOrWhiteSpace(candidate)
+                || LooksLikeCharacterInfoTrackedLevel(candidate)
+                || IsCharacterInfoTrackedNonJobLabel(candidate))
+            {
+                candidate = trackedEntry.SecondaryText?.Trim();
+            }
+
+            if (string.IsNullOrWhiteSpace(candidate)
+                || LooksLikeCharacterInfoTrackedLevel(candidate)
+                || IsCharacterInfoTrackedNonJobLabel(candidate))
+            {
+                return false;
+            }
+
+            jobName = candidate;
+            return true;
+        }
+
+        private static bool IsCharacterInfoTrackedNonJobLabel(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return true;
+            }
+
+            string normalized = text.Trim();
+            return normalized.Equals("Leader", StringComparison.OrdinalIgnoreCase)
+                   || normalized.Equals("Support", StringComparison.OrdinalIgnoreCase)
+                   || normalized.Equals("Scout", StringComparison.OrdinalIgnoreCase)
+                   || normalized.Equals("Member", StringComparison.OrdinalIgnoreCase)
+                   || normalized.Equals("Jr. Master", StringComparison.OrdinalIgnoreCase)
+                   || normalized.Equals("Master", StringComparison.OrdinalIgnoreCase)
+                   || normalized.Equals("Guild", StringComparison.OrdinalIgnoreCase)
+                   || normalized.Equals("Representative", StringComparison.OrdinalIgnoreCase)
+                   || normalized.Contains("online", StringComparison.OrdinalIgnoreCase);
         }
 
         internal static bool TryResolveCharacterInfoPresenceFromWeddingSnapshots(
@@ -16799,6 +16925,8 @@ namespace HaCreator.MapSimulator
             _remoteUserPool.HitFeedbackRegistered += HandleRemoteHitFeedback;
             _remoteUserPool.FieldSoundRegistered += HandleRemoteFieldSoundEffect;
             _remoteUserPool.StringEffectRegistered += HandleRemoteStringEffect;
+            _remoteUserPool.ChatLogMessageRegistered += HandleRemoteEffectChatLogMessage;
+            _remoteUserPool.StatusBarEffectRegistered += HandleRemoteStatusBarEffect;
             _mapTransferDestinations = new MapTransferDestinationStore();
             _mapTransferRuntime = new MapTransferRuntimeManager(_mapTransferDestinations);
 
@@ -21760,6 +21888,49 @@ namespace HaCreator.MapSimulator
             };
         }
 
+        private bool TrySurfaceRecentRemoteDropPickupNotice(
+            int dropId,
+            int currentTime,
+            Pools.DropPickupActorKind actorKind,
+            int actorId,
+            string actorName,
+            int fallbackOwnerId)
+        {
+            Pools.RecentPickupRecord recentPickup = _dropPool?.FindRecentPickup(dropId, currentTime);
+            if (recentPickup == null)
+            {
+                return false;
+            }
+
+            long noticeKey = ((long)dropId << 32) ^ (uint)Math.Max(0, actorId);
+            if (_recentPickupRemoteNoticeTimes.TryGetValue(noticeKey, out int lastNoticeTime)
+                && currentTime - lastNoticeTime < 250)
+            {
+                return true;
+            }
+
+            string itemName = recentPickup.Type == Pools.DropType.Meso
+                ? null
+                : int.TryParse(recentPickup.ItemId, out int itemId)
+                    ? ResolvePickupNoticeItemName(itemId)
+                    : null;
+            string resolvedActorName = ResolvePickupNoticeActorName(
+                actorKind,
+                actorId,
+                !string.IsNullOrWhiteSpace(actorName) ? actorName : ResolveRecentPickupActorName(recentPickup),
+                fallbackOwnerId);
+            PickupNoticeMessagePair messages = PickupNoticeTextFormatter.FormatRemotePickup(
+                actorKind,
+                recentPickup.Type,
+                resolvedActorName,
+                itemName,
+                recentPickup.Quantity,
+                recentPickup.MesoAmount);
+            AddPickupFailureMessage(messages, currentTime);
+            _recentPickupRemoteNoticeTimes[noticeKey] = currentTime;
+            return true;
+        }
+
         private string ResolvePickupNoticeActorName(
             Pools.DropPickupActorKind actorKind,
             int actorId,
@@ -24374,6 +24545,11 @@ namespace HaCreator.MapSimulator
             bool isStalkTarget,
             int? battlefieldTeamId)
         {
+            if (battlefieldTeamId.HasValue)
+            {
+                return MinimapUI.HelperMarkerType.Match;
+            }
+
             if (isTrader)
             {
                 return MinimapUI.HelperMarkerType.AnotherTrader;
@@ -24392,11 +24568,6 @@ namespace HaCreator.MapSimulator
             if (isGuildMember)
             {
                 return isGuildLeader ? MinimapUI.HelperMarkerType.GuildMaster : MinimapUI.HelperMarkerType.Guild;
-            }
-
-            if (battlefieldTeamId.HasValue)
-            {
-                return MinimapUI.HelperMarkerType.Match;
             }
 
             if (isFriend
@@ -24736,7 +24907,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (hasRemotePosition || hasAvatarBuild)
+            if (hasRemotePosition)
             {
                 return true;
             }
@@ -26611,6 +26782,7 @@ namespace HaCreator.MapSimulator
                     AllowsTransferField: ResolvePassiveTransferFieldRuntimeTransferAllowance(),
                     HasPendingSpecialTransfer: _specialFieldRuntime.HasPendingTransfer,
                     HasPendingPacketOwnedTransfer: HasPendingPassiveTransferFieldPacketTransferOwnership(),
+                    HasPendingExclusiveTransferRequest: _collisionScriptExclusiveRequestSent,
                     HasAttachedPacketOwnedDriver: _localFollowRuntime.HasAttachedDriver,
                     HasPendingSameMapTransfer: _sameMapTeleportPending,
                     HasBlockingScriptedSequence: _specialFieldRuntime.HasBlockingScriptedSequence));
@@ -27278,9 +27450,10 @@ namespace HaCreator.MapSimulator
                     ownerKind,
                     portal.sessionValueKey,
                     sessionValue,
+                    currTickCount,
                     portal.horizontalImpact ?? 0,
                     -(portal.verticalImpact ?? 0)));
-                TryDispatchPortalSessionValueRequest(portal.sessionValueKey);
+                TryDispatchPortalSessionValueRequest(portal.sessionValueKey, currTickCount);
                 return true;
             }
 
@@ -36290,7 +36463,7 @@ namespace HaCreator.MapSimulator
 
         internal static bool ShouldTriggerPetSpecialistFeedbackForClientChatLogType(int chatLogType)
         {
-            return chatLogType is 2 or 3 or 4 or 5 or 6 or 14 or 16 or 19 or 26;
+            return chatLogType is 0 or 2 or 3 or 4 or 5 or 6 or 11 or 14 or 16 or 19 or 26;
         }
 
         internal static bool ShouldTriggerPetSpecialistFeedbackForClientChatMessage(string message, int chatLogType)

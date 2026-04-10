@@ -200,6 +200,14 @@ namespace HaCreator.MapSimulator.Interaction
         Notice = 28
     }
 
+    internal enum SocialListClientResultOpcodeKind
+    {
+        FriendResult,
+        PartyResult,
+        GuildResult,
+        AllianceResult
+    }
+
     internal readonly record struct SocialListClientAllianceResultPacket(
         SocialListClientAllianceResultKind Kind,
         int AllianceId,
@@ -215,6 +223,53 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal static class SocialListPacketCodec
     {
+        public static bool TryParseOpcodeFramedClientResult(
+            ReadOnlySpan<byte> rawPacket,
+            ushort friendResultOpcode,
+            ushort partyResultOpcode,
+            ushort guildResultOpcode,
+            ushort allianceResultOpcode,
+            out SocialListClientResultOpcodeKind kind,
+            out byte[] payload,
+            out string error)
+        {
+            kind = default;
+            payload = null;
+            error = null;
+
+            if (rawPacket.Length < sizeof(ushort))
+            {
+                error = "Opcode-framed social-list packet must include a 2-byte opcode.";
+                return false;
+            }
+
+            ushort opcode = (ushort)(rawPacket[0] | (rawPacket[1] << 8));
+            if (friendResultOpcode > 0 && opcode == friendResultOpcode)
+            {
+                kind = SocialListClientResultOpcodeKind.FriendResult;
+            }
+            else if (partyResultOpcode > 0 && opcode == partyResultOpcode)
+            {
+                kind = SocialListClientResultOpcodeKind.PartyResult;
+            }
+            else if (guildResultOpcode > 0 && opcode == guildResultOpcode)
+            {
+                kind = SocialListClientResultOpcodeKind.GuildResult;
+            }
+            else if (allianceResultOpcode > 0 && opcode == allianceResultOpcode)
+            {
+                kind = SocialListClientResultOpcodeKind.AllianceResult;
+            }
+            else
+            {
+                error = $"Unsupported opcode-framed social-list result opcode {opcode}.";
+                return false;
+            }
+
+            payload = rawPacket[sizeof(ushort)..].ToArray();
+            return true;
+        }
+
         public static bool TryParseRoster(ReadOnlySpan<byte> payload, out SocialListRosterPacket packet, out string error)
         {
             packet = default;
@@ -934,8 +989,20 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     default:
-                        error = $"Unsupported client guild-result subtype {(byte)kind}.";
-                        return false;
+                        packet = new SocialListClientGuildResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<string>(),
+                            null,
+                            null,
+                            0,
+                            0,
+                            HasExplicitNotice: false,
+                            null,
+                            default,
+                            null);
+                        return true;
                 }
             }
             catch (InvalidOperationException ex)

@@ -123,7 +123,7 @@ namespace HaCreator.MapSimulator.UI
         private const int MonsterCrystalStringPoolId = 0x268;
         private const int DisassembleEquipmentStringPoolId = 0x269;
         private static readonly int[] ClientRecipeBuckets = { 0, 1, 2, 4, 8, 16 };
-        private static readonly HashSet<int> HiddenUnlockHintItemIds = new()
+        private static readonly HashSet<int> LegacyHiddenUnlockHintItemIds = new()
         {
             4031966,
             4031967,
@@ -2117,6 +2117,15 @@ namespace HaCreator.MapSimulator.UI
                 : $"Item #{itemId}";
         }
 
+        private static string GetItemDescription(int itemId)
+        {
+            return itemId > 0
+                   && HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                   && !string.IsNullOrWhiteSpace(itemInfo?.Item3)
+                ? itemInfo.Item3
+                : string.Empty;
+        }
+
         private static InventoryType ResolveInventoryType(int itemId)
         {
             int typeBucket = itemId / 1000000;
@@ -2443,7 +2452,9 @@ namespace HaCreator.MapSimulator.UI
                 authoredHidden,
                 requiredItemId,
                 requiredEquipItemId,
-                requiredQuestStates.Count);
+                requiredQuestStates.Count,
+                GetItemName(requiredItemId),
+                GetItemDescription(requiredItemId));
 
             return new ItemMakerRecipe
             {
@@ -2675,6 +2686,23 @@ namespace HaCreator.MapSimulator.UI
             int requiredEquipItemId,
             int requiredQuestRequirementCount)
         {
+            return ShouldTreatRecipeAsHidden(
+                authoredHide,
+                requiredItemId,
+                requiredEquipItemId,
+                requiredQuestRequirementCount,
+                requiredItemName: null,
+                requiredItemDescription: null);
+        }
+
+        internal static bool ShouldTreatRecipeAsHidden(
+            bool authoredHide,
+            int requiredItemId,
+            int requiredEquipItemId,
+            int requiredQuestRequirementCount,
+            string requiredItemName,
+            string requiredItemDescription)
+        {
             if (authoredHide)
             {
                 return true;
@@ -2685,11 +2713,35 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
+            if (IsWzAuthoredHiddenUnlockHint(requiredItemName, requiredItemDescription))
+            {
+                return true;
+            }
+
             // ItemMake carries a narrow WZ-authored set of hidden-hint reqItem rows without an
-            // explicit hide property on the row itself. Keep `hide` authoritative when present,
-            // and only treat those observed hint items as hidden instead of widening the fallback
-            // to every 403xxxx quest item.
-            return HiddenUnlockHintItemIds.Contains(requiredItemId);
+            // explicit hide property on the row itself. Prefer the required item's String/Etc.img
+            // metadata above; this legacy id fallback only covers launches where item strings are
+            // not loaded yet, so the existing per-character progression data can still resolve.
+            return string.IsNullOrWhiteSpace(requiredItemName)
+                   && string.IsNullOrWhiteSpace(requiredItemDescription)
+                   && LegacyHiddenUnlockHintItemIds.Contains(requiredItemId);
+        }
+
+        internal static bool IsWzAuthoredHiddenUnlockHint(string requiredItemName, string requiredItemDescription)
+        {
+            if (!string.IsNullOrWhiteSpace(requiredItemName)
+                && requiredItemName.IndexOf("Order Form", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(requiredItemDescription))
+            {
+                return false;
+            }
+
+            return requiredItemDescription.IndexOf("Order :", StringComparison.OrdinalIgnoreCase) >= 0
+                   || requiredItemDescription.IndexOf("Maker skill", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private void RebuildVisiblePages()

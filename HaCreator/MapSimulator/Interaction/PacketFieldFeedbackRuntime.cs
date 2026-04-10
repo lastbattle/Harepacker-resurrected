@@ -57,6 +57,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<string, bool> IsBlacklistedName { get; init; }
         internal Func<string, bool> IsBlockedFriendName { get; init; }
         internal Func<int, int, int, bool> QueueMapTransfer { get; init; }
+        internal Action<string, string, byte, int> UpdateWhisperUserListLocation { get; init; }
         internal Func<IReadOnlyList<PacketFieldSwindleWarningEntry>> ResolveSwindleWarnings { get; init; }
         internal Action<PacketFieldBossTimerVisualState> ShowBossTimerClock { get; init; }
         internal Action ClearBossTimerClock { get; init; }
@@ -757,6 +758,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                         if (subtype == 72)
                         {
+                            callbacks?.UpdateWhisperUserListLocation?.Invoke(target, resolved, result, value);
                             _statusMessage = queuedTransfer
                                 ? $"Updated packet-owned whisper find-reply for {target} and queued map transfer."
                                 : $"Updated packet-owned whisper find-reply for {target}.";

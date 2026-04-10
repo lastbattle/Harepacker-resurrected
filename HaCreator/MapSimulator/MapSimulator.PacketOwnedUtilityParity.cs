@@ -192,7 +192,6 @@ namespace HaCreator.MapSimulator
         private static readonly Lazy<IReadOnlyDictionary<string, int>> PacketOwnedVisiblePotentialItemOptionIdsByLine = new(CreatePacketOwnedVisiblePotentialItemOptionIdsByLine);
         private static readonly Lazy<HashSet<int>> PacketOwnedVisiblePotentialItemOptionIds = new(CreatePacketOwnedVisiblePotentialItemOptionIdSet);
         private static readonly Lazy<IReadOnlyDictionary<int, int[]>> PacketOwnedSkillIdAliasCandidates = new(CreatePacketOwnedSkillIdAliasCandidates);
-        private static readonly Lazy<int[]> PacketOwnedAuthoredTimeBombSkillIdCandidates = new(CreatePacketOwnedAuthoredTimeBombSkillIdCandidates);
         private LocalOverlayBalloonSkin _packetOwnedTutorBalloonSkin;
         private readonly Dictionary<int, List<IDXObject>> _packetOwnedTutorCueFramesByIndex = new();
         private readonly HashSet<int> _packetOwnedTutorTrackedSummonObjectIds = new();
@@ -4752,6 +4751,20 @@ namespace HaCreator.MapSimulator
                 && unchecked(currentTickCount - lastUpdateTick) > PacketOwnedRadioUpdatePollIntervalMs;
         }
 
+        internal static bool ShouldCompletePacketOwnedRadioSchedule(
+            int currentTickCount,
+            int expectedStopTick,
+            bool backendStopped)
+        {
+            if (backendStopped)
+            {
+                return true;
+            }
+
+            return expectedStopTick != int.MinValue
+                && unchecked(currentTickCount - expectedStopTick) > PacketOwnedRadioUpdatePollIntervalMs;
+        }
+
         private void UpdatePacketOwnedRadioSchedule(int currentTickCount)
         {
             SyncPacketOwnedRadioCreateLayerContextLifecycle();
@@ -4765,7 +4778,10 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (_packetOwnedRadioAudio?.State == Microsoft.Xna.Framework.Audio.SoundState.Stopped)
+            if (ShouldCompletePacketOwnedRadioSchedule(
+                    currentTickCount,
+                    _lastPacketOwnedRadioExpectedStopTick,
+                    _packetOwnedRadioAudio?.State == Microsoft.Xna.Framework.Audio.SoundState.Stopped))
             {
                 StopPacketOwnedRadioSchedule(completed: true, emitChatNotice: true);
                 return;
@@ -4943,7 +4959,7 @@ namespace HaCreator.MapSimulator
         private string BuildPacketOwnedRadioWindowFooter()
         {
             return IsPacketOwnedRadioPlaying()
-                ? $"Client parity: CRadioManager owns playback, UI, and chat; CUIRadio::CreateLayer(int bLeft) anchors Off/0 to Origin_RT with x=-3-width-(bLeft?40:0), y=+3, and the simulator now keeps Off resident while the animated On overlay fades against _utilityBgmMuted after the session's CreateLayer bLeft is latched until CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] is explicitly mutated or the session ends; CRadioManager::MMS_Play still terminates through the MonoGame audio seam instead of the client's raw AIL handle."
+                ? $"Client parity: CRadioManager owns playback, UI, and chat; CUIRadio::CreateLayer(int bLeft) anchors Off/0 to Origin_RT with x=-3-width-(bLeft?40:0), y=+3, and the simulator now keeps Off resident while the animated On overlay fades against _utilityBgmMuted after the session's CreateLayer bLeft is latched until CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] is explicitly mutated or the session ends; completion now follows the recovered CRadioManager m_tLastUpdate cadence even when the MonoGame backend has not reported SoundState.Stopped, but MMS_Play still terminates through MonoGame instead of the client's raw AIL handle."
                 : $"Client parity: waiting for OnRadioSchedule; CreateLayer(int bLeft) prefers packet-owned CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] and otherwise falls back to the live minimap-expanded branch before applying the Origin_RT anchor, with Off/0 staying resident until the On overlay fades in.";
         }
 
@@ -5030,7 +5046,7 @@ namespace HaCreator.MapSimulator
             string firstPoll = _lastPacketOwnedRadioExpectedStopTick == int.MinValue
                 ? "immediate fallback"
                 : $"{Math.Max(0, unchecked(ResolvePacketOwnedRadioFirstCompletionPollTick(_lastPacketOwnedRadioExpectedStopTick) - _lastPacketOwnedRadioStartTick)) / 1000f:0.000}s from session start";
-            return $"Update cadence: CRadioManager seeds m_tLastUpdate from get_update_time() - ms_position + ms_length, then checks status once tCur-m_tLastUpdate > {PacketOwnedRadioUpdatePollIntervalMs} ms; simulator now mirrors that remaining-runtime schedule ({expectedStop} stop, first poll at {firstPoll}).";
+            return $"Update cadence: CRadioManager seeds m_tLastUpdate from get_update_time() - ms_position + ms_length, then checks status once tCur-m_tLastUpdate > {PacketOwnedRadioUpdatePollIntervalMs} ms; simulator now mirrors that remaining-runtime schedule ({expectedStop} stop, first poll at {firstPoll}) and treats the expected-stop cadence as the completion fallback if the MonoGame backend state lags.";
         }
 
         private static string FormatStringPoolId(int stringPoolId)
@@ -9340,55 +9356,27 @@ namespace HaCreator.MapSimulator
         {
             int packetSkillLevel = _playerManager?.Skills?.GetSkillLevel(packetSkillId) ?? 0;
             int normalizedSkillId = ResolvePacketOwnedLocalSkillId(packetSkillId);
-            if (IsPacketOwnedTimeBombSkillId(packetSkillId)
+            return ResolvePacketOwnedTimeBombLocalSkillId(
+                packetSkillId,
+                packetSkillLevel,
+                normalizedSkillId,
+                IsPacketOwnedTimeBombSkillId);
+        }
+
+        internal static int ResolvePacketOwnedTimeBombLocalSkillId(
+            int packetSkillId,
+            int packetSkillLevel,
+            int normalizedSkillId,
+            Func<int, bool> isTimeBombSkillId)
+        {
+            if ((isTimeBombSkillId?.Invoke(packetSkillId) ?? false)
                 || packetSkillLevel > 0
                 || normalizedSkillId != packetSkillId)
             {
                 return normalizedSkillId;
             }
 
-            return ResolvePacketOwnedDedicatedFamilyFallbackSkillId(
-                packetSkillId,
-                packetSkillLevel,
-                PacketOwnedAuthoredTimeBombSkillIdCandidates.Value,
-                static candidateSkillId => candidateSkillId > 0,
-                candidateSkillId => _playerManager?.Skills?.GetSkillLevel(candidateSkillId) ?? 0);
-        }
-
-        internal static int ResolvePacketOwnedDedicatedFamilyFallbackSkillId(
-            int packetSkillId,
-            int packetSkillLevel,
-            IEnumerable<int> preferredSkillIdCandidates,
-            Func<int, bool> canUsePacketSkillId,
-            Func<int, int> getCandidateSkillLevel)
-        {
-            if (packetSkillLevel > 0
-                && (canUsePacketSkillId?.Invoke(packetSkillId) ?? packetSkillId > 0))
-            {
-                return packetSkillId;
-            }
-
-            int fallbackSkillId = packetSkillId;
-            if (preferredSkillIdCandidates == null)
-            {
-                return fallbackSkillId;
-            }
-
-            foreach (int candidateSkillId in preferredSkillIdCandidates)
-            {
-                if (!(canUsePacketSkillId?.Invoke(candidateSkillId) ?? candidateSkillId > 0))
-                {
-                    continue;
-                }
-
-                fallbackSkillId = candidateSkillId;
-                if ((getCandidateSkillLevel?.Invoke(candidateSkillId) ?? 0) > 0)
-                {
-                    return candidateSkillId;
-                }
-            }
-
-            return fallbackSkillId;
+            return packetSkillId;
         }
 
         internal static bool IsClientOwnedVengeancePacketSkillId(int skillId)
@@ -9494,13 +9482,6 @@ namespace HaCreator.MapSimulator
                 authoredSkillIds,
                 PacketOwnedCurrentTimeBombSkillId,
                 0);
-        }
-
-        private static int[] CreatePacketOwnedAuthoredTimeBombSkillIdCandidates()
-        {
-            return CreatePacketOwnedAuthoredTimeBombSkillIdCandidates(
-                PacketOwnedTimeBombSkillIdCatalog.Value,
-                TryResolvePacketOwnedTimeBombAuthoredBranchCoverage);
         }
 
         internal static HashSet<int> CreatePacketOwnedExJablinSkillIdCatalog(

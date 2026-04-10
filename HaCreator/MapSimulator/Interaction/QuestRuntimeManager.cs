@@ -366,6 +366,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, int> _trackedItems = new();
         private readonly Dictionary<int, long> _questAlarmUpdateTicks = new();
         private readonly Dictionary<int, long> _questAlarmAutoRegisterTicks = new();
+        private readonly Dictionary<int, string> _packetOwnedQuestAlarmTitleTooltips = new();
         private readonly Dictionary<int, string> _questMateNames = new();
         private readonly HashSet<int> _packetOwnedAutoStartQuestRegistrations = new();
         private int _recentlyViewedQuestId;
@@ -720,6 +721,38 @@ namespace HaCreator.MapSimulator.Interaction
             if (_definitions.ContainsKey(questId))
             {
                 _questAlarmUpdateTicks.Remove(questId);
+            }
+        }
+
+        public void SetPacketOwnedQuestAlarmTitleTooltip(int questId, string tooltipText)
+        {
+            if (questId <= 0)
+            {
+                return;
+            }
+
+            string normalizedText = NormalizePacketOwnedQuestAlarmTitleTooltip(tooltipText);
+            if (string.IsNullOrWhiteSpace(normalizedText))
+            {
+                _packetOwnedQuestAlarmTitleTooltips.Remove(questId);
+                return;
+            }
+
+            _packetOwnedQuestAlarmTitleTooltips[questId] = normalizedText;
+        }
+
+        private static string NormalizePacketOwnedQuestAlarmTitleTooltip(string tooltipText)
+        {
+            return string.IsNullOrWhiteSpace(tooltipText)
+                ? string.Empty
+                : tooltipText.Trim();
+        }
+
+        public void ClearPacketOwnedQuestAlarmTitleTooltip(int questId)
+        {
+            if (questId > 0)
+            {
+                _packetOwnedQuestAlarmTitleTooltips.Remove(questId);
             }
         }
 
@@ -2067,6 +2100,7 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         QuestId = item.Definition.QuestId,
                         Title = item.Definition.Name,
+                        TooltipText = ResolvePacketOwnedQuestAlarmTitleTooltip(item.Definition.QuestId),
                         StatusText = issues.Count == 0 ? "Ready" : "In progress",
                         UpdateSequence = GetQuestAlarmUpdateSequence(item.Definition.QuestId),
                         CurrentProgress = currentProgress,
@@ -2100,6 +2134,13 @@ namespace HaCreator.MapSimulator.Interaction
             return questId > 0 && _questAlarmUpdateTicks.TryGetValue(questId, out long tick)
                 ? tick
                 : long.MinValue;
+        }
+
+        private string ResolvePacketOwnedQuestAlarmTitleTooltip(int questId)
+        {
+            return questId > 0 && _packetOwnedQuestAlarmTitleTooltips.TryGetValue(questId, out string tooltipText)
+                ? tooltipText
+                : string.Empty;
         }
 
         internal IReadOnlyList<int> CaptureAvailableQuestIds(CharacterBuild build)
@@ -2938,7 +2979,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             NpcDialogueFormattingContext formattingContext = CreateDialogueFormattingContext(build, definition.QuestId);
-                    string noticeText = BuildClientPacketQuestResultActionNoticeText(actions, build);
+            string noticeText = BuildClientPacketQuestResultActionNoticeText(actions, build, definition.QuestId);
             IReadOnlyList<NpcInteractionPage> fallbackPages = ResolveConversationPages(
                 definition,
                 completionPhase ? QuestStateType.Started : QuestStateType.Not_Started,
@@ -7166,6 +7207,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             int tokenStart = 0;
             char quote = '\0';
+            int groupingDepth = 0;
             for (int i = 0; i < value.Length; i++)
             {
                 char current = value[i];
@@ -7182,6 +7224,27 @@ namespace HaCreator.MapSimulator.Interaction
                 if (current == '"' || current == '\'')
                 {
                     quote = current;
+                    continue;
+                }
+
+                if (current == '(' || current == '[' || current == '{')
+                {
+                    groupingDepth++;
+                    continue;
+                }
+
+                if (current == ')' || current == ']' || current == '}')
+                {
+                    if (groupingDepth > 0)
+                    {
+                        groupingDepth--;
+                    }
+
+                    continue;
+                }
+
+                if (groupingDepth > 0)
+                {
                     continue;
                 }
 
@@ -10240,10 +10303,13 @@ namespace HaCreator.MapSimulator.Interaction
             QuestActionBundle actions = state == QuestStateType.Not_Started
                 ? definition.StartActions
                 : definition.EndActions;
-            return BuildClientPacketQuestResultActionNoticeText(actions, build);
+            return BuildClientPacketQuestResultActionNoticeText(actions, build, definition.QuestId);
         }
 
-        internal string BuildClientPacketQuestResultActionNoticeText(QuestActionBundle actions, CharacterBuild build)
+        internal string BuildClientPacketQuestResultActionNoticeText(
+            QuestActionBundle actions,
+            CharacterBuild build,
+            int questId = 0)
         {
             if (actions == null)
             {
@@ -10251,14 +10317,32 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string summaryText = BuildClientPacketQuestResultItemCategorySummary(actions, build);
-            if (string.IsNullOrWhiteSpace(summaryText))
-            {
-                return string.Empty;
-            }
-
-            return actions.MesoReward < 0
+            bool hasSummaryText = !string.IsNullOrWhiteSpace(summaryText);
+            string categoryNoticeText = hasSummaryText && actions.MesoReward < 0
                 ? QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(summaryText)
                 : summaryText;
+
+            List<string> supplementalLines = BuildVisibleQuestActionLines(
+                    actions,
+                    build,
+                    questId,
+                    includeSelectionTag: false,
+                    includeRewardItems: false,
+                    suppressNegativeMesoLine: hasSummaryText && actions.MesoReward < 0)
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .ToList();
+
+            if (!hasSummaryText)
+            {
+                return string.Join("\n", supplementalLines);
+            }
+
+            if (supplementalLines.Count == 0)
+            {
+                return categoryNoticeText;
+            }
+
+            return $"{categoryNoticeText}\n{string.Join("\n", supplementalLines)}";
         }
 
         private static string ResolvePacketQuestResultPrimaryText(

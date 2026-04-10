@@ -123,6 +123,9 @@ namespace HaCreator.MapSimulator
             SpouseWhisper = 12,
             QuestAlarm = 13,
             CashShop = 14,
+            Medal = 15,
+            ItemPot = 16,
+            MagicWheel = 17,
         }
 
         internal enum PacketOwnedRawChatOwner
@@ -1349,6 +1352,18 @@ namespace HaCreator.MapSimulator
                 case PacketOwnedRawFunctionOwner.CashShop:
                     ShowPacketOwnedCashShopWindow();
                     return true;
+                case PacketOwnedRawFunctionOwner.Medal:
+                    TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.MedalQuestInfo, () =>
+                        ShowUtilityWindow(MapSimulatorWindowNames.MedalQuestInfo, "packet-owned-funckey:26"));
+                    return true;
+                case PacketOwnedRawFunctionOwner.ItemPot:
+                    TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.ItemPot, () =>
+                        ShowUtilityWindow(MapSimulatorWindowNames.ItemPot, "packet-owned-funckey:30"));
+                    return true;
+                case PacketOwnedRawFunctionOwner.MagicWheel:
+                    TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.MagicWheel, () =>
+                        ShowUtilityWindow(MapSimulatorWindowNames.MagicWheel, "packet-owned-funckey:32"));
+                    return true;
                 default:
                     break;
             }
@@ -1559,11 +1574,14 @@ namespace HaCreator.MapSimulator
                 14 => PacketOwnedRawFunctionOwner.ShortcutMenu,
                 24 => PacketOwnedRawFunctionOwner.PartySearch,
                 25 => PacketOwnedRawFunctionOwner.Family,
+                26 => PacketOwnedRawFunctionOwner.Medal,
                 21 => PacketOwnedRawFunctionOwner.SpouseWhisper,
                 22 => PacketOwnedRawFunctionOwner.CashShop,
                 27 => PacketOwnedRawFunctionOwner.Expedition,
                 29 => PacketOwnedRawFunctionOwner.Profession,
+                30 => PacketOwnedRawFunctionOwner.ItemPot,
                 31 => PacketOwnedRawFunctionOwner.Event,
+                32 => PacketOwnedRawFunctionOwner.MagicWheel,
                 _ => PacketOwnedRawFunctionOwner.None,
             };
         }

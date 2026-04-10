@@ -526,10 +526,10 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             // Basic properties from info node
             var infoNode = skillNode["info"];
+            skill.Invisible = ResolveClientInvisibleSkillFlag(skillNode, infoNode);
             if (infoNode != null)
             {
                 // Hidden skill
-                skill.Invisible = GetInt(infoNode, "invisible") == 1;
                 skill.MasterOnly = GetInt(infoNode, "masterOnly") == 1;
                 skill.IsRapidAttack = GetInt(infoNode, "rapidAttack") == 1;
                 skill.IsMesoExplosion = GetInt(infoNode, "mesoExplosion") == 1;
@@ -597,11 +597,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             skill.MorphId = ResolveMorphTemplateId(skill.SkillId, commonNode, pvpCommonNode, infoNode);
-
-            if (!skill.Invisible)
-            {
-                skill.Invisible = GetInt(skillNode, "invisible") == 1;
-            }
 
             // Parse level nodes to find max level
             var levelNode = skillNode["level"];
@@ -846,6 +841,17 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             skill.IsBuff |= hasTime && (hasPad || hasMad || hasAffected || hasPersistentAvatarEffect);
             skill.IsHeal |= hasHp && !hasDamage;
+        }
+
+        private static bool ResolveClientInvisibleSkillFlag(WzImageProperty skillNode, WzImageProperty infoNode)
+        {
+            return GetInt(infoNode, "invisible") == 1
+                   || GetInt(skillNode, "invisible") == 1;
+        }
+
+        internal static bool ResolveClientInvisibleSkillFlagForTesting(WzImageProperty skillNode, WzImageProperty infoNode)
+        {
+            return ResolveClientInvisibleSkillFlag(skillNode, infoNode);
         }
 
         private static SkillType ResolveAttackSkillType(SkillAttackType? clientAttackType, bool hasBall, bool isMovement)
@@ -2500,7 +2506,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     slotIndex++,
                     pieceActionName,
                     GetInt(pieceNode, "frame"),
-                    Math.Abs(GetInt(pieceNode, "delay")),
+                    pieceNode["delay"] != null ? Math.Abs(GetInt(pieceNode, "delay")) : null,
                     GetInt(pieceNode, "flip") != 0,
                     GetVector(pieceNode, "move"),
                     GetInt(pieceNode, "rotate")));
@@ -5793,9 +5799,13 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static bool IsExplicitSwallowFamilyRoot(SkillData skill)
         {
             if (skill == null
-                || !skill.IsSwallowSkill
                 || skill.DummySkillParents == null
                 || skill.DummySkillParents.Length == 0)
+            {
+                return false;
+            }
+
+            if (!skill.IsSwallowSkill && skill.ClientInfoType != 98)
             {
                 return false;
             }

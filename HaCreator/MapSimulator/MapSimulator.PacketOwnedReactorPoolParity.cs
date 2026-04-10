@@ -85,6 +85,7 @@ namespace HaCreator.MapSimulator
             if (entered && reactorIndex >= 0)
             {
                 RegisterDynamicReactorForRendering(reactorIndex);
+                FlushPendingReactorTouchRequestRemovals();
                 DispatchReactorTouchStateChanges(_reactorPool.DrainPendingPacketTouchStateChanges());
             }
 
@@ -143,8 +144,7 @@ namespace HaCreator.MapSimulator
                 out string detail);
             if (left)
             {
-                _reactorPoolOfficialSessionBridge.TryRemoveQueuedTouchRequests(packet.ObjectId, out _);
-                _reactorTouchPacketOutbox.TryRemoveQueuedTouchRequests(packet.ObjectId, out _);
+                RemoveQueuedReactorTouchRequests(packet.ObjectId);
             }
 
             return new PacketReactorPoolApplyResult(left, detail);
@@ -160,6 +160,30 @@ namespace HaCreator.MapSimulator
             _packetReactorPoolRuntime.Clear();
             _reactorPoolOfficialSessionBridge.ClearQueuedTouchRequests();
             _reactorTouchPacketOutbox.ClearQueuedTouchRequests();
+        }
+
+        private void FlushPendingReactorTouchRequestRemovals()
+        {
+            if (_reactorPool == null)
+            {
+                return;
+            }
+
+            foreach (int objectId in _reactorPool.DrainPendingPacketTouchRequestRemovalObjectIds())
+            {
+                RemoveQueuedReactorTouchRequests(objectId);
+            }
+        }
+
+        private void RemoveQueuedReactorTouchRequests(int objectId)
+        {
+            if (objectId <= 0)
+            {
+                return;
+            }
+
+            _reactorPoolOfficialSessionBridge.TryRemoveQueuedTouchRequests(objectId, out _);
+            _reactorTouchPacketOutbox.TryRemoveQueuedTouchRequests(objectId, out _);
         }
 
         private void EnsureReactorPoolPacketInboxState(bool shouldRun)

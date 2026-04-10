@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator.Loaders
         // Constants
         private const string GLOBAL_FONT = "Arial";
         private const float MINIMAP_STREETNAME_TOOLTIP_FONTSIZE = 10f;
+        private const int COLLAPSED_MINIMAP_TOP_ROW_BUTTON_RIGHT_PADDING = 6;
         private const SWF.TextFormatFlags CollapsedMinimapTitleTextFormatFlags =
             SWF.TextFormatFlags.NoPadding |
             SWF.TextFormatFlags.NoPrefix |
@@ -1941,11 +1942,13 @@ namespace HaCreator.MapSimulator.Loaders
         internal static int ResolveCollapsedMinimapButtonReserveWidthForTesting(
             int stateButtonWidth,
             int mapButtonWidth,
-            int rightInset)
+            int rightInset,
+            int rightPadding = 0)
         {
             return Math.Max(0, stateButtonWidth)
                 + Math.Max(0, mapButtonWidth)
-                + Math.Max(0, rightInset);
+                + Math.Max(0, rightInset)
+                + Math.Max(0, rightPadding);
         }
 
         internal static int ResolveCollapsedMinimapTitleMaxTextWidthForTesting(
@@ -2714,7 +2717,8 @@ namespace HaCreator.MapSimulator.Loaders
             int collapsedButtonReserveWidth = ResolveCollapsedMinimapButtonReserveWidthForTesting(
                 ResolveUiButtonSnapshotWidth(collapsedMaximizeButtonProperty),
                 ResolveUiButtonSnapshotWidth(collapsedMapButtonProperty),
-                collapsedTitleChromeMetrics.RightInset);
+                collapsedTitleChromeMetrics.RightInset,
+                COLLAPSED_MINIMAP_TOP_ROW_BUTTON_RIGHT_PADDING);
             int collapsedTitleMaxBarWidth = Math.Max(1, fullMiniMapStackPanel.GetSize().Width);
             System.Drawing.Bitmap collapsedTitleContent = RenderCollapsedMinimapTitleContent(
                 mapMark,

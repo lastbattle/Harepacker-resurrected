@@ -58,6 +58,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private static readonly HashSet<int> ClientFacingIrregularFirstJobRoots = new HashSet<int>
         {
+            501,
             2001,
             2002,
             3001
@@ -362,15 +363,47 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            foreach (int candidate in EnumerateSkillRestrictionClassCandidates(Math.Abs(currentJobId), skill))
+            foreach (int listedClass in EnumerateIntValues(property))
             {
-                if (ContainsIntValue(property, candidate))
+                if (MatchesClientSkillClass(listedClass, Math.Abs(currentJobId), skill))
                 {
                     return true;
                 }
             }
 
             return false;
+        }
+
+        private static IEnumerable<int> EnumerateIntValues(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                yield break;
+            }
+
+            Stack<WzImageProperty> pending = new Stack<WzImageProperty>();
+            pending.Push(property);
+            while (pending.Count > 0)
+            {
+                WzImageProperty current = pending.Pop();
+                if (TryReadInt(current, out int value))
+                {
+                    yield return value;
+                }
+
+                if (current.WzProperties == null)
+                {
+                    continue;
+                }
+
+                for (int i = 0; i < current.WzProperties.Count; i++)
+                {
+                    if (current.WzProperties[i] != null)
+                    {
+                        pending.Push(current.WzProperties[i]);
+                    }
+                }
+            }
         }
 
         private static bool ContainsIntValue(WzImageProperty property, int expectedValue)
@@ -464,59 +497,70 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
-        private static IEnumerable<int> EnumerateSkillRestrictionClassCandidates(int currentJobId, SkillData skill)
+        private static bool MatchesClientSkillClass(int listedClass, int currentJobId, SkillData skill)
         {
-            HashSet<int> yielded = new HashSet<int>();
+            if (listedClass <= 0)
+            {
+                return false;
+            }
 
-            if (skill == null)
+            int skillRoot = Math.Abs(GetSkillRoot(skill?.SkillId ?? 0));
+            if (skillRoot <= 0)
+            {
+                skillRoot = Math.Abs(skill?.Job ?? 0);
+            }
+
+            if (skillRoot <= 0)
             {
                 foreach (int candidate in EnumerateClassCandidatesForJobId(currentJobId))
                 {
-                    if (yielded.Add(candidate))
+                    if (candidate == listedClass)
                     {
-                        yield return candidate;
+                        return true;
                     }
                 }
 
-                yield break;
+                return false;
             }
 
-            if (skill.IsFourthJob)
+            if (IsEvanSkillClassRoot(skillRoot))
             {
-                if (yielded.Add(4))
+                int evanClass = GetClientJobClassGrade(skillRoot);
+                return listedClass switch
                 {
-                    yield return 4;
-                }
+                    1 => evanClass >= 1 && evanClass <= 2,
+                    2 => evanClass >= 3 && evanClass <= 6,
+                    3 => evanClass >= 7 && evanClass <= 8,
+                    4 => evanClass >= 9 && evanClass <= 10,
+                    _ => false
+                };
             }
 
-            foreach (int candidate in EnumerateClassCandidatesForJobId(Math.Abs(skill.Job)))
+            if (IsDualBladeSkillClassRoot(skillRoot))
             {
-                if (yielded.Add(candidate))
+                int dualBladeStep = skillRoot - 430;
+                return listedClass switch
                 {
-                    yield return candidate;
-                }
+                    1 => dualBladeStep == 0,
+                    2 => dualBladeStep >= 1 && dualBladeStep <= 2,
+                    3 => dualBladeStep == 3,
+                    4 => dualBladeStep == 4,
+                    _ => false
+                };
             }
 
-            foreach (int candidate in EnumerateClassCandidatesForJobId(Math.Abs(skill.SkillId / 10000)))
-            {
-                if (yielded.Add(candidate))
-                {
-                    yield return candidate;
-                }
-            }
+            int skillClass = GetClientJobClassGrade(skillRoot);
+            return skillClass > 0 && listedClass == skillClass;
+        }
 
-            if (yielded.Count > 0)
-            {
-                yield break;
-            }
+        private static bool IsEvanSkillClassRoot(int jobId)
+        {
+            return jobId / 100 == 22 || jobId == 2001;
+        }
 
-            foreach (int candidate in EnumerateClassCandidatesForJobId(currentJobId))
-            {
-                if (yielded.Add(candidate))
-                {
-                    yield return candidate;
-                }
-            }
+        private static bool IsDualBladeSkillClassRoot(int jobId)
+        {
+            return jobId / 10 == 43;
         }
 
         private static IEnumerable<int> EnumerateClassCandidatesForJobId(int jobId)
@@ -567,7 +611,7 @@ namespace HaCreator.MapSimulator.Fields
                     return 2;
                 }
 
-                return Math.Min(4, (jobId - 2210) + 2);
+                return Math.Min(10, (jobId - 2210) + 2);
             }
 
             int branchDigit = jobId % 10;

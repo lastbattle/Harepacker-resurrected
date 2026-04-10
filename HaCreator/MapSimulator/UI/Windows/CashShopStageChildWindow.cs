@@ -223,6 +223,12 @@ namespace HaCreator.MapSimulator.UI
         private string _oneADaySessionState = "Reward session idle.";
         private bool _oneADayRuntimeSeeded;
         private string _oneADayPacketStateSignature = string.Empty;
+        private IReadOnlyList<OneADayOwnerState.SelectorEntryState> _oneADaySelectorRuntime = Array.Empty<OneADayOwnerState.SelectorEntryState>();
+        private IReadOnlyList<OneADayOwnerState.CounterSlotState> _oneADayCounterRuntime = Array.Empty<OneADayOwnerState.CounterSlotState>();
+        private IReadOnlyList<OneADayOwnerState.PlateButtonState> _oneADayPlateButtonRuntime = Array.Empty<OneADayOwnerState.PlateButtonState>();
+        private int _oneADayRewardSessionByte;
+        private int _oneADayRewardSessionRevision;
+        private int _oneADayNumberCanvasReadyMask;
 
         public CashShopStageChildWindow(IDXObject frame, string windowName, string title)
             : base(frame)

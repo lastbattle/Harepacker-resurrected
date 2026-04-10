@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace HaCreator.MapSimulator.Interaction
@@ -29,6 +30,8 @@ namespace HaCreator.MapSimulator.Interaction
         string Title,
         string MetadataSummary,
         string DetailSummary,
+        string RawEncodedHex,
+        string BodyEncodedHex,
         int EncodedByteLength);
 
     internal readonly record struct StoreBankOwnerRowSnapshot(
@@ -1007,6 +1010,8 @@ namespace HaCreator.MapSimulator.Interaction
             internal int NativeItemTypeIndex { get; init; }
             internal bool IsRechargeBundle { get; init; }
             internal string MetadataSummary { get; init; } = string.Empty;
+            internal byte[] RawEncodedBytes { get; init; } = Array.Empty<byte>();
+            internal byte[] BodyEncodedBytes { get; init; } = Array.Empty<byte>();
             internal StoreBankEquipData EquipData { get; init; }
             internal StoreBankBundleData BundleData { get; init; }
             internal StoreBankPetData PetData { get; init; }
@@ -1048,8 +1053,14 @@ namespace HaCreator.MapSimulator.Interaction
         private int _dbcharFlagMask;
         private int _pendingGetAllPassingDay;
         private int _pendingGetAllFee;
+        private int _pendingGetAllOwnerRowIndex = -1;
+        private int _pendingGetAllPacketRowIndex = -1;
+        private int _pendingGetAllItemId;
+        private string _pendingGetAllItemTitle = string.Empty;
         private int _pendingFeeCalculationOwnerRowIndex = -1;
         private int _pendingFeeCalculationPacketRowIndex = -1;
+        private int _pendingFeeCalculationItemId;
+        private string _pendingFeeCalculationItemTitle = string.Empty;
         private int _lastPromptContextValue;
         private int _lastPromptTokenValue;
         private int _lastPromptChannelId = -1;
@@ -1092,8 +1103,8 @@ namespace HaCreator.MapSimulator.Interaction
             GetAllRequestWasAccepted = true;
             _hasAcceptedGetAllRequestInFlight = true;
             StatusMessage = _pendingGetAllFee > 0
-                ? $"Accepted packet-authored store-bank get-all request for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}; BtGet stays request-owned until the next store-bank packet."
-                : $"Accepted packet-authored store-bank get-all request for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with the zero-fee StringPool 0xDC5 branch; BtGet stays request-owned until the next store-bank packet.";
+                ? $"Accepted packet-authored store-bank get-all request for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}{BuildPendingGetAllSelectionSuffix()}; BtGet stays request-owned until the next store-bank packet."
+                : $"Accepted packet-authored store-bank get-all request for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with the zero-fee StringPool 0xDC5 branch{BuildPendingGetAllSelectionSuffix()}; BtGet stays request-owned until the next store-bank packet.";
             AppendNote(StatusMessage);
             return StatusMessage;
         }
@@ -1111,7 +1122,7 @@ namespace HaCreator.MapSimulator.Interaction
             request = new PacketOwnedNpcUtilityOutboundRequest(
                 69,
                 new byte[] { 27 },
-                $"Mirrored CStoreBankDlg::SendGetAllRequest for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) and fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)} (opcode 69, mode 27).");
+                $"Mirrored CStoreBankDlg::SendGetAllRequest for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) and fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}{BuildPendingGetAllSelectionSuffix()} (opcode 69, mode 27).");
             return true;
         }
 
@@ -1233,8 +1244,8 @@ namespace HaCreator.MapSimulator.Interaction
                     : "No accepted get-all request is currently in flight.",
                 HasPendingGetAllRequest
                     ? (_pendingGetAllFee > 0
-                        ? $"Pending get-all modal: {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s), fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)} (StringPool 0xDC4)."
-                        : $"Pending get-all modal: {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s), no fee (StringPool 0xDC5).")
+                        ? $"Pending get-all modal: {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s), fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}{BuildPendingGetAllSelectionSuffix()} (StringPool 0xDC4)."
+                        : $"Pending get-all modal: {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s), no fee{BuildPendingGetAllSelectionSuffix()} (StringPool 0xDC5).")
                     : "No get-all confirmation modal is currently staged.",
                 HasShipmentPrompt
                     ? BuildShipmentPromptSummary()
@@ -1449,6 +1460,8 @@ namespace HaCreator.MapSimulator.Interaction
             HasPendingFeeCalculationRequest = true;
             _pendingFeeCalculationOwnerRowIndex = ownerRowIndex + 1;
             _pendingFeeCalculationPacketRowIndex = selectedItem.PacketGroupRowIndex;
+            _pendingFeeCalculationItemId = selectedItem.ItemId;
+            _pendingFeeCalculationItemTitle = ResolveOwnerPrimaryText(selectedItem.ItemName, selectedItem.ClientDisplayName);
             StatusMessage = $"CStoreBankDlg BtGet mirrored SendCalculateFeeRequest for selected row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}); IDA confirms the immediate outbound body is only 69 [26], with the selected row retained in owner-local state until the subtype-36 fee result.";
             AppendNote(StatusMessage);
             request = new PacketOwnedNpcUtilityOutboundRequest(
@@ -1584,21 +1597,29 @@ namespace HaCreator.MapSimulator.Interaction
                         return true;
                     }
 
-                    ResetTransientRequestState();
                     if (payload.Length < 1 + (sizeof(int) * 2))
                     {
                         message = "Store-bank packet 370 subtype 36 requires passing-day and fee integers.";
                         return false;
                     }
 
+                    int selectedOwnerRowIndex = _pendingFeeCalculationOwnerRowIndex;
+                    int selectedPacketRowIndex = _pendingFeeCalculationPacketRowIndex;
+                    int selectedItemId = _pendingFeeCalculationItemId;
+                    string selectedItemTitle = _pendingFeeCalculationItemTitle;
                     _pendingGetAllPassingDay = BitConverter.ToInt32(payload, 1);
                     _pendingGetAllFee = BitConverter.ToInt32(payload, 5);
+                    ResetTransientRequestState();
+                    _pendingGetAllOwnerRowIndex = selectedOwnerRowIndex;
+                    _pendingGetAllPacketRowIndex = selectedPacketRowIndex;
+                    _pendingGetAllItemId = selectedItemId;
+                    _pendingGetAllItemTitle = selectedItemTitle ?? string.Empty;
                     HasPendingGetAllRequest = true;
                     GetAllRequestWasAccepted = false;
                     IsOpen = true;
                     StatusMessage = _pendingGetAllFee > 0
-                        ? $"CStoreBankDlg staged the SendGetAllRequest modal for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}."
-                        : $"CStoreBankDlg staged the zero-fee SendGetAllRequest modal for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s).";
+                        ? $"CStoreBankDlg staged the SendGetAllRequest modal for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}{BuildPendingGetAllSelectionSuffix()}."
+                        : $"CStoreBankDlg staged the zero-fee SendGetAllRequest modal for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s){BuildPendingGetAllSelectionSuffix()}.";
                     break;
 
                 case 37:
@@ -1690,6 +1711,8 @@ namespace HaCreator.MapSimulator.Interaction
             HasPendingFeeCalculationRequest = false;
             _pendingFeeCalculationOwnerRowIndex = -1;
             _pendingFeeCalculationPacketRowIndex = -1;
+            _pendingFeeCalculationItemId = 0;
+            _pendingFeeCalculationItemTitle = string.Empty;
         }
 
         private bool TryParseOpenPayload(byte[] payload, int startOffset)
@@ -1907,6 +1930,37 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Shipment prompt: context {_lastPromptContextValue.ToString(CultureInfo.InvariantCulture)}, token {_lastPromptTokenValue.ToString(CultureInfo.InvariantCulture)}, channel {_lastPromptChannelId.ToString(CultureInfo.InvariantCulture)}.";
         }
 
+        private string BuildPendingGetAllSelectionSuffix()
+        {
+            if (_pendingGetAllPacketRowIndex <= 0 && _pendingGetAllItemId <= 0)
+            {
+                return string.Empty;
+            }
+
+            List<string> parts = new();
+            if (_pendingGetAllOwnerRowIndex > 0)
+            {
+                parts.Add($"owner row {_pendingGetAllOwnerRowIndex.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (_pendingGetAllPacketRowIndex > 0)
+            {
+                parts.Add($"packet row {_pendingGetAllPacketRowIndex.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (_pendingGetAllItemId > 0)
+            {
+                parts.Add($"item {_pendingGetAllItemId.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(_pendingGetAllItemTitle))
+            {
+                parts.Add(_pendingGetAllItemTitle);
+            }
+
+            return $" for selected {string.Join(" / ", parts)}";
+        }
+
         private bool HasShipmentPrompt =>
             _lastPromptContextValue != 0
             || _lastPromptTokenValue != 0
@@ -2014,6 +2068,12 @@ namespace HaCreator.MapSimulator.Interaction
                 parts.Add($"decodeBytes {item.EncodedByteLength.ToString(CultureInfo.InvariantCulture)}");
             }
 
+            string rawPreview = FormatHexPreview(item.RawEncodedBytes, 24);
+            if (!string.IsNullOrWhiteSpace(rawPreview))
+            {
+                parts.Add($"raw {rawPreview}");
+            }
+
             string baseExpiration = FormatFileTime(item.BaseExpirationTime);
             if (!string.IsNullOrWhiteSpace(baseExpiration))
             {
@@ -2111,6 +2171,12 @@ namespace HaCreator.MapSimulator.Interaction
             if (item.EncodedByteLength > 0)
             {
                 parts.Add($"decodeBytes {item.EncodedByteLength.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            string bodyPreview = FormatHexPreview(item.BodyEncodedBytes, 16);
+            if (!string.IsNullOrWhiteSpace(bodyPreview))
+            {
+                parts.Add($"body {bodyPreview}");
             }
 
             return parts.Count > 0
@@ -2232,6 +2298,22 @@ namespace HaCreator.MapSimulator.Interaction
             return item != null && item.HasCashSerialNumber;
         }
 
+        private static string FormatHexPreview(byte[] bytes, int maxBytes)
+        {
+            if (bytes == null || bytes.Length == 0 || maxBytes <= 0)
+            {
+                return string.Empty;
+            }
+
+            int count = Math.Min(bytes.Length, maxBytes);
+            byte[] preview = new byte[count];
+            Array.Copy(bytes, preview, count);
+            string hex = Convert.ToHexString(preview);
+            return bytes.Length > count
+                ? $"{hex}.../{bytes.Length.ToString(CultureInfo.InvariantCulture)}b"
+                : hex;
+        }
+
         private static string FormatFileTime(long value)
         {
             if (value <= 0 || value == long.MaxValue)
@@ -2315,6 +2397,7 @@ namespace HaCreator.MapSimulator.Interaction
             StoreBankEquipData equipData = null;
             StoreBankBundleData bundleData = null;
             StoreBankPetData petData = null;
+            long bodyStartPosition = stream.Position;
             switch (slotType)
             {
                 case 1:
@@ -2358,6 +2441,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             int clientStock = ResolveClientStock(slotType, itemId, quantity);
             int encodedByteLength = checked((int)(stream.Position - itemStartPosition));
+            byte[] rawEncodedBytes = CopyBytesFromStream(stream, itemStartPosition, encodedByteLength);
+            byte[] bodyEncodedBytes = CopyBytesFromStream(stream, bodyStartPosition, checked((int)(stream.Position - bodyStartPosition)));
             long itemSerialNumber = ResolveNativeItemSerialNumber(equipData, bundleData);
             int nativeItemTypeIndex = ResolveNativeItemTypeIndex(itemId);
 
@@ -2383,6 +2468,8 @@ namespace HaCreator.MapSimulator.Interaction
                 NativeItemTypeIndex = nativeItemTypeIndex,
                 IsRechargeBundle = slotType == 2 && itemId / 10000 is 207 or 233,
                 MetadataSummary = metadataSummary,
+                RawEncodedBytes = rawEncodedBytes,
+                BodyEncodedBytes = bodyEncodedBytes,
                 EquipData = equipData,
                 BundleData = bundleData,
                 PetData = petData
@@ -2424,6 +2511,8 @@ namespace HaCreator.MapSimulator.Interaction
                 entry.Title,
                 entry.MetadataSummary,
                 BuildDecodedItemBodyDetails(entry),
+                Convert.ToHexString(entry.RawEncodedBytes ?? Array.Empty<byte>()),
+                Convert.ToHexString(entry.BodyEncodedBytes ?? Array.Empty<byte>()),
                 entry.EncodedByteLength);
             return true;
         }
@@ -2457,10 +2546,57 @@ namespace HaCreator.MapSimulator.Interaction
                 NativeItemTypeIndex = item.NativeItemTypeIndex,
                 IsRechargeBundle = item.IsRechargeBundle,
                 MetadataSummary = item.MetadataSummary,
+                RawEncodedBytes = item.RawEncodedBytes?.ToArray() ?? Array.Empty<byte>(),
+                BodyEncodedBytes = item.BodyEncodedBytes?.ToArray() ?? Array.Empty<byte>(),
                 EquipData = item.EquipData,
                 BundleData = item.BundleData,
                 PetData = item.PetData
             };
+        }
+
+        private static byte[] CopyBytesFromStream(Stream stream, long startPosition, int byteLength)
+        {
+            if (stream == null || byteLength <= 0 || startPosition < 0 || !stream.CanSeek || !stream.CanRead)
+            {
+                return Array.Empty<byte>();
+            }
+
+            long originalPosition = stream.Position;
+            try
+            {
+                if (startPosition > stream.Length)
+                {
+                    return Array.Empty<byte>();
+                }
+
+                int clampedLength = checked((int)Math.Min(byteLength, stream.Length - startPosition));
+                byte[] bytes = new byte[clampedLength];
+                stream.Position = startPosition;
+                int totalRead = 0;
+                while (totalRead < bytes.Length)
+                {
+                    int read = stream.Read(bytes, totalRead, bytes.Length - totalRead);
+                    if (read <= 0)
+                    {
+                        break;
+                    }
+
+                    totalRead += read;
+                }
+
+                if (totalRead == bytes.Length)
+                {
+                    return bytes;
+                }
+
+                byte[] truncated = new byte[totalRead];
+                Array.Copy(bytes, truncated, totalRead);
+                return truncated;
+            }
+            finally
+            {
+                stream.Position = originalPosition;
+            }
         }
 
         private static long ResolveNativeItemSerialNumber(StoreBankEquipData equipData, StoreBankBundleData bundleData)
@@ -2973,6 +3109,7 @@ namespace HaCreator.MapSimulator.Interaction
                     StatusMessage = "CBattleRecordMan cleared recovery and DOT-only summary counters.";
                     break;
                 case 2:
+                case 3:
                     ResetSession(clearNotes: false);
                     StatusMessage = "CBattleRecordMan cleared all battle-record counters.";
                     break;

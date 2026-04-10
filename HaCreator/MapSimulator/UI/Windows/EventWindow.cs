@@ -335,14 +335,17 @@ namespace HaCreator.MapSimulator.UI
                 Texture2D rowTexture = isSelected ? (_selectedRowTexture ?? _normalRowTexture) : _normalRowTexture;
                 if (rowTexture != null)
                 {
-                    sprite.Draw(rowTexture, bounds, Color.White);
+                    sprite.Draw(rowTexture, new Vector2(bounds.X, bounds.Y), Color.White);
                 }
 
                 EventEntrySnapshot entry = visibleEntries[i];
-                Rectangle slotBounds = new(bounds.X + 10, bounds.Y + 8, 35, 35);
+                Rectangle slotBounds = ResolveEventRowSlotBounds(
+                    bounds,
+                    _slotTexture?.Width ?? 35,
+                    _slotTexture?.Height ?? 35);
                 if (_slotTexture != null)
                 {
-                    sprite.Draw(_slotTexture, slotBounds, Color.White);
+                    sprite.Draw(_slotTexture, new Vector2(slotBounds.X, slotBounds.Y), Color.White);
                 }
 
                 Texture2D statusIcon = ResolveStatusIcon(entry.Status);
@@ -357,10 +360,14 @@ namespace HaCreator.MapSimulator.UI
                     sprite.Draw(statusIcon, iconPosition, Color.White);
                 }
 
-                int contentLeft = slotBounds.Right + 10;
-                sprite.DrawString(_font, entry.Title, new Vector2(contentLeft, bounds.Y + 8), Color.White);
-                sprite.DrawString(_font, entry.StatusText, new Vector2(bounds.Right - Math.Min(86, (int)_font.MeasureString(entry.StatusText).X) - 10, bounds.Y + 8), new Color(255, 228, 151));
-                DrawWrappedText(sprite, entry.Detail, contentLeft, bounds.Y + 30, bounds.Right - contentLeft - 12f, new Color(224, 224, 224));
+                EventRowTextLayout textLayout = ResolveEventRowTextLayout(bounds, slotBounds);
+                sprite.DrawString(_font, entry.Title, new Vector2(textLayout.TitleX, textLayout.TitleY), Color.White);
+                sprite.DrawString(
+                    _font,
+                    entry.StatusText,
+                    new Vector2(bounds.Right - Math.Min(textLayout.StatusMaxWidth, (int)_font.MeasureString(entry.StatusText).X) - 10, textLayout.TitleY),
+                    new Color(255, 228, 151));
+                DrawWrappedText(sprite, entry.Detail, textLayout.DetailX, textLayout.DetailY, textLayout.DetailWidth, new Color(224, 224, 224));
             }
         }
 
@@ -805,7 +812,65 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetRowBounds(int visibleIndex, EventWindowSnapshot snapshot)
         {
-            return new Rectangle(Position.X + 16, Position.Y + GetContentTop(snapshot) + (visibleIndex * 82), Math.Max(288, (CurrentFrame?.Width ?? 323) - 28), 78);
+            return ResolveEventRowBounds(
+                Position.X,
+                Position.Y,
+                GetContentTop(snapshot),
+                visibleIndex,
+                _normalRowTexture?.Width ?? _selectedRowTexture?.Width ?? 288,
+                _normalRowTexture?.Height ?? _selectedRowTexture?.Height ?? 78);
+        }
+
+        internal readonly struct EventRowTextLayout
+        {
+            public EventRowTextLayout(int titleX, int titleY, int detailX, int detailY, float detailWidth, int statusMaxWidth)
+            {
+                TitleX = titleX;
+                TitleY = titleY;
+                DetailX = detailX;
+                DetailY = detailY;
+                DetailWidth = detailWidth;
+                StatusMaxWidth = statusMaxWidth;
+            }
+
+            public int TitleX { get; }
+            public int TitleY { get; }
+            public int DetailX { get; }
+            public int DetailY { get; }
+            public float DetailWidth { get; }
+            public int StatusMaxWidth { get; }
+        }
+
+        internal static Rectangle ResolveEventRowBounds(int windowX, int windowY, int contentTop, int visibleIndex, int authoredRowWidth, int authoredRowHeight)
+        {
+            // WZ evidence: UIWindow2.img/EventList/main/event/normal is 288x78 with origin (0,0).
+            return new Rectangle(
+                windowX + 16,
+                windowY + contentTop + (Math.Max(0, visibleIndex) * 82),
+                Math.Max(1, authoredRowWidth),
+                Math.Max(1, authoredRowHeight));
+        }
+
+        internal static Rectangle ResolveEventRowSlotBounds(Rectangle rowBounds, int authoredSlotWidth, int authoredSlotHeight)
+        {
+            // WZ evidence: UIWindow2.img/EventList/main/event/slot is 35x35 with origin (0,0).
+            return new Rectangle(
+                rowBounds.X + 10,
+                rowBounds.Y + 8,
+                Math.Max(1, authoredSlotWidth),
+                Math.Max(1, authoredSlotHeight));
+        }
+
+        internal static EventRowTextLayout ResolveEventRowTextLayout(Rectangle rowBounds, Rectangle slotBounds)
+        {
+            int contentLeft = slotBounds.Right + 10;
+            return new EventRowTextLayout(
+                contentLeft,
+                rowBounds.Y + 8,
+                contentLeft,
+                rowBounds.Y + 30,
+                Math.Max(40f, rowBounds.Right - contentLeft - 12f),
+                86);
         }
 
         private int GetRowsPerPage()

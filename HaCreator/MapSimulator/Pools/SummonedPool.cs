@@ -91,7 +91,8 @@ namespace HaCreator.MapSimulator.Pools
     internal readonly record struct PacketOwnedMobAttackFeedbackPresentation(
         MobAnimationSet.AttackInfoMetadata AttackInfo,
         MobAnimationSet.AttackHitEffectEntry HitEffectEntry,
-        string CharDamSoundKey);
+        string CharDamSoundKey,
+        int HitAfterMs);
 
     internal readonly record struct PacketOwnedHitMobCandidate(
         bool IsAlive,
@@ -165,6 +166,7 @@ namespace HaCreator.MapSimulator.Pools
             public Vector2 AttachedOffset { get; init; }
             public MobAnimationSet.AttackInfoMetadata AttackInfo { get; init; }
             public int HitAnimationSourceFrameIndex { get; init; }
+            public int StartTime { get; init; }
             public List<IDXObject> Frames { get; init; }
             public int CurrentFrame { get; set; }
             public int LastFrameTime { get; set; }
@@ -174,6 +176,11 @@ namespace HaCreator.MapSimulator.Pools
 
             public void Update(int currentTime)
             {
+                if (currentTime < StartTime)
+                {
+                    return;
+                }
+
                 if (IsComplete || Frames == null || Frames.Count == 0 || CurrentFrame >= Frames.Count)
                 {
                     IsComplete = true;
@@ -215,6 +222,13 @@ namespace HaCreator.MapSimulator.Pools
             public bool FacingRight { get; init; }
         }
 
+        private sealed class ScheduledPacketOwnedSound
+        {
+            public long SequenceId { get; init; }
+            public string SoundKey { get; init; }
+            public int ExecuteTime { get; init; }
+        }
+
         private sealed class PacketOwnedReactiveChainEffectDisplay
         {
             public Vector2 Source { get; init; }
@@ -237,6 +251,7 @@ namespace HaCreator.MapSimulator.Pools
         private readonly List<ActiveProjectile> _projectiles = new();
         private readonly List<ScheduledPacketOwnedHitEffect> _scheduledHitEffects = new();
         private readonly List<ScheduledPacketOwnedReactiveChainEffect> _scheduledReactiveChainEffects = new();
+        private readonly List<ScheduledPacketOwnedSound> _scheduledSounds = new();
         private readonly List<PacketOwnedReactiveChainEffectDisplay> _reactiveChainEffects = new();
         private readonly List<ActiveHitEffect> _hitEffects = new();
         private readonly List<PacketOwnedMobAttackHitEffectDisplay> _mobAttackHitEffects = new();
@@ -303,6 +318,7 @@ namespace HaCreator.MapSimulator.Pools
             _projectiles.Clear();
             _scheduledHitEffects.Clear();
             _scheduledReactiveChainEffects.Clear();
+            _scheduledSounds.Clear();
             _reactiveChainEffects.Clear();
             _hitEffects.Clear();
             _mobAttackHitEffects.Clear();
@@ -951,13 +967,17 @@ namespace HaCreator.MapSimulator.Pools
                 summon.AssistType,
                 preferHealFirst,
                 explicitBranchName: summon.CurrentAnimationBranchName);
-            if (suspendDurationMs <= 0 && summon.SkillId == healingRobotSkillId)
+            if (suspendDurationMs <= 0
+                && summon.SkillId == healingRobotSkillId
+                && SummonRuntimeRules.IsSitdownHealingSupportSummon(summon.SkillData))
             {
                 suspendDurationMs = GetSkillAnimationDuration(summon.SkillData.SummonAttackAnimation)
                     ?? summon.SkillData.SummonAttackHitDelayMs;
             }
 
-            if (suspendDurationMs <= 0 && summon.SkillId == healingRobotSkillId)
+            if (suspendDurationMs <= 0
+                && summon.SkillId == healingRobotSkillId
+                && SummonRuntimeRules.IsSitdownHealingSupportSummon(summon.SkillData))
             {
                 suspendDurationMs = summon.SkillData.HitEffect?.TotalDuration ?? 0;
             }
@@ -1316,6 +1336,23 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
+            ScheduledPacketOwnedSound[] dueSounds = _scheduledSounds
+                .Where(sound => sound != null && sound.ExecuteTime <= currentTime)
+                .OrderBy(sound => sound.ExecuteTime)
+                .ThenBy(sound => sound.SequenceId)
+                .ToArray();
+            if (dueSounds.Length > 0)
+            {
+                _scheduledSounds.RemoveAll(sound => sound != null && sound.ExecuteTime <= currentTime);
+                foreach (ScheduledPacketOwnedSound scheduledSound in dueSounds)
+                {
+                    if (!string.IsNullOrWhiteSpace(scheduledSound.SoundKey))
+                    {
+                        _soundManager?.PlaySound(scheduledSound.SoundKey);
+                    }
+                }
+            }
+
             for (int i = _reactiveChainEffects.Count - 1; i >= 0; i--)
             {
                 if (_reactiveChainEffects[i].IsExpired(currentTime))
@@ -1439,7 +1476,7 @@ namespace HaCreator.MapSimulator.Pools
 
             foreach (PacketOwnedMobAttackHitEffectDisplay hitEffect in _mobAttackHitEffects)
             {
-                DrawMobAttackHitEffect(spriteBatch, hitEffect, mapShiftX, mapShiftY, centerX, centerY);
+                DrawMobAttackHitEffect(spriteBatch, hitEffect, mapShiftX, mapShiftY, centerX, centerY, currentTime);
             }
         }
 
@@ -1872,6 +1909,7 @@ namespace HaCreator.MapSimulator.Pools
         internal static bool ShouldApplyHealingRobotSkillPacketFacing(ActiveSummon summon, byte normalizedAction)
         {
             return summon?.SkillId == HealingRobotSkillId
+                   && SummonRuntimeRules.IsSitdownHealingSupportSummon(summon.SkillData)
                    && normalizedAction == HealingRobotHealSkillAction;
         }
 
@@ -4375,13 +4413,18 @@ namespace HaCreator.MapSimulator.Pools
                 SpawnPacketMobAttackHitEffect(state.Summon, packet, presentation, currentTime);
             }
 
-            string packetHitSoundKey = ResolvePacketMobAttackSoundKey(
-                mob,
-                packet.AttackIndex >= 1 ? 2 : 1,
-                presentation.CharDamSoundKey);
+            string packetHitSoundKey = ShouldPlayPacketMobAttackFeedbackSound(presentation)
+                ? ResolvePacketMobAttackSoundKey(
+                    mob,
+                    packet.AttackIndex >= 1 ? 2 : 1,
+                    presentation.CharDamSoundKey)
+                : null;
             if (!string.IsNullOrWhiteSpace(packetHitSoundKey))
             {
-                _soundManager?.PlaySound(packetHitSoundKey);
+                PlayOrSchedulePacketOwnedSound(
+                    packetHitSoundKey,
+                    currentTime + ResolvePacketMobAttackFeedbackHitAfterMs(presentation),
+                    currentTime);
             }
 
             if (packet.Damage > 0)
@@ -4538,6 +4581,7 @@ namespace HaCreator.MapSimulator.Pools
                     attackInfo,
                     _random)
                 : hitPosition;
+            int startTime = currentTime + ResolvePacketMobAttackFeedbackHitAfterMs(presentation);
             _mobAttackHitEffects.Add(new PacketOwnedMobAttackHitEffectDisplay
             {
                 X = detachedFallbackPosition.X,
@@ -4549,9 +4593,10 @@ namespace HaCreator.MapSimulator.Pools
                 AttachedOffset = PacketOwnedSummonUpdateRules.ResolvePacketOwnedAuthoredHitOffset(attackInfo),
                 AttackInfo = attackInfo,
                 HitAnimationSourceFrameIndex = hitAnimationSourceFrameIndex,
+                StartTime = startTime,
                 Frames = frames,
                 CurrentFrame = 0,
-                LastFrameTime = currentTime,
+                LastFrameTime = startTime,
                 Flip = packet.MobFacingLeft != true
             });
         }
@@ -4637,13 +4682,31 @@ namespace HaCreator.MapSimulator.Pools
                 return new PacketOwnedMobAttackFeedbackPresentation(
                     templateAttackInfo ?? liveAttackInfo,
                     liveHitEffectEntry,
-                    templateCharDamSoundKey);
+                    templateCharDamSoundKey,
+                    ResolvePacketMobAttackFeedbackHitAfterMs(templateAttackInfo ?? liveAttackInfo));
             }
 
             return new PacketOwnedMobAttackFeedbackPresentation(
                 templateAttackInfo ?? liveAttackInfo,
                 templateHitEffectEntry,
-                templateCharDamSoundKey);
+                templateCharDamSoundKey,
+                ResolvePacketMobAttackFeedbackHitAfterMs(templateAttackInfo ?? liveAttackInfo));
+        }
+
+        internal static int ResolvePacketMobAttackFeedbackHitAfterMs(PacketOwnedMobAttackFeedbackPresentation presentation)
+        {
+            return Math.Max(0, presentation.HitAfterMs);
+        }
+
+        internal static int ResolvePacketMobAttackFeedbackHitAfterMs(MobAnimationSet.AttackInfoMetadata attackInfo)
+        {
+            return Math.Max(0, attackInfo?.HitAfterMs ?? 0);
+        }
+
+        internal static bool ShouldPlayPacketMobAttackFeedbackSound(
+            PacketOwnedMobAttackFeedbackPresentation presentation)
+        {
+            return presentation.HitEffectEntry?.Frames?.Count > 0;
         }
 
         private static bool HasRequestedLivePacketMobAttackSound(MobItem mob, int damageSoundIndex)
@@ -4771,6 +4834,27 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        private void PlayOrSchedulePacketOwnedSound(string soundKey, int executeTime, int currentTime)
+        {
+            if (string.IsNullOrWhiteSpace(soundKey) || _soundManager == null)
+            {
+                return;
+            }
+
+            if (executeTime <= currentTime)
+            {
+                _soundManager.PlaySound(soundKey);
+                return;
+            }
+
+            _scheduledSounds.Add(new ScheduledPacketOwnedSound
+            {
+                SequenceId = _nextScheduledHitEffectSequenceId++,
+                SoundKey = soundKey,
+                ExecuteTime = executeTime
+            });
+        }
+
         private void DrawSummonTileEffect(
             SpriteBatch spriteBatch,
             PacketOwnedSummonTileEffectDisplay tileEffect,
@@ -4815,11 +4899,16 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private void DrawMobAttackHitEffect(SpriteBatch spriteBatch, PacketOwnedMobAttackHitEffectDisplay hitEffect, int mapShiftX, int mapShiftY, int centerX, int centerY)
+        private void DrawMobAttackHitEffect(SpriteBatch spriteBatch, PacketOwnedMobAttackHitEffectDisplay hitEffect, int mapShiftX, int mapShiftY, int centerX, int centerY, int currentTime)
         {
             if (hitEffect?.Frames == null
                 || hitEffect.CurrentFrame < 0
                 || hitEffect.CurrentFrame >= hitEffect.Frames.Count)
+            {
+                return;
+            }
+
+            if (currentTime < hitEffect.StartTime)
             {
                 return;
             }

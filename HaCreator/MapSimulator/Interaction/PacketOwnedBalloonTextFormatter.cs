@@ -56,7 +56,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex RewardCategoryRegex = new(@"#W(?<category>[^#\s]*)#", RegexOptions.Compiled);
         private static readonly Regex FontNameRegex = new(@"#fn[^#]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex FontSizeRegex = new(@"#fs-?\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex FontTableRegex = new(@"#w(?:[^#\s]*#)?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex FontTableRegex = new(@"#w(?:(?<value>basic|summary|select|reward|prob|-?\d+)#|#|(?=$|\s))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)#?", RegexOptions.Compiled);
         private static readonly Regex NumericPrefixedStyleRegex = new(@"#\d+(?<tag>[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex InlineSelectionRegex = new(@"#L(?<id>-?\d+)#(?<text>.*?)#l", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
@@ -98,12 +98,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = FontNameRegex.Replace(formatted, static match => BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontName, match.Value.Length > 3 ? match.Value[3..^1] : string.Empty));
             formatted = FontSizeRegex.Replace(formatted, static match => BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontSize, match.Value.Length > 3 ? match.Value[3..^1] : string.Empty));
             formatted = FontTableRegex.Replace(formatted, static match =>
-            {
-                string value = match.Value.Length > 2 && match.Value[^1] == '#'
-                    ? match.Value[2..^1]
-                    : string.Empty;
-                return BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontTable, value);
-            });
+                BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontTable, match.Groups["value"].Value));
             formatted = ClientPromptTagRegex.Replace(formatted, string.Empty);
             formatted = NumericPrefixedStyleRegex.Replace(formatted, static match => "#" + match.Groups["tag"].Value);
             formatted = PluralSuffixRegex.Replace(formatted, "s");

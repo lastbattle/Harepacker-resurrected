@@ -21,12 +21,17 @@ namespace HaCreator.MapSimulator
         private const int InitialQuizOwnerFrameFadeAlpha = 176;
         private const int InitialQuizTimerStringPoolIdTensMinutes = 0x0F73;
         private const int InitialQuizTimerStringPoolIdOnesMinutes = 3955;
+        private const int InitialQuizOkButtonUolStringPoolId = 0x0512;
         private const int InitialQuizHintLabelStringPoolId = 3958;
         private const int InitialQuizAnswerLabelStringPoolId = 3959;
         private const int InitialQuizAnswerNoticeStringPoolId = 3960;
         private const int InitialQuizMinInputNoticeStringPoolId = 0x0F79;
         private const int InitialQuizMaxInputNoticeStringPoolId = 0x0F7A;
         private const int InitialQuizTimeoutNoticeStringPoolId = 3964;
+        private const int InitialQuizOwnerOkButtonLeft = 241;
+        private const int InitialQuizOwnerOkButtonTop = 199;
+        private const int InitialQuizOwnerOkButtonWidth = 47;
+        private const int InitialQuizOwnerOkButtonHeight = 18;
         private const float InitialQuizOwnerTextScale = 0.44f;
         private const float InitialQuizOwnerSecondaryTextScale = 0.42f;
         private const float InitialQuizOwnerLabelTextScale = 0.39f;
@@ -37,11 +42,11 @@ namespace HaCreator.MapSimulator
         private Texture2D _initialQuizOwnerBackgroundTexture;
         private Texture2D _initialQuizOwnerBackgroundTexture2;
         private Texture2D _initialQuizOwnerBackgroundTexture3;
-        private Texture2D _initialQuizOwnerOkButtonNormalTexture;
-        private Texture2D _initialQuizOwnerOkButtonHoverTexture;
-        private Texture2D _initialQuizOwnerOkButtonPressedTexture;
-        private Texture2D _initialQuizOwnerOkButtonDisabledTexture;
-        private Texture2D _initialQuizOwnerOkButtonKeyFocusedTexture;
+        private InitialQuizButtonFrame _initialQuizOwnerOkButtonNormalFrame;
+        private InitialQuizButtonFrame _initialQuizOwnerOkButtonHoverFrame;
+        private InitialQuizButtonFrame _initialQuizOwnerOkButtonPressedFrame;
+        private InitialQuizButtonFrame _initialQuizOwnerOkButtonDisabledFrame;
+        private InitialQuizButtonFrame _initialQuizOwnerOkButtonKeyFocusedFrame;
         private Texture2D[] _initialQuizOwnerDigits;
         private Texture2D _initialQuizOwnerCommaTexture;
         private InitialQuizAnimationFrame[] _initialQuizOwnerAnimationFrames = Array.Empty<InitialQuizAnimationFrame>();
@@ -66,6 +71,7 @@ namespace HaCreator.MapSimulator
         private InitialQuizOwnerFocusTarget _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
 
         private sealed record InitialQuizAnimationFrame(Texture2D Texture, int DelayMs);
+        private sealed record InitialQuizButtonFrame(Texture2D Texture, Point Origin);
         internal enum InitialQuizOwnerFocusTarget
         {
             Input,
@@ -505,10 +511,15 @@ namespace HaCreator.MapSimulator
                     InitialQuizOwnerLabelTextScale);
             }
 
-            Texture2D okButtonTexture = ResolveInitialQuizOwnerOkButtonTexture(showInput);
-            if (okButtonTexture != null)
+            InitialQuizButtonFrame okButtonFrame = ResolveInitialQuizOwnerOkButtonFrame(showInput);
+            if (okButtonFrame?.Texture != null)
             {
-                _spriteBatch.Draw(okButtonTexture, okButtonBounds, Color.White);
+                Rectangle drawBounds = new(
+                    okButtonBounds.X - okButtonFrame.Origin.X,
+                    okButtonBounds.Y - okButtonFrame.Origin.Y,
+                    okButtonFrame.Texture.Width,
+                    okButtonFrame.Texture.Height);
+                _spriteBatch.Draw(okButtonFrame.Texture, drawBounds, Color.White);
             }
             else
             {
@@ -682,7 +693,7 @@ namespace HaCreator.MapSimulator
             DrawInitialQuizOwnerDigitGlyph(ownerBounds, timerText[4], 174, 33);
         }
 
-        private Texture2D ResolveInitialQuizOwnerOkButtonTexture(bool enabled)
+        private InitialQuizButtonFrame ResolveInitialQuizOwnerOkButtonFrame(bool enabled)
         {
             InitialQuizOwnerButtonVisualState state = ResolveInitialQuizOwnerButtonVisualState(
                 enabled,
@@ -692,11 +703,11 @@ namespace HaCreator.MapSimulator
 
             return state switch
             {
-                InitialQuizOwnerButtonVisualState.Disabled => _initialQuizOwnerOkButtonDisabledTexture ?? _initialQuizOwnerOkButtonNormalTexture,
-                InitialQuizOwnerButtonVisualState.Pressed => _initialQuizOwnerOkButtonPressedTexture ?? _initialQuizOwnerOkButtonHoverTexture ?? _initialQuizOwnerOkButtonKeyFocusedTexture ?? _initialQuizOwnerOkButtonNormalTexture,
-                InitialQuizOwnerButtonVisualState.Hover => _initialQuizOwnerOkButtonHoverTexture ?? _initialQuizOwnerOkButtonKeyFocusedTexture ?? _initialQuizOwnerOkButtonNormalTexture,
-                InitialQuizOwnerButtonVisualState.KeyFocused => _initialQuizOwnerOkButtonKeyFocusedTexture ?? _initialQuizOwnerOkButtonHoverTexture ?? _initialQuizOwnerOkButtonNormalTexture,
-                _ => _initialQuizOwnerOkButtonNormalTexture
+                InitialQuizOwnerButtonVisualState.Disabled => _initialQuizOwnerOkButtonDisabledFrame ?? _initialQuizOwnerOkButtonNormalFrame,
+                InitialQuizOwnerButtonVisualState.Pressed => _initialQuizOwnerOkButtonPressedFrame ?? _initialQuizOwnerOkButtonHoverFrame ?? _initialQuizOwnerOkButtonKeyFocusedFrame ?? _initialQuizOwnerOkButtonNormalFrame,
+                InitialQuizOwnerButtonVisualState.Hover => _initialQuizOwnerOkButtonHoverFrame ?? _initialQuizOwnerOkButtonKeyFocusedFrame ?? _initialQuizOwnerOkButtonNormalFrame,
+                InitialQuizOwnerButtonVisualState.KeyFocused => _initialQuizOwnerOkButtonKeyFocusedFrame ?? _initialQuizOwnerOkButtonHoverFrame ?? _initialQuizOwnerOkButtonNormalFrame,
+                _ => _initialQuizOwnerOkButtonNormalFrame
             };
         }
 
@@ -742,7 +753,11 @@ namespace HaCreator.MapSimulator
 
         private static Rectangle ResolveInitialQuizOwnerOkButtonBounds(Rectangle ownerBounds)
         {
-            return new Rectangle(ownerBounds.X + 241, ownerBounds.Y + 199, 40, 16);
+            return new Rectangle(
+                ownerBounds.X + InitialQuizOwnerOkButtonLeft,
+                ownerBounds.Y + InitialQuizOwnerOkButtonTop,
+                InitialQuizOwnerOkButtonWidth,
+                InitialQuizOwnerOkButtonHeight);
         }
 
         private static Rectangle ResolveInitialQuizOwnerInputBounds(Rectangle ownerBounds)
@@ -767,15 +782,16 @@ namespace HaCreator.MapSimulator
             WzSubProperty fallback = uiWindowImage?["InitialQuiz"] as WzSubProperty;
             WzCanvasProperty preferredBackground3 = preferred?["backgrnd3"] as WzCanvasProperty;
             WzCanvasProperty fallbackBackground3 = fallback?["backgrnd3"] as WzCanvasProperty;
+            WzSubProperty okButtonProperty = ResolveInitialQuizOwnerOkButtonProperty(preferred, fallback);
 
             _initialQuizOwnerBackgroundTexture = LoadUiCanvasTexture((preferred?["backgrnd"] ?? fallback?["backgrnd"]) as WzCanvasProperty);
             _initialQuizOwnerBackgroundTexture2 = LoadUiCanvasTexture((preferred?["backgrnd2"] ?? fallback?["backgrnd2"]) as WzCanvasProperty);
             _initialQuizOwnerBackgroundTexture3 = LoadUiCanvasTexture(preferredBackground3 ?? fallbackBackground3);
-            _initialQuizOwnerOkButtonNormalTexture = LoadUiCanvasTexture(ResolveInitialQuizOwnerButtonCanvas(preferred?["BtOK"] as WzSubProperty, "normal") ?? ResolveInitialQuizOwnerButtonCanvas(fallback?["BtOK"] as WzSubProperty, "normal"));
-            _initialQuizOwnerOkButtonHoverTexture = LoadUiCanvasTexture(ResolveInitialQuizOwnerButtonCanvas(preferred?["BtOK"] as WzSubProperty, "mouseOver") ?? ResolveInitialQuizOwnerButtonCanvas(fallback?["BtOK"] as WzSubProperty, "mouseOver"));
-            _initialQuizOwnerOkButtonPressedTexture = LoadUiCanvasTexture(ResolveInitialQuizOwnerButtonCanvas(preferred?["BtOK"] as WzSubProperty, "pressed") ?? ResolveInitialQuizOwnerButtonCanvas(fallback?["BtOK"] as WzSubProperty, "pressed"));
-            _initialQuizOwnerOkButtonDisabledTexture = LoadUiCanvasTexture(ResolveInitialQuizOwnerButtonCanvas(preferred?["BtOK"] as WzSubProperty, "disabled") ?? ResolveInitialQuizOwnerButtonCanvas(fallback?["BtOK"] as WzSubProperty, "disabled"));
-            _initialQuizOwnerOkButtonKeyFocusedTexture = LoadUiCanvasTexture(ResolveInitialQuizOwnerButtonCanvas(preferred?["BtOK"] as WzSubProperty, "keyFocused") ?? ResolveInitialQuizOwnerButtonCanvas(fallback?["BtOK"] as WzSubProperty, "keyFocused"));
+            _initialQuizOwnerOkButtonNormalFrame = LoadInitialQuizOwnerButtonFrame(okButtonProperty, "normal");
+            _initialQuizOwnerOkButtonHoverFrame = LoadInitialQuizOwnerButtonFrame(okButtonProperty, "mouseOver");
+            _initialQuizOwnerOkButtonPressedFrame = LoadInitialQuizOwnerButtonFrame(okButtonProperty, "pressed");
+            _initialQuizOwnerOkButtonDisabledFrame = LoadInitialQuizOwnerButtonFrame(okButtonProperty, "disabled");
+            _initialQuizOwnerOkButtonKeyFocusedFrame = LoadInitialQuizOwnerButtonFrame(okButtonProperty, "keyFocused");
             _initialQuizOwnerDigits = LoadInitialQuizOwnerDigits(preferred?["num1"] as WzSubProperty, fallback?["num1"] as WzSubProperty, out _initialQuizOwnerCommaTexture);
             _initialQuizOwnerAnimationFrames = LoadInitialQuizOwnerAnimationFrames(preferred?["ani"] as WzSubProperty, fallback?["ani"] as WzSubProperty);
             _initialQuizOwnerBackground3Origin = ResolveCanvasOrigin(preferredBackground3 ?? fallbackBackground3);
@@ -814,6 +830,70 @@ namespace HaCreator.MapSimulator
             return frames.ToArray();
         }
 
+        private InitialQuizButtonFrame LoadInitialQuizOwnerButtonFrame(WzSubProperty buttonProperty, string stateName)
+        {
+            WzCanvasProperty canvas = ResolveInitialQuizOwnerButtonCanvas(buttonProperty, stateName);
+            Texture2D texture = LoadUiCanvasTexture(canvas);
+            return texture == null
+                ? null
+                : new InitialQuizButtonFrame(texture, ResolveInitialQuizOwnerButtonOrigin(canvas));
+        }
+
+        private static WzSubProperty ResolveInitialQuizOwnerOkButtonProperty(WzSubProperty preferred, WzSubProperty fallback)
+        {
+            if (MapleStoryStringPool.TryGet(InitialQuizOkButtonUolStringPoolId, out string okButtonUol)
+                && TryResolveInitialQuizOwnerUiSubPropertyPath(okButtonUol, out WzSubProperty stringPoolButton))
+            {
+                return stringPoolButton;
+            }
+
+            return preferred?["BtOK"] as WzSubProperty
+                ?? fallback?["BtOK"] as WzSubProperty;
+        }
+
+        internal static bool TryDecodeInitialQuizOwnerUiResourcePath(
+            string resourcePath,
+            out string imageName,
+            out string propertyPath)
+        {
+            imageName = null;
+            propertyPath = null;
+            if (string.IsNullOrWhiteSpace(resourcePath))
+            {
+                return false;
+            }
+
+            string normalized = resourcePath.Trim().Replace('\\', '/');
+            const string categoryPrefix = "UI/";
+            if (normalized.StartsWith(categoryPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized[categoryPrefix.Length..];
+            }
+
+            int separatorIndex = normalized.IndexOf('/');
+            if (separatorIndex <= 0 || separatorIndex >= normalized.Length - 1)
+            {
+                return false;
+            }
+
+            imageName = normalized[..separatorIndex];
+            propertyPath = normalized[(separatorIndex + 1)..];
+            return !string.IsNullOrWhiteSpace(imageName) && !string.IsNullOrWhiteSpace(propertyPath);
+        }
+
+        private static bool TryResolveInitialQuizOwnerUiSubPropertyPath(string resourcePath, out WzSubProperty property)
+        {
+            property = null;
+            if (!TryDecodeInitialQuizOwnerUiResourcePath(resourcePath, out string imageName, out string propertyPath))
+            {
+                return false;
+            }
+
+            WzImage image = Program.FindImage("UI", imageName.Trim());
+            property = image?[propertyPath.Trim()] as WzSubProperty;
+            return property != null;
+        }
+
         private static WzCanvasProperty ResolveInitialQuizOwnerButtonCanvas(WzSubProperty buttonProperty, string stateName)
         {
             if (buttonProperty == null)
@@ -828,6 +908,14 @@ namespace HaCreator.MapSimulator
                     .FirstOrDefault(property => string.Equals(property.Name, stateName, StringComparison.OrdinalIgnoreCase))
                     ?.WzProperties.OfType<WzCanvasProperty>()
                     .FirstOrDefault();
+        }
+
+        private static Point ResolveInitialQuizOwnerButtonOrigin(WzCanvasProperty canvas)
+        {
+            Point origin = ResolveCanvasOrigin(canvas);
+            return origin.X < 0 || origin.Y < 0
+                ? Point.Zero
+                : origin;
         }
 
         internal static bool ShouldShowInitialQuizOwnerHint(string hintText)

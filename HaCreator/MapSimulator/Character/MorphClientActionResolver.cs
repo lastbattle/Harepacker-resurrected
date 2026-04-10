@@ -268,6 +268,11 @@ namespace HaCreator.MapSimulator.Character
                 ["dualVulcanPrep"] = new[] { "shoot1", "shoot2", "shootF", "windshot" },
                 ["dualVulcanLoop"] = new[] { "shoot1", "shoot2", "shootF", "windshot" },
                 ["dualVulcanEnd"] = new[] { "shoot1", "shoot2", "shootF", "windshot" },
+                // Mercedes `strikeDual` skill rows still request the raw action name,
+                // while Character/00002000.img backs it with shoot-family frames before
+                // mixed swing/stab backstops and Morph/*.img publishes only generic
+                // `shoot*` plus authored archer roots for that surface.
+                ["strikeDual"] = new[] { "shoot2", "shoot1", "shootF", "windshot", "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 // Support-family client raw actions like `smokeshell`, `holyshield`, and
                 // `resurrection` still come from WZ skill rows, but the checked morph
                 // templates only publish the alert-family surface rather than those verbatim
@@ -278,7 +283,13 @@ namespace HaCreator.MapSimulator.Character
                 // Later Demon / Mercedes support roots still resolve through the same
                 // alert-family body surface in Character/00002000.img.
                 ["demonGravity"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
-                ["blessOfGaia"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" }
+                ["blessOfGaia"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                // The latest checked support-like body rows (`mistEruption`,
+                // `demolitionElf`, and `powerEndure`) also collapse entirely onto the
+                // alert family, while Morph/*.img still publishes no verbatim roots.
+                ["mistEruption"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                ["demolitionElf"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                ["powerEndure"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" }
             };
 
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedGenericMorphFallbackAliases =
@@ -383,6 +394,16 @@ namespace HaCreator.MapSimulator.Character
                 ["darkSpin"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 ["darkThrust"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["healingAttack"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                // These later WZ skill action rows remain raw-name requests, while
+                // Character/00002000.img backs them with ordinary swing/stab body
+                // families and Morph/*.img still publishes no verbatim roots.
+                ["darkImpale"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab", "alert" },
+                ["glacialChain"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["windEffect"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["maxForce0"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["maxForce1"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["maxForce2"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["maxForce3"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 // The client raw table still exposes dual-blade swing-family names while
                 // archer morphs such as 1003/1103 only publish generic swingT branches.
                 ["swingC1"] = new[] { "swingT1", "swingT3" },
@@ -425,7 +446,15 @@ namespace HaCreator.MapSimulator.Character
                 // Skill/2002.img/skill/20020111 still publishes the raw action `fastest`
                 // with flag-only morph metadata; the suffix-resolved Morph/0111.img
                 // movement surface publishes no verbatim `fastest` branch.
-                ["fastest"] = new[] { "fly", "jump", "stand" }
+                ["fastest"] = new[] { "fly", "jump", "stand" },
+                // Skill/2100.img/skill/21001001 still publishes `combatStep`, while
+                // current Morph/*.img movement surfaces expose only authored movement
+                // roots such as `fly`, `jump`, and `stand`.
+                ["combatStep"] = new[] { "fly", "jump", "stand" },
+                // The client morph action table carries the dual-blade dash pair, but
+                // the checked morph images publish no verbatim `tornadoDash*` roots.
+                ["tornadoDash"] = new[] { "fly", "jump", "stand" },
+                ["tornadoDashStop"] = new[] { "fly", "jump", "stand" }
             };
 
         public static IEnumerable<string> EnumerateClientActionAliases(CharacterPart morphPart, string actionName)

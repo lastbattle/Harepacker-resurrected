@@ -2664,12 +2664,61 @@ namespace HaCreator.MapSimulator.Loaders
                 new Point(x + (cascade * 6), y + (cascade * 2)));
             RegisterEventWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 7), y + cascade));
+            RegisterPacketOwnedRawFunctionOwnerPlaceholderWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.MedalQuestInfo,
+                "Medal",
+                "Packet-owned medal key owner routed from the raw KeyConfig palette id 26.",
+                sourcePropertyName: null,
+                new Point(x + (cascade * 8), y + (cascade * 2)));
+            RegisterPacketOwnedRawFunctionOwnerPlaceholderWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.ItemPot,
+                "Item Pot",
+                "Packet-owned item-pot key owner routed from the raw KeyConfig palette id 30.",
+                sourcePropertyName: "itemPot",
+                new Point(x + (cascade * 8), y + (cascade * 3)));
+            RegisterPacketOwnedRawFunctionOwnerPlaceholderWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
+                MapSimulatorWindowNames.MagicWheel,
+                "Magic Wheel",
+                "Packet-owned magic-wheel key owner routed from the raw KeyConfig palette id 32.",
+                sourcePropertyName: null,
+                new Point(x + (cascade * 8), y + (cascade * 4)));
             RegisterRadioWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 6), y + (cascade * 4)));
             RegisterDragonBoxWindow(manager, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 8), y + (cascade * 3)));
             RegisterAccountMoreInfoWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 7), y + (cascade * 4)));
+        }
+
+        private static void RegisterPacketOwnedRawFunctionOwnerPlaceholderWindow(
+            UIWindowManager manager,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            string windowName,
+            string title,
+            string body,
+            string sourcePropertyName,
+            Point position)
+        {
+            if (manager == null
+                || string.IsNullOrWhiteSpace(windowName)
+                || manager.GetWindow(windowName) != null)
+            {
+                return;
+            }
+
+            WzSubProperty sourceProperty = !string.IsNullOrWhiteSpace(sourcePropertyName)
+                ? uiWindow2Image?[sourcePropertyName] as WzSubProperty
+                : null;
+            UIWindowBase window = sourceProperty != null
+                ? CreateWzPlaceholderUtilityWindow(sourceProperty, basicImage, soundUIImage, device, windowName, title, body, position)
+                : CreatePlaceholderUtilityWindow(basicImage, soundUIImage, device, windowName, title, body, position);
+            if (window != null)
+            {
+                manager.RegisterCustomWindow(window);
+            }
         }
 
 
@@ -5171,8 +5220,8 @@ namespace HaCreator.MapSimulator.Loaders
                     position);
             }
 
-            WzCanvasProperty background = bookProperty?["backgrnd"] as WzCanvasProperty
-                ?? monsterBookProperty?["backgrnd"] as WzCanvasProperty;
+            WzCanvasProperty background = monsterBookProperty?["backgrnd"] as WzCanvasProperty
+                ?? bookProperty?["backgrnd"] as WzCanvasProperty;
             if (background == null)
             {
                 return CreatePlaceholderUtilityWindow(
@@ -5243,12 +5292,12 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCanvasTexture(contextMenuProperty, "c", device),
                 LoadCanvasTexture(contextMenuProperty, "s", device));
 
-            UIObject prevButton = LoadButton(bookProperty, "BtPrev", btClickSound, btOverSound, device)
-                ?? LoadButton(monsterBookProperty, "arrowLeft", btClickSound, btOverSound, device);
-            UIObject nextButton = LoadButton(bookProperty, "BtNext", btClickSound, btOverSound, device)
-                ?? LoadButton(monsterBookProperty, "arrowRight", btClickSound, btOverSound, device);
-            UIObject closeButton = LoadButton(bookProperty, "BtClose", btClickSound, btOverSound, device)
-                ?? LoadButton(monsterBookProperty, "BtClose", btClickSound, btOverSound, device);
+            UIObject prevButton = LoadButton(monsterBookProperty, "arrowLeft", btClickSound, btOverSound, device)
+                ?? LoadButton(bookProperty, "BtPrev", btClickSound, btOverSound, device);
+            UIObject nextButton = LoadButton(monsterBookProperty, "arrowRight", btClickSound, btOverSound, device)
+                ?? LoadButton(bookProperty, "BtNext", btClickSound, btOverSound, device);
+            UIObject closeButton = LoadButton(monsterBookProperty, "BtClose", btClickSound, btOverSound, device)
+                ?? LoadButton(bookProperty, "BtClose", btClickSound, btOverSound, device);
             UIObject searchButton = LoadButton(monsterBookProperty, "BtSearch", btClickSound, btOverSound, device);
             UIObject registerButton = LoadButton(contextMenuProperty, "BtRegister", btClickSound, btOverSound, device);
             UIObject releaseButton = LoadButton(contextMenuProperty, "BtRelease", btClickSound, btOverSound, device);

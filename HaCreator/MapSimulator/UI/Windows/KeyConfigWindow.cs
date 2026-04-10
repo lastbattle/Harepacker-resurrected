@@ -458,9 +458,9 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.DrawString(_font, _page == KeyConfigPage.QuickSlot ? "Quick Slot Config" : "Key Config", new Vector2(Position.X + 18, Position.Y + 16), Color.White);
+            sprite.DrawString(_font, _page == KeyConfigPage.QuickSlot ? "FuncKeyMapped Slots" : "Key Config", new Vector2(Position.X + 18, Position.Y + 16), Color.White);
             sprite.DrawString(_font, _page == KeyConfigPage.QuickSlot
-                ? "Client quick-slot owner page from KeyConfig/quickslotConfig."
+                ? "Client quick-slot owner page with packet-owned cast slots."
                 : "Client key-config owner page from UIWindow2.img/KeyConfig.", new Vector2(Position.X + 18, Position.Y + 38), new Color(220, 220, 220));
 
             foreach (BindingRow row in GetActiveRows())
@@ -637,7 +637,7 @@ namespace HaCreator.MapSimulator.UI
             const int padding = 8;
 
             int footerWidth = (CurrentFrame?.Width ?? 622) - (footerMargin * 2);
-            int footerHeight = 86;
+            int footerHeight = 58;
             int footerX = Position.X + footerMargin;
             int footerY = Position.Y + (CurrentFrame?.Height ?? 374) - footerHeight - 10;
             Rectangle footerBounds = new(footerX, footerY, footerWidth, footerHeight);
@@ -651,17 +651,17 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_highlightTexture, footerBounds, new Color(20, 25, 37, 225));
             sprite.Draw(_highlightTexture, infoBounds, new Color(36, 46, 62, 220));
 
-            sprite.DrawString(_font, "Quick Slot Owner", new Vector2(infoBounds.X + 6, infoBounds.Y + 2), new Color(220, 220, 220), 0f, Vector2.Zero, 0.5f, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, "FuncKeyMapped Owner", new Vector2(infoBounds.X + 6, infoBounds.Y + 2), new Color(220, 220, 220), 0f, Vector2.Zero, 0.5f, SpriteEffects.None, 0f);
             string ownerText = _selectedAction.HasValue
                 ? $"{GetSelectedLabel()} staged owner"
-                : "Select a quick-slot row to inspect its staged live shortcut owner.";
+                : "Select a cast slot to inspect its staged live shortcut owner.";
             sprite.DrawString(_font, ownerText, new Vector2(infoBounds.X + 6, infoBounds.Y + 18), new Color(255, 228, 151), 0f, Vector2.Zero, 0.42f, SpriteEffects.None, 0f);
 
             string summaryText = _selectedAction.HasValue
                 ? (_captureArmed
                     ? "Capture armed: press a key or pad button."
                     : BuildClientOwnerSummary())
-                : "Client quick-slot owner page stays on the live bindable shortcut lane instead of the main WZ icon palette.";
+                : "Client quick-slot owner page now exposes the bindable FuncKeyMapped cast lane.";
             sprite.DrawString(_font, summaryText, new Vector2(infoBounds.X + 6, infoBounds.Y + 33), new Color(210, 210, 210), 0f, Vector2.Zero, 0.36f, SpriteEffects.None, 0f);
 
             if (!_selectedAction.HasValue)
@@ -669,7 +669,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Rectangle previewBounds = new(infoBounds.X + 6, infoBounds.Y + 49, 40, 40);
+            Rectangle previewBounds = new(infoBounds.Right - 48, infoBounds.Y + 8, 40, 40);
             sprite.Draw(_highlightTexture, previewBounds, new Color(56, 68, 92, 215));
             DrawMainPageShortcutPreview(sprite, previewBounds, selectedPaletteTexture, selectedShortcutVisual);
 
@@ -680,16 +680,16 @@ namespace HaCreator.MapSimulator.UI
                 : selectedShortcutVisual.HasDetails
                     ? $"Live shortcut visual: {selectedShortcutVisual.Title}"
                     : "No live packet-owned shortcut visual or recovered palette owner is currently staged on this quick-slot row.";
-            sprite.DrawString(_font, quickSlotText, new Vector2(previewBounds.Right + 8, previewBounds.Y + 4), new Color(220, 220, 220), 0f, Vector2.Zero, 0.34f, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, quickSlotText, new Vector2(infoBounds.X + 6, infoBounds.Y + 33), new Color(220, 220, 220), 0f, Vector2.Zero, 0.32f, SpriteEffects.None, 0f);
 
             string clientOwnerText = BuildClientOwnerStatusText();
-            sprite.DrawString(_font, clientOwnerText, new Vector2(previewBounds.Right + 8, previewBounds.Y + 18), new Color(210, 210, 210), 0f, Vector2.Zero, 0.31f, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, clientOwnerText, new Vector2(infoBounds.X + 6, infoBounds.Y + 44), new Color(210, 210, 210), 0f, Vector2.Zero, 0.28f, SpriteEffects.None, 0f);
             if (!string.IsNullOrWhiteSpace(selectedShortcutVisual.Detail))
             {
-                sprite.DrawString(_font, selectedShortcutVisual.Detail, new Vector2(previewBounds.Right + 8, previewBounds.Y + 30), new Color(192, 200, 214), 0f, Vector2.Zero, 0.28f, SpriteEffects.None, 0f);
+                sprite.DrawString(_font, selectedShortcutVisual.Detail, new Vector2(infoBounds.X + 256, infoBounds.Y + 44), new Color(192, 200, 214), 0f, Vector2.Zero, 0.24f, SpriteEffects.None, 0f);
             }
 
-            Rectangle bindingBounds = new(infoBounds.Right - 120, infoBounds.Bottom - 28, 114, 22);
+            Rectangle bindingBounds = new(infoBounds.Right - 176, infoBounds.Bottom - 24, 118, 20);
             sprite.Draw(_highlightTexture, bindingBounds, new Color(56, 68, 92, 215));
             DrawBindingValue(sprite, bindingBounds, GetBinding(_selectedAction.Value));
         }
@@ -876,7 +876,7 @@ namespace HaCreator.MapSimulator.UI
                 Vector2 iconPosition = new(
                     iconOriginX + (column * iconCell),
                     iconOriginY + (row * iconCell));
-                sprite.Draw(texture, iconPosition, null, Color.White, 0f, Vector2.Zero, iconScale, SpriteEffects.None, 0f);
+                DrawPaletteTexture(sprite, cellBounds, texture, iconScale);
             }
         }
 
@@ -969,6 +969,26 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private static void DrawPaletteTexture(SpriteBatch sprite, Rectangle bounds, Texture2D paletteTexture, float scale)
+        {
+            Rectangle drawBounds = ResolveClientPaletteIconBounds(bounds, paletteTexture, scale);
+            sprite.Draw(paletteTexture, drawBounds, Color.White);
+        }
+
+        internal static Rectangle ResolveClientPaletteIconBounds(Rectangle bounds, Texture2D paletteTexture, float scale)
+        {
+            int drawWidth = Math.Max(1, (int)Math.Round(paletteTexture.Width * scale, MidpointRounding.AwayFromZero));
+            int drawHeight = Math.Max(1, (int)Math.Round(paletteTexture.Height * scale, MidpointRounding.AwayFromZero));
+            int x = bounds.X;
+            int y = bounds.Bottom - drawHeight;
+            if (bounds.Width > drawWidth)
+            {
+                x = bounds.Center.X - (drawWidth / 2);
+            }
+
+            return new Rectangle(x, y, drawWidth, drawHeight);
+        }
+
+        private static void DrawCenteredTexture(SpriteBatch sprite, Rectangle bounds, Texture2D paletteTexture, float scale)
         {
             Vector2 previewPosition = new(
                 bounds.Center.X - (paletteTexture.Width * scale * 0.5f),
@@ -1107,7 +1127,7 @@ namespace HaCreator.MapSimulator.UI
             if (drawLayer is ShortcutVisualState.ClientDrawLayer.Skill or ShortcutVisualState.ClientDrawLayer.Macro)
             {
                 return new Rectangle(
-                    cellBounds.X,
+                    cellBounds.Right - drawWidth,
                     cellBounds.Bottom - drawHeight,
                     drawWidth,
                     drawHeight);
@@ -1402,14 +1422,52 @@ namespace HaCreator.MapSimulator.UI
                 _bindingRows.Add(new BindingRow(mainRows[i].action, mainRows[i].label, new Rectangle(x, y, rowWidth, rowHeight), mainRows[i].paletteSlotId, mainRows[i].clientFunctionId));
             }
 
+            (InputAction action, string label)[] quickRows = BuildClientFuncKeyMappedRows();
+            const int quickColumnCount = 3;
+            const int quickRowWidth = 180;
+            const int quickRowHeight = 18;
+            const int quickRowGap = 18;
+            const int quickColumnGap = 20;
+            int quickRowsPerColumn = (int)Math.Ceiling(quickRows.Length / (double)quickColumnCount);
+            for (int i = 0; i < quickRows.Length; i++)
+            {
+                int column = i / quickRowsPerColumn;
+                int row = i % quickRowsPerColumn;
+                int x = leftX + (column * (quickRowWidth + quickColumnGap));
+                int y = topY + (row * quickRowGap);
+                _quickSlotRows.Add(new BindingRow(
+                    quickRows[i].action,
+                    quickRows[i].label,
+                    new Rectangle(x, y, quickRowWidth, quickRowHeight),
+                    -1,
+                    -1));
+            }
+        }
+
+        private static (InputAction action, string label)[] BuildClientFuncKeyMappedRows()
+        {
+            var rows = new List<(InputAction action, string label)>(28);
             for (int i = 0; i < 8; i++)
             {
-                int column = i < 4 ? 0 : 1;
-                int row = i % 4;
-                int x = column == 0 ? leftX : rightX;
-                int y = topY + (row * 48);
-                _quickSlotRows.Add(new BindingRow(InputAction.QuickSlot1 + i, $"Quick Slot {i + 1}", new Rectangle(x, y, rowWidth, 32), -1, -1));
+                rows.Add((InputAction.Skill1 + i, $"Skill {i + 1}"));
             }
+
+            for (int i = 0; i < 8; i++)
+            {
+                rows.Add((InputAction.QuickSlot1 + i, $"Quick {i + 1}"));
+            }
+
+            for (int i = 0; i < 12; i++)
+            {
+                rows.Add((InputAction.FunctionSlot1 + i, $"F{i + 1} Slot"));
+            }
+
+            for (int i = 0; i < 8; i++)
+            {
+                rows.Add((InputAction.CtrlSlot1 + i, $"Ctrl {i + 1}"));
+            }
+
+            return rows.ToArray();
         }
 
         private BindingRow? TryGetSelectedRow()

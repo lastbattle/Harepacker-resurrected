@@ -98,6 +98,36 @@ namespace HaCreator.MapSimulator.Animation
             InsertOneTimeAnimation(anim);
         }
 
+        internal void AddFullChargedAngerGauge(
+            List<IDXObject> frames,
+            string sourceUol,
+            Func<Vector2> getOrigin,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int zOrder = 1)
+        {
+            if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return;
+
+            OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
+            anim.Initialize(
+                frames,
+                fallbackX,
+                fallbackY,
+                fallbackFlip,
+                currentTimeMs,
+                zOrder,
+                getOrigin,
+                getFlip,
+                AnimationOneTimeOwner.FullChargedAngerGauge,
+                AnimationOneTimePlaybackMode.GA_STOP,
+                sourceUol,
+                usesOverlayParent: true);
+            InsertOneTimeAnimation(anim);
+        }
+
         /// <summary>
         /// Add a one-shot animation with color tint
         /// </summary>
@@ -1087,6 +1117,7 @@ namespace HaCreator.MapSimulator.Animation
         public int AreaAnimationCount => _areaAnimations.Count;
         public int FollowAnimationCount => _followAnimations.Count;
         public int FollowParticleCount => _followParticleAnimations.Count;
+        internal IReadOnlyList<OneTimeAnimation> OneTimeAnimations => _oneTimeAnimations;
 
         #endregion
     }
@@ -1100,6 +1131,18 @@ namespace HaCreator.MapSimulator.Animation
     {
         Generic = 0,
         DamageNumber = 1
+    }
+
+    internal enum AnimationOneTimeOwner
+    {
+        Generic = 0,
+        FullChargedAngerGauge = 1
+    }
+
+    internal enum AnimationOneTimePlaybackMode
+    {
+        Default = 0,
+        GA_STOP = 1
     }
 
     internal enum AnimationCanvasLayerContent
@@ -1557,6 +1600,10 @@ namespace HaCreator.MapSimulator.Animation
         public bool FadeOut { get; set; } = false;
         public float Alpha { get; private set; } = 1f;
         public int ZOrder => _zOrder;
+        public AnimationOneTimeOwner Owner { get; private set; } = AnimationOneTimeOwner.Generic;
+        public AnimationOneTimePlaybackMode PlaybackMode { get; private set; } = AnimationOneTimePlaybackMode.Default;
+        public string SourceUol { get; private set; }
+        public bool UsesOverlayParent { get; private set; }
 
         public void Initialize(List<IDXObject> frames, float x, float y, bool flip, int currentTimeMs, int zOrder)
         {
@@ -1573,6 +1620,35 @@ namespace HaCreator.MapSimulator.Animation
             Func<Vector2> getPosition,
             Func<bool> getFlip)
         {
+            Initialize(
+                frames,
+                x,
+                y,
+                flip,
+                currentTimeMs,
+                zOrder,
+                getPosition,
+                getFlip,
+                AnimationOneTimeOwner.Generic,
+                AnimationOneTimePlaybackMode.Default,
+                sourceUol: null,
+                usesOverlayParent: false);
+        }
+
+        public void Initialize(
+            List<IDXObject> frames,
+            float x,
+            float y,
+            bool flip,
+            int currentTimeMs,
+            int zOrder,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            AnimationOneTimeOwner owner,
+            AnimationOneTimePlaybackMode playbackMode,
+            string sourceUol,
+            bool usesOverlayParent)
+        {
             _frames = frames;
             _x = x;
             _y = y;
@@ -1587,6 +1663,10 @@ namespace HaCreator.MapSimulator.Animation
             Tint = Color.White;
             FadeOut = false;
             Alpha = 1f;
+            Owner = owner;
+            PlaybackMode = playbackMode;
+            SourceUol = sourceUol;
+            UsesOverlayParent = usesOverlayParent;
         }
 
         public bool Update(int currentTimeMs)

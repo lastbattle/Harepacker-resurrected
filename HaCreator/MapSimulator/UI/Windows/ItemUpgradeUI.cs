@@ -4254,12 +4254,16 @@ namespace HaCreator.MapSimulator.UI
                 targetSlots.Add(EquipSlot.Longcoat);
             }
 
-            if (normalized.IndexOf("top", StringComparison.OrdinalIgnoreCase) >= 0 || normalized.IndexOf("coat", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (normalized.IndexOf("top", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("coat", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("upper garment", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 targetSlots.Add(EquipSlot.Coat);
             }
 
-            if (normalized.IndexOf("bottom", StringComparison.OrdinalIgnoreCase) >= 0 || normalized.IndexOf("pants", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (normalized.IndexOf("bottom", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("pants", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("under garment", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 targetSlots.Add(EquipSlot.Pants);
             }
@@ -4393,13 +4397,13 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            if (ContainsAny(normalized, "tops", "top", "coats", "coat"))
+            if (ContainsAny(normalized, "tops", "top", "coats", "coat", "upper garment", "upper garments"))
             {
                 label = "tops";
                 return true;
             }
 
-            if (ContainsAny(normalized, "bottoms", "bottom", "pants"))
+            if (ContainsAny(normalized, "bottoms", "bottom", "pants", "under garment", "under garments"))
             {
                 label = "bottoms";
                 return true;

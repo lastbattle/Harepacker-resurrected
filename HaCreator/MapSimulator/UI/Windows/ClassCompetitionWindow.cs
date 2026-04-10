@@ -24,7 +24,7 @@ namespace HaCreator.MapSimulator.UI
         private const int FooterTop = 321;
         private const int FooterWidth = 268;
         private const int FooterHeight = 36;
-        private static readonly Point LoadingOffset = new(115, 146);
+        private static readonly Point LoadingOffset = new(128, 161);
 
         private readonly List<UtilityPanelWindow.IndicatorFrame> _loadingFrames = new();
         private readonly Texture2D _pixel;
@@ -34,6 +34,9 @@ namespace HaCreator.MapSimulator.UI
         private Func<string> _footerProvider;
         private Func<bool> _indicatorActiveProvider;
         private UIObject _okButton;
+
+        internal static Point ClientLoadingLayerOffsetForTesting => LoadingOffset;
+        internal event Action CloseRequested;
 
         public ClassCompetitionWindow(
             IDXObject frame,
@@ -157,6 +160,16 @@ namespace HaCreator.MapSimulator.UI
             if (!string.IsNullOrWhiteSpace(footer))
             {
                 DrawWindowText(sprite, Truncate(footer, 72), new Vector2(Position.X + FooterLeft + 8, Position.Y + FooterTop + 18), new Color(255, 228, 151), 0.28f);
+            }
+        }
+
+        public override void Hide()
+        {
+            bool wasVisible = IsVisible;
+            base.Hide();
+            if (wasVisible && !IsVisible)
+            {
+                CloseRequested?.Invoke();
             }
         }
 

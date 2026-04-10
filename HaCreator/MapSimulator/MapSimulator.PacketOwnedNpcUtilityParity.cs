@@ -415,6 +415,26 @@ namespace HaCreator.MapSimulator
 
             byte subtype = payload[0];
             byte resultCode = payload[1];
+            string resultBlockingOwner = GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.CashShop);
+            if (!string.IsNullOrWhiteSpace(resultBlockingOwner))
+            {
+                message = adminShopWindow.ApplyPacketOwnedAdminShopResultIgnoredByUniqueModelessOwner(
+                    subtype,
+                    resultCode,
+                    resultBlockingOwner);
+                return true;
+            }
+
+            if (!adminShopWindow.IsVisible
+                && !adminShopWindow.HasPacketOwnedAdminShopSession)
+            {
+                message = adminShopWindow.ApplyPacketOwnedAdminShopResultIgnoredByUniqueModelessOwner(
+                    subtype,
+                    resultCode,
+                    blockingOwner: null);
+                return true;
+            }
+
             bool applied = adminShopWindow.TryApplyPacketOwnedAdminShopResult(
                 subtype,
                 resultCode,

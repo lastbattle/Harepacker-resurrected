@@ -77,6 +77,9 @@ namespace HaCreator.MapSimulator.UI
         public const string OptionMenu = "OptionMenu";
         public const string Ranking = "Ranking";
         public const string Event = "Event";
+        public const string MedalQuestInfo = "MedalQuestInfo";
+        public const string ItemPot = "ItemPot";
+        public const string MagicWheel = "MagicWheel";
         public const string Radio = "Radio";
         public const string DragonBox = "DragonBox";
         public const string AccountMoreInfo = "AccountMoreInfo";

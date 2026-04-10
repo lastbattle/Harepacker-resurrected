@@ -19,6 +19,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientSelectButtonLeft = 21;
         private const int ClientColumnStride = 66;
         private const int ClientSelectButtonBaseId = 1000;
+        private const int ClientSelectButtonCount = 3;
         private const int ClientItemIconSize = 40;
         private const int ClientSelectButtonWidth = 52;
         private const int ClientSelectButtonHeight = 18;
@@ -368,6 +369,18 @@ namespace HaCreator.MapSimulator.UI
         internal static int GetClientSelectButtonId(int index)
         {
             return ClientSelectButtonBaseId + index;
+        }
+
+        internal static bool TryResolveClientSelectButtonIndex(int buttonId, out int index)
+        {
+            index = buttonId - ClientSelectButtonBaseId;
+            if (index >= 0 && index < ClientSelectButtonCount)
+            {
+                return true;
+            }
+
+            index = -1;
+            return false;
         }
 
         private Rectangle GetCloseBounds()

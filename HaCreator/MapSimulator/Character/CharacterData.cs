@@ -1317,6 +1317,11 @@ namespace HaCreator.MapSimulator.Character
 
         private IEnumerable<string> EnumerateClientBasicAttackActionCandidates(AttackType fallbackAttackType)
         {
+            if (fallbackAttackType == AttackType.ProneStab)
+            {
+                yield return CharacterPart.GetActionString(CharacterAction.ProneStab);
+            }
+
             switch (ResolveClientAttackActionFamily())
             {
                 case ClientAttackActionFamily.OneHandedMelee:
@@ -2498,6 +2503,11 @@ namespace HaCreator.MapSimulator.Character
         private static bool IsClientWeaponTypedSubWeapon(WeaponPart subWeapon)
         {
             if (subWeapon == null)
+            {
+                return false;
+            }
+
+            if (subWeapon.ItemId / 1000000 != 1)
             {
                 return false;
             }

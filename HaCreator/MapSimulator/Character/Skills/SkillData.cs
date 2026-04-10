@@ -1998,7 +1998,15 @@ namespace HaCreator.MapSimulator.Character.Skills
         public string EffectUol { get; init; }
         public int WeaponItemId { get; init; }
         public int BulletItemId { get; init; }
+        public int BulletUseItemId { get; init; }
+        public int BulletCashItemId { get; init; }
+        public int BulletUseSlotIndex { get; init; } = -1;
+        public int BulletCashSlotIndex { get; init; } = -1;
+        public int QueuedBulletUseSlotPosition { get; init; }
+        public int QueuedBulletCashSlotPosition { get; init; }
         public bool HasAfterimage { get; init; }
+        public int AfterimageIntervalMs { get; init; }
+        public int AfterimageStartAlpha { get; init; }
         public SkillAnimation Animation { get; init; }
         public SkillAnimation EffectAnimation { get; init; }
     }
@@ -2101,6 +2109,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool ForceCritical { get; set; }
         public bool IsQueuedFinalAttack { get; set; }
         public bool IsQueuedSparkAttack { get; set; }
+        public int PresentationBulletIndex { get; set; }
+        public int PresentationBulletCount { get; set; } = 1;
         public int BulletAnimationOwnerId { get; set; }
         public BulletAnimationPresentation BulletAnimation { get; set; }
         public List<ProjectileAfterimageLayer> AfterimageLayers { get; } = new();

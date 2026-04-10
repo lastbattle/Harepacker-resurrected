@@ -90,15 +90,27 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (!TryResolveMysticDoorReturnTargetForMap(_mapBoard.MapInfo.id, out int returnMapId, out float returnX, out float returnY)
-                || returnMapId == _mapBoard.MapInfo.id)
+            int sourceMapId = _mapBoard.MapInfo.id;
+            if (!TryResolveMysticDoorReturnTargetForMap(sourceMapId, out int returnMapId, out float returnX, out float returnY))
+            {
+                _temporaryPortalField.RememberPendingRemoteTownPortalOwnerFieldObservation(
+                    ownerCharacterId,
+                    sourceMapId,
+                    position.X,
+                    position.Y,
+                    Environment.TickCount,
+                    observationSource);
+                return;
+            }
+
+            if (returnMapId == sourceMapId)
             {
                 return;
             }
 
             _temporaryPortalField.RememberRemoteTownPortalOwnerFieldObservation(
                 ownerCharacterId,
-                _mapBoard.MapInfo.id,
+                sourceMapId,
                 position.X,
                 position.Y,
                 new TemporaryPortalField.RemoteTownPortalResolvedDestination(returnMapId, returnX, returnY),
@@ -1737,6 +1749,23 @@ namespace HaCreator.MapSimulator
                     DropItem drop = _dropPool.GetDrop(dropPickupPacket.DropId);
                     if (drop == null)
                     {
+                        string latePickupActorName = ResolveRemoteUserDropPickupActorName(
+                            dropPickupPacket,
+                            _remoteUserPool,
+                            ResolveMobPickupSourceName,
+                            ResolvePickupItemName);
+                        if (TrySurfaceRecentRemoteDropPickupNotice(
+                                dropPickupPacket.DropId,
+                                currentTime,
+                                dropPickupPacket.ActorKind,
+                                dropPickupPacket.ActorId,
+                                latePickupActorName,
+                                dropPickupPacket.FallbackOwnerId))
+                        {
+                            result = $"Applied {DescribeRemoteUserPacketType(packetType)} for recently picked drop {dropPickupPacket.DropId}.";
+                            return true;
+                        }
+
                         result = $"Drop-pickup packet referenced drop {dropPickupPacket.DropId}, but that drop is not active.";
                         return false;
                     }

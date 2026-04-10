@@ -63,6 +63,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int TimerY = 83;
         private const int ScoreDigitSpacing = 4;
         private const int TimerDigitSpacing = 1;
+        private const int ClientBoardRedrawIntervalMs = 150;
         #region Nested Types
         public enum CoconutState
         {
@@ -204,6 +205,7 @@ namespace HaCreator.MapSimulator.Fields
         private RenderTarget2D _boardLayerRenderTarget;
         private SpriteBatch _boardLayerSpriteBatch;
         private bool _boardLayerDirty = true;
+        private int _lastBoardLayerRedrawTick;
         private List<IDXObject> _activeResultFrames;
         private int _resultFrameIndex;
         private int _resultFrameStartTime;
@@ -260,6 +262,8 @@ namespace HaCreator.MapSimulator.Fields
         internal string EventName => _eventName;
         internal string EventObjectName => _eventObjectName;
         internal bool HasClientClock => _finishTick != 0;
+        internal bool IsBoardLayerDirty => _boardLayerDirty;
+        internal int LastBoardLayerRedrawTick => _lastBoardLayerRedrawTick;
         internal string VictoryEffectPath => _victoryEffectPath;
         internal string LoseEffectPath => _loseEffectPath;
         internal string VictorySoundPath => _victorySoundPath;
@@ -647,6 +651,7 @@ namespace HaCreator.MapSimulator.Fields
             _hitQueue.Clear();
             _pendingAttackPacketRequests.Clear();
             _localBasicActionOwnerUntilTick = int.MinValue;
+            _lastBoardLayerRedrawTick = startTick;
             ClearRoundResult();
             ShowMessage(_eventName, _messageDurationMs, startTick);
             MarkBoardLayerDirty();
@@ -796,6 +801,7 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
             EnsureAssetsLoaded();
+            RefreshBoardLayerOnClientCadence(tickCount);
             ProcessHitQueue(tickCount);
             if (_gameActive)
             {
@@ -966,15 +972,14 @@ namespace HaCreator.MapSimulator.Fields
 
             if (acknowledged)
             {
-                RecalculateLocalBasicActionOwnership();
+                PreserveLocalBasicActionOwnership();
             }
         }
 
-        private void RecalculateLocalBasicActionOwnership()
+        private void PreserveLocalBasicActionOwnership()
         {
             if (_pendingAttackPacketRequests.Count == 0)
             {
-                _localBasicActionOwnerUntilTick = int.MinValue;
                 return;
             }
 
@@ -1306,6 +1311,22 @@ namespace HaCreator.MapSimulator.Fields
         private void MarkBoardLayerDirty()
         {
             _boardLayerDirty = true;
+        }
+
+        private void RefreshBoardLayerOnClientCadence(int tickCount)
+        {
+            if (_lastBoardLayerRedrawTick == 0)
+            {
+                _lastBoardLayerRedrawTick = tickCount;
+                MarkBoardLayerDirty();
+                return;
+            }
+
+            if (unchecked(tickCount - _lastBoardLayerRedrawTick) > ClientBoardRedrawIntervalMs)
+            {
+                _lastBoardLayerRedrawTick = tickCount;
+                MarkBoardLayerDirty();
+            }
         }
         private void EnsureResultSoundRegistered()
         {

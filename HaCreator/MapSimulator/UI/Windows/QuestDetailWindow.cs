@@ -1173,14 +1173,14 @@ namespace HaCreator.MapSimulator.UI
                     CultureInfo.InvariantCulture,
                     out int itemId))
             {
-                Texture2D iconTexture = ResolveItemIcon(itemId);
-                if (iconTexture != null)
-                {
-                    token = new RichTextToken(RichTextTokenKind.Icon, null, iconTexture, null, iconTexture.Width, iconTexture.Height);
-                }
-
-                return true;
+            Texture2D iconTexture = ResolveItemIcon(itemId);
+            if (iconTexture != null)
+            {
+                token = new RichTextToken(RichTextTokenKind.Icon, null, iconTexture, null, iconTexture.Width, iconTexture.Height, itemId);
             }
+
+            return true;
+        }
 
             if (value.StartsWith(questSurfacePrefix, StringComparison.OrdinalIgnoreCase) &&
                 value.EndsWith("}}", StringComparison.Ordinal))
@@ -1251,31 +1251,154 @@ namespace HaCreator.MapSimulator.UI
 
             Rectangle logClipRect = GetLogClipRectangle();
             float y = Position.Y + GetLogTextArrayBaseY() - _logScrollOffset;
-            if (!string.IsNullOrWhiteSpace(_state.RequirementText))
+            if (HasRequirementContent())
             {
-                y += AdvanceRichText(_state.RequirementText, ClientContentWidth, ClientDetailScale, QuestDetailTextLane.Detail);
-                if (_state.RequirementLines != null && _state.RequirementLines.Count > 0)
+                y = AdvanceSectionHeader(_requirementHeaderTexture, y);
+                if (!string.IsNullOrWhiteSpace(_state.RequirementText))
                 {
-                    y += ConditionSectionBodyGap;
+                    HoveredQuestItemInfo hoveredInlineItem = TryResolveHoveredRichTextItem(
+                        mouseX,
+                        mouseY,
+                        logClipRect,
+                        _state.RequirementText,
+                        new Vector2(Position.X + ClientTextArrayX, y),
+                        ClientContentWidth,
+                        ClientDetailScale,
+                        QuestDetailTextLane.Detail);
+                    if (hoveredInlineItem != null)
+                    {
+                        return hoveredInlineItem;
+                    }
+
+                    y += AdvanceRichText(_state.RequirementText, ClientContentWidth, ClientDetailScale, QuestDetailTextLane.Detail);
+                    if (_state.RequirementLines != null && _state.RequirementLines.Count > 0)
+                    {
+                        y += ConditionSectionBodyGap;
+                    }
+                }
+
+                HoveredQuestItemInfo hovered = TryResolveHoveredConditionItem(mouseX, mouseY, logClipRect, _state.RequirementLines, Position.X + ClientTextArrayX, ref y, ClientContentWidth, false);
+                if (hovered != null)
+                {
+                    return hovered;
+                }
+
+                y += 8f;
+            }
+
+            if (HasRewardContent())
+            {
+                y = AdvanceSectionHeader(_rewardHeaderTexture, y);
+                if (!string.IsNullOrWhiteSpace(_state.RewardText))
+                {
+                    HoveredQuestItemInfo hoveredInlineItem = TryResolveHoveredRichTextItem(
+                        mouseX,
+                        mouseY,
+                        logClipRect,
+                        _state.RewardText,
+                        new Vector2(Position.X + ClientTextArrayX, y),
+                        ClientContentWidth,
+                        ClientDetailScale,
+                        QuestDetailTextLane.Detail);
+                    if (hoveredInlineItem != null)
+                    {
+                        return hoveredInlineItem;
+                    }
+
+                    y += AdvanceRichText(_state.RewardText, ClientContentWidth, ClientDetailScale, QuestDetailTextLane.Detail);
+                    if (_state.RewardLines != null && _state.RewardLines.Count > 0)
+                    {
+                        y += ConditionSectionBodyGap;
+                    }
+                }
+
+                HoveredQuestItemInfo hovered = TryResolveHoveredConditionItem(mouseX, mouseY, logClipRect, _state.RewardLines, Position.X + ClientTextArrayX, ref y, ClientContentWidth, true);
+                if (hovered != null)
+                {
+                    return hovered;
+                }
+
+                y += 8f;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_state.HintText))
+            {
+                HoveredQuestItemInfo hoveredInlineItem = TryResolveHoveredRichTextItem(
+                    mouseX,
+                    mouseY,
+                    logClipRect,
+                    _state.HintText,
+                    new Vector2(Position.X + ClientTextArrayX, y),
+                    ClientContentWidth,
+                    ClientDetailScale,
+                    QuestDetailTextLane.Detail);
+                if (hoveredInlineItem != null)
+                {
+                    return hoveredInlineItem;
                 }
             }
 
-            HoveredQuestItemInfo hovered = TryResolveHoveredConditionItem(mouseX, mouseY, logClipRect, _state.RequirementLines, Position.X + ClientTextArrayX, ref y, ClientContentWidth, false);
-            if (hovered != null)
+            Rectangle summaryClipRect = GetSummaryClipRectangle();
+            if (summaryClipRect.Contains(mouseX, mouseY) && HasSummaryPaneContent())
             {
-                return hovered;
+                float summaryY = Position.Y + ClientSummaryY - _summaryScrollOffset;
+                summaryY = AdvanceSectionHeader(_summaryHeaderTexture, summaryY);
+                return TryResolveHoveredRichTextItem(
+                    mouseX,
+                    mouseY,
+                    summaryClipRect,
+                    _state.SummaryText,
+                    new Vector2(Position.X + ClientTextArrayX, summaryY),
+                    ClientContentWidth,
+                    ClientDetailScale,
+                    QuestDetailTextLane.Detail);
             }
 
-            if (!string.IsNullOrWhiteSpace(_state.RewardText))
+            return null;
+        }
+
+        private HoveredQuestItemInfo TryResolveHoveredRichTextItem(
+            int mouseX,
+            int mouseY,
+            Rectangle clipRect,
+            string text,
+            Vector2 position,
+            float maxWidth,
+            float scale,
+            QuestDetailTextLane lane)
+        {
+            if (string.IsNullOrWhiteSpace(text) || !clipRect.Contains(mouseX, mouseY))
             {
-                y += AdvanceRichText(_state.RewardText, ClientContentWidth, ClientDetailScale, QuestDetailTextLane.Detail);
-                if (_state.RewardLines != null && _state.RewardLines.Count > 0)
+                return null;
+            }
+
+            HoveredQuestItemInfo hoveredItem = null;
+            LayoutRichText(
+                text,
+                position,
+                maxWidth,
+                scale,
+                lane,
+                (token, drawPosition, _) =>
                 {
-                    y += ConditionSectionBodyGap;
-                }
-            }
+                    if (hoveredItem != null || token.Kind != RichTextTokenKind.Icon || !token.ItemId.HasValue)
+                    {
+                        return;
+                    }
 
-            return TryResolveHoveredConditionItem(mouseX, mouseY, logClipRect, _state.RewardLines, Position.X + ClientTextArrayX, ref y, ClientContentWidth, true);
+                    Rectangle bounds = new(
+                        (int)Math.Round(drawPosition.X),
+                        (int)Math.Round(drawPosition.Y),
+                        Math.Max(1, token.Width),
+                        Math.Max(1, token.Height));
+                    if (bounds.Contains(mouseX, mouseY) && bounds.Intersects(clipRect))
+                    {
+                        hoveredItem = CreateHoveredQuestItem(token.ItemId.Value, "Quest detail item", null);
+                    }
+                },
+                Color.White);
+
+            return hoveredItem;
         }
 
         private void DrawNoticeSurface(SpriteBatch sprite, int tickCount)
@@ -1305,8 +1428,6 @@ namespace HaCreator.MapSimulator.UI
             {
                 return null;
             }
-
-            y = AdvanceSectionHeader(rewardSection ? _rewardHeaderTexture : _requirementHeaderTexture, y);
 
             foreach (QuestLogLineSnapshot line in lines.Where(line => line != null))
             {
@@ -2510,7 +2631,7 @@ namespace HaCreator.MapSimulator.UI
         {
             public static readonly RichTextToken NewLineToken = new(RichTextTokenKind.NewLine, null, null, null, 0, 0);
 
-            public RichTextToken(RichTextTokenKind kind, string text, Texture2D texture, string styleTag, int width, int height)
+            public RichTextToken(RichTextTokenKind kind, string text, Texture2D texture, string styleTag, int width, int height, int? itemId = null)
             {
                 Kind = kind;
                 Text = text;
@@ -2518,6 +2639,7 @@ namespace HaCreator.MapSimulator.UI
                 StyleTag = styleTag;
                 Width = Math.Max(0, width);
                 Height = Math.Max(0, height);
+                ItemId = itemId;
             }
 
             public RichTextTokenKind Kind { get; }
@@ -2526,6 +2648,7 @@ namespace HaCreator.MapSimulator.UI
             public string StyleTag { get; }
             public int Width { get; }
             public int Height { get; }
+            public int? ItemId { get; }
 
             public static RichTextToken StyleToken(string styleTag)
             {

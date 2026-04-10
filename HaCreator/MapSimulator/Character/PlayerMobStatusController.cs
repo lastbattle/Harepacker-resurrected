@@ -25,7 +25,8 @@ namespace HaCreator.MapSimulator.Character
         Undead,
         Polymorph,
         StopPotion,
-        Fear
+        Fear,
+        Burn
     }
 
     internal readonly struct PlayerMobStatusFrameState
@@ -114,7 +115,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 PlayerMobStatusEntry entry = pair.Value;
                 bool shouldApplyPeriodicDamage =
-                    (entry.Effect == PlayerMobStatusEffect.Poison || entry.Effect == PlayerMobStatusEffect.PainMark)
+                    IsPeriodicDamageStatus(entry.Effect)
                     && entry.Value > 0
                     && entry.TickIntervalMs > 0
                     && currentTime >= entry.NextTickTime;
@@ -434,6 +435,13 @@ namespace HaCreator.MapSimulator.Character
         private bool HasStatus(PlayerMobStatusEffect effect)
         {
             return _entries.ContainsKey(effect);
+        }
+
+        private static bool IsPeriodicDamageStatus(PlayerMobStatusEffect effect)
+        {
+            return effect == PlayerMobStatusEffect.Poison
+                   || effect == PlayerMobStatusEffect.Burn
+                   || effect == PlayerMobStatusEffect.PainMark;
         }
 
         public bool ClearStatus(PlayerMobStatusEffect effect)

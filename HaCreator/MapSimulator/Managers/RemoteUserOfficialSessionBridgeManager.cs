@@ -37,12 +37,14 @@ namespace HaCreator.MapSimulator.Managers
         public const int DefaultListenPort = 18492;
         private const string DefaultProcessName = "MapleStory";
 
-        private const string OfficialRemoteOwnerEvidence = "v95 CUserPool::OnUserRemotePacket (0x94b390) routes only enter/leave and remote-user opcodes 210-230; tutor remains local under CUserLocal::OnPacket 255/256.";
+        private const string OfficialRemoteOwnerEvidence = "v95 CUserPool::OnUserRemotePacket (0x94b390) routes enter/leave and remote-user opcodes 210-230; CUserPool::OnUserCommonPacket (0x94cdb0) routes common chat opcodes 181/182 through CUser::OnChat; tutor remains local under CUserLocal::OnPacket 255/256.";
 
         private static readonly IReadOnlyDictionary<ushort, int> DefaultPacketMap = new Dictionary<ushort, int>
         {
             [179] = (int)Pools.RemoteUserPacketType.UserEnterField,
             [180] = (int)Pools.RemoteUserPacketType.UserLeaveField,
+            [181] = (int)Pools.RemoteUserPacketType.UserChat,
+            [182] = (int)Pools.RemoteUserPacketType.UserChatFromOutsideMap,
             [210] = (int)Pools.RemoteUserPacketType.UserMoveOfficial,
             [211] = (int)Pools.RemoteUserPacketType.UserAttackOfficial1,
             [212] = (int)Pools.RemoteUserPacketType.UserAttackOfficial2,
@@ -419,6 +421,8 @@ namespace HaCreator.MapSimulator.Managers
         {
             return opcode == 179
                 || opcode == 180
+                || opcode == 181
+                || opcode == 182
                 || (opcode >= 210 && opcode <= 230);
         }
 

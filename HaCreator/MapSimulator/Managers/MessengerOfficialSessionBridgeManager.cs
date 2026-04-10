@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly int _defaultListenPort;
         private readonly ushort _defaultInboundOpcode;
         private readonly ushort _defaultOutboundOpcode;
+        private readonly HashSet<ushort> _additionalInboundOpcodes;
         private readonly ConcurrentQueue<MessengerOfficialSessionBridgeMessage> _pendingMessages = new();
         private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
         private readonly object _sync = new();
@@ -112,12 +113,13 @@ namespace HaCreator.MapSimulator.Managers
         {
         }
 
-        internal MessengerOfficialSessionBridgeManager(string ownerName, int defaultListenPort, ushort defaultInboundOpcode, ushort defaultOutboundOpcode = 0)
+        internal MessengerOfficialSessionBridgeManager(string ownerName, int defaultListenPort, ushort defaultInboundOpcode, ushort defaultOutboundOpcode = 0, params ushort[] additionalInboundOpcodes)
         {
             _ownerName = string.IsNullOrWhiteSpace(ownerName) ? "Messenger" : ownerName.Trim();
             _defaultListenPort = defaultListenPort <= 0 ? DefaultListenPort : defaultListenPort;
             _defaultInboundOpcode = defaultInboundOpcode == 0 ? DefaultInboundResultOpcode : defaultInboundOpcode;
             _defaultOutboundOpcode = defaultOutboundOpcode;
+            _additionalInboundOpcodes = new HashSet<ushort>((additionalInboundOpcodes ?? Array.Empty<ushort>()).Where(opcode => opcode != 0));
             ListenPort = _defaultListenPort;
             MessengerOpcode = _defaultInboundOpcode;
             LastStatus = $"{_ownerName} official-session bridge inactive.";
@@ -140,7 +142,8 @@ namespace HaCreator.MapSimulator.Managers
             string outboundText = _defaultOutboundOpcode > 0
                 ? $"; outbound opcode={_defaultOutboundOpcode}"
                 : string.Empty;
-            return $"{_ownerName} official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingOutboundPacketCount}; queued={QueuedCount}; inbound opcode={MessengerOpcode}{outboundText}.{lastOutbound}{lastQueued} {LastStatus}";
+            string inboundText = DescribeInboundOpcodeSet();
+            return $"{_ownerName} official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingOutboundPacketCount}; queued={QueuedCount}; inbound opcode {inboundText}{outboundText}.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort, ushort messengerOpcode)
@@ -160,7 +163,7 @@ namespace HaCreator.MapSimulator.Managers
                     _listener = new TcpListener(IPAddress.Loopback, ListenPort);
                     _listener.Start();
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"{_ownerName} official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and filtering opcode {MessengerOpcode}.";
+                    LastStatus = $"{_ownerName} official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and filtering opcode {DescribeInboundOpcodeSet()}.";
                 }
                 catch (Exception ex)
                 {
@@ -201,7 +204,7 @@ namespace HaCreator.MapSimulator.Managers
                 && MessengerOpcode == resolvedOpcode
                 && string.Equals(RemoteHost, candidate.RemoteEndpoint.Address.ToString(), StringComparison.OrdinalIgnoreCase))
             {
-                status = $"{_ownerName} official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} using opcode {resolvedOpcode}.";
+                status = $"{_ownerName} official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} using opcode {DescribeInboundOpcodeSet(resolvedOpcode)}.";
                 LastStatus = status;
                 return true;
             }
@@ -411,7 +414,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 pair.ClientSession.SendPacket((byte[])raw.Clone());
-                if (!TryDecodeInboundMessengerPacket(raw, $"official-session:{pair.RemoteEndpoint}", MessengerOpcode, out MessengerOfficialSessionBridgeMessage message))
+                if (!TryDecodeInboundMessengerPacket(raw, $"official-session:{pair.RemoteEndpoint}", MessengerOpcode, _additionalInboundOpcodes, out MessengerOfficialSessionBridgeMessage message))
                 {
                     return;
                 }
@@ -443,7 +446,7 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private static bool TryDecodeInboundMessengerPacket(byte[] rawPacket, string source, ushort messengerOpcode, out MessengerOfficialSessionBridgeMessage message)
+        private static bool TryDecodeInboundMessengerPacket(byte[] rawPacket, string source, ushort messengerOpcode, IReadOnlySet<ushort> additionalOpcodes, out MessengerOfficialSessionBridgeMessage message)
         {
             message = null;
             if (rawPacket == null || rawPacket.Length < sizeof(ushort) || messengerOpcode == 0)
@@ -452,7 +455,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             int opcode = BitConverter.ToUInt16(rawPacket, 0);
-            if (opcode != messengerOpcode)
+            if (opcode != messengerOpcode && additionalOpcodes?.Contains((ushort)opcode) != true)
             {
                 return false;
             }
@@ -580,6 +583,21 @@ namespace HaCreator.MapSimulator.Managers
 
             status = null;
             return true;
+        }
+
+        private string DescribeInboundOpcodeSet()
+        {
+            return DescribeInboundOpcodeSet(MessengerOpcode);
+        }
+
+        private string DescribeInboundOpcodeSet(ushort primaryOpcode)
+        {
+            if (_additionalInboundOpcodes.Count == 0)
+            {
+                return primaryOpcode.ToString();
+            }
+
+            return string.Join(",", new[] { primaryOpcode }.Concat(_additionalInboundOpcodes).Distinct().OrderBy(opcode => opcode));
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

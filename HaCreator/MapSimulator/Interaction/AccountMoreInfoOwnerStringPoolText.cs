@@ -60,11 +60,23 @@ namespace HaCreator.MapSimulator.Interaction
             return $"{BackgroundFallback} ({MapleStoryStringPool.FormatFallbackLabel(BackgroundStringPoolId)} fallback)";
         }
 
+        internal static string ResolveExactBackgroundResourcePath()
+        {
+            return MapleStoryStringPool.GetOrNull(BackgroundStringPoolId) ?? BackgroundFallback;
+        }
+
+        internal static bool IsExactBackgroundResourcePath(string candidate)
+        {
+            string exactPath = ResolveExactBackgroundResourcePath();
+            return !string.IsNullOrWhiteSpace(candidate)
+                && string.Equals(candidate, exactPath, StringComparison.OrdinalIgnoreCase);
+        }
+
         internal static IReadOnlyList<string> EnumerateBackgroundResourcePaths()
         {
             List<string> candidates = new();
 
-            AddDistinctCandidate(candidates, MapleStoryStringPool.GetOrNull(BackgroundStringPoolId));
+            AddDistinctCandidate(candidates, ResolveExactBackgroundResourcePath());
 
             // The generated table in this workspace currently resolves 0x16AE to
             // `UI/UIWindow.img/UserInfo/backgrnd8`, while older reverse-engineered

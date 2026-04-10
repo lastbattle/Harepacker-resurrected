@@ -364,9 +364,9 @@ namespace HaCreator.MapSimulator
             UpdateUtilityAudioMix(currTickCount);
             DrainRockPaperScissorsPendingClientPackets();
 
-
             if (isWindowActive)
             {
+                _npcInteractionOverlay?.PumpPacketQuestResultModalHost();
                 bool initialQuizMouseConsumed = HandleInitialQuizOwnerMouse(newMouseState, _oldMouseState, currTickCount);
                 bool speedQuizMouseConsumed = HandleSpeedQuizOwnerMouse(newMouseState, _oldMouseState, currTickCount);
                 bool dedicatedOwnerMouseConsumed = HandlePacketScriptDedicatedOwnerMouse(newMouseState, _oldMouseState, currTickCount);

@@ -95,6 +95,11 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal static bool ShouldEnforceLocalRequesterChecks(string proposerName, string localCharacterName)
+        {
+            return NamesMatch(proposerName, localCharacterName);
+        }
+
         internal string OpenOutgoingRequest(
             string proposerName,
             string partnerName,

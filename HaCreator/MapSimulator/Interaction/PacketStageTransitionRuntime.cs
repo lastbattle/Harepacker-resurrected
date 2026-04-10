@@ -416,7 +416,7 @@ namespace HaCreator.MapSimulator.Interaction
             predictQuitRawValue = reader.ReadInt32();
             for (int i = 0; i < commoditySerialNumbers.Length; i++)
             {
-                commoditySerialNumbers[i] = Math.Max(0, reader.ReadInt32());
+                commoditySerialNumbers[i] = reader.ReadInt32();
             }
 
             return true;

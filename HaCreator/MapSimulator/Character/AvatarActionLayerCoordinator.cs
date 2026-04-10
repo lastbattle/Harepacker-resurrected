@@ -150,6 +150,27 @@ namespace HaCreator.MapSimulator.Character
             return true;
         }
 
+        internal static bool TryResolveMountedOneTimeBodyAnimationTime(
+            string actionName,
+            int elapsedTimeMs,
+            int bodyPreparedDurationMs,
+            int tamingMobPreparedDurationMs,
+            out int bodyAnimationTimeMs)
+        {
+            bodyAnimationTimeMs = 0;
+            if (string.IsNullOrWhiteSpace(actionName)
+                || bodyPreparedDurationMs <= 0
+                || tamingMobPreparedDurationMs <= bodyPreparedDurationMs
+                || elapsedTimeMs < bodyPreparedDurationMs
+                || elapsedTimeMs >= tamingMobPreparedDurationMs)
+            {
+                return false;
+            }
+
+            bodyAnimationTimeMs = elapsedTimeMs - bodyPreparedDurationMs;
+            return true;
+        }
+
         private static int ResolveActionSpeedDelay(int delay, int actionSpeed)
         {
             int clampedActionSpeed = Math.Clamp(actionSpeed, 2, 10);

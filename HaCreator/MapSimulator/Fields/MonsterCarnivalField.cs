@@ -147,10 +147,11 @@ namespace HaCreator.MapSimulator.Fields
 
     public sealed class MonsterCarnivalUiDataRowState
     {
-        public MonsterCarnivalUiDataRowState(MonsterCarnivalTab tab, int index, int id, int cost, string name, string description)
+        public MonsterCarnivalUiDataRowState(MonsterCarnivalTab tab, int index, int clientOrdinal, int id, int cost, string name, string description)
         {
             Tab = tab;
             Index = index;
+            ClientOrdinal = Math.Max(1, clientOrdinal);
             Id = id;
             Cost = Math.Max(0, cost);
             Name = string.IsNullOrWhiteSpace(name) ? $"{tab} {id}" : name.Trim();
@@ -159,11 +160,13 @@ namespace HaCreator.MapSimulator.Fields
 
         public MonsterCarnivalTab Tab { get; }
         public int Index { get; }
+        public int ClientOrdinal { get; }
         public int Id { get; }
         public int Cost { get; }
         public string Name { get; }
         public string Description { get; }
         public int ActiveCount { get; private set; }
+        public string SetUiDataCallSummary => $"CUIMonsterCarnival::SetUIData(tab={(int)Tab}, ordinal={ClientOrdinal}, name=\"{Name}\", spendCP={Cost}, desc=\"{Description}\")";
 
         public void SetActiveCount(int activeCount)
         {
@@ -206,6 +209,10 @@ namespace HaCreator.MapSimulator.Fields
         public string ActiveSpelledMobPreview { get; private set; }
         public string LastHudSyncSummary { get; private set; }
         public string LastRequestUiSummary { get; private set; }
+        public string SetUiDataShapeSummary { get; private set; }
+        public string FirstMobSetUiDataCall { get; private set; }
+        public string FirstSkillSetUiDataCall { get; private set; }
+        public string FirstGuardianSetUiDataCall { get; private set; }
 
         public int TotalRows => MobRows + SkillRows + GuardianRows;
         public IReadOnlyList<MonsterCarnivalUiDataRowState> MobDataRows => _mobDataRows;
@@ -243,6 +250,10 @@ namespace HaCreator.MapSimulator.Fields
             ActiveSpelledMobPreview = null;
             LastHudSyncSummary = null;
             LastRequestUiSummary = null;
+            SetUiDataShapeSummary = null;
+            FirstMobSetUiDataCall = null;
+            FirstSkillSetUiDataCall = null;
+            FirstGuardianSetUiDataCall = null;
             _mobDataRows.Clear();
             _skillDataRows.Clear();
             _guardianDataRows.Clear();
@@ -272,6 +283,10 @@ namespace HaCreator.MapSimulator.Fields
             ActiveSpelledMobPreview = null;
             LastHudSyncSummary = null;
             LastRequestUiSummary = null;
+            SetUiDataShapeSummary = null;
+            FirstMobSetUiDataCall = null;
+            FirstSkillSetUiDataCall = null;
+            FirstGuardianSetUiDataCall = null;
             _mobDataRows.Clear();
             _skillDataRows.Clear();
             _guardianDataRows.Clear();
@@ -310,6 +325,7 @@ namespace HaCreator.MapSimulator.Fields
             SyncSpelledMobCounts(null);
             LastHudSyncSummary = null;
             LastRequestUiSummary = null;
+            CaptureSetUiDataShapeSummary();
         }
 
         public void ApplyEnter(
@@ -379,7 +395,10 @@ namespace HaCreator.MapSimulator.Fields
             string assetText = UsesWindow2Assets
                 ? $"assets=UIWindow2 ({PrimaryAssetRoot}, {SecondaryAssetRoot}, {TertiaryAssetRoot})"
                 : $"assets=UIWindow ({PrimaryAssetRoot}, {SecondaryAssetRoot}, {TertiaryAssetRoot})";
-            return $"CUIMonsterCarnival: created | rows mob/skill/guardian={MobRows}/{SkillRows}/{GuardianRows} total={TotalRows} | ResetUI={ResetCount} | team={teamText} | personalCP={PersonalCp}/{PersonalTotalCp} | myTeamCP={MyTeamCp}/{MyTeamTotalCp} | enemyTeamCP={EnemyTeamCp}/{EnemyTeamTotalCp} | {assetText} | {spelledText} | {hudSyncText} | {requestUiText} | {requestText}";
+            string setUiDataText = string.IsNullOrWhiteSpace(SetUiDataShapeSummary)
+                ? "SetUIData=none"
+                : $"SetUIData={SetUiDataShapeSummary}";
+            return $"CUIMonsterCarnival: created | rows mob/skill/guardian={MobRows}/{SkillRows}/{GuardianRows} total={TotalRows} | ResetUI={ResetCount} | team={teamText} | personalCP={PersonalCp}/{PersonalTotalCp} | myTeamCP={MyTeamCp}/{MyTeamTotalCp} | enemyTeamCP={EnemyTeamCp}/{EnemyTeamTotalCp} | {assetText} | {setUiDataText} | {spelledText} | {hudSyncText} | {requestUiText} | {requestText}";
         }
 
         public void SyncSpelledMobCounts(IReadOnlyDictionary<int, int> mobCounts)
@@ -428,6 +447,7 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
+            int clientOrdinal = 1;
             foreach (MonsterCarnivalEntry entry in source)
             {
                 if (entry == null)
@@ -438,11 +458,22 @@ namespace HaCreator.MapSimulator.Fields
                 destination.Add(new MonsterCarnivalUiDataRowState(
                     tab,
                     entry.Index,
+                    clientOrdinal,
                     entry.Id,
                     entry.Cost,
                     entry.Name,
                     entry.Description));
+                clientOrdinal++;
             }
+        }
+
+        private void CaptureSetUiDataShapeSummary()
+        {
+            FirstMobSetUiDataCall = _mobDataRows.FirstOrDefault()?.SetUiDataCallSummary;
+            FirstSkillSetUiDataCall = _skillDataRows.FirstOrDefault()?.SetUiDataCallSummary;
+            FirstGuardianSetUiDataCall = _guardianDataRows.FirstOrDefault()?.SetUiDataCallSummary;
+            SetUiDataShapeSummary =
+                $"tab0 mob rows={_mobDataRows.Count}, tab1 skill rows={_skillDataRows.Count}, tab2 guardian rows={_guardianDataRows.Count}, one-based ordinals, argument order=(tab,ordinal,name,spendCP,desc)";
         }
     }
 
@@ -1360,30 +1391,23 @@ namespace HaCreator.MapSimulator.Fields
                 BuildVariantResultSummary(resultCode));
         }
 
-        public void OnProcessForDeath(MonsterCarnivalTeam team, string characterName, int remainingRevives, int tickCount)
+        public void OnProcessForDeath(MonsterCarnivalTeam team, string characterName, int lostCp, int tickCount)
         {
             if (!_isVisible)
             {
                 return;
             }
 
-            int deathCp = Math.Max(0, _definition?.DeathCp ?? 0);
             RegisterKnownCharacterTeam(characterName, team);
-            MonsterCarnivalTeamState teamState = GetTeamState(team);
-            teamState.CurrentCp = Math.Max(0, teamState.CurrentCp - deathCp);
-            string deathMessage = BuildProcessForDeathMessage(team, characterName, remainingRevives);
-            if (deathCp > 0)
-            {
-                deathMessage = $"{deathMessage} {deathCp} CP was removed from {FormatTeam(team)}.";
-            }
+            string deathMessage = BuildProcessForDeathMessage(team, characterName, lostCp);
 
             ShowStatus(deathMessage, tickCount);
             SetVariantSessionPhase(
                 MonsterCarnivalVariantSessionPhase.DeathState,
-                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"} applied ProcessForDeath for {FormatTeam(team)}.");
+                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"} routed ProcessForDeath for {FormatTeam(team)} through the packet-owned status-bar message seam.");
             RecordRecoveredClientOwnerAction(
-                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnProcessForDeath updated {FormatTeam(team)} death state.",
-                remainingRevives > 0
+                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnProcessForDeath decoded packet CP loss {Math.Max(0, lostCp)} for {FormatTeam(team)} without mutating CP counters.",
+                lostCp > 0
                     ? new[] { 0x1019, GetTeamLabelMessage(team).StringPoolId }
                     : new[] { 0x101A, GetTeamLabelMessage(team).StringPoolId });
         }
@@ -3196,19 +3220,19 @@ namespace HaCreator.MapSimulator.Fields
             return $"{underwayMessage} Entered as {FormatTeam(localTeam)}.";
         }
 
-        private string BuildProcessForDeathMessage(MonsterCarnivalTeam team, string characterName, int remainingRevives)
+        private string BuildProcessForDeathMessage(MonsterCarnivalTeam team, string characterName, int lostCp)
         {
-            int deathCp = Math.Max(0, _definition?.DeathCp ?? 0);
-            MonsterCarnivalStringPoolMessage definition = remainingRevives > 0
+            int normalizedLostCp = Math.Max(0, lostCp);
+            MonsterCarnivalStringPoolMessage definition = normalizedLostCp > 0
                 ? new(0x1019, "[%s] has become unable to fight and [%s]team has lost %d CP.")
                 : new(0x101A, "[%s] has become unable to fight but [%s] has no CP so [%s] team did not lose any CP");
             string normalizedName = string.IsNullOrWhiteSpace(characterName) ? "A party member" : characterName.Trim();
             string teamName = FormatTeam(team);
-            string fallback = remainingRevives > 0
-                ? string.Format(CultureInfo.InvariantCulture, "{0} of {1} was defeated. {2} CP lost.", normalizedName, teamName, deathCp)
+            string fallback = normalizedLostCp > 0
+                ? string.Format(CultureInfo.InvariantCulture, "{0} of {1} was defeated. {2} CP lost.", normalizedName, teamName, normalizedLostCp)
                 : string.Format(CultureInfo.InvariantCulture, "{0} of {1} was defeated but no CP was lost.", normalizedName, teamName);
-            return remainingRevives > 0
-                ? FormatStringPoolMessage(definition, fallback, normalizedName, ResolveTeamLabel(team), deathCp)
+            return normalizedLostCp > 0
+                ? FormatStringPoolMessage(definition, fallback, normalizedName, ResolveTeamLabel(team), normalizedLostCp)
                 : FormatStringPoolMessage(definition, fallback, normalizedName, ResolveTeamLabel(team), ResolveTeamLabel(team));
         }
 

@@ -17,6 +17,7 @@ namespace HaCreator.MapSimulator
         private int _lastPortalSessionValueRequestOpcode = -1;
         private byte[] _lastPortalSessionValueRequestPayload = Array.Empty<byte>();
         private string _lastPortalSessionValueRequestSummary;
+        private int _lastPortalSessionValueRequestSentTick = int.MinValue;
 
         private bool TryApplyPacketOwnedFieldScopedPacket(int packetType, byte[] payload, out string message)
         {
@@ -299,7 +300,7 @@ namespace HaCreator.MapSimulator
         {
             if (pendingImpact?.IsValid != true)
             {
-                _pendingPortalSessionValueImpacts.Clear();
+                ClearPendingPortalSessionValueImpacts();
                 return;
             }
 
@@ -312,26 +313,28 @@ namespace HaCreator.MapSimulator
             _pendingPortalSessionValueImpacts.Add(pendingImpact);
         }
 
-        private bool TryDispatchPortalSessionValueRequest(string key)
+        private bool TryDispatchPortalSessionValueRequest(string key, int requestTick)
         {
             if (!PortalSessionValueRequestCodec.TryBuildPayload(key, out byte[] payload))
             {
                 _lastPortalSessionValueRequestOpcode = -1;
                 _lastPortalSessionValueRequestPayload = Array.Empty<byte>();
                 _lastPortalSessionValueRequestSummary = "Portal session-value request was not dispatched because the key was empty.";
+                _lastPortalSessionValueRequestSentTick = int.MinValue;
                 return false;
             }
 
             _lastPortalSessionValueRequestOpcode = PortalSessionValueRequestCodec.Opcode;
             _lastPortalSessionValueRequestPayload = payload;
-            _lastPortalSessionValueRequestSummary = DispatchPortalSessionValueRequest(payload, key?.Trim());
+            _lastPortalSessionValueRequestSentTick = requestTick;
+            _lastPortalSessionValueRequestSummary = DispatchPortalSessionValueRequest(payload, key?.Trim(), requestTick);
             return true;
         }
 
-        private string DispatchPortalSessionValueRequest(byte[] payload, string key)
+        private string DispatchPortalSessionValueRequest(byte[] payload, string key, int requestTick)
         {
             payload ??= Array.Empty<byte>();
-            string source = $"Recorded CWvsContext::SendRequestSessionValue opcode {PortalSessionValueRequestCodec.Opcode} for key '{key}' with reset={PortalSessionValueRequestCodec.RequestResetFlag}.";
+            string source = $"Recorded CWvsContext::SendRequestSessionValue opcode {PortalSessionValueRequestCodec.Opcode} for key '{key}' with reset={PortalSessionValueRequestCodec.RequestResetFlag} at tick {requestTick}.";
 
             if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
                 PortalSessionValueRequestCodec.Opcode,
@@ -372,6 +375,12 @@ namespace HaCreator.MapSimulator
         private void PrunePendingPortalSessionValueImpacts(int currentMapId)
         {
             _pendingPortalSessionValueImpacts.RemoveAll(entry => entry?.IsValid != true || entry.MapId != currentMapId);
+        }
+
+        private void ClearPendingPortalSessionValueImpacts()
+        {
+            _pendingPortalSessionValueImpacts.Clear();
+            _lastPortalSessionValueRequestSentTick = int.MinValue;
         }
 
         private bool TryApplyPendingPortalSessionValueImpact(
@@ -436,16 +445,25 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            List<string> releasedPairs = null;
             foreach (PortalSessionValueImpactIngress pair in pairs)
             {
-                if (TryApplyPendingPortalSessionValueImpact(pair.Key, pair.Value, pair.PacketType, pair.OwnerHint))
+                while (TryApplyPendingPortalSessionValueImpact(pair.Key, pair.Value, pair.PacketType, pair.OwnerHint))
                 {
-                    message = $"Released pending portal session-value impact from packet {packetType} for {pair.Key}={pair.Value}.";
-                    return true;
+                    releasedPairs ??= new List<string>();
+                    releasedPairs.Add($"{pair.Key}={pair.Value}");
                 }
             }
 
-            return false;
+            if (releasedPairs == null || releasedPairs.Count == 0)
+            {
+                return false;
+            }
+
+            message = releasedPairs.Count == 1
+                ? $"Released pending portal session-value impact from packet {packetType} for {releasedPairs[0]}."
+                : $"Released {releasedPairs.Count} pending portal session-value impacts from packet {packetType}: {string.Join(", ", releasedPairs.Take(4))}.";
+            return true;
         }
 
         internal static bool TryDecodePortalSessionValueImpactPacketPairs(

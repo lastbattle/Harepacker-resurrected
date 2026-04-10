@@ -833,6 +833,13 @@ namespace HaCreator.MapSimulator.Entities
             return _authoredStates.Contains(state);
         }
 
+        private bool HasRenderableState(int state)
+        {
+            int resolvedState = ResolveState(state);
+            return _stateFrames.ContainsKey(resolvedState)
+                || _stateLayerProperties.ContainsKey(resolvedState);
+        }
+
         private int GetExactStateDuration(int state)
         {
             IDXObject[] frames = EnsureStateFramesLoaded(state);
@@ -1264,7 +1271,7 @@ namespace HaCreator.MapSimulator.Entities
             AuthoredStateTransition[] filteredTransitions = FilterTransitionsBySelector(
                 transitions.Where(transition => MatchesAuthoredEventType(transition.EventType, request.ActivationType)).ToArray(),
                 request)
-                .Where(transition => _stateFrames.ContainsKey(transition.TargetState))
+                .Where(transition => HasRenderableState(transition.TargetState))
                 .Where(transition => transition.TargetState != resolvedState)
                 .OrderBy(transition => GetEventTypePriority(transition.EventType, request))
                 .ThenBy(transition => GetSelectorPriority(transition, request))
@@ -1384,7 +1391,7 @@ namespace HaCreator.MapSimulator.Entities
             AuthoredStateTransition[] matchingTransitions = transitions
                 .Where(transition => MatchesAuthoredEventType(transition.EventType, request.ActivationType))
                 .Where(transition => transition.TargetState != resolvedState)
-                .Where(transition => _stateFrames.ContainsKey(transition.TargetState))
+                .Where(transition => HasRenderableState(transition.TargetState))
                 .ToArray();
             if (matchingTransitions.Any(transition => transition.SelectorValues.Contains(request.ActivationValue)))
             {
@@ -1440,7 +1447,7 @@ namespace HaCreator.MapSimulator.Entities
             {
                 if (!MatchesAuthoredEventType(transition.EventType, ReactorActivationType.Hit)
                     || transition.TargetState == resolvedState
-                    || !_stateFrames.ContainsKey(transition.TargetState))
+                    || !HasRenderableState(transition.TargetState))
                 {
                     continue;
                 }
@@ -1503,7 +1510,7 @@ namespace HaCreator.MapSimulator.Entities
             {
                 if (!MatchesAuthoredEventType(transition.EventType, activationType)
                     || transition.TargetState == resolvedState
-                    || !_stateFrames.ContainsKey(transition.TargetState))
+                    || !HasRenderableState(transition.TargetState))
                 {
                     continue;
                 }

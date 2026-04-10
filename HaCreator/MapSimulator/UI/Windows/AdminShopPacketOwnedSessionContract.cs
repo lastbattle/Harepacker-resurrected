@@ -128,6 +128,19 @@ namespace HaCreator.MapSimulator.UI
             WouldDisconnect = false;
         }
 
+        public void RecordResultIgnoredByOwner(byte subtype, byte resultCode, string ownerState)
+        {
+            ResultCount++;
+            LastSubtype = subtype;
+            LastResultCode = resultCode;
+            IsActive = false;
+            IsWaitingForResult = false;
+            IsOwnerSurfaceVisible = false;
+            WouldDisconnect = false;
+            OwnerVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden;
+            LastOwnerState = ownerState ?? string.Empty;
+        }
+
         public void SetWaitingForResult(bool waitingForResult)
         {
             IsWaitingForResult = waitingForResult;

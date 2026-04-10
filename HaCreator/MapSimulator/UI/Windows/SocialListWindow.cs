@@ -389,6 +389,11 @@ namespace HaCreator.MapSimulator.UI
                 DrawText(sprite, line, summaryBounds.X + 6, y, new Color(225, 229, 236), 0.38f);
                 y += 14;
             }
+
+            if (!string.IsNullOrWhiteSpace(snapshot.PacketWhisperLocationInfo))
+            {
+                DrawText(sprite, snapshot.PacketWhisperLocationInfo, summaryBounds.X + 6, summaryBounds.Bottom - 16, new Color(255, 236, 160), 0.36f);
+            }
         }
 
         private bool TryHandleTabClick(Point mousePosition)

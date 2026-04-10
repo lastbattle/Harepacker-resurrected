@@ -187,6 +187,28 @@ namespace HaCreator.MapSimulator.Managers
             return TryQueueRawPacket(rawPacket, out status);
         }
 
+        public bool TryObserveOutboundRawPacket(byte[] rawPacket, string source, out string status)
+        {
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload))
+            {
+                status = "Transport outbound packet must include a 2-byte opcode.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] clonedPacket = (byte[])rawPacket.Clone();
+            RecordOutboundPacket(new OutboundPacketTrace(
+                opcode,
+                payload?.Length ?? 0,
+                BuildPayloadPreview(payload),
+                Convert.ToHexString(clonedPacket),
+                string.IsNullOrWhiteSpace(source) ? "transport-observed" : source.Trim()));
+
+            status = $"Observed outbound {DescribeOutboundPacket(opcode, clonedPacket)} into transport official-session bridge history.";
+            LastStatus = status;
+            return true;
+        }
+
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
             int remotePort,
             int? owningProcessId = null,

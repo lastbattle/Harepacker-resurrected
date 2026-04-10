@@ -1188,6 +1188,12 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
+            if (tamingMobPart.ItemId == MechanicTamingMobItemId
+                && ClientOwnedVehicleSkillClassifier.IsWzOnlyMechanicVehicleOneTimeActionName(actionName))
+            {
+                return false;
+            }
+
             if (tamingMobPart.TamingMobActionFrameOwner?.SupportsAction(tamingMobPart, actionName) == true)
             {
                 return true;
@@ -1219,7 +1225,7 @@ namespace HaCreator.MapSimulator.Character
             if (string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase))
             {
-                return true;
+                return SupportsTamingMobAction(tamingMobPart, actionName);
             }
 
             return ShouldSuppressBaseAvatarForTamingMob(tamingMobPart, actionName);
@@ -1253,6 +1259,13 @@ namespace HaCreator.MapSimulator.Character
 
         private static bool IsMechanicMountOnlyAction(CharacterPart tamingMobPart, string actionName)
         {
+            if (!ClientOwnedVehicleSkillClassifier.IsKnownClientOwnedVehicleCurrentActionName(
+                    MechanicTamingMobItemId,
+                    actionName))
+            {
+                return false;
+            }
+
             if (!HasPublishedTamingMobAnimation(tamingMobPart, actionName))
             {
                 return false;
@@ -1517,6 +1530,12 @@ namespace HaCreator.MapSimulator.Character
 
             if (part.Type == CharacterPartType.TamingMob)
             {
+                if (part.ItemId == MechanicTamingMobItemId
+                    && ClientOwnedVehicleSkillClassifier.IsWzOnlyMechanicVehicleOneTimeActionName(actionName))
+                {
+                    return null;
+                }
+
                 if (part.TamingMobActionFrameOwner != null)
                 {
                     return part.TamingMobActionFrameOwner.GetAnimation(part, actionName);

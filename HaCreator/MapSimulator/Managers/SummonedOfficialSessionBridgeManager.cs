@@ -2066,7 +2066,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return source.StartsWith(SimulatorSg88TemplateReplaySourcePrefix, StringComparison.OrdinalIgnoreCase)
-                && GetSg88TemplateResolutionRank(resolutionSource) >= GetSg88TemplateResolutionRank("0x119-target-cover");
+                && GetSg88TemplateResolutionRank(resolutionSource) >= GetSg88TemplateResolutionRank("1021-confirm");
         }
 
         internal static bool IsEligibleTeslaTemplateEvidenceSource(string source, string resolutionSource)

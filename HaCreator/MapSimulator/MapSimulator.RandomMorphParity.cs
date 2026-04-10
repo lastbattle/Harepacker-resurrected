@@ -183,7 +183,7 @@ namespace HaCreator.MapSimulator
             _randomMorphRequestSentTick = currentTick;
         }
 
-        private static byte[] BuildRandomMorphRequestPayload(int currentTick, int inventoryPosition, int itemId, string targetName)
+        internal static byte[] BuildRandomMorphRequestPayload(int currentTick, int inventoryPosition, int itemId, string targetName)
         {
             string normalizedTargetName = targetName ?? string.Empty;
             byte[] encodedTargetName = Encoding.Default.GetBytes(normalizedTargetName);

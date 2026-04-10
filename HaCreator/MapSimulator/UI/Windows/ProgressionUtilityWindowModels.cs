@@ -166,6 +166,8 @@ namespace HaCreator.MapSimulator.UI
         public int Height { get; init; } = 1;
         public int StyleIndex { get; init; }
         public CollectionBookTextAlignment Alignment { get; init; }
+        public bool UsesResolvedAnalyzerOffset { get; init; }
+        public int AnalyzerLineWidth { get; init; }
     }
 
     internal static class CollectionBookSnapshotFactory
@@ -849,14 +851,18 @@ namespace HaCreator.MapSimulator.UI
 
             for (int i = 0; i < lines.Count; i++)
             {
+                int resolvedLeft = ResolveAnalyzedTextLeft(left, width, alignment, lines[i], styleIndex, measureTextWidth);
+                int analyzerLineWidth = MeasureCollectionTextWidth(lines[i], styleIndex, measureTextWidth);
                 records.Add(CreateTextRecord(
                     lines[i],
-                    ResolveAnalyzedTextLeft(left, alignment),
+                    resolvedLeft,
                     top + (i * ClientCollectionDetailLineStep),
-                    width,
+                    Math.Max(1, left + width - resolvedLeft),
                     styleIndex,
                     alignment,
-                    role));
+                    role,
+                    usesResolvedAnalyzerOffset: true,
+                    analyzerLineWidth: analyzerLineWidth));
             }
         }
 
@@ -904,11 +910,39 @@ namespace HaCreator.MapSimulator.UI
                 segment => measureTextWidth?.Invoke(segment, styleIndex) ?? MeasureApproximateCollectionTextWidth(segment));
         }
 
-        private static int ResolveAnalyzedTextLeft(int left, CollectionBookTextAlignment alignment)
+        private static int ResolveAnalyzedTextLeft(
+            int left,
+            int width,
+            CollectionBookTextAlignment alignment,
+            string line,
+            int styleIndex,
+            Func<string, int, float> measureTextWidth = null)
         {
-            return alignment == CollectionBookTextAlignment.Left
-                ? left + ClientCollectionTextAnalyzerMargin
-                : left;
+            if (alignment == CollectionBookTextAlignment.Left)
+            {
+                return left + ClientCollectionTextAnalyzerMargin;
+            }
+
+            int lineWidth = MeasureCollectionTextWidth(line, styleIndex, measureTextWidth);
+            return alignment == CollectionBookTextAlignment.Center
+                ? left + Math.Max(0, (width - lineWidth) / 2)
+                : left + Math.Max(0, width - lineWidth);
+        }
+
+        private static int MeasureCollectionTextWidth(string text, int styleIndex, Func<string, int, float> measureTextWidth = null)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return 0;
+            }
+
+            float width = measureTextWidth?.Invoke(text, styleIndex) ?? MeasureApproximateCollectionTextWidth(text);
+            if (float.IsNaN(width) || float.IsInfinity(width) || width <= 0f)
+            {
+                return 0;
+            }
+
+            return (int)Math.Ceiling(width);
         }
 
         private static float MeasureApproximateCollectionTextWidth(string text)
@@ -939,7 +973,16 @@ namespace HaCreator.MapSimulator.UI
             return width;
         }
 
-        private static CollectionBookRecordSnapshot CreateTextRecord(string text, int left, int top, int width, int styleIndex, CollectionBookTextAlignment alignment, CollectionBookRecordRole role = CollectionBookRecordRole.GenericText)
+        private static CollectionBookRecordSnapshot CreateTextRecord(
+            string text,
+            int left,
+            int top,
+            int width,
+            int styleIndex,
+            CollectionBookTextAlignment alignment,
+            CollectionBookRecordRole role = CollectionBookRecordRole.GenericText,
+            bool usesResolvedAnalyzerOffset = false,
+            int analyzerLineWidth = 0)
         {
             return new CollectionBookRecordSnapshot
             {
@@ -951,7 +994,9 @@ namespace HaCreator.MapSimulator.UI
                 Width = width,
                 Height = ClientCollectionAnalyzedTextLineHeight,
                 StyleIndex = styleIndex,
-                Alignment = alignment
+                Alignment = alignment,
+                UsesResolvedAnalyzerOffset = usesResolvedAnalyzerOffset,
+                AnalyzerLineWidth = Math.Max(0, analyzerLineWidth)
             };
         }
 

@@ -48,12 +48,14 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex CurrentQuestRecordRegex = new(@"#R#", RegexOptions.Compiled);
         private static readonly Regex ItemNameAliasRegex = new(@"#z(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ItemIconRegex = new(@"#(?:i|v)\d+:?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex QuestDetailNpcReferenceRegex = new(@"#p(?<id>\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex QuestDetailMapReferenceRegex = new(@"#m(?<id>\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex RewardCategoryRegex = new(@"#W[^#\s]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestDetailStyleRegex = new(@"#(?<tag>[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex MalformedQuestDetailStyleRegex = new(@"#\d+(?<tag>[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PluralSuffixRegex = new(@"#s(?!\d)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PlayerNameRegex = new(@"#h\d*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex StyleTagRegex = new(@"#(?:[bkrgdenmc])", RegexOptions.Compiled);
+        private static readonly Regex StyleTagRegex = new(@"#(?:[bkrgdenmc])#?", RegexOptions.Compiled);
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)#?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex LiteralWordHashRegex = new(@"#(?=[A-Z][A-Za-z]+\b)", RegexOptions.Compiled);
 
@@ -133,6 +135,16 @@ namespace HaCreator.MapSimulator.Interaction
                 preservedMarkers,
                 match => int.TryParse(match.Value.TrimStart('#', 'i', 'I', 'v', 'V').TrimEnd('#', ':'), out int itemId) && itemId > 0
                     ? BuildItemIconMarker(itemId)
+                    : string.Empty);
+            preservedMarkers = QuestDetailNpcReferenceRegex.Replace(
+                preservedMarkers,
+                match => int.TryParse(match.Groups["id"].Value, out int npcId) && npcId > 0
+                    ? BuildQuestInlineReferenceMarker("npc", npcId, ResolveNpcName(match.Groups["id"].Value))
+                    : string.Empty);
+            preservedMarkers = QuestDetailMapReferenceRegex.Replace(
+                preservedMarkers,
+                match => int.TryParse(match.Groups["id"].Value, out int mapId) && mapId > 0
+                    ? BuildQuestInlineReferenceMarker("map", mapId, ResolveMapName(match.Groups["id"].Value))
                     : string.Empty);
             preservedMarkers = MalformedQuestDetailStyleRegex.Replace(
                 preservedMarkers,
@@ -230,6 +242,17 @@ namespace HaCreator.MapSimulator.Interaction
             return string.IsNullOrWhiteSpace(normalizedTag)
                 ? string.Empty
                 : $"{{{{QUESTSTYLE:{normalizedTag}}}}}";
+        }
+
+        public static string BuildQuestInlineReferenceMarker(string kind, int targetId, string label)
+        {
+            string normalizedKind = kind?.Trim().ToLowerInvariant();
+            string normalizedLabel = (label ?? string.Empty)
+                .Replace("|", " ", StringComparison.Ordinal)
+                .Trim();
+            return string.IsNullOrWhiteSpace(normalizedKind) || targetId <= 0
+                ? normalizedLabel
+                : $"{{{{QUESTREF:{normalizedKind}:{targetId}:{normalizedLabel}}}}}";
         }
 
         public static IReadOnlyList<NpcInteractionPage> FormatPages(IReadOnlyList<NpcInteractionPage> pages, NpcDialogueFormattingContext context)

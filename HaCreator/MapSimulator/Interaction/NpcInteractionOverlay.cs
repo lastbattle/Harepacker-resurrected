@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _packetQuestResultSpeakerTemplateId;
         private readonly List<PacketQuestResultSpeakerFrame> _packetQuestResultSpeakerFrames = new();
         private readonly PacketQuestResultUtilDialogSessionRuntime _packetQuestResultDialogSession = new();
+        private readonly PacketQuestResultUtilDialogModalHostRuntime _packetQuestResultModalHost = new();
         private int _packetQuestResultSpeakerAnimationStartedAt = int.MinValue;
 
         private SpriteFont _font;
@@ -147,6 +148,9 @@ namespace HaCreator.MapSimulator.Interaction
         public NpcInteractionEntry SelectedEntry =>
             _selectedEntryIndex >= 0 && _selectedEntryIndex < _entries.Count ? _entries[_selectedEntryIndex] : null;
 
+        internal PacketQuestResultUtilDialogModalHostSnapshot PacketQuestResultModalHostSnapshot =>
+            _packetQuestResultModalHost.CaptureSnapshot();
+
         public void SetFont(SpriteFont font)
         {
             _font = font;
@@ -157,6 +161,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
             {
                 _packetQuestResultDialogSession.Close(PacketQuestResultUtilDialogModalResult.Close);
+                _packetQuestResultModalHost.End(PacketQuestResultUtilDialogModalResult.Close);
             }
 
             ClearTextTextureCache();
@@ -213,6 +218,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
             {
                 _packetQuestResultDialogSession.Begin(_currentPage);
+                BeginPacketQuestResultModalHostForCurrentPage(state?.SpeakerTemplateId ?? 0);
                 RestartPacketQuestResultDialogLocalState();
             }
 
@@ -224,9 +230,18 @@ namespace HaCreator.MapSimulator.Interaction
             if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
             {
                 _packetQuestResultDialogSession.Close(PacketQuestResultUtilDialogModalResult.Close);
+                _packetQuestResultModalHost.End(PacketQuestResultUtilDialogModalResult.Close);
             }
 
             HideOverlayAfterClose();
+        }
+
+        public void PumpPacketQuestResultModalHost()
+        {
+            if (IsVisible && _presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
+            {
+                _packetQuestResultModalHost.PumpRunLoop();
+            }
         }
 
         public bool ContainsPoint(int x, int y, int renderWidth, int renderHeight)
@@ -1862,6 +1877,8 @@ namespace HaCreator.MapSimulator.Interaction
                             PacketQuestResultUtilDialogModalResult.Prev,
                             _currentPage,
                             closesDialog: false);
+                        _packetQuestResultModalHost.End(PacketQuestResultUtilDialogModalResult.Prev);
+                        BeginPacketQuestResultModalHostForCurrentPage(_packetQuestResultModalHost.SpeakerNpcId);
                         RestartPacketQuestResultDialogLocalState();
                     }
 
@@ -1875,6 +1892,8 @@ namespace HaCreator.MapSimulator.Interaction
                             PacketQuestResultUtilDialogModalResult.NextOrOk,
                             _currentPage,
                             closesDialog: false);
+                        _packetQuestResultModalHost.End(PacketQuestResultUtilDialogModalResult.NextOrOk);
+                        BeginPacketQuestResultModalHostForCurrentPage(_packetQuestResultModalHost.SpeakerNpcId);
                         RestartPacketQuestResultDialogLocalState();
                         return defaultResult;
                     }
@@ -1883,6 +1902,7 @@ namespace HaCreator.MapSimulator.Interaction
                         PacketQuestResultUtilDialogModalResult.NextOrOk,
                         _currentPage,
                         closesDialog: true);
+                    _packetQuestResultModalHost.End(PacketQuestResultUtilDialogModalResult.NextOrOk);
                     HideOverlayAfterClose();
                     return new NpcInteractionOverlayResult(
                         true,
@@ -1894,6 +1914,7 @@ namespace HaCreator.MapSimulator.Interaction
                         PacketQuestResultUtilDialogModalResult.Close,
                         _currentPage,
                         closesDialog: true);
+                    _packetQuestResultModalHost.End(PacketQuestResultUtilDialogModalResult.Close);
                     HideOverlayAfterClose();
                     return new NpcInteractionOverlayResult(
                         true,
@@ -1911,6 +1932,15 @@ namespace HaCreator.MapSimulator.Interaction
             _inputValue = string.Empty;
             _compositionText = string.Empty;
             RestartPacketQuestResultDialogLocalState();
+        }
+
+        private void BeginPacketQuestResultModalHostForCurrentPage(int speakerNpcId)
+        {
+            int questId = SelectedEntry?.QuestId ?? SelectedEntry?.EntryId ?? 0;
+            _packetQuestResultModalHost.Begin(
+                questId,
+                speakerNpcId,
+                GetCurrentPages().Count);
         }
 
         private void UpdatePacketQuestResultButtonInteractionState(

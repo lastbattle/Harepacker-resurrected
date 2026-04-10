@@ -158,7 +158,9 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialListClientGuildResultKind.ResultNotice => SetPacketSyncSummary(
                     SocialListTab.Guild,
                     BuildClientGuildResultNoticeSummary(packet)),
-                _ => $"Unsupported client guild-result subtype {(byte)packet.Kind}."
+                _ => SetPacketSyncSummary(
+                    SocialListTab.Guild,
+                    BuildClientGuildResultFallbackNoticeSummary(packet))
             };
         }
 
@@ -172,6 +174,12 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"shared StringPool 0x{SocialListGuildResultClientText.SharedResultNoticeStringPoolId:X} notice";
 
             return $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.ResultNotice}) reported {noticeSource}: {notice}.";
+        }
+
+        private static string BuildClientGuildResultFallbackNoticeSummary(SocialListClientGuildResultPacket packet)
+        {
+            string notice = SocialListGuildResultClientText.GetSharedResultNoticeFallback();
+            return $"Client OnGuildResult({(byte)packet.Kind}) fell back to shared StringPool 0x{SocialListGuildResultClientText.SharedResultNoticeStringPoolId:X} notice: {notice}.";
         }
 
         internal string ApplyClientFriendResultDelta(SocialListClientFriendResultPacket packet)

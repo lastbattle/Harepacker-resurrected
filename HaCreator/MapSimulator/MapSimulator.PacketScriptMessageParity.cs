@@ -5,6 +5,7 @@ using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Companions;
 using HaCreator.MapSimulator.UI;
 using Microsoft.Xna.Framework;
+using System;
 using System.Collections.Generic;
 using System.Net;
 
@@ -12,6 +13,7 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private const int PacketScriptMessageClientOpcode = 363;
         private IReadOnlyDictionary<long, PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate> _packetScriptSelectablePetsBySerial =
             new Dictionary<long, PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate>();
         private bool _packetScriptOfficialSessionBridgeEnabled;
@@ -54,6 +56,33 @@ namespace HaCreator.MapSimulator
                     : $"{message} {dispatchStatus}";
             }
 
+            return true;
+        }
+
+        internal static bool TryDecodePacketScriptMessageClientOpcodePacket(
+            byte[] rawPacket,
+            out byte[] payload,
+            out string message)
+        {
+            payload = Array.Empty<byte>();
+            message = null;
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                message = "Packet-script client opcode packet must include a 2-byte opcode.";
+                return false;
+            }
+
+            int opcode = BitConverter.ToUInt16(rawPacket, 0);
+            if (opcode != PacketScriptMessageClientOpcode)
+            {
+                message = $"Unsupported packet-script client opcode {opcode}. Expected {PacketScriptMessageClientOpcode} for CScriptMan::OnPacket -> OnScriptMessage.";
+                return false;
+            }
+
+            payload = rawPacket.Length == sizeof(ushort)
+                ? Array.Empty<byte>()
+                : rawPacket[sizeof(ushort)..];
+            message = $"Decoded CScriptMan::OnPacket opcode {PacketScriptMessageClientOpcode} and stripped the 2-byte client header.";
             return true;
         }
 

@@ -296,6 +296,7 @@ namespace HaCreator.MapSimulator.Interaction
             // generated table keeps the Cookie House WZ ids stable, but the session-value key
             // slot at 0x11D9 still drifts in this workspace, so keep the client-owned Cookie
             // House block explicit here before the live-session bridge resolves opcode 93.
+            [0x11D9] = "cookiePoint",
             [0x13FB] = "Map/Obj/etc.img/eventPointCount/backgrnd",
             [0x13FC] = "Map/Obj/etc.img/eventPointCount",
             [0x14F7] = "minus",

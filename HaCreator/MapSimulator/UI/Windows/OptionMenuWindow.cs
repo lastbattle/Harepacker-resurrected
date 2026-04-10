@@ -114,6 +114,7 @@ namespace HaCreator.MapSimulator.UI
         private const int JoypadClientButtonItemFormatStringPoolId = 0x180E;
         private const int JoypadClientButtonLabelFormatStringPoolId = 0x180F;
         private const int JoypadClientDefaultButtonUolStringPoolId = 0x1810;
+        private const int JoypadClientDuplicateButtonNoticeStringPoolId = 0x180A;
         private const int JoypadRowsTop = 136;
         private const int JoypadRowPitch = 20;
         private const int JoypadFooterReserve = 52;
@@ -1544,6 +1545,15 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (!force
+                && _mode == OptionMenuMode.Joypad
+                && !TryValidateClientJoypadCombos(_stagedJoypadSession, out string validationMessage))
+            {
+                _statusMessage = validationMessage;
+                _selectedJoypadActionButton = JoypadActionButtonKind.None;
+                return;
+            }
+
             foreach (KeyValuePair<OptionMenuMode, List<OptionRow>> group in _rows)
             {
                 if (group.Value == null)
@@ -1568,6 +1578,69 @@ namespace HaCreator.MapSimulator.UI
             _pendingJoypadConfirmAction = JoypadPendingConfirmAction.None;
             ResetJoypadCaptureState(_stagedJoypadSession);
             Hide();
+        }
+
+        private static bool TryValidateClientJoypadCombos(JoypadSessionSnapshot session, out string validationMessage)
+        {
+            validationMessage = string.Empty;
+            if (session == null)
+            {
+                return true;
+            }
+
+            if (!TryFindDuplicateClientJoypadComboAssignment(session.Bindings, out InputAction firstAction, out InputAction duplicateAction, out Buttons duplicateButton))
+            {
+                return true;
+            }
+
+            string clientNotice = MapleStoryStringPool.GetOrFallback(
+                JoypadClientDuplicateButtonNoticeStringPoolId,
+                "The same button is assigned to two different hotkeys. Please change one of the hotkeys before proceeding.");
+            validationMessage = $"{NormalizeClientNotice(clientNotice)} ({FormatActionLabel(firstAction)} / {FormatActionLabel(duplicateAction)} both use Pad:{FormatGamepadButton(duplicateButton)}).";
+            return false;
+        }
+
+        private static bool TryFindDuplicateClientJoypadComboAssignment(
+            Dictionary<InputAction, Buttons> bindings,
+            out InputAction firstAction,
+            out InputAction duplicateAction,
+            out Buttons duplicateButton)
+        {
+            firstAction = default;
+            duplicateAction = default;
+            duplicateButton = 0;
+
+            if (bindings == null)
+            {
+                return false;
+            }
+
+            Dictionary<Buttons, InputAction> seenButtons = new();
+            foreach (InputAction action in JoypadClientCoreBindingActions)
+            {
+                if (!bindings.TryGetValue(action, out Buttons button) || button == 0)
+                {
+                    continue;
+                }
+
+                if (seenButtons.TryGetValue(button, out firstAction))
+                {
+                    duplicateAction = action;
+                    duplicateButton = button;
+                    return true;
+                }
+
+                seenButtons[button] = action;
+            }
+
+            return false;
+        }
+
+        private static string NormalizeClientNotice(string notice)
+        {
+            return string.IsNullOrWhiteSpace(notice)
+                ? string.Empty
+                : notice.Replace("\r\n", " ", StringComparison.Ordinal).Trim();
         }
 
         private void DiscardAndHide(bool force = false)

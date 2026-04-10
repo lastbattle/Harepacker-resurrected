@@ -911,8 +911,7 @@ namespace HaCreator.MapSimulator.Loaders
             CharacterGender? localPlayerGender)
         {
             return !actionSet.RequiredGender.HasValue
-                   || !localPlayerGender.HasValue
-                   || actionSet.RequiredGender.Value == localPlayerGender.Value;
+                   || (localPlayerGender.HasValue && actionSet.RequiredGender.Value == localPlayerGender.Value);
         }
 
         private static CharacterGender? GetRequiredGender(IEnumerable<WzImageProperty> properties)

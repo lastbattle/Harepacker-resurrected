@@ -9,5 +9,17 @@ namespace HaCreator.MapSimulator.UI
             return keyboardState.IsKeyDown(Keys.Escape)
                 && previousKeyboardState.IsKeyUp(Keys.Escape);
         }
+
+        internal static bool TryGetClientForwardedFunctionKeyIndex(Keys key, out int functionKeyIndex)
+        {
+            if (key >= Keys.F1 && key <= Keys.F12)
+            {
+                functionKeyIndex = key - Keys.F1;
+                return true;
+            }
+
+            functionKeyIndex = -1;
+            return false;
+        }
     }
 }

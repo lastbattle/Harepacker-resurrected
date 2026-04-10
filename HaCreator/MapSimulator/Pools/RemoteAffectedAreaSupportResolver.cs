@@ -102,6 +102,7 @@ namespace HaCreator.MapSimulator.Pools
             PlayerMobStatusEffect.Weakness,
             PlayerMobStatusEffect.Stun,
             PlayerMobStatusEffect.Poison,
+            PlayerMobStatusEffect.Burn,
             PlayerMobStatusEffect.Slow,
             PlayerMobStatusEffect.Freeze,
             PlayerMobStatusEffect.Curse,
@@ -757,7 +758,7 @@ namespace HaCreator.MapSimulator.Pools
                     Math.Max(1, Math.Max(levelData.Damage, 10) / 5),
                     preferDotDamage: true);
                 statuses.Add(new RemoteHostilePlayerAreaStatus(
-                    PlayerMobStatusEffect.Poison,
+                    ResolveHostilePlayerAreaDotEffect(skill, hostileSearchText),
                     dotDurationMs,
                     dotValue,
                     dotTickIntervalMs));
@@ -918,6 +919,17 @@ namespace HaCreator.MapSimulator.Pools
                    || skill?.Element == SkillElement.Poison
                    || UsesHostileDotOrBodyAttackMetadata(skill)
                    || ContainsToken(hostileSearchText, "poison", "venom", "burn", "flame");
+        }
+
+        private static PlayerMobStatusEffect ResolveHostilePlayerAreaDotEffect(SkillData skill, string hostileSearchText)
+        {
+            string dotType = skill?.DotType;
+            if (ContainsToken(dotType, "burn", "flame") || ContainsToken(hostileSearchText, "burn", "flame"))
+            {
+                return PlayerMobStatusEffect.Burn;
+            }
+
+            return PlayerMobStatusEffect.Poison;
         }
 
         private static int ResolveHostilePlayerAreaStatusDurationMs(

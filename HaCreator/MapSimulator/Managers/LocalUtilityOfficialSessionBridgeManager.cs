@@ -1,5 +1,6 @@
 using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
+using HaCreator.MapSimulator.Interaction;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -106,7 +107,7 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=58,133,193,234,250,253,254,255,256,261,269,270,274,275,291,366,367,1011,1023,1025; outbound opcodes=45,74,113,117,130,131,134,135,191,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
+            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=58,133,193,234,250,253,254,255,256,261,269,270,274,275,291,366,367,405,406,407,1011,1023,1025; outbound opcodes=45,74,113,117,130,131,134,135,191,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)
@@ -618,6 +619,9 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == LocalUtilityPacketInboxManager.ClassCompetitionAuthCachePacketType
                 || packetType == LocalUtilityPacketInboxManager.AdminShopResultClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType
+                || packetType == MapleTvRuntime.PacketTypeSetMessage
+                || packetType == MapleTvRuntime.PacketTypeClearMessage
+                || packetType == MapleTvRuntime.PacketTypeSendMessageResult
                 || packetType == LocalUtilityPacketInboxManager.AntiMacroResultPacketType
                 || packetType == LocalUtilityPacketInboxManager.PetConsumeResultPacketType
                 || packetType == LocalUtilityPacketInboxManager.RepairDurabilityResultPacketType
@@ -648,6 +652,9 @@ namespace HaCreator.MapSimulator.Managers
                 LocalUtilityPacketInboxManager.ClassCompetitionAuthCachePacketType => "ClassCompetitionAuthCache(291)",
                 LocalUtilityPacketInboxManager.AdminShopResultClientPacketType => "CAdminShopDlg::OnPacket Result(366)",
                 LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType => "CAdminShopDlg::OnPacket Open(367)",
+                MapleTvRuntime.PacketTypeSetMessage => "CMapleTVMan::OnSetMessage(405)",
+                MapleTvRuntime.PacketTypeClearMessage => "CMapleTVMan::OnClearMessage(406)",
+                MapleTvRuntime.PacketTypeSendMessageResult => "CMapleTVMan::OnSendMessageResult(407)",
                 LocalUtilityPacketInboxManager.AntiMacroResultPacketType => "AntiMacroResult(1011)",
                 LocalUtilityPacketInboxManager.PetConsumeResultPacketType => "PetConsumeResult(1026) / RaiseOwnerSync(1026)",
                 LocalUtilityPacketInboxManager.RepairDurabilityResultPacketType => "RepairDurabilityResult(1025)",

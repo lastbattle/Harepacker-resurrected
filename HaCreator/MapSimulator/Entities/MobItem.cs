@@ -1816,8 +1816,9 @@ namespace HaCreator.MapSimulator.Entities
             if (_animationEffects != null)
             {
                 Vector2 anchor = GetAngerGaugeBurstAnchor();
-                _animationEffects.AddOneTimeAttached(
+                _animationEffects.AddFullChargedAngerGauge(
                     effectFrames,
+                    effectPath,
                     GetAngerGaugeBurstAnchor,
                     () => flip,
                     anchor.X,

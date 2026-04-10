@@ -138,6 +138,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             // WZ publishes these exact roots on Character/TamingMob/01932016, and the client
             // taming-mob action gates key the extra coverage by vehicle id rather than prefix.
+            // CActionMan::LoadTamingMobAction / IsAbleTamingMobOneTimeAction admit the later
+            // Mechanic one-time raw codes for gatlingshot2, drillrush, mbooster, earthslug, and
+            // rpunch, but not the WZ-only gatlingshot raw action.
             "tank_pre",
             "tank",
             "tank_walk",
@@ -161,7 +164,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             "rbooster_pre",
             "rbooster",
             "rbooster_after",
-            "gatlingshot",
             "gatlingshot2",
             "drillrush",
             "mbooster",
@@ -330,11 +332,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || actionName.StartsWith("siege_", StringComparison.OrdinalIgnoreCase)
                    || actionName.StartsWith("flamethrower", StringComparison.OrdinalIgnoreCase)
                    || actionName.StartsWith("rbooster", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("gatlingshot", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("drillrush", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("earthslug", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("rpunch", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("mbooster", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "gatlingshot2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "drillrush", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "earthslug", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "rpunch", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "mbooster", StringComparison.OrdinalIgnoreCase)
                    || actionName.StartsWith("msummon", StringComparison.OrdinalIgnoreCase)
                    || actionName.StartsWith("mRush", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "alert3", StringComparison.OrdinalIgnoreCase)
@@ -347,6 +349,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool IsExplicitMechanicVehiclePresentationActionName(string actionName)
         {
             return ContainsActionName(ExplicitMechanicVehiclePresentationActionNames, actionName);
+        }
+
+        internal static bool IsWzOnlyMechanicVehicleOneTimeActionName(string actionName)
+        {
+            return string.Equals(actionName, "gatlingshot", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsMechanicSkill(int skillId)

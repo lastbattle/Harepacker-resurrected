@@ -194,6 +194,7 @@ namespace HaCreator.MapSimulator.Pools
         public float PickupTargetY { get; set; }
         public int PickupDurationMs { get; set; }
         public bool UsePickupAbsorbMotion { get; set; }
+        public bool UseClientPacketAbsorbMotion { get; set; }
         public Func<Vector2?> PickupTargetPositionResolver { get; set; }
         public int RemovalFadeDurationMs { get; set; }
         public bool TriggerPacketExplodeEffectOnRemove { get; set; }
@@ -217,6 +218,9 @@ namespace HaCreator.MapSimulator.Pools
         public const float SPAWN_FLOAT_HEIGHT = 50f;    // Initial offset (client uses parabolic arc)
         public const int PACKET_REMOVE_DURATION = 1000;
         public const int PACKET_ABSORB_DURATION = 220;
+        public const int CLIENT_PACKET_ABSORB_DURATION = 700;
+        public const int CLIENT_PACKET_ABSORB_FADE_START_MS = 420;
+        public const float CLIENT_PACKET_ABSORB_ARC_HEIGHT = 40f;
         public const int PACKET_ENTER_TYPE3_ALPHA_RAMP_DURATION = 1000;
         public const int PACKET_MOTION_STEP_MS = 30;
         #endregion
@@ -381,6 +385,19 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     PickupTargetX = liveTargetPosition.X;
                     PickupTargetY = liveTargetPosition.Y;
+                }
+
+                if (UseClientPacketAbsorbMotion)
+                {
+                    float clampedElapsed = Math.Clamp(elapsed, 0, CLIENT_PACKET_ABSORB_DURATION);
+                    float clientT = clampedElapsed / CLIENT_PACKET_ABSORB_DURATION;
+                    X = MathHelper.Lerp(PickupStartX, PickupTargetX, clientT);
+
+                    float arcOffset = CalculateClientPacketAbsorbArcOffset(clampedElapsed);
+                    Y = MathHelper.Lerp(PickupStartY, PickupTargetY, clientT) + arcOffset;
+                    Alpha = ResolveClientPacketAbsorbAlpha(clampedElapsed);
+                    Scale = 1f;
+                    return;
                 }
 
                 float easedT = 1f - MathF.Pow(1f - t, 3f);
@@ -571,7 +588,8 @@ namespace HaCreator.MapSimulator.Pools
             Vector2? targetPosition = null,
             int durationMs = PICKUP_DURATION,
             Func<Vector2?> targetPositionResolver = null,
-            Vector2? startPositionOverride = null)
+            Vector2? startPositionOverride = null,
+            bool useClientPacketAbsorbMotion = false)
         {
             if (State == DropState.Removed || State == DropState.Expired)
                 return;
@@ -589,6 +607,7 @@ namespace HaCreator.MapSimulator.Pools
             PickupTargetX = targetPosition?.X ?? X;
             PickupTargetY = targetPosition?.Y ?? GroundY - 30f;
             PickupTargetPositionResolver = targetPositionResolver;
+            UseClientPacketAbsorbMotion = useClientPacketAbsorbMotion && targetPosition.HasValue;
             RemovalFadeDurationMs = 0;
         }
 
@@ -615,11 +634,31 @@ namespace HaCreator.MapSimulator.Pools
             RemovalStartScale = Scale;
             RemovalTargetScale = targetScale;
             Alpha = Math.Max(Alpha, 0f);
+            UseClientPacketAbsorbMotion = false;
 
             if (IsPacketControlled && AnimFrames != null && AnimFrames.Count > 1)
             {
                 FreezeAnimationDuringRemovalFade = true;
             }
+        }
+
+        internal static float CalculateClientPacketAbsorbArcOffset(float elapsedMs)
+        {
+            float midpoint = CLIENT_PACKET_ABSORB_DURATION * 0.5f;
+            float normalized = (elapsedMs - midpoint) / midpoint;
+            return (CLIENT_PACKET_ABSORB_ARC_HEIGHT * normalized * normalized) - CLIENT_PACKET_ABSORB_ARC_HEIGHT;
+        }
+
+        internal static float ResolveClientPacketAbsorbAlpha(float elapsedMs)
+        {
+            if (elapsedMs <= CLIENT_PACKET_ABSORB_FADE_START_MS)
+            {
+                return 1f;
+            }
+
+            float fadeDuration = CLIENT_PACKET_ABSORB_DURATION - CLIENT_PACKET_ABSORB_FADE_START_MS;
+            float fadeT = Math.Clamp((elapsedMs - CLIENT_PACKET_ABSORB_FADE_START_MS) / fadeDuration, 0f, 1f);
+            return MathHelper.Lerp(1f, 63f / 255f, fadeT);
         }
 
         public void SnapToTargetPosition()
@@ -1013,6 +1052,7 @@ namespace HaCreator.MapSimulator.Pools
             drop.PickupTargetY = 0f;
             drop.PickupDurationMs = 0;
             drop.UsePickupAbsorbMotion = false;
+            drop.UseClientPacketAbsorbMotion = false;
             drop.PickupTargetPositionResolver = null;
             drop.RemovalFadeDurationMs = 0;
             drop.TriggerPacketExplodeEffectOnRemove = false;
@@ -1131,8 +1171,13 @@ namespace HaCreator.MapSimulator.Pools
             Vector2? pickupTargetPosition = null,
             Func<Vector2?> pickupTargetPositionResolver = null,
             Vector2? pickupStartPositionOverride = null,
-            bool bypassStateValidation = false)
+            bool bypassStateValidation = false,
+            bool useClientPacketAbsorbMotion = false)
         {
+            int pickupDurationMs = useClientPacketAbsorbMotion
+                ? DropItem.CLIENT_PACKET_ABSORB_DURATION
+                : DropItem.PACKET_ABSORB_DURATION;
+
             if (actorKind == DropPickupActorKind.Player)
             {
                 return CompletePickup(
@@ -1144,9 +1189,11 @@ namespace HaCreator.MapSimulator.Pools
                     notifyLocalPickup: false,
                     actorName,
                     pickupTargetPosition,
+                    pickupDurationMs,
                     pickupTargetPositionResolver: pickupTargetPositionResolver,
                     pickupStartPositionOverride: pickupStartPositionOverride,
-                    bypassStateValidation: bypassStateValidation);
+                    bypassStateValidation: bypassStateValidation,
+                    useClientPacketAbsorbMotion: useClientPacketAbsorbMotion);
             }
 
             if (actorKind == DropPickupActorKind.Pet)
@@ -1160,9 +1207,11 @@ namespace HaCreator.MapSimulator.Pools
                     notifyLocalPickup: false,
                     actorName,
                     pickupTargetPosition,
+                    pickupDurationMs,
                     pickupTargetPositionResolver: pickupTargetPositionResolver,
                     pickupStartPositionOverride: pickupStartPositionOverride,
-                    bypassStateValidation: bypassStateValidation);
+                    bypassStateValidation: bypassStateValidation,
+                    useClientPacketAbsorbMotion: useClientPacketAbsorbMotion);
             }
 
             if (actorKind == DropPickupActorKind.Mob)
@@ -1176,9 +1225,11 @@ namespace HaCreator.MapSimulator.Pools
                     notifyLocalPickup: false,
                     actorName,
                     pickupTargetPosition,
+                    pickupDurationMs,
                     pickupTargetPositionResolver: pickupTargetPositionResolver,
                     pickupStartPositionOverride: pickupStartPositionOverride,
-                    bypassStateValidation: bypassStateValidation);
+                    bypassStateValidation: bypassStateValidation,
+                    useClientPacketAbsorbMotion: useClientPacketAbsorbMotion);
             }
 
             if (actorKind == DropPickupActorKind.Other)
@@ -1192,9 +1243,11 @@ namespace HaCreator.MapSimulator.Pools
                     notifyLocalPickup: false,
                     actorName,
                     pickupTargetPosition,
+                    pickupDurationMs,
                     pickupTargetPositionResolver: pickupTargetPositionResolver,
                     pickupStartPositionOverride: pickupStartPositionOverride,
-                    bypassStateValidation: bypassStateValidation);
+                    bypassStateValidation: bypassStateValidation,
+                    useClientPacketAbsorbMotion: useClientPacketAbsorbMotion);
             }
 
             return false;
@@ -2263,7 +2316,8 @@ namespace HaCreator.MapSimulator.Pools
             int pickupDurationMs = DropItem.PACKET_ABSORB_DURATION,
             Func<Vector2?> pickupTargetPositionResolver = null,
             Vector2? pickupStartPositionOverride = null,
-            bool bypassStateValidation = false)
+            bool bypassStateValidation = false,
+            bool useClientPacketAbsorbMotion = false)
         {
             if (drop == null || drop.State == DropState.Removed || drop.State == DropState.Expired)
             {
@@ -2283,7 +2337,8 @@ namespace HaCreator.MapSimulator.Pools
                 pickupTargetPosition,
                 pickupDurationMs,
                 pickupTargetPositionResolver,
-                pickupStartPositionOverride);
+                pickupStartPositionOverride,
+                useClientPacketAbsorbMotion);
             RecordRecentPickupItem(drop, pickerId, pickedByPet, currentTime, actorKind, actorName);
             _onDropPickedUp?.Invoke(drop);
 
@@ -2520,8 +2575,10 @@ namespace HaCreator.MapSimulator.Pools
                             DropPickupActorKind.Player,
                             notifyLocalPickup: true,
                             pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet),
+                            pickupDurationMs: DropItem.CLIENT_PACKET_ABSORB_DURATION,
                             pickupStartPositionOverride: ResolvePacketLeaveOrigin(drop),
                             bypassStateValidation: drop.IsPacketControlled,
+                            useClientPacketAbsorbMotion: drop.IsPacketControlled,
                             pickupTargetPositionResolver: actorPositionResolver == null
                                 ? null
                                 : () => actorPositionResolver(packet.Reason, packet));
@@ -2536,6 +2593,7 @@ namespace HaCreator.MapSimulator.Pools
                         pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet),
                         pickupStartPositionOverride: ResolvePacketLeaveOrigin(drop),
                         bypassStateValidation: drop.IsPacketControlled,
+                        useClientPacketAbsorbMotion: drop.IsPacketControlled,
                         pickupTargetPositionResolver: actorPositionResolver == null
                             ? null
                             : () => actorPositionResolver(packet.Reason, packet));
@@ -2550,6 +2608,7 @@ namespace HaCreator.MapSimulator.Pools
                         pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet),
                         pickupStartPositionOverride: ResolvePacketLeaveOrigin(drop),
                         bypassStateValidation: drop.IsPacketControlled,
+                        useClientPacketAbsorbMotion: drop.IsPacketControlled,
                         pickupTargetPositionResolver: actorPositionResolver == null
                             ? null
                             : () => actorPositionResolver(packet.Reason, packet));
@@ -2567,8 +2626,10 @@ namespace HaCreator.MapSimulator.Pools
                             DropPickupActorKind.Pet,
                             notifyLocalPickup: true,
                             pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet),
+                            pickupDurationMs: DropItem.CLIENT_PACKET_ABSORB_DURATION,
                             pickupStartPositionOverride: ResolvePacketLeaveOrigin(drop),
                             bypassStateValidation: drop.IsPacketControlled,
+                            useClientPacketAbsorbMotion: drop.IsPacketControlled,
                             pickupTargetPositionResolver: actorPositionResolver == null
                                 ? null
                                 : () => actorPositionResolver(packet.Reason, packet));
@@ -2585,6 +2646,7 @@ namespace HaCreator.MapSimulator.Pools
                         pickupTargetPosition: actorPositionResolver?.Invoke(packet.Reason, packet),
                         pickupStartPositionOverride: ResolvePacketLeaveOrigin(drop),
                         bypassStateValidation: drop.IsPacketControlled,
+                        useClientPacketAbsorbMotion: drop.IsPacketControlled,
                         pickupTargetPositionResolver: actorPositionResolver == null
                             ? null
                             : () => actorPositionResolver(packet.Reason, packet));

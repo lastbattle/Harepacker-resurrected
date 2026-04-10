@@ -898,6 +898,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool ShouldClearHealingRobotSupportSuspend(ActiveSummon summon, int currentTime, int healingRobotSkillId)
         {
             return summon?.SkillId == healingRobotSkillId
+                   && IsSitdownHealingSupportSummon(summon.SkillData)
                    && ShouldClearSupportSuspend(summon, currentTime);
         }
 

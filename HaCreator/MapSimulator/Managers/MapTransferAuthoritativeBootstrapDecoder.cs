@@ -193,7 +193,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             int tailOffset = payload.Length - BootstrapBookByteLength;
-            return TryReadBootstrapBooksAtOffset(
+            if (!TryReadBootstrapBooksAtOffset(
                 payload,
                 tailOffset,
                 characterDataFlags,
@@ -204,7 +204,23 @@ namespace HaCreator.MapSimulator.Managers
                 out matchedOffset,
                 out matchedKnownLeadingCharacterDataTail,
                 out matchedOpaquePreMapTransferByteCount,
-                out matchedKnownCharacterDataTail);
+                out matchedKnownCharacterDataTail))
+            {
+                return false;
+            }
+
+            if (TryMatchKnownLeadingLayoutOffset(
+                    payload,
+                    characterDataFlags,
+                    tailOffset,
+                    out KnownLeadingOffsetCandidate candidate))
+            {
+                matchedKnownLeadingCharacterDataTail = true;
+                matchedKnownLeadingSectionFlags = candidate.MatchedSectionFlags;
+                matchedOpaquePreMapTransferByteCount = candidate.OpaquePreMapTransferByteCount;
+            }
+
+            return true;
         }
 
         private static bool TryFindBootstrapBooksCore(
@@ -386,6 +402,23 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return false;
+        }
+
+        private static bool TryMatchKnownLeadingLayoutOffset(
+            ReadOnlySpan<byte> payload,
+            ulong characterDataFlags,
+            int offset,
+            out KnownLeadingOffsetCandidate candidate)
+        {
+            candidate = default;
+            if (offset <= 0)
+            {
+                return false;
+            }
+
+            Dictionary<int, KnownLeadingOffsetCandidate> candidateOffsets = new();
+            AddKnownLeadingLayoutOffsets(payload, characterDataFlags, candidateOffsets);
+            return candidateOffsets.TryGetValue(offset, out candidate);
         }
 
         private static void AddKnownLeadingLayoutOffsets(ReadOnlySpan<byte> payload, ulong characterDataFlags, IDictionary<int, KnownLeadingOffsetCandidate> offsets)

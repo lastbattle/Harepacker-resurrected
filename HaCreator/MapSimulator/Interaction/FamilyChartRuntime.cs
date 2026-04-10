@@ -60,6 +60,7 @@ namespace HaCreator.MapSimulator.Interaction
         private FamilyInfoPacketSnapshot _lastInfoPacketSnapshot;
         private int? _packetChartJuniorLimit;
         private int? _packetChartLocalMemberId;
+        private bool? _packetChartIsMine;
 
         private int FamilyHeadId => _familyHeadId;
 
@@ -538,6 +539,7 @@ namespace HaCreator.MapSimulator.Interaction
             _entitlementUseCounts.Clear();
             _packetChartLocalMemberId = snapshot.FocusMemberId > 0 ? snapshot.FocusMemberId : null;
             _packetChartJuniorLimit = Math.Max(0, snapshot.JuniorLimit);
+            _packetChartIsMine = _packetChartLocalMemberId == LocalPlayerId;
 
             foreach (KeyValuePair<int, int> pair in snapshot.Statistics)
             {
@@ -574,7 +576,9 @@ namespace HaCreator.MapSimulator.Interaction
                     parentId,
                     Math.Max(0, packetMember.FamousPoint),
                     Math.Max(0, packetMember.TodayParentPoint),
-                    packetMember.IsOnline,
+                    _packetChartLocalMemberId == packetMember.CharacterId
+                        ? _packetChartIsMine == true
+                        : packetMember.IsOnline,
                     Vector2.Zero);
             }
 
@@ -978,6 +982,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastInfoPacketSnapshot = null;
             _packetChartJuniorLimit = null;
             _packetChartLocalMemberId = null;
+            _packetChartIsMine = null;
         }
 
         private void SeedDefaultFamily()
@@ -1295,15 +1300,29 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanAddJunior(FamilyMemberState selectedMember)
         {
-            return CanRegisterJunior()
-                && selectedMember != null
-                && selectedMember.Id != RemotePreviewMemberId
-                && selectedMember.Children.Count < 2;
+            if (!CanRegisterJunior() || selectedMember == null || selectedMember.Id == RemotePreviewMemberId)
+            {
+                return false;
+            }
+
+            if (_packetChartLocalMemberId.HasValue)
+            {
+                return _packetChartIsMine == true
+                    && selectedMember.Id == _packetChartLocalMemberId.Value
+                    && selectedMember.Children.Count < Math.Max(0, _packetChartJuniorLimit ?? 0);
+            }
+
+            return selectedMember.Children.Count < 2;
         }
 
         private bool CanRemoveSelected(FamilyMemberState selectedMember)
         {
             if (!CanRemoveMembers() || selectedMember == null || selectedMember.Id == FamilyHeadId || selectedMember.Id == LocalPlayerId)
+            {
+                return false;
+            }
+
+            if (_packetChartLocalMemberId.HasValue && _packetChartIsMine != true)
             {
                 return false;
             }
@@ -1765,6 +1784,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _packetChartStatistics.Clear();
                 _packetChartJuniorLimit = null;
                 _packetChartLocalMemberId = null;
+                _packetChartIsMine = null;
                 return;
             }
 

@@ -856,6 +856,7 @@ namespace HaCreator.MapSimulator
                 statusBarChatUI.WhisperTargetPickerModalComboDropdownCloseRequested = () => _chat.CloseWhisperTargetPickerModalComboDropdown();
                 statusBarChatUI.WhisperTargetPickerModalComboDropdownToggleRequested = () => _chat.ToggleWhisperTargetPickerModalComboDropdown();
                 statusBarChatUI.WhisperTargetPickerModalComboDropdownHoverRequested = target => _chat.HighlightWhisperTargetPickerModalComboDropdownCandidate(target);
+                statusBarChatUI.WhisperTargetPickerModalComboDropdownDeleteRequested = target => _chat.DeleteWhisperTargetPickerModalComboDropdownCandidate(target);
             }
 
 
@@ -1246,6 +1247,7 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedTeleportOutboundSummary = null;
                 _pendingMapSpawnTarget = null;
             }
+            ClearPendingPortalSessionValueImpacts();
             ClearPassiveTransferRequest();
 
 

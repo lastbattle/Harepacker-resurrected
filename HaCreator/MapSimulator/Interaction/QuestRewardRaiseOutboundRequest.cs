@@ -21,6 +21,7 @@ namespace HaCreator.MapSimulator.Interaction
         int ItemId,
         int Quantity,
         int PlacedPieceCount,
+        int MaxDropCount,
         IReadOnlyDictionary<int, int> SelectedItemsByGroup);
 
     internal enum QuestRewardRaiseOutboundRequestKind
@@ -161,6 +162,12 @@ namespace HaCreator.MapSimulator.Interaction
                     selectedItemsByGroup[reader.ReadInt32()] = reader.ReadInt32();
                 }
 
+                int maxDropCount = Math.Max(1, placedPieceCount);
+                if ((stream.Length - stream.Position) >= sizeof(short))
+                {
+                    maxDropCount = Math.Max(1, (int)reader.ReadInt16());
+                }
+
                 decoded = new QuestRewardRaisePacketPayload(
                     managerSessionId,
                     ownerRequestId,
@@ -175,6 +182,7 @@ namespace HaCreator.MapSimulator.Interaction
                     itemId,
                     quantity,
                     placedPieceCount,
+                    maxDropCount,
                     selectedItemsByGroup);
                 return true;
             }
@@ -221,6 +229,8 @@ namespace HaCreator.MapSimulator.Interaction
                 writer.Write(selectedEntries[i].Key);
                 writer.Write(selectedEntries[i].Value);
             }
+
+            writer.Write((short)Math.Max(1, state?.MaxDropCount ?? placedPieceCount));
 
             writer.Flush();
             return stream.ToArray();

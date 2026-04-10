@@ -1799,10 +1799,17 @@ namespace HaCreator.MapSimulator.Interaction
                 case PersonalShopMoveItemToInventoryPacketType:
                     return TryApplyPersonalShopMoveItemPacket(reader, out message);
                 case PersonalShopBasePacketType:
-                    return TryDispatchMiniRoomBasePacket(reader, tickCount, out message);
+                    return TryApplyMerchantShopEnterResultPacket(reader, out message);
                 default:
                     return FailPacket(packetType, out message);
             }
+        }
+
+        private bool TryApplyMerchantShopEnterResultPacket(PacketReader reader, out string message)
+        {
+            return Kind == SocialRoomKind.EntrustedShop
+                ? TryApplyEntrustedShopEnterResultPacket(reader, out message)
+                : TryApplyPersonalShopEnterResultPacket(reader, out message);
         }
 
         private bool TryDispatchEntrustedShopPacket(PacketReader reader, byte packetType, int tickCount, out string message)

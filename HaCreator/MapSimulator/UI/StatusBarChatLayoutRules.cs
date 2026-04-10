@@ -13,7 +13,7 @@ namespace HaCreator.MapSimulator.UI
         internal const int ClientWhisperPickerModalComboHeight = 18;
         internal const int ClientWhisperPickerModalComboChromeHeight = 20;
         internal const int ClientWhisperPickerModalComboButtonWidth = 17;
-        internal const int ClientWhisperPickerModalComboDropdownRowHeight = 17;
+        internal const int ClientWhisperPickerModalComboDropdownRowHeight = 16;
         internal const int ClientWhisperPickerModalComboDropdownLeftSliceWidth = 5;
         internal const int ClientWhisperPickerModalComboDropdownCenterSliceWidth = 5;
         internal const int ClientWhisperPickerModalComboDropdownRightSliceWidth = 18;
@@ -251,11 +251,12 @@ namespace HaCreator.MapSimulator.UI
             int resolvedWidth = Math.Max(
                 Math.Max(1, minimumRowWidth),
                 comboBounds.Width);
+            int listHeight = safeRowHeight * safeVisibleRowCount;
             return new Rectangle(
                 comboBounds.X,
-                comboBounds.Bottom,
+                comboBounds.Y - listHeight - 1,
                 resolvedWidth,
-                safeRowHeight * safeVisibleRowCount);
+                listHeight);
         }
 
         public static int ResolveWhisperPickerModalComboDropdownRowHeight(params int[] textureHeights)

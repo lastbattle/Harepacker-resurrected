@@ -21,7 +21,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             List<TradeVerificationEntry> entries = _tradeLocalVerificationEntries.Count > 0 || _tradeLocalVerificationReady
                 ? new List<TradeVerificationEntry>(_tradeLocalVerificationEntries)
-                : BuildTradeVerificationEntries(isLocalParty: true);
+                : BuildTradeVerificationEntries(isLocalParty: false);
 
             using MemoryStream stream = new MemoryStream();
             using BinaryWriter writer = new BinaryWriter(stream);
@@ -35,7 +35,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             rawPacket = stream.ToArray();
-            message = $"Built trading-room subtype {TradingRoomItemCrcPacketType} CRC reply with {entries.Count} entr{(entries.Count == 1 ? "y" : "ies")} for outbound opcode 144, matching the client OnTrade path even when the row count is zero.";
+            message = $"Built trading-room subtype {TradingRoomItemCrcPacketType} CRC reply with {entries.Count} peer-side entr{(entries.Count == 1 ? "y" : "ies")} for outbound opcode 144, matching the client OnTrade scan over m_aaItem[1] even when the row count is zero.";
             return true;
         }
 
@@ -46,7 +46,27 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
+            bool hadPendingReply = _tradeAutoCrcReplyPending;
             _tradeAutoCrcReplyPending = false;
+            if (!hadPendingReply)
+            {
+                return;
+            }
+
+            if (_tradeRemoteLocked && _tradeLocalVerificationReady)
+            {
+                _tradeVerificationPending = false;
+                _tradeRemoteAccepted = true;
+                RoomState = _tradeLocalAccepted ? "Awaiting settlement" : "Locked";
+                StatusMessage = $"Trading-room subtype {TradingRoomItemCrcPacketType} CRC reply was sent; the CTradingRoomDlg::OnTrade remote acceptance is now waiting on local final acceptance.";
+            }
+            else
+            {
+                StatusMessage = $"Trading-room subtype {TradingRoomItemCrcPacketType} CRC reply was sent, but the runtime is still waiting for a locked remote trade handoff.";
+            }
+
+            RefreshTradeOccupantsAndRows();
+            PersistState();
         }
     }
 }

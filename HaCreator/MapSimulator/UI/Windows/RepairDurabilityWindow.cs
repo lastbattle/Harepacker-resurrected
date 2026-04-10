@@ -139,6 +139,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _pixel;
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
         private readonly Point[] _tooltipFrameOrigins = new Point[3];
+        private readonly Point[] _tooltipFrameSizes = new Point[3];
 
         private SpriteFont _font;
         private NpcItem _npcPreview;
@@ -204,6 +205,9 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < Math.Min(_tooltipFrames.Length, tooltipFrames.Length); i++)
             {
                 _tooltipFrames[i] = tooltipFrames[i];
+                _tooltipFrameSizes[i] = tooltipFrames[i] == null
+                    ? Point.Zero
+                    : new Point(tooltipFrames[i].Width, tooltipFrames[i].Height);
             }
         }
 
@@ -1788,7 +1792,7 @@ namespace HaCreator.MapSimulator.UI
                 rect.Height);
         }
 
-        private static Rectangle ResolveHoverTooltipRect(
+        private Rectangle ResolveHoverTooltipRect(
             Point anchorPoint,
             int tooltipWidth,
             int tooltipHeight,
@@ -1803,7 +1807,9 @@ namespace HaCreator.MapSimulator.UI
                 renderWidth,
                 renderHeight,
                 TooltipPadding,
-                HoverTooltipCursorGap);
+                HoverTooltipCursorGap,
+                _tooltipFrameOrigins,
+                _tooltipFrameSizes);
             tooltipFrameIndex = placement.FrameIndex;
             return placement.Bounds;
         }

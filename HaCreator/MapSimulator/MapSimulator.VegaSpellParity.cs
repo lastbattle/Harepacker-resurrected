@@ -26,7 +26,7 @@ namespace HaCreator.MapSimulator
         private const int VegaConsumeCashLaunchPayloadLength = VegaConsumeCashLaunchPayloadPrefixLength + (sizeof(int) * 3);
         private const int VegaSyntheticEquipItemTokenMask = unchecked((int)0x40000000);
         private const int VegaSyntheticInventoryItemTokenMask = unchecked((int)0x20000000);
-        private const string VegaResultLoopSoundKey = "PacketOwnedSound:Sound/UI.img/EnchantDelay:VegaLoop";
+        private const string VegaResultLoopSoundKeyPrefix = "PacketOwnedSound:VegaLoop";
         private ActiveVegaModifierSelectionState _activeVegaModifierSelection;
         private bool _vegaExclusiveRequestSent;
         private bool _vegaResultLoopSoundActive;
@@ -870,10 +870,10 @@ namespace HaCreator.MapSimulator
                 equipItemToken,
                 modifierInventoryType,
                 modifierSlotIndex,
-                BuildSyntheticVegaInventoryItemToken(modifierInventoryType, modifierSlotIndex, request.ModifierItemId, modifierSlot),
+                BuildVegaInventoryItemToken(modifierInventoryType, modifierSlotIndex, request.ModifierItemId, modifierSlot),
                 scrollInventoryType,
                 scrollSlotIndex,
-                BuildSyntheticVegaInventoryItemToken(scrollInventoryType, scrollSlotIndex, request.ScrollItemId, scrollSlot));
+                BuildVegaInventoryItemToken(scrollInventoryType, scrollSlotIndex, request.ScrollItemId, scrollSlot));
             return true;
         }
 
@@ -1061,6 +1061,43 @@ namespace HaCreator.MapSimulator
                 | (stableIdentity & 0xFFF);
         }
 
+        private static int BuildVegaInventoryItemToken(
+            InventoryType inventoryType,
+            int slotIndex,
+            int itemId,
+            InventorySlotData slot)
+        {
+            if (TryResolveClientAuthoredVegaInventoryItemToken(slot, out int itemToken))
+            {
+                return itemToken;
+            }
+
+            return BuildSyntheticVegaInventoryItemToken(inventoryType, slotIndex, itemId, slot);
+        }
+
+        private static bool TryResolveClientAuthoredVegaInventoryItemToken(InventorySlotData slot, out int itemToken)
+        {
+            itemToken = 0;
+            if (slot == null)
+            {
+                return false;
+            }
+
+            if (slot.PendingRequestId != 0)
+            {
+                itemToken = slot.PendingRequestId;
+                return true;
+            }
+
+            if (slot.CashItemSerialNumber is long cashItemSerialNumber)
+            {
+                itemToken = unchecked((int)cashItemSerialNumber);
+                return itemToken != 0;
+            }
+
+            return false;
+        }
+
         internal static byte[] BuildVegaRequestPayloadForTests(
             int modifierSlotPosition,
             int modifierItemId,
@@ -1116,6 +1153,15 @@ namespace HaCreator.MapSimulator
             InventorySlotData slot)
         {
             return BuildSyntheticVegaInventoryItemToken(inventoryType, slotIndex, itemId, slot);
+        }
+
+        internal static int BuildVegaInventoryItemTokenForTests(
+            InventoryType inventoryType,
+            int slotIndex,
+            int itemId,
+            InventorySlotData slot)
+        {
+            return BuildVegaInventoryItemToken(inventoryType, slotIndex, itemId, slot);
         }
 
         internal static bool TryDecodeVegaLaunchPayloadForTests(
@@ -1295,7 +1341,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            string soundKey = $"{VegaResultLoopSoundKey}:{resolvedDescriptor}";
+            string soundKey = BuildVegaResultLoopSoundKey(resolvedDescriptor);
             _soundManager.RegisterSound(soundKey, soundProperty);
             _soundManager.PlayLoopingSound(soundKey);
             _vegaResultLoopSoundActive = true;
@@ -1325,6 +1371,19 @@ namespace HaCreator.MapSimulator
                 MapleStoryStringPool.GetOrFallback(
                     VegaResultPreludeLoopSoundStringPoolId,
                     VegaResultPreludeLoopSoundFallback));
+        }
+
+        internal static string BuildVegaResultLoopSoundKeyForTests(string resolvedDescriptor)
+        {
+            return BuildVegaResultLoopSoundKey(resolvedDescriptor);
+        }
+
+        private static string BuildVegaResultLoopSoundKey(string resolvedDescriptor)
+        {
+            string normalizedDescriptor = NormalizeVegaResultLoopSoundDescriptor(
+                resolvedDescriptor,
+                VegaResultPreludeLoopSoundFallback);
+            return $"{VegaResultLoopSoundKeyPrefix}:{normalizedDescriptor}";
         }
 
         internal static string NormalizeVegaResultLoopSoundDescriptorForTests(string descriptor)

@@ -120,12 +120,12 @@ namespace HaCreator.MapSimulator.Interaction
 
             _isOpen = false;
             _lastAccepted = true;
-            _acceptedHandoff = BuildAcceptedHandoff();
+            _acceptedHandoff = null;
             SetObservedSocialMessages(_groomName, _brideName);
             string packetEvidence = _lastOpenUsedMarriageResultPacket && _lastMarriageResultPacketPayload.Length > 0
                 ? $" The dialog was opened from {ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} bytes [{FormatPayload(_lastMarriageResultPacketPayload)}]."
                 : string.Empty;
-            _statusMessage = $"Accepted wedding invitation for {_groomName} and {_brideName}. Client button focus remains modeled through StringPool 0x{AcceptButtonUolStringPoolId:X}; staged downstream wedding handoff as {_acceptedHandoff.LocalRole} for the existing wish-list seam while the external NPC/script and ceremony transition chain remains unmodeled.{packetEvidence}";
+            _statusMessage = $"Closed wedding invitation for {_groomName} and {_brideName} through the client OK button path. {ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} calls {ClientPresentationMode} and ignores the modal return, so this owner does not stage a downstream invitation-owned handoff; proposal and wish-list progression remains owned by their separate seams.{packetEvidence}";
             return _statusMessage;
         }
 
@@ -178,7 +178,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (_acceptedHandoff == null)
             {
                 handoff = null;
-                message = "Accept a wedding invitation before opening the downstream wedding wish-list owner.";
+                message = $"{ClientOwnerTypeName} does not own the downstream wedding wish-list handoff. The client {ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} path calls {ClientPresentationMode} and ignores the modal return; open the wish-list from the accepted proposal seam instead.";
                 return false;
             }
 

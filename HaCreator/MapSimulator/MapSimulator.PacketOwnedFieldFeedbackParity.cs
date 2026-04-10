@@ -189,12 +189,25 @@ namespace HaCreator.MapSimulator
                 IsBlacklistedName = name => _socialListRuntime.IsBlacklisted(name),
                 IsBlockedFriendName = name => _socialListRuntime.IsBlockedFriend(name),
                 QueueMapTransfer = TryQueuePacketOwnedWhisperFindTransfer,
+                UpdateWhisperUserListLocation = UpdatePacketOwnedWhisperUserListLocation,
                 ResolveSwindleWarnings = GetPacketOwnedSwindleWarningEntries,
                 ShowBossTimerClock = ShowPacketOwnedBossTimerClock,
                 ClearBossTimerClock = ClearPacketOwnedBossTimerClock,
                 ShowFieldClock = ShowPacketOwnedFieldClock,
                 ClearFieldClock = ClearPacketOwnedFieldClock
             };
+        }
+
+        private void UpdatePacketOwnedWhisperUserListLocation(string target, string locationText, byte result, int value)
+        {
+            if (string.IsNullOrWhiteSpace(target) || string.IsNullOrWhiteSpace(locationText))
+            {
+                return;
+            }
+
+            _socialListRuntime.SetPacketWhisperLocationInfo(target, locationText);
+            ShowUtilityFeedbackMessage(
+                $"Updated packet-owned user-list location for {target.Trim()} (result={result}, value={value}).");
         }
 
         private void ShowPacketOwnedFieldWarning(string message)
@@ -239,6 +252,29 @@ namespace HaCreator.MapSimulator
             }
 
             TryPlayPacketOwnedFieldFeedbackSound(presentation.SoundPath);
+        }
+
+        private void HandleRemoteEffectChatLogMessage(RemoteUserActorPool.RemoteChatLogMessagePresentation presentation)
+        {
+            if (string.IsNullOrWhiteSpace(presentation.Message))
+            {
+                return;
+            }
+
+            _chat?.AddClientChatMessage(
+                presentation.Message,
+                presentation.CurrentTime,
+                presentation.ChatLogType);
+        }
+
+        private void HandleRemoteStatusBarEffect(RemoteUserActorPool.RemoteStatusBarEffectPresentation presentation)
+        {
+            if (string.IsNullOrWhiteSpace(presentation.EffectName))
+            {
+                return;
+            }
+
+            ShowUtilityFeedbackMessage($"Remote user {presentation.CharacterId} triggered status-bar {presentation.EffectName}.");
         }
 
         private bool TryPlayPacketOwnedSummonEffectSound(byte effectId)

@@ -100,6 +100,17 @@ namespace HaCreator.MapSimulator.Fields
                     }
                 }
             }
+
+            foreach (string argument in EnumerateFunctionAliasArguments(scriptName))
+            {
+                foreach (string candidate in EnumerateScriptAliasCandidatesCore(argument.Trim()))
+                {
+                    if (!string.IsNullOrWhiteSpace(candidate) && seen.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+            }
         }
 
         private static IEnumerable<string> EnumerateScriptAliasCandidatesCore(string scriptName)
@@ -168,6 +179,208 @@ namespace HaCreator.MapSimulator.Fields
                 quote = '\0';
                 argumentStart = -1;
             }
+        }
+
+        private static IEnumerable<string> EnumerateFunctionAliasArguments(string scriptName)
+        {
+            if (string.IsNullOrWhiteSpace(scriptName)
+                || scriptName.IndexOf('(') < 0)
+            {
+                yield break;
+            }
+
+            foreach (string argument in EnumerateFunctionArguments(scriptName))
+            {
+                string normalizedArgument = NormalizeFunctionAliasArgument(argument);
+                if (!IsPotentialAliasArgument(normalizedArgument))
+                {
+                    continue;
+                }
+
+                yield return normalizedArgument;
+
+                foreach (string nestedArgument in EnumerateFunctionAliasArguments(normalizedArgument))
+                {
+                    yield return nestedArgument;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateFunctionArguments(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            int openIndex = value.IndexOf('(');
+            while (openIndex >= 0)
+            {
+                int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
+                if (closeIndex <= openIndex + 1)
+                {
+                    openIndex = value.IndexOf('(', openIndex + 1);
+                    continue;
+                }
+
+                foreach (string argument in SplitFunctionArguments(value[(openIndex + 1)..closeIndex]))
+                {
+                    yield return argument;
+                }
+
+                openIndex = value.IndexOf('(', openIndex + 1);
+            }
+        }
+
+        private static int FindMatchingCloseParenthesis(string value, int openIndex)
+        {
+            int depth = 0;
+            char quote = '\0';
+            for (int i = openIndex; i < value.Length; i++)
+            {
+                char current = value[i];
+                if (quote != '\0')
+                {
+                    if (current == '\\' && i + 1 < value.Length)
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    if (current == quote)
+                    {
+                        quote = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (current == '"' || current == '\'')
+                {
+                    quote = current;
+                    continue;
+                }
+
+                if (current == '(')
+                {
+                    depth++;
+                    continue;
+                }
+
+                if (current != ')')
+                {
+                    continue;
+                }
+
+                depth--;
+                if (depth == 0)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static IEnumerable<string> SplitFunctionArguments(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            int tokenStart = 0;
+            int groupingDepth = 0;
+            char quote = '\0';
+            for (int i = 0; i < value.Length; i++)
+            {
+                char current = value[i];
+                if (quote != '\0')
+                {
+                    if (current == '\\' && i + 1 < value.Length)
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    if (current == quote)
+                    {
+                        quote = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (current == '"' || current == '\'')
+                {
+                    quote = current;
+                    continue;
+                }
+
+                if (current == '(' || current == '[' || current == '{')
+                {
+                    groupingDepth++;
+                    continue;
+                }
+
+                if (current == ')' || current == ']' || current == '}')
+                {
+                    if (groupingDepth > 0)
+                    {
+                        groupingDepth--;
+                    }
+
+                    continue;
+                }
+
+                if (groupingDepth > 0 || current is not (',' or ';'))
+                {
+                    continue;
+                }
+
+                yield return value[tokenStart..i];
+                tokenStart = i + 1;
+            }
+
+            yield return value[tokenStart..];
+        }
+
+        private static string NormalizeFunctionAliasArgument(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            return value.Trim().Trim('"', '\'').Trim();
+        }
+
+        private static bool IsPotentialAliasArgument(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            bool hasAliasCharacter = false;
+            for (int i = 0; i < value.Length; i++)
+            {
+                char current = value[i];
+                if (char.IsLetter(current) || current is '_' or '-' or '/' or '\\' or '.')
+                {
+                    hasAliasCharacter = true;
+                    continue;
+                }
+
+                if (char.IsDigit(current) || current == '(' || current == ')' || current == '"' || current == '\'')
+                {
+                    continue;
+                }
+
+                return false;
+            }
+
+            return hasAliasCharacter;
         }
 
         private static string TrimPathPrefix(string scriptName)

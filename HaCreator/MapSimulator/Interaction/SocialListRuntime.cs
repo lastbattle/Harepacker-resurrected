@@ -48,6 +48,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string _locationSummary = "Maple Island";
         private string _guildName = "Maple GM";
         private string _allianceName = "Maple Union";
+        private string _packetWhisperLocationInfo = string.Empty;
         private int _channel = 1;
         private int _clientPartyId;
         private bool _friendOnlineOnly;
@@ -136,6 +137,23 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return false;
+        }
+
+        internal void SetPacketWhisperLocationInfo(string characterName, string locationInfo)
+        {
+            string normalizedName = string.IsNullOrWhiteSpace(characterName)
+                ? string.Empty
+                : characterName.Trim();
+            string normalizedLocation = string.IsNullOrWhiteSpace(locationInfo)
+                ? string.Empty
+                : locationInfo.Trim();
+            if (normalizedName.Length == 0 || normalizedLocation.Length == 0)
+            {
+                return;
+            }
+
+            _packetWhisperLocationInfo = normalizedLocation;
+            _lastPacketSyncSummaryByTab[SocialListTab.Friend] = $"Packet whisper find updated user-list location for {normalizedName}.";
         }
 
         internal void UpdateLocalContext(CharacterBuild build, string locationSummary, int channel)
@@ -249,6 +267,7 @@ namespace HaCreator.MapSimulator.Interaction
             _snapshotBuffer.VisibleCapacity = PageSize;
             _snapshotBuffer.HeaderTitle = GetHeaderTitle();
             _snapshotBuffer.SummaryLines = _snapshotSummaryLinesBuffer;
+            _snapshotBuffer.PacketWhisperLocationInfo = _packetWhisperLocationInfo;
             _snapshotBuffer.EnabledActionKeys = _enabledActionKeysBuffer;
             _snapshotBuffer.FriendOnlineOnly = _friendOnlineOnly;
             _snapshotBuffer.CanPageBackward = firstVisibleIndex > 0;
@@ -1924,6 +1943,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int TotalEntries { get; set; }
         public string HeaderTitle { get; set; } = string.Empty;
         public IReadOnlyList<string> SummaryLines { get; set; } = Array.Empty<string>();
+        public string PacketWhisperLocationInfo { get; set; } = string.Empty;
         public IReadOnlyCollection<string> EnabledActionKeys { get; set; } = Array.Empty<string>();
         public bool FriendOnlineOnly { get; set; }
         public bool CanPageBackward { get; set; }

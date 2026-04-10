@@ -66,7 +66,9 @@ namespace HaCreator.MapSimulator.UI
         CharacterEquipmentAuthorityResultKind ResultKind = default,
         int ResolvedBuildStateToken = 0,
         IReadOnlyList<CharacterEquipmentAuthoritySlotState> AuthoritySlotStates = null,
-        string RejectReason = null);
+        string RejectReason = null,
+        int AuthorityPacketType = 0,
+        bool HasResultRequestContext = false);
 
     public sealed class EquipmentChangeRequest
     {

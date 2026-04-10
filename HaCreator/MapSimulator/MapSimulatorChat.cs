@@ -1267,6 +1267,44 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        internal bool DeleteWhisperTargetPickerModalComboDropdownCandidate(string whisperTarget)
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || !_isWhisperTargetPickerComboDropdownOpen)
+            {
+                return false;
+            }
+
+            string normalizedTarget = NormalizeChatSpeakerCandidate(whisperTarget);
+            if (string.IsNullOrWhiteSpace(normalizedTarget))
+            {
+                return false;
+            }
+
+            int removedIndex = _whisperCandidates.FindIndex(candidate =>
+                string.Equals(candidate, normalizedTarget, StringComparison.OrdinalIgnoreCase));
+            if (removedIndex < 0)
+            {
+                return false;
+            }
+
+            _whisperCandidates.RemoveAt(removedIndex);
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            if (_whisperCandidates.Count == 0)
+            {
+                _whisperTargetPickerSelectionIndex = -1;
+                _isWhisperTargetPickerComboDropdownOpen = false;
+                return true;
+            }
+
+            _whisperTargetPickerSelectionIndex = Math.Clamp(
+                removedIndex,
+                0,
+                _whisperCandidates.Count - 1);
+            return true;
+        }
+
         internal void PageWhisperTargetPickerSelection(int deltaPages)
         {
             PageWhisperTargetPickerSelection(deltaPages, updateInputText: true);

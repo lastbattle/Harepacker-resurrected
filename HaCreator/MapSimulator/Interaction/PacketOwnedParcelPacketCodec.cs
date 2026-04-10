@@ -47,7 +47,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int ParcelMemoOffset = 0x21;
         private const int ParcelMemoLength = ParcelFixedBodyLength - ParcelMemoOffset;
         private const int MinimumMemoCandidateLength = 4;
-        private const int MinimumAttachmentBodyLength = sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long) + sizeof(long);
+        private const int MinimumAttachmentHeaderLength = sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long);
         private const byte ParcelStateReadFlag = 1 << 0;
         private const byte ParcelStateKeepFlag = 1 << 1;
         private const byte ParcelStateClaimedFlag = 1 << 2;
@@ -133,17 +133,13 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             byte[] parcelBytes = reader.ReadBytes(ParcelFixedBodyLength);
-            byte stateFlags = reader.ReadByte();
-            bool isRead = HasStateFlag(stateFlags, ParcelStateReadFlag);
-            bool isKept = HasStateFlag(stateFlags, ParcelStateKeepFlag);
-            bool isAttachmentClaimed = HasStateFlag(stateFlags, ParcelStateClaimedFlag);
-            bool hasItemAttachment = HasStateFlag(stateFlags, ParcelStateHasItemFlag);
-            bool hasMesoAttachment = HasStateFlag(stateFlags, ParcelStateHasMesoFlag);
+            byte postBodyByte = reader.ReadByte();
+            ParcelPostBodyState postBodyState = ResolvePostBodyState(postBodyByte);
 
             int itemId = 0;
             int quantity = 0;
             bool hasUndecodedItemAttachment = false;
-            if (hasItemAttachment)
+            if (postBodyState.HasItemAttachment)
             {
                 if (!TryReadItemAttachment(reader, out itemId, out quantity, out error))
                 {
@@ -159,7 +155,7 @@ namespace HaCreator.MapSimulator.Interaction
             int attachmentMeso = parcelBytes.Length >= ParcelMesoOffset + sizeof(int)
                 ? Math.Max(0, BinaryPrimitives.ReadInt32LittleEndian(parcelBytes.AsSpan(ParcelMesoOffset, sizeof(int))))
                 : 0;
-            if (!hasMesoAttachment)
+            if (!postBodyState.HasMesoAttachment)
             {
                 attachmentMeso = 0;
             }
@@ -174,19 +170,41 @@ namespace HaCreator.MapSimulator.Interaction
                 MemoText = memoText,
                 IsQuickDelivery = isQuickDelivery,
                 ExpirationTimestampUtc = expirationTimestampUtc,
-                IsRead = isRead,
-                IsKept = isKept,
-                IsAttachmentClaimed = isAttachmentClaimed,
-                StateFlags = stateFlags,
-                PostBodyItemPresenceFlag = stateFlags,
-                HasItemAttachment = hasItemAttachment,
-                HasMesoAttachment = hasMesoAttachment,
+                IsRead = postBodyState.IsRead,
+                IsKept = postBodyState.IsKept,
+                IsAttachmentClaimed = postBodyState.IsAttachmentClaimed,
+                StateFlags = postBodyByte,
+                PostBodyItemPresenceFlag = postBodyByte,
+                HasItemAttachment = postBodyState.HasItemAttachment,
+                HasMesoAttachment = postBodyState.HasMesoAttachment,
                 AttachmentItemId = Math.Max(0, itemId),
                 AttachmentQuantity = Math.Max(0, quantity),
                 AttachmentMeso = attachmentMeso,
                 HasUndecodedItemAttachment = hasUndecodedItemAttachment
             };
             return true;
+        }
+
+        private static ParcelPostBodyState ResolvePostBodyState(byte postBodyByte)
+        {
+            bool usesSimulatorBitfield = (postBodyByte & (ParcelStateKeepFlag | ParcelStateClaimedFlag | ParcelStateHasItemFlag | ParcelStateHasMesoFlag)) != 0;
+            if (usesSimulatorBitfield)
+            {
+                return new ParcelPostBodyState(
+                    IsRead: HasStateFlag(postBodyByte, ParcelStateReadFlag),
+                    IsKept: HasStateFlag(postBodyByte, ParcelStateKeepFlag),
+                    IsAttachmentClaimed: HasStateFlag(postBodyByte, ParcelStateClaimedFlag),
+                    HasItemAttachment: HasStateFlag(postBodyByte, ParcelStateHasItemFlag),
+                    HasMesoAttachment: HasStateFlag(postBodyByte, ParcelStateHasMesoFlag));
+            }
+
+            // MapleStory v95 PARCEL::Decode reads this byte as the GW_ItemSlotBase presence flag.
+            return new ParcelPostBodyState(
+                IsRead: false,
+                IsKept: false,
+                IsAttachmentClaimed: false,
+                HasItemAttachment: postBodyByte != 0,
+                HasMesoAttachment: false);
         }
 
         private static bool HasStateFlag(byte stateFlags, byte flag)
@@ -201,7 +219,7 @@ namespace HaCreator.MapSimulator.Interaction
             error = null;
 
             Stream stream = reader.BaseStream;
-            if (stream.Length - stream.Position < MinimumAttachmentBodyLength)
+            if (stream.Length - stream.Position < MinimumAttachmentHeaderLength)
             {
                 error = "Parcel attachment payload is too short to contain a GW_ItemSlotBase body.";
                 return false;
@@ -523,5 +541,12 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return value is >= 32 and <= 126;
         }
+
+        private readonly record struct ParcelPostBodyState(
+            bool IsRead,
+            bool IsKept,
+            bool IsAttachmentClaimed,
+            bool HasItemAttachment,
+            bool HasMesoAttachment);
     }
 }

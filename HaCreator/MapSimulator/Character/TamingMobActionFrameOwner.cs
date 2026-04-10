@@ -83,7 +83,6 @@ namespace HaCreator.MapSimulator.Character
                 "rbooster_pre",
                 "rbooster",
                 "rbooster_after",
-                "gatlingshot",
                 "gatlingshot2",
                 "drillrush",
                 "mbooster",
@@ -418,6 +417,12 @@ namespace HaCreator.MapSimulator.Character
         private bool IsActionAllowedForVehicle(string actionName)
         {
             if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (VehicleItemId == MechanicTamingMobItemId
+                && ClientOwnedVehicleSkillClassifier.IsWzOnlyMechanicVehicleOneTimeActionName(actionName))
             {
                 return false;
             }

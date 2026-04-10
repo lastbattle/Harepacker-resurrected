@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator
             PortalSessionValueImpactOwnerKind ownerKind,
             string key,
             string value,
+            int requestTick,
             double velocityX,
             double velocityY)
         {
@@ -44,6 +45,7 @@ namespace HaCreator.MapSimulator
             OwnerKind = ownerKind;
             Key = key?.Trim();
             Value = value ?? string.Empty;
+            RequestTick = requestTick;
             VelocityX = velocityX;
             VelocityY = velocityY;
         }
@@ -55,6 +57,8 @@ namespace HaCreator.MapSimulator
         public string Key { get; }
 
         public string Value { get; }
+
+        public int RequestTick { get; }
 
         public double VelocityX { get; }
 

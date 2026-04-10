@@ -32,6 +32,19 @@ namespace HaCreator.MapSimulator.Interaction
         int MessageExpiresAt,
         int MessageSequenceId);
 
+    internal sealed class TutorOwnerSnapshot
+    {
+        internal TutorOwnerSnapshot(TutorVariantSnapshot variant, TutorMessageSnapshot message)
+        {
+            Variant = variant;
+            Message = message;
+        }
+
+        internal TutorVariantSnapshot Variant { get; }
+        internal TutorMessageSnapshot Message { get; }
+        internal bool HasMessage => Message.MessageKind != TutorMessageKind.None;
+    }
+
     internal sealed class TutorRuntime
     {
         internal const int CygnusTutorSkillId = 10001013;
@@ -73,8 +86,98 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static readonly object SharedTutorStateSync = new();
         private static readonly List<int> SharedClientTutorSkillIds = new();
+        private static readonly List<ClientTutorOwnerState> SharedTutorOwners = new();
         private static readonly List<TutorVariantSnapshot> SharedRegisteredTutorVariants = new();
         private static readonly List<TutorMessageSnapshot> SharedTutorMessages = new();
+
+        private sealed class ClientTutorOwnerState
+        {
+            public int SkillId { get; private set; }
+            public int SummonObjectId { get; private set; }
+            public int ActorHeight { get; private set; }
+            public int BoundCharacterId { get; private set; }
+            public bool IsActive { get; private set; }
+            public int LastHireTick { get; private set; }
+            public int LastRemovalTick { get; private set; }
+            public int LastMutationTick { get; private set; }
+            public TutorMessageSnapshot Message { get; private set; }
+
+            public ClientTutorOwnerState(int skillId, int boundCharacterId)
+            {
+                SkillId = skillId;
+                BoundCharacterId = Math.Max(0, boundCharacterId);
+                SummonObjectId = ResolveSummonObjectIdStatic(skillId, BoundCharacterId);
+                ActorHeight = ResolveFallbackActorHeight(skillId);
+                LastHireTick = int.MinValue;
+                LastRemovalTick = int.MinValue;
+                LastMutationTick = int.MinValue;
+                Message = default;
+            }
+
+            public TutorVariantSnapshot ToVariantSnapshot()
+            {
+                return new TutorVariantSnapshot(
+                    SkillId,
+                    SummonObjectId,
+                    ActorHeight,
+                    BoundCharacterId,
+                    IsActive,
+                    LastHireTick,
+                    LastRemovalTick,
+                    LastMutationTick);
+            }
+
+            public TutorOwnerSnapshot ToOwnerSnapshot()
+            {
+                return new TutorOwnerSnapshot(ToVariantSnapshot(), Message);
+            }
+
+            public bool HasMessage => Message.MessageKind != TutorMessageKind.None;
+
+            public void ApplyVariant(
+                int skillId,
+                int summonObjectId,
+                int actorHeight,
+                int boundCharacterId,
+                bool isActive,
+                bool markRemoval,
+                int currentTick)
+            {
+                SkillId = skillId;
+                BoundCharacterId = Math.Max(0, boundCharacterId > 0 ? boundCharacterId : BoundCharacterId);
+                SummonObjectId = summonObjectId > 0
+                    ? summonObjectId
+                    : ResolveSummonObjectIdStatic(skillId, BoundCharacterId);
+                ActorHeight = actorHeight > 0 ? actorHeight : ActorHeight;
+                if (ActorHeight <= 0)
+                {
+                    ActorHeight = ResolveFallbackActorHeight(skillId);
+                }
+
+                IsActive = isActive;
+                if (isActive)
+                {
+                    LastHireTick = currentTick;
+                }
+
+                if (markRemoval)
+                {
+                    LastRemovalTick = currentTick;
+                }
+
+                LastMutationTick = currentTick;
+            }
+
+            public void ApplyMessage(TutorMessageSnapshot snapshot)
+            {
+                Message = snapshot;
+            }
+
+            public void ClearMessage()
+            {
+                Message = default;
+            }
+        }
 
         internal static int SharedClientTutorSkillSlotCount
         {
@@ -155,6 +258,11 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         internal int ResolveSummonObjectId(int skillId, int boundCharacterId)
+        {
+            return ResolveSummonObjectIdStatic(skillId, boundCharacterId);
+        }
+
+        private static int ResolveSummonObjectIdStatic(int skillId, int boundCharacterId)
         {
             int baseObjectId = skillId == CygnusTutorSkillId ? CygnusTutorObjectId : AranTutorObjectId;
             int normalizedCharacterId = Math.Max(0, boundCharacterId);
