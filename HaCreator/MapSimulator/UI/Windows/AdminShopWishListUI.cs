@@ -447,6 +447,38 @@ namespace HaCreator.MapSimulator.UI
             UpdatePopupButtons();
         }
 
+        public bool RetrySearchResultSession(out IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> results, out string message)
+        {
+            results = Array.Empty<AdminShopDialogUI.WishlistSearchResult>();
+            message = "Wish-list owner has no active cash-service dialog to search.";
+            if (_sourceDialog == null)
+            {
+                _statusMessage = message;
+                return false;
+            }
+
+            IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> refreshedResults = _sourceDialog.SearchWishlistEntries(_searchQuery, _selectedCategoryKey, _selectedPriceRangeIndex, out message);
+            _searchResults = refreshedResults.ToList();
+            BeginWishlistSearchResultSession(_searchResults);
+            _selectedResultIndex = _searchResults.Count > 0 ? 0 : -1;
+            _resultScrollOffset = 0;
+            _compositionText = string.Empty;
+            _statusMessage = message;
+            results = _searchResults;
+            UpdatePopupButtons();
+            return _searchResults.Count > 0;
+        }
+
+        public void RefocusSearchFieldFromSearchResultOwner(string message)
+        {
+            _searchFieldFocused = true;
+            _softKeyboardActive = false;
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _statusMessage = message;
+            }
+        }
+
         public bool TryApplySearchResult(AdminShopDialogUI.WishlistSearchResult result, out string message)
         {
             message = "Wish-list result selection is unavailable.";
@@ -941,20 +973,20 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> results = _sourceDialog.SearchWishlistEntries(_searchQuery, _selectedCategoryKey, _selectedPriceRangeIndex, out _statusMessage);
             _searchResults = results.ToList();
             BeginWishlistSearchResultSession(_searchResults);
-            _selectedResultIndex = 0;
+            _selectedResultIndex = _searchResults.Count > 0 ? 0 : -1;
             _resultScrollOffset = 0;
             _compositionText = string.Empty;
-            if (_searchResults.Count == 0)
+            if (ShowSearchResultAddOnRequested != null)
             {
-                HideSearchResultAddOnRequested?.Invoke();
+                ShowSearchResultAddOnRequested(this, _searchResults);
                 _popupMode = PopupMode.None;
                 UpdatePopupButtons();
                 return;
             }
 
-            if (ShowSearchResultAddOnRequested != null)
+            if (_searchResults.Count == 0)
             {
-                ShowSearchResultAddOnRequested(this, _searchResults);
+                HideSearchResultAddOnRequested?.Invoke();
                 _popupMode = PopupMode.None;
                 UpdatePopupButtons();
                 return;
@@ -1749,13 +1781,8 @@ namespace HaCreator.MapSimulator.UI
         private void ResetWishlistSearchResultSessionForCatalogChange()
         {
             _searchResults.Clear();
-            _selectedResultIndex = 0;
+            _selectedResultIndex = -1;
             _resultScrollOffset = 0;
-            if (IsSearchResultAddOnOpen())
-            {
-                HideSearchResultAddOnRequested?.Invoke();
-            }
-
             if (_popupMode == PopupMode.Results)
             {
                 _popupMode = PopupMode.None;
@@ -1769,13 +1796,8 @@ namespace HaCreator.MapSimulator.UI
         private void ResetWishlistSearchResultSessionForServiceTransition()
         {
             _searchResults.Clear();
-            _selectedResultIndex = 0;
+            _selectedResultIndex = -1;
             _resultScrollOffset = 0;
-            if (IsSearchResultAddOnOpen())
-            {
-                HideSearchResultAddOnRequested?.Invoke();
-            }
-
             if (_popupMode == PopupMode.Results)
             {
                 _popupMode = PopupMode.None;

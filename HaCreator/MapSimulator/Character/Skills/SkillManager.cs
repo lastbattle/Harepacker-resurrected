@@ -5738,20 +5738,22 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             Vector2 attackOrigin = attackOriginOverride ?? ResolveDeferredMovingShootOrigin(currentTime, facingRight);
+            WeaponPart currentWeapon = _player?.Build?.GetWeapon();
             int? currentRawActionCode = _player?.TryGetCurrentClientRawActionCode(out int rawActionCode) == true
                 ? rawActionCode
                 : null;
             int queuedAttackActionType = ResolveQueuedMovingShootAttackActionType(
                 skill,
                 _player?.CurrentActionName,
-                currentRawActionCode);
+                currentRawActionCode,
+                currentWeapon?.AttackFrameCount);
             (string queuedActionName, int? queuedRawActionCode) = ResolveQueuedMovingShootEntryAction(
                 skill,
                 _player?.CurrentActionName,
                 currentRawActionCode,
                 queuedAttackActionType,
-                _player?.Build?.GetWeapon()?.WeaponType,
-                ResolvePublishedMovingShootActionNames(_player?.Build?.GetWeapon()));
+                currentWeapon?.WeaponType,
+                ResolvePublishedMovingShootActionNames(currentWeapon));
             if (UsesClientRandomShootAttackActionTable(skill)
                 && string.IsNullOrWhiteSpace(queuedActionName)
                 && !queuedRawActionCode.HasValue)
@@ -6108,15 +6110,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            if (IsClientMovingShootShootAttackActionType(queuedAttackActionType.Value))
+            {
+                mode = skill?.Projectile != null
+                    ? AttackResolutionMode.Projectile
+                    : AttackResolutionMode.Ranged;
+                return true;
+            }
+
             switch (queuedAttackActionType.Value)
             {
                 case MovingShootAttackActionTypeMagic:
                     mode = AttackResolutionMode.Magic;
-                    return true;
-                case MovingShootAttackActionTypeShoot:
-                    mode = skill?.Projectile != null
-                        ? AttackResolutionMode.Projectile
-                        : AttackResolutionMode.Ranged;
                     return true;
                 case MovingShootAttackActionTypeMelee:
                     mode = AttackResolutionMode.Melee;
@@ -6126,11 +6131,20 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
-        private static int ResolveQueuedMovingShootAttackActionType(
+        internal static int ResolveQueuedMovingShootAttackActionType(
             SkillData skill,
             string currentActionName,
-            int? currentRawActionCode)
+            int? currentRawActionCode,
+            int? currentWeaponAttackActionType = null)
         {
+            if (TryResolveMovingShootAttackActionTypeFromWeaponAttackMetadata(
+                    skill,
+                    currentWeaponAttackActionType,
+                    out int weaponAttackActionType))
+            {
+                return weaponAttackActionType;
+            }
+
             if (TryResolveMovingShootAttackActionTypeFromCurrentAction(
                     currentActionName,
                     currentRawActionCode,
@@ -6150,6 +6164,32 @@ namespace HaCreator.MapSimulator.Character.Skills
                 : mode == AttackResolutionMode.Melee
                     ? MovingShootAttackActionTypeMelee
                     : MovingShootAttackActionTypeShoot;
+        }
+
+        private static bool TryResolveMovingShootAttackActionTypeFromWeaponAttackMetadata(
+            SkillData skill,
+            int? currentWeaponAttackActionType,
+            out int attackActionType)
+        {
+            attackActionType = default;
+            if (skill?.AttackType != SkillAttackType.Ranged
+                || skill.Projectile != null
+                || !currentWeaponAttackActionType.HasValue)
+            {
+                return false;
+            }
+
+            // `TryDoingSmoothingMovingShootAttackPrepare` feeds the shared random-action
+            // helper with avatar `m_nAttackActionType`, which the client populates from
+            // weapon `info/attack`. Keep the currently recovered ranged rows exact instead
+            // of collapsing every ranged moving-shot owner to the coarse shoot family.
+            if (!IsClientMovingShootShootAttackActionType(currentWeaponAttackActionType.Value))
+            {
+                return false;
+            }
+
+            attackActionType = currentWeaponAttackActionType.Value;
+            return true;
         }
 
         internal static bool TryResolveMovingShootAttackActionTypeFromCurrentAction(
@@ -6562,6 +6602,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 : EmptyPublishedMovingShootActionNames;
         }
 
+        private static bool IsClientMovingShootShootAttackActionType(int attackActionType)
+        {
+            return attackActionType == MovingShootAttackActionTypeShoot
+                   || attackActionType is 3 or 4 or 9;
+        }
+
         private static ClientRandomMovingShootActionFamily ResolveClientRandomMovingShootActionFamily(
             int? queuedAttackActionType,
             string currentActionName,
@@ -6650,6 +6696,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             return queuedAttackActionType switch
             {
                 MovingShootAttackActionTypeShoot => ClientRandomMovingShootActionFamily.Shoot,
+                3 or 4 or 9 => ClientRandomMovingShootActionFamily.Shoot,
                 MovingShootAttackActionTypeMagic => ClientRandomMovingShootActionFamily.Unsupported,
                 MovingShootAttackActionTypeMelee => ClientRandomMovingShootActionFamily.OneHandedSwing,
                 _ => ClientRandomMovingShootActionFamily.None
@@ -17099,23 +17146,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return skill;
             }
 
-            SkillAnimation overlayAnimation = null;
-            SkillAnimation overlaySecondaryAnimation = null;
-            SkillAnimation underFaceAnimation = null;
-            SkillAnimation underFaceSecondaryAnimation = null;
-
-            AssignAvatarBuffEffectPlane(
+            ResolveLoopingAvatarEffectPlanes(
                 CreateLoopingAvatarEffect(skill.AffectedEffect),
-                ref overlayAnimation,
-                ref overlaySecondaryAnimation,
-                ref underFaceAnimation,
-                ref underFaceSecondaryAnimation);
-            AssignAvatarBuffEffectPlane(
                 CreateLoopingAvatarEffect(skill.AffectedSecondaryEffect),
-                ref overlayAnimation,
-                ref overlaySecondaryAnimation,
-                ref underFaceAnimation,
-                ref underFaceSecondaryAnimation);
+                out SkillAnimation overlayAnimation,
+                out SkillAnimation overlaySecondaryAnimation,
+                out SkillAnimation underFaceAnimation,
+                out SkillAnimation underFaceSecondaryAnimation);
 
             if (overlayAnimation != null
                 || overlaySecondaryAnimation != null
@@ -17166,30 +17203,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
             else
             {
-                AssignAvatarBuffEffectPlane(
+                ResolveLoopingAvatarEffectPlanes(
                     CreateLoopingAvatarEffect(skill.Effect),
-                    ref overlayAnimation,
-                    ref overlaySecondaryAnimation,
-                    ref underFaceAnimation,
-                    ref underFaceSecondaryAnimation);
-                AssignAvatarBuffEffectPlane(
                     CreateLoopingAvatarEffect(skill.EffectSecondary),
-                    ref overlayAnimation,
-                    ref overlaySecondaryAnimation,
-                    ref underFaceAnimation,
-                    ref underFaceSecondaryAnimation);
-                AssignAvatarBuffEffectPlane(
                     CreateLoopingAvatarEffect(skill.RepeatEffect),
-                    ref overlayAnimation,
-                    ref overlaySecondaryAnimation,
-                    ref underFaceAnimation,
-                    ref underFaceSecondaryAnimation);
-                AssignAvatarBuffEffectPlane(
                     CreateLoopingAvatarEffect(skill.RepeatSecondaryEffect),
-                    ref overlayAnimation,
-                    ref overlaySecondaryAnimation,
-                    ref underFaceAnimation,
-                    ref underFaceSecondaryAnimation);
+                    out overlayAnimation,
+                    out overlaySecondaryAnimation,
+                    out underFaceAnimation,
+                    out underFaceSecondaryAnimation);
             }
 
             return new SkillData
@@ -17397,6 +17419,66 @@ namespace HaCreator.MapSimulator.Character.Skills
             };
         }
 
+        private static void ResolveLoopingAvatarEffectPlanes(
+            SkillAnimation primaryAnimation,
+            SkillAnimation secondaryAnimation,
+            out SkillAnimation overlayAnimation,
+            out SkillAnimation overlaySecondaryAnimation,
+            out SkillAnimation underFaceAnimation,
+            out SkillAnimation underFaceSecondaryAnimation)
+        {
+            ResolveLoopingAvatarEffectPlanes(
+                primaryAnimation,
+                secondaryAnimation,
+                null,
+                null,
+                out overlayAnimation,
+                out overlaySecondaryAnimation,
+                out underFaceAnimation,
+                out underFaceSecondaryAnimation);
+        }
+
+        private static void ResolveLoopingAvatarEffectPlanes(
+            SkillAnimation primaryAnimation,
+            SkillAnimation secondaryAnimation,
+            SkillAnimation tertiaryAnimation,
+            SkillAnimation quaternaryAnimation,
+            out SkillAnimation overlayAnimation,
+            out SkillAnimation overlaySecondaryAnimation,
+            out SkillAnimation underFaceAnimation,
+            out SkillAnimation underFaceSecondaryAnimation)
+        {
+            overlayAnimation = null;
+            overlaySecondaryAnimation = null;
+            underFaceAnimation = null;
+            underFaceSecondaryAnimation = null;
+
+            AssignAvatarBuffEffectPlane(
+                primaryAnimation,
+                ref overlayAnimation,
+                ref overlaySecondaryAnimation,
+                ref underFaceAnimation,
+                ref underFaceSecondaryAnimation);
+            AssignAvatarBuffEffectPlane(
+                secondaryAnimation,
+                ref overlayAnimation,
+                ref overlaySecondaryAnimation,
+                ref underFaceAnimation,
+                ref underFaceSecondaryAnimation);
+            AssignAvatarBuffEffectPlane(
+                tertiaryAnimation,
+                ref overlayAnimation,
+                ref overlaySecondaryAnimation,
+                ref underFaceAnimation,
+                ref underFaceSecondaryAnimation);
+            AssignAvatarBuffEffectPlane(
+                quaternaryAnimation,
+                ref overlayAnimation,
+                ref overlaySecondaryAnimation,
+                ref underFaceAnimation,
+                ref underFaceSecondaryAnimation);
+        }
+
         private static void AssignAvatarBuffEffectPlane(
             SkillAnimation animation,
             ref SkillAnimation overlayAnimation,
@@ -17424,6 +17506,65 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static SkillData ResolveBuffAvatarEffectSkillForTesting(SkillData skill)
         {
             return ResolveBuffAvatarEffectSkill(skill);
+        }
+
+        private static RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState
+            CreateAnimationDisplayerTemporaryStatAvatarEffectState(
+                int skillId,
+                SkillData skill,
+                int animationStartTime)
+        {
+            ResolveLoopingAvatarEffectPlanes(
+                CreateLoopingAvatarEffect(skill?.AffectedEffect),
+                CreateLoopingAvatarEffect(skill?.AffectedSecondaryEffect),
+                out SkillAnimation overlayAnimation,
+                out SkillAnimation overlaySecondaryAnimation,
+                out SkillAnimation underFaceAnimation,
+                out SkillAnimation underFaceSecondaryAnimation);
+
+            if (overlayAnimation == null
+                && overlaySecondaryAnimation == null
+                && underFaceAnimation == null
+                && underFaceSecondaryAnimation == null)
+            {
+                ResolveLoopingAvatarEffectPlanes(
+                    CreateLoopingAvatarEffect(skill?.Effect),
+                    CreateLoopingAvatarEffect(skill?.EffectSecondary),
+                    CreateLoopingAvatarEffect(skill?.RepeatEffect),
+                    CreateLoopingAvatarEffect(skill?.RepeatSecondaryEffect),
+                    out overlayAnimation,
+                    out overlaySecondaryAnimation,
+                    out underFaceAnimation,
+                    out underFaceSecondaryAnimation);
+            }
+
+            if (overlayAnimation == null
+                && overlaySecondaryAnimation == null
+                && underFaceAnimation == null
+                && underFaceSecondaryAnimation == null)
+            {
+                return null;
+            }
+
+            return new RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState
+            {
+                SkillId = skillId,
+                Skill = skill,
+                OverlayAnimation = overlayAnimation,
+                OverlaySecondaryAnimation = overlaySecondaryAnimation,
+                UnderFaceAnimation = underFaceAnimation,
+                UnderFaceSecondaryAnimation = underFaceSecondaryAnimation,
+                AnimationStartTime = animationStartTime
+            };
+        }
+
+        internal static RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState
+            CreateAnimationDisplayerTemporaryStatAvatarEffectStateForTesting(
+                int skillId,
+                SkillData skill,
+                int animationStartTime)
+        {
+            return CreateAnimationDisplayerTemporaryStatAvatarEffectState(skillId, skill, animationStartTime);
         }
 
         private void UpdateClientOwnedAvatarEffectSuppression(SkillData skill, bool suppress)
@@ -17921,35 +18062,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 && underFaceAnimation == null
                 && underFaceSecondaryAnimation == null)
             {
-                overlayAnimation = CreateLoopingAvatarEffect(paritySkill?.AffectedEffect);
-                overlaySecondaryAnimation = CreateLoopingAvatarEffect(paritySkill?.AffectedSecondaryEffect);
-                if (overlayAnimation == null && overlaySecondaryAnimation == null)
-                {
-                    AssignAvatarBuffEffectPlane(
-                        CreateLoopingAvatarEffect(paritySkill?.Effect),
-                        ref overlayAnimation,
-                        ref overlaySecondaryAnimation,
-                        ref underFaceAnimation,
-                        ref underFaceSecondaryAnimation);
-                    AssignAvatarBuffEffectPlane(
-                        CreateLoopingAvatarEffect(paritySkill?.EffectSecondary),
-                        ref overlayAnimation,
-                        ref overlaySecondaryAnimation,
-                        ref underFaceAnimation,
-                        ref underFaceSecondaryAnimation);
-                    AssignAvatarBuffEffectPlane(
-                        CreateLoopingAvatarEffect(paritySkill?.RepeatEffect),
-                        ref overlayAnimation,
-                        ref overlaySecondaryAnimation,
-                        ref underFaceAnimation,
-                        ref underFaceSecondaryAnimation);
-                    AssignAvatarBuffEffectPlane(
-                        CreateLoopingAvatarEffect(paritySkill?.RepeatSecondaryEffect),
-                        ref overlayAnimation,
-                        ref overlaySecondaryAnimation,
-                        ref underFaceAnimation,
-                        ref underFaceSecondaryAnimation);
-                }
+                RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState fallbackState =
+                    CreateAnimationDisplayerTemporaryStatAvatarEffectState(
+                        paritySkill?.SkillId ?? sourceSkill.SkillId,
+                        paritySkill,
+                        activeBuff.StartTime);
+                overlayAnimation = fallbackState?.OverlayAnimation;
+                overlaySecondaryAnimation = fallbackState?.OverlaySecondaryAnimation;
+                underFaceAnimation = fallbackState?.UnderFaceAnimation;
+                underFaceSecondaryAnimation = fallbackState?.UnderFaceSecondaryAnimation;
             }
 
             bool hasParityAnimations = overlayAnimation != null
@@ -18094,9 +18215,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach (string propertyName in levelData.AuthoredPropertyOrder)
             {
                 if (string.IsNullOrWhiteSpace(propertyName)
-                    || !TryResolveAuthoredPropertyFamilyDisplayName(propertyName, out _)
                     || !AuthoredPropertyTemporaryStatLabels.TryGetValue(propertyName, out string[] labels)
-                    || labels == null)
+                    || labels == null
+                    || (!TryResolveAuthoredPropertyFamilyDisplayName(propertyName, out _)
+                        && !IsDirectBuffIconFamilyProperty(propertyName)))
                 {
                     continue;
                 }
@@ -18474,7 +18596,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             BuffTemporaryStatPresentation authoredExplicitFamilyOwnerTemporaryStat = ResolveAuthoredExplicitFamilyOwnerTemporaryStat(
                 levelData,
                 temporaryStats);
-            BuffTemporaryStatPresentation trayLaneTemporaryStat = ResolvePrimaryTemporaryStat(temporaryStats);
+            BuffTemporaryStatPresentation trayLaneTemporaryStat = authoredExplicitFamilyOwnerTemporaryStat
+                ?? ResolvePrimaryTemporaryStat(temporaryStats);
             BuffTemporaryStatPresentation familyOwnerTemporaryStat = authoredExplicitFamilyOwnerTemporaryStat
                 ?? ResolveFamilyOwnerTemporaryStat(temporaryStats);
             BuffTemporaryStatPresentation iconOwnerTemporaryStat = ResolveIconOwnerTemporaryStat(
@@ -18482,10 +18605,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                 trayLaneTemporaryStat,
                 familyOwnerTemporaryStat,
                 directBuffIconEligibleLabels);
-            if (iconOwnerTemporaryStat == null && authoredExplicitFamilyOwnerTemporaryStat != null)
-            {
-                trayLaneTemporaryStat = authoredExplicitFamilyOwnerTemporaryStat;
-            }
 
             BuffTemporaryStatPresentation displayOwnerTemporaryStat = ResolveDisplayOwnerTemporaryStat(
                 trayLaneTemporaryStat,
@@ -19018,6 +19137,35 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return HasAuthoredTemporaryStatProperty(levelData, directPropertyNames);
+        }
+
+        private static bool IsDirectBuffIconFamilyProperty(string propertyName)
+        {
+            return string.Equals(propertyName, "pad", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "padX", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "epad", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "pdd", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "pddX", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "epdd", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "pddR", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "mad", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "madX", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "emad", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "mdd", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "mddX", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "emdd", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "mddR", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "acc", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "accX", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "accR", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "ar", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "eva", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "evaX", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "evaR", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "er", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "speed", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "jump", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "incCraft", StringComparison.OrdinalIgnoreCase);
         }
 
         private static int GetAuthoredTemporaryStatOrder(

@@ -1,3 +1,4 @@
+using System;
 using HaCreator.MapSimulator.Interaction;
 
 namespace HaCreator.MapSimulator
@@ -22,7 +23,7 @@ namespace HaCreator.MapSimulator
                         return "Cleared context-owned initial quiz owner.";
                     }
 
-                    string initialQuizMessage = _initialQuizTimerRuntime.ApplyClientOwnerState(
+                    _initialQuizTimerRuntime.TryApplyClientOwnerState(
                         sync.Title,
                         sync.ProblemText,
                         sync.HintText,
@@ -30,8 +31,13 @@ namespace HaCreator.MapSimulator
                         sync.QuestionNumber,
                         sync.RemainingSeconds,
                         currTickCount,
-                        ResolveInitialQuizOwnerRuntimeCharacterId());
-                    ResetInitialQuizOwnerInputState(currTickCount);
+                        ResolveInitialQuizOwnerRuntimeCharacterId(),
+                        out string initialQuizMessage);
+                    if (initialQuizMessage.StartsWith("Started", StringComparison.Ordinal)
+                        && _initialQuizTimerRuntime.IsActive(currTickCount))
+                    {
+                        ResetInitialQuizOwnerInputState(currTickCount);
+                    }
                     SyncUtilityChannelSelectorAvailability();
                     return initialQuizMessage;
 

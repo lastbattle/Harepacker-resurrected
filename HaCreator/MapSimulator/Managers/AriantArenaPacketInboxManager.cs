@@ -81,12 +81,16 @@ namespace HaCreator.MapSimulator.Managers
         private const int PacketTypeSkillPrepare = 215;
         private const int PacketTypeMovingShootAttackPrepare = 216;
         private const int PacketTypeSkillCancel = 217;
+        private const int PacketTypeHit = 218;
         private const int PacketTypeEmotion = 219;
         private const int PacketTypeSetActiveEffectItem = 220;
+        private const int PacketTypeUpgradeTombEffect = 221;
         private const int PacketTypeSetActivePortableChair = 222;
         private const int PacketTypeAvatarModified = 223;
+        private const int PacketTypeEffect = 224;
         private const int PacketTypeTemporaryStatSet = 225;
         private const int PacketTypeTemporaryStatReset = 226;
+        private const int PacketTypeThrowGrenade = 230;
         private const int PacketTypeShowResult = 171;
         private const int PacketTypeUserScore = 354;
 
@@ -376,12 +380,16 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == PacketTypeSkillPrepare
                 || packetType == PacketTypeMovingShootAttackPrepare
                 || packetType == PacketTypeSkillCancel
+                || packetType == PacketTypeHit
                 || packetType == PacketTypeEmotion
                 || packetType == PacketTypeSetActiveEffectItem
+                || packetType == PacketTypeUpgradeTombEffect
                 || packetType == PacketTypeSetActivePortableChair
                 || packetType == PacketTypeAvatarModified
+                || packetType == PacketTypeEffect
                 || packetType == PacketTypeTemporaryStatSet
                 || packetType == PacketTypeTemporaryStatReset
+                || packetType == PacketTypeThrowGrenade
                 || packetType == PacketTypeUserScore;
         }
 
@@ -521,12 +529,16 @@ namespace HaCreator.MapSimulator.Managers
                 "215" or "prepare" or "skillprepare" => AssignPacketType(PacketTypeSkillPrepare, out packetType),
                 "216" or "movingshootprepare" or "movingshoot" or "shootprepare" => AssignPacketType(PacketTypeMovingShootAttackPrepare, out packetType),
                 "217" or "prepareclear" or "preparedclear" or "skillcancel" => AssignPacketType(PacketTypeSkillCancel, out packetType),
+                "218" or "hit" => AssignPacketType(PacketTypeHit, out packetType),
                 "219" or "emotion" => AssignPacketType(PacketTypeEmotion, out packetType),
                 "220" or "activeeffect" or "activeeffectitem" or "setactiveeffectitem" => AssignPacketType(PacketTypeSetActiveEffectItem, out packetType),
+                "221" or "upgradetomb" or "tomb" => AssignPacketType(PacketTypeUpgradeTombEffect, out packetType),
                 "222" or "chair" or "setchair" => AssignPacketType(PacketTypeSetActivePortableChair, out packetType),
                 "223" or "avatarmod" or "avatarmodified" or "look" => AssignPacketType(PacketTypeAvatarModified, out packetType),
+                "224" or "usereffect" or "officialeffect" => AssignPacketType(PacketTypeEffect, out packetType),
                 "225" or "tempset" or "tempstatset" or "temporarystatset" => AssignPacketType(PacketTypeTemporaryStatSet, out packetType),
                 "226" or "tempreset" or "tempstatreset" or "temporarystatreset" => AssignPacketType(PacketTypeTemporaryStatReset, out packetType),
+                "230" or "throwgrenade" or "grenade" => AssignPacketType(PacketTypeThrowGrenade, out packetType),
                 "354" or "userscore" or "score" => AssignPacketType(PacketTypeUserScore, out packetType),
                 _ => int.TryParse(normalized, out packetType)
             };
@@ -553,12 +565,16 @@ namespace HaCreator.MapSimulator.Managers
                 PacketTypeSkillPrepare => "skillprepare (215)",
                 PacketTypeMovingShootAttackPrepare => "movingshootprepare (216)",
                 PacketTypeSkillCancel => "skillcancel (217)",
+                PacketTypeHit => "hit (218)",
                 PacketTypeEmotion => "emotion (219)",
                 PacketTypeSetActiveEffectItem => "setactiveeffectitem (220)",
+                PacketTypeUpgradeTombEffect => "upgradetomb (221)",
                 PacketTypeSetActivePortableChair => "chair (222)",
                 PacketTypeAvatarModified => "avatarmodified (223)",
+                PacketTypeEffect => "usereffect (224)",
                 PacketTypeTemporaryStatSet => "tempstatset (225)",
                 PacketTypeTemporaryStatReset => "tempstatreset (226)",
+                PacketTypeThrowGrenade => "throwgrenade (230)",
                 PacketTypeUserScore => "userscore (354)",
                 _ => packetType.ToString()
             };

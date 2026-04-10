@@ -81,6 +81,119 @@ namespace HaCreator.MapSimulator.Character
                     "icePanic",
                     "icemanAttack"
                 },
+                // The client morph action table still exposes older magician spell-family
+                // raw names, while Morph/2002.img and Morph/2001.img only publish the
+                // authored ice-family combat roots plus the legacy `icemanAttack`.
+                ["magic1"] = new[]
+                {
+                    "iceAttack1",
+                    "iceAttack2",
+                    "iceSmash",
+                    "iceTempest",
+                    "iceChop",
+                    "icePanic",
+                    "icemanAttack"
+                },
+                ["magic2"] = new[]
+                {
+                    "iceAttack1",
+                    "iceAttack2",
+                    "iceSmash",
+                    "iceTempest",
+                    "iceChop",
+                    "icePanic",
+                    "icemanAttack"
+                },
+                ["magic3"] = new[]
+                {
+                    "iceAttack1",
+                    "iceAttack2",
+                    "iceSmash",
+                    "iceTempest",
+                    "iceChop",
+                    "icePanic",
+                    "icemanAttack"
+                },
+                ["magic4"] = new[]
+                {
+                    "iceAttack1",
+                    "iceAttack2",
+                    "iceSmash",
+                    "iceTempest",
+                    "iceChop",
+                    "icePanic",
+                    "icemanAttack"
+                },
+                ["magic5"] = new[]
+                {
+                    "iceAttack1",
+                    "iceAttack2",
+                    "iceSmash",
+                    "iceTempest",
+                    "iceChop",
+                    "icePanic",
+                    "icemanAttack"
+                },
+                ["magic6"] = new[]
+                {
+                    "iceAttack1",
+                    "iceAttack2",
+                    "iceSmash",
+                    "iceTempest",
+                    "iceChop",
+                    "icePanic",
+                    "icemanAttack"
+                },
+                ["explosion"] = new[]
+                {
+                    "iceAttack1",
+                    "iceAttack2",
+                    "iceSmash",
+                    "iceTempest",
+                    "iceChop",
+                    "icePanic",
+                    "icemanAttack"
+                },
+                ["meteor"] = new[]
+                {
+                    "iceAttack1",
+                    "iceAttack2",
+                    "iceSmash",
+                    "iceTempest",
+                    "iceChop",
+                    "icePanic",
+                    "icemanAttack"
+                },
+                ["blizzard"] = new[]
+                {
+                    "iceAttack1",
+                    "iceAttack2",
+                    "iceSmash",
+                    "iceTempest",
+                    "iceChop",
+                    "icePanic",
+                    "icemanAttack"
+                },
+                ["genesis"] = new[]
+                {
+                    "iceAttack1",
+                    "iceAttack2",
+                    "iceSmash",
+                    "iceTempest",
+                    "iceChop",
+                    "icePanic",
+                    "icemanAttack"
+                },
+                ["chainlightning"] = new[]
+                {
+                    "iceAttack1",
+                    "iceAttack2",
+                    "iceSmash",
+                    "iceTempest",
+                    "iceChop",
+                    "icePanic",
+                    "icemanAttack"
+                },
                 ["iceAttack1"] = new[] { "icemanAttack" },
                 ["iceAttack2"] = new[] { "icemanAttack" },
                 ["iceSmash"] = new[] { "icemanAttack" },

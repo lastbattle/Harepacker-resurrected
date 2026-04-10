@@ -47,6 +47,7 @@ namespace HaCreator.MapSimulator.UI
         private SkillManager _skillManager;
         private SkillLoader _skillLoader;
         private SpriteFont _font;
+        private readonly GraphicsDevice _graphicsDevice;
 
         // Slot rendering
         private Texture2D _emptySlotTexture;
@@ -93,6 +94,8 @@ namespace HaCreator.MapSimulator.UI
         private bool _lastPrimaryQuickSlotCompareResult = true;
         private int _lastQuickSlotValidationTime = int.MinValue;
         private int _lastQuickSlotValidationBar = -1;
+        private RenderTarget2D _primaryQuickSlotSurface;
+        private bool _primaryQuickSlotSurfaceDirty = true;
 
         private enum DragBindingType
         {
@@ -207,6 +210,7 @@ namespace HaCreator.MapSimulator.UI
         public QuickSlotUI(IDXObject frame, GraphicsDevice device)
             : base(frame)
         {
+            _graphicsDevice = device;
             CreateSlotTextures(device);
         }
 
@@ -269,16 +273,19 @@ namespace HaCreator.MapSimulator.UI
         public void SetSkillLoader(SkillLoader skillLoader)
         {
             _skillLoader = skillLoader;
+            InvalidateQuickSlotValidationCache();
         }
 
         public void SetInventoryRuntime(IInventoryRuntime inventoryRuntime)
         {
             _inventoryRuntime = inventoryRuntime;
+            InvalidateQuickSlotValidationCache();
         }
 
         public void SetMacroProvider(Func<int, SkillMacro> macroProvider)
         {
             _macroProvider = macroProvider;
+            InvalidateQuickSlotValidationCache();
         }
 
         /// <summary>
@@ -287,6 +294,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            InvalidateQuickSlotValidationCache();
         }
 
         public void SetCooldownMasks(Texture2D[] cooldownMaskTextures)
@@ -342,6 +350,7 @@ namespace HaCreator.MapSimulator.UI
             // Calculate content area (offset from window position)
             int contentX = Position.X + 5;
             int contentY = Position.Y + 5;
+            bool useCachedPrimarySurface = TryDrawCachedPrimaryQuickSlotSurface(sprite, contentX, contentY);
 
             // Draw slots
             for (int i = 0; i < slotCount; i++)
@@ -353,10 +362,15 @@ namespace HaCreator.MapSimulator.UI
 
                 int absoluteSlotIndex = slotOffset + i;
 
-                // Draw slot background
-                sprite.Draw(_emptySlotTexture, new Rectangle(slotX, slotY, SLOT_SIZE, SLOT_SIZE), Color.White);
-
-                DrawQuickSlotBinding(sprite, slotX, slotY, absoluteSlotIndex, TickCount);
+                if (!useCachedPrimarySurface)
+                {
+                    sprite.Draw(_emptySlotTexture, new Rectangle(slotX, slotY, SLOT_SIZE, SLOT_SIZE), Color.White);
+                    DrawQuickSlotBinding(sprite, slotX, slotY, absoluteSlotIndex, TickCount);
+                }
+                else
+                {
+                    DrawQuickSlotBindingDynamicOverlay(sprite, slotX, slotY, absoluteSlotIndex, TickCount);
+                }
 
                 // Draw highlight on hovered slot
                 if (i == _hoveredSlot)
@@ -366,7 +380,7 @@ namespace HaCreator.MapSimulator.UI
 
                 // Draw key label below slot
                 string[] keyLabels = GetActiveBarKeyLabels();
-                if (_font != null && i < keyLabels.Length)
+                if (!useCachedPrimarySurface && _font != null && i < keyLabels.Length)
                 {
                     string label = keyLabels[i];
                     Vector2 labelSize = _font.MeasureString(label);
@@ -466,18 +480,50 @@ namespace HaCreator.MapSimulator.UI
         private void DrawQuickSlotBinding(SpriteBatch sprite, int slotX, int slotY, int absoluteSlotIndex, int currentTime)
         {
             QuickSlotPresentationState state = GetQuickSlotPresentationStateForDraw(absoluteSlotIndex);
+            DrawQuickSlotBindingBase(sprite, slotX, slotY, state);
+            DrawQuickSlotBindingDynamicOverlay(sprite, slotX, slotY, state, currentTime);
+        }
+
+        private void DrawQuickSlotBindingBase(SpriteBatch sprite, int slotX, int slotY, int absoluteSlotIndex)
+        {
+            QuickSlotPresentationState state = GetQuickSlotPresentationStateForDraw(absoluteSlotIndex);
+            DrawQuickSlotBindingBase(sprite, slotX, slotY, state);
+        }
+
+        private void DrawQuickSlotBindingBase(SpriteBatch sprite, int slotX, int slotY, QuickSlotPresentationState state)
+        {
             switch (state.BindingType)
             {
                 case QuickSlotPresentationBindingType.Skill:
-                    DrawSkillBinding(sprite, slotX, slotY, state.Id, currentTime);
+                    DrawSkillBindingBase(sprite, slotX, slotY, state.Id);
                     break;
 
                 case QuickSlotPresentationBindingType.Macro:
-                    DrawMacroBinding(sprite, slotX, slotY, state.Id, currentTime);
+                    DrawMacroBindingBase(sprite, slotX, slotY, state.Id);
                     break;
 
                 case QuickSlotPresentationBindingType.Item:
                     DrawItemBinding(sprite, slotX, slotY, state.Id, state.InventoryType, state.Quantity);
+                    break;
+            }
+        }
+
+        private void DrawQuickSlotBindingDynamicOverlay(SpriteBatch sprite, int slotX, int slotY, int absoluteSlotIndex, int currentTime)
+        {
+            QuickSlotPresentationState state = GetQuickSlotPresentationStateForDraw(absoluteSlotIndex);
+            DrawQuickSlotBindingDynamicOverlay(sprite, slotX, slotY, state, currentTime);
+        }
+
+        private void DrawQuickSlotBindingDynamicOverlay(SpriteBatch sprite, int slotX, int slotY, QuickSlotPresentationState state, int currentTime)
+        {
+            switch (state.BindingType)
+            {
+                case QuickSlotPresentationBindingType.Skill:
+                    DrawSkillBindingCooldownOverlay(sprite, slotX, slotY, state.Id, currentTime);
+                    break;
+
+                case QuickSlotPresentationBindingType.Macro:
+                    DrawMacroBindingCooldownOverlay(sprite, slotX, slotY, state.Id, currentTime);
                     break;
             }
         }
@@ -496,13 +542,22 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawSkillBinding(SpriteBatch sprite, int slotX, int slotY, int skillId, int currentTime)
         {
+            DrawSkillBindingBase(sprite, slotX, slotY, skillId);
+            DrawSkillBindingCooldownOverlay(sprite, slotX, slotY, skillId, currentTime);
+        }
+
+        private void DrawSkillBindingBase(SpriteBatch sprite, int slotX, int slotY, int skillId)
+        {
             IDXObject icon = GetSkillIcon(skillId);
             if (icon != null)
             {
                 // Use DrawBackground for IDXObject (handles origin automatically).
                 icon.DrawBackground(sprite, null, null, slotX, slotY, Color.White, false, null);
             }
+        }
 
+        private void DrawSkillBindingCooldownOverlay(SpriteBatch sprite, int slotX, int slotY, int skillId, int currentTime)
+        {
             if (TryGetCooldownVisualState(skillId, currentTime, out int cooldownFrameIndex, out string remainingText))
             {
                 DrawCooldownMask(sprite, slotX, slotY, cooldownFrameIndex);
@@ -521,11 +576,17 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawMacroBinding(SpriteBatch sprite, int slotX, int slotY, int macroIndex, int currentTime)
         {
+            DrawMacroBindingBase(sprite, slotX, slotY, macroIndex);
+            DrawMacroBindingCooldownOverlay(sprite, slotX, slotY, macroIndex, currentTime);
+        }
+
+        private void DrawMacroBindingBase(SpriteBatch sprite, int slotX, int slotY, int macroIndex)
+        {
             SkillMacro macro = _macroProvider?.Invoke(macroIndex);
             int skillId = GetMacroDisplaySkillId(macro);
             if (skillId > 0)
             {
-                DrawSkillBinding(sprite, slotX, slotY, skillId, currentTime);
+                DrawSkillBindingBase(sprite, slotX, slotY, skillId);
             }
 
             if (_font != null)
@@ -533,6 +594,16 @@ namespace HaCreator.MapSimulator.UI
                 DrawTextWithShadow(sprite, $"M{macroIndex + 1}",
                     new Vector2(slotX + 2, slotY + 1),
                     Color.Yellow, Color.Black, 0.75f);
+            }
+        }
+
+        private void DrawMacroBindingCooldownOverlay(SpriteBatch sprite, int slotX, int slotY, int macroIndex, int currentTime)
+        {
+            SkillMacro macro = _macroProvider?.Invoke(macroIndex);
+            int skillId = GetMacroDisplaySkillId(macro);
+            if (skillId > 0)
+            {
+                DrawSkillBindingCooldownOverlay(sprite, slotX, slotY, skillId, currentTime);
             }
         }
 
@@ -1491,6 +1562,7 @@ namespace HaCreator.MapSimulator.UI
             base.Update(gameTime);
 
             ValidateVisibleQuickSlotPresentation((int)gameTime.TotalGameTime.TotalMilliseconds);
+            RefreshPrimaryQuickSlotSurfaceIfNeeded();
 
             if (_isDragging && !IsCurrentDragBindingStillValid())
             {
@@ -1535,6 +1607,10 @@ namespace HaCreator.MapSimulator.UI
             if (labels == null)
             {
                 _barKeyLabelOverrides.Remove(bar);
+                if (bar == BAR_PRIMARY)
+                {
+                    InvalidateQuickSlotValidationCache();
+                }
                 return;
             }
 
@@ -1542,6 +1618,11 @@ namespace HaCreator.MapSimulator.UI
                 .Take(maxCount)
                 .Select(label => string.IsNullOrWhiteSpace(label) ? string.Empty : label.Trim())
                 .ToArray();
+
+            if (bar == BAR_PRIMARY)
+            {
+                InvalidateQuickSlotValidationCache();
+            }
         }
         #endregion
 
@@ -1552,6 +1633,12 @@ namespace HaCreator.MapSimulator.UI
         public void ClearIconCache()
         {
             _skillIconCache.Clear();
+            InvalidateQuickSlotValidationCache();
+        }
+
+        public void InvalidatePresentationCache()
+        {
+            InvalidateQuickSlotValidationCache();
         }
 
         private string[] GetActiveBarKeyLabels()
@@ -1588,6 +1675,7 @@ namespace HaCreator.MapSimulator.UI
         {
             _lastQuickSlotValidationTime = int.MinValue;
             _lastQuickSlotValidationBar = -1;
+            _primaryQuickSlotSurfaceDirty = true;
         }
 
         private void ValidateVisibleQuickSlotPresentation(int currentTime)
@@ -1604,6 +1692,11 @@ namespace HaCreator.MapSimulator.UI
             if (_currentBar == BAR_PRIMARY)
             {
                 _lastPrimaryQuickSlotCompareResult = CompareValidatePrimaryQuickSlotPresentation();
+                if (!_lastPrimaryQuickSlotCompareResult)
+                {
+                    _primaryQuickSlotSurfaceDirty = true;
+                }
+
                 _lastQuickSlotValidationTime = currentTime;
                 _lastQuickSlotValidationBar = _currentBar;
                 return;
@@ -1647,6 +1740,131 @@ namespace HaCreator.MapSimulator.UI
 
             _hasPrimaryQuickSlotPresentationSnapshot = true;
             return same;
+        }
+
+        private bool TryDrawCachedPrimaryQuickSlotSurface(SpriteBatch sprite, int contentX, int contentY)
+        {
+            if (_currentBar != BAR_PRIMARY
+                || _primaryQuickSlotSurfaceDirty
+                || _primaryQuickSlotSurface == null)
+            {
+                return false;
+            }
+
+            sprite.Draw(_primaryQuickSlotSurface, new Vector2(contentX, contentY), Color.White);
+            return true;
+        }
+
+        private void RefreshPrimaryQuickSlotSurfaceIfNeeded()
+        {
+            if (_currentBar != BAR_PRIMARY
+                || !IsVisible
+                || !_primaryQuickSlotSurfaceDirty
+                || _graphicsDevice == null)
+            {
+                return;
+            }
+
+            int surfaceWidth = ResolvePrimaryQuickSlotSurfaceWidth();
+            int surfaceHeight = ResolvePrimaryQuickSlotSurfaceHeight();
+            if (surfaceWidth <= 0 || surfaceHeight <= 0)
+            {
+                return;
+            }
+
+            EnsurePrimaryQuickSlotSurface(surfaceWidth, surfaceHeight);
+            if (_primaryQuickSlotSurface == null)
+            {
+                return;
+            }
+
+            RenderTargetBinding[] previousTargets = _graphicsDevice.GetRenderTargets();
+            Viewport previousViewport = _graphicsDevice.Viewport;
+
+            try
+            {
+                _graphicsDevice.SetRenderTarget(_primaryQuickSlotSurface);
+                _graphicsDevice.Clear(Color.Transparent);
+
+                using var spriteBatch = new SpriteBatch(_graphicsDevice);
+                spriteBatch.Begin(
+                    SpriteSortMode.Deferred,
+                    BlendState.AlphaBlend,
+                    SamplerState.PointClamp,
+                    DepthStencilState.None,
+                    RasterizerState.CullNone);
+
+                string[] keyLabels = GetActiveBarKeyLabels();
+                for (int slotIndex = 0; slotIndex < SkillManager.PRIMARY_SLOT_COUNT; slotIndex++)
+                {
+                    Rectangle slotBounds = ResolvePrimaryQuickSlotLocalBounds(slotIndex);
+                    spriteBatch.Draw(_emptySlotTexture, slotBounds, Color.White);
+                    DrawQuickSlotBindingBase(spriteBatch, slotBounds.X, slotBounds.Y, slotIndex);
+
+                    if (_font != null && slotIndex < keyLabels.Length)
+                    {
+                        string label = keyLabels[slotIndex];
+                        Vector2 labelSize = _font.MeasureString(label);
+                        int labelX = slotBounds.X + (SLOT_SIZE - (int)labelSize.X) / 2;
+                        int labelY = slotBounds.Y + SLOT_SIZE + 1;
+                        spriteBatch.DrawString(_font, label, new Vector2(labelX, labelY), Color.White);
+                    }
+                }
+
+                spriteBatch.End();
+                _primaryQuickSlotSurfaceDirty = false;
+            }
+            finally
+            {
+                if (previousTargets.Length > 0)
+                {
+                    _graphicsDevice.SetRenderTargets(previousTargets);
+                }
+                else
+                {
+                    _graphicsDevice.SetRenderTarget(null);
+                }
+
+                _graphicsDevice.Viewport = previousViewport;
+            }
+        }
+
+        private void EnsurePrimaryQuickSlotSurface(int width, int height)
+        {
+            if (_primaryQuickSlotSurface != null
+                && _primaryQuickSlotSurface.Width == width
+                && _primaryQuickSlotSurface.Height == height)
+            {
+                return;
+            }
+
+            _primaryQuickSlotSurface?.Dispose();
+            _primaryQuickSlotSurface = new RenderTarget2D(
+                _graphicsDevice,
+                width,
+                height,
+                false,
+                SurfaceFormat.Color,
+                DepthFormat.None);
+        }
+
+        private static int ResolvePrimaryQuickSlotSurfaceWidth()
+        {
+            return ((SkillManager.PRIMARY_SLOT_COUNT - 1) * (SLOT_SIZE + SLOT_PADDING)) + SLOT_SIZE;
+        }
+
+        private static int ResolvePrimaryQuickSlotSurfaceHeight()
+        {
+            return SLOT_SIZE + 12;
+        }
+
+        private static Rectangle ResolvePrimaryQuickSlotLocalBounds(int slotIndex)
+        {
+            return new Rectangle(
+                slotIndex * (SLOT_SIZE + SLOT_PADDING),
+                0,
+                SLOT_SIZE,
+                SLOT_SIZE);
         }
 
         private QuickSlotPresentationState BuildQuickSlotPresentationState(int slotIndex)

@@ -196,6 +196,8 @@ namespace HaCreator.MapSimulator.Effects
             Point CriticalBannerOffset,
             bool HasCriticalBanner,
             PreparedDamageNumberCompositionTrace CompositionTrace,
+            CanvasLayerInsertDescriptor[] InsertDescriptors,
+            PreparedOneTimeCanvasLayerRegistration PreparedRegistration,
             CanvasLayerRecoveredLayerSettings RecoveredLayerSettings,
             CanvasLayerRecoveredRegistrationTrace RecoveredRegistrationTrace);
         internal sealed record PreparedDamageNumberLayer(
@@ -733,19 +735,37 @@ namespace HaCreator.MapSimulator.Effects
                 : Point.Zero;
             bool hasCriticalBanner = criticalBanner.HasValue;
             CanvasLayerRecoveredLayerSettings recoveredLayerSettings = ResolveRecoveredLayerSettings();
+            CanvasLayerInsertDescriptor[] insertDescriptors = OneTimeCanvasLayerAnimation.BuildInsertDescriptors(
+                timeline.HoldDurationMs,
+                timeline.FadeDurationMs,
+                timeline.RiseDistancePx,
+                hasCriticalBanner,
+                criticalBannerOffset,
+                timeline.CriticalDelayMs);
+            CanvasLayerRecoveredRegistrationTrace recoveredRegistrationTrace =
+                OneTimeCanvasLayerAnimation.BuildRecoveredRegistrationTrace(
+                    placement.Left,
+                    placement.Top,
+                    placement.Width,
+                    placement.Height,
+                    insertDescriptors,
+                    recoveredLayerSettings,
+                    registersOneTimeAnimation: true);
             return new PreparedDamageNumberLayerRegistration(
                 placement,
                 timeline,
                 criticalBannerOffset,
                 hasCriticalBanner,
                 visual?.CompositionTrace ?? CreateEmptyCompositionTrace(),
+                insertDescriptors,
+                new PreparedOneTimeCanvasLayerRegistration(
+                    placement.Left,
+                    placement.Top,
+                    insertDescriptors,
+                    recoveredLayerSettings,
+                    recoveredRegistrationTrace),
                 recoveredLayerSettings,
-                BuildRecoveredRegistrationTrace(
-                    placement,
-                    timeline,
-                    criticalBannerOffset,
-                    hasCriticalBanner,
-                    recoveredLayerSettings));
+                recoveredRegistrationTrace);
         }
 
         internal static CanvasLayerRecoveredLayerSettings ResolveRecoveredLayerSettings()
@@ -767,30 +787,6 @@ namespace HaCreator.MapSimulator.Effects
             int left = centerX - width / 2;
             int top = centerTop - DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y;
             return new CompositeCanvasPlacement(left, top, width, height);
-        }
-
-        internal static CanvasLayerRecoveredRegistrationTrace BuildRecoveredRegistrationTrace(
-            CompositeCanvasPlacement placement,
-            DamageNumberAnimationTimeline timeline,
-            Point criticalBannerOffset,
-            bool hasCriticalBanner,
-            CanvasLayerRecoveredLayerSettings recoveredLayerSettings)
-        {
-            CanvasLayerInsertDescriptor[] insertDescriptors = OneTimeCanvasLayerAnimation.BuildInsertDescriptors(
-                timeline.HoldDurationMs,
-                timeline.FadeDurationMs,
-                timeline.RiseDistancePx,
-                hasCriticalBanner,
-                criticalBannerOffset,
-                timeline.CriticalDelayMs);
-            return OneTimeCanvasLayerAnimation.BuildRecoveredRegistrationTrace(
-                placement.Left,
-                placement.Top,
-                placement.Width,
-                placement.Height,
-                insertDescriptors,
-                recoveredLayerSettings,
-                registersOneTimeAnimation: true);
         }
 
         private static DamageNumberDigitSet ResolveAnyLoadedDigitSet(string primarySetName, string fallbackSetName)
@@ -937,19 +933,11 @@ namespace HaCreator.MapSimulator.Effects
 
             _animationEffects.RegisterOneTimeCanvasLayer(
                 dmgNumber.CompositeCanvasTexture,
-                registration.Placement.Left,
-                registration.Placement.Top,
-                registration.Timeline.HoldDurationMs,
-                registration.Timeline.FadeDurationMs,
-                registration.Timeline.RiseDistancePx,
                 dmgNumber.SpawnTime,
+                registration.PreparedRegistration,
                 criticalBannerTexture,
-                registration.HasCriticalBanner ? registration.CriticalBannerOffset : Point.Zero,
-                registration.Timeline.CriticalDelayMs,
                 ownsCanvasTexture: true,
-                owner: AnimationCanvasLayerOwner.DamageNumber,
-                recoveredLayerSettings: registration.RecoveredLayerSettings,
-                recoveredRegistrationTrace: registration.RecoveredRegistrationTrace);
+                owner: AnimationCanvasLayerOwner.DamageNumber);
 
             dmgNumber.CompositeCanvasTexture = null;
             dmgNumber.PreparedVisual = null;

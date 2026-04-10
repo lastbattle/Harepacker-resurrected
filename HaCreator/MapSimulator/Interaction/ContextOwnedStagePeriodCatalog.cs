@@ -486,26 +486,48 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                Dictionary<byte, HashSet<string>> periodKeywords = BuildPeriodKeywordAugmentations(themeProperty);
-                if (periodKeywords.Count > 0)
-                {
-                    foreach (ContextOwnedStagePeriodCatalogEntry period in theme.Periods)
-                    {
-                        if (periodKeywords.TryGetValue(period.Mode, out HashSet<string> extraKeywords))
-                        {
-                            period.Keywords.UnionWith(extraKeywords);
-                        }
-                    }
-
-                    continue;
-                }
-
-                HashSet<string> themeWideKeywords = ParseStringSet(themeProperty["stageKeyword"] ?? themeProperty);
+                HashSet<string> themeWideKeywords = ParseThemeWideKeywordAugmentations(themeProperty);
                 foreach (ContextOwnedStagePeriodCatalogEntry period in theme.Periods)
                 {
                     period.Keywords.UnionWith(themeWideKeywords);
                 }
+
+                Dictionary<byte, HashSet<string>> periodKeywords = BuildPeriodKeywordAugmentations(themeProperty);
+                foreach (ContextOwnedStagePeriodCatalogEntry period in theme.Periods)
+                {
+                    if (periodKeywords.TryGetValue(period.Mode, out HashSet<string> extraKeywords))
+                    {
+                        period.Keywords.UnionWith(extraKeywords);
+                    }
+                }
             }
+        }
+
+        private static HashSet<string> ParseThemeWideKeywordAugmentations(WzImageProperty themeProperty)
+        {
+            HashSet<string> values = new(StringComparer.Ordinal);
+            if (themeProperty == null)
+            {
+                return values;
+            }
+
+            if (themeProperty["stageKeyword"] is WzImageProperty stageKeywordProperty)
+            {
+                AppendStringValues(stageKeywordProperty, values);
+                return values;
+            }
+
+            foreach (WzImageProperty child in themeProperty.WzProperties.OfType<WzImageProperty>())
+            {
+                if (byte.TryParse(child.Name, NumberStyles.None, CultureInfo.InvariantCulture, out _))
+                {
+                    continue;
+                }
+
+                AppendStringValues(child, values);
+            }
+
+            return values;
         }
 
         private static Dictionary<byte, HashSet<string>> BuildPeriodKeywordAugmentations(WzImageProperty themeProperty)

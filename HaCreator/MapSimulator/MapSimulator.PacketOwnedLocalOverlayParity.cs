@@ -692,6 +692,7 @@ namespace HaCreator.MapSimulator
                     ResolveItemCountText = ResolvePacketOwnedBalloonItemCountText,
                     ResolveQuestStateText = ResolvePacketOwnedBalloonQuestStateText,
                     ResolveQuestRecordText = ResolvePacketOwnedBalloonQuestRecordText,
+                    ResolveQuestDetailRecordText = ResolvePacketOwnedBalloonQuestDetailRecordText,
                     ResolveJobNameText = ResolvePacketOwnedBalloonJobNameText
                 });
             for (int i = 0; i < sanitized.Length; i++)
@@ -968,6 +969,14 @@ namespace HaCreator.MapSimulator
                    !string.IsNullOrWhiteSpace(value)
                 ? value
                 : "0";
+        }
+
+        private string ResolvePacketOwnedBalloonQuestDetailRecordText(string token)
+        {
+            return _questRuntime.TryResolvePacketOwnedQuestDetailRecordText(token, out string value) &&
+                   !string.IsNullOrWhiteSpace(value)
+                ? value
+                : null;
         }
 
         private int SkipPacketOwnedBalloonLineLeadingSpaces(PacketOwnedBalloonGlyph[] glyphs, int startIndex)
@@ -3998,13 +4007,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            FieldHazardPetAutoConsumeRequest request = _pendingFieldHazardPetAutoConsumeRequest.Value;
             return ShouldHandlePacketOwned1026AsPetConsumeResult(
                 hasPendingFieldHazardRequest: true,
-                payload,
-                request.InventoryClientSlotIndex,
-                request.Candidate.ItemId,
-                request.RequestIndex);
+                payload);
         }
 
         private static string DescribePacketOwnedFadeAlpha(int alpha)

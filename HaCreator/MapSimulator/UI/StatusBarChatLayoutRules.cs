@@ -11,6 +11,8 @@ namespace HaCreator.MapSimulator.UI
         internal const int ClientWhisperPickerModalComboLeft = 21;
         internal const int ClientWhisperPickerModalComboWidth = 222;
         internal const int ClientWhisperPickerModalComboHeight = 18;
+        internal const int ClientWhisperPickerModalComboChromeHeight = 20;
+        internal const int ClientWhisperPickerModalComboButtonWidth = 17;
         internal const int ClientWhisperPickerModalComboBottomOffset = 63;
         internal const int ClientWhisperPickerModalListGap = 6;
         internal const int ClientWhisperPickerModalOkButtonLeft = 157;
@@ -203,6 +205,34 @@ namespace HaCreator.MapSimulator.UI
         public static int ResolveWhisperPickerModalClientHeight(int contentTextHeight)
         {
             return Math.Max(0, contentTextHeight) + ClientWhisperPickerModalNoNpcHeightPadding;
+        }
+
+        public static Rectangle ResolveWhisperPickerModalComboChromeBounds(
+            Rectangle comboBounds,
+            int chromeHeight)
+        {
+            int resolvedHeight = Math.Max(comboBounds.Height, chromeHeight);
+            int offsetY = Math.Max(0, (resolvedHeight - comboBounds.Height) / 2);
+            return new Rectangle(
+                comboBounds.X,
+                comboBounds.Y - offsetY,
+                comboBounds.Width,
+                resolvedHeight);
+        }
+
+        public static Rectangle ResolveWhisperPickerModalComboToggleBounds(
+            Rectangle comboBounds,
+            int buttonWidth,
+            int buttonHeight)
+        {
+            int resolvedWidth = Math.Max(1, buttonWidth);
+            int resolvedHeight = Math.Max(1, buttonHeight);
+            int offsetY = Math.Max(0, (comboBounds.Height - resolvedHeight) / 2);
+            return new Rectangle(
+                comboBounds.Right - resolvedWidth,
+                comboBounds.Y + offsetY,
+                resolvedWidth,
+                resolvedHeight);
         }
 
         public static Rectangle ResolveWhisperPickerModalDropdownBounds(

@@ -1900,6 +1900,9 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add($"Target Mob HP: {targetMobHpValue.ToString("N0", CultureInfo.InvariantCulture)} or below");
             }
 
+            AppendCaptureAreaMetadataLines(metadataLines, infoProperty);
+            AppendCaptureChanceMetadataLines(metadataLines, infoProperty);
+
             int useDelayMs = GetIntOrStringValue(infoProperty?["useDelay"]);
             if (useDelayMs > 0)
             {
@@ -1916,6 +1919,36 @@ namespace HaCreator.MapSimulator.UI
             if (!string.IsNullOrWhiteSpace(noMobMessage))
             {
                 metadataLines.Add($"No Target Notice: {noMobMessage}");
+            }
+        }
+
+        private static void AppendCaptureAreaMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (!TryGetSignedInt(infoProperty?["left"], out int left)
+                || !TryGetSignedInt(infoProperty?["right"], out int right)
+                || !TryGetSignedInt(infoProperty?["top"], out int top)
+                || !TryGetSignedInt(infoProperty?["bottom"], out int bottom))
+            {
+                return;
+            }
+
+            metadataLines.Add(
+                $"Capture Area: X {left.ToString(CultureInfo.InvariantCulture)} to {right.ToString(CultureInfo.InvariantCulture)}, Y {top.ToString(CultureInfo.InvariantCulture)} to {bottom.ToString(CultureInfo.InvariantCulture)}");
+        }
+
+        private static void AppendCaptureChanceMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            int captureChancePercent = GetIntOrStringValue(infoProperty?["bridleProp"]);
+            if (captureChancePercent > 0)
+            {
+                metadataLines.Add($"Capture Chance: {captureChancePercent.ToString(CultureInfo.InvariantCulture)}%");
+            }
+
+            double? captureChanceGrowth = TryGetPositiveDouble(infoProperty?["bridlePropChg"]);
+            if (captureChanceGrowth.HasValue
+                && Math.Abs(captureChanceGrowth.Value - 1d) > 0.0001d)
+            {
+                metadataLines.Add($"Capture Chance Growth: x{captureChanceGrowth.Value.ToString("0.##", CultureInfo.InvariantCulture)}");
             }
         }
 
@@ -2517,6 +2550,15 @@ namespace HaCreator.MapSimulator.UI
             List<string> metadataLines = new();
             AppendCashAvailabilityMetadataLines(metadataLines, infoProperty);
             AppendPetUtilityMetadataLines(metadataLines, infoProperty);
+            return metadataLines;
+        }
+
+        internal static IReadOnlyList<string> BuildTargetMobMetadataLinesForTesting(
+            WzSubProperty infoProperty,
+            WzSubProperty specProperty)
+        {
+            List<string> metadataLines = new();
+            AppendTargetMobMetadataLines(metadataLines, infoProperty, specProperty);
             return metadataLines;
         }
 
@@ -3242,6 +3284,35 @@ namespace HaCreator.MapSimulator.UI
             };
 
             return value > 0d ? value : null;
+        }
+
+        private static bool TryGetSignedInt(WzImageProperty property, out int value)
+        {
+            if (property is WzStringProperty stringProperty
+                && int.TryParse(stringProperty.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+            {
+                value = parsed;
+                return true;
+            }
+
+            switch (property)
+            {
+                case WzIntProperty intProperty:
+                    value = intProperty.Value;
+                    return true;
+                case WzShortProperty shortProperty:
+                    value = shortProperty.Value;
+                    return true;
+                case WzFloatProperty floatProperty:
+                    value = (int)floatProperty.Value;
+                    return true;
+                case WzDoubleProperty doubleProperty:
+                    value = (int)doubleProperty.Value;
+                    return true;
+                default:
+                    value = 0;
+                    return false;
+            }
         }
 
         private static int GetIntValue(WzImageProperty property)

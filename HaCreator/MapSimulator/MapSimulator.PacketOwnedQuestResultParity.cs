@@ -11,6 +11,7 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private int _pendingPacketOwnedQuestResultContinuationQuestId;
+        private byte[] _pendingPacketOwnedQuestResultTrailingFollowUpPayload = Array.Empty<byte>();
         private int? _pendingPacketOwnedQuestResultFollowUpQuestId;
         private int _pendingPacketOwnedQuestResultFollowUpSpeakerNpcId;
         private string _pendingPacketOwnedQuestResultFollowUpQuestName = string.Empty;
@@ -150,12 +151,18 @@ namespace HaCreator.MapSimulator
         {
             int questId = reader.ReadUInt16();
             int speakerNpcId = reader.ReadInt32();
-            if (reader.BaseStream.Length - reader.BaseStream.Position < sizeof(ushort))
+            long trailingPayloadLength = reader.BaseStream.Length - reader.BaseStream.Position;
+            if (trailingPayloadLength < sizeof(ushort))
             {
                 throw new InvalidDataException("Quest-result subtype 10 requires a trailing follow-up quest id.");
             }
 
-            int followUpQuestId = reader.ReadUInt16();
+            if (trailingPayloadLength != sizeof(ushort))
+            {
+                throw new InvalidDataException("Quest-result subtype 10 trailing follow-up quest id must be exactly 2 bytes.");
+            }
+
+            byte[] trailingFollowUpPayload = reader.ReadBytes((int)trailingPayloadLength);
             bool hasQuestRecord = _questRuntime.HasQuestRecord(questId);
             if (!_questRuntime.TryBuildClientPacketQuestResultPresentation(
                     questId,
@@ -216,26 +223,35 @@ namespace HaCreator.MapSimulator
                 resultSummary = $"{resultSummary} Opened {presentation.ModalPages.Count} modal quest page(s).";
             }
 
-            if (followUpQuestId > 0)
+            if (openedModal)
             {
-                string followUpQuestName = _questRuntime.TryGetQuestName(followUpQuestId, out string resolvedFollowUpName)
-                    ? resolvedFollowUpName
-                    : $"Quest #{followUpQuestId}";
-                if (openedModal)
+                QueuePendingPacketOwnedQuestResultContinuation(questId, trailingFollowUpPayload, speakerNpcId);
+                followUpStatus =
+                    "Queued packet-owned subtype 10 trailing follow-up quest processing after the quest-result dialog returns through Next or OK.";
+            }
+            else
+            {
+                bool clearedQuestFadeWindow = ApplyPendingPacketOwnedQuestResultFadeCleanup(questId);
+                if (clearedQuestFadeWindow)
                 {
-                    QueuePendingPacketOwnedQuestResultContinuation(questId, followUpQuestId, speakerNpcId, followUpQuestName);
-                    followUpStatus =
-                        $"Queued packet-owned DeleteFadeWnd/StartQuest continuation for {followUpQuestName} after the quest-result dialog returns through Next or OK.";
+                    resultSummary =
+                        $"{resultSummary} Cleared the packet-owned quest fade window owner before consuming the trailing follow-up quest id.";
                 }
-                else
-                {
-                    bool clearedQuestFadeWindow = ApplyPendingPacketOwnedQuestResultFadeCleanup(questId);
-                    if (clearedQuestFadeWindow)
-                    {
-                        resultSummary =
-                            $"{resultSummary} Cleared the packet-owned quest fade window owner before consuming the trailing follow-up quest id.";
-                    }
 
+                if (!PacketQuestResultClientSemantics.TryDecodeSubtype10TrailingFollowUpQuestId(
+                        trailingFollowUpPayload,
+                        out int followUpQuestId,
+                        out string decodeError))
+                {
+                    message = decodeError;
+                    return false;
+                }
+
+                if (followUpQuestId > 0)
+                {
+                    string followUpQuestName = _questRuntime.TryGetQuestName(followUpQuestId, out string resolvedFollowUpName)
+                        ? resolvedFollowUpName
+                        : $"Quest #{followUpQuestId}";
                     bool blocksFollowUpUntilNoticeClose = showedNotice
                                                           && noticeRouting.Surface == PacketQuestResultNoticeSurface.UtilDialogNotice;
                     if (blocksFollowUpUntilNoticeClose)
@@ -249,15 +265,6 @@ namespace HaCreator.MapSimulator
                     {
                         followUpStatus = ApplyPacketOwnedQuestResultFollowUpQuest(followUpQuestId, speakerNpcId, followUpQuestName);
                     }
-                }
-            }
-            else if (!openedModal)
-            {
-                bool clearedQuestFadeWindow = ApplyPendingPacketOwnedQuestResultFadeCleanup(questId);
-                if (clearedQuestFadeWindow)
-                {
-                    resultSummary =
-                        $"{resultSummary} Cleared the packet-owned quest fade window owner before consuming the trailing follow-up quest id.";
                 }
             }
 
@@ -420,12 +427,15 @@ namespace HaCreator.MapSimulator
 
         private void QueuePendingPacketOwnedQuestResultContinuation(
             int questId,
-            int followUpQuestId,
-            int speakerNpcId,
-            string followUpQuestName)
+            byte[] trailingFollowUpPayload,
+            int speakerNpcId)
         {
             _pendingPacketOwnedQuestResultContinuationQuestId = Math.Max(0, questId);
-            QueuePendingPacketOwnedQuestResultFollowUp(followUpQuestId, speakerNpcId, followUpQuestName);
+            _pendingPacketOwnedQuestResultTrailingFollowUpPayload = trailingFollowUpPayload ?? Array.Empty<byte>();
+            _pendingPacketOwnedQuestResultFollowUpQuestId = null;
+            _pendingPacketOwnedQuestResultFollowUpSpeakerNpcId = Math.Max(0, speakerNpcId);
+            _pendingPacketOwnedQuestResultFollowUpQuestName = string.Empty;
+            _pendingPacketOwnedQuestResultFollowUpReady = false;
         }
 
         private void QueuePendingPacketOwnedQuestResultNotice(
@@ -486,8 +496,13 @@ namespace HaCreator.MapSimulator
             {
                 DispatchPendingPacketOwnedQuestResultNotice();
                 ApplyPendingPacketOwnedQuestResultFadeCleanup(_pendingPacketOwnedQuestResultContinuationQuestId);
-                _pendingPacketOwnedQuestResultFollowUpReady = _pendingPacketOwnedQuestResultFollowUpQuestId.HasValue
-                                                             && _pendingPacketOwnedQuestResultFollowUpQuestId.Value > 0;
+                if (!TryArmPendingPacketOwnedQuestResultFollowUpFromTrailingPayload(out string error))
+                {
+                    _chat?.AddSystemMessage(error, currTickCount);
+                    ClearPendingPacketOwnedQuestResultContinuation();
+                    return;
+                }
+
                 _pendingPacketOwnedQuestResultContinuationQuestId = 0;
                 return;
             }
@@ -528,9 +543,55 @@ namespace HaCreator.MapSimulator
             return _packetQuestResultFadeWindowRuntime.ApplyQuestResultDeleteFadeWindow(questId);
         }
 
+        private bool TryArmPendingPacketOwnedQuestResultFollowUpFromTrailingPayload(out string error)
+        {
+            error = string.Empty;
+            if (_pendingPacketOwnedQuestResultTrailingFollowUpPayload == null ||
+                _pendingPacketOwnedQuestResultTrailingFollowUpPayload.Length == 0)
+            {
+                _pendingPacketOwnedQuestResultFollowUpQuestId = null;
+                _pendingPacketOwnedQuestResultFollowUpSpeakerNpcId = 0;
+                _pendingPacketOwnedQuestResultFollowUpQuestName = string.Empty;
+                _pendingPacketOwnedQuestResultFollowUpReady = false;
+                return true;
+            }
+
+            if (!PacketQuestResultClientSemantics.TryDecodeSubtype10TrailingFollowUpQuestId(
+                    _pendingPacketOwnedQuestResultTrailingFollowUpPayload,
+                    out int followUpQuestId,
+                    out error))
+            {
+                _pendingPacketOwnedQuestResultTrailingFollowUpPayload = Array.Empty<byte>();
+                _pendingPacketOwnedQuestResultFollowUpQuestId = null;
+                _pendingPacketOwnedQuestResultFollowUpSpeakerNpcId = 0;
+                _pendingPacketOwnedQuestResultFollowUpQuestName = string.Empty;
+                _pendingPacketOwnedQuestResultFollowUpReady = false;
+                return false;
+            }
+
+            _pendingPacketOwnedQuestResultTrailingFollowUpPayload = Array.Empty<byte>();
+            if (followUpQuestId <= 0)
+            {
+                _pendingPacketOwnedQuestResultFollowUpQuestId = null;
+                _pendingPacketOwnedQuestResultFollowUpSpeakerNpcId = 0;
+                _pendingPacketOwnedQuestResultFollowUpQuestName = string.Empty;
+                _pendingPacketOwnedQuestResultFollowUpReady = false;
+                return true;
+            }
+
+            _pendingPacketOwnedQuestResultFollowUpQuestId = followUpQuestId;
+            _pendingPacketOwnedQuestResultFollowUpQuestName =
+                _questRuntime.TryGetQuestName(followUpQuestId, out string followUpQuestName)
+                    ? followUpQuestName
+                    : $"Quest #{followUpQuestId}";
+            _pendingPacketOwnedQuestResultFollowUpReady = true;
+            return true;
+        }
+
         private void ClearPendingPacketOwnedQuestResultContinuation()
         {
             _pendingPacketOwnedQuestResultContinuationQuestId = 0;
+            _pendingPacketOwnedQuestResultTrailingFollowUpPayload = Array.Empty<byte>();
             _pendingPacketOwnedQuestResultFollowUpQuestId = null;
             _pendingPacketOwnedQuestResultFollowUpSpeakerNpcId = 0;
             _pendingPacketOwnedQuestResultFollowUpQuestName = string.Empty;

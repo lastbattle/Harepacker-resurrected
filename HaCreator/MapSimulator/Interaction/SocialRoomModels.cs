@@ -1740,7 +1740,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
                 case PersonalShopBasePacketType:
                 {
-                    bool handled = TryDispatchMiniRoomBasePacket(reader, out message);
+                    bool handled = TryDispatchMiniRoomBasePacket(reader, tickCount, out message);
                     TrackPacketOwnerSummary("CMiniRoomBaseDlg::OnPacketBase", PersonalShopBasePacketType, tickCount, handled, message);
                     return handled;
                 }
@@ -1749,7 +1749,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private bool TryDispatchPersonalShopPacket(PacketReader reader, byte packetType, out string message)
+        private bool TryDispatchPersonalShopPacket(PacketReader reader, byte packetType, int tickCount, out string message)
         {
             switch (packetType)
             {
@@ -1762,18 +1762,13 @@ namespace HaCreator.MapSimulator.Interaction
                 case PersonalShopMoveItemToInventoryPacketType:
                     return TryApplyPersonalShopMoveItemPacket(reader, out message);
                 case PersonalShopBasePacketType:
-                    return TryDispatchMiniRoomBasePacket(reader, out message);
+                    return TryDispatchMiniRoomBasePacket(reader, tickCount, out message);
                 default:
                     return FailPacket(packetType, out message);
             }
         }
 
-        private bool TryDispatchPersonalShopPacket(PacketReader reader, byte packetType, int tickCount, out string message)
-        {
-            return TryDispatchPersonalShopPacket(reader, packetType, out message);
-        }
-
-        private bool TryDispatchEntrustedShopPacket(PacketReader reader, byte packetType, out string message)
+        private bool TryDispatchEntrustedShopPacket(PacketReader reader, byte packetType, int tickCount, out string message)
         {
             switch (packetType)
             {
@@ -1797,7 +1792,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case PersonalShopBasePacketType:
                 case PersonalShopSoldItemResultPacketType:
                 case PersonalShopMoveItemToInventoryPacketType:
-                    return TryDispatchPersonalShopPacket(reader, packetType, out message);
+                    return TryDispatchPersonalShopPacket(reader, packetType, tickCount, out message);
                 default:
                     return FailPacket(packetType, out message);
             }
@@ -2654,7 +2649,7 @@ namespace HaCreator.MapSimulator.Interaction
             return traderIndex == 0 ? OwnerName : ResolveRemoteTraderName();
         }
 
-        private bool TryDispatchMiniRoomBasePacket(PacketReader reader, out string message)
+        private bool TryDispatchMiniRoomBasePacket(PacketReader reader, int tickCount, out string message)
         {
             message = null;
             byte packetSubType = reader.ReadByte();
@@ -2669,7 +2664,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case MiniRoomBaseEnterResultPacketSubType:
                     return TryApplyMiniRoomBaseEnterResultPacket(reader, out message);
                 case MiniRoomBaseUpdatePacketSubType:
-                    return TryDispatchMiniRoomBaseTypeSpecificPacket(reader, out message);
+                    return TryDispatchMiniRoomBaseTypeSpecificPacket(reader, tickCount, out message);
                 case MiniRoomBaseChatPacketSubType:
                 case MiniRoomBaseChatAltPacketSubType:
                     return TryApplyMiniRoomBaseChatPacket(packetSubType, reader, out message);
@@ -3240,7 +3235,7 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private bool TryDispatchMiniRoomBaseTypeSpecificPacket(PacketReader reader, out string message)
+        private bool TryDispatchMiniRoomBaseTypeSpecificPacket(PacketReader reader, int tickCount, out string message)
         {
             message = null;
             if (reader == null)
@@ -3272,34 +3267,30 @@ namespace HaCreator.MapSimulator.Interaction
             if (nestedPacketType == PersonalShopBasePacketType)
             {
                 ownerName = "CMiniRoomBaseDlg::OnPacketBase";
-                handled = TryDispatchMiniRoomBasePacket(nestedReader, out message);
+                handled = TryDispatchMiniRoomBasePacket(nestedReader, tickCount, out message);
             }
             else if (IsMiniRoomBasePacketSubType(nestedPacketType))
             {
                 ownerName = "CMiniRoomBaseDlg::OnPacketBase";
                 PacketReader baseReader = new(nestedPayload);
-                handled = TryDispatchMiniRoomBasePacket(baseReader, out message);
+                handled = TryDispatchMiniRoomBasePacket(baseReader, tickCount, out message);
                 nestedReader = baseReader;
             }
             else
             {
-                handled = Kind switch
+                if (Kind is SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop or SocialRoomKind.TradingRoom)
                 {
-                    SocialRoomKind.PersonalShop => TryDispatchPersonalShopPacket(nestedReader, nestedPacketType, out message),
-                    SocialRoomKind.EntrustedShop => TryDispatchEntrustedShopPacket(nestedReader, nestedPacketType, out message),
-                    SocialRoomKind.TradingRoom => TryDispatchTradingRoomPacket(nestedPayload, nestedReader, nestedPacketType, out message),
-                    SocialRoomKind.MiniRoom => TryDispatchMiniRoomPacket(nestedReader, nestedPacketType, tickCount: 0, out message),
-                    _ => false
-                };
-
-                ownerName = Kind switch
+                    ownerName = _shopDialogPacketOwner?.OwnerName ?? "room-specific owner";
+                    handled = _shopDialogPacketOwner?.TryDispatch(nestedPayload, nestedReader, nestedPacketType, tickCount, out message) == true;
+                }
+                else
                 {
-                    SocialRoomKind.PersonalShop => "CPersonalShopDlg::OnPacket",
-                    SocialRoomKind.EntrustedShop => "CEntrustedShopDlg::OnPacket",
-                    SocialRoomKind.TradingRoom => "CTradingRoomDlg::OnPacket",
-                    SocialRoomKind.MiniRoom => "CMiniRoomBaseDlg-derived OnPacket",
-                    _ => "room-specific owner"
-                };
+                    handled = Kind == SocialRoomKind.MiniRoom &&
+                        TryDispatchMiniRoomPacket(nestedReader, nestedPacketType, tickCount, out message);
+                    ownerName = Kind == SocialRoomKind.MiniRoom
+                        ? "CMiniRoomBaseDlg-derived OnPacket"
+                        : "room-specific owner";
+                }
             }
 
             string payloadPreview = BuildPacketHexPreview(nestedPayload);

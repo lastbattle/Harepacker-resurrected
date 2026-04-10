@@ -11,6 +11,7 @@ namespace HaCreator.MapSimulator.Managers
     {
         public bool AutoRegisterEnabled { get; init; } = true;
         public bool IsMinimized { get; init; }
+        public bool IsOpened { get; init; }
         public IReadOnlyCollection<int> TrackedQuestIds { get; init; } = Array.Empty<int>();
         public IReadOnlyCollection<int> HiddenAutoQuestIds { get; init; } = Array.Empty<int>();
     }
@@ -28,6 +29,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             public bool AutoRegisterEnabled { get; set; } = true;
             public bool IsMinimized { get; set; }
+            public bool IsOpened { get; set; }
             public List<int> TrackedQuestIds { get; set; } = new();
             public List<int> HiddenAutoQuestIds { get; set; } = new();
         }
@@ -70,6 +72,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 AutoRegisterEnabled = record.AutoRegisterEnabled,
                 IsMinimized = record.IsMinimized,
+                IsOpened = record.IsOpened,
                 TrackedQuestIds = NormalizeTrackedQuestIds(record.TrackedQuestIds),
                 HiddenAutoQuestIds = NormalizeQuestIds(record.HiddenAutoQuestIds)
             };
@@ -87,6 +90,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 AutoRegisterEnabled = state.AutoRegisterEnabled,
                 IsMinimized = state.IsMinimized,
+                IsOpened = state.IsOpened,
                 TrackedQuestIds = NormalizeTrackedQuestIds(state.TrackedQuestIds).ToList(),
                 HiddenAutoQuestIds = NormalizeQuestIds(state.HiddenAutoQuestIds).ToList()
             };
@@ -157,6 +161,7 @@ namespace HaCreator.MapSimulator.Managers
                     {
                         AutoRegisterEnabled = record.AutoRegisterEnabled,
                         IsMinimized = record.IsMinimized,
+                        IsOpened = record.IsOpened,
                         TrackedQuestIds = NormalizeQuestIds(record.TrackedQuestIds).ToList(),
                         HiddenAutoQuestIds = NormalizeQuestIds(record.HiddenAutoQuestIds).ToList()
                     };

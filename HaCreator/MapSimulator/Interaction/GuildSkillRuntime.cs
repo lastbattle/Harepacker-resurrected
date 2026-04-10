@@ -403,23 +403,34 @@ namespace HaCreator.MapSimulator.Interaction
                 return $"Client guild-skill record for skill {packet.SkillId} could not be applied because that skill is not loaded.";
             }
 
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            DateTimeOffset? previousExpiration = _activeGuildSkillExpirations.TryGetValue(selectedSkill.SkillId, out DateTimeOffset existingExpiration) &&
+                                                 existingExpiration > now
+                ? existingExpiration
+                : null;
             int previousLevel = selectedSkill.CurrentLevel;
             int resolvedLevel = Math.Clamp(packet.SkillLevel, 0, Math.Max(0, selectedSkill.MaxLevel));
             selectedSkill.CurrentLevel = resolvedLevel;
 
-            if (resolvedLevel <= 0 || !packet.Expiration.HasValue || packet.Expiration.Value <= DateTimeOffset.UtcNow)
+            DateTimeOffset? resolvedExpiration = packet.Expiration.HasValue && packet.Expiration.Value > now
+                ? packet.Expiration.Value
+                : null;
+            if (resolvedLevel <= 0 || !resolvedExpiration.HasValue)
             {
                 _activeGuildSkillExpirations.Remove(selectedSkill.SkillId);
             }
             else
             {
-                _activeGuildSkillExpirations[selectedSkill.SkillId] = packet.Expiration.Value;
+                _activeGuildSkillExpirations[selectedSkill.SkillId] = resolvedExpiration.Value;
             }
 
             if (resolvedLevel > previousLevel)
             {
                 _availablePoints = Math.Max(0, _availablePoints - (resolvedLevel - previousLevel));
             }
+
+            GuildSkillPendingRequest pendingRequest = ResolveMatchingPendingSkillRecord(selectedSkill.SkillId, previousLevel, resolvedLevel, previousExpiration, resolvedExpiration);
+            string pendingResolutionDetail = ApplyPendingSkillRecordResolution(pendingRequest, selectedSkill, previousLevel, resolvedLevel, previousExpiration, resolvedExpiration);
 
             SaveCurrentGuildState(_activeGuildStateKey);
             EnsureRecommendation();
@@ -431,7 +442,10 @@ namespace HaCreator.MapSimulator.Interaction
             string expirationText = remainingMinutes > 0
                 ? $" with {FormatDuration(remainingMinutes)} remaining"
                 : string.Empty;
-            return $"Client OnGuildResult(81) synced {selectedSkill.SkillName} to Lv. {selectedSkill.CurrentLevel}{expirationText}{buyerText} for guild {guildId}.";
+            string summary = $"Client OnGuildResult(81) synced {selectedSkill.SkillName} to Lv. {selectedSkill.CurrentLevel}{expirationText}{buyerText} for guild {guildId}.";
+            return string.IsNullOrWhiteSpace(pendingResolutionDetail)
+                ? summary
+                : $"{summary} {pendingResolutionDetail}";
         }
 
         internal string TryLevelSelectedSkill(bool packetOwned)
@@ -657,6 +671,70 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return _pendingRequest.Kind == expectedKind ? _pendingRequest : null;
+        }
+
+        private GuildSkillPendingRequest ResolveMatchingPendingSkillRecord(
+            int skillId,
+            int previousLevel,
+            int resolvedLevel,
+            DateTimeOffset? previousExpiration,
+            DateTimeOffset? resolvedExpiration)
+        {
+            if (_pendingRequest == null || _pendingRequest.SkillId != skillId)
+            {
+                return null;
+            }
+
+            return _pendingRequest.Kind switch
+            {
+                GuildSkillPendingRequestKind.LevelUp when resolvedLevel != previousLevel => _pendingRequest,
+                GuildSkillPendingRequestKind.Renew when !Nullable.Equals(previousExpiration, resolvedExpiration) => _pendingRequest,
+                _ => null
+            };
+        }
+
+        private string ApplyPendingSkillRecordResolution(
+            GuildSkillPendingRequest pendingRequest,
+            SkillDisplayData selectedSkill,
+            int previousLevel,
+            int resolvedLevel,
+            DateTimeOffset? previousExpiration,
+            DateTimeOffset? resolvedExpiration)
+        {
+            if (pendingRequest == null || selectedSkill == null)
+            {
+                return string.Empty;
+            }
+
+            _pendingRequest = null;
+            switch (pendingRequest.Kind)
+            {
+                case GuildSkillPendingRequestKind.LevelUp:
+                {
+                    if (resolvedLevel > previousLevel)
+                    {
+                        _guildFundMeso = Math.Max(0, _guildFundMeso - pendingRequest.Cost);
+                        return $"Pending packet-owned level-up approval resolved through OnGuildResult(81). Guild fund: {FormatMeso(_guildFundMeso)}.";
+                    }
+
+                    return $"Pending packet-owned level-up approval cleared by an authoritative OnGuildResult(81) skill-record echo.";
+                }
+
+                case GuildSkillPendingRequestKind.Renew:
+                {
+                    if (resolvedExpiration.HasValue && !Nullable.Equals(previousExpiration, resolvedExpiration))
+                    {
+                        _guildFundMeso = Math.Max(0, _guildFundMeso - pendingRequest.Cost);
+                        int remainingMinutes = GetRemainingDurationMinutes(selectedSkill);
+                        return $"Pending packet-owned renewal approval resolved through OnGuildResult(81) with {FormatDuration(remainingMinutes)} remaining. Guild fund: {FormatMeso(_guildFundMeso)}.";
+                    }
+
+                    return $"Pending packet-owned renewal approval cleared by an authoritative OnGuildResult(81) skill-record echo.";
+                }
+
+                default:
+                    return string.Empty;
+            }
         }
 
         private string ApplyStandalonePacketResult(

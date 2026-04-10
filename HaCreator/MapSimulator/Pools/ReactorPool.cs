@@ -158,6 +158,13 @@ namespace HaCreator.MapSimulator.Pools
         bool HasExactNameMatch,
         int VisualState);
 
+    internal enum PacketEnterAuthoredReactorSelectionReason
+    {
+        None = 0,
+        ClientSignal = 1,
+        WzAuthoredOrderFallback = 2
+    }
+
     /// <summary>
     /// Reactor Pool System - Manages reactors, spawning, and touch/skill detection
     /// Based on CReactorPool from MapleStory client
@@ -1295,7 +1302,7 @@ namespace HaCreator.MapSimulator.Pools
             if (eventTypes.Contains(9))
                 return ReactorActivationType.Item;
 
-            if (eventTypes.Any(eventType => eventType is 1 or 2 or 8))
+            if (eventTypes.Any(eventType => eventType is 1 or 2 or 3 or 4 or 8))
                 return ReactorActivationType.Hit;
 
             if (eventTypes.Contains(100))
@@ -1523,6 +1530,7 @@ namespace HaCreator.MapSimulator.Pools
                 currentTick,
                 localPlayerX,
                 localPlayerY,
+                out PacketEnterAuthoredReactorSelectionReason selectionReason,
                 out int authoredIndex))
             {
                 ApplyPacketOwnershipToReactor(authoredIndex, packetObjectId, canRespawn: false);
@@ -1536,7 +1544,10 @@ namespace HaCreator.MapSimulator.Pools
                 BeginPacketEnterFade(authoredData, currentTick);
                 SyncPacketScriptPublication(GetReactor(authoredIndex), authoredData, currentTick);
                 reactorIndex = authoredIndex;
-                message = $"Bound packet-owned reactor {packetObjectId} to authored template {reactorId} at ({x}, {y}).";
+                string fallbackSuffix = selectionReason == PacketEnterAuthoredReactorSelectionReason.WzAuthoredOrderFallback
+                    ? " using WZ authored reactor order fallback."
+                    : ".";
+                message = $"Bound packet-owned reactor {packetObjectId} to authored template {reactorId} at ({x}, {y}){fallbackSuffix}";
                 return true;
             }
 
@@ -2429,9 +2440,11 @@ namespace HaCreator.MapSimulator.Pools
             int currentTick,
             float? localPlayerX,
             float? localPlayerY,
+            out PacketEnterAuthoredReactorSelectionReason selectionReason,
             out int index)
         {
             index = -1;
+            selectionReason = PacketEnterAuthoredReactorSelectionReason.None;
             var candidates = new List<PacketEnterAuthoredReactorCandidate>();
 
             for (int i = 0; i < GetReactorCount(); i++)
@@ -2471,15 +2484,17 @@ namespace HaCreator.MapSimulator.Pools
                     data.VisualState));
             }
 
-            return TrySelectAuthoredReactorCandidateForPacketEnter(candidates, initialState, out index);
+            return TrySelectAuthoredReactorCandidateForPacketEnter(candidates, initialState, out index, out selectionReason);
         }
 
         internal static bool TrySelectAuthoredReactorCandidateForPacketEnter(
             IReadOnlyList<PacketEnterAuthoredReactorCandidate> candidates,
             int initialState,
-            out int index)
+            out int index,
+            out PacketEnterAuthoredReactorSelectionReason selectionReason)
         {
             index = -1;
+            selectionReason = PacketEnterAuthoredReactorSelectionReason.None;
             if (candidates == null || candidates.Count == 0)
             {
                 return false;
@@ -2488,6 +2503,7 @@ namespace HaCreator.MapSimulator.Pools
             if (candidates.Count == 1)
             {
                 index = candidates[0].Index;
+                selectionReason = PacketEnterAuthoredReactorSelectionReason.ClientSignal;
                 return true;
             }
 
@@ -2573,11 +2589,52 @@ namespace HaCreator.MapSimulator.Pools
             {
                 if (TrySelectUniqueCandidate(scope, out index))
                 {
+                    selectionReason = PacketEnterAuthoredReactorSelectionReason.ClientSignal;
                     return true;
                 }
             }
 
+            if (TrySelectFullyAmbiguousWzAuthoredOrderCandidate(candidates, initialState, out index))
+            {
+                selectionReason = PacketEnterAuthoredReactorSelectionReason.WzAuthoredOrderFallback;
+                return true;
+            }
+
             return false;
+        }
+
+        private static bool TrySelectFullyAmbiguousWzAuthoredOrderCandidate(
+            IReadOnlyList<PacketEnterAuthoredReactorCandidate> candidates,
+            int initialState,
+            out int index)
+        {
+            index = -1;
+            if (candidates == null || candidates.Count <= 1)
+            {
+                return false;
+            }
+
+            PacketEnterAuthoredReactorCandidate first = candidates[0];
+            bool firstStateMatches = first.VisualState == initialState;
+
+            for (int i = 1; i < candidates.Count; i++)
+            {
+                PacketEnterAuthoredReactorCandidate candidate = candidates[i];
+                if (candidate.HasExactNameMatch != first.HasExactNameMatch
+                    || candidate.ContainsCurrentLocalUserPosition != first.ContainsCurrentLocalUserPosition
+                    || candidate.IsLocallyTouched != first.IsLocallyTouched
+                    || candidate.VisualState != first.VisualState
+                    || (candidate.VisualState == initialState) != firstStateMatches)
+                {
+                    return false;
+                }
+            }
+
+            index = candidates
+                .OrderBy(static candidate => candidate.Index)
+                .Select(static candidate => candidate.Index)
+                .FirstOrDefault();
+            return index >= 0;
         }
 
         private void ApplyPacketOwnershipToReactor(int index, int packetObjectId, bool canRespawn)
@@ -3323,7 +3380,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 0 or 6 => ReactorActivationTypeMask.Touch,
                 100 => ReactorActivationTypeMask.Quest,
-                1 or 2 or 8 => ReactorActivationTypeMask.Hit,
+                1 or 2 or 3 or 4 or 8 => ReactorActivationTypeMask.Hit,
                 5 => ReactorActivationTypeMask.Skill,
                 7 or 101 => ReactorActivationTypeMask.Time,
                 9 => ReactorActivationTypeMask.Item,

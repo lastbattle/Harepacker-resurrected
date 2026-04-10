@@ -615,6 +615,12 @@ namespace HaCreator.MapSimulator.UI
                 return IntPtr.Zero;
             }
 
+            if (msg == WmLButtonDblClk)
+            {
+                ApplyClientWordSelectionFromDoubleClick(lParam);
+                return IntPtr.Zero;
+            }
+
             if (ShouldSuppressClientUnsupportedEditShortcut(msg, wParam.ToInt32(), IsControlKeyDown()))
             {
                 return IntPtr.Zero;
@@ -690,6 +696,46 @@ namespace HaCreator.MapSimulator.UI
         private static bool IsControlKeyDown()
         {
             return (GetKeyState(VkControl) & 0x8000) != 0;
+        }
+
+        private void ApplyClientWordSelectionFromDoubleClick(IntPtr lParam)
+        {
+            if (!IsAttached)
+            {
+                return;
+            }
+
+            int packed = lParam.ToInt32();
+            int localX = (short)(packed & 0xFFFF);
+            int localY = (short)((packed >> 16) & 0xFFFF);
+            int caretIndex = ResolveCaretIndexFromClientPoint(localX, localY);
+            AntiMacroEditControl.ResolveClientWordSelectionRange(GetControlText(), caretIndex, out int selectionStart, out int selectionEnd);
+
+            _mouseSelecting = false;
+            _mouseSelectionAnchor = selectionStart;
+            SetFocus(_editHandle);
+            SendMessage(_editHandle, EmSetSel, new IntPtr(selectionStart), new IntPtr(selectionEnd));
+            UpdateImePlacement();
+            SynchronizeState();
+        }
+
+        private int ResolveCaretIndexFromClientPoint(int localX, int localY)
+        {
+            if (!IsAttached)
+            {
+                return 0;
+            }
+
+            int clampedLocalX = Math.Clamp(localX, 0, Math.Max(0, _currentBounds.Width - 1));
+            int clampedLocalY = Math.Clamp(localY, 0, Math.Max(0, _currentBounds.Height - 1));
+            int packedPoint = (clampedLocalY << 16) | (clampedLocalX & 0xFFFF);
+            int caretIndex = SendMessageInt(_editHandle, EmCharFromPos, IntPtr.Zero, new IntPtr(packedPoint));
+            if (caretIndex < 0)
+            {
+                return GetWindowTextLength(_editHandle);
+            }
+
+            return Math.Clamp(caretIndex, 0, GetWindowTextLength(_editHandle));
         }
 
         [DllImport("gdi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

@@ -32,7 +32,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex SkillNameRegex = new(@"#s(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex MapNameRegex = new(@"#m(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex CurrentMapNameRegex = new(@"#m#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex JobNameRegex = new(@"#j#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex JobNameRegex = new(@"#j(?![A-Za-z0-9_])#?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestDetailRecordRegex = new(@"#j(?<token>[A-Za-z0-9_]+)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex SelectedMobRegex = new(@"#M(\d+):?#", RegexOptions.Compiled);
         private static readonly Regex QuestAmountRegex = new(@"#a(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -46,7 +46,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex PluralSuffixRegex = new(@"#s(?!\d)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PlayerNameRegex = new(@"#h\d*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex StyleTagRegex = new(@"#(?:[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)#?", RegexOptions.Compiled);
+        private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)#?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public static string Format(string text, NpcDialogueFormattingContext context = null)
         {
@@ -130,17 +130,36 @@ namespace HaCreator.MapSimulator.Interaction
         private static string PreserveQuestDetailStyleTag(Match match, string text)
         {
             string styleTag = match.Groups["tag"].Value;
-            if (string.Equals(styleTag, "c", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(styleTag, "m", StringComparison.OrdinalIgnoreCase))
+            if (ShouldPreserveQuestDetailParameterizedToken(styleTag, text, match.Index + match.Length))
             {
-                int nextIndex = match.Index + match.Length;
-                if (nextIndex < text.Length && (char.IsDigit(text[nextIndex]) || text[nextIndex] == '#'))
-                {
-                    return match.Value;
-                }
+                return match.Value;
             }
 
             return BuildQuestStyleMarker(styleTag);
+        }
+
+        private static bool ShouldPreserveQuestDetailParameterizedToken(string styleTag, string text, int nextIndex)
+        {
+            if (string.IsNullOrWhiteSpace(styleTag) ||
+                string.IsNullOrEmpty(text) ||
+                nextIndex < 0 ||
+                nextIndex >= text.Length)
+            {
+                return false;
+            }
+
+            char nextCharacter = text[nextIndex];
+            if (string.Equals(styleTag, "m", StringComparison.OrdinalIgnoreCase))
+            {
+                return nextCharacter == '#' || char.IsDigit(nextCharacter);
+            }
+
+            if (string.Equals(styleTag, "c", StringComparison.OrdinalIgnoreCase))
+            {
+                return char.IsDigit(nextCharacter);
+            }
+
+            return false;
         }
 
         public static string BuildItemIconMarker(int itemId)

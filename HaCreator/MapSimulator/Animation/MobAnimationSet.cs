@@ -174,6 +174,7 @@ namespace HaCreator.MapSimulator.Animation
         private readonly Dictionary<string, List<FrameMetadata>> _frameMetadata = new();
         private readonly Dictionary<int, List<IDXObject>> _angerGaugeAnimations = new();
         private List<IDXObject> _angerGaugeEffect;
+        private string _angerGaugeEffectPath;
 
         public void SetFrameMetadata(string action, List<FrameMetadata> frameMetadata)
         {
@@ -493,17 +494,23 @@ namespace HaCreator.MapSimulator.Animation
                 : null;
         }
 
-        public void SetAngerGaugeEffect(List<IDXObject> frames)
+        public void SetAngerGaugeEffect(List<IDXObject> frames, string effectPath = null)
         {
             if (frames == null || frames.Count == 0)
                 return;
 
             _angerGaugeEffect = frames;
+            _angerGaugeEffectPath = effectPath;
         }
 
         public List<IDXObject> GetAngerGaugeEffect()
         {
             return _angerGaugeEffect;
+        }
+
+        public string GetAngerGaugeEffectPath()
+        {
+            return _angerGaugeEffectPath;
         }
         /// <summary>
         /// Provides mob-specific fallback logic for movement animations.

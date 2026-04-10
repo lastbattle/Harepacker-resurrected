@@ -2005,6 +2005,7 @@ namespace HaCreator.MapSimulator.Loaders
                 [LoginUtilityDialogFrameVariant.LoginNoticeCog] = new DXObject(0, 0, loginNoticeCogTexture, 0),
                 [LoginUtilityDialogFrameVariant.LoginNoticeBar] = new DXObject(0, 0, loginNoticeBarTexture, 0),
                 [LoginUtilityDialogFrameVariant.InGameFadeYesNo] = new DXObject(0, 0, fadeYesNoTexture, 0),
+                [LoginUtilityDialogFrameVariant.UtilDlgNotice] = new DXObject(0, 0, frameTexture, 0),
             };
 
             LoginUtilityDialogWindow window = new LoginUtilityDialogWindow(
@@ -7560,7 +7561,8 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadMapleTvAnimationFrames(mapleTvImage["TVoff"] as WzSubProperty, device),
                 chatFrames,
                 mediaFrames,
-                ResolveDefaultMapleTvMediaIndex(mediaFrames));
+                ResolveDefaultMapleTvMediaIndex(mediaFrames),
+                mediaFrames.Keys.ToArray());
         }
 
 

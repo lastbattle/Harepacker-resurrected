@@ -217,8 +217,7 @@ namespace HaCreator.MapSimulator.Character
             public int FadeDuration { get; init; }
             public int FadeStartTime { get; set; } = -1;
             public int LastFrameIndex { get; set; } = -1;
-            public SkillFrame LastResolvedFrame { get; set; }
-            public float LastResolvedAlpha { get; set; } = 1f;
+            public IReadOnlyList<AfterimageRenderableLayer> LastResolvedLayers { get; set; } = Array.Empty<AfterimageRenderableLayer>();
         }
 
         private sealed class ShadowPartnerState
@@ -270,6 +269,7 @@ namespace HaCreator.MapSimulator.Character
             public AvatarRenderLayer RenderLayer { get; set; }
             public int SourceSignature { get; set; }
             public Rectangle Bounds { get; set; }
+            public Rectangle TextureSourceBounds { get; set; }
             public Point Origin { get; set; }
             public int PreparedCurrentTime { get; set; } = int.MinValue;
             public int PreparedSourceLayerCurrentTime { get; set; } = int.MinValue;
@@ -283,12 +283,14 @@ namespace HaCreator.MapSimulator.Character
         {
             public MirrorImageRenderableSourceLayer(
                 Texture2D preparedSnapshotTexture,
+                Rectangle preparedSnapshotSourceBounds,
                 Rectangle positionBounds,
                 Point origin,
                 bool facingRight,
                 int transitionStartTime)
             {
                 PreparedSnapshotTexture = preparedSnapshotTexture;
+                PreparedSnapshotSourceBounds = preparedSnapshotSourceBounds;
                 PositionBounds = positionBounds;
                 Origin = origin;
                 FacingRight = facingRight;
@@ -296,6 +298,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             public Texture2D PreparedSnapshotTexture { get; }
+            public Rectangle PreparedSnapshotSourceBounds { get; }
             public Rectangle PositionBounds { get; }
             public Point Origin { get; }
             public bool FacingRight { get; }
@@ -2395,7 +2398,7 @@ namespace HaCreator.MapSimulator.Character
         private CharacterAction GetAttackAction()
         {
             if (_currentAttackType != AttackType.None
-                && Build?.GetWeapon() is WeaponPart weapon)
+                && Build?.GetEffectiveAttackActionWeapon() is WeaponPart weapon)
             {
                 return CharacterPart.ParseActionString(weapon.ResolveClientBasicAttackActionName(_currentAttackType));
             }
@@ -2549,19 +2552,16 @@ namespace HaCreator.MapSimulator.Character
 
             int animationTime = Math.Max(0, currentTime - _activeMeleeAfterImage.AnimationStartTime);
             int lastFrameIndex = _activeMeleeAfterImage.LastFrameIndex;
-            SkillFrame lastResolvedFrame = _activeMeleeAfterImage.LastResolvedFrame;
-            float lastResolvedAlpha = _activeMeleeAfterImage.LastResolvedAlpha;
+            IReadOnlyList<AfterimageRenderableLayer> lastResolvedLayers = _activeMeleeAfterImage.LastResolvedLayers;
             MeleeAfterimagePlaybackResolver.CaptureFadeSnapshotOrClearCache(
                 Assembler,
                 _activeMeleeAfterImage.ActionName,
                 _activeMeleeAfterImage.AfterImageAction,
                 animationTime,
                 ref lastFrameIndex,
-                ref lastResolvedFrame,
-                ref lastResolvedAlpha);
+                ref lastResolvedLayers);
             _activeMeleeAfterImage.LastFrameIndex = lastFrameIndex;
-            _activeMeleeAfterImage.LastResolvedFrame = lastResolvedFrame;
-            _activeMeleeAfterImage.LastResolvedAlpha = lastResolvedAlpha;
+            _activeMeleeAfterImage.LastResolvedLayers = lastResolvedLayers;
 
             _activeMeleeAfterImage.FadeStartTime = currentTime;
         }
@@ -4095,30 +4095,31 @@ namespace HaCreator.MapSimulator.Character
             }
 
             int frameIndex = _activeMeleeAfterImage.LastFrameIndex;
-            SkillFrame frame = _activeMeleeAfterImage.LastResolvedFrame;
-            float alpha = MathHelper.Clamp(_activeMeleeAfterImage.LastResolvedAlpha, 0f, 1f);
+            IReadOnlyList<AfterimageRenderableLayer> layers = _activeMeleeAfterImage.LastResolvedLayers;
             if (activeAction)
             {
                 int animationTime = Math.Max(0, currentTime - _activeMeleeAfterImage.AnimationStartTime);
                 int lastFrameIndex = _activeMeleeAfterImage.LastFrameIndex;
-                SkillFrame lastResolvedFrame = _activeMeleeAfterImage.LastResolvedFrame;
-                float lastResolvedAlpha = _activeMeleeAfterImage.LastResolvedAlpha;
+                IReadOnlyList<AfterimageRenderableLayer> lastResolvedLayers = _activeMeleeAfterImage.LastResolvedLayers;
                 MeleeAfterimagePlaybackResolver.RefreshSnapshotCache(
                     Assembler,
                     _activeMeleeAfterImage.ActionName,
                     _activeMeleeAfterImage.AfterImageAction,
                     animationTime,
                     ref lastFrameIndex,
-                    ref lastResolvedFrame,
-                    ref lastResolvedAlpha);
+                    ref lastResolvedLayers);
                 _activeMeleeAfterImage.LastFrameIndex = lastFrameIndex;
-                _activeMeleeAfterImage.LastResolvedFrame = lastResolvedFrame;
-                _activeMeleeAfterImage.LastResolvedAlpha = lastResolvedAlpha;
+                _activeMeleeAfterImage.LastResolvedLayers = lastResolvedLayers;
                 frameIndex = _activeMeleeAfterImage.LastFrameIndex;
-                frame = _activeMeleeAfterImage.LastResolvedFrame;
-                alpha = _activeMeleeAfterImage.LastResolvedAlpha;
+                layers = _activeMeleeAfterImage.LastResolvedLayers;
             }
-            else if (_activeMeleeAfterImage.FadeStartTime >= 0)
+            if (layers == null || layers.Count == 0)
+            {
+                return;
+            }
+
+            float fadeAlpha = 1f;
+            if (!activeAction && _activeMeleeAfterImage.FadeStartTime >= 0)
             {
                 int fadeElapsed = Math.Max(0, currentTime - _activeMeleeAfterImage.FadeStartTime);
                 if (fadeElapsed >= _activeMeleeAfterImage.FadeDuration)
@@ -4127,22 +4128,25 @@ namespace HaCreator.MapSimulator.Character
                     return;
                 }
 
-                float fadeAlpha = 1f - (fadeElapsed / (float)Math.Max(1, _activeMeleeAfterImage.FadeDuration));
-                alpha *= fadeAlpha;
+                fadeAlpha = 1f - (fadeElapsed / (float)Math.Max(1, _activeMeleeAfterImage.FadeDuration));
             }
 
-            if (frame?.Texture == null)
+            foreach (AfterimageRenderableLayer layer in layers)
             {
-                return;
-            }
+                SkillFrame frame = layer.Frame;
+                if (frame?.Texture == null)
+                {
+                    continue;
+                }
 
-            Color frameTint = tint * MathHelper.Clamp(alpha, 0f, 1f);
-            bool shouldFlip = _activeMeleeAfterImage.FacingRight ^ frame.Flip;
-            int drawX = shouldFlip
-                ? screenX - (frame.Texture.Width - frame.Origin.X)
-                : screenX - frame.Origin.X;
-            int drawY = screenY - frame.Origin.Y;
-            frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, frameTint, shouldFlip, null);
+                Color frameTint = tint * MathHelper.Clamp(layer.Alpha * fadeAlpha, 0f, 1f);
+                bool shouldFlip = _activeMeleeAfterImage.FacingRight ^ frame.Flip;
+                int drawX = shouldFlip
+                    ? screenX - (frame.Texture.Width - frame.Origin.X)
+                    : screenX - frame.Origin.X;
+                int drawY = screenY - frame.Origin.Y;
+                frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, frameTint, shouldFlip, null);
+            }
         }
 
         private static void DrawAssembledPart(
@@ -4369,6 +4373,7 @@ namespace HaCreator.MapSimulator.Character
                 DrawMirrorImagePreparedSnapshot(
                     spriteBatch,
                     renderableLayer.Value.PreparedSnapshotTexture,
+                    renderableLayer.Value.PreparedSnapshotSourceBounds,
                     renderableLayer.Value.PositionBounds,
                     renderableLayer.Value.Origin,
                     adjustedX,
@@ -4381,6 +4386,7 @@ namespace HaCreator.MapSimulator.Character
         private static void DrawMirrorImagePreparedSnapshot(
             SpriteBatch spriteBatch,
             Texture2D snapshotTexture,
+            Rectangle snapshotSourceBounds,
             Rectangle snapshotBounds,
             Point snapshotOrigin,
             int screenX,
@@ -4400,7 +4406,7 @@ namespace HaCreator.MapSimulator.Character
             spriteBatch.Draw(
                 snapshotTexture,
                 new Vector2(drawPosition.X, drawPosition.Y),
-                null,
+                snapshotSourceBounds.IsEmpty ? null : snapshotSourceBounds,
                 mirrorTint,
                 0f,
                 Vector2.Zero,
@@ -4460,6 +4466,7 @@ namespace HaCreator.MapSimulator.Character
                     RenderLayer = renderLayer,
                     SourceSignature = 0,
                     Bounds = Rectangle.Empty,
+                    TextureSourceBounds = Rectangle.Empty,
                     Origin = Point.Zero,
                     PreparedCurrentTime = int.MinValue,
                     PreparedSourceLayerCurrentTime = int.MinValue,
@@ -4547,6 +4554,9 @@ namespace HaCreator.MapSimulator.Character
             {
                 return new MirrorImageRenderableSourceLayer(
                     preparedLayer.ComposedTexture,
+                    ResolveMirrorImagePreparedSnapshotSourceBounds(
+                        preparedLayer.TextureSourceBounds,
+                        preparedLayer.Bounds),
                     ResolveMirrorImageRenderablePositionBounds(
                         preparedLayer.Bounds,
                         CalculateMirrorImageSourceLayerBounds(liveSourceParts)),
@@ -4566,6 +4576,9 @@ namespace HaCreator.MapSimulator.Character
 
             return new MirrorImageRenderableSourceLayer(
                 preparedLayer.ComposedTexture,
+                ResolveMirrorImagePreparedSnapshotSourceBounds(
+                    preparedLayer.TextureSourceBounds,
+                    preparedLayer.Bounds),
                 ResolveMirrorImageRenderablePositionBounds(
                     preparedLayer.Bounds,
                     ResolveMirrorImageLiveRenderBounds(frame, preparedLayer.RenderLayer)),
@@ -4662,6 +4675,7 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.RenderLayer = renderLayer;
             preparedLayer.SourceSignature = sourceSignature;
             preparedLayer.Bounds = bounds;
+            preparedLayer.TextureSourceBounds = ResolveMirrorImagePreparedSnapshotSourceBounds(Rectangle.Empty, bounds);
             preparedLayer.Origin = bounds.IsEmpty
                 ? Point.Zero
                 : ResolveMirrorImageSourceLayerOrigin(bounds);
@@ -4687,6 +4701,7 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.RenderLayer = renderLayer;
             preparedLayer.SourceSignature = sourceSignature;
             preparedLayer.Bounds = Rectangle.Empty;
+            preparedLayer.TextureSourceBounds = Rectangle.Empty;
             preparedLayer.Origin = Point.Zero;
             preparedLayer.PreparedCurrentTime = int.MinValue;
             preparedLayer.PreparedSourceLayerCurrentTime = int.MinValue;
@@ -4931,6 +4946,23 @@ namespace HaCreator.MapSimulator.Character
             return new Point(drawX, drawY);
         }
 
+        internal static Rectangle ResolveMirrorImagePreparedSnapshotSourceBounds(
+            Rectangle preparedSourceBounds,
+            Rectangle snapshotBounds)
+        {
+            if (!preparedSourceBounds.IsEmpty)
+            {
+                return preparedSourceBounds;
+            }
+
+            if (snapshotBounds.Width <= 0 || snapshotBounds.Height <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(0, 0, snapshotBounds.Width, snapshotBounds.Height);
+        }
+
         internal static bool CanRenderPreparedMirrorImageSourceLayer(
             bool hasPreparedSnapshot,
             IReadOnlyList<AssembledPart> preparedParts)
@@ -5079,8 +5111,8 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            return existingTextureWidth == incomingBounds.Width
-                   && existingTextureHeight == incomingBounds.Height;
+            return existingTextureWidth >= incomingBounds.Width
+                   && existingTextureHeight >= incomingBounds.Height;
         }
 
         private static void DrawMirrorImageSourcePartToTexture(SpriteBatch spriteBatch, AssembledPart part, Rectangle bounds)
@@ -7041,10 +7073,54 @@ namespace HaCreator.MapSimulator.Character
 
         internal int TryGetCurrentBodyRelMoveY(int currentTime)
         {
-            AssembledFrame frame = TryGetCurrentFrame(currentTime);
-            return frame?.FeetOffset is int feetOffset
-                ? -feetOffset
-                : 0;
+            if (Assembler == null)
+            {
+                return 0;
+            }
+
+            string actionName = CurrentActionName;
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return 0;
+            }
+
+            AssembledFrame[] frames = Assembler.GetAnimation(actionName);
+            if (frames == null || frames.Length == 0)
+            {
+                return 0;
+            }
+
+            int animationTime = GetRenderAnimationTime(currentTime);
+            int frameIndex = Assembler.GetFrameIndexAtTime(actionName, animationTime);
+            return ResolveClientBodyRelMoveY(frames, frameIndex);
+        }
+
+        internal static int ResolveClientBodyRelMoveY(IReadOnlyList<AssembledFrame> frames, int frameIndex)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return 0;
+            }
+
+            if ((uint)frameIndex >= (uint)frames.Count)
+            {
+                frameIndex = 0;
+            }
+
+            AssembledFrame baseFrame = frames[0];
+            AssembledFrame currentFrame = frames[frameIndex];
+            if (baseFrame == null || currentFrame == null)
+            {
+                return 0;
+            }
+
+            if (baseFrame.MapPoints.TryGetValue("navel", out Point baseNavel)
+                && currentFrame.MapPoints.TryGetValue("navel", out Point currentNavel))
+            {
+                return currentNavel.Y - baseNavel.Y;
+            }
+
+            return currentFrame.Origin.Y - baseFrame.Origin.Y;
         }
 
         public AssembledFrame TryGetCurrentFrame(int currentTime)

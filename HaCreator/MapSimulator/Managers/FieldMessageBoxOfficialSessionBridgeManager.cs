@@ -40,12 +40,14 @@ namespace HaCreator.MapSimulator.Managers
         public const ushort CreateFailedOpcode = 325;
         public const ushort EnterFieldOpcode = 326;
         public const ushort LeaveFieldOpcode = 327;
+        private const int MaxRecentOutboundPackets = 32;
         private const string DefaultProcessName = "MapleStory";
         private const int AddressFamilyInet = 2;
         private const int ErrorInsufficientBuffer = 122;
 
         private readonly ConcurrentQueue<FieldMessageBoxPacketInboxMessage> _pendingMessages = new();
         private readonly object _sync = new();
+        private readonly Queue<OutboundPacketTrace> _recentOutboundPackets = new();
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
@@ -57,6 +59,13 @@ namespace HaCreator.MapSimulator.Managers
             string ProcessName,
             IPEndPoint LocalEndpoint,
             IPEndPoint RemoteEndpoint);
+
+        public readonly record struct OutboundPacketTrace(
+            int Opcode,
+            int PayloadLength,
+            string PayloadHex,
+            string RawPacketHex,
+            string Source);
 
         private sealed class BridgePair
         {
@@ -105,7 +114,20 @@ namespace HaCreator.MapSimulator.Managers
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
+        public int ForwardedOutboundCount { get; private set; }
+        public int InjectedOutboundCount { get; private set; }
         public string LastStatus { get; private set; } = "Field message-box official-session bridge inactive.";
+
+        public string DescribeStatus()
+        {
+            string lifecycle = IsRunning
+                ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
+                : "inactive";
+            string session = HasConnectedSession
+                ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                : "no active Maple session";
+            return $"Field message-box official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; injectedOutbound={InjectedOutboundCount}. {LastStatus}";
+        }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
             int remotePort,
@@ -253,6 +275,130 @@ namespace HaCreator.MapSimulator.Managers
                 : $"Ignored {summary} from {source}.";
         }
 
+        public string DescribeRecentOutboundPackets(int maxCount = 10)
+        {
+            int normalizedCount = Math.Clamp(maxCount, 1, MaxRecentOutboundPackets);
+            lock (_sync)
+            {
+                if (_recentOutboundPackets.Count == 0)
+                {
+                    return "Field message-box official-session bridge outbound history is empty.";
+                }
+
+                OutboundPacketTrace[] entries = _recentOutboundPackets
+                    .Reverse()
+                    .Take(normalizedCount)
+                    .ToArray();
+                return "Field message-box official-session bridge outbound history:"
+                    + Environment.NewLine
+                    + string.Join(
+                        Environment.NewLine,
+                        entries.Select(entry =>
+                            $"opcode={entry.Opcode} payloadLen={entry.PayloadLength} source={entry.Source} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+            }
+        }
+
+        public string ClearRecentOutboundPackets()
+        {
+            lock (_sync)
+            {
+                _recentOutboundPackets.Clear();
+            }
+
+            LastStatus = "Field message-box official-session bridge outbound history cleared.";
+            return LastStatus;
+        }
+
+        public bool TryReplayRecentOutboundPacket(int historyIndexFromNewest, out string status)
+        {
+            if (historyIndexFromNewest <= 0)
+            {
+                status = "Field message-box replay index must be 1 or greater.";
+                LastStatus = status;
+                return false;
+            }
+
+            OutboundPacketTrace[] entries;
+            lock (_sync)
+            {
+                if (_recentOutboundPackets.Count == 0)
+                {
+                    status = "No captured field message-box outbound client packets are available to replay.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                if (historyIndexFromNewest > _recentOutboundPackets.Count)
+                {
+                    status = $"Field message-box replay index {historyIndexFromNewest} exceeds the {_recentOutboundPackets.Count} captured outbound packet(s).";
+                    LastStatus = status;
+                    return false;
+                }
+
+                entries = _recentOutboundPackets.ToArray();
+            }
+
+            OutboundPacketTrace trace = entries[^historyIndexFromNewest];
+            if (string.IsNullOrWhiteSpace(trace.RawPacketHex))
+            {
+                status = $"Captured field message-box outbound packet {historyIndexFromNewest} has no raw payload to replay.";
+                LastStatus = status;
+                return false;
+            }
+
+            try
+            {
+                byte[] rawPacket = Convert.FromHexString(trace.RawPacketHex);
+                return TrySendOutboundRawPacket(rawPacket, out status);
+            }
+            catch (FormatException ex)
+            {
+                status = $"Captured field message-box outbound packet {historyIndexFromNewest} could not be replayed: {ex.Message}";
+                LastStatus = status;
+                return false;
+            }
+        }
+
+        public bool TrySendOutboundRawPacket(byte[] rawPacket, out string status)
+        {
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out _))
+            {
+                status = "Field message-box outbound injection requires a raw packet with a 2-byte opcode header.";
+                LastStatus = status;
+                return false;
+            }
+
+            BridgePair pair;
+            lock (_sync)
+            {
+                pair = _activePair;
+            }
+
+            if (pair == null || !pair.InitCompleted)
+            {
+                status = "Field message-box official-session bridge has no connected Maple session for outbound injection.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] clonedRawPacket = (byte[])rawPacket.Clone();
+            try
+            {
+                pair.ServerSession.SendPacket(clonedRawPacket);
+                InjectedOutboundCount++;
+                RecordObservedOutboundPacket(clonedRawPacket, "simulator-send");
+                status = $"Injected field message-box outbound opcode {opcode} into live session {pair.RemoteEndpoint}.";
+                LastStatus = status;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ClearActivePair(pair, $"Field message-box official-session outbound injection failed: {ex.Message}");
+                status = LastStatus;
+                return false;
+            }
+        }
+
         public void Dispose()
         {
             lock (_sync)
@@ -381,12 +527,46 @@ namespace HaCreator.MapSimulator.Managers
 
             try
             {
-                pair.ServerSession.SendPacket(packet.ToArray());
+                byte[] raw = packet.ToArray();
+                pair.ServerSession.SendPacket((byte[])raw.Clone());
+                RecordObservedOutboundPacket(raw, $"official-session-client:{pair.ClientEndpoint}");
             }
             catch (Exception ex)
             {
                 ClearActivePair(pair, $"Field message-box official-session client handling failed: {ex.Message}");
             }
+        }
+
+        private void RecordObservedOutboundPacket(byte[] rawPacket, string source)
+        {
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload))
+            {
+                return;
+            }
+
+            ForwardedOutboundCount++;
+
+            lock (_sync)
+            {
+                while (_recentOutboundPackets.Count >= MaxRecentOutboundPackets)
+                {
+                    _recentOutboundPackets.Dequeue();
+                }
+
+                _recentOutboundPackets.Enqueue(new OutboundPacketTrace(
+                    opcode,
+                    payload.Length,
+                    Convert.ToHexString(payload),
+                    Convert.ToHexString(rawPacket),
+                    source));
+            }
+
+            LastStatus = $"Forwarded live field message-box outbound opcode {opcode} from {source}.";
+        }
+
+        internal void RecordObservedOutboundPacketForTest(byte[] rawPacket, string source = "test")
+        {
+            RecordObservedOutboundPacket(rawPacket, source);
         }
 
         private void ClearActivePair(BridgePair pair, string status)

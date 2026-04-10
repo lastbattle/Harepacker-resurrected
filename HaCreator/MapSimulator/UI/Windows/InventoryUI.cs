@@ -51,6 +51,10 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_SECTION_GAP = 6;
         private const int TOOLTIP_FALLBACK_WIDTH = 214;
         private const int TOOLTIP_BITMAP_GAP = 1;
+        private const int PARCEL_PICKER_BANNER_X = 8;
+        private const int PARCEL_PICKER_BANNER_Y = 31;
+        private const int PARCEL_PICKER_BANNER_WIDTH = 146;
+        private const int PARCEL_PICKER_BANNER_HEIGHT = 14;
         #endregion
 
         private readonly struct TooltipSection
@@ -135,6 +139,8 @@ namespace HaCreator.MapSimulator.UI
         private int _draggedSlotIndex = -1;
         private InventorySlotData _draggedSlotData;
         private Point _draggedItemPosition;
+        private bool _parcelAttachmentPickModeActive;
+        private string _parcelAttachmentPickInstruction = string.Empty;
 
         protected Texture2D ActiveIconTexture;
         protected Texture2D DisabledSlotTexture;
@@ -259,6 +265,14 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public void SetParcelAttachmentPickMode(bool active, string instruction = null)
+        {
+            _parcelAttachmentPickModeActive = active;
+            _parcelAttachmentPickInstruction = active
+                ? instruction ?? "Parcel picker active. Click an inventory item to stage it."
+                : string.Empty;
+        }
+
         public void SetEquipTooltipAssets(EquipUIBigBang.EquipTooltipAssets assets)
         {
             _equipTooltipAssets = assets;
@@ -350,6 +364,7 @@ namespace HaCreator.MapSimulator.UI
 
             DrawMesoText(sprite, windowX, windowY, MESO_TEXT_RIGHT_X, MESO_TEXT_Y);
             DrawSlotGrid(sprite, windowX, windowY, inventoryType, slots, SLOT_ORIGIN_X, SLOT_ORIGIN_Y, _scrollOffset, TOTAL_SLOTS);
+            DrawParcelAttachmentPickOverlay(sprite, windowX, windowY);
         }
 
         protected void DrawMesoText(SpriteBatch sprite, int windowX, int windowY, int rightAnchorX, int textY)
@@ -433,6 +448,39 @@ namespace HaCreator.MapSimulator.UI
             }
 
             sprite.Draw(DisabledSlotTexture, new Rectangle(slotX, slotY, SLOT_SIZE, SLOT_SIZE), Color.White);
+        }
+
+        protected void DrawParcelAttachmentPickOverlay(SpriteBatch sprite, int windowX, int windowY)
+        {
+            if (!_parcelAttachmentPickModeActive || _debugTooltipTexture == null)
+            {
+                return;
+            }
+
+            Rectangle bannerBounds = new(
+                windowX + PARCEL_PICKER_BANNER_X,
+                windowY + PARCEL_PICKER_BANNER_Y,
+                PARCEL_PICKER_BANNER_WIDTH,
+                PARCEL_PICKER_BANNER_HEIGHT);
+            sprite.Draw(_debugTooltipTexture, bannerBounds, new Color(88, 69, 28, 185));
+            sprite.Draw(_debugTooltipTexture, new Rectangle(bannerBounds.X, bannerBounds.Y, bannerBounds.Width, 1), new Color(255, 222, 156, 210));
+            sprite.Draw(_debugTooltipTexture, new Rectangle(bannerBounds.X, bannerBounds.Bottom - 1, bannerBounds.Width, 1), new Color(123, 96, 36, 210));
+
+            if (_font != null && !string.IsNullOrWhiteSpace(_parcelAttachmentPickInstruction))
+            {
+                InventoryRenderUtil.DrawOutlinedText(
+                    sprite,
+                    _font,
+                    _parcelAttachmentPickInstruction,
+                    new Vector2(bannerBounds.X + 4, bannerBounds.Y + 2),
+                    new Color(255, 243, 211),
+                    0.32f);
+            }
+
+            if (TryGetParcelAttachmentHoveredSlotBounds(out Rectangle hoveredBounds))
+            {
+                DrawSlotHighlight(sprite, hoveredBounds, new Color(255, 214, 140, 84), new Color(255, 235, 191, 220));
+            }
         }
         #endregion
 
@@ -1857,6 +1905,38 @@ namespace HaCreator.MapSimulator.UI
                 originY + (row * SLOT_PITCH),
                 SLOT_SIZE,
                 SLOT_SIZE);
+        }
+
+        private bool TryGetParcelAttachmentHoveredSlotBounds(out Rectangle bounds)
+        {
+            bounds = Rectangle.Empty;
+            if (!_parcelAttachmentPickModeActive
+                || _hoveredInventoryType == InventoryType.NONE
+                || _hoveredSlotIndex < 0
+                || !TryGetSlotsForType(_hoveredInventoryType, out List<InventorySlotData> slots)
+                || _hoveredSlotIndex >= slots.Count
+                || slots[_hoveredSlotIndex] == null
+                || slots[_hoveredSlotIndex].IsDisabled)
+            {
+                return false;
+            }
+
+            bounds = ResolveHoveredSlotBounds();
+            return true;
+        }
+
+        private void DrawSlotHighlight(SpriteBatch sprite, Rectangle bounds, Color fillColor, Color borderColor)
+        {
+            if (_debugTooltipTexture == null || bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return;
+            }
+
+            sprite.Draw(_debugTooltipTexture, bounds, fillColor);
+            sprite.Draw(_debugTooltipTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), borderColor);
+            sprite.Draw(_debugTooltipTexture, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), borderColor);
+            sprite.Draw(_debugTooltipTexture, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), borderColor);
+            sprite.Draw(_debugTooltipTexture, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), borderColor);
         }
 
         private Rectangle CreateTooltipRectFromAnchor(Point anchorPoint, int tooltipWidth, int tooltipHeight, int tooltipFrameIndex)

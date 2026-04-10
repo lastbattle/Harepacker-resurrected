@@ -3,6 +3,7 @@ using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib.WzProperties;
 using HaCreator.MapSimulator.Character.Skills;
+using HaCreator.MapSimulator.Interaction;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -443,8 +444,10 @@ namespace HaCreator.MapSimulator.Fields
                 AddScriptIfPresent(scripts, seenScripts, "onFirstUserEnter", mapInfo?.onFirstUserEnter);
             }
 
-            string fieldScript = (mapInfo?.Image?["info"]?["fieldScript"] as WzStringProperty)?.Value;
-            AddScriptIfPresent(scripts, seenScripts, "fieldScript", fieldScript);
+            foreach (string fieldScript in QuestRuntimeManager.ParseScriptNames(mapInfo?.Image?["info"]?["fieldScript"]))
+            {
+                AddScriptIfPresent(scripts, seenScripts, "fieldScript", fieldScript);
+            }
 
             return scripts;
         }

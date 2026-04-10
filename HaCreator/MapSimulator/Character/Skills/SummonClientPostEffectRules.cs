@@ -13,6 +13,7 @@ internal static class SummonClientPostEffectRules
     private const int ClientConfirmedFrostpreyLegacySkillId = 3221005;
     private const int ClientConfirmedFrostpreyCurrentSkillId = 3211005;
     private const int ClientConfirmedShadowMesoReactiveSkillId = 4111007;
+    private const int ClientConfirmedShadowMesoReactiveSkillAliasId = 4211007;
     private const float ClientConfirmedReactiveChainSourceOffsetX = 25f;
     private const float ClientConfirmedReactiveChainSourceOffsetY = -25f;
     private const float ClientConfirmedReactiveChainMaxDistance = 600f;
@@ -34,8 +35,14 @@ internal static class SummonClientPostEffectRules
 
     public static bool ShouldRegisterReactiveAttackChainEffect(int skillId, SkillData skillData)
     {
-        return skillId == ClientConfirmedShadowMesoReactiveSkillId
+        return IsReactiveAttackChainSkill(skillId)
                && HasClientOwnedReactiveAttackChainVisual(skillData);
+    }
+
+    public static bool IsReactiveAttackChainSkill(int skillId)
+    {
+        return skillId == ClientConfirmedShadowMesoReactiveSkillId
+               || skillId == ClientConfirmedShadowMesoReactiveSkillAliasId;
     }
 
     public static int ResolvePostAttackEffectDelayMs(SkillData skillData, string branchName = null)

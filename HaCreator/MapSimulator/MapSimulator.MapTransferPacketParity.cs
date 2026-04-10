@@ -203,7 +203,7 @@ namespace HaCreator.MapSimulator
                 ? " using the exact payload-tail boundary the client keeps after CharacterData::Decode"
                 : string.Empty;
             string knownLeadingSuffix = matchedKnownLeadingCharacterDataTail
-                ? " after consuming the client-owned mini-game or relationship lead-in that can sit immediately before adwMapTransfer"
+                ? " after consuming the client-owned skill, expiration, cooldown, quest-string, short-filetime, mini-game, or relationship lead-in that can sit immediately before adwMapTransfer"
                 : string.Empty;
             string knownTailSuffix = matchedKnownCharacterDataTail
                 ? " matched against a known CharacterData tail layout"

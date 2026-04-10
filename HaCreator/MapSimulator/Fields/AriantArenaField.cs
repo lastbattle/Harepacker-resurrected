@@ -195,9 +195,9 @@ namespace HaCreator.MapSimulator.Fields
                     case PacketTypeGuildMarkChanged:
                         return TryApplyRemoteGuildMarkChangedPacket(payload, out errorMessage);
                     case PacketTypeHit:
+                        return TryApplyRemoteHitPacket(payload, currentTimeMs, out errorMessage);
                     case PacketTypeEffect:
-                        errorMessage = $"Ariant packet type {packetType} is recognized but its shared remote-user presentation is not implemented yet.";
-                        return false;
+                        return TryApplyRemoteItemEffectPacket(payload, currentTimeMs, out errorMessage);
                     case PacketTypeThrowGrenade:
                         return TryApplyRemoteThrowGrenadePacket(payload, currentTimeMs, out errorMessage);
                     case PacketTypeUserScore:
@@ -952,6 +952,23 @@ namespace HaCreator.MapSimulator.Fields
             return _remoteUserPool.TryApplyUpgradeTombEffect(packet, currentTimeMs, out errorMessage);
         }
 
+        private bool TryApplyRemoteHitPacket(byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!RemoteUserPacketCodec.TryParseHit(payload, out RemoteUserHitPacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            if (!TryGetRemoteActor(packet.CharacterId, out _))
+            {
+                errorMessage = $"Remote Ariant actor id {packet.CharacterId} does not exist.";
+                return false;
+            }
+
+            return _remoteUserPool.TryApplyHit(packet, currentTimeMs, out errorMessage);
+        }
+
         private bool TryApplyRemoteEmotionPacket(byte[] payload, int currentTimeMs, out string errorMessage)
         {
             errorMessage = null;
@@ -967,6 +984,29 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return _remoteUserPool.TryApplyEmotion(packet, currentTimeMs, out errorMessage);
+        }
+
+        private bool TryApplyRemoteItemEffectPacket(byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!RemoteUserPacketCodec.TryParseItemEffect(payload, out RemoteUserItemEffectPacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            if (!TryGetRemoteActor(packet.CharacterId, out _))
+            {
+                errorMessage = $"Remote Ariant actor id {packet.CharacterId} does not exist.";
+                return false;
+            }
+
+            return _remoteUserPool.TrySetItemEffect(
+                packet.CharacterId,
+                packet.RelationshipType,
+                packet.ItemId,
+                packet.PairCharacterId,
+                currentTimeMs,
+                out errorMessage);
         }
 
         private bool TryApplyRemoteAvatarModifiedPacket(byte[] payload, int currentTimeMs, out string errorMessage)

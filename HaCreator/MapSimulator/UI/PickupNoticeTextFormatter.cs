@@ -38,6 +38,26 @@ namespace HaCreator.MapSimulator.UI
         public Color SecondaryScreenColor { get; }
     }
 
+    public readonly struct PickupNoticeFailureContext
+    {
+        public PickupNoticeFailureContext(
+            DropType dropType,
+            string itemName,
+            int quantity,
+            int mesoAmount)
+        {
+            DropType = dropType;
+            ItemName = itemName ?? string.Empty;
+            Quantity = Math.Max(1, quantity);
+            MesoAmount = Math.Max(0, mesoAmount);
+        }
+
+        public DropType DropType { get; }
+        public string ItemName { get; }
+        public int Quantity { get; }
+        public int MesoAmount { get; }
+    }
+
     public static class PickupNoticeTextFormatter
     {
         // StringPool IDs recovered from CWvsContext::OnDropPickUpMessage in the v95 client.
@@ -168,6 +188,41 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        internal static PickupNoticeFailureContext ResolveFailureContext(
+            DropType dropType,
+            string itemName,
+            int quantity,
+            int mesoAmount,
+            RecentPickupRecord recentPickup,
+            Func<int, string> itemNameResolver = null)
+        {
+            DropType resolvedDropType = dropType;
+            string resolvedItemName = itemName;
+            int resolvedQuantity = Math.Max(1, quantity);
+            int resolvedMesoAmount = Math.Max(0, mesoAmount);
+
+            if (recentPickup != null && !HasResolvedDropContext(dropType, itemName, mesoAmount))
+            {
+                resolvedDropType = recentPickup.Type;
+                resolvedQuantity = Math.Max(1, recentPickup.Quantity);
+                resolvedMesoAmount = Math.Max(0, recentPickup.MesoAmount);
+
+                if (resolvedDropType != DropType.Meso
+                    && string.IsNullOrWhiteSpace(resolvedItemName)
+                    && int.TryParse(recentPickup.ItemId, NumberStyles.Integer, CultureInfo.InvariantCulture, out int recentItemId)
+                    && recentItemId > 0)
+                {
+                    resolvedItemName = itemNameResolver?.Invoke(recentItemId) ?? string.Empty;
+                }
+            }
+
+            return new PickupNoticeFailureContext(
+                resolvedDropType,
+                resolvedItemName,
+                resolvedQuantity,
+                resolvedMesoAmount);
+        }
+
         public static PickupMessageType ResolveFailureScreenType(DropPickupFailureReason reason)
         {
             return reason == DropPickupFailureReason.InventoryFull
@@ -285,6 +340,13 @@ namespace HaCreator.MapSimulator.UI
         private static bool CanFormatSuccessPickup(string itemName)
         {
             return !string.IsNullOrWhiteSpace(itemName);
+        }
+
+        private static bool HasResolvedDropContext(DropType dropType, string itemName, int mesoAmount)
+        {
+            return dropType == DropType.Meso
+                ? mesoAmount > 0
+                : !string.IsNullOrWhiteSpace(itemName);
         }
 
         private static string NormalizeItemTypeName(string itemTypeName)

@@ -131,6 +131,7 @@ namespace HaCreator.MapSimulator.Managers
             bool npcInteractionVisible,
             bool scriptedOwnerActive,
             bool weddingDialogVisible,
+            bool cakePieItemInfoVisible,
             bool memoryGameVisible,
             bool tournamentMatchTableVisible,
             bool rockPaperScissorsVisible,
@@ -142,6 +143,7 @@ namespace HaCreator.MapSimulator.Managers
                    || StandAloneModeActive
                    || scriptedOwnerActive
                    || weddingDialogVisible
+                   || cakePieItemInfoVisible
                    || memoryGameVisible
                    || tournamentMatchTableVisible
                    || rockPaperScissorsVisible

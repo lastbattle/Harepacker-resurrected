@@ -69,7 +69,9 @@ namespace HaCreator.MapSimulator.UI {
         public int GaugeDurationMs { get; set; }
         public float Progress { get; set; }
         public bool IsKeydownSkill { get; set; }
+        public bool IsPreparingPhase { get; set; }
         public bool IsHolding { get; set; }
+        public int PrepareRemainingMs { get; set; }
         public int HoldElapsedMs { get; set; }
         public int MaxHoldDurationMs { get; set; }
         public PreparedSkillHudTextVariant TextVariant { get; set; }

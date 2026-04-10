@@ -231,6 +231,7 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedEventAlarmTick = int.MinValue;
 
         private readonly List<RankingEntrySnapshot> _packetOwnedRankingEntries = new();
+        private PacketOwnedRankingOwnerStateSnapshot _packetOwnedRankingOwnerState = new();
         private string _lastPacketOwnedRankingSummary = string.Empty;
         private int _lastPacketOwnedRankingTick = int.MinValue;
         private readonly List<EventEntrySnapshot> _packetOwnedEventCalendarEntries = new();
@@ -274,6 +275,7 @@ namespace HaCreator.MapSimulator
         private string _lastPacketOwnedRadioDisplayName;
         private string _lastPacketOwnedRadioStatusMessage = "Packet-owned radio idle.";
         private int _lastPacketOwnedRadioTimeValue;
+        private int _lastPacketOwnedRadioRequestedStartOffsetMs;
         private int _lastPacketOwnedRadioStartOffsetMs;
         private int _lastPacketOwnedRadioTrackDurationMs;
         private int _lastPacketOwnedRadioAvailableDurationMs;
@@ -3010,6 +3012,8 @@ namespace HaCreator.MapSimulator
             {
                 itemMakerWindow.TryApplyPacketOwnedSessionState(_packetOwnedItemMakerSessionState, out _);
             }
+
+            TryApplyStoredPacketOwnedItemMakerHiddenUnlocks(itemMakerWindow, out _);
         }
 
         private static bool HasStoredItemMakerSessionState(PacketOwnedItemMakerSessionState sessionState)
@@ -3047,30 +3051,9 @@ namespace HaCreator.MapSimulator
 
         private int StorePendingPacketOwnedItemMakerHiddenUnlocks(PacketOwnedItemMakerHiddenRecipeUnlock packetUnlock)
         {
-            if (packetUnlock?.Entries == null || packetUnlock.Entries.Count == 0)
-            {
-                return _pendingPacketOwnedItemMakerHiddenUnlocks.Count;
-            }
-
-            HashSet<(int BucketKey, int OutputItemId)> seen = new();
-            for (int i = 0; i < _pendingPacketOwnedItemMakerHiddenUnlocks.Count; i++)
-            {
-                PacketOwnedItemMakerHiddenRecipeUnlockEntry existing = _pendingPacketOwnedItemMakerHiddenUnlocks[i];
-                seen.Add((existing.BucketKey, existing.OutputItemId));
-            }
-
-            for (int i = 0; i < packetUnlock.Entries.Count; i++)
-            {
-                PacketOwnedItemMakerHiddenRecipeUnlockEntry entry = packetUnlock.Entries[i];
-                if (entry.OutputItemId <= 0 || !seen.Add((entry.BucketKey, entry.OutputItemId)))
-                {
-                    continue;
-                }
-
-                _pendingPacketOwnedItemMakerHiddenUnlocks.Add(entry);
-            }
-
-            return _pendingPacketOwnedItemMakerHiddenUnlocks.Count;
+            return PacketOwnedItemMakerHiddenRecipeUnlockRuntime.MergePendingEntries(
+                _pendingPacketOwnedItemMakerHiddenUnlocks,
+                packetUnlock);
         }
 
         private bool TryApplyStoredPacketOwnedItemMakerHiddenUnlocks(ItemMakerUI itemMakerWindow, out string message)
@@ -3081,10 +3064,8 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            PacketOwnedItemMakerHiddenRecipeUnlock pendingUnlock = new()
-            {
-                Entries = _pendingPacketOwnedItemMakerHiddenUnlocks.ToArray()
-            };
+            PacketOwnedItemMakerHiddenRecipeUnlock pendingUnlock =
+                PacketOwnedItemMakerHiddenRecipeUnlockRuntime.CreateReplayPayload(_pendingPacketOwnedItemMakerHiddenUnlocks);
 
             if (!itemMakerWindow.TryResolvePacketOwnedHiddenUnlockEntries(
                     pendingUnlock,
@@ -4219,17 +4200,18 @@ namespace HaCreator.MapSimulator
                 }
 
                 _packetOwnedRadioAudio = new MonoGameBgmPlayer(trackResolution.AudioProperty, looped: false, startOffsetMs);
-                int trackDurationMs = (int)Math.Clamp(
-                    Math.Round(_packetOwnedRadioAudio.TotalDuration.TotalMilliseconds),
-                    0d,
-                    int.MaxValue);
-                if (!IsPacketOwnedRadioPlaybackOffsetUsable(startOffsetMs, trackDurationMs))
+                ResolvePacketOwnedRadioRealizedPlaybackWindow(
+                    _packetOwnedRadioAudio,
+                    out int trackDurationMs,
+                    out int realizedStartOffsetMs,
+                    out int realizedRemainingDurationMs);
+                if (!IsPacketOwnedRadioPlaybackOffsetUsable(realizedStartOffsetMs, trackDurationMs))
                 {
                     _packetOwnedRadioAudio.Dispose();
                     _packetOwnedRadioAudio = null;
                     ResetPacketOwnedRadioCreateLayerSessionState();
                     string rejectedMessage = trackDurationMs > 0
-                        ? $"Ignored packet-owned radio schedule for {trackResolution.DisplayName} because authored timeValue {normalizedTimeValue}s starts at {startOffsetMs} ms, past the {trackDurationMs} ms track length."
+                        ? $"Ignored packet-owned radio schedule for {trackResolution.DisplayName} because authored timeValue {normalizedTimeValue}s resolves to {realizedStartOffsetMs} ms, past the {trackDurationMs} ms track length."
                         : $"Ignored packet-owned radio schedule for {trackResolution.DisplayName} because the resolved track length is unavailable.";
                     _lastPacketOwnedRadioStatusMessage = rejectedMessage;
                     NotifyEventAlarmOwnerActivity("packet-owned radio schedule");
@@ -4237,17 +4219,16 @@ namespace HaCreator.MapSimulator
                     return rejectedMessage;
                 }
 
-                int remainingDurationMs = Math.Max(0, trackDurationMs - startOffsetMs);
-
                 int startTick = Environment.TickCount;
                 _lastPacketOwnedRadioTrackDescriptor = normalizedTrackDescriptor;
                 _lastPacketOwnedRadioResolvedTrackDescriptor = trackResolution.ResolvedTrackDescriptor;
                 _lastPacketOwnedRadioResolvedDescriptor = trackResolution.ResolvedAudioDescriptor;
                 _lastPacketOwnedRadioDisplayName = trackResolution.DisplayName;
                 _lastPacketOwnedRadioTimeValue = normalizedTimeValue;
-                _lastPacketOwnedRadioStartOffsetMs = startOffsetMs;
+                _lastPacketOwnedRadioRequestedStartOffsetMs = startOffsetMs;
+                _lastPacketOwnedRadioStartOffsetMs = realizedStartOffsetMs;
                 _lastPacketOwnedRadioTrackDurationMs = trackDurationMs;
-                _lastPacketOwnedRadioAvailableDurationMs = remainingDurationMs;
+                _lastPacketOwnedRadioAvailableDurationMs = realizedRemainingDurationMs;
                 _lastPacketOwnedRadioStartTick = startTick;
                 CapturePacketOwnedRadioCreateLayerSessionState();
                 _lastPacketOwnedRadioExpectedStopTick = ResolvePacketOwnedRadioExpectedStopTick(
@@ -4330,6 +4311,25 @@ namespace HaCreator.MapSimulator
                 && startOffsetMs <= availableDurationMs;
         }
 
+        internal static void ResolvePacketOwnedRadioRealizedPlaybackWindow(
+            MonoGameBgmPlayer audioPlayer,
+            out int trackDurationMs,
+            out int startOffsetMs,
+            out int remainingDurationMs)
+        {
+            trackDurationMs = ResolvePacketOwnedRadioDurationMs(audioPlayer?.TotalDuration ?? TimeSpan.Zero);
+            startOffsetMs = ResolvePacketOwnedRadioDurationMs(audioPlayer?.StartOffset ?? TimeSpan.Zero);
+            remainingDurationMs = ResolvePacketOwnedRadioDurationMs(audioPlayer?.Duration ?? TimeSpan.Zero);
+        }
+
+        internal static int ResolvePacketOwnedRadioDurationMs(TimeSpan duration)
+        {
+            return (int)Math.Clamp(
+                Math.Round(Math.Max(0d, duration.TotalMilliseconds)),
+                0d,
+                int.MaxValue);
+        }
+
         internal static int ResolvePacketOwnedRadioExpectedStopTick(int startTick, int remainingDurationMs)
         {
             long expectedStopTick = (long)startTick + Math.Max(0, remainingDurationMs);
@@ -4396,6 +4396,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedRadioResolvedDescriptor = null;
             _lastPacketOwnedRadioDisplayName = null;
             _lastPacketOwnedRadioTimeValue = 0;
+            _lastPacketOwnedRadioRequestedStartOffsetMs = 0;
             _lastPacketOwnedRadioStartOffsetMs = 0;
             _lastPacketOwnedRadioTrackDurationMs = 0;
             _lastPacketOwnedRadioAvailableDurationMs = 0;
@@ -4503,6 +4504,12 @@ namespace HaCreator.MapSimulator
             lines.Add(_lastPacketOwnedRadioTimeValue > 0
                 ? $"Authored time value: {_lastPacketOwnedRadioTimeValue}s"
                 : "Authored time value: 0");
+            if (_lastPacketOwnedRadioRequestedStartOffsetMs != _lastPacketOwnedRadioStartOffsetMs)
+            {
+                lines.Add($"Requested playback offset: {_lastPacketOwnedRadioRequestedStartOffsetMs / 1000f:0.0}s");
+                lines.Add($"Realized playback offset: {_lastPacketOwnedRadioStartOffsetMs / 1000f:0.0}s");
+            }
+
             if (_lastPacketOwnedRadioAvailableDurationMs > 0)
             {
                 lines.Add($"Remaining runtime: {Math.Max(0, _lastPacketOwnedRadioAvailableDurationMs - elapsedMs) / 1000f:0.0}s");
@@ -5320,6 +5327,7 @@ namespace HaCreator.MapSimulator
                 message,
                 LoginUtilityDialogButtonLayout.Ok,
                 LoginUtilityDialogAction.DismissOnly,
+                frameVariant: LoginUtilityDialogFrameVariant.UtilDlgNotice,
                 trackDirectionModeOwner: true);
         }
 
@@ -10142,6 +10150,9 @@ namespace HaCreator.MapSimulator
                     out bool clearRequested,
                     out bool replaceExistingEntries,
                     out EventEntrySnapshot[] entries,
+                    out bool hasAlarmLines,
+                    out bool replaceAlarmLines,
+                    out EventAlarmLineSnapshot[] alarmLines,
                     out string summary,
                     out string decodeMessage))
             {
@@ -10172,6 +10183,20 @@ namespace HaCreator.MapSimulator
                 });
             }
 
+            if (clearRequested || (hasAlarmLines && replaceAlarmLines))
+            {
+                _packetOwnedEventAlarmLines.Clear();
+            }
+
+            if (hasAlarmLines && !clearRequested)
+            {
+                _packetOwnedEventAlarmLines.AddRange(alarmLines ?? Array.Empty<EventAlarmLineSnapshot>());
+                _lastPacketOwnedEventAlarmTick = now;
+                _lastPacketOwnedEventAlarmSummary = string.IsNullOrWhiteSpace(summary)
+                    ? $"Packet-authored attendance/calendar payload now carries {_packetOwnedEventAlarmLines.Count.ToString(CultureInfo.InvariantCulture)} CT line(s)."
+                    : summary;
+            }
+
             _lastPacketOwnedEventCalendarTick = now;
             _lastPacketOwnedEventCalendarSummary = string.IsNullOrWhiteSpace(summary)
                 ? clearRequested
@@ -10189,6 +10214,8 @@ namespace HaCreator.MapSimulator
                     payload,
                     out bool clearRequested,
                     out RankingEntrySnapshot[] entries,
+                    out bool hasOwnerState,
+                    out PacketOwnedRankingOwnerStateSnapshot ownerState,
                     out string summary,
                     out string decodeMessage))
             {
@@ -10201,6 +10228,15 @@ namespace HaCreator.MapSimulator
             if (!clearRequested)
             {
                 _packetOwnedRankingEntries.AddRange(entries ?? Array.Empty<RankingEntrySnapshot>());
+            }
+
+            if (clearRequested)
+            {
+                _packetOwnedRankingOwnerState = new PacketOwnedRankingOwnerStateSnapshot();
+            }
+            else if (hasOwnerState)
+            {
+                _packetOwnedRankingOwnerState = ownerState ?? new PacketOwnedRankingOwnerStateSnapshot();
             }
 
             _lastPacketOwnedRankingTick = Environment.TickCount;
@@ -10395,12 +10431,18 @@ namespace HaCreator.MapSimulator
             out bool clearRequested,
             out bool replaceExistingEntries,
             out EventEntrySnapshot[] entries,
+            out bool hasAlarmLines,
+            out bool replaceAlarmLines,
+            out EventAlarmLineSnapshot[] alarmLines,
             out string summary,
             out string message)
         {
             clearRequested = false;
             replaceExistingEntries = true;
             entries = Array.Empty<EventEntrySnapshot>();
+            hasAlarmLines = false;
+            replaceAlarmLines = true;
+            alarmLines = Array.Empty<EventAlarmLineSnapshot>();
             summary = string.Empty;
             message = "Event-calendar payload is missing.";
             if (payload == null || payload.Length == 0)
@@ -10414,9 +10456,18 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (TryDecodePacketOwnedEventCalendarJsonPayload(decodedText, out clearRequested, out replaceExistingEntries, out entries, out summary, out message))
+            if (TryDecodePacketOwnedEventCalendarJsonPayload(
+                    decodedText,
+                    out clearRequested,
+                    out replaceExistingEntries,
+                    out entries,
+                    out hasAlarmLines,
+                    out replaceAlarmLines,
+                    out alarmLines,
+                    out summary,
+                    out message))
             {
-                return clearRequested || entries.Length > 0;
+                return clearRequested || entries.Length > 0 || (hasAlarmLines && alarmLines.Length > 0);
             }
 
             string normalizedText = decodedText.Trim();
@@ -10458,21 +10509,37 @@ namespace HaCreator.MapSimulator
             out bool clearRequested,
             out bool replaceExistingEntries,
             out EventEntrySnapshot[] entries,
+            out bool hasAlarmLines,
+            out bool replaceAlarmLines,
+            out EventAlarmLineSnapshot[] alarmLines,
             out string summary,
             out string message)
         {
-            return TryDecodePacketOwnedEventCalendarEntriesPayload(payload, out clearRequested, out replaceExistingEntries, out entries, out summary, out message);
+            return TryDecodePacketOwnedEventCalendarEntriesPayload(
+                payload,
+                out clearRequested,
+                out replaceExistingEntries,
+                out entries,
+                out hasAlarmLines,
+                out replaceAlarmLines,
+                out alarmLines,
+                out summary,
+                out message);
         }
 
         private static bool TryDecodePacketOwnedRankingPagePayload(
             byte[] payload,
             out bool clearRequested,
             out RankingEntrySnapshot[] entries,
+            out bool hasOwnerState,
+            out PacketOwnedRankingOwnerStateSnapshot ownerState,
             out string summary,
             out string message)
         {
             clearRequested = false;
             entries = Array.Empty<RankingEntrySnapshot>();
+            hasOwnerState = false;
+            ownerState = new PacketOwnedRankingOwnerStateSnapshot();
             summary = string.Empty;
             message = "Ranking-page payload is missing.";
             if (payload == null || payload.Length == 0)
@@ -10486,9 +10553,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (TryDecodePacketOwnedRankingPageJsonPayload(decodedText, out clearRequested, out entries, out summary, out message))
+            if (TryDecodePacketOwnedRankingPageJsonPayload(decodedText, out clearRequested, out entries, out hasOwnerState, out ownerState, out summary, out message))
             {
-                return clearRequested || entries.Length > 0;
+                return clearRequested || entries.Length > 0 || hasOwnerState;
             }
 
             string normalizedText = decodedText.Trim();
@@ -10529,21 +10596,34 @@ namespace HaCreator.MapSimulator
             byte[] payload,
             out bool clearRequested,
             out RankingEntrySnapshot[] entries,
+            out bool hasOwnerState,
+            out PacketOwnedRankingOwnerStateSnapshot ownerState,
             out string summary,
             out string message)
         {
-            return TryDecodePacketOwnedRankingPagePayload(payload, out clearRequested, out entries, out summary, out message);
+            return TryDecodePacketOwnedRankingPagePayload(
+                payload,
+                out clearRequested,
+                out entries,
+                out hasOwnerState,
+                out ownerState,
+                out summary,
+                out message);
         }
 
         private static bool TryDecodePacketOwnedRankingPageJsonPayload(
             string payloadText,
             out bool clearRequested,
             out RankingEntrySnapshot[] entries,
+            out bool hasOwnerState,
+            out PacketOwnedRankingOwnerStateSnapshot ownerState,
             out string summary,
             out string message)
         {
             clearRequested = false;
             entries = Array.Empty<RankingEntrySnapshot>();
+            hasOwnerState = false;
+            ownerState = new PacketOwnedRankingOwnerStateSnapshot();
             summary = string.Empty;
             message = "Ranking-page JSON payload did not contain any usable owner rows.";
             if (string.IsNullOrWhiteSpace(payloadText))
@@ -10575,6 +10655,14 @@ namespace HaCreator.MapSimulator
                         summary = parsedSummary;
                     }
 
+                    JsonElement ownerStateElement = root;
+                    if (root.TryGetProperty("ownerState", out JsonElement nestedOwnerState)
+                        && nestedOwnerState.ValueKind == JsonValueKind.Object)
+                    {
+                        ownerStateElement = nestedOwnerState;
+                    }
+
+                    hasOwnerState = TryParsePacketOwnedRankingOwnerState(ownerStateElement, out ownerState);
                     if (root.TryGetProperty("entries", out JsonElement entryArray))
                     {
                         AppendPacketOwnedRankingJsonEntries(entryArray, parsedEntries);
@@ -10600,7 +10688,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 message = summary;
-                return clearRequested || entries.Length > 0;
+                return clearRequested || entries.Length > 0 || hasOwnerState;
             }
             catch (JsonException ex)
             {
@@ -10685,12 +10773,18 @@ namespace HaCreator.MapSimulator
             out bool clearRequested,
             out bool replaceExistingEntries,
             out EventEntrySnapshot[] entries,
+            out bool hasAlarmLines,
+            out bool replaceAlarmLines,
+            out EventAlarmLineSnapshot[] alarmLines,
             out string summary,
             out string message)
         {
             clearRequested = false;
             replaceExistingEntries = true;
             entries = Array.Empty<EventEntrySnapshot>();
+            hasAlarmLines = false;
+            replaceAlarmLines = true;
+            alarmLines = Array.Empty<EventAlarmLineSnapshot>();
             summary = string.Empty;
             message = "Event-calendar JSON payload did not contain any usable owner rows.";
             if (string.IsNullOrWhiteSpace(payloadText))
@@ -10727,9 +10821,33 @@ namespace HaCreator.MapSimulator
                         summary = parsedSummary;
                     }
 
+                    if (TryGetJsonBoolean(root, "replaceAlarmLines", out bool parsedReplaceAlarmLines)
+                        || TryGetJsonBoolean(root, "replaceLines", out parsedReplaceAlarmLines))
+                    {
+                        replaceAlarmLines = parsedReplaceAlarmLines;
+                    }
+
                     if (root.TryGetProperty("entries", out JsonElement entryArray))
                     {
                         AppendPacketOwnedEventCalendarJsonEntries(entryArray, parsedEntries);
+                    }
+                    else if (root.TryGetProperty("rows", out JsonElement rowArray))
+                    {
+                        AppendPacketOwnedEventCalendarJsonEntries(rowArray, parsedEntries);
+                    }
+
+                    JsonElement lineArray;
+                    if (root.TryGetProperty("alarmLines", out lineArray)
+                        || root.TryGetProperty("ctLines", out lineArray)
+                        || root.TryGetProperty("lines", out lineArray))
+                    {
+                        List<EventAlarmLineSnapshot> parsedLines = new();
+                        AppendPacketOwnedEventAlarmJsonLines(lineArray, parsedLines);
+                        if (parsedLines.Count > 0)
+                        {
+                            alarmLines = parsedLines.ToArray();
+                            hasAlarmLines = true;
+                        }
                     }
                 }
                 else if (root.ValueKind == JsonValueKind.Array)
@@ -10748,7 +10866,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 message = summary;
-                return clearRequested || entries.Length > 0;
+                return clearRequested || entries.Length > 0 || (hasAlarmLines && alarmLines.Length > 0);
             }
             catch (JsonException ex)
             {
@@ -10772,7 +10890,7 @@ namespace HaCreator.MapSimulator
                     string stringTitle = item.GetString()?.Trim();
                     if (!string.IsNullOrWhiteSpace(stringTitle))
                     {
-                        destination.Add(CreatePacketOwnedEventCalendarEntry(DateTime.Today, stringTitle, string.Empty, EventEntryStatus.Upcoming, "Will", int.MinValue, index++));
+                        destination.Add(CreatePacketOwnedEventCalendarEntry(DateTime.Today, stringTitle, string.Empty, EventEntryStatus.Upcoming, "Will", int.MinValue, int.MinValue, index++));
                     }
 
                     continue;
@@ -10793,17 +10911,35 @@ namespace HaCreator.MapSimulator
                         ? parsedDate
                         : DateTime.Today;
                 string detail = TryGetJsonString(item, "detail", out string parsedDetail) ? parsedDetail : string.Empty;
+                if (string.IsNullOrWhiteSpace(detail)
+                    && TryGetJsonString(item, "description", out string parsedDescription))
+                {
+                    detail = parsedDescription;
+                }
+
                 EventEntryStatus status = TryGetJsonString(item, "status", out string parsedStatusToken)
                     && TryParsePacketOwnedEventEntryStatus(parsedStatusToken, out EventEntryStatus parsedStatus)
                     ? parsedStatus
+                    : TryGetJsonString(item, "state", out string parsedStateToken)
+                        && TryParsePacketOwnedEventEntryStatus(parsedStateToken, out parsedStatus)
+                        ? parsedStatus
                     : EventEntryStatus.Upcoming;
                 string statusText = TryGetJsonString(item, "statusText", out string parsedStatusText)
                     ? parsedStatusText
+                    : TryGetJsonString(item, "statusLabel", out string parsedStatusLabel)
+                        ? parsedStatusLabel
                     : GetDefaultPacketOwnedEventStatusText(status);
                 int sourceTick = TryGetJsonInt32(item, "sourceTick", out int parsedSourceTick)
                     ? parsedSourceTick
                     : int.MinValue;
-                destination.Add(CreatePacketOwnedEventCalendarEntry(scheduledAt, title.Trim(), detail, status, statusText, sourceTick, index++));
+                int sortPriority = TryGetJsonInt32(item, "sortPriority", out int parsedSortPriority)
+                    ? parsedSortPriority
+                    : ResolvePacketOwnedEventEntrySortPriority(status);
+                int sortOrder = TryGetJsonInt32(item, "sortOrder", out int parsedSortOrder)
+                    ? parsedSortOrder
+                    : index;
+                destination.Add(CreatePacketOwnedEventCalendarEntry(scheduledAt, title.Trim(), detail, status, statusText, sourceTick, sortPriority, sortOrder));
+                index++;
             }
         }
 
@@ -10852,6 +10988,7 @@ namespace HaCreator.MapSimulator
                 status,
                 GetDefaultPacketOwnedEventStatusText(status),
                 int.MinValue,
+                ResolvePacketOwnedEventEntrySortPriority(status),
                 sortOrder);
             return true;
         }
@@ -10863,6 +11000,7 @@ namespace HaCreator.MapSimulator
             EventEntryStatus status,
             string statusText,
             int sourceTick,
+            int sortPriority,
             int sortOrder)
         {
             return new EventEntrySnapshot
@@ -10873,9 +11011,72 @@ namespace HaCreator.MapSimulator
                 Status = status,
                 ScheduledAt = scheduledAt.Date,
                 SourceTick = sourceTick,
-                SortPriority = ResolvePacketOwnedEventEntrySortPriority(status),
+                SortPriority = sortPriority,
                 SortOrder = Math.Max(0, sortOrder)
             };
+        }
+
+        private static bool TryParsePacketOwnedRankingOwnerState(JsonElement element, out PacketOwnedRankingOwnerStateSnapshot ownerState)
+        {
+            ownerState = new PacketOwnedRankingOwnerStateSnapshot();
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            string subtitle = TryGetJsonString(element, "subtitle", out string parsedSubtitle)
+                ? parsedSubtitle
+                : string.Empty;
+            string statusText = TryGetJsonString(element, "statusText", out string parsedStatusText)
+                ? parsedStatusText
+                : string.Empty;
+            string navigationCaption = TryGetJsonString(element, "navigationCaption", out string parsedNavigationCaption)
+                ? parsedNavigationCaption
+                : TryGetJsonString(element, "caption", out string parsedCaption)
+                    ? parsedCaption
+                    : string.Empty;
+            string navigateUrl = TryGetJsonString(element, "navigateUrl", out string parsedNavigateUrl)
+                ? parsedNavigateUrl
+                : TryGetJsonString(element, "url", out string parsedUrl)
+                    ? parsedUrl
+                    : string.Empty;
+            string navigationHostText = TryGetJsonString(element, "navigationHostText", out string parsedNavigationHostText)
+                ? parsedNavigationHostText
+                : TryGetJsonString(element, "host", out string parsedHost)
+                    ? parsedHost
+                    : string.Empty;
+            string navigationRequestText = TryGetJsonString(element, "navigationRequestText", out string parsedNavigationRequestText)
+                ? parsedNavigationRequestText
+                : TryGetJsonString(element, "request", out string parsedRequest)
+                    ? parsedRequest
+                    : string.Empty;
+            string navigationStateText = TryGetJsonString(element, "navigationStateText", out string parsedNavigationStateText)
+                ? parsedNavigationStateText
+                : TryGetJsonString(element, "state", out string parsedState)
+                    ? parsedState
+                    : string.Empty;
+            bool? isLoading = TryGetJsonBoolean(element, "isLoading", out bool parsedIsLoading)
+                ? parsedIsLoading
+                : TryGetJsonBoolean(element, "loading", out parsedIsLoading)
+                    ? parsedIsLoading
+                    : null;
+            int loadingStartTick = TryGetJsonInt32(element, "loadingStartTick", out int parsedLoadingStartTick)
+                ? parsedLoadingStartTick
+                : int.MinValue;
+
+            ownerState = new PacketOwnedRankingOwnerStateSnapshot
+            {
+                Subtitle = subtitle,
+                StatusText = statusText,
+                NavigationCaption = navigationCaption,
+                NavigateUrl = navigateUrl,
+                NavigationHostText = navigationHostText,
+                NavigationRequestText = navigationRequestText,
+                NavigationStateText = navigationStateText,
+                IsLoading = isLoading,
+                LoadingStartTick = loadingStartTick
+            };
+            return ownerState.HasAnyState;
         }
 
         internal static int ResolvePacketOwnedEventEntrySortPriority(EventEntryStatus status)
@@ -12028,7 +12229,8 @@ namespace HaCreator.MapSimulator
                 HasMorphTemplate: player.HasActiveMorphTransform,
                 IsGhostAction: isGhost,
                 Position: player.Position,
-                FacingRight: player.FacingRight);
+                FacingRight: player.FacingRight,
+                CurrentFootholdId: player.Physics.CurrentFoothold?.num ?? 0);
             return true;
         }
 
@@ -12079,7 +12281,8 @@ namespace HaCreator.MapSimulator
                 HasMorphTemplate: hasMorphTemplate,
                 IsGhostAction: isGhost,
                 Position: actor.Position,
-                FacingRight: actor.FacingRight);
+                FacingRight: actor.FacingRight,
+                CurrentFootholdId: actor.CurrentFootholdId);
             return true;
         }
 
@@ -12128,6 +12331,29 @@ namespace HaCreator.MapSimulator
                 player.FacingRight = result.PlayerFacingRight;
                 player.Physics.FacingRight = result.PlayerFacingRight;
             }
+
+            if (result.PlayerFootholdChanged)
+            {
+                ApplyPacketOwnedLocalFollowFootholdState(player, result.PlayerFootholdId);
+            }
+        }
+
+        private void ApplyPacketOwnedLocalFollowFootholdState(PlayerCharacter player, int footholdId)
+        {
+            if (player?.Physics == null)
+            {
+                return;
+            }
+
+            FootholdLine foothold = ResolvePacketOwnedLocalFollowFoothold(footholdId);
+            if (foothold == null)
+            {
+                return;
+            }
+
+            player.Physics.CurrentFoothold = foothold;
+            player.Physics.FallStartFoothold = null;
+            player.Physics.IsOnLadderOrRope = false;
         }
 
         private void SyncPacketOwnedLocalFollowCharacter()
@@ -12174,7 +12400,9 @@ namespace HaCreator.MapSimulator
                 PlayerPositionChanged: true,
                 PlayerPosition: driver.Position,
                 PlayerFacingRightChanged: true,
-                PlayerFacingRight: driver.FacingRight));
+                PlayerFacingRight: driver.FacingRight,
+                PlayerFootholdChanged: driver.CurrentFootholdId != 0,
+                PlayerFootholdId: driver.CurrentFootholdId));
         }
 
         private void ClearPacketOwnedPassiveMoveState()

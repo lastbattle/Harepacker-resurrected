@@ -232,7 +232,16 @@ namespace HaCreator.MapSimulator.Character
                 ["assassinations"] = "assassination",
                 ["smokeshell"] = "smokeshell",
                 ["ninjastorm"] = "ninjastorm",
-                ["vampire"] = "vampire"
+                ["vampire"] = "vampire",
+                // These client-only helper raw rows are still not authored directly in the
+                // mounted `action/0` WZ surface, so gate them through the nearest recovered
+                // family-specific raw row instead of letting every helper family claim them.
+                ["shotC1"] = "avenger",
+                ["stabD1"] = "assaulter",
+                ["swingD1"] = "swingO1",
+                ["swingD2"] = "swingO1",
+                ["doubleSwing"] = "swingO1",
+                ["tripleSwing"] = "swingO1"
             };
 
         public static IEnumerable<string> EnumerateClientMappedCandidates(

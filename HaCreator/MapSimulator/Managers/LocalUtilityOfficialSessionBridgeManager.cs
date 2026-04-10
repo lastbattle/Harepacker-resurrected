@@ -101,7 +101,7 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=58,133,193,253,254,255,256,269,270,1011,1023; outbound opcodes=45,113,117,134,135,191,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
+            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=58,133,193,253,254,255,256,269,270,366,367,1011,1023; outbound opcodes=45,74,113,117,134,135,191,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)
@@ -602,6 +602,8 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == LocalUtilityPacketInboxManager.DamageMeterPacketType
                 || packetType == LocalUtilityPacketInboxManager.PassiveMoveClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.AdminShopResultClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.AntiMacroResultPacketType
                 || packetType == LocalUtilityPacketInboxManager.PetConsumeResultPacketType
                 || packetType == LocalUtilityPacketInboxManager.MechanicEquipStatePacketType;
@@ -622,6 +624,8 @@ namespace HaCreator.MapSimulator.Managers
                 LocalUtilityPacketInboxManager.DamageMeterPacketType => "DamageMeter(267)",
                 LocalUtilityPacketInboxManager.PassiveMoveClientPacketType => "PassiveMove(269)",
                 LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType => "FollowCharacterFailed(270)",
+                LocalUtilityPacketInboxManager.AdminShopResultClientPacketType => "CAdminShopDlg::OnPacket Result(366)",
+                LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType => "CAdminShopDlg::OnPacket Open(367)",
                 LocalUtilityPacketInboxManager.AntiMacroResultPacketType => "AntiMacroResult(1011)",
                 LocalUtilityPacketInboxManager.PetConsumeResultPacketType => "PetConsumeResult(1026) / RaiseOwnerSync(1026)",
                 LocalUtilityPacketInboxManager.MechanicEquipStatePacketType => "MechanicEquipState(1023)",

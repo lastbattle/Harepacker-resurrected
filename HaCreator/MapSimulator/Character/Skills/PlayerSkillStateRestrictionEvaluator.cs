@@ -26,6 +26,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int MechanicPrototypeSkillId = 35001002;
         private const int FlameLauncherSkillId = 35001001;
         private const int EnhancedFlameLauncherSkillId = 35101009;
+        private const int ClericExplosionSkillId = 2111002;
+        private const int MysticDoorSkillId = 2301002;
         private const int EvanIceBreathSkillId = 22121000;
         private const int EvanFireBreathSkillId = 22151001;
         private const int NightWalkerPoisonBombSkillId = 14111006;
@@ -172,6 +174,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return "This skill cannot be used while on a ladder or rope.";
             }
 
+            string magicAttackAirborneRestrictionMessage = GetMagicAttackAirborneRestrictionMessage(player, skill);
+            if (!string.IsNullOrWhiteSpace(magicAttackAirborneRestrictionMessage))
+            {
+                return magicAttackAirborneRestrictionMessage;
+            }
+
             if (RequiresStableVehicleCastState(skill)
                 && !player.Physics.IsOnFoothold()
                 && !player.Physics.IsOnLadderOrRope
@@ -182,6 +190,32 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return null;
+        }
+
+        private static string GetMagicAttackAirborneRestrictionMessage(PlayerCharacter player, SkillData skill)
+        {
+            if (player?.Physics == null
+                || !UsesClientMagicAttackAirborneGate(skill)
+                || player.Physics.IsOnFoothold())
+            {
+                return null;
+            }
+
+            if (player.Physics.IsOnLadderOrRope)
+            {
+                return AllowsMagicAttackOnLadderOrRopeWithoutFoothold(skill)
+                    ? null
+                    : "This magic skill cannot be used while on a ladder or rope.";
+            }
+
+            if (AllowsMagicAttackWhileAirborneWithoutFoothold(skill)
+                || player.Physics.IsSwimming()
+                || player.Physics.IsUserFlying())
+            {
+                return null;
+            }
+
+            return "This magic skill cannot be used while airborne.";
         }
 
         internal static bool ShouldBlockClientShootAttackOnLadderOrRope(
@@ -320,6 +354,35 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || skillId == SoaringEvanSkillId
                    || skillId == SoaringMechanicSkillId
                    || UsesVehicleOwnershipOrMountSkill(skill);
+        }
+
+        private static bool UsesClientMagicAttackAirborneGate(SkillData skill)
+        {
+            return skill?.AttackType == SkillAttackType.Magic;
+        }
+
+        private static bool AllowsMagicAttackOnLadderOrRopeWithoutFoothold(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            return skill.SkillId == ClericExplosionSkillId
+                   || skill.SkillId == MysticDoorSkillId;
+        }
+
+        private static bool AllowsMagicAttackWhileAirborneWithoutFoothold(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            return skill.SkillId == ClericExplosionSkillId
+                   || skill.SkillId == MysticDoorSkillId
+                   || skill.SkillId == EvanIceBreathSkillId
+                   || skill.SkillId == EvanFireBreathSkillId;
         }
 
         private static bool IsShootSkillNotUsingShootingWeapon(int skillId)

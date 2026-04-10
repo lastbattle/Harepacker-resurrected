@@ -250,6 +250,7 @@ namespace HaCreator.MapSimulator
             MarkQuestRewardRaiseOwnerDestroyPending(activeRaise);
             activeRaise = _questRewardRaiseManager.DestroyActiveRaise();
             RestoreQuestRewardRaisePlacedPieces(activeRaise);
+            RetainQuestRewardRaiseObservedLifecycle(activeRaise);
 
             if (activeRaise?.Source == QuestRewardRaiseSourceKind.NpcOverlay && _activeNpcInteractionNpc != null)
             {
@@ -270,10 +271,12 @@ namespace HaCreator.MapSimulator
             if (!CommitQuestRewardRaisePlacedPieces(activeRaise))
             {
                 RestoreQuestRewardRaisePlacedPieces(activeRaise);
+                RetainQuestRewardRaiseObservedLifecycle(activeRaise);
                 return;
             }
 
             _questRewardRaiseManager.RememberState(activeRaise);
+            RetainQuestRewardRaiseObservedLifecycle(activeRaise);
 
             switch (activeRaise.Source)
             {
@@ -398,6 +401,7 @@ namespace HaCreator.MapSimulator
             if (clearState)
             {
                 _questRewardRaiseManager.DestroyActiveRaise();
+                RetainQuestRewardRaiseObservedLifecycle(activeRaise);
             }
 
             ClearQuestRewardRaiseWindow();
@@ -573,6 +577,7 @@ namespace HaCreator.MapSimulator
                 return "Raise inbound packet did not include decoded owner state.";
             }
 
+            int questId = Math.Max(0, decodedPayload.QuestId);
             QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
             if (packet.Kind == QuestRewardRaiseInboundPacketKind.OwnerSync && decodedPayload.QuestId > 0)
             {
@@ -585,17 +590,21 @@ namespace HaCreator.MapSimulator
                     decodedPayload.DisplayMode);
             }
 
-            if (activeRaise == null
-                || Math.Max(0, activeRaise.Prompt?.QuestId ?? 0) != Math.Max(0, decodedPayload.QuestId))
+            QuestRewardRaiseState observedRaise = activeRaise != null
+                && Math.Max(0, activeRaise.Prompt?.QuestId ?? 0) == questId
+                ? activeRaise
+                : _questRewardRaiseManager.GetObservedRaiseByQuestId(questId);
+            bool raiseIsActive = ReferenceEquals(observedRaise, activeRaise);
+            if (observedRaise == null)
             {
                 string inactiveSummary = DescribePacketOwnedQuestRewardRaisePacket(packet, null);
                 _questRewardRaiseManager.ObserveInboundPacket(packet, inactiveSummary);
                 return inactiveSummary;
             }
 
-            SyncActiveQuestRewardRaiseFromInboundPayload(activeRaise, decodedPayload);
-            string inboundSummary = DescribePacketOwnedQuestRewardRaisePacket(packet, activeRaise);
-            activeRaise.LastInboundSummary = inboundSummary;
+            SyncActiveQuestRewardRaiseFromInboundPayload(observedRaise, decodedPayload);
+            string inboundSummary = DescribePacketOwnedQuestRewardRaisePacket(packet, observedRaise);
+            observedRaise.LastInboundSummary = inboundSummary;
 
             switch (packet.Kind)
             {
@@ -603,16 +612,16 @@ namespace HaCreator.MapSimulator
                     break;
 
                 case QuestRewardRaiseInboundPacketKind.PutItemAddResult:
-                    ApplyPacketOwnedQuestRewardRaiseAddResult(activeRaise, packet);
+                    ApplyPacketOwnedQuestRewardRaiseAddResult(observedRaise, packet);
                     break;
 
                 case QuestRewardRaiseInboundPacketKind.PutItemReleaseResult:
-                    ApplyPacketOwnedQuestRewardRaiseReleaseResult(activeRaise, packet);
+                    ApplyPacketOwnedQuestRewardRaiseReleaseResult(observedRaise, packet);
                     break;
 
                 case QuestRewardRaiseInboundPacketKind.PutItemConfirmResult:
-                    activeRaise.AwaitingConfirmAck = false;
-                    foreach (QuestRewardRaisePlacedPiece piece in activeRaise.PlacedPieces)
+                    observedRaise.AwaitingConfirmAck = false;
+                    foreach (QuestRewardRaisePlacedPiece piece in observedRaise.PlacedPieces)
                     {
                         piece.LifecycleState = packet.Success
                             ? QuestRewardRaisePieceLifecycleState.Confirmed
@@ -621,15 +630,22 @@ namespace HaCreator.MapSimulator
                     break;
 
                 case QuestRewardRaiseInboundPacketKind.OwnerDestroyResult:
-                    activeRaise.AwaitingOwnerDestroyAck = false;
-                    ClearQuestRewardRaisePlacedPieceReservations(activeRaise);
-                    _questRewardRaiseManager.ClearActiveRaise();
-                    ClearQuestRewardRaiseWindow();
+                    observedRaise.AwaitingOwnerDestroyAck = false;
+                    ClearQuestRewardRaisePlacedPieceReservations(observedRaise);
+                    if (raiseIsActive)
+                    {
+                        _questRewardRaiseManager.ClearActiveRaise();
+                        ClearQuestRewardRaiseWindow();
+                    }
+                    else
+                    {
+                        _questRewardRaiseManager.ClearRetainedRaiseByQuestId(questId);
+                    }
                     break;
             }
 
             _questRewardRaiseManager.ObserveInboundPacket(packet, inboundSummary);
-            return activeRaise.LastInboundSummary;
+            return observedRaise.LastInboundSummary;
         }
 
         private void ApplyPacketOwnedQuestRewardRaiseAddResult(QuestRewardRaiseState activeRaise, QuestRewardRaiseInboundPacket packet)
@@ -715,7 +731,7 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private void SyncActiveQuestRewardRaiseFromInboundPayload(QuestRewardRaiseState activeRaise, QuestRewardRaisePacketPayload decodedPayload)
+        private static void SyncActiveQuestRewardRaiseFromInboundPayload(QuestRewardRaiseState activeRaise, QuestRewardRaisePacketPayload decodedPayload)
         {
             if (activeRaise == null || decodedPayload == null)
             {
@@ -729,6 +745,28 @@ namespace HaCreator.MapSimulator
             activeRaise.MaxDropCount = Math.Max(1, Math.Max(activeRaise.MaxDropCount, decodedPayload.PlacedPieceCount));
             activeRaise.WindowMode = decodedPayload.WindowMode;
             activeRaise.DisplayMode = decodedPayload.DisplayMode;
+        }
+
+        private void RetainQuestRewardRaiseObservedLifecycle(QuestRewardRaiseState activeRaise)
+        {
+            int questId = Math.Max(0, activeRaise?.Prompt?.QuestId ?? 0);
+            if (activeRaise == null || questId <= 0)
+            {
+                return;
+            }
+
+            bool shouldRetain = activeRaise.WindowMode == QuestRewardRaiseWindowMode.PiecePlacement
+                || activeRaise.PlacedPieces.Count > 0
+                || activeRaise.AwaitingConfirmAck
+                || activeRaise.AwaitingOwnerDestroyAck
+                || !string.IsNullOrWhiteSpace(activeRaise.LastInboundSummary)
+                || !string.IsNullOrWhiteSpace(activeRaise.OpenDispatchSummary);
+            if (!shouldRetain)
+            {
+                return;
+            }
+
+            _questRewardRaiseManager.RetainClosedRaise(activeRaise);
         }
 
         private static string DescribePacketOwnedQuestRewardRaisePacket(QuestRewardRaiseInboundPacket packet, QuestRewardRaiseState activeRaise)

@@ -144,6 +144,7 @@ namespace HaCreator.MapSimulator.Companions
         private const float ActiveFollowDistanceX = 5f;
         private const float ActiveFollowStepX = 7f;
         private const float ActiveFollowVerticalCheckDistance = 30f;
+        private const float ActiveFollowImmediateVerticalDistance = 100f;
         private const float ActiveFollowVerticalStepDivisor = 10f;
         private const float ActiveFollowVerticalStepCap = 17f;
         private const int ActiveFollowVerticalCheckFrames = 5;
@@ -872,7 +873,8 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             float nextY = _visualAnchor.Y;
-            bool shouldMoveVertically = _activeVerticalFollowState != 0;
+            bool shouldMoveVertically = _activeVerticalFollowState != 0
+                || ShouldUseImmediateActiveVerticalFollow(deltaY);
             if (deltaY >= 0f)
             {
                 if (shouldMoveVertically)
@@ -920,6 +922,11 @@ namespace HaCreator.MapSimulator.Companions
 
             _visualAnchor = new Vector2(nextX, nextY);
             return FollowUpdateFlags.None;
+        }
+
+        internal static bool ShouldUseImmediateActiveVerticalFollow(float deltaY)
+        {
+            return Math.Abs(deltaY) > ActiveFollowImmediateVerticalDistance;
         }
 
         private static bool HasPassiveTravel(Vector2 visualAnchor, Vector2 worldAnchor, Vector2 velocity)

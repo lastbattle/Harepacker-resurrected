@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
@@ -72,6 +73,24 @@ namespace HaCreator.MapSimulator.UI
             public string Message { get; init; } = string.Empty;
             public int RowIndex { get; init; }
             public int AcceptRequestOpcode { get; init; } = 154;
+        }
+
+        public sealed class CashNameChangePossibleState
+        {
+            public int RequestId { get; init; }
+            public byte StatusCode { get; init; }
+            public uint BirthDate { get; init; }
+            public bool OpensLicenseDialog => StatusCode == 0;
+        }
+
+        public sealed class CashTransferWorldPossibleState
+        {
+            public int RequestId { get; init; }
+            public byte StatusCode { get; init; }
+            public int BirthDate { get; init; }
+            public bool HasWorldList { get; init; }
+            public IReadOnlyList<string> WorldNames { get; init; } = Array.Empty<string>();
+            public bool OpensLicenseDialog => StatusCode == 0;
         }
 
         private sealed class CashStatusSnapshot
@@ -185,6 +204,8 @@ namespace HaCreator.MapSimulator.UI
         private string _cashNameChangeLastSummary = "No packet-authored name-change result routed yet.";
         private string _cashTransferWorldLastSummary = "No packet-authored transfer-world result routed yet.";
         private string _cashGachaponLastSummary = "No packet-authored cash gachapon result routed yet.";
+        private CashNameChangePossibleState _cashNameChangePossibleState = new();
+        private CashTransferWorldPossibleState _cashTransferWorldPossibleState = new();
         private int _itcNormalItemSubtype = -1;
         private int _itcNormalItemPage;
         private int _itcNormalItemCategory;
@@ -244,6 +265,9 @@ namespace HaCreator.MapSimulator.UI
         public string CashNameChangeLastSummary => _cashNameChangeLastSummary;
         public string CashTransferWorldLastSummary => _cashTransferWorldLastSummary;
         public string CashGachaponLastSummary => _cashGachaponLastSummary;
+        public int CashItemResultSubtype => _cashItemResultSubtype;
+        public CashNameChangePossibleState CashNameChangePossibleResult => _cashNameChangePossibleState;
+        public CashTransferWorldPossibleState CashTransferWorldPossibleResult => _cashTransferWorldPossibleState;
         public IReadOnlyList<PacketCatalogEntry> CashInventoryPacketEntries => _cashInventoryPacketEntries;
         public IReadOnlyList<PacketCatalogEntry> CashLockerPacketEntries => _cashLockerPacketEntries;
         public IReadOnlyList<PacketCatalogEntry> CashGiftPacketEntries => _cashGiftPacketEntries;
@@ -374,6 +398,8 @@ namespace HaCreator.MapSimulator.UI
             _cashNameChangeLastSummary = "No packet-authored name-change result routed yet.";
             _cashTransferWorldLastSummary = "No packet-authored transfer-world result routed yet.";
             _cashGachaponLastSummary = "No packet-authored cash gachapon result routed yet.";
+            _cashNameChangePossibleState = new CashNameChangePossibleState();
+            _cashTransferWorldPossibleState = new CashTransferWorldPossibleState();
             _cashOneADayItemDate = 0;
             _cashOneADayItemSerialNumber = 0;
             _cashOneADayHistoryEntries.Clear();
@@ -1970,19 +1996,29 @@ namespace HaCreator.MapSimulator.UI
 
         private string BuildCashNameChangePacketResult(byte[] payload)
         {
-            string requestedName = TryReadUtf8Text(payload, out string decodedText)
-                ? SanitizePacketString(decodedText, "requested name")
-                : string.Empty;
-            _cashNameChangeLastSummary = string.IsNullOrWhiteSpace(requestedName)
-                ? "Name-change result stayed inside Cash Shop packet ownership."
-                : $"Name-change packet refreshed the dedicated owner for {requestedName}.";
+            if (!TryDecodeCashNameChangePossiblePayload(
+                    payload,
+                    out CashNameChangePossibleState state,
+                    out string failureReason))
+            {
+                _cashNameChangeLastSummary = string.IsNullOrWhiteSpace(failureReason)
+                    ? "Name-change result reached the stage owner, but the possible-result payload could not be decoded."
+                    : failureReason;
+                _noticeState = _cashNameChangeLastSummary;
+                return _cashNameChangeLastSummary;
+            }
+
+            _cashNameChangePossibleState = state;
+            _cashNameChangeLastSummary = state.OpensLicenseDialog
+                ? $"CUIChangingLicenseNotice is ready with birth date {state.BirthDate.ToString(CultureInfo.InvariantCulture)} after CCashShop::OnCheckNameChangePossibleResult."
+                : ResolveCashNameChangePossibleFailureText(state.StatusCode);
             AppendCashPacketCatalogEntry("Packet rename", "Name", new PacketCatalogEntry
             {
                 Title = "Name change",
                 Detail = _cashNameChangeLastSummary,
-                Seller = string.IsNullOrWhiteSpace(requestedName) ? "CCashShop" : requestedName,
-                PriceLabel = requestedName,
-                StateLabel = "Pending"
+                Seller = "CCashShop",
+                PriceLabel = state.BirthDate > 0 ? $"Birth {state.BirthDate.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
+                StateLabel = state.OpensLicenseDialog ? "License" : $"Result {state.StatusCode.ToString(CultureInfo.InvariantCulture)}"
             });
             _noticeState = _cashNameChangeLastSummary;
             return _cashNameChangeLastSummary;
@@ -1990,20 +2026,77 @@ namespace HaCreator.MapSimulator.UI
 
         private string BuildCashTransferWorldPacketResult(byte[] payload)
         {
-            int worldId = payload != null && payload.Length >= sizeof(int)
-                ? Math.Max(0, BitConverter.ToInt32(payload, 0))
-                : 0;
-            _cashTransferWorldLastSummary = worldId > 0
-                ? $"Transfer-world packet refreshed world target {worldId.ToString(CultureInfo.InvariantCulture)} inside the dedicated stage."
-                : "Transfer-world result stayed inside Cash Shop packet ownership.";
+            if (!TryDecodeCashTransferWorldPossiblePayload(
+                    payload,
+                    out CashTransferWorldPossibleState state,
+                    out string failureReason))
+            {
+                _cashTransferWorldLastSummary = string.IsNullOrWhiteSpace(failureReason)
+                    ? "Transfer-world result reached the stage owner, but the possible-result payload could not be decoded."
+                    : failureReason;
+                _noticeState = _cashTransferWorldLastSummary;
+                return _cashTransferWorldLastSummary;
+            }
+
+            _cashTransferWorldPossibleState = state;
+            _cashTransferWorldLastSummary = state.OpensLicenseDialog
+                ? $"CUITransferWorldLicenseNotice is ready with birth date {state.BirthDate.ToString(CultureInfo.InvariantCulture)} and {state.WorldNames.Count.ToString(CultureInfo.InvariantCulture)} decoded world name(s)."
+                : ResolveCashTransferWorldPossibleFailureText(state.StatusCode);
             AppendCashPacketCatalogEntry("Packet transfer", "Transfer", new PacketCatalogEntry
             {
                 Title = "Transfer world",
                 Detail = _cashTransferWorldLastSummary,
                 Seller = "CCashShop",
-                PriceLabel = worldId > 0 ? $"World {worldId.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
-                StateLabel = "Pending"
+                PriceLabel = state.WorldNames.Count > 0 ? state.WorldNames[0] : string.Empty,
+                StateLabel = state.OpensLicenseDialog ? "License" : $"Result {state.StatusCode.ToString(CultureInfo.InvariantCulture)}"
             });
+            _noticeState = _cashTransferWorldLastSummary;
+            return _cashTransferWorldLastSummary;
+        }
+
+        public string CompleteReceiveGiftDialog(int selectedGiftIndex, string replyText)
+        {
+            if (selectedGiftIndex < 0 || selectedGiftIndex >= _cashGiftPacketEntries.Count)
+            {
+                return "CUIReceiveGift could not resolve the selected gift row.";
+            }
+
+            PacketCatalogEntry selectedEntry = _cashGiftPacketEntries[selectedGiftIndex];
+            string sender = string.IsNullOrWhiteSpace(selectedEntry.Seller) ? "unknown sender" : selectedEntry.Seller;
+            string reply = string.IsNullOrWhiteSpace(replyText)
+                ? "without a reply message"
+                : $"with reply \"{SanitizePacketString(replyText, "gift reply")}\"";
+            _cashGiftPacketEntries.RemoveAt(selectedGiftIndex);
+            _cashGiftLastSummary =
+                $"CUIReceiveGift accepted {selectedEntry.Title} from {sender} {reply}; {Math.Max(0, _cashGiftPacketEntries.Count).ToString(CultureInfo.InvariantCulture)} gift row(s) remain staged.";
+            _noticeState = _cashGiftLastSummary;
+            return _cashGiftLastSummary;
+        }
+
+        public string RecordCouponDialogSubmission(string couponCode)
+        {
+            string sanitizedCouponCode = SanitizePacketString(couponCode, "coupon code");
+            _cashCouponLastSummary = string.IsNullOrWhiteSpace(sanitizedCouponCode)
+                ? "CCouponUseSelectDlg submitted an empty coupon selection and is waiting on packet-owned confirmation."
+                : $"CCouponUseSelectDlg submitted coupon code {sanitizedCouponCode} and is waiting on packet-owned confirmation.";
+            _noticeState = _cashCouponLastSummary;
+            return _cashCouponLastSummary;
+        }
+
+        public string AcknowledgeNameChangeLicenseDialog()
+        {
+            _cashNameChangeLastSummary = _cashNameChangePossibleState.OpensLicenseDialog
+                ? $"CUIChangingLicenseNotice accepted birth date {_cashNameChangePossibleState.BirthDate.ToString(CultureInfo.InvariantCulture)} and returned to the Cash Shop stage."
+                : _cashNameChangeLastSummary;
+            _noticeState = _cashNameChangeLastSummary;
+            return _cashNameChangeLastSummary;
+        }
+
+        public string AcknowledgeTransferWorldLicenseDialog()
+        {
+            _cashTransferWorldLastSummary = _cashTransferWorldPossibleState.OpensLicenseDialog
+                ? $"CUITransferWorldLicenseNotice accepted birth date {_cashTransferWorldPossibleState.BirthDate.ToString(CultureInfo.InvariantCulture)} for {Math.Max(0, _cashTransferWorldPossibleState.WorldNames.Count).ToString(CultureInfo.InvariantCulture)} decoded world name(s)."
+                : _cashTransferWorldLastSummary;
             _noticeState = _cashTransferWorldLastSummary;
             return _cashTransferWorldLastSummary;
         }
@@ -2619,6 +2712,146 @@ namespace HaCreator.MapSimulator.UI
 
             value = Encoding.ASCII.GetString(reader.ReadBytes(length)).TrimEnd('\0', ' ');
             return true;
+        }
+
+        internal static bool TryDecodeCashNameChangePossiblePayload(
+            byte[] payload,
+            out CashNameChangePossibleState state,
+            out string failureReason)
+        {
+            state = null;
+            failureReason = null;
+            if (payload == null || payload.Length < sizeof(int) + sizeof(byte) + sizeof(int))
+            {
+                failureReason = "Name-change possible-result payload ended before request id, result, and birth date were available.";
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                state = new CashNameChangePossibleState
+                {
+                    RequestId = reader.ReadInt32(),
+                    StatusCode = reader.ReadByte(),
+                    BirthDate = reader.ReadUInt32()
+                };
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                failureReason = "Name-change possible-result payload ended unexpectedly while decoding.";
+                state = null;
+                return false;
+            }
+            catch (IOException)
+            {
+                failureReason = "Name-change possible-result payload could not be read.";
+                state = null;
+                return false;
+            }
+        }
+
+        internal static bool TryDecodeCashTransferWorldPossiblePayload(
+            byte[] payload,
+            out CashTransferWorldPossibleState state,
+            out string failureReason)
+        {
+            state = null;
+            failureReason = null;
+            if (payload == null || payload.Length < sizeof(int) + sizeof(byte) + sizeof(int) + sizeof(byte))
+            {
+                failureReason = "Transfer-world possible-result payload ended before request id, result, birth date, and world-list flag were available.";
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                int requestId = reader.ReadInt32();
+                byte statusCode = reader.ReadByte();
+                int birthDate = reader.ReadInt32();
+                bool hasWorldList = reader.ReadByte() != 0;
+                List<string> worldNames = new();
+                if (hasWorldList)
+                {
+                    if (stream.Length - stream.Position < sizeof(int))
+                    {
+                        failureReason = "Transfer-world possible-result payload ended before the world-name count was available.";
+                        return false;
+                    }
+
+                    int count = Math.Max(0, reader.ReadInt32());
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (!TryReadMapleString(reader, out string worldName))
+                        {
+                            failureReason = $"Transfer-world possible-result payload ended while decoding world name {i.ToString(CultureInfo.InvariantCulture)}.";
+                            return false;
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(worldName))
+                        {
+                            worldNames.Add(worldName.Trim());
+                        }
+                    }
+                }
+
+                state = new CashTransferWorldPossibleState
+                {
+                    RequestId = requestId,
+                    StatusCode = statusCode,
+                    BirthDate = birthDate,
+                    HasWorldList = hasWorldList,
+                    WorldNames = worldNames
+                };
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                failureReason = "Transfer-world possible-result payload ended unexpectedly while decoding.";
+                state = null;
+                return false;
+            }
+            catch (IOException)
+            {
+                failureReason = "Transfer-world possible-result payload could not be read.";
+                state = null;
+                return false;
+            }
+        }
+
+        private static string ResolveCashNameChangePossibleFailureText(byte statusCode)
+        {
+            int stringPoolId = statusCode switch
+            {
+                1 => 538,
+                2 => 539,
+                3 => 540,
+                _ => 3606
+            };
+
+            return MapleStoryStringPool.GetOrFallback(
+                stringPoolId,
+                $"CCashShop::OnCheckNameChangePossibleResult failed with result {statusCode.ToString(CultureInfo.InvariantCulture)}.");
+        }
+
+        private static string ResolveCashTransferWorldPossibleFailureText(byte statusCode)
+        {
+            return statusCode switch
+            {
+                1 => "Cannot find the selected character for transfer-world processing.",
+                2 => MapleStoryStringPool.GetOrFallback(4043, $"Transfer-world possible-result failed with result {statusCode.ToString(CultureInfo.InvariantCulture)}."),
+                3 => MapleStoryStringPool.GetOrFallback(4050, $"Transfer-world possible-result failed with result {statusCode.ToString(CultureInfo.InvariantCulture)}."),
+                4 => MapleStoryStringPool.GetOrFallback(4044, $"Transfer-world possible-result failed with result {statusCode.ToString(CultureInfo.InvariantCulture)}."),
+                5 => MapleStoryStringPool.GetOrFallback(4045, $"Transfer-world possible-result failed with result {statusCode.ToString(CultureInfo.InvariantCulture)}."),
+                6 => MapleStoryStringPool.GetOrFallback(4056, $"Transfer-world possible-result failed with result {statusCode.ToString(CultureInfo.InvariantCulture)}."),
+                7 => MapleStoryStringPool.GetOrFallback(4051, $"Transfer-world possible-result failed with result {statusCode.ToString(CultureInfo.InvariantCulture)}."),
+                8 => MapleStoryStringPool.GetOrFallback(5035, $"Transfer-world possible-result failed with result {statusCode.ToString(CultureInfo.InvariantCulture)}."),
+                _ => MapleStoryStringPool.GetOrFallback(3606, $"Transfer-world possible-result failed with result {statusCode.ToString(CultureInfo.InvariantCulture)}.")
+            };
         }
 
         private static string BuildPacketDecodeFailure(string ownerName, byte[] payload)

@@ -147,24 +147,24 @@ namespace HaCreator.MapSimulator.Character
                 ["heal"] = new[] { "stand1", "stand2", "sit" },
                 ["dead"] = new[] { "sit", "stand1" },
                 ["ghost"] = new[] { "sit", "stand1" },
-                ["tank_jump"] = new[] { "tank_stand", "stand1" },
-                ["tank_fly"] = new[] { "tank_stand", "stand1" },
-                ["tank_swim"] = new[] { "tank_stand", "stand1" },
-                ["tank_ladder"] = new[] { "ladder2", "rope2", "tank_stand", "stand1" },
-                ["tank_rope"] = new[] { "rope2", "ladder2", "tank_stand", "stand1" },
-                ["tank_hit"] = new[] { "tank_stand", "alert2", "alert", "stand1" },
-                ["siege_jump"] = new[] { "siege_stand", "stand1" },
-                ["siege_fly"] = new[] { "siege_stand", "stand1" },
-                ["siege_swim"] = new[] { "siege_stand", "stand1" },
-                ["siege_ladder"] = new[] { "ladder2", "rope2", "siege_stand", "stand1" },
-                ["siege_rope"] = new[] { "rope2", "ladder2", "siege_stand", "stand1" },
-                ["siege_hit"] = new[] { "siege_stand", "alert2", "alert", "stand1" },
-                ["tank_siegejump"] = new[] { "tank_siegestand", "stand1" },
-                ["tank_siegefly"] = new[] { "tank_siegestand", "stand1" },
-                ["tank_siegeswim"] = new[] { "tank_siegestand", "stand1" },
-                ["tank_siegeladder"] = new[] { "ladder2", "rope2", "tank_siegestand", "stand1" },
-                ["tank_siegerope"] = new[] { "rope2", "ladder2", "tank_siegestand", "stand1" },
-                ["tank_siegehit"] = new[] { "tank_siegestand", "alert2", "alert", "stand1" }
+                ["tank_jump"] = new[] { "tank_stand" },
+                ["tank_fly"] = new[] { "tank_stand" },
+                ["tank_swim"] = new[] { "tank_stand" },
+                ["tank_ladder"] = new[] { "ladder2", "rope2", "tank_stand" },
+                ["tank_rope"] = new[] { "rope2", "ladder2", "tank_stand" },
+                ["tank_hit"] = new[] { "tank_stand", "alert2", "alert" },
+                ["siege_jump"] = new[] { "siege_stand" },
+                ["siege_fly"] = new[] { "siege_stand" },
+                ["siege_swim"] = new[] { "siege_stand" },
+                ["siege_ladder"] = new[] { "ladder2", "rope2", "siege_stand" },
+                ["siege_rope"] = new[] { "rope2", "ladder2", "siege_stand" },
+                ["siege_hit"] = new[] { "siege_stand", "alert2", "alert" },
+                ["tank_siegejump"] = new[] { "tank_siegestand" },
+                ["tank_siegefly"] = new[] { "tank_siegestand" },
+                ["tank_siegeswim"] = new[] { "tank_siegestand" },
+                ["tank_siegeladder"] = new[] { "ladder2", "rope2", "tank_siegestand" },
+                ["tank_siegerope"] = new[] { "rope2", "ladder2", "tank_siegestand" },
+                ["tank_siegehit"] = new[] { "tank_siegestand", "alert2", "alert" }
             };
 
         private readonly CharacterBuild _build;
@@ -1022,7 +1022,8 @@ namespace HaCreator.MapSimulator.Character
         {
             return tamingMobPart?.Type == CharacterPartType.TamingMob
                    && tamingMobPart.ItemId == MechanicTamingMobItemId
-                   && IsMechanicVehicleAction(tamingMobPart, actionName);
+                   && (IsMechanicVehicleAction(tamingMobPart, actionName)
+                       || IsMechanicMountedSitFallbackAction(tamingMobPart, actionName));
         }
 
         private static bool IsMechanicVehicleAction(CharacterPart tamingMobPart, string actionName)
@@ -1056,6 +1057,14 @@ namespace HaCreator.MapSimulator.Character
                    && !string.Equals(actionName, "dead", StringComparison.OrdinalIgnoreCase)
                    && !string.Equals(actionName, "ghost", StringComparison.OrdinalIgnoreCase)
                    && !string.Equals(actionName, "tired", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsMechanicMountedSitFallbackAction(CharacterPart tamingMobPart, string actionName)
+        {
+            return tamingMobPart?.Type == CharacterPartType.TamingMob
+                   && tamingMobPart.ItemId == MechanicTamingMobItemId
+                   && string.Equals(actionName, "sit", StringComparison.OrdinalIgnoreCase)
+                   && SupportsTamingMobAction(tamingMobPart, actionName);
         }
 
         private void AddPart(

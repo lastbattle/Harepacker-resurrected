@@ -467,6 +467,30 @@ namespace HaCreator.MapSimulator.Loaders
             }
         }
 
+        internal static void RefreshVisibleSkillRootsFromCurrentRecords(
+            SkillUIBigBang skillWindow,
+            int jobId,
+            GraphicsDevice device,
+            IEnumerable<int> learnedSkillIds = null,
+            int subJob = 0)
+        {
+            if (skillWindow == null)
+                return;
+
+            skillWindow.SetUseDualTabStrip(IsDualBladeJob(jobId));
+            skillWindow.SetCharacterJob(jobId, subJob);
+            skillWindow.ConfigureAranGuideButtons(GetAranGuideUnlockedGrade(jobId));
+            EnsureDefaultSkillBookHeader(skillWindow, device);
+
+            IReadOnlyList<int> visibleRootIds = GetVisibleSkillRootIdsForJob(jobId, subJob, learnedSkillIds);
+            foreach (int skillRootId in visibleRootIds)
+            {
+                EnsureSkillRootLoaded(skillWindow, skillRootId, device);
+            }
+
+            skillWindow.RefreshVisibleTabsFromLoadedSkillRoots();
+        }
+
 
         /// <summary>
         /// Load the full skill catalog into the skill window, grouped by advancement tab.
@@ -726,6 +750,64 @@ namespace HaCreator.MapSimulator.Loaders
         }
 
 
+
+        private static void EnsureDefaultSkillBookHeader(SkillUIBigBang skillWindow, GraphicsDevice device)
+        {
+            Texture2D defaultBookIcon = SkillDataLoader.LoadJobIcon(0, device);
+            if (defaultBookIcon == null)
+                return;
+
+            skillWindow.SetDisplayedSkillRootId(0, 0);
+            skillWindow.SetJobInfo(0, defaultBookIcon, SkillDataLoader.GetJobName(0));
+        }
+
+        private static void EnsureSkillRootLoaded(SkillUIBigBang skillWindow, int skillRootId, GraphicsDevice device)
+        {
+            int tabIndex = GetSkillTabFromJobId(skillRootId);
+            bool hasLoadedCurrentRoot = skillWindow.TryGetDisplayedSkillRootId(tabIndex, out int displayedSkillRootId)
+                && displayedSkillRootId == skillRootId
+                && skillWindow.GetLoadedSkillCount(tabIndex) > 0;
+
+            if (!hasLoadedCurrentRoot)
+            {
+                skillWindow.ClearSkills(tabIndex);
+
+                Dictionary<int, SkillDisplayData> skillMap = new();
+                foreach (int bookJobId in GetSkillBookAliasesForJob(skillRootId).Distinct())
+                {
+                    foreach (SkillDisplayData skill in SkillDataLoader.LoadSkillsForJob(bookJobId, device))
+                    {
+                        if (skill == null || skillMap.ContainsKey(skill.SkillId))
+                            continue;
+
+                        skillMap[skill.SkillId] = skill;
+                    }
+                }
+
+                if (skillMap.Count > 0)
+                {
+                    skillWindow.SetDisplayedSkillRootId(tabIndex, skillRootId);
+                    skillWindow.AddSkills(tabIndex, skillMap.Values);
+                }
+            }
+
+            skillWindow.SetRecommendedSkillEntries(
+                skillRootId,
+                SkillDataLoader.LoadRecommendedSkillEntries(skillRootId));
+
+            Texture2D jobIcon = SkillDataLoader.LoadJobIcon(skillRootId, device);
+            if (jobIcon == null)
+            {
+                foreach (int bookJobId in GetSkillBookAliasesForJob(skillRootId).Distinct())
+                {
+                    jobIcon = SkillDataLoader.LoadJobIcon(bookJobId, device);
+                    if (jobIcon != null)
+                        break;
+                }
+            }
+
+            skillWindow.SetJobInfo(tabIndex, jobIcon, SkillDataLoader.GetJobName(skillRootId));
+        }
 
         private static int GetAranGuideUnlockedGrade(int jobId)
         {

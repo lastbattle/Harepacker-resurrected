@@ -273,6 +273,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int AlphaEnd { get; set; } = 255;
     }
 
+    public readonly record struct AfterimageRenderableLayer(SkillFrame Frame, float Alpha);
+
     /// <summary>
     /// Skill effect animation
     /// </summary>

@@ -634,6 +634,7 @@ namespace HaCreator.MapSimulator.Loaders
                     Texture2D chatEnterTexture = LoadCanvasTexture(chatEnterCanvas, device);
                     chatUI.SetChatEnterTexture(chatEnterTexture);
                     WzImage uiWindow2DialogImage = Program.FindImage("UI", "UIWindow2.img");
+                    WzImage uiBasicImage = Program.FindImage("UI", "Basic.img");
                     (Dictionary<MapSimulatorChatTargetType, Texture2D> chatTargetTextures,
                         Dictionary<MapSimulatorChatTargetType, Point> chatTargetOrigins) =
                         LoadChatTargetTextures(subProperty_chatTarget, device);
@@ -643,6 +644,15 @@ namespace HaCreator.MapSimulator.Loaders
                         LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["list4"] as WzCanvasProperty, device),
                         GetCanvasOrigin(uiWindow2DialogImage?["UtilDlgEx"]?["list5"] as WzCanvasProperty),
                         GetCanvasOrigin(uiWindow2DialogImage?["UtilDlgEx"]?["list4"] as WzCanvasProperty));
+                    chatUI.SetWhisperPickerComboTextures(
+                        LoadCanvasTexture(uiBasicImage?["ComboBox2"]?["normal"]?["0"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["ComboBox2"]?["mouseOver"]?["0"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["ComboBox2"]?["pressed"]?["0"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["ComboBox2"]?["disabled"]?["0"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["BtComboBox"]?["normal"]?["0"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["BtComboBox"]?["mouseOver"]?["0"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["BtComboBox"]?["pressed"]?["0"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["BtComboBox"]?["disabled"]?["0"] as WzCanvasProperty, device));
                     chatUI.SetWhisperPickerDialogTextures(
                         LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["t"] as WzCanvasProperty, device),
                         LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["c"] as WzCanvasProperty, device),

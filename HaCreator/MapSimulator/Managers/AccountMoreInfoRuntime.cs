@@ -1,7 +1,10 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using HaCreator.MapSimulator.Interaction;
 
 namespace HaCreator.MapSimulator.Managers
@@ -75,6 +78,11 @@ namespace HaCreator.MapSimulator.Managers
             string.Empty,
             string.Empty,
         };
+
+        private static readonly object CountryNameCatalogSync = new();
+        private static bool _countryNameCatalogLoaded;
+        private static IReadOnlyDictionary<int, string> _areaGroupDisplayNames = new Dictionary<int, string>();
+        private static IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>> _areaDetailDisplayNames = new Dictionary<int, IReadOnlyDictionary<int, string>>();
 
         private bool _isOpen;
         private bool _isFirstEntry;
@@ -283,8 +291,8 @@ namespace HaCreator.MapSimulator.Managers
                 SavePending = _savePending,
                 AreaGroup = _areaGroup,
                 AreaDetail = _areaDetail,
-                AreaGroupText = ResolveRegionComboText(_areaGroup),
-                AreaDetailText = ResolveRegionComboText(_areaDetail),
+                AreaGroupText = ResolveAreaGroupComboText(_areaGroup),
+                AreaDetailText = ResolveAreaDetailComboText(_areaGroup, _areaDetail),
                 BirthYear = _birthYear,
                 BirthMonth = _birthMonth,
                 BirthDay = _birthDay,
@@ -315,16 +323,69 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        internal static string ResolveAreaGroupComboText(int areaCode)
+        {
+            EnsureCountryNameCatalogLoaded();
+            if (_areaGroupDisplayNames.TryGetValue(areaCode, out string displayName)
+                && !string.IsNullOrWhiteSpace(displayName))
+            {
+                return displayName;
+            }
+
+            return ResolveRegionComboText(areaCode);
+        }
+
+        internal static string ResolveAreaDetailComboText(int areaGroup, int areaCode)
+        {
+            EnsureCountryNameCatalogLoaded();
+            if (_areaDetailDisplayNames.TryGetValue(areaGroup, out IReadOnlyDictionary<int, string> detailDisplayNames)
+                && detailDisplayNames != null
+                && detailDisplayNames.TryGetValue(areaCode, out string displayName)
+                && !string.IsNullOrWhiteSpace(displayName))
+            {
+                return displayName;
+            }
+
+            return ResolveRegionComboText(areaCode);
+        }
+
         internal static string ResolveRegionComboText(int areaCode)
         {
             return areaCode == 0
                 ? AccountMoreInfoOwnerStringPoolText.ResolveDefaultRegionItem()
-                : areaCode.ToString("D3");
+                : FormatComboNumericValue(areaCode);
         }
 
         internal static string ResolveAreaDetailCountryNamePath(int areaGroup)
         {
             return $"{CountryNameRootPath}/{Math.Clamp(areaGroup, 0, 255)}";
+        }
+
+        internal static string FormatComboNumericValue(int value)
+        {
+            return value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        internal static IReadOnlyDictionary<int, string> BuildCountryNameLookup(IPropertyContainer propertyContainer)
+        {
+            Dictionary<int, string> lookup = new();
+            if (propertyContainer?.WzProperties == null)
+            {
+                return lookup;
+            }
+
+            lookup[0] = AccountMoreInfoOwnerStringPoolText.ResolveDefaultRegionItem();
+            foreach (WzImageProperty child in propertyContainer.WzProperties)
+            {
+                if (!TryGetCountryNameEntry(child, out int id, out string name))
+                {
+                    continue;
+                }
+
+                lookup[id] = name;
+            }
+
+            return lookup;
         }
 
         private static int Wrap(int value, int minInclusive, int maxInclusive)
@@ -358,6 +419,75 @@ namespace HaCreator.MapSimulator.Managers
         private static int ClampBirthYear(int year)
         {
             return Math.Clamp(year, GetMinimumBirthYear(), DateTime.Now.Year);
+        }
+
+        private static void EnsureCountryNameCatalogLoaded()
+        {
+            if (_countryNameCatalogLoaded)
+            {
+                return;
+            }
+
+            lock (CountryNameCatalogSync)
+            {
+                if (_countryNameCatalogLoaded)
+                {
+                    return;
+                }
+
+                Dictionary<int, string> areaGroups = new();
+                Dictionary<int, IReadOnlyDictionary<int, string>> areaDetails = new();
+                WzImage countryNameImage = HaCreator.Program.FindImage("Etc", "CountryName.img");
+                if (countryNameImage != null)
+                {
+                    countryNameImage.ParseImage();
+                    IReadOnlyDictionary<int, string> groupLookup = BuildCountryNameLookup(countryNameImage);
+                    foreach (KeyValuePair<int, string> entry in groupLookup)
+                    {
+                        areaGroups[entry.Key] = entry.Value;
+                    }
+
+                    foreach (WzImageProperty child in countryNameImage.WzProperties)
+                    {
+                        if (child is not IPropertyContainer container
+                            || !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int areaGroup))
+                        {
+                            continue;
+                        }
+
+                        areaDetails[areaGroup] = BuildCountryNameLookup(container);
+                    }
+                }
+
+                if (!areaGroups.ContainsKey(0))
+                {
+                    areaGroups[0] = AccountMoreInfoOwnerStringPoolText.ResolveDefaultRegionItem();
+                }
+
+                _areaGroupDisplayNames = areaGroups;
+                _areaDetailDisplayNames = areaDetails;
+                _countryNameCatalogLoaded = true;
+            }
+        }
+
+        private static bool TryGetCountryNameEntry(WzImageProperty child, out int id, out string name)
+        {
+            id = 0;
+            name = null;
+            if (child is not IPropertyContainer container
+                || !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out id))
+            {
+                return false;
+            }
+
+            if (container["name"] is not WzStringProperty nameProperty
+                || string.IsNullOrWhiteSpace(nameProperty.Value))
+            {
+                return false;
+            }
+
+            name = nameProperty.Value;
+            return true;
         }
 
         private string BuildGenderStatusText()

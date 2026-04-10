@@ -72,7 +72,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             List<IDXObject> LoadExactReactorFrames(WzImageProperty property)
             {
-                return LoadReactorFramesForProperty(
+                return LoadReactorFramesForExactSourceProperty(
                     texturePool,
                     property,
                     reactorInstance.X,
@@ -114,6 +114,14 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return null;
+        }
+
+        internal static WzImageProperty ResolveExactReactorSourceProperty(WzImageProperty property)
+        {
+            WzImageProperty resolvedProperty = WzInfoTools.GetRealProperty(property);
+            return resolvedProperty is WzSubProperty or WzCanvasProperty
+                ? resolvedProperty
+                : null;
         }
 
         private static Dictionary<int, List<IDXObject>> LoadReactorStateFrames(
@@ -241,7 +249,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             foreach (int state in stateIds)
             {
-                WzImageProperty stateProperty = ResolveReactorFrameSourceProperty(linkedReactorImage[state.ToString()]);
+                WzImageProperty stateProperty = ResolveExactReactorSourceProperty(linkedReactorImage[state.ToString()]);
                 if (stateProperty != null)
                 {
                     stateProperties[state] = stateProperty;
@@ -363,16 +371,13 @@ namespace HaCreator.MapSimulator.Loaders
                         continue;
                     }
 
-                    if (!IsReactorIndexedHitPropertyCandidate(child))
+                    WzImageProperty hitProperty = ResolveExactReactorSourceProperty(child);
+                    if (hitProperty == null)
                     {
                         continue;
                     }
 
-                    WzImageProperty hitProperty = ResolveReactorFrameSourceProperty(child);
-                    if (hitProperty != null)
-                    {
-                        indexedHitProperties[(state, properEventIndex)] = hitProperty;
-                    }
+                    indexedHitProperties[(state, properEventIndex)] = hitProperty;
                 }
             }
 
@@ -416,6 +421,42 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return new List<IDXObject>();
+        }
+
+        private static List<IDXObject> LoadReactorFramesForExactSourceProperty(
+            TexturePool texturePool,
+            WzImageProperty property,
+            int x,
+            int y,
+            GraphicsDevice device,
+            ConcurrentBag<WzObject> usedProps)
+        {
+            List<IDXObject> frames = LoadReactorFramesForProperty(
+                texturePool,
+                property,
+                x,
+                y,
+                device,
+                usedProps);
+            if (frames.Count > 0)
+            {
+                return frames;
+            }
+
+            WzImageProperty resolvedProperty = WzInfoTools.GetRealProperty(property);
+            WzImageProperty nestedHitProperty = WzInfoTools.GetRealProperty(resolvedProperty?["hit"]);
+            if (nestedHitProperty == null)
+            {
+                return new List<IDXObject>();
+            }
+
+            return LoadReactorFramesForProperty(
+                texturePool,
+                nestedHitProperty,
+                x,
+                y,
+                device,
+                usedProps);
         }
 
         private static bool HasDirectNumericFrames(WzImageProperty stateProperty)

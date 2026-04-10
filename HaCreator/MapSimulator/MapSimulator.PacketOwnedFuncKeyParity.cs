@@ -126,13 +126,11 @@ namespace HaCreator.MapSimulator
             Messenger = 3,
             SocialListGuild = 4,
             SocialListParty = 5,
-            SocialListAlliance = 6,
-            ShortcutMenu = 7,
-            QuestAlarm = 8,
-            CashShop = 9,
-            Ranking = 10,
-            FamilyChart = 11,
-            FamilyTree = 12,
+            ShortcutMenu = 6,
+            PartySearch = 7,
+            FamilyChart = 8,
+            Profession = 9,
+            Event = 10,
         }
 
         internal enum PacketOwnedRawChatOwner
@@ -144,6 +142,7 @@ namespace HaCreator.MapSimulator
             Friend = 4,
             Guild = 5,
             Alliance = 6,
+            Expedition = 7,
         }
 
         [DllImport("user32.dll", EntryPoint = "MapVirtualKeyW", ExactSpelling = true)]
@@ -1284,30 +1283,21 @@ namespace HaCreator.MapSimulator
                     _socialListRuntime.SelectTab(SocialListTab.Party);
                     ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialList);
                     return true;
-                case PacketOwnedRawFunctionOwner.SocialListAlliance:
-                    _socialListRuntime.SelectTab(SocialListTab.Alliance);
-                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialList);
-                    return true;
                 case PacketOwnedRawFunctionOwner.ShortcutMenu:
                     ToggleStatusBarPopupWindow(MapSimulatorWindowNames.Menu, MapSimulatorWindowNames.System);
                     return true;
-                case PacketOwnedRawFunctionOwner.QuestAlarm:
-                    TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.QuestAlarm, () =>
-                        ShowUtilityWindow(MapSimulatorWindowNames.QuestAlarm, "packet-owned-funckey:20"));
-                    return true;
-                case PacketOwnedRawFunctionOwner.CashShop:
-                    ShowCashShopWindow();
-                    return true;
-                case PacketOwnedRawFunctionOwner.Ranking:
-                    TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.Ranking, () =>
-                        ShowUtilityWindow(MapSimulatorWindowNames.Ranking, "packet-owned-funckey:25"));
+                case PacketOwnedRawFunctionOwner.PartySearch:
+                    ApplyPacketOwnedPartySearchLaunch(option: -1);
                     return true;
                 case PacketOwnedRawFunctionOwner.FamilyChart:
-                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyChart);
+                    ShowPacketOwnedFamilyChartWindow();
                     return true;
-                case PacketOwnedRawFunctionOwner.FamilyTree:
-                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyChart);
-                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyTree);
+                case PacketOwnedRawFunctionOwner.Profession:
+                    ShowPacketOwnedProfessionWindow();
+                    return true;
+                case PacketOwnedRawFunctionOwner.Event:
+                    TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.Event, () =>
+                        ShowUtilityWindow(MapSimulatorWindowNames.Event, "packet-owned-funckey:31"));
                     return true;
                 default:
                     break;
@@ -1334,6 +1324,9 @@ namespace HaCreator.MapSimulator
                     return true;
                 case PacketOwnedRawChatOwner.Alliance:
                     _chat.ActivateTarget(MapSimulatorChatTargetType.Association, currentTime);
+                    return true;
+                case PacketOwnedRawChatOwner.Expedition:
+                    _chat.ActivateTarget(MapSimulatorChatTargetType.Expedition, currentTime);
                     return true;
                 default:
                     return false;
@@ -1464,15 +1457,13 @@ namespace HaCreator.MapSimulator
                 4 => PacketOwnedRawFunctionOwner.SocialListFriend,
                 5 => PacketOwnedRawFunctionOwner.WorldMap,
                 6 => PacketOwnedRawFunctionOwner.Messenger,
-                14 => PacketOwnedRawFunctionOwner.ShortcutMenu,
                 17 => PacketOwnedRawFunctionOwner.SocialListGuild,
                 19 => PacketOwnedRawFunctionOwner.SocialListParty,
-                20 => PacketOwnedRawFunctionOwner.QuestAlarm,
-                23 => PacketOwnedRawFunctionOwner.CashShop,
-                25 => PacketOwnedRawFunctionOwner.Ranking,
-                26 => PacketOwnedRawFunctionOwner.FamilyChart,
-                27 => PacketOwnedRawFunctionOwner.FamilyTree,
-                28 => PacketOwnedRawFunctionOwner.SocialListAlliance,
+                14 => PacketOwnedRawFunctionOwner.ShortcutMenu,
+                24 => PacketOwnedRawFunctionOwner.PartySearch,
+                25 => PacketOwnedRawFunctionOwner.FamilyChart,
+                29 => PacketOwnedRawFunctionOwner.Profession,
+                31 => PacketOwnedRawFunctionOwner.Event,
                 _ => PacketOwnedRawFunctionOwner.None,
             };
         }
@@ -1484,9 +1475,10 @@ namespace HaCreator.MapSimulator
                 10 => PacketOwnedRawChatOwner.All,
                 11 => PacketOwnedRawChatOwner.WhisperTargetPicker,
                 12 => PacketOwnedRawChatOwner.Party,
-                13 => PacketOwnedRawChatOwner.Guild,
-                18 => PacketOwnedRawChatOwner.Alliance,
-                29 => PacketOwnedRawChatOwner.Friend,
+                13 => PacketOwnedRawChatOwner.Friend,
+                18 => PacketOwnedRawChatOwner.Guild,
+                23 => PacketOwnedRawChatOwner.Alliance,
+                28 => PacketOwnedRawChatOwner.Expedition,
                 _ => PacketOwnedRawChatOwner.None,
             };
         }

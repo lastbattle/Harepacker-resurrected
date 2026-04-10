@@ -178,11 +178,13 @@ namespace HaCreator.MapSimulator.UI
         private ButtonState _previousLeftButtonState = ButtonState.Released;
         private string _pressedWhisperTarget;
         private WhisperPickerButtonAction? _pressedWhisperPickerButtonAction;
+        private bool _pressedWhisperPickerComboToggle;
         private readonly List<WhisperTargetHitRegion> _whisperTargetHitRegions = new List<WhisperTargetHitRegion>();
         private readonly List<WhisperPickerHitRegion> _whisperPickerHitRegions = new List<WhisperPickerHitRegion>();
         private Rectangle? _whisperPromptBounds;
         private Rectangle? _whisperPickerBounds;
         private Rectangle? _whisperPickerComboBounds;
+        private Rectangle? _whisperPickerComboToggleBounds;
         private Rectangle? _whisperPickerDropdownBounds;
         private Texture2D _whisperPickerSelectedTexture;
         private Texture2D _whisperPickerRowTexture;
@@ -193,6 +195,8 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _whisperPickerDialogBottomTexture;
         private Texture2D _whisperPickerDialogBarTexture;
         private Texture2D _whisperPickerDialogLineTexture;
+        private WhisperPickerButtonVisuals _whisperPickerComboVisuals = new WhisperPickerButtonVisuals();
+        private WhisperPickerButtonVisuals _whisperPickerComboToggleVisuals = new WhisperPickerButtonVisuals();
         private WhisperPickerButtonVisuals _whisperPickerPrevButtonVisuals = new WhisperPickerButtonVisuals();
         private WhisperPickerButtonVisuals _whisperPickerNextButtonVisuals = new WhisperPickerButtonVisuals();
         private WhisperPickerButtonVisuals _whisperPickerOkButtonVisuals = new WhisperPickerButtonVisuals();
@@ -369,6 +373,32 @@ namespace HaCreator.MapSimulator.UI
                 Hover = closeButtonHoverTexture,
                 Pressed = closeButtonPressedTexture,
                 KeyFocused = closeButtonKeyFocusedTexture
+            };
+        }
+
+        public void SetWhisperPickerComboTextures(
+            Texture2D comboNormalTexture,
+            Texture2D comboHoverTexture,
+            Texture2D comboPressedTexture,
+            Texture2D comboDisabledTexture,
+            Texture2D comboToggleNormalTexture,
+            Texture2D comboToggleHoverTexture,
+            Texture2D comboTogglePressedTexture,
+            Texture2D comboToggleDisabledTexture)
+        {
+            _whisperPickerComboVisuals = new WhisperPickerButtonVisuals
+            {
+                Normal = comboNormalTexture,
+                Hover = comboHoverTexture,
+                Pressed = comboPressedTexture,
+                Disabled = comboDisabledTexture
+            };
+            _whisperPickerComboToggleVisuals = new WhisperPickerButtonVisuals
+            {
+                Normal = comboToggleNormalTexture,
+                Hover = comboToggleHoverTexture,
+                Pressed = comboTogglePressedTexture,
+                Disabled = comboToggleDisabledTexture
             };
         }
 
@@ -1024,6 +1054,7 @@ namespace HaCreator.MapSimulator.UI
                 StatusBarChatLayoutRules.ClientWhisperPickerModalComboHeight,
                 ResolveWhisperPickerModalDividerWidth(modalWidth));
             _whisperPickerComboBounds = comboBounds;
+            _whisperPickerComboToggleBounds = null;
             Vector2 titlePos = new Vector2(comboBounds.X, modalY + 8f);
             DrawTextWithShadow(
                 sprite,
@@ -1041,15 +1072,7 @@ namespace HaCreator.MapSimulator.UI
                     new Rectangle(dividerX, contentY - 4, dividerWidth, _whisperPickerDialogLineTexture.Height));
             }
 
-            DrawWhisperPickerRow(
-                sprite,
-                comboBounds.X,
-                comboBounds.Y,
-                comboBounds.Width,
-                comboBounds.Height,
-                chatState.InputText ?? string.Empty,
-                isSelected: chatState.WhisperTargetPickerSelectionIndex < 0,
-                registerHitRegion: false);
+            DrawWhisperPickerComboBox(sprite, comboBounds, chatState);
 
             if (chatState.IsWhisperTargetPickerComboDropdownOpen && visibleCount > 0)
             {
@@ -1094,6 +1117,67 @@ namespace HaCreator.MapSimulator.UI
                 buttonRowHeight,
                 chatState.WhisperTargetPickerModalButtonFocus,
                 chatState.WhisperTargetPickerModalFocusTarget);
+        }
+
+        private void DrawWhisperPickerComboBox(
+            SpriteBatch sprite,
+            Rectangle comboBounds,
+            MapSimulatorChatRenderState chatState)
+        {
+            MouseState mouseState = Mouse.GetState();
+            bool comboHovered = comboBounds.Contains(mouseState.X, mouseState.Y);
+            Rectangle comboChromeBounds = StatusBarChatLayoutRules.ResolveWhisperPickerModalComboChromeBounds(
+                comboBounds,
+                Math.Max(
+                    StatusBarChatLayoutRules.ClientWhisperPickerModalComboChromeHeight,
+                    _whisperPickerComboVisuals.Normal?.Height ?? 0));
+            Rectangle comboToggleBounds = StatusBarChatLayoutRules.ResolveWhisperPickerModalComboToggleBounds(
+                comboBounds,
+                _whisperPickerComboToggleVisuals.Normal?.Width ?? StatusBarChatLayoutRules.ClientWhisperPickerModalComboButtonWidth,
+                _whisperPickerComboToggleVisuals.Normal?.Height ?? comboBounds.Height);
+            _whisperPickerComboToggleBounds = comboToggleBounds;
+            bool toggleHovered = comboToggleBounds.Contains(mouseState.X, mouseState.Y);
+            bool comboPressed = comboHovered && mouseState.LeftButton == ButtonState.Pressed && !_pressedWhisperPickerComboToggle;
+            bool togglePressed = (_pressedWhisperPickerComboToggle && mouseState.LeftButton == ButtonState.Pressed)
+                || (chatState.IsWhisperTargetPickerComboDropdownOpen && !toggleHovered);
+            Texture2D comboTexture = _whisperPickerComboVisuals.ResolveTexture(
+                PacketScriptOwnerVisualStateResolver.ResolveButtonState(
+                    true,
+                    comboHovered,
+                    comboPressed),
+                keyFocused: false);
+            if (comboTexture != null)
+            {
+                sprite.Draw(comboTexture, comboChromeBounds, Color.White);
+            }
+            else if (_pixelTexture != null)
+            {
+                sprite.Draw(_pixelTexture, comboChromeBounds, new Color(245, 245, 245, 240));
+            }
+
+            Texture2D comboToggleTexture = _whisperPickerComboToggleVisuals.ResolveTexture(
+                PacketScriptOwnerVisualStateResolver.ResolveButtonState(
+                    true,
+                    toggleHovered,
+                    togglePressed),
+                keyFocused: false);
+            if (comboToggleTexture != null)
+            {
+                sprite.Draw(comboToggleTexture, comboToggleBounds, Color.White);
+            }
+            else if (_pixelTexture != null)
+            {
+                sprite.Draw(_pixelTexture, comboToggleBounds, new Color(186, 186, 186, 240));
+            }
+
+            DrawTextWithShadow(
+                sprite,
+                chatState.InputText ?? string.Empty,
+                new Vector2(
+                    comboBounds.X + WhisperPickerFramePadding + 1,
+                    comboBounds.Y + Math.Max(0f, (comboBounds.Height - MeasureChatText("Ag").Y) * 0.5f)),
+                new Color(24, 24, 24),
+                new Color(255, 255, 255, 160));
         }
 
         private void DrawWhisperPickerRow(
@@ -1727,6 +1811,7 @@ namespace HaCreator.MapSimulator.UI
             WhisperPickerButtonHitRegion hoveredButtonRegion = FindWhisperPickerButtonHitRegion(mouseState.X, mouseState.Y);
             bool promptHovered = _whisperPromptBounds?.Contains(mouseState.X, mouseState.Y) == true;
             bool comboHovered = _whisperPickerComboBounds?.Contains(mouseState.X, mouseState.Y) == true;
+            bool comboToggleHovered = _whisperPickerComboToggleBounds?.Contains(mouseState.X, mouseState.Y) == true;
             bool isPressStarted = mouseState.LeftButton == ButtonState.Pressed
                 && _previousLeftButtonState == ButtonState.Released;
             bool isRelease = mouseState.LeftButton == ButtonState.Released
@@ -1736,6 +1821,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 _pressedWhisperTarget = hoveredRegion?.WhisperTarget ?? hoveredPickerRegion?.WhisperTarget;
                 _pressedWhisperPickerButtonAction = hoveredButtonRegion?.Action;
+                _pressedWhisperPickerComboToggle = comboToggleHovered;
                 if (hoveredButtonRegion != null)
                 {
                     WhisperTargetPickerModalButtonFocusRequested?.Invoke();
@@ -1745,7 +1831,11 @@ namespace HaCreator.MapSimulator.UI
                     WhisperTargetPickerModalComboFocusRequested?.Invoke();
                 }
 
-                return hoveredRegion != null || hoveredPickerRegion != null || hoveredButtonRegion != null || promptHovered || comboHovered;
+                return hoveredRegion != null
+                    || hoveredPickerRegion != null
+                    || hoveredButtonRegion != null
+                    || promptHovered
+                    || comboHovered;
             }
 
             if (!isRelease)
@@ -1757,15 +1847,27 @@ namespace HaCreator.MapSimulator.UI
             if (promptHovered && string.IsNullOrWhiteSpace(_pressedWhisperTarget))
             {
                 _pressedWhisperPickerButtonAction = null;
+                _pressedWhisperPickerComboToggle = false;
                 WhisperTargetPickerModalComboFocusRequested?.Invoke();
                 WhisperTargetPickerRequested?.Invoke();
+                return true;
+            }
+
+            if (comboToggleHovered
+                && _pressedWhisperPickerComboToggle
+                && string.IsNullOrWhiteSpace(_pressedWhisperTarget))
+            {
+                _pressedWhisperPickerButtonAction = null;
+                _pressedWhisperPickerComboToggle = false;
+                WhisperTargetPickerModalComboDropdownToggleRequested?.Invoke();
                 return true;
             }
 
             if (comboHovered && string.IsNullOrWhiteSpace(_pressedWhisperTarget))
             {
                 _pressedWhisperPickerButtonAction = null;
-                WhisperTargetPickerModalComboDropdownToggleRequested?.Invoke();
+                _pressedWhisperPickerComboToggle = false;
+                WhisperTargetPickerModalComboFocusRequested?.Invoke();
                 return true;
             }
 
@@ -1775,6 +1877,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 _pressedWhisperTarget = null;
                 _pressedWhisperPickerButtonAction = null;
+                _pressedWhisperPickerComboToggle = false;
                 WhisperTargetPickerModalButtonFocusRequested?.Invoke();
                 InvokeWhisperPickerButtonAction(hoveredButtonRegion.Action);
                 return true;
@@ -1785,6 +1888,7 @@ namespace HaCreator.MapSimulator.UI
                 && string.Equals(_pressedWhisperTarget, hoveredPickerRegion.WhisperTarget, StringComparison.OrdinalIgnoreCase))
             {
                 _pressedWhisperTarget = null;
+                _pressedWhisperPickerComboToggle = false;
                 WhisperTargetPickerModalComboFocusRequested?.Invoke();
                 WhisperTargetPickerCandidateRequested?.Invoke(hoveredPickerRegion.WhisperTarget);
                 return true;
@@ -1793,6 +1897,7 @@ namespace HaCreator.MapSimulator.UI
             string pressedWhisperTarget = _pressedWhisperTarget;
             _pressedWhisperTarget = null;
             _pressedWhisperPickerButtonAction = null;
+            _pressedWhisperPickerComboToggle = false;
             if (string.IsNullOrWhiteSpace(pressedWhisperTarget)
                 || hoveredRegion == null
                 || !string.Equals(pressedWhisperTarget, hoveredRegion.WhisperTarget, StringComparison.OrdinalIgnoreCase))

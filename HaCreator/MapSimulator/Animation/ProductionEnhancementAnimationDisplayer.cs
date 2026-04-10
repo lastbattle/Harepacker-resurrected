@@ -11,6 +11,10 @@ namespace HaCreator.MapSimulator.Animation
         private const int ItemUpgradeEnchantSkillDelayMs = 3120;
         private const int ViciousHammerRepeatDurationMs = 2700;
         private const int VegaRepeatDurationMs = 2500;
+        private const string CashGachaponNormalTag = "cashgachapon:normal";
+        private const string CashGachaponJackpotTag = "cashgachapon:jackpot";
+        private const string CashGachaponCopyNormalTag = "cashgachaponcopy:normal";
+        private const string CashGachaponCopyJackpotTag = "cashgachaponcopy:jackpot";
         private static readonly Point ViciousHammerRepeatOffset = new(91, 81);
         private static readonly Point ViciousHammerFinishedOffset = new(89, 105);
         private static readonly Point VegaCastingOffset = new(91, 41);
@@ -36,6 +40,10 @@ namespace HaCreator.MapSimulator.Animation
         private List<IDXObject> _vegaArrowFrames;
         private List<IDXObject> _vegaSuccessFrames;
         private List<IDXObject> _vegaFailureFrames;
+        private List<IDXObject> _cashGachaponNormalFrames;
+        private List<IDXObject> _cashGachaponJackpotFrames;
+        private List<IDXObject> _cashGachaponCopyNormalFrames;
+        private List<IDXObject> _cashGachaponCopyJackpotFrames;
         private readonly Dictionary<ItemUpgradeUI.VisualThemeKind, CubeAnimationTheme> _cubeThemes = new();
 
         public AnimationDisplayerWindowOverlayOwner Owner => _owner;
@@ -82,6 +90,18 @@ namespace HaCreator.MapSimulator.Animation
             _vegaArrowFrames = arrowFrames;
             _vegaSuccessFrames = successFrames;
             _vegaFailureFrames = failureFrames;
+        }
+
+        public void ConfigureCashGachapon(
+            List<IDXObject> normalFrames,
+            List<IDXObject> jackpotFrames,
+            List<IDXObject> copyNormalFrames,
+            List<IDXObject> copyJackpotFrames)
+        {
+            _cashGachaponNormalFrames = normalFrames;
+            _cashGachaponJackpotFrames = jackpotFrames;
+            _cashGachaponCopyNormalFrames = copyNormalFrames;
+            _cashGachaponCopyJackpotFrames = copyJackpotFrames;
         }
 
         public void ConfigureCube(ItemUpgradeUI.VisualThemeKind themeKind, List<IDXObject> effectFrames, Point offset)
@@ -238,6 +258,24 @@ namespace HaCreator.MapSimulator.Animation
                 currentTimeMs);
         }
 
+        public bool PlayCashGachaponResult(bool isCopyResult, bool isJackpot, int currentTimeMs)
+        {
+            List<IDXObject> frames = ResolveCashGachaponFrames(isCopyResult, isJackpot);
+            if (frames == null || frames.Count == 0)
+            {
+                return false;
+            }
+
+            _owner.RegisterOneTime(
+                MapSimulatorWindowNames.CashShopStage,
+                ResolveCashGachaponTag(isCopyResult, isJackpot),
+                frames,
+                Point.Zero,
+                AnimationDisplayerWindowOverlayPass.Overlay,
+                currentTimeMs);
+            return true;
+        }
+
         public void ClearWindow(string windowName)
         {
             if (string.IsNullOrWhiteSpace(windowName))
@@ -259,6 +297,26 @@ namespace HaCreator.MapSimulator.Animation
             public List<IDXObject> Frames { get; }
 
             public Point Offset { get; }
+        }
+
+        private List<IDXObject> ResolveCashGachaponFrames(bool isCopyResult, bool isJackpot)
+        {
+            if (isCopyResult)
+            {
+                return isJackpot ? _cashGachaponCopyJackpotFrames : _cashGachaponCopyNormalFrames;
+            }
+
+            return isJackpot ? _cashGachaponJackpotFrames : _cashGachaponNormalFrames;
+        }
+
+        internal static string ResolveCashGachaponTag(bool isCopyResult, bool isJackpot)
+        {
+            if (isCopyResult)
+            {
+                return isJackpot ? CashGachaponCopyJackpotTag : CashGachaponCopyNormalTag;
+            }
+
+            return isJackpot ? CashGachaponJackpotTag : CashGachaponNormalTag;
         }
     }
 }

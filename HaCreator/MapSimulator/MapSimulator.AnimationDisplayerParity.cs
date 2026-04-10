@@ -96,6 +96,7 @@ namespace HaCreator.MapSimulator
             public Point SpawnOffsetMin { get; init; }
             public Point SpawnOffsetMax { get; init; }
             public bool UsesRelativeEmission { get; init; }
+            public bool SpawnOnlyOnOwnerMove { get; init; }
             public int ThetaDegrees { get; init; }
             public float Radius { get; init; }
         }
@@ -562,6 +563,7 @@ namespace HaCreator.MapSimulator
                 : AnimationDisplayerFollowRadius;
             Point spawnOffsetMin = BuildAnimationDisplayerFollowSpawnOffsetMin(relativeEmission, followDefinition);
             Point spawnOffsetMax = BuildAnimationDisplayerFollowSpawnOffsetMax(relativeEmission, followDefinition);
+            Func<bool> getOwnerFlip = ResolveAnimationDisplayerFollowOwnerFlip(ownerCharacterId);
 
             ClearAnimationDisplayerFollowRegistration(registrationKey);
             int followId = _animationEffects.AddFollow(
@@ -579,11 +581,13 @@ namespace HaCreator.MapSimulator
                     ThetaDegrees = followDefinition?.ThetaDegrees ?? AnimationDisplayerFollowThetaDegrees,
                     Radius = resolvedRadius,
                     RandomizeStartupAngle = true,
+                    GetTargetFlip = getOwnerFlip,
                     UpdateIntervalMs = followDefinition?.UpdateIntervalMs > 0
                         ? followDefinition.UpdateIntervalMs
                         : AnimationDisplayerFollowUpdateIntervalMs,
                     SpawnFrameVariants = followFrameVariants,
                     SpawnRelativeToTarget = relativeEmission,
+                    SpawnOnlyOnTargetMove = followDefinition?.SpawnOnlyOnOwnerMove ?? false,
                     SpawnArea = followDefinition?.EmissionArea ?? BuildAnimationDisplayerFollowEmissionArea(),
                     SpawnUsesEmissionBox = !relativeEmission,
                     SpawnAppliesEmissionBias = relativeEmission && (followDefinition?.UsesRelativeEmission ?? true),
@@ -807,6 +811,60 @@ namespace HaCreator.MapSimulator
             });
         }
 
+        private void SyncAnimationDisplayerRemoteQuestDeliveryOwner(int characterId)
+        {
+            if (characterId <= 0)
+            {
+                return;
+            }
+
+            if (_remoteUserPool?.TryGetActor(characterId, out RemoteUserActor actor) != true
+                || actor == null
+                || !actor.IsVisibleInWorld
+                || actor.PacketOwnedQuestDeliveryEffectItemId is not > 0)
+            {
+                ClearAnimationDisplayerRemoteQuestDeliveryOwner(characterId);
+                return;
+            }
+
+            TryRegisterAnimationDisplayerQuestDeliveryUserState(
+                characterId,
+                actor.PacketOwnedQuestDeliveryEffectItemId.Value,
+                () =>
+                {
+                    if (_remoteUserPool?.TryGetActor(characterId, out RemoteUserActor liveActor) == true && liveActor != null)
+                    {
+                        return liveActor.Position;
+                    }
+
+                    return actor.Position;
+                },
+                out _);
+        }
+
+        private void ClearAnimationDisplayerRemoteQuestDeliveryOwner(int characterId)
+        {
+            if (characterId <= 0)
+            {
+                return;
+            }
+
+            _animationEffects.RemoveUserStateByRegistrationKey(
+                BuildAnimationDisplayerQuestDeliveryRegistrationKey(characterId),
+                currTickCount);
+        }
+
+        private void ClearAnimationDisplayerRemotePresentationOwners(int characterId)
+        {
+            if (characterId <= 0)
+            {
+                return;
+            }
+
+            _animationEffects.RemoveUserState(characterId, currTickCount);
+            ClearAnimationDisplayerRemoteQuestDeliveryOwner(characterId);
+        }
+
         private bool TryGetAnimationDisplayerFrames(string cacheKey, string effectUol, out List<IDXObject> frames)
         {
             if (_animationDisplayerEffectCache.TryGetValue(cacheKey, out frames) && Animation.AnimationEffects.HasFrames(frames))
@@ -1006,7 +1064,10 @@ namespace HaCreator.MapSimulator
                 FacingRight = facingRight,
                 EffectAnimation = effectAnimation,
                 SecondaryEffectAnimation = secondaryEffectAnimation,
-                RequestedBranchNames = requestedBranchNames,
+                RequestedBranchNames = ResolveAnimationDisplayerRequestedBranchNames(
+                    requestedBranchNames,
+                    effectAnimation,
+                    secondaryEffectAnimation),
                 FollowOwnerPosition = followOwnerPosition,
                 FollowOwnerFacing = followOwnerFacing
             };
@@ -1788,6 +1849,43 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private static IReadOnlyList<string> ResolveAnimationDisplayerRequestedBranchNames(
+            IReadOnlyList<string> requestedBranchNames,
+            SkillAnimation effectAnimation,
+            SkillAnimation secondaryEffectAnimation)
+        {
+            if (requestedBranchNames != null && requestedBranchNames.Count > 0)
+            {
+                return requestedBranchNames;
+            }
+
+            List<string> resolvedBranchNames = null;
+            TryAddAnimationDisplayerRequestedBranchName(effectAnimation?.Name, ref resolvedBranchNames);
+            TryAddAnimationDisplayerRequestedBranchName(secondaryEffectAnimation?.Name, ref resolvedBranchNames);
+            return resolvedBranchNames;
+        }
+
+        private static void TryAddAnimationDisplayerRequestedBranchName(
+            string branchName,
+            ref List<string> requestedBranchNames)
+        {
+            if (string.IsNullOrWhiteSpace(branchName))
+            {
+                return;
+            }
+
+            requestedBranchNames ??= new List<string>();
+            for (int i = 0; i < requestedBranchNames.Count; i++)
+            {
+                if (string.Equals(requestedBranchNames[i], branchName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+            }
+
+            requestedBranchNames.Add(branchName);
+        }
+
         private static bool IsAnimationDisplayerSkillUseBranchName(string branchName)
         {
             if (string.IsNullOrWhiteSpace(branchName) || !branchName.StartsWith("effect", StringComparison.OrdinalIgnoreCase))
@@ -2146,7 +2244,7 @@ namespace HaCreator.MapSimulator
         private AnimationDisplayerFollowEquipmentDefinition LoadAnimationDisplayerFollowEquipmentDefinition(int itemId)
         {
             WzSubProperty effectProperty = ResolveAnimationDisplayerFollowEquipmentProperty(itemId);
-            if (effectProperty == null || effectProperty["follow"]?.GetInt() != 1)
+            if (effectProperty == null || GetAnimationDisplayerNumericValue(effectProperty, "follow") != 1)
             {
                 return null;
             }
@@ -2177,9 +2275,12 @@ namespace HaCreator.MapSimulator
                 SpawnDurationMs = spawnDurationMs,
                 SpawnOffsetMin = spawnOffsetMin,
                 SpawnOffsetMax = spawnOffsetMax,
-                UsesRelativeEmission = effectProperty["emission"]?.GetInt() != 0,
-                ThetaDegrees = effectProperty["nTheta"]?.GetInt()
-                    ?? effectProperty["theta"]?.GetInt()
+                UsesRelativeEmission = GetAnimationDisplayerNumericValue(effectProperty, "emission") != 0,
+                SpawnOnlyOnOwnerMove = GetAnimationDisplayerNumericValue(effectProperty, "genOnMove")
+                    == 1
+                    || GetAnimationDisplayerNumericValue(effectProperty, "bGenOnMove") == 1,
+                ThetaDegrees = GetAnimationDisplayerNumericValue(effectProperty, "nTheta")
+                    ?? GetAnimationDisplayerNumericValue(effectProperty, "theta")
                     ?? AnimationDisplayerFollowThetaDegrees,
                 Radius = radius
             };
@@ -2217,8 +2318,7 @@ namespace HaCreator.MapSimulator
             return category switch
             {
                 100 => "Cap",
-                101 or 102 => "Accessory",
-                103 => "Earrings",
+                101 or 102 or 103 => "Accessory",
                 104 => "Coat",
                 105 => "Longcoat",
                 106 => "Pants",
@@ -2259,12 +2359,41 @@ namespace HaCreator.MapSimulator
             return effectPath;
         }
 
+        internal static int? GetAnimationDisplayerNumericValue(WzImageProperty parentProperty, string propertyName)
+        {
+            if (parentProperty == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            return GetAnimationDisplayerNumericValue(parentProperty[propertyName]);
+        }
+
+        internal static int? GetAnimationDisplayerNumericValue(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return null;
+            }
+
+            int? directValue = property.GetInt();
+            if (directValue.HasValue)
+            {
+                return directValue.Value;
+            }
+
+            string stringValue = property.GetString();
+            return int.TryParse(stringValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedValue)
+                ? parsedValue
+                : null;
+        }
+
         private static Rectangle BuildAnimationDisplayerFollowEquipmentEmissionArea(WzImageProperty effectProperty)
         {
-            int left = effectProperty?["left"]?.GetInt() ?? 0;
-            int top = effectProperty?["top"]?.GetInt() ?? 0;
-            int right = effectProperty?["right"]?.GetInt() ?? AnimationDisplayerFollowEmissionBoxSize;
-            int bottom = effectProperty?["bottom"]?.GetInt() ?? AnimationDisplayerFollowEmissionBoxSize;
+            int left = GetAnimationDisplayerNumericValue(effectProperty, "left") ?? 0;
+            int top = GetAnimationDisplayerNumericValue(effectProperty, "top") ?? 0;
+            int right = GetAnimationDisplayerNumericValue(effectProperty, "right") ?? AnimationDisplayerFollowEmissionBoxSize;
+            int bottom = GetAnimationDisplayerNumericValue(effectProperty, "bottom") ?? AnimationDisplayerFollowEmissionBoxSize;
             int width = Math.Max(1, right - left);
             int height = Math.Max(1, bottom - top);
             return new Rectangle(left, top, width, height);
@@ -2295,25 +2424,25 @@ namespace HaCreator.MapSimulator
         private static Point BuildAnimationDisplayerFollowEquipmentSpawnOffsetMin(WzImageProperty effectProperty)
         {
             return new Point(
-                effectProperty?["x0"]?.GetInt()
-                    ?? effectProperty?["rx0"]?.GetInt()
+                GetAnimationDisplayerNumericValue(effectProperty, "x0")
+                    ?? GetAnimationDisplayerNumericValue(effectProperty, "rx0")
                     ?? 0,
-                effectProperty?["y0"]?.GetInt()
-                    ?? effectProperty?["ry0"]?.GetInt()
+                GetAnimationDisplayerNumericValue(effectProperty, "y0")
+                    ?? GetAnimationDisplayerNumericValue(effectProperty, "ry0")
                     ?? 0);
         }
 
         private static Point BuildAnimationDisplayerFollowEquipmentSpawnOffsetMax(WzImageProperty effectProperty, Point spawnOffsetMin)
         {
             return new Point(
-                effectProperty?["x1"]?.GetInt()
-                    ?? effectProperty?["rx1"]?.GetInt()
-                    ?? effectProperty?["dx"]?.GetInt()
+                GetAnimationDisplayerNumericValue(effectProperty, "x1")
+                    ?? GetAnimationDisplayerNumericValue(effectProperty, "rx1")
+                    ?? GetAnimationDisplayerNumericValue(effectProperty, "dx")
                     ?? spawnOffsetMin.X,
-                effectProperty?["y1"]?.GetInt()
-                    ?? effectProperty?["ry1"]?.GetInt()
-                    ?? effectProperty?["dy"]?.GetInt()
-                    ?? effectProperty?["dx"]?.GetInt()
+                GetAnimationDisplayerNumericValue(effectProperty, "y1")
+                    ?? GetAnimationDisplayerNumericValue(effectProperty, "ry1")
+                    ?? GetAnimationDisplayerNumericValue(effectProperty, "dy")
+                    ?? GetAnimationDisplayerNumericValue(effectProperty, "dx")
                     ?? spawnOffsetMin.Y);
         }
 
@@ -3043,6 +3172,30 @@ namespace HaCreator.MapSimulator
                 return actor.Position;
             };
             return true;
+        }
+
+        private Func<bool> ResolveAnimationDisplayerFollowOwnerFlip(int ownerCharacterId)
+        {
+            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+            if (ownerCharacterId > 0 && ownerCharacterId == localCharacterId)
+            {
+                return () => !(_playerManager?.Player?.FacingRight ?? true);
+            }
+
+            if (_remoteUserPool?.TryGetActor(ownerCharacterId, out RemoteUserActor actor) == true && actor != null)
+            {
+                return () =>
+                {
+                    if (_remoteUserPool?.TryGetActor(ownerCharacterId, out RemoteUserActor liveActor) == true && liveActor != null)
+                    {
+                        return !liveActor.FacingRight;
+                    }
+
+                    return !actor.FacingRight;
+                };
+            }
+
+            return null;
         }
 
         private sealed class DelayAdjustedDxObject : IDXObject

@@ -148,6 +148,8 @@ namespace HaCreator.MapSimulator.Fields
     public sealed class MonsterCarnivalUiWindowState
     {
         public bool IsCreated { get; private set; }
+        public bool UsesWrapperOnlySurface { get; private set; }
+        public bool UsesWindow2Assets { get; private set; }
         public int MobRows { get; private set; }
         public int SkillRows { get; private set; }
         public int GuardianRows { get; private set; }
@@ -164,12 +166,19 @@ namespace HaCreator.MapSimulator.Fields
         public string LastRequestResetOutcome { get; private set; }
         public int LastRequestTab { get; private set; } = -1;
         public int LastRequestIndex { get; private set; } = -1;
+        public string SurfaceOwnerName { get; private set; }
+        public string PrimaryAssetRoot { get; private set; }
+        public string SecondaryAssetRoot { get; private set; }
+        public string TertiaryAssetRoot { get; private set; }
+        public string SurfaceSummary { get; private set; }
 
         public int TotalRows => MobRows + SkillRows + GuardianRows;
 
         public void Reset()
         {
             IsCreated = false;
+            UsesWrapperOnlySurface = false;
+            UsesWindow2Assets = false;
             MobRows = 0;
             SkillRows = 0;
             GuardianRows = 0;
@@ -186,15 +195,58 @@ namespace HaCreator.MapSimulator.Fields
             LastRequestResetOutcome = null;
             LastRequestTab = -1;
             LastRequestIndex = -1;
+            SurfaceOwnerName = null;
+            PrimaryAssetRoot = null;
+            SecondaryAssetRoot = null;
+            TertiaryAssetRoot = null;
+            SurfaceSummary = null;
         }
 
-        public void CreateFromDefinition(MonsterCarnivalFieldDefinition definition)
+        public void CaptureWrapperOnlySurface(string ownerName, string summary)
+        {
+            IsCreated = false;
+            UsesWrapperOnlySurface = true;
+            UsesWindow2Assets = false;
+            MobRows = 0;
+            SkillRows = 0;
+            GuardianRows = 0;
+            ResetCount = 0;
+            SurfaceOwnerName = string.IsNullOrWhiteSpace(ownerName) ? null : ownerName.Trim();
+            PrimaryAssetRoot = null;
+            SecondaryAssetRoot = null;
+            TertiaryAssetRoot = null;
+            SurfaceSummary = string.IsNullOrWhiteSpace(summary) ? null : summary.Trim();
+            LastRequestCooldownResetTick = null;
+            LastRequestOwnerName = null;
+            LastRequestResetOutcome = null;
+            LastRequestTab = -1;
+            LastRequestIndex = -1;
+        }
+
+        public void CreateFromDefinition(MonsterCarnivalFieldDefinition definition, bool preferWindow2Assets = false)
         {
             IsCreated = true;
+            UsesWrapperOnlySurface = false;
+            UsesWindow2Assets = preferWindow2Assets;
             MobRows = definition?.MobEntries.Count ?? 0;
             SkillRows = definition?.SkillEntries.Count ?? 0;
             GuardianRows = definition?.GuardianEntries.Count ?? 0;
             ResetCount++;
+            SurfaceOwnerName = definition?.ClientOwnerLabel;
+            if (preferWindow2Assets)
+            {
+                PrimaryAssetRoot = "UI/UIWindow2.img/MonsterCarnival/main";
+                SecondaryAssetRoot = "UI/UIWindow2.img/MonsterCarnival/summonList";
+                TertiaryAssetRoot = "UI/UIWindow2.img/MonsterCarnival/sub";
+                SurfaceSummary = "Season 2 keeps a distinct UIWindow2-backed Carnival surface (main, summonList, sub) instead of the shared UIWindow.img HUD.";
+            }
+            else
+            {
+                PrimaryAssetRoot = "UI/UIWindow.img/MonsterCarnival/backgrnd";
+                SecondaryAssetRoot = "UI/UIWindow.img/MonsterCarnival/backgrnd2";
+                TertiaryAssetRoot = "UI/UIWindow.img/MonsterCarnival/backgrnd3";
+                SurfaceSummary = "Shared Monster Carnival HUD created from UIWindow.img background, team panel, and list layers.";
+            }
             LastRequestCooldownResetTick = null;
             LastRequestOwnerName = null;
             LastRequestResetOutcome = null;
@@ -231,6 +283,13 @@ namespace HaCreator.MapSimulator.Fields
 
         public string DescribeStatus()
         {
+            if (UsesWrapperOnlySurface)
+            {
+                string ownerText = string.IsNullOrWhiteSpace(SurfaceOwnerName) ? "unknown" : SurfaceOwnerName;
+                string summary = string.IsNullOrWhiteSpace(SurfaceSummary) ? "wrapper-only surface" : SurfaceSummary;
+                return $"CUIMonsterCarnival: wrapper-only | owner={ownerText} | {summary}";
+            }
+
             if (!IsCreated)
             {
                 return "CUIMonsterCarnival: not created.";
@@ -240,7 +299,10 @@ namespace HaCreator.MapSimulator.Fields
             string requestText = LastRequestCooldownResetTick.HasValue
                 ? $"requestReset={LastRequestResetOutcome ?? "unknown"}:{LastRequestTab}/{LastRequestIndex}@{LastRequestCooldownResetTick.Value}"
                 : "requestReset=none";
-            return $"CUIMonsterCarnival: created | rows mob/skill/guardian={MobRows}/{SkillRows}/{GuardianRows} total={TotalRows} | ResetUI={ResetCount} | team={teamText} | personalCP={PersonalCp}/{PersonalTotalCp} | myTeamCP={MyTeamCp}/{MyTeamTotalCp} | enemyTeamCP={EnemyTeamCp}/{EnemyTeamTotalCp} | {requestText}";
+            string assetText = UsesWindow2Assets
+                ? $"assets=UIWindow2 ({PrimaryAssetRoot}, {SecondaryAssetRoot}, {TertiaryAssetRoot})"
+                : $"assets=UIWindow ({PrimaryAssetRoot}, {SecondaryAssetRoot}, {TertiaryAssetRoot})";
+            return $"CUIMonsterCarnival: created | rows mob/skill/guardian={MobRows}/{SkillRows}/{GuardianRows} total={TotalRows} | ResetUI={ResetCount} | team={teamText} | personalCP={PersonalCp}/{PersonalTotalCp} | myTeamCP={MyTeamCp}/{MyTeamTotalCp} | enemyTeamCP={EnemyTeamCp}/{EnemyTeamTotalCp} | {assetText} | {requestText}";
         }
     }
 
@@ -761,9 +823,7 @@ namespace HaCreator.MapSimulator.Fields
             int SideButtonHeight)
         {
             public int TotalHeaderWidth => BackgroundWidth + TeamPanelWidth;
-            public int EntryListWidth => BackgroundWidth;
-            public int EntryListHeight => ListTopHeight + (ListMiddleRowHeight * 6) + ListSummaryHeight + ListBottomHeight;
-            public int TotalHeight => BackgroundHeight + EntryListHeight;
+            public int TotalHeight => BackgroundHeight + ResolveClientTabWindowHeight(6);
         }
 
         private sealed class MonsterCarnivalHudAssets
@@ -805,6 +865,21 @@ namespace HaCreator.MapSimulator.Fields
             TabGuardianWidth: 45,
             SideButtonWidth: 11,
             SideButtonHeight: 67);
+
+        internal const int ClientListCanvasX = 0;
+        internal const int ClientListCanvasY = 100;
+        internal const int ClientListCanvasWidth = 148;
+        internal const int ClientDecisionButtonX = 99;
+        internal const int ClientDecisionButtonYOffset = 75;
+        internal const int ClientTabControlX = 8;
+        internal const int ClientTabControlY = 9;
+        internal const int ClientCpTextX = 68;
+        internal const int ClientPersonalCpTextY = 24;
+        internal const int ClientRedTeamCpTextY = 42;
+        internal const int ClientBlueTeamCpTextY = 55;
+        internal const int ClientVisibleTabRowCap = 11;
+        internal const int ClientTabWindowBaseHeight = 60;
+        internal const int ClientTabWindowRowHeight = 14;
 
         public void Initialize(GraphicsDevice device)
         {
@@ -882,6 +957,7 @@ namespace HaCreator.MapSimulator.Fields
             _variantActionTrail.Clear();
             SetVariantSessionPhase(MonsterCarnivalVariantSessionPhase.Init, BuildInitialVariantSessionSummary(_definition));
             InitializeClientOwnedUiWindowState(_definition);
+            LoadHudAssets();
         }
 
         public void SetLocalPlayerName(string characterName)
@@ -1539,16 +1615,25 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
+            if (_definition?.IsWaitingRoom == true)
+            {
+                DrawWaitingRoomWrapperPanel(spriteBatch, pixelTexture, font);
+                return;
+            }
+
             Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
             MonsterCarnivalHudMetrics metrics = ResolveHudMetrics();
             Rectangle headerBounds = ResolveHeaderBounds(viewport.Width, metrics);
             Rectangle mainHeaderBounds = new(headerBounds.X, headerBounds.Y, metrics.BackgroundWidth, metrics.BackgroundHeight);
             Rectangle teamHeaderBounds = new(headerBounds.Right, headerBounds.Y, metrics.TeamPanelWidth, metrics.TeamPanelHeight);
-            Rectangle listBounds = new(headerBounds.X, headerBounds.Bottom, metrics.EntryListWidth, metrics.EntryListHeight);
-            Rectangle footerBounds = ResolveFooterBounds(listBounds, metrics);
+            IReadOnlyList<MonsterCarnivalEntry> activeEntries = _definition?.GetEntries(_activeTab) ?? Array.Empty<MonsterCarnivalEntry>();
+            Rectangle listBounds = ResolveClientListBounds(headerBounds, activeEntries.Count);
+            Rectangle decisionButtonBounds = ResolveClientDecisionButtonBounds(headerBounds, metrics, activeEntries.Count);
+            Rectangle footerBounds = ResolveFooterBounds(listBounds, decisionButtonBounds, metrics);
 
             DrawHeaderPanel(spriteBatch, pixelTexture, mainHeaderBounds, teamHeaderBounds);
             DrawEntryListPanel(spriteBatch, pixelTexture, listBounds, metrics);
+            DrawDecisionButton(spriteBatch, decisionButtonBounds);
             DrawFooterPanel(spriteBatch, pixelTexture, footerBounds);
 
             DrawShadowedText(spriteBatch, font, GetPanelTitle(), new Vector2(mainHeaderBounds.X + 12, mainHeaderBounds.Y + 8), Color.White);
@@ -1573,9 +1658,9 @@ namespace HaCreator.MapSimulator.Fields
                 Color.LightGoldenrodYellow,
                 0.72f);
 
-            DrawCpRow(spriteBatch, pixelTexture, font, teamHeaderBounds.X + 10, teamHeaderBounds.Y + 10, teamHeaderBounds.Width - 20);
-            DrawTabs(spriteBatch, pixelTexture, font, listBounds.X + 10, listBounds.Y + 6, listBounds.Width - 20);
-            DrawEntryList(spriteBatch, pixelTexture, font, listBounds.X + 8, listBounds.Y + metrics.ListTopHeight + 2, listBounds.Width - 16, metrics.ListMiddleRowHeight * 6);
+            DrawCpRow(spriteBatch, pixelTexture, font, teamHeaderBounds);
+            DrawTabs(spriteBatch, pixelTexture, font, headerBounds.X + ClientTabControlX, headerBounds.Y + ClientTabControlY);
+            DrawEntryList(spriteBatch, pixelTexture, font, listBounds);
             DrawFooter(spriteBatch, pixelTexture, font, footerBounds.X + 8, footerBounds.Y + 4, footerBounds.Width - 16, footerBounds.Height - 8);
         }
 
@@ -1586,7 +1671,7 @@ namespace HaCreator.MapSimulator.Fields
                 return "Monster Carnival runtime is inactive on this map.";
             }
 
-            return $"Monster Carnival: {(_enteredField ? "entered" : "configured")} | mode={_definition?.VariantLabel ?? "Unknown"}{FormatMapTypeSuffix(_definition)} | owner={_definition?.ClientOwnerLabel ?? "unknown"} | tab={_activeTab} | personalCP={_personalCp}/{_personalTotalCp} | team0={_team0.CurrentCp}/{_team0.TotalCp} | team1={_team1.CurrentCp}/{_team1.TotalCp} | mobs={GetTotalCount(_mobSpellCounts)}/{Math.Max(0, _definition?.MobGenMax ?? 0)} | guardians={GetTotalCount(_guardianCounts)}/{Math.Max(0, _definition?.GuardianGenMax ?? 0)} | variantPhase={DescribeVariantSessionPhase()} | seam={BuildClientOwnerStatusSummary()}";
+            return $"Monster Carnival: {(_enteredField ? "entered" : "configured")} | mode={_definition?.VariantLabel ?? "Unknown"}{FormatMapTypeSuffix(_definition)} | owner={_definition?.ClientOwnerLabel ?? "unknown"} | tab={_activeTab} | personalCP={_personalCp}/{_personalTotalCp} | team0={_team0.CurrentCp}/{_team0.TotalCp} | team1={_team1.CurrentCp}/{_team1.TotalCp} | mobs={GetTotalCount(_mobSpellCounts)}/{Math.Max(0, _definition?.MobGenMax ?? 0)} | guardians={GetTotalCount(_guardianCounts)}/{Math.Max(0, _definition?.GuardianGenMax ?? 0)} | variantPhase={DescribeVariantSessionPhase()} | seam={BuildClientOwnerStatusSummary()}{Environment.NewLine}{_uiWindowState.DescribeStatus()}";
         }
 
         public void Reset()
@@ -1628,23 +1713,49 @@ namespace HaCreator.MapSimulator.Fields
             _lastRequestIndex = -1;
         }
 
-        private void DrawCpRow(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int x, int y, int width)
+        private void DrawCpRow(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, Rectangle teamBounds)
         {
-            int rowHeight = 44;
             if (_hudAssets.TeamPanelBackground == null)
             {
+                int rowHeight = 44;
+                int x = teamBounds.X + 10;
+                int y = teamBounds.Y + 10;
+                int width = teamBounds.Width - 20;
                 spriteBatch.Draw(pixelTexture, new Rectangle(x, y, width, rowHeight), new Color(26, 34, 44, 220));
-            }
-            string personalText = $"Personal CP  {_personalCp}/{_personalTotalCp}";
-            DrawShadowedText(spriteBatch, font, personalText, new Vector2(x + 10, y + 6), Color.White);
+                string personalText = $"Personal CP  {_personalCp}/{_personalTotalCp}";
+                DrawShadowedText(spriteBatch, font, personalText, new Vector2(x + 10, y + 6), Color.White);
 
-            string team0Text = $"{FormatTeam(MonsterCarnivalTeam.Team0)}  {_team0.CurrentCp}/{_team0.TotalCp}";
-            string team1Text = $"{FormatTeam(MonsterCarnivalTeam.Team1)}  {_team1.CurrentCp}/{_team1.TotalCp}";
-            DrawShadowedText(spriteBatch, font, team0Text, new Vector2(x + 10, y + 24), GetTeamColor(MonsterCarnivalTeam.Team0));
-            DrawShadowedText(spriteBatch, font, team1Text, new Vector2(x + width / 2 + 4, y + 24), GetTeamColor(MonsterCarnivalTeam.Team1));
+                string team0Text = $"{FormatTeam(MonsterCarnivalTeam.Team0)}  {_team0.CurrentCp}/{_team0.TotalCp}";
+                string team1Text = $"{FormatTeam(MonsterCarnivalTeam.Team1)}  {_team1.CurrentCp}/{_team1.TotalCp}";
+                DrawShadowedText(spriteBatch, font, team0Text, new Vector2(x + 10, y + 24), GetTeamColor(MonsterCarnivalTeam.Team0));
+                DrawShadowedText(spriteBatch, font, team1Text, new Vector2(x + width / 2 + 4, y + 24), GetTeamColor(MonsterCarnivalTeam.Team1));
+                return;
+            }
+
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                $"{_personalCp} / {_personalTotalCp}",
+                new Vector2(teamBounds.X + ClientCpTextX, teamBounds.Y + ClientPersonalCpTextY),
+                Color.Gainsboro,
+                0.78f);
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                $"{_team0.CurrentCp} / {_team0.TotalCp}",
+                new Vector2(teamBounds.X + ClientCpTextX, teamBounds.Y + ClientRedTeamCpTextY),
+                GetTeamColor(MonsterCarnivalTeam.Team0),
+                0.78f);
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                $"{_team1.CurrentCp} / {_team1.TotalCp}",
+                new Vector2(teamBounds.X + ClientCpTextX, teamBounds.Y + ClientBlueTeamCpTextY),
+                GetTeamColor(MonsterCarnivalTeam.Team1),
+                0.78f);
         }
 
-        private void DrawTabs(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int x, int y, int width)
+        private void DrawTabs(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int x, int y)
         {
             MonsterCarnivalHudMetrics metrics = ResolveHudMetrics();
             int tabX = x;
@@ -1653,14 +1764,6 @@ namespace HaCreator.MapSimulator.Fields
             DrawTab(spriteBatch, pixelTexture, font, tabX, y, metrics.TabSkillWidth, "Skill", MonsterCarnivalTab.Skill);
             tabX += metrics.TabSkillWidth + 2;
             DrawTab(spriteBatch, pixelTexture, font, tabX, y, metrics.TabGuardianWidth, "Guardian", MonsterCarnivalTab.Guardian);
-
-            Texture2D sideButton = _activeTab == MonsterCarnivalTab.Guardian
-                ? _hudAssets.SideButtonNormal
-                : _hudAssets.SideButtonDisabled ?? _hudAssets.SideButtonNormal;
-            if (sideButton != null)
-            {
-                spriteBatch.Draw(sideButton, new Rectangle(x + width - metrics.SideButtonWidth, y - 4, metrics.SideButtonWidth, metrics.SideButtonHeight), Color.White);
-            }
         }
 
         private void DrawTab(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int x, int y, int width, string label, MonsterCarnivalTab tab)
@@ -1684,25 +1787,25 @@ namespace HaCreator.MapSimulator.Fields
             DrawShadowedText(spriteBatch, font, label, position, Color.White);
         }
 
-        private void DrawEntryList(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, int x, int y, int width, int height)
+        private void DrawEntryList(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, Rectangle listBounds)
         {
             if (_hudAssets.ListMiddle == null)
             {
-                spriteBatch.Draw(pixelTexture, new Rectangle(x, y, width, height), new Color(20, 27, 34, 200));
+                spriteBatch.Draw(pixelTexture, listBounds, new Color(20, 27, 34, 200));
             }
             IReadOnlyList<MonsterCarnivalEntry> entries = _definition?.GetEntries(_activeTab) ?? Array.Empty<MonsterCarnivalEntry>();
             if (entries.Count == 0)
             {
-                DrawShadowedText(spriteBatch, font, "No entries loaded for this tab.", new Vector2(x + 10, y + 10), Color.Silver);
+                DrawShadowedText(spriteBatch, font, "No entries loaded for this tab.", new Vector2(listBounds.X + 10, listBounds.Y + 10), Color.Silver);
                 return;
             }
 
-            int rowHeight = 15;
-            int visibleRows = Math.Min(entries.Count, height / rowHeight);
+            int rowHeight = ClientTabWindowRowHeight;
+            int visibleRows = ResolveClientVisibleTabRowCount(entries.Count);
             for (int i = 0; i < visibleRows; i++)
             {
                 MonsterCarnivalEntry entry = entries[i];
-                Rectangle rowRect = new Rectangle(x + 4, y + 4 + i * rowHeight, width - 8, rowHeight - 1);
+                Rectangle rowRect = new Rectangle(listBounds.X + 4, listBounds.Y + i * rowHeight, listBounds.Width - 8, rowHeight - 1);
                 bool isSelected = entry.Index == _selectedEntryIndex && _activeTab == (MonsterCarnivalTab)_lastRequestTab;
                 Color rowColor = isSelected
                     ? new Color(67, 92, 120, 220)
@@ -1738,7 +1841,7 @@ namespace HaCreator.MapSimulator.Fields
 
             if (!string.IsNullOrWhiteSpace(summary))
             {
-                DrawShadowedText(spriteBatch, font, summary, new Vector2(x + 8, y + height - 18), Color.LightSteelBlue, 0.75f);
+                DrawShadowedText(spriteBatch, font, summary, new Vector2(listBounds.X + 8, listBounds.Bottom + 4), Color.LightSteelBlue, 0.75f);
             }
         }
 
@@ -1837,8 +1940,8 @@ namespace HaCreator.MapSimulator.Fields
 
             return _definition.ResolvedFieldType switch
             {
-                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => "CField_MonsterCarnivalWaitingRoom::Init calls CField::Init, reads monsterCarnival/mapType, and keeps the waiting-room wrapper explicit while shared Carnival result packets still delegate through CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12, item=-1).",
-                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => "CField_MonsterCarnivalS2_Game::Init calls CField_MonsterCarnival::Init, reads monsterCarnival/mapType, and keeps the Season 2 wrapper explicit while shared Carnival result packets still delegate through CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12, item=-1).",
+                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => "CField_MonsterCarnivalWaitingRoom::Init calls CField::Init, reads monsterCarnival/mapType, and stays on a wrapper-only lobby seam while shared Carnival result packets still delegate through CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12, item=-1).",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => "CField_MonsterCarnivalS2_Game::Init calls CField_MonsterCarnival::Init, reads monsterCarnival/mapType, and now switches the simulator to the distinct UIWindow2-backed Monster Carnival surface while result packets still delegate through CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12, item=-1).",
                 FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => "CField_MonsterCarnivalRevive owns OnShowGameResult codes 8-11 and routes them through the recovered 0x1020-0x1023 StringPool seam into CUIStatusBar::ChatLogAdd(type=12, item=-1).",
                 FieldType.FIELDTYPE_MONSTERCARNIVAL_NOT_USE => "Legacy Carnival wrapper stays on the shared Monster Carnival packet family in this simulator seam.",
                 _ => "CField_MonsterCarnival owns the shared packet family while the simulator keeps map-backed summon, CP, and request seams live."
@@ -1855,8 +1958,8 @@ namespace HaCreator.MapSimulator.Fields
             string mapLabel = FormatMapIdentity(_definition);
             return _definition.ResolvedFieldType switch
             {
-                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | Init base={_definition.InitBaseOwnerLabel} | reads monsterCarnival/mapType={_definition.MapType} | delegated result ids 0x1020-0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)",
-                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | Init base={_definition.InitBaseOwnerLabel} | reads monsterCarnival/mapType={_definition.MapType} | delegated result ids 0x1020-0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)",
+                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | Init base={_definition.InitBaseOwnerLabel} | reads monsterCarnival/mapType={_definition.MapType} | waiting-room wrapper panel only | delegated result ids 0x1020-0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | Init base={_definition.InitBaseOwnerLabel} | reads monsterCarnival/mapType={_definition.MapType} | UI/UIWindow2.img/MonsterCarnival/main+summonList+sub | delegated result ids 0x1020-0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)",
                 FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | revive owner packets 346-353 | failure ids 0x101B-0x101F | result ids 0x1020-0x1023 -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | UI 0x102B-0x1033",
                 _ => $"{mapLabel} | shared Carnival packet family 346-353 | UI 0x102B-0x1033"
             };
@@ -1865,8 +1968,39 @@ namespace HaCreator.MapSimulator.Fields
         private void LoadHudAssets()
         {
             _hudAssets = new MonsterCarnivalHudAssets();
-            if (_graphicsDevice == null)
+            if (_graphicsDevice == null || _definition?.IsWaitingRoom == true)
             {
+                return;
+            }
+
+            if (_definition?.IsSeason2Mode == true)
+            {
+                WzImage uiWindow2Image = FindImageSafe("UI", "UIWindow2.img");
+                WzSubProperty carnivalWindow2Property = uiWindow2Image?["MonsterCarnival"] as WzSubProperty;
+                WzSubProperty mainProperty = carnivalWindow2Property?["main"] as WzSubProperty;
+                WzSubProperty summonListProperty = carnivalWindow2Property?["summonList"] as WzSubProperty;
+                WzSubProperty mainTabProperty = mainProperty?["Tab"] as WzSubProperty;
+                WzSubProperty mainEnabledProperty = mainTabProperty?["enabled"] as WzSubProperty;
+                WzSubProperty mainDisabledProperty = mainTabProperty?["disabled"] as WzSubProperty;
+                WzSubProperty mainSideButtonProperty = mainProperty?["BtSide"] as WzSubProperty;
+
+                _hudAssets = new MonsterCarnivalHudAssets
+                {
+                    Background = LoadCanvasTexture(mainProperty?["backgrnd"] as WzCanvasProperty),
+                    TeamPanelBackground = LoadCanvasTexture(mainProperty?["backgrnd2"] as WzCanvasProperty),
+                    ListTop = LoadCanvasTexture(summonListProperty?["backgrnd"] as WzCanvasProperty),
+                    ListMiddle = LoadCanvasTexture(summonListProperty?["backgrnd2"] as WzCanvasProperty),
+                    ListSummary = LoadCanvasTexture(mainProperty?["backgrnd3"] as WzCanvasProperty),
+                    ListBottom = LoadCanvasTexture(summonListProperty?["backgrnd3"] as WzCanvasProperty),
+                    SideButtonNormal = LoadCanvasTexture(mainSideButtonProperty?["normal"]?["0"] as WzCanvasProperty),
+                    SideButtonDisabled = LoadCanvasTexture(mainSideButtonProperty?["disabled"]?["0"] as WzCanvasProperty),
+                    TabMobEnabled = LoadCanvasTexture(mainEnabledProperty?["0"] as WzCanvasProperty),
+                    TabSkillEnabled = LoadCanvasTexture(mainEnabledProperty?["1"] as WzCanvasProperty),
+                    TabGuardianEnabled = LoadCanvasTexture(mainEnabledProperty?["2"] as WzCanvasProperty),
+                    TabMobDisabled = LoadCanvasTexture(mainDisabledProperty?["0"] as WzCanvasProperty),
+                    TabSkillDisabled = LoadCanvasTexture(mainDisabledProperty?["1"] as WzCanvasProperty),
+                    TabGuardianDisabled = LoadCanvasTexture(mainDisabledProperty?["2"] as WzCanvasProperty)
+                };
                 return;
             }
 
@@ -1952,18 +2086,89 @@ namespace HaCreator.MapSimulator.Fields
             return new Rectangle(x, 18, metrics.TotalHeaderWidth, metrics.BackgroundHeight);
         }
 
-        private static Rectangle ResolveFooterBounds(Rectangle listBounds, MonsterCarnivalHudMetrics metrics)
+        private static Rectangle ResolveFooterBounds(Rectangle listBounds, Rectangle decisionButtonBounds, MonsterCarnivalHudMetrics metrics)
         {
             return new Rectangle(
                 listBounds.X,
-                listBounds.Bottom - metrics.ListBottomHeight,
-                listBounds.Width,
+                Math.Max(listBounds.Bottom, decisionButtonBounds.Bottom) + 6,
+                Math.Max(metrics.BackgroundWidth, listBounds.Width),
                 metrics.ListBottomHeight);
+        }
+
+        internal static int ResolveClientVisibleTabRowCount(int entryCount)
+        {
+            if (entryCount <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Min(ClientVisibleTabRowCap, entryCount);
+        }
+
+        internal static int ResolveClientTabWindowHeight(int entryCount)
+        {
+            return ClientTabWindowBaseHeight + (ResolveClientVisibleTabRowCount(entryCount) * ClientTabWindowRowHeight);
+        }
+
+        private static Rectangle ResolveClientListBounds(Rectangle headerBounds, int entryCount)
+        {
+            return new Rectangle(
+                headerBounds.X + ClientListCanvasX,
+                headerBounds.Y + ClientListCanvasY,
+                ClientListCanvasWidth,
+                ResolveClientTabWindowHeight(entryCount));
+        }
+
+        private static Rectangle ResolveClientDecisionButtonBounds(Rectangle headerBounds, MonsterCarnivalHudMetrics metrics, int entryCount)
+        {
+            return new Rectangle(
+                headerBounds.X + ClientDecisionButtonX,
+                headerBounds.Y + ClientDecisionButtonYOffset + ResolveClientTabWindowHeight(entryCount),
+                metrics.SideButtonWidth,
+                metrics.SideButtonHeight);
         }
 
         private static Rectangle ResolveRecoveredHudHeaderBounds(int viewportWidth)
         {
             return ResolveHeaderBounds(viewportWidth, DefaultHudMetrics);
+        }
+
+        private void DrawWaitingRoomWrapperPanel(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
+        {
+            Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
+            Rectangle panelBounds = new Rectangle(viewport.Width - 404, 18, 386, 132);
+            spriteBatch.Draw(pixelTexture, panelBounds, new Color(24, 30, 40, 225));
+            spriteBatch.Draw(pixelTexture, new Rectangle(panelBounds.X, panelBounds.Y, panelBounds.Width, 28), new Color(69, 87, 114, 255));
+
+            DrawShadowedText(spriteBatch, font, "Monster Carnival Waiting Room", new Vector2(panelBounds.X + 10, panelBounds.Y + 6), Color.White);
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                $"map={FormatMapIdentity(_definition)} | owner={_definition?.ClientOwnerLabel ?? "unknown"} | mapType={_definition?.MapType ?? -1}",
+                new Vector2(panelBounds.X + 10, panelBounds.Y + 36),
+                Color.Gainsboro,
+                0.82f);
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                TrimForDisplay(DescribeVariantSessionPhase(), 76),
+                new Vector2(panelBounds.X + 10, panelBounds.Y + 54),
+                Color.LightSteelBlue,
+                0.8f);
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                TrimForDisplay(BuildClientOwnerHeaderSummary(), 78),
+                new Vector2(panelBounds.X + 10, panelBounds.Y + 74),
+                Color.LightGoldenrodYellow,
+                0.75f);
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                TrimForDisplay(_uiWindowState.DescribeStatus(), 78),
+                new Vector2(panelBounds.X + 10, panelBounds.Y + 94),
+                Color.Silver,
+                0.75f);
         }
 
         private static int[] ResolveRecoveredTabWidths()
@@ -2021,6 +2226,17 @@ namespace HaCreator.MapSimulator.Fields
             DrawPanelSlice(spriteBatch, pixelTexture, _hudAssets.ListBottom, new Rectangle(listBounds.X, y, listBounds.Width, metrics.ListBottomHeight), new Color(26, 34, 44, 220));
         }
 
+        private void DrawDecisionButton(SpriteBatch spriteBatch, Rectangle bounds)
+        {
+            Texture2D texture = TryValidateRequest(GetEntry(_activeTab, _selectedEntryIndex), out _)
+                ? _hudAssets.SideButtonNormal
+                : _hudAssets.SideButtonDisabled ?? _hudAssets.SideButtonNormal;
+            if (texture != null)
+            {
+                spriteBatch.Draw(texture, bounds, Color.White);
+            }
+        }
+
         private static void DrawPanelSlice(SpriteBatch spriteBatch, Texture2D pixelTexture, Texture2D texture, Rectangle destination, Color fallbackColor)
         {
             if (texture != null)
@@ -2030,6 +2246,18 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             spriteBatch.Draw(pixelTexture, destination, fallbackColor);
+        }
+
+        private static string TrimForDisplay(string text, int maxLength)
+        {
+            if (string.IsNullOrEmpty(text) || maxLength <= 0 || text.Length <= maxLength)
+            {
+                return text ?? string.Empty;
+            }
+
+            return maxLength <= 3
+                ? text[..maxLength]
+                : text[..(maxLength - 3)] + "...";
         }
 
         private void DrawFooterPanel(SpriteBatch spriteBatch, Texture2D pixelTexture, Rectangle footerBounds)
@@ -2542,27 +2770,60 @@ namespace HaCreator.MapSimulator.Fields
         private void InitializeClientOwnedUiWindowState(MonsterCarnivalFieldDefinition definition)
         {
             _uiWindowState.Reset();
-            if (definition == null || definition.IsWaitingRoom || definition.IsDeprecatedMode)
+            if (definition == null || definition.IsDeprecatedMode)
             {
                 return;
             }
 
-            _uiWindowState.CreateFromDefinition(definition);
+            if (definition.IsWaitingRoom)
+            {
+                _uiWindowState.CaptureWrapperOnlySurface(
+                    definition.ClientOwnerLabel,
+                    $"{definition.ClientOwnerLabel} stayed on monsterCarnival/mapType={definition.MapType} without creating the shared Carnival HUD.");
+                RecordClientOwnerAction(
+                    $"{definition.ClientOwnerLabel}::Init stayed on the waiting-room wrapper seam without creating the shared Carnival HUD.",
+                    Array.Empty<int>());
+                return;
+            }
+
+            bool preferWindow2Assets = definition.IsSeason2Mode;
+            _uiWindowState.CreateFromDefinition(definition, preferWindow2Assets);
             RecordClientOwnerAction(
-                "CField_MonsterCarnival::CreateUIWindow -> CUIMonsterCarnival::SetUIData(mob/skill/guardian) -> CUIMonsterCarnival::ResetUI.",
+                preferWindow2Assets
+                    ? $"{definition.ClientOwnerLabel}::CreateUIWindow -> UIWindow2.img/MonsterCarnival/main/summonList/sub -> CUIMonsterCarnival::SetUIData(mob/skill/guardian) -> CUIMonsterCarnival::ResetUI."
+                    : "CField_MonsterCarnival::CreateUIWindow -> CUIMonsterCarnival::SetUIData(mob/skill/guardian) -> CUIMonsterCarnival::ResetUI.",
                 Array.Empty<int>());
         }
 
         private void RecreateClientOwnedUiWindowStateForEnter()
         {
-            if (_definition == null || _definition.IsWaitingRoom || _definition.IsDeprecatedMode)
+            if (_definition == null || _definition.IsDeprecatedMode)
             {
                 return;
             }
 
-            _uiWindowState.CreateFromDefinition(_definition);
+            if (_definition.IsWaitingRoom)
+            {
+                _uiWindowState.CaptureWrapperOnlySurface(
+                    _definition.ClientOwnerLabel,
+                    $"{_definition.ClientOwnerLabel} remained on the waiting-room lobby seam during enter and did not create the shared Carnival HUD.");
+                return;
+            }
+
+            bool preferWindow2Assets = _definition.IsSeason2Mode;
+            _uiWindowState.CreateFromDefinition(_definition, preferWindow2Assets);
+            if (ShouldTrackVariantClientOwnerAction())
+            {
+                SetVariantSessionPhase(
+                    MonsterCarnivalVariantSessionPhase.UiWindow,
+                    preferWindow2Assets
+                        ? $"{_definition.ClientOwnerLabel} recreated its UIWindow2-backed Season 2 Carnival surface on enter."
+                        : $"{_definition.ClientOwnerLabel} recreated its Carnival HUD surface on enter.");
+            }
             RecordClientOwnerAction(
-                "CField_MonsterCarnival::OnEnter -> CField_MonsterCarnival::CreateUIWindow -> CUIMonsterCarnival::SetUIData(mob/skill/guardian) -> CUIMonsterCarnival::ResetUI.",
+                preferWindow2Assets
+                    ? $"{_definition.ClientOwnerLabel}::OnEnter -> { _definition.ClientOwnerLabel}::CreateUIWindow -> UIWindow2.img/MonsterCarnival/main/summonList/sub -> CUIMonsterCarnival::SetUIData(mob/skill/guardian) -> CUIMonsterCarnival::ResetUI."
+                    : "CField_MonsterCarnival::OnEnter -> CField_MonsterCarnival::CreateUIWindow -> CUIMonsterCarnival::SetUIData(mob/skill/guardian) -> CUIMonsterCarnival::ResetUI.",
                 Array.Empty<int>());
         }
 

@@ -3,6 +3,7 @@ using HaCreator.MapSimulator.UI;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace HaCreator.MapSimulator.Interaction
@@ -45,6 +46,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string _acceptButtonUolText = WeddingInvitationDialogText.GetAcceptButtonUolText();
         private string _dialogUolText = WeddingInvitationDialogText.ResolveDialogUolText(DefaultClientDialogType);
         private string _basicBlackFontFaceName = WeddingInvitationDialogText.GetBasicBlackFontFaceName();
+        private readonly List<string> _observedSocialMessages = new();
         private WeddingInvitationStyle _style = WeddingInvitationStyle.Neat;
         private int? _clientDialogType;
         private byte[] _lastMarriageResultPacketPayload = Array.Empty<byte>();
@@ -82,6 +84,7 @@ namespace HaCreator.MapSimulator.Interaction
             _sourceDescription = string.IsNullOrWhiteSpace(sourceDescription)
                 ? DefaultSourceDescription
                 : sourceDescription.Trim();
+            SetObservedSocialMessages(_groomName, _brideName);
             _statusMessage = $"Opened {ClientOwnerTypeName}-style dialog for {_groomName} and {_brideName} using the {ResolveBackgroundAssetPath(style)} surface. Client owner path={ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} -> {ClientPresentationMode}; closes active {PriorOwnerTypeName} before opening; CreateDlg StringPool 0x{ResolveDialogTitleStringPoolId(_clientDialogType):X} => {_dialogUolText}; accept UOL 0x{AcceptButtonUolStringPoolId:X} => {_acceptButtonUolText}; name font {NameFontToken} StringPool 0x{BasicBlackFontFaceStringPoolId:X} => {_basicBlackFontFaceName}.";
             return _statusMessage;
         }
@@ -118,6 +121,7 @@ namespace HaCreator.MapSimulator.Interaction
             _isOpen = false;
             _lastAccepted = true;
             _acceptedHandoff = BuildAcceptedHandoff();
+            SetObservedSocialMessages(_groomName, _brideName);
             string packetEvidence = _lastOpenUsedMarriageResultPacket && _lastMarriageResultPacketPayload.Length > 0
                 ? $" The dialog was opened from {ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} bytes [{FormatPayload(_lastMarriageResultPacketPayload)}]."
                 : string.Empty;
@@ -135,6 +139,7 @@ namespace HaCreator.MapSimulator.Interaction
             _isOpen = false;
             _lastAccepted = false;
             _acceptedHandoff = null;
+            SetObservedSocialMessages(_groomName, _brideName);
             _statusMessage = $"Dismissed wedding invitation for {_groomName} and {_brideName} without staging the downstream client handoff.";
             return _statusMessage;
         }
@@ -154,8 +159,14 @@ namespace HaCreator.MapSimulator.Interaction
             _lastOpenUsedMarriageResultPacket = false;
             _acceptedHandoff = null;
             _sourceDescription = DefaultSourceDescription;
+            _observedSocialMessages.Clear();
             _statusMessage = "Cleared wedding invitation state.";
             return _statusMessage;
+        }
+
+        internal IReadOnlyList<string> GetObservedSocialMessages()
+        {
+            return _observedSocialMessages;
         }
 
         internal bool TryBuildWeddingWishListHandoff(
@@ -218,6 +229,27 @@ namespace HaCreator.MapSimulator.Interaction
                 AcceptButtonPosition = (AcceptButtonX, AcceptButtonY),
                 StatusMessage = _statusMessage
             };
+        }
+
+        private void SetObservedSocialMessages(params string[] messages)
+        {
+            _observedSocialMessages.Clear();
+            if (messages == null)
+            {
+                return;
+            }
+
+            foreach (string message in messages)
+            {
+                string normalized = message?.Trim();
+                if (string.IsNullOrWhiteSpace(normalized) ||
+                    _observedSocialMessages.Any(existing => string.Equals(existing, normalized, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                _observedSocialMessages.Add(normalized);
+            }
         }
 
         internal string DescribeStatus()

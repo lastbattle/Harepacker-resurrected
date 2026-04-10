@@ -465,6 +465,10 @@ namespace HaCreator.MapSimulator.UI
             {
                 DrawPaletteGrid(sprite);
             }
+            else if (_page == KeyConfigPage.QuickSlot)
+            {
+                DrawQuickSlotOwnerFooter(sprite);
+            }
 
             DrawStatusNotice(sprite);
         }
@@ -603,11 +607,12 @@ namespace HaCreator.MapSimulator.UI
 
             KeyBinding binding = GetBinding(row.Action);
             Texture2D paletteTexture = row.PaletteSlotId >= 0 ? GetSelectedPaletteTexture(row.PaletteSlotId) : null;
-            ShortcutVisualState shortcutVisualState = _page == KeyConfigPage.Main
-                ? ResolveShortcutVisualState(row.Action)
-                : default;
+            ShortcutVisualState shortcutVisualState = ResolveShortcutVisualState(row.Action);
             int labelX = bounds.X + 8;
-            if (_page == KeyConfigPage.Main && (paletteTexture != null || shortcutVisualState.HasVisual))
+            bool showShortcutVisual = _page == KeyConfigPage.Main
+                ? paletteTexture != null || shortcutVisualState.HasVisual
+                : shortcutVisualState.HasVisual;
+            if (showShortcutVisual)
             {
                 Rectangle iconBounds = new(bounds.X + 6, bounds.Y + 3, 18, 18);
                 sprite.Draw(_highlightTexture, iconBounds, new Color(54, 66, 88, 215));
@@ -625,6 +630,66 @@ namespace HaCreator.MapSimulator.UI
 
             sprite.DrawString(_font, row.Label, new Vector2(labelX, bounds.Y + 6), Color.White);
             DrawBindingValue(sprite, bounds, binding);
+        }
+
+        private void DrawQuickSlotOwnerFooter(SpriteBatch sprite)
+        {
+            const int footerMargin = 12;
+            const int padding = 8;
+
+            int footerWidth = (CurrentFrame?.Width ?? 622) - (footerMargin * 2);
+            int footerHeight = 86;
+            int footerX = Position.X + footerMargin;
+            int footerY = Position.Y + (CurrentFrame?.Height ?? 374) - footerHeight - 10;
+            Rectangle footerBounds = new(footerX, footerY, footerWidth, footerHeight);
+            Rectangle infoBounds = new(footerBounds.X + padding, footerBounds.Y + padding, footerBounds.Width - (padding * 2), footerBounds.Height - (padding * 2));
+            ShortcutVisualState selectedShortcutVisual = _selectedAction.HasValue
+                ? ResolveShortcutVisualState(_selectedAction.Value)
+                : default;
+
+            sprite.Draw(_highlightTexture, footerBounds, new Color(20, 25, 37, 225));
+            sprite.Draw(_highlightTexture, infoBounds, new Color(36, 46, 62, 220));
+
+            sprite.DrawString(_font, "Quick Slot Owner", new Vector2(infoBounds.X + 6, infoBounds.Y + 2), new Color(220, 220, 220), 0f, Vector2.Zero, 0.5f, SpriteEffects.None, 0f);
+            string ownerText = _selectedAction.HasValue
+                ? $"{GetSelectedLabel()} staged owner"
+                : "Select a quick-slot row to inspect its staged live shortcut owner.";
+            sprite.DrawString(_font, ownerText, new Vector2(infoBounds.X + 6, infoBounds.Y + 18), new Color(255, 228, 151), 0f, Vector2.Zero, 0.42f, SpriteEffects.None, 0f);
+
+            string summaryText = _selectedAction.HasValue
+                ? (_captureArmed
+                    ? "Capture armed: press a key or pad button."
+                    : BuildClientOwnerSummary())
+                : "Client quick-slot owner page stays on the live bindable shortcut lane instead of the main WZ icon palette.";
+            sprite.DrawString(_font, summaryText, new Vector2(infoBounds.X + 6, infoBounds.Y + 33), new Color(210, 210, 210), 0f, Vector2.Zero, 0.36f, SpriteEffects.None, 0f);
+
+            if (!_selectedAction.HasValue)
+            {
+                return;
+            }
+
+            Rectangle previewBounds = new(infoBounds.X + 6, infoBounds.Y + 49, 40, 40);
+            sprite.Draw(_highlightTexture, previewBounds, new Color(56, 68, 92, 215));
+            if (selectedShortcutVisual.HasVisual)
+            {
+                DrawShortcutVisualIcon(sprite, previewBounds, selectedShortcutVisual, compact: false);
+            }
+
+            string quickSlotText = selectedShortcutVisual.HasDetails
+                ? $"Live shortcut visual: {selectedShortcutVisual.Title}"
+                : "No live packet-owned shortcut visual is currently staged on this quick-slot row.";
+            sprite.DrawString(_font, quickSlotText, new Vector2(previewBounds.Right + 8, previewBounds.Y + 4), new Color(220, 220, 220), 0f, Vector2.Zero, 0.34f, SpriteEffects.None, 0f);
+
+            string clientOwnerText = BuildClientOwnerStatusText();
+            sprite.DrawString(_font, clientOwnerText, new Vector2(previewBounds.Right + 8, previewBounds.Y + 18), new Color(210, 210, 210), 0f, Vector2.Zero, 0.31f, SpriteEffects.None, 0f);
+            if (!string.IsNullOrWhiteSpace(selectedShortcutVisual.Detail))
+            {
+                sprite.DrawString(_font, selectedShortcutVisual.Detail, new Vector2(previewBounds.Right + 8, previewBounds.Y + 30), new Color(192, 200, 214), 0f, Vector2.Zero, 0.28f, SpriteEffects.None, 0f);
+            }
+
+            Rectangle bindingBounds = new(infoBounds.Right - 120, infoBounds.Bottom - 28, 114, 22);
+            sprite.Draw(_highlightTexture, bindingBounds, new Color(56, 68, 92, 215));
+            DrawBindingValue(sprite, bindingBounds, GetBinding(_selectedAction.Value));
         }
 
         private void DrawBindingValue(SpriteBatch sprite, Rectangle bounds, KeyBinding binding)

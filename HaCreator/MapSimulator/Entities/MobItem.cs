@@ -2,6 +2,7 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Core;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary;
 using HaSharedLibrary.Render;
@@ -42,7 +43,11 @@ namespace HaCreator.MapSimulator.Entities
         private bool _baseUsePlatformBounds;
         private int _lastAngerChargeCount = -1;
         private int _angerGaugeLoopStartTick;
+        private int _angerGaugeBurstNextAllowedTick = int.MinValue;
         private int _angerGaugeEffectStartTick = int.MinValue;
+        private string _lastObservedAttackAction;
+        private int _lastObservedAttackFrameIndex;
+        private int _lastObservedAttackFrameTime = int.MinValue;
 
         // Cached mirror boundary (optimization - avoid recalculating every frame)
         private readonly CachedBoundaryChecker _boundaryChecker = new CachedBoundaryChecker();
@@ -136,6 +141,7 @@ namespace HaCreator.MapSimulator.Entities
         public string CharDam2SE { get; private set; }
 
         private SoundManager _soundManager;
+        private AnimationEffects _animationEffects;
 
         /// <summary>
         /// Sets the mob's sound effects (damage and die)
@@ -143,6 +149,11 @@ namespace HaCreator.MapSimulator.Entities
         public void SetSoundManager(SoundManager soundManager)
         {
             _soundManager = soundManager;
+        }
+
+        public void SetAnimationEffects(AnimationEffects animationEffects)
+        {
+            _animationEffects = animationEffects;
         }
 
         public void SetSounds(string damageSE, string dieSE)
@@ -458,6 +469,24 @@ namespace HaCreator.MapSimulator.Entities
             float x = CurrentX;
             float y = CurrentY - GetVisualHeight() - verticalPadding;
             return new Vector2(x, y);
+        }
+
+        internal Vector2 GetAngerGaugeBurstAnchor()
+        {
+            MobAnimationSet.FrameMetadata frameMetadata = GetCurrentAnimationFrameMetadata();
+            if (frameMetadata?.HasHeadAnchor == true)
+            {
+                int headOffsetX = flip ? -frameMetadata.HeadAnchor.X : frameMetadata.HeadAnchor.X;
+                return new Vector2(CurrentX + headOffsetX, CurrentY + frameMetadata.HeadAnchor.Y);
+            }
+
+            Rectangle bodyHitbox = GetBodyHitbox(Environment.TickCount);
+            if (bodyHitbox != Rectangle.Empty)
+            {
+                return new Vector2(bodyHitbox.Center.X, bodyHitbox.Top);
+            }
+
+            return new Vector2(CurrentX, CurrentY - GetVisualHeight());
         }
 
         /// <summary>
@@ -1174,6 +1203,55 @@ namespace HaCreator.MapSimulator.Entities
             }
         }
 
+        public bool TryGetRecentAttackFrameIndex(string attackAction, int currentTime, int retentionWindowMs, out int frameIndex)
+        {
+            frameIndex = 0;
+            if (string.IsNullOrWhiteSpace(attackAction))
+            {
+                return false;
+            }
+
+            string currentAction = _animationController?.CurrentAction;
+            if (string.Equals(currentAction, attackAction, StringComparison.OrdinalIgnoreCase))
+            {
+                frameIndex = Math.Max(0, _animationController?.CurrentFrameIndex ?? 0);
+                return true;
+            }
+
+            if (!CanReuseRecentAttackFrameObservation(
+                    attackAction,
+                    _lastObservedAttackAction,
+                    _lastObservedAttackFrameTime,
+                    currentTime,
+                    retentionWindowMs))
+            {
+                return false;
+            }
+
+            frameIndex = Math.Max(0, _lastObservedAttackFrameIndex);
+            return true;
+        }
+
+        public static bool CanReuseRecentAttackFrameObservation(
+            string requestedAttackAction,
+            string observedAttackAction,
+            int observedAt,
+            int currentTime,
+            int retentionWindowMs)
+        {
+            if (string.IsNullOrWhiteSpace(requestedAttackAction)
+                || string.IsNullOrWhiteSpace(observedAttackAction)
+                || !string.Equals(requestedAttackAction, observedAttackAction, StringComparison.OrdinalIgnoreCase)
+                || observedAt == int.MinValue)
+            {
+                return false;
+            }
+
+            int safeRetentionWindowMs = Math.Max(0, retentionWindowMs);
+            return currentTime >= observedAt
+                && currentTime - observedAt <= safeRetentionWindowMs;
+        }
+
         #region Custom Members
         public MobInstance MobInstance
         {
@@ -1486,8 +1564,29 @@ namespace HaCreator.MapSimulator.Entities
 
             // Update the animation controller's frame
             _animationController.UpdateFrame(tickCount);
+            TrackRecentAttackFrameObservation(tickCount);
 
             return _animationController.GetCurrentFrame();
+        }
+
+        private void TrackRecentAttackFrameObservation(int tickCount)
+        {
+            string currentAction = _animationController?.CurrentAction;
+            if (!IsAttackLikeAction(currentAction))
+            {
+                return;
+            }
+
+            _lastObservedAttackAction = currentAction;
+            _lastObservedAttackFrameIndex = Math.Max(0, _animationController?.CurrentFrameIndex ?? 0);
+            _lastObservedAttackFrameTime = tickCount;
+        }
+
+        private static bool IsAttackLikeAction(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && (actionName.StartsWith("attack", StringComparison.OrdinalIgnoreCase)
+                       || actionName.StartsWith("skill", StringComparison.OrdinalIgnoreCase));
         }
 
         private IReadOnlyList<IDXObject> GetCurrentAnimationFrames()
@@ -1667,25 +1766,67 @@ namespace HaCreator.MapSimulator.Entities
             if (AI?.HasAngerGauge != true)
             {
                 _lastAngerChargeCount = -1;
+                _angerGaugeBurstNextAllowedTick = int.MinValue;
                 _angerGaugeEffectStartTick = int.MinValue;
                 return;
             }
 
             int currentChargeCount = AI.AngerChargeCount;
-            if (currentChargeCount == _lastAngerChargeCount)
+            if (currentChargeCount != _lastAngerChargeCount)
+            {
+                _angerGaugeLoopStartTick = tickCount;
+            }
+
+            if (MobAngerGaugeBurstParity.ShouldRegisterBurst(
+                    currentChargeCount,
+                    AI.AngerChargeTarget,
+                    _lastAngerChargeCount,
+                    _angerGaugeBurstNextAllowedTick,
+                    tickCount))
+            {
+                RegisterAngerGaugeBurst(tickCount);
+            }
+            else if (currentChargeCount < AI.AngerChargeTarget)
+            {
+                _angerGaugeBurstNextAllowedTick = int.MinValue;
+            }
+
+            _lastAngerChargeCount = currentChargeCount;
+        }
+
+        private void RegisterAngerGaugeBurst(int tickCount)
+        {
+            List<IDXObject> effectFrames = _animationSet.GetAngerGaugeEffect();
+            int repeatIntervalMs = MobAngerGaugeBurstParity.ResolveRepeatIntervalMs(effectFrames);
+            if (repeatIntervalMs <= 0)
             {
                 return;
             }
 
-            _angerGaugeLoopStartTick = tickCount;
-            if (currentChargeCount >= AI.AngerChargeTarget &&
-                _lastAngerChargeCount >= 0 &&
-                currentChargeCount > _lastAngerChargeCount)
+            string effectPath = _animationSet.GetAngerGaugeEffectPath()
+                ?? MobAngerGaugeBurstStringPoolText.ResolvePath(_mobInstance?.MobInfo?.ID);
+            if (string.IsNullOrWhiteSpace(effectPath))
             {
-                _angerGaugeEffectStartTick = tickCount;
+                return;
             }
 
-            _lastAngerChargeCount = currentChargeCount;
+            _angerGaugeBurstNextAllowedTick = tickCount + repeatIntervalMs;
+            if (_animationEffects != null)
+            {
+                Vector2 anchor = GetAngerGaugeBurstAnchor();
+                _animationEffects.AddOneTimeAttached(
+                    effectFrames,
+                    GetAngerGaugeBurstAnchor,
+                    () => flip,
+                    anchor.X,
+                    anchor.Y,
+                    flip,
+                    tickCount,
+                    zOrder: 1);
+                return;
+            }
+
+            _angerGaugeEffectStartTick = tickCount;
         }
 
         private static IDXObject GetTimedAnimationFrame(IReadOnlyList<IDXObject> frames, int tickCount, int startTick, bool loop)
@@ -1870,8 +2011,11 @@ namespace HaCreator.MapSimulator.Entities
                     IDXObject angerGaugeFrame = GetCurrentAngerGaugeAnimationFrame(TickCount);
                     DrawOverlayFrame(angerGaugeFrame, sprite, skeletonMeshRenderer, gameTime, adjustedShiftX, shiftCenteredY, flip, spawnAlpha);
 
-                    IDXObject angerEffectFrame = GetCurrentAngerGaugeEffectFrame(TickCount);
-                    DrawOverlayFrame(angerEffectFrame, sprite, skeletonMeshRenderer, gameTime, adjustedShiftX, shiftCenteredY, flip, spawnAlpha);
+                    if (_animationEffects == null)
+                    {
+                        IDXObject angerEffectFrame = GetCurrentAngerGaugeEffectFrame(TickCount);
+                        DrawOverlayFrame(angerEffectFrame, sprite, skeletonMeshRenderer, gameTime, adjustedShiftX, shiftCenteredY, flip, spawnAlpha);
+                    }
                 }
             }
 

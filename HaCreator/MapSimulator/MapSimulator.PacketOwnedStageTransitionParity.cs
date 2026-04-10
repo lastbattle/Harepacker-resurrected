@@ -33,6 +33,7 @@ namespace HaCreator.MapSimulator
             if (packetType == 141
                 && PacketStageTransitionRuntime.TryDecodeOfficialSetFieldPayload(payload, out PacketSetFieldPacket setFieldPacket, out _))
             {
+                UpdateRemoteDropPacketServerClockFromSetField(setFieldPacket);
                 UpdatePacketOwnedFollowRequestOptionFromSetField(setFieldPacket);
                 UpdatePacketOwnedAuthoritativeCharacterDataFromSetField(setFieldPacket);
                 UpdatePacketOwnedLogoutGiftConfigFromSetField(setFieldPacket);
@@ -157,12 +158,20 @@ namespace HaCreator.MapSimulator
 
         private void ApplyPacketOwnedCharacterQuestRecordSnapshot(PacketCharacterDataSnapshot snapshot)
         {
-            if (snapshot?.QuestRecordValues == null || _questRuntime == null)
+            ApplyPacketOwnedNpcQuestSelectionRecords(_questRuntime, snapshot);
+        }
+
+        internal static void ApplyPacketOwnedNpcQuestSelectionRecords(
+            QuestRuntimeManager questRuntime,
+            PacketCharacterDataSnapshot snapshot)
+        {
+            if (questRuntime == null || snapshot == null)
             {
                 return;
             }
 
-            _questRuntime.ApplyPacketOwnedQuestRecordSnapshot(snapshot.QuestRecordValues);
+            questRuntime.ApplyPacketOwnedQuestRecordSnapshot(snapshot.QuestRecordValues);
+            questRuntime.ApplyPacketOwnedQuestRecordSnapshot(snapshot.QuestExRecordValues);
         }
 
         private void UpdatePacketOwnedFollowRequestOptionFromSetField(PacketSetFieldPacket packet)
@@ -298,6 +307,7 @@ namespace HaCreator.MapSimulator
             if (skillRecords != null)
             {
                 _playerManager.Skills.ApplyAuthoritativeSkillRecordSnapshot(skillRecords);
+                RefreshVisibleSkillRootsFromCurrentRecords();
             }
 
             IReadOnlyDictionary<int, int> masterLevels = snapshot.SkillMasterLevels;

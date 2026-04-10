@@ -200,6 +200,7 @@ namespace HaCreator.MapSimulator
                 WeddingPhotoWrapperKind kind,
                 string sourceDescription,
                 string sceneDescription,
+                string backgroundMusicPath,
                 int returnMapId,
                 int side,
                 int top,
@@ -212,6 +213,7 @@ namespace HaCreator.MapSimulator
                 Kind = kind;
                 SourceDescription = sourceDescription ?? string.Empty;
                 SceneDescription = sceneDescription ?? string.Empty;
+                BackgroundMusicPath = backgroundMusicPath ?? string.Empty;
                 ReturnMapId = returnMapId;
                 Side = Math.Max(0, side);
                 Top = Math.Max(0, top);
@@ -225,6 +227,7 @@ namespace HaCreator.MapSimulator
             public WeddingPhotoWrapperKind Kind { get; }
             public string SourceDescription { get; }
             public string SceneDescription { get; }
+            public string BackgroundMusicPath { get; }
             public int ReturnMapId { get; }
             public int Side { get; }
             public int Top { get; }
@@ -1032,7 +1035,8 @@ namespace HaCreator.MapSimulator
                     TutorRuntime.AranTutorSkillId,
                     currentTick,
                     "leaving aran tutorial wrapper owner");
-                RemovePacketOwnedTutorSummon();
+                RemovePacketOwnedTutorSummonForRuntimeOwner();
+                SyncPacketOwnedTutorSummonState(currentTick);
             }
 
             _wrapperOwnedAranTutorActorApplied = false;
@@ -1420,6 +1424,7 @@ namespace HaCreator.MapSimulator
                     WeddingPhotoWrapperKind.SceneOwner,
                     sourceDescription,
                     sceneDescription,
+                    mapInfo?.bgm,
                     mapInfo.returnMap,
                     sceneSide,
                     sceneTop,
@@ -1437,6 +1442,7 @@ namespace HaCreator.MapSimulator
                     WeddingPhotoWrapperKind.PhotoContract,
                     $"wedding photo safe-area contract (mapMark={mapInfo.mapMark}, region={mapInfo.id / 1000})",
                     "wedding ceremony/photo safe-area contract",
+                    mapInfo.bgm,
                     mapInfo.returnMap,
                     sceneSide,
                     sceneTop,

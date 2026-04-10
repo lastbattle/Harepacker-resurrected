@@ -1017,7 +1017,7 @@ namespace HaCreator.MapSimulator.Loaders
             return value == ',' || value == '\n' || value == '\r' || value == ';' || value == '|';
         }
 
-        private static bool TryResolveSingleLetterContextLabel(
+        internal static bool TryResolveSingleLetterContextLabel(
             string clause,
             string placeholderToken,
             out string label)
@@ -1074,9 +1074,37 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 label = "Magic DEF";
             }
+            else if (normalizedClause.Equals("def", StringComparison.Ordinal)
+                     || normalizedClause.StartsWith("def ", StringComparison.Ordinal)
+                     || normalizedClause.Contains(" def ", StringComparison.Ordinal))
+            {
+                label = "DEF";
+            }
+            else if (normalizedClause.Contains("enemy attack and defense", StringComparison.Ordinal)
+                     || normalizedClause.Contains("enemy defense and attack", StringComparison.Ordinal))
+            {
+                label = "Enemy Attack / DEF";
+            }
+            else if (normalizedClause.Contains("enemy attack avoidance rate", StringComparison.Ordinal)
+                     || normalizedClause.Contains("dodge chance", StringComparison.Ordinal)
+                     || normalizedClause.Contains("evading enemy attack", StringComparison.Ordinal)
+                     || normalizedClause.Contains("evade enemy attack", StringComparison.Ordinal))
+            {
+                label = "Dodge Chance";
+            }
+            else if (normalizedClause.Contains("enemy movement speed", StringComparison.Ordinal)
+                     || normalizedClause.Contains("enemy speed", StringComparison.Ordinal))
+            {
+                label = "Enemy Movement Speed";
+            }
             else if (normalizedClause.Contains("enemy accuracy", StringComparison.Ordinal))
             {
                 label = "Enemy Accuracy";
+            }
+            else if (normalizedClause.Contains("enemy defense", StringComparison.Ordinal)
+                     || normalizedClause.Contains("enemy def", StringComparison.Ordinal))
+            {
+                label = "Enemy DEF";
             }
             else if (normalizedClause.Contains("accuracy", StringComparison.Ordinal))
             {
@@ -1098,6 +1126,18 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 label = "Meso Drop Rate";
             }
+            else if ((normalizedClause.Contains("exp", StringComparison.Ordinal)
+                      || normalizedClause.Contains("experience", StringComparison.Ordinal))
+                     && (normalizedClause.Contains("item drop", StringComparison.Ordinal)
+                         || normalizedClause.Contains("item drp", StringComparison.Ordinal)))
+            {
+                label = "EXP / Item Drop Rate";
+            }
+            else if (normalizedClause.Contains("item drop rate", StringComparison.Ordinal)
+                     || normalizedClause.Contains("item drp rate", StringComparison.Ordinal))
+            {
+                label = "Item Drop Rate";
+            }
             else if (normalizedClause.Contains("damage guard rate", StringComparison.Ordinal))
             {
                 label = "Damage Guard Rate";
@@ -1113,8 +1153,14 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 label = "Chance";
             }
+            else if (normalizedClause.Contains("full strength", StringComparison.Ordinal))
+            {
+                label = "Full Strength Chance";
+            }
             else if (normalizedClause.Contains("number of attacks", StringComparison.Ordinal)
-                     || normalizedClause.Contains("attack count", StringComparison.Ordinal))
+                     || normalizedClause.Contains("attack count", StringComparison.Ordinal)
+                     || normalizedClause.Contains(" attacks ", StringComparison.Ordinal) && normalizedClause.Contains(" times", StringComparison.Ordinal)
+                     || normalizedClause.Contains("critical attacks", StringComparison.Ordinal))
             {
                 label = "Attack Count";
             }
@@ -1170,6 +1216,10 @@ namespace HaCreator.MapSimulator.Loaders
             else if (normalizedClause.Contains("range", StringComparison.Ordinal))
             {
                 label = "Range";
+            }
+            else if (normalizedClause.Contains("teleport distance", StringComparison.Ordinal))
+            {
+                label = "Teleport Distance";
             }
             else if (normalizedClause.Contains("every", StringComparison.Ordinal)
                      && normalizedClause.Contains(" sec", StringComparison.Ordinal))
@@ -1237,6 +1287,7 @@ namespace HaCreator.MapSimulator.Loaders
                 "Magic ATT" => FormatSignedValue,
                 "Weapon DEF" => FormatSignedValue,
                 "Magic DEF" => FormatSignedValue,
+                "Enemy Movement Speed" => FormatSignedValue,
                 "Accuracy" => FormatSignedValue,
                 "Avoidability" => FormatSignedValue,
                 "Movement Speed" => FormatSignedValue,
@@ -1244,6 +1295,7 @@ namespace HaCreator.MapSimulator.Loaders
                 "Jump" => FormatSignedValue,
                 "Max HP" => FormatSignedValue,
                 "Max MP" => FormatSignedValue,
+                "Teleport Distance" => FormatSignedValue,
                 "Duration" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
                 "Interval" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
                 _ => null

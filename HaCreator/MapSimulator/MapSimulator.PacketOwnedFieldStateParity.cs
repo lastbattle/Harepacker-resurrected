@@ -4,7 +4,9 @@ using HaCreator.MapSimulator.Interaction;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace HaCreator.MapSimulator
 {
@@ -320,6 +322,127 @@ namespace HaCreator.MapSimulator
             _pendingPortalSessionValueImpact = null;
             _pendingPortalSessionValueImpactMapId = -1;
             _ = ClearPacketOwnedTeleportPassengerLink();
+        }
+
+        private void TryApplyPendingPortalSessionValueImpactFromPacket(int packetType, byte[] payload)
+        {
+            if (_pendingPortalSessionValueImpact?.IsValid != true
+                || !TryDecodePortalSessionValueImpactPacketPairs(packetType, payload, out IReadOnlyList<KeyValuePair<string, string>> pairs, out _))
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<string, string> pair in pairs)
+            {
+                TryApplyPendingPortalSessionValueImpact(pair.Key, pair.Value);
+                if (_pendingPortalSessionValueImpact?.IsValid != true)
+                {
+                    break;
+                }
+            }
+        }
+
+        internal static bool TryDecodePortalSessionValueImpactPacketPairs(
+            int packetType,
+            byte[] payload,
+            out IReadOnlyList<KeyValuePair<string, string>> pairs,
+            out string error)
+        {
+            pairs = Array.Empty<KeyValuePair<string, string>>();
+            error = null;
+            payload ??= Array.Empty<byte>();
+
+            if (packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                        payload,
+                        out int relayedPacketType,
+                        out byte[] relayedPayload,
+                        out string relayError))
+                {
+                    error = relayError;
+                    return false;
+                }
+
+                packetType = relayedPacketType;
+                payload = relayedPayload;
+            }
+
+            if (packetType == PartyRaidField.ClientSessionValuePacketType)
+            {
+                if (!TryDecodeMapleStringPairPayload(payload, out string key, out string value, out error))
+                {
+                    return false;
+                }
+
+                pairs = new[] { new KeyValuePair<string, string>(key, value) };
+                return true;
+            }
+
+            if (packetType == 149)
+            {
+                if (!PacketFieldSpecificDataCodec.TryDecodeStringPairs(payload, out pairs, out int headerSize))
+                {
+                    error = "Portal session-value impact packet did not decode into Maple string pairs.";
+                    return false;
+                }
+
+                error = $"decoded field-specific packet header size {headerSize}";
+                return true;
+            }
+
+            error = $"Packet type {packetType} does not carry portal session-value impact pairs.";
+            return false;
+        }
+
+        internal static bool TryDecodeMapleStringPairPayload(
+            byte[] payload,
+            out string key,
+            out string value,
+            out string error)
+        {
+            key = string.Empty;
+            value = string.Empty;
+            error = null;
+            payload ??= Array.Empty<byte>();
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+                key = ReadMapleString(reader);
+                value = ReadMapleString(reader);
+                if (stream.Position != stream.Length)
+                {
+                    error = "Maple string pair payload had trailing bytes after the value string.";
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    error = "Maple string pair payload key was empty.";
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException || ex is EndOfStreamException || ex is ArgumentException)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        private static string ReadMapleString(BinaryReader reader)
+        {
+            ushort length = reader.ReadUInt16();
+            byte[] bytes = reader.ReadBytes(length);
+            if (bytes.Length != length)
+            {
+                throw new EndOfStreamException("Maple string pair payload ended before its declared Maple-string length.");
+            }
+
+            return Encoding.Default.GetString(bytes);
         }
 
         [Flags]

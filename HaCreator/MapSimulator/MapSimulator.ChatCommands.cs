@@ -8640,7 +8640,12 @@ namespace HaCreator.MapSimulator
                                     : ChatCommandHandler.CommandResult.Error(packetMessage),
                                 payload => TryApplyPacketOwnedMessengerDispatchPayload(payload, out string dispatchMessage)
                                     ? ChatCommandHandler.CommandResult.Ok(dispatchMessage)
-                                    : ChatCommandHandler.CommandResult.Error(dispatchMessage));
+                                    : ChatCommandHandler.CommandResult.Error(dispatchMessage),
+                                (bool accepted, string contactName, out byte[] payload, out string message) => _messengerRuntime.TryBuildPendingInviteResolutionPayload(accepted, contactName, out payload, out message),
+                                (string participantToken, int? slotOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketAvatarPayload(participantToken, () => _playerManager?.Player?.Build != null ? LoginAvatarLookCodec.CreateLook(_playerManager.Player.Build) : null, slotOverride, out payload, out message),
+                                (string participantToken, int? slotOverride, int? channelOverride, bool? isNewOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketEnterPayload(participantToken, () => _playerManager?.Player?.Build != null ? LoginAvatarLookCodec.CreateLook(_playerManager.Player.Build) : null, slotOverride, channelOverride, isNewOverride, out payload, out message),
+                                (out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketMigratedPayload(() => _playerManager?.Player?.Build != null ? LoginAvatarLookCodec.CreateLook(_playerManager.Player.Build) : null, out payload, out message),
+                                (int? slotOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketSelfEnterResultPayload(slotOverride, out payload, out message));
                         case "packetraw":
                             return MessengerCommandRouter.HandlePacketRawCommand(
                                 args,
@@ -8658,7 +8663,12 @@ namespace HaCreator.MapSimulator
                                 _messengerRuntime,
                                 (packetType, payload) => TryApplyPacketOwnedMessengerPacket(packetType, payload, out string packetMessage)
                                     ? ChatCommandHandler.CommandResult.Ok(packetMessage)
-                                    : ChatCommandHandler.CommandResult.Error(packetMessage));
+                                    : ChatCommandHandler.CommandResult.Error(packetMessage),
+                                (bool accepted, string contactName, out byte[] payload, out string message) => _messengerRuntime.TryBuildPendingInviteResolutionPayload(accepted, contactName, out payload, out message),
+                                (string participantToken, int? slotOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketAvatarPayload(participantToken, () => _playerManager?.Player?.Build != null ? LoginAvatarLookCodec.CreateLook(_playerManager.Player.Build) : null, slotOverride, out payload, out message),
+                                (string participantToken, int? slotOverride, int? channelOverride, bool? isNewOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketEnterPayload(participantToken, () => _playerManager?.Player?.Build != null ? LoginAvatarLookCodec.CreateLook(_playerManager.Player.Build) : null, slotOverride, channelOverride, isNewOverride, out payload, out message),
+                                (out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketMigratedPayload(() => _playerManager?.Player?.Build != null ? LoginAvatarLookCodec.CreateLook(_playerManager.Player.Build) : null, out payload, out message),
+                                (int? slotOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketSelfEnterResultPayload(slotOverride, out payload, out message));
 
                         default:
 

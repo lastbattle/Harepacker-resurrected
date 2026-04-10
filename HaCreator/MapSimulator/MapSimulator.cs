@@ -334,6 +334,7 @@ namespace HaCreator.MapSimulator
         private readonly FamilyChartRuntime _familyChartRuntime = new FamilyChartRuntime();
         private UserInfoUI.UserInfoActionContext? _bookCollectionActionContext;
         private readonly SocialListRuntime _socialListRuntime = new SocialListRuntime();
+        private readonly UserInfoPopularityPreviewService _userInfoPopularityPreviewService = new();
         private readonly GuildSkillRuntime _guildSkillRuntime = new GuildSkillRuntime();
         private readonly RemoteUserActorPool _remoteUserPool = new();
         private readonly SummonedPool _summonedPool = new();
@@ -661,6 +662,7 @@ namespace HaCreator.MapSimulator
         private const int LoginWorldPopulationUpdateIntervalMs = 2200;
         private const string NpcInteractionDirectionModeOwnerName = "__NpcInteractionOverlay";
         private const string WeddingDirectionModeOwnerName = "__SpecialFieldWeddingDialog";
+        private const string CakePieItemInfoDirectionModeOwnerName = "__SpecialFieldCakePieItemInfo";
         private const string MemoryGameDirectionModeOwnerName = "__SpecialFieldMemoryGame";
         private const string TournamentMatchTableDirectionModeOwnerName = "__SpecialFieldTournamentMatchTable";
         private const string RockPaperScissorsDirectionModeOwnerName = "__SpecialFieldRockPaperScissors";
@@ -849,6 +851,8 @@ namespace HaCreator.MapSimulator
             mapTransferWindow.MoveDestinationRequested = MoveToMapTransferDestination;
             mapTransferWindow.WorldMapRequested = HandleMapTransferWorldMapRequested;
             mapTransferWindow.ManualMapMoveRequested = MoveToManualMapTransferDestination;
+            mapTransferWindow.PromptMapLabelResolver = ResolveMapTransferPromptLabel;
+            mapTransferWindow.SetRegisterPromptMapId(_mapTransferManualDestination?.MapId ?? (_mapBoard?.MapInfo?.id ?? 0));
             mapTransferWindow.SetCurrentMapName(GetCurrentMapTransferDisplayName());
             mapTransferWindow.SetStatusMessage(GetMapTransferStatusMessage());
             mapTransferWindow.SetDestinations(BuildMapTransferDestinations());
@@ -2292,6 +2296,23 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private string ResolveMapTransferPromptLabel(int mapId)
+        {
+            if (mapId <= 0 || mapId == MapConstants.MaxMap)
+            {
+                return string.Empty;
+            }
+
+            string displayName = TrimMapTransferCategoryPrefix(ResolveMapTransferDisplayName(mapId));
+            if (!string.IsNullOrWhiteSpace(displayName) &&
+                !string.Equals(displayName, mapId.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal))
+            {
+                return displayName;
+            }
+
+            return PacketFieldUtilityAdminResultStringPoolText.GetMapNameFallback(mapId);
+        }
+
 
 
         private static bool TryResolveMapDisplayNameFromCache(int mapId, out string displayName)
@@ -2760,6 +2781,7 @@ namespace HaCreator.MapSimulator
                 _npcInteractionOverlay?.IsVisible == true,
                 _scriptedDirectionModeOwnerActive,
                 _specialFieldRuntime.SpecialEffects.Wedding.HasActiveScriptedDialog,
+                _specialFieldRuntime.SpecialEffects.CakePie.IsItemInfoVisible,
                 _specialFieldRuntime.Minigames.MemoryGame.IsVisible,
                 _specialFieldRuntime.Minigames.Tournament.MatchTableDialog.IsVisible,
                 _specialFieldRuntime.Minigames.RockPaperScissors.IsVisible,
@@ -4233,7 +4255,7 @@ namespace HaCreator.MapSimulator
                 return unavailableMessage;
             }
 
-            return new UserInfoPopularityPreviewService().HandleRequest(context, direction, Environment.TickCount);
+            return _userInfoPopularityPreviewService.HandleRequest(context, direction, Environment.TickCount);
         }
 
         private bool TryResolveRemoteCharacterInfoTargetPresence(
@@ -16985,6 +17007,7 @@ namespace HaCreator.MapSimulator
                 _DxDeviceManager.GraphicsDevice,
                 _soundManager,
                 usedProps);
+            mobItem?.SetAnimationEffects(_animationEffects);
             ConfigureMobAutoSkillSelection(mobItem);
             return mobItem;
         }
@@ -20064,19 +20087,7 @@ namespace HaCreator.MapSimulator
 
 
             _playerManager.Skills.SetSkillLevel(skillId, targetLevel);
-
-
-
-            SkillData skill = _playerManager.SkillLoader?.LoadSkill(skillId);
-
-            int maxLevel = Math.Max(targetLevel, skill?.MaxLevel ?? targetLevel);
-
-
-
-            if (uiWindowManager?.SkillWindow is SkillUIBigBang bigBangSkillWindow)
-            {
-                bigBangSkillWindow.UpdateSkillLevel(skillId, targetLevel, maxLevel);
-            }
+            RefreshVisibleSkillRootsFromCurrentRecords();
         }
 
 
@@ -25665,6 +25676,9 @@ namespace HaCreator.MapSimulator
             return PassiveTransferFieldReadinessEvaluator.CanRetryFromLiveFieldInterface(
                 new PassiveTransferFieldInterfaceState(
                     HasLiveFieldInterface: HasPassiveTransferFieldInterface(),
+                    HasPendingMapChange: _gameState.PendingMapChange,
+                    HasPlayerInputControl: _gameState.IsPlayerInputEnabled,
+                    HasStandAloneControlOwner: false,
                     AllowsTransferField: ResolvePassiveTransferFieldRuntimeTransferAllowance(),
                     HasPendingSpecialTransfer: _specialFieldRuntime.HasPendingTransfer,
                     HasPendingPacketOwnedTransfer: HasPendingPassiveTransferFieldPacketTransferOwnership(),
@@ -25789,6 +25803,8 @@ namespace HaCreator.MapSimulator
                     temporaryPortalDestination.MapId,
                     temporaryPortalDestination.SourceX,
                     temporaryPortalDestination.SourceY,
+                    temporaryPortalDestination.X,
+                    temporaryPortalDestination.Y,
                     temporaryTargetPortalName,
                     temporaryTargetPortalNameCandidates,
                     out PortalInstance temporarySourcePortal,
@@ -26450,6 +26466,9 @@ namespace HaCreator.MapSimulator
                 WeddingDirectionModeOwnerName,
                 () => _specialFieldRuntime.SpecialEffects.Wedding.HasActiveScriptedDialog);
             _scriptedDirectionModeWindows.TrackOwner(
+                CakePieItemInfoDirectionModeOwnerName,
+                () => _specialFieldRuntime.SpecialEffects.CakePie.IsItemInfoVisible);
+            _scriptedDirectionModeWindows.TrackOwner(
                 MemoryGameDirectionModeOwnerName,
                 () => _specialFieldRuntime.Minigames.MemoryGame.IsVisible);
             _scriptedDirectionModeWindows.TrackOwner(
@@ -27081,8 +27100,7 @@ namespace HaCreator.MapSimulator
             }
 
 
-            string fieldScript = (_mapBoard.MapInfo.Image?["info"]?["fieldScript"] as WzStringProperty)?.Value;
-            foreach (string scriptName in QuestRuntimeManager.ParseScriptNames(fieldScript))
+            foreach (string scriptName in QuestRuntimeManager.ParseScriptNames(_mapBoard.MapInfo.Image?["info"]?["fieldScript"]))
             {
                 yield return scriptName;
             }
@@ -28276,6 +28294,36 @@ namespace HaCreator.MapSimulator
 
             ApplyQuestGrantedSkillPointBonuses();
 
+        }
+
+        private void RefreshVisibleSkillRootsFromCurrentRecords()
+        {
+            if (uiWindowManager?.SkillWindow is not SkillUIBigBang skillWindow
+                || _playerManager?.Skills == null
+                || _playerManager.Player?.Build == null)
+            {
+                return;
+            }
+
+            CharacterBuild build = _playerManager.Player.Build;
+            UIWindowLoader.RefreshVisibleSkillRootsFromCurrentRecords(
+                skillWindow,
+                build.Job,
+                GraphicsDevice,
+                _playerManager.Skills.GetLearnedSkills().Select(skill => skill.SkillId),
+                build.SubJob);
+
+            Dictionary<int, SkillData> skillDataById = _playerManager.Skills
+                .GetAllSkills()
+                .Where(skill => skill != null)
+                .GroupBy(skill => skill.SkillId)
+                .ToDictionary(group => group.Key, group => group.First());
+
+            skillWindow.SynchronizeLoadedSkillLevels(
+                skillId => _playerManager.Skills.GetSkillLevel(skillId),
+                skillId => skillDataById.TryGetValue(skillId, out SkillData skillData)
+                    ? skillData.MaxLevel
+                    : 0);
         }
 
 
@@ -30729,7 +30777,14 @@ namespace HaCreator.MapSimulator
             renderData.GaugeDurationMs = preparedSkill.HudGaugeDurationMs;
             renderData.Progress = preparedSkill.Progress(currentTime);
             renderData.IsKeydownSkill = preparedSkill.IsKeydownSkill;
+            renderData.IsPreparingPhase = preparedSkill.IsKeydownSkill
+                && !preparedSkill.IsHolding
+                && preparedSkill.Duration > 0
+                && preparedSkill.Elapsed(currentTime) < preparedSkill.Duration;
             renderData.IsHolding = preparedSkill.IsHolding;
+            renderData.PrepareRemainingMs = renderData.IsPreparingPhase
+                ? renderData.RemainingMs
+                : 0;
             renderData.HoldElapsedMs = preparedSkill.HoldElapsed(currentTime);
             renderData.MaxHoldDurationMs = preparedSkill.MaxHoldDurationMs;
             renderData.TextVariant = preparedSkill.HudTextVariant;
@@ -30797,7 +30852,9 @@ namespace HaCreator.MapSimulator
             renderData.GaugeDurationMs = 0;
             renderData.Progress = 0f;
             renderData.IsKeydownSkill = false;
+            renderData.IsPreparingPhase = false;
             renderData.IsHolding = false;
+            renderData.PrepareRemainingMs = 0;
             renderData.HoldElapsedMs = 0;
             renderData.MaxHoldDurationMs = 0;
             renderData.TextVariant = PreparedSkillHudTextVariant.Default;
@@ -32955,7 +33012,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                bool applied = TryDispatchCurrentWrapperPacketIngress(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
+                bool applied = TryApplyCoconutWrapperPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
                 _coconutPacketInbox.RecordDispatchResult(
                     message.Source,
                     message.PacketType,
@@ -32975,12 +33032,44 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                bool applied = TryDispatchCurrentWrapperPacketIngress(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
+                bool applied = TryApplyCoconutWrapperPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
                 _coconutOfficialSessionBridge.RecordDispatchResult(
                     bridgeMessage.Source,
                     bridgeMessage.PacketType,
                     applied,
                     bridgeErrorMessage);
+            }
+        }
+
+        private bool TryApplyCoconutWrapperPacket(int packetType, byte[] payload, int currentTickCount, out string message)
+        {
+            CoconutField field = _specialFieldRuntime?.Minigames?.Coconut;
+            int previousLocalTeam = field?.LocalTeam ?? 0;
+            CoconutField.LocalTeamSelectionSource previousSelectionSource =
+                field?.TeamSelectionSource ?? CoconutField.LocalTeamSelectionSource.Default;
+
+            bool applied = TryDispatchCurrentWrapperPacketIngress(packetType, payload, currentTickCount, out message);
+            if (applied)
+            {
+                ApplyClientOwnedFieldWrappersIfCoconutTeamSelectionChanged(field, previousLocalTeam, previousSelectionSource);
+            }
+
+            return applied;
+        }
+
+        private void ApplyClientOwnedFieldWrappersIfCoconutTeamSelectionChanged(
+            CoconutField field,
+            int previousLocalTeam,
+            CoconutField.LocalTeamSelectionSource previousSelectionSource)
+        {
+            if (field?.IsActive != true)
+            {
+                return;
+            }
+
+            if (field.LocalTeam != previousLocalTeam || field.TeamSelectionSource != previousSelectionSource)
+            {
+                ApplyClientOwnedFieldWrappers();
             }
         }
 
@@ -34211,6 +34300,18 @@ namespace HaCreator.MapSimulator
                     _ => false
                 };
 
+                if (applied)
+                {
+                    if (message.Scope == PartyRaidPacketScope.Session)
+                    {
+                        TryApplyPendingPortalSessionValueImpact(message.Key, message.Value);
+                    }
+                    else if (message.Scope == PartyRaidPacketScope.Packet)
+                    {
+                        TryApplyPendingPortalSessionValueImpactFromPacket(message.PacketType, message.Payload);
+                    }
+                }
+
 
                 _partyRaidPacketInbox.RecordDispatchResult(
                     message.Source,
@@ -34235,6 +34336,11 @@ namespace HaCreator.MapSimulator
                 }
 
                 bool applied = TryApplyPartyRaidWrapperPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeDispatchMessage);
+                if (applied)
+                {
+                    TryApplyPendingPortalSessionValueImpactFromPacket(bridgeMessage.PacketType, bridgeMessage.Payload);
+                }
+
                 _partyRaidOfficialSessionBridge.RecordDispatchResult(
                     bridgeMessage.Source,
                     bridgeMessage.PacketType,

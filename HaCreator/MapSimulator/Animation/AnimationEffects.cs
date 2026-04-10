@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.Animation
             public bool RandomizeStartupAngle { get; init; }
             public Func<bool> GetTargetFlip { get; init; }
             public bool SuppressTargetFlip { get; init; }
+            public bool SpawnOnlyOnTargetMove { get; init; }
             public int UpdateIntervalMs { get; init; }
             public IReadOnlyList<List<IDXObject>> SpawnFrameVariants { get; init; }
             public bool SpawnRelativeToTarget { get; init; } = true;
@@ -166,6 +167,36 @@ namespace HaCreator.MapSimulator.Animation
                 owner,
                 registration.RecoveredLayerSettings,
                 recoveredRegistrationTrace);
+            _oneTimeCanvasLayers.Add(anim);
+        }
+
+        internal void RegisterOneTimeCanvasLayer(
+            Texture2D canvasTexture,
+            int currentTimeMs,
+            PreparedOneTimeCanvasLayerRegistration registration,
+            Texture2D overlayTexture = null,
+            bool ownsCanvasTexture = false,
+            AnimationCanvasLayerOwner owner = AnimationCanvasLayerOwner.Generic)
+        {
+            if (canvasTexture == null)
+            {
+                return;
+            }
+
+            OneTimeCanvasLayerAnimation anim = _oneTimeCanvasLayerPool.Count > 0
+                ? _oneTimeCanvasLayerPool.Dequeue()
+                : new OneTimeCanvasLayerAnimation();
+            anim.Initialize(
+                canvasTexture,
+                overlayTexture,
+                registration.Left,
+                registration.Top,
+                currentTimeMs,
+                registration.InsertDescriptors,
+                ownsCanvasTexture,
+                owner,
+                registration.RecoveredLayerSettings,
+                registration.RecoveredRegistrationTrace);
             _oneTimeCanvasLayers.Add(anim);
         }
 
@@ -954,24 +985,13 @@ namespace HaCreator.MapSimulator.Animation
             Vector2 randomOffset,
             bool useEmissionBox)
         {
-            if (!useEmissionBox)
-            {
-                float travelDistance = Math.Abs(randomOffset.Y);
-                if (travelDistance <= float.Epsilon)
-                {
-                    return emissionOffset;
-                }
-
-                return emissionOffset + ResolvePolarFollowOffset(travelDistance, angleDegrees);
-            }
-
-            float boxedTravelDistance = Math.Abs(randomOffset.Y);
-            if (boxedTravelDistance <= float.Epsilon)
+            float travelDistance = ResolveFollowParticleTravelDistance(randomOffset, useEmissionBox);
+            if (travelDistance <= float.Epsilon)
             {
                 return emissionOffset;
             }
 
-            return emissionOffset + ResolvePolarFollowOffset(boxedTravelDistance, angleDegrees);
+            return emissionOffset + ResolvePolarFollowOffset(travelDistance, angleDegrees);
         }
 
         internal static Vector2 ResolveFollowParticleEndOffset(
@@ -997,6 +1017,22 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             return resolvedMin + ((float)(random?.NextDouble() ?? 0d) * (resolvedMax - resolvedMin));
+        }
+
+        internal static float ResolveFollowParticleTravelDistance(Vector2 randomOffset, bool useEmissionBox)
+        {
+            if (useEmissionBox)
+            {
+                return Math.Abs(randomOffset.Y);
+            }
+
+            float distance = randomOffset.Length();
+            if (distance > float.Epsilon)
+            {
+                return distance;
+            }
+
+            return Math.Max(Math.Abs(randomOffset.X), Math.Abs(randomOffset.Y));
         }
 
         internal static Vector2 ResolveFollowSpawnAnchorPosition(
@@ -1102,6 +1138,17 @@ namespace HaCreator.MapSimulator.Animation
     internal readonly record struct CanvasLayerRegistration(
         CanvasLayerInsertDescriptor[] InsertDescriptors,
         CanvasLayerRecoveredLayerSettings RecoveredLayerSettings);
+
+    /// <summary>
+    /// Prepared managed registration payload handed off from owner seams such as Effect_HP.
+    /// Carries the recovered position write, insert-descriptor shape, and native trace verbatim.
+    /// </summary>
+    internal readonly record struct PreparedOneTimeCanvasLayerRegistration(
+        float Left,
+        float Top,
+        CanvasLayerInsertDescriptor[] InsertDescriptors,
+        CanvasLayerRecoveredLayerSettings RecoveredLayerSettings,
+        CanvasLayerRecoveredRegistrationTrace RecoveredRegistrationTrace);
 
     /// <summary>
     /// Full recovered registration trace for the managed canvas-layer analogue.
@@ -1798,6 +1845,7 @@ namespace HaCreator.MapSimulator.Animation
         private Vector2 _followOffset;
         private IReadOnlyList<List<IDXObject>> _spawnFrameVariants;
         private bool _spawnRelativeToTarget;
+        private bool _spawnOnlyOnTargetMove;
         private int _spawnDurationMs;
         private int _nextSpawnTime;
         private float _spawnTravelDistanceMin;
@@ -1809,6 +1857,7 @@ namespace HaCreator.MapSimulator.Animation
         private Point _spawnOffsetMax;
         private Rectangle _spawnArea;
         private bool _suppressTargetFlip;
+        private Vector2 _lastObservedTargetPosition;
 
         public int Id { get; private set; }
 
@@ -1834,6 +1883,7 @@ namespace HaCreator.MapSimulator.Animation
             _spawnFrameVariants = options?.SpawnFrameVariants;
             _spawnRelativeToTarget = options?.SpawnRelativeToTarget ?? true;
             _suppressTargetFlip = options?.SuppressTargetFlip ?? false;
+            _spawnOnlyOnTargetMove = options?.SpawnOnlyOnTargetMove ?? false;
             _spawnDurationMs = Math.Max(0, options?.SpawnDurationMs ?? 0);
             _spawnTravelDistanceMin = Math.Max(0f, options?.SpawnTravelDistanceMin ?? 0f);
             _spawnTravelDistanceMax = Math.Max(_spawnTravelDistanceMin, options?.SpawnTravelDistanceMax ?? _spawnTravelDistanceMin);
@@ -1854,6 +1904,7 @@ namespace HaCreator.MapSimulator.Animation
                 out _currentGenerationPointIndex,
                 out _currentAngleDegrees);
             _nextSpawnTime = currentTimeMs;
+            _lastObservedTargetPosition = _getTargetPosition?.Invoke() ?? Vector2.Zero;
         }
 
         public bool Update(AnimationEffects effects, int currentTimeMs, Random random)
@@ -1896,13 +1947,16 @@ namespace HaCreator.MapSimulator.Animation
                         : AnimationEffects.NormalizeFollowAngleDegrees(spawnAngleDegrees);
                 }
 
-                if (effects != null && AnimationEffects.HasFrameVariants(_spawnFrameVariants))
+                Vector2 targetPosition = _getTargetPosition();
+                bool targetMoved = !_spawnOnlyOnTargetMove
+                    || Vector2.DistanceSquared(targetPosition, _lastObservedTargetPosition) > float.Epsilon;
+
+                if (effects != null && targetMoved && AnimationEffects.HasFrameVariants(_spawnFrameVariants))
                 {
                     int variantIndex = random?.Next(0, _spawnFrameVariants.Count) ?? 0;
                     List<IDXObject> variantFrames = _spawnFrameVariants[variantIndex];
                     if (AnimationEffects.HasFrames(variantFrames))
                     {
-                        Vector2 targetPosition = _getTargetPosition();
                         int resolvedDurationMs = AnimationEffects.ResolveFollowSpawnDurationMs(variantFrames, _spawnDurationMs);
                         if (resolvedDurationMs > 0)
                         {
@@ -1967,6 +2021,7 @@ namespace HaCreator.MapSimulator.Animation
 
                 _lastFollowUpdateTime = _nextSpawnTime;
                 _nextSpawnTime += _updateIntervalMs;
+                _lastObservedTargetPosition = targetPosition;
             }
 
             return true;

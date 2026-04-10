@@ -1,5 +1,6 @@
 namespace HaCreator.MapSimulator.Interaction
 {
+    using System;
     using System.Collections.Generic;
 
     internal enum PacketQuestResultSubtype10ContinuationDisposition
@@ -76,6 +77,23 @@ namespace HaCreator.MapSimulator.Interaction
             return closeKind == NpcInteractionOverlayCloseKind.Completed
                 ? PacketQuestResultSubtype10ContinuationDisposition.Continue
                 : PacketQuestResultSubtype10ContinuationDisposition.Abandon;
+        }
+
+        internal static bool TryDecodeSubtype10TrailingFollowUpQuestId(
+            ReadOnlySpan<byte> payload,
+            out int followUpQuestId,
+            out string error)
+        {
+            followUpQuestId = 0;
+            if (payload.Length != sizeof(ushort))
+            {
+                error = "Quest-result subtype 10 trailing follow-up quest id must be exactly 2 bytes.";
+                return false;
+            }
+
+            followUpQuestId = BitConverter.ToUInt16(payload);
+            error = string.Empty;
+            return true;
         }
 
         internal static IReadOnlyList<int> GetNewlyAvailableQuestIds(

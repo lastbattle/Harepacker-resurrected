@@ -246,14 +246,38 @@ namespace HaCreator.MapSimulator.Effects
             out string reason,
             out bool isStableInference)
         {
-            return TryInferPacketType(
-                payload,
-                clearMapIdHint,
-                clearPortalNameHint,
-                exitMapIdHint,
-                out packetType,
-                out reason,
-                out isStableInference);
+            isStableInference = false;
+            List<(int PacketType, string Summary)> candidates = CollectPacketPayloadCandidates(payload);
+            if (candidates.Count == 1)
+            {
+                packetType = candidates[0].PacketType;
+                reason = candidates[0].Summary;
+                isStableInference = true;
+                return true;
+            }
+
+            int resolvedClearMapIdHint = clearMapIdHint > 0 ? clearMapIdHint : pendingTransferMapIdHint;
+            string resolvedClearPortalNameHint = !string.IsNullOrWhiteSpace(clearPortalNameHint)
+                ? clearPortalNameHint
+                : pendingTransferPortalNameHint;
+            if (TryResolveAmbiguousTransferPacketType(
+                    payload,
+                    candidates,
+                    resolvedClearMapIdHint,
+                    resolvedClearPortalNameHint,
+                    exitMapIdHint,
+                    out packetType,
+                    out reason,
+                    out isStableInference))
+            {
+                return true;
+            }
+
+            packetType = -1;
+            reason = candidates.Count == 0
+                ? "unknown"
+                : string.Join(" | ", candidates.Select(static candidate => candidate.Summary));
+            return false;
         }
 
         public static bool TryInferPacketType(

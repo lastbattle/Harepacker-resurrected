@@ -73,6 +73,9 @@ namespace HaCreator.MapSimulator.UI
         private int _lastKeyRepeatTime;
         private Keys _lastHeldKey = Keys.None;
         private readonly StringBuilder _inputBuffer = new();
+        private string _compositionText = string.Empty;
+        private IReadOnlyList<int> _compositionClauseOffsets = Array.Empty<int>();
+        private int _compositionCursorPosition = -1;
         private int _cursorPosition;
         private int _cursorBlinkTimer;
         private int _composeBodyScrollLine;
@@ -165,6 +168,7 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private InputTarget _activeInputTarget;
+        internal Func<IntPtr> ResolveImeWindowHandle { get; set; }
 
         public GuildBbsWindow(
             IDXObject frame,
@@ -223,6 +227,83 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+        }
+
+        public override void HandleCommittedText(string text)
+        {
+            if (!CapturesKeyboardInput || string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            ClearCompositionText();
+            if (TryInsertInputText(text))
+            {
+                RefreshImePresentationPlacement();
+            }
+        }
+
+        public override void HandleCompositionText(string text)
+        {
+            HandleCompositionState(new ImeCompositionState(text ?? string.Empty, Array.Empty<int>(), -1));
+        }
+
+        public override void HandleCompositionState(ImeCompositionState state)
+        {
+            if (!CapturesKeyboardInput)
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            ImeCompositionState effectiveState = state ?? ImeCompositionState.Empty;
+            int availableLength = GetRemainingInputCapacity();
+            if (availableLength <= 0 || string.IsNullOrEmpty(effectiveState.Text))
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            string sanitized = SanitizeCompositionText(effectiveState.Text);
+            if (string.IsNullOrEmpty(sanitized))
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            _compositionText = sanitized.Length > availableLength
+                ? sanitized[..availableLength]
+                : sanitized;
+            _compositionClauseOffsets = ClampClauseOffsets(effectiveState.ClauseOffsets, _compositionText.Length);
+            _compositionCursorPosition = Math.Clamp(effectiveState.CursorPosition, -1, _compositionText.Length);
+            _cursorBlinkTimer = Environment.TickCount;
+            RefreshImePresentationPlacement();
+        }
+
+        public override void ClearCompositionText()
+        {
+            _compositionText = string.Empty;
+            _compositionClauseOffsets = Array.Empty<int>();
+            _compositionCursorPosition = -1;
+        }
+
+        public override void RefreshImePresentationPlacement()
+        {
+            UpdateImePresentationPlacement();
+        }
+
+        protected override void ResetImePresentationPlacement()
+        {
+            if (ResolveImeWindowHandle == null)
+            {
+                return;
+            }
+
+            IntPtr windowHandle = ResolveImeWindowHandle();
+            if (windowHandle != IntPtr.Zero)
+            {
+                WindowsImePresentationBridge.TryResetPlacement(windowHandle);
+            }
         }
 
         internal void SetSnapshotProvider(Func<GuildBbsSnapshot> snapshotProvider)
@@ -826,6 +907,13 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (!string.IsNullOrEmpty(_compositionText))
+            {
+                ResetKeyRepeat();
+                RefreshImePresentationPlacement();
+                return;
+            }
+
             if (keyboardState.IsKeyDown(Keys.Escape) && _previousKeyboardState.IsKeyUp(Keys.Escape))
             {
                 DeactivateInput(clearText: false);
@@ -958,19 +1046,23 @@ namespace HaCreator.MapSimulator.UI
 
             if (_previousKeyboardState.IsKeyUp(key))
             {
+                ClearCompositionText();
                 _cursorPosition = Math.Clamp(_cursorPosition + delta, 0, _inputBuffer.Length);
                 EnsureComposeCursorVisible();
                 _lastHeldKey = key;
                 _keyHoldStartTime = tickCount;
                 _lastKeyRepeatTime = tickCount;
+                RefreshImePresentationPlacement();
                 return true;
             }
 
             if (ShouldRepeatKey(key, tickCount))
             {
+                ClearCompositionText();
                 _cursorPosition = Math.Clamp(_cursorPosition + delta, 0, _inputBuffer.Length);
                 EnsureComposeCursorVisible();
                 _lastKeyRepeatTime = tickCount;
+                RefreshImePresentationPlacement();
                 return true;
             }
 
@@ -986,17 +1078,21 @@ namespace HaCreator.MapSimulator.UI
 
             if (_previousKeyboardState.IsKeyUp(key))
             {
+                ClearCompositionText();
                 MoveComposeBodyCursorVertical(delta);
                 _lastHeldKey = key;
                 _keyHoldStartTime = tickCount;
                 _lastKeyRepeatTime = tickCount;
+                RefreshImePresentationPlacement();
                 return true;
             }
 
             if (ShouldRepeatKey(key, tickCount))
             {
+                ClearCompositionText();
                 MoveComposeBodyCursorVertical(delta);
                 _lastKeyRepeatTime = tickCount;
+                RefreshImePresentationPlacement();
                 return true;
             }
 
@@ -1005,6 +1101,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void ApplyDelete(bool removeBackward)
         {
+            ClearCompositionText();
             if (removeBackward)
             {
                 if (_cursorPosition <= 0)
@@ -1042,12 +1139,14 @@ namespace HaCreator.MapSimulator.UI
 
             _cursorPosition = _inputBuffer.Length;
             _cursorBlinkTimer = Environment.TickCount;
+            ClearCompositionText();
             if (target == InputTarget.ComposeBody)
             {
                 EnsureComposeCursorVisible();
             }
 
             ResetKeyRepeat();
+            RefreshImePresentationPlacement();
         }
 
         private void DeactivateInput(bool clearText)
@@ -1059,6 +1158,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _activeInputTarget = InputTarget.None;
+            ClearCompositionText();
             ResetKeyRepeat();
         }
 
@@ -1081,6 +1181,7 @@ namespace HaCreator.MapSimulator.UI
             ReconcileInputBufferWithSnapshot(RefreshSnapshot());
             _cursorBlinkTimer = Environment.TickCount;
             EnsureComposeCursorVisible();
+            RefreshImePresentationPlacement();
         }
 
         private void ReconcileInputBufferWithSnapshot(GuildBbsSnapshot snapshot)
@@ -1596,23 +1697,25 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawEditableText(SpriteBatch sprite, string text, Rectangle bounds, float scale, Color color, InputTarget target, int tickCount)
         {
-            string value = text ?? string.Empty;
+            string value = BuildDisplayText(text ?? string.Empty, target, out int cursorPosition, out int compositionStart, out int compositionLength);
             string clipped = TruncateToWidth(value, bounds.Width - 8, scale);
             sprite.DrawString(_font, clipped, new Vector2(bounds.X + 4, bounds.Y + 3), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            DrawSingleLineCompositionUnderline(sprite, bounds, clipped, scale, compositionStart, compositionLength);
 
             if (_activeInputTarget != target || ((tickCount - _cursorBlinkTimer) / 500) % 2 != 0)
             {
                 return;
             }
 
-            string cursorSource = _inputBuffer.Length > 0 ? _inputBuffer.ToString()[..Math.Clamp(_cursorPosition, 0, _inputBuffer.Length)] : string.Empty;
+            string cursorSource = clipped[..Math.Clamp(cursorPosition, 0, clipped.Length)];
             float cursorX = bounds.X + 4 + (_font.MeasureString(TruncateToWidth(cursorSource, bounds.Width - 8, scale)).X * scale);
             sprite.Draw(_pixel, new Rectangle((int)cursorX, bounds.Y + 3, 1, bounds.Height - 6), new Color(66, 76, 94));
         }
 
         private void DrawEditableMultilineText(SpriteBatch sprite, string text, Rectangle bounds, float scale, Color color, InputTarget target, int tickCount, int maxLines)
         {
-            IReadOnlyList<TextLineLayout> lines = BuildTextLines(text ?? string.Empty, bounds.Width - 8, scale);
+            string displayText = BuildDisplayText(text ?? string.Empty, target, out int cursorPosition, out int compositionStart, out int compositionLength);
+            IReadOnlyList<TextLineLayout> lines = BuildTextLines(displayText, bounds.Width - 8, scale);
             if (lines.Count == 0)
             {
                 lines = new[] { new TextLineLayout { StartIndex = 0, EndIndex = 0, Text = string.Empty } };
@@ -1624,6 +1727,7 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < visibleLineCount; i++)
             {
                 sprite.DrawString(_font, lines[startLine + i].Text, new Vector2(bounds.X + 2, y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+                DrawMultilineCompositionUnderline(sprite, bounds, lines[startLine + i], startLine + i, startLine, scale, compositionStart, compositionLength);
                 y += ComposeBodyLineHeight;
             }
 
@@ -1632,14 +1736,14 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int lineIndex = ResolveCursorLineIndex(lines, _cursorPosition);
+            int lineIndex = ResolveCursorLineIndex(lines, cursorPosition);
             if (lineIndex < startLine || lineIndex >= startLine + maxLines)
             {
                 return;
             }
 
             TextLineLayout line = lines[lineIndex];
-            int relativeIndex = Math.Clamp(_cursorPosition - line.StartIndex, 0, line.Text.Length);
+            int relativeIndex = Math.Clamp(cursorPosition - line.StartIndex, 0, line.Text.Length);
             string cursorText = line.Text[..relativeIndex];
             float cursorX = bounds.X + 2 + (_font.MeasureString(cursorText).X * scale);
             int cursorY = bounds.Y + 2 + ((lineIndex - startLine) * ComposeBodyLineHeight);
@@ -2501,6 +2605,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void SetCursorFromPoint(InputTarget target, GuildBbsSnapshot snapshot, Point mousePosition)
         {
+            ClearCompositionText();
             string source = target switch
             {
                 InputTarget.ComposeTitle => snapshot.Compose?.Title ?? string.Empty,
@@ -2517,6 +2622,7 @@ namespace HaCreator.MapSimulator.UI
                     mousePosition,
                     target == InputTarget.ComposeTitle ? 0.46f : 0.39f);
             _cursorBlinkTimer = Environment.TickCount;
+            RefreshImePresentationPlacement();
         }
 
         private int ResolveSingleLineCursorPosition(string text, Rectangle bounds, Point mousePosition, float scale)
@@ -2590,6 +2696,287 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<TextLineLayout> lines = BuildComposeBodyTextLines(_inputBuffer.ToString());
             int lineIndex = ResolveCursorLineIndex(lines, _cursorPosition);
             return lineIndex >= 0 ? lines[lineIndex].EndIndex : _inputBuffer.Length;
+        }
+
+        private string BuildDisplayText(string text, InputTarget target, out int visualCursorPosition, out int compositionStart, out int compositionLength)
+        {
+            string source = text ?? string.Empty;
+            if (_activeInputTarget != target || string.IsNullOrEmpty(_compositionText))
+            {
+                visualCursorPosition = _cursorPosition;
+                compositionStart = -1;
+                compositionLength = 0;
+                return source;
+            }
+
+            int insertionIndex = Math.Clamp(_cursorPosition, 0, source.Length);
+            compositionStart = insertionIndex;
+            compositionLength = _compositionText.Length;
+            int compositionCursor = _compositionCursorPosition >= 0
+                ? Math.Clamp(_compositionCursorPosition, 0, _compositionText.Length)
+                : _compositionText.Length;
+            visualCursorPosition = insertionIndex + compositionCursor;
+            return source.Insert(insertionIndex, _compositionText);
+        }
+
+        private void DrawSingleLineCompositionUnderline(SpriteBatch sprite, Rectangle bounds, string text, float scale, int compositionStart, int compositionLength)
+        {
+            if (compositionStart < 0 || compositionLength <= 0 || string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            int start = Math.Clamp(compositionStart, 0, text.Length);
+            int end = Math.Clamp(compositionStart + compositionLength, start, text.Length);
+            float startX = bounds.X + 4 + (_font.MeasureString(text[..start]).X * scale);
+            float width = _font.MeasureString(text[start..end]).X * scale;
+            if (width <= 0f)
+            {
+                width = 1f;
+            }
+
+            sprite.Draw(_pixel, new Rectangle((int)Math.Round(startX), bounds.Bottom - 3, Math.Max(1, (int)Math.Ceiling(width)), 1), new Color(54, 89, 154));
+        }
+
+        private void DrawMultilineCompositionUnderline(SpriteBatch sprite, Rectangle bounds, TextLineLayout line, int lineIndex, int startLine, float scale, int compositionStart, int compositionLength)
+        {
+            if (compositionStart < 0 || compositionLength <= 0)
+            {
+                return;
+            }
+
+            int compositionEnd = compositionStart + compositionLength;
+            int overlapStart = Math.Max(compositionStart, line.StartIndex);
+            int overlapEnd = Math.Min(compositionEnd, line.EndIndex);
+            if (overlapEnd <= overlapStart)
+            {
+                return;
+            }
+
+            int localStart = overlapStart - line.StartIndex;
+            int localEnd = overlapEnd - line.StartIndex;
+            float startX = bounds.X + 2 + (_font.MeasureString(line.Text[..localStart]).X * scale);
+            float width = _font.MeasureString(line.Text[localStart..localEnd]).X * scale;
+            if (width <= 0f)
+            {
+                width = 1f;
+            }
+
+            int y = bounds.Y + 2 + ((lineIndex - startLine) * ComposeBodyLineHeight) + 11;
+            sprite.Draw(_pixel, new Rectangle((int)Math.Round(startX), y, Math.Max(1, (int)Math.Ceiling(width)), 1), new Color(54, 89, 154));
+        }
+
+        private int GetRemainingInputCapacity()
+        {
+            return _activeInputTarget switch
+            {
+                InputTarget.ComposeTitle => Math.Max(0, 25 - _inputBuffer.Length),
+                InputTarget.ComposeBody => Math.Max(0, 600 - _inputBuffer.Length),
+                InputTarget.ReplyBody => Math.Max(0, 25 - _inputBuffer.Length),
+                _ => 0
+            };
+        }
+
+        private string SanitizeCompositionText(string text)
+        {
+            string source = text?.Replace("\r", string.Empty) ?? string.Empty;
+            return _activeInputTarget == InputTarget.ComposeBody
+                ? source
+                : source.Replace("\n", string.Empty);
+        }
+
+        private static IReadOnlyList<int> ClampClauseOffsets(IReadOnlyList<int> offsets, int textLength)
+        {
+            if (offsets == null || offsets.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            List<int> clamped = new(offsets.Count);
+            int previous = 0;
+            for (int i = 0; i < offsets.Count; i++)
+            {
+                int value = Math.Clamp(offsets[i], previous, textLength);
+                clamped.Add(value);
+                previous = value;
+            }
+
+            if (clamped[^1] != textLength)
+            {
+                clamped.Add(textLength);
+            }
+
+            return clamped;
+        }
+
+        private void UpdateImePresentationPlacement()
+        {
+            if (!CapturesKeyboardInput
+                || _font == null
+                || ResolveImeWindowHandle == null)
+            {
+                return;
+            }
+
+            IntPtr windowHandle = ResolveImeWindowHandle();
+            if (windowHandle == IntPtr.Zero)
+            {
+                return;
+            }
+
+            Rectangle fieldBounds = ResolveImePlacementBounds();
+            if (fieldBounds.IsEmpty)
+            {
+                return;
+            }
+
+            int caretWidth = MeasureImePlacementWidth(ResolveImeCaretPrefix());
+            bool useClauseAnchor = !string.IsNullOrEmpty(_compositionText);
+            int clauseAnchorWidth = useClauseAnchor
+                ? MeasureImePlacementWidth(ResolveImeClauseAnchorPrefix())
+                : caretWidth;
+            int clauseWidth = useClauseAnchor
+                ? Math.Max(1, MeasureImePlacementWidth(ResolveActiveCompositionClauseText()))
+                : 1;
+
+            SkillMacroImeWindowPlacement placement = SkillMacroImeWindowPlacementLayout.Resolve(
+                fieldBounds,
+                ResolveImePlacementTextInset(),
+                _font.LineSpacing,
+                caretWidth,
+                useClauseAnchor,
+                clauseAnchorWidth,
+                clauseWidth);
+            WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement);
+        }
+
+        private Rectangle ResolveImePlacementBounds()
+        {
+            Rectangle bounds = _activeInputTarget switch
+            {
+                InputTarget.ComposeTitle => GetComposeTitleBounds(),
+                InputTarget.ComposeBody => GetComposeBodyBounds(),
+                InputTarget.ReplyBody => GetReplyInputBounds(),
+                _ => Rectangle.Empty
+            };
+
+            if (bounds.IsEmpty || _activeInputTarget != InputTarget.ComposeBody)
+            {
+                return bounds;
+            }
+
+            IReadOnlyList<TextLineLayout> lines = BuildComposeBodyTextLines(_inputBuffer.ToString());
+            if (lines.Count == 0)
+            {
+                return new Rectangle(bounds.X, bounds.Y + 2, bounds.Width, Math.Max(ComposeBodyLineHeight, _font.LineSpacing));
+            }
+
+            int lineIndex = Math.Clamp(ResolveCursorLineIndex(lines, _cursorPosition), 0, Math.Max(0, lines.Count - 1));
+            int visibleLineIndex = Math.Max(0, lineIndex - _composeBodyScrollLine);
+            int y = bounds.Y + 2 + (visibleLineIndex * ComposeBodyLineHeight);
+            return new Rectangle(bounds.X, y, bounds.Width, Math.Max(ComposeBodyLineHeight, _font.LineSpacing));
+        }
+
+        private int ResolveImePlacementTextInset()
+        {
+            return _activeInputTarget == InputTarget.ComposeBody ? 2 : 4;
+        }
+
+        private int MeasureImePlacementWidth(string text)
+        {
+            if (_font == null || string.IsNullOrEmpty(text))
+            {
+                return 0;
+            }
+
+            return (int)Math.Round(_font.MeasureString(text).X);
+        }
+
+        private string ResolveImeCaretPrefix()
+        {
+            if (_activeInputTarget == InputTarget.None)
+            {
+                return string.Empty;
+            }
+
+            if (_activeInputTarget != InputTarget.ComposeBody)
+            {
+                return _inputBuffer.ToString()[..Math.Clamp(_cursorPosition, 0, _inputBuffer.Length)];
+            }
+
+            IReadOnlyList<TextLineLayout> lines = BuildComposeBodyTextLines(_inputBuffer.ToString());
+            if (lines.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            int lineIndex = Math.Clamp(ResolveCursorLineIndex(lines, _cursorPosition), 0, Math.Max(0, lines.Count - 1));
+            TextLineLayout line = lines[lineIndex];
+            int relativeIndex = Math.Clamp(_cursorPosition - line.StartIndex, 0, line.Text.Length);
+            return line.Text[..relativeIndex];
+        }
+
+        private string ResolveImeClauseAnchorPrefix()
+        {
+            if (_activeInputTarget != InputTarget.ComposeBody)
+            {
+                int anchorIndex = Math.Clamp(_cursorPosition + ResolveCompositionAnchorIndex(), 0, _inputBuffer.Length);
+                return _inputBuffer.ToString()[..anchorIndex];
+            }
+
+            IReadOnlyList<TextLineLayout> lines = BuildComposeBodyTextLines(_inputBuffer.ToString());
+            if (lines.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            int lineIndex = Math.Clamp(ResolveCursorLineIndex(lines, _cursorPosition), 0, Math.Max(0, lines.Count - 1));
+            TextLineLayout line = lines[lineIndex];
+            int lineAnchorIndex = Math.Clamp((_cursorPosition - line.StartIndex) + ResolveCompositionAnchorIndex(), 0, line.Text.Length);
+            return line.Text[..lineAnchorIndex];
+        }
+
+        private int ResolveCompositionAnchorIndex()
+        {
+            if (_compositionClauseOffsets.Count >= 2)
+            {
+                int cursor = Math.Clamp(_compositionCursorPosition, 0, _compositionText.Length);
+                for (int i = 0; i < _compositionClauseOffsets.Count - 1; i++)
+                {
+                    int start = Math.Clamp(_compositionClauseOffsets[i], 0, _compositionText.Length);
+                    int end = Math.Clamp(_compositionClauseOffsets[i + 1], start, _compositionText.Length);
+                    if (cursor >= start && cursor <= end)
+                    {
+                        return start;
+                    }
+                }
+            }
+
+            return Math.Clamp(_compositionCursorPosition, 0, _compositionText.Length);
+        }
+
+        private string ResolveActiveCompositionClauseText()
+        {
+            if (string.IsNullOrEmpty(_compositionText))
+            {
+                return string.Empty;
+            }
+
+            if (_compositionClauseOffsets.Count >= 2)
+            {
+                int cursor = Math.Clamp(_compositionCursorPosition, 0, _compositionText.Length);
+                for (int i = 0; i < _compositionClauseOffsets.Count - 1; i++)
+                {
+                    int start = Math.Clamp(_compositionClauseOffsets[i], 0, _compositionText.Length);
+                    int end = Math.Clamp(_compositionClauseOffsets[i + 1], start, _compositionText.Length);
+                    if (cursor >= start && cursor <= end)
+                    {
+                        return _compositionText[start..end];
+                    }
+                }
+            }
+
+            return _compositionText;
         }
 
         private void MoveComposeBodyCursorVertical(int delta)

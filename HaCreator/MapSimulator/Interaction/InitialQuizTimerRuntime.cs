@@ -109,6 +109,38 @@ namespace HaCreator.MapSimulator.Interaction
                 $"Synced context-owned initial quiz owner: question {_questionNumber}, {Math.Max(0, remainingSeconds)}s remaining, title={FormatQuotedValue(_title)}, {DescribeCharacterBinding()}";
         }
 
+        internal bool TryApplyClientOwnerState(
+            string title,
+            string problemText,
+            string hintText,
+            int answer,
+            int questionNumber,
+            int remainingSeconds,
+            int currentTickCount,
+            int runtimeCharacterId,
+            out string message)
+        {
+            if (HasLiveOwner())
+            {
+                message =
+                    $"Ignored context-owned initial quiz reopen while the existing owner is still alive: " +
+                    $"client `CWvsContext::OnInitialQuiz` only seeds `CUIInitialQuiz` during singleton creation.";
+                return true;
+            }
+
+            message = ApplyClientOwnerState(
+                title,
+                problemText,
+                hintText,
+                answer,
+                questionNumber,
+                remainingSeconds,
+                currentTickCount,
+                runtimeCharacterId)
+                .Replace("Synced", "Started", StringComparison.Ordinal);
+            return true;
+        }
+
         internal bool TryApplyPayload(byte[] payload, int currentTickCount, int runtimeCharacterId, out string message)
         {
             payload ??= Array.Empty<byte>();
@@ -143,15 +175,7 @@ namespace HaCreator.MapSimulator.Interaction
                 int questionNumber = reader.ReadInt32();
                 int remainingSeconds = reader.ReadInt32();
 
-                if (HasLiveOwner())
-                {
-                    message =
-                        $"Ignored context-owned initial quiz reopen while the existing owner is still alive: " +
-                        $"client `CWvsContext::OnInitialQuiz` only seeds `CUIInitialQuiz` during singleton creation.";
-                    return true;
-                }
-
-                message = ApplyClientOwnerState(
+                return TryApplyClientOwnerState(
                     title,
                     problemText,
                     hintText,
@@ -159,9 +183,8 @@ namespace HaCreator.MapSimulator.Interaction
                     questionNumber,
                     remainingSeconds,
                     currentTickCount,
-                    runtimeCharacterId)
-                    .Replace("Synced", "Started", StringComparison.Ordinal);
-                return true;
+                    runtimeCharacterId,
+                    out message);
             }
             catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)
             {

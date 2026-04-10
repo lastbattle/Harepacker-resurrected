@@ -74,11 +74,12 @@ namespace HaCreator.MapSimulator
     public class MapSimulatorChat
     {
         #region Constants
-        private static readonly Color WhisperMessageColor = new Color(255, 170, 255);
+        private static readonly Color OutgoingWhisperMessageColor = new Color(255, 191, 221, 204);
+        private static readonly Color IncomingWhisperMessageColor = new Color(255, 198, 0, 221);
         private static readonly Color SystemMessageColor = new Color(255, 228, 151);
         private static readonly Color ErrorMessageColor = new Color(247, 75, 75);
         private static readonly Color DefaultMessageColor = Color.White;
-        private static readonly Color NoticeMessageColor = new Color(151, 221, 255);
+        private static readonly Color NoticeMessageColor = new Color(202, 231, 255, 176);
         private static readonly Color PartyMessageColor = new Color(124, 255, 172);
         private static readonly Color FriendMessageColor = new Color(255, 255, 120);
         private static readonly Color GuildMessageColor = new Color(176, 255, 120);
@@ -1381,7 +1382,7 @@ namespace HaCreator.MapSimulator
 
             AddMessage(
                 $"> {_whisperTarget}: {message}",
-                WhisperMessageColor,
+                OutgoingWhisperMessageColor,
                 tickCount,
                 (int)ClientChatLogType.OutgoingWhisper,
                 _whisperTarget);
@@ -1447,14 +1448,14 @@ namespace HaCreator.MapSimulator
                 ClientChatLogType.Type11 => ClientType11Color,
                 ClientChatLogType.Expedition => ExpeditionMessageColor,
                 ClientChatLogType.Notice => NoticeMessageColor,
-                ClientChatLogType.OutgoingWhisper => WhisperMessageColor,
+                ClientChatLogType.OutgoingWhisper => OutgoingWhisperMessageColor,
                 ClientChatLogType.Error => ErrorMessageColor,
                 ClientChatLogType.System => SystemMessageColor,
-                ClientChatLogType.IncomingWhisper => WhisperMessageColor,
+                ClientChatLogType.IncomingWhisper => IncomingWhisperMessageColor,
                 ClientChatLogType.Type18 => ClientType18Color,
                 ClientChatLogType.Type19 => channelId != -1 ? ClientType22Color : ClientType20Color,
                 ClientChatLogType.Type20 => ClientType20Color,
-                ClientChatLogType.Type21 => new Color(255, 198, 0, 221),
+                ClientChatLogType.Type21 => IncomingWhisperMessageColor,
                 ClientChatLogType.Type22 => ClientType22Color,
                 ClientChatLogType.Type23 => ClientType22Color,
                 _ => DefaultMessageColor
@@ -1508,7 +1509,7 @@ namespace HaCreator.MapSimulator
                 return (int)ClientChatLogType.System;
             }
 
-            if (ColorsMatch(color, WhisperMessageColor))
+            if (ColorsMatch(color, OutgoingWhisperMessageColor) || ColorsMatch(color, IncomingWhisperMessageColor))
             {
                 return InferWhisperChatLogType(text);
             }

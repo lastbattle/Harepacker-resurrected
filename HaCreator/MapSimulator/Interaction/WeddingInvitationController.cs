@@ -2,12 +2,14 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.UI;
 using Microsoft.Xna.Framework.Graphics;
 using System;
+using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class WeddingInvitationController
     {
         private readonly WeddingInvitationRuntime _runtime = new();
+        internal Action<IReadOnlyList<string>, int> SocialMessagesObserved { get; set; }
 
         internal void UpdateLocalContext(CharacterBuild build)
         {
@@ -55,6 +57,7 @@ namespace HaCreator.MapSimulator.Interaction
             PrepareForOpen(windowManager);
             WireWindow(windowManager, build, font, feedbackHandler);
             showWindow?.Invoke();
+            PublishObservedSocialMessages();
             return message;
         }
 
@@ -77,6 +80,7 @@ namespace HaCreator.MapSimulator.Interaction
             PrepareForOpen(windowManager);
             WireWindow(windowManager, build, font, feedbackHandler);
             showWindow?.Invoke();
+            PublishObservedSocialMessages();
             return true;
         }
 
@@ -86,6 +90,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (!string.Equals(message, "No wedding invitation is active.", StringComparison.Ordinal))
             {
                 windowManager?.HideWindow(MapSimulatorWindowNames.WeddingInvitation);
+                PublishObservedSocialMessages();
             }
 
             return message;
@@ -127,6 +132,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal string Dismiss(UIWindowManager windowManager)
         {
             string message = _runtime.Dismiss();
+            if (!string.Equals(message, "No wedding invitation is active.", StringComparison.Ordinal))
+            {
+                PublishObservedSocialMessages();
+            }
+
             windowManager?.HideWindow(MapSimulatorWindowNames.WeddingInvitation);
             return message;
         }
@@ -141,6 +151,17 @@ namespace HaCreator.MapSimulator.Interaction
         private static void PrepareForOpen(UIWindowManager windowManager)
         {
             windowManager?.HideWindow(MapSimulatorWindowNames.EngagementProposal);
+        }
+
+        private void PublishObservedSocialMessages()
+        {
+            IReadOnlyList<string> messages = _runtime.GetObservedSocialMessages();
+            if (messages == null || messages.Count == 0)
+            {
+                return;
+            }
+
+            SocialMessagesObserved?.Invoke(messages, Environment.TickCount);
         }
     }
 }

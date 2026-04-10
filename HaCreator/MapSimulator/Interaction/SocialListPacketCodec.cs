@@ -57,6 +57,79 @@ namespace HaCreator.MapSimulator.Interaction
         string GuildName,
         int GuildLevel);
 
+    internal readonly record struct SocialListClientFriendEntry(
+        int FriendId,
+        string Name,
+        string GroupName,
+        int ChannelId,
+        byte Flag,
+        bool InShop);
+
+    internal enum SocialListClientFriendResultKind : byte
+    {
+        Reset = 7,
+        Update = 8,
+        Insert = 9,
+        Refresh = 10,
+        Channel = 20,
+        Capacity = 21,
+        NoticeInviteBlocked = 11,
+        NoticeTargetFull = 12,
+        NoticeTargetUnknown = 13,
+        NoticeSelf = 14,
+        NoticeDuplicate = 15,
+        NoticeFailure = 16,
+        NoticeFailureWithMessage = 17,
+        ResetBlocked = 18,
+        NoticeBlocked = 19,
+        NoticeCapacityExpanded = 23
+    }
+
+    internal readonly record struct SocialListClientFriendResultPacket(
+        SocialListClientFriendResultKind Kind,
+        IReadOnlyList<SocialListClientFriendEntry> Entries,
+        SocialListClientFriendEntry? Entry,
+        int FriendId,
+        int ChannelId,
+        int FriendMax,
+        string Summary);
+
+    internal readonly record struct SocialListClientPartyEntry(
+        int MemberId,
+        string Name,
+        int JobId,
+        int Level,
+        int ChannelId,
+        int FieldId,
+        bool IsLeader);
+
+    internal enum SocialListClientPartyResultKind : byte
+    {
+        Invite = 4,
+        Create = 8,
+        Join = 12,
+        Load = 7,
+        Refresh = 38,
+        LeaderChange = 31,
+        MemberJobLevel = 39,
+        SearchPacket = 75,
+        SearchPacket2 = 76,
+        SearchPacket3 = 77,
+        SearchApply = 78,
+        SearchPacket4 = 79,
+        SearchPacket5 = 80
+    }
+
+    internal readonly record struct SocialListClientPartyResultPacket(
+        SocialListClientPartyResultKind Kind,
+        int PartyId,
+        IReadOnlyList<SocialListClientPartyEntry> Entries,
+        int MemberId,
+        int Level,
+        int JobId,
+        string ActorName,
+        string Summary);
+
     internal enum GuildSkillResultPacketKind : byte
     {
         LevelUp = 0,
@@ -293,6 +366,199 @@ namespace HaCreator.MapSimulator.Interaction
                     hasMembership ? NormalizeRoleLabel(guildName, "No Guild") : "No Guild",
                     Math.Max(0, guildLevel));
                 return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseClientFriendResult(ReadOnlySpan<byte> payload, out SocialListClientFriendResultPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload);
+                SocialListClientFriendResultKind kind = (SocialListClientFriendResultKind)reader.ReadByte();
+                switch (kind)
+                {
+                    case SocialListClientFriendResultKind.Reset:
+                    case SocialListClientFriendResultKind.Refresh:
+                    case SocialListClientFriendResultKind.ResetBlocked:
+                    {
+                        int count = reader.ReadByte();
+                        List<SocialListClientFriendEntry> entries = new(Math.Max(0, count));
+                        for (int i = 0; i < count; i++)
+                        {
+                            entries.Add(ReadClientFriendEntry(ref reader, inShop: false));
+                        }
+
+                        for (int i = 0; i < entries.Count; i++)
+                        {
+                            bool inShop = reader.ReadByte() != 0;
+                            entries[i] = entries[i] with { InShop = inShop };
+                        }
+
+                        packet = new SocialListClientFriendResultPacket(kind, entries, null, 0, 0, 0, null);
+                        return true;
+                    }
+
+                    case SocialListClientFriendResultKind.Update:
+                    {
+                        int lookupFriendId = reader.ReadInt32();
+                        SocialListClientFriendEntry entry = ReadClientFriendEntry(ref reader, reader.ReadByte() != 0);
+                        packet = new SocialListClientFriendResultPacket(
+                            kind,
+                            Array.Empty<SocialListClientFriendEntry>(),
+                            entry,
+                            lookupFriendId > 0 ? lookupFriendId : entry.FriendId,
+                            0,
+                            0,
+                            null);
+                        return true;
+                    }
+
+                    case SocialListClientFriendResultKind.Insert:
+                    {
+                        int friendId = reader.ReadInt32();
+                        string inviteName = reader.ReadMapleString16();
+                        _ = reader.ReadInt32();
+                        _ = reader.ReadInt32();
+                        SocialListClientFriendEntry entry = ReadClientFriendEntry(ref reader, reader.ReadByte() != 0);
+                        packet = new SocialListClientFriendResultPacket(
+                            kind,
+                            Array.Empty<SocialListClientFriendEntry>(),
+                            entry,
+                            friendId > 0 ? friendId : entry.FriendId,
+                            0,
+                            0,
+                            string.IsNullOrWhiteSpace(inviteName) ? null : inviteName.Trim());
+                        return true;
+                    }
+
+                    case SocialListClientFriendResultKind.Channel:
+                    {
+                        int friendId = reader.ReadInt32();
+                        bool inShop = reader.ReadByte() != 0;
+                        int channelId = reader.ReadInt32();
+                        packet = new SocialListClientFriendResultPacket(kind, Array.Empty<SocialListClientFriendEntry>(), null, friendId, channelId, 0, inShop ? "Cash Shop" : null);
+                        return true;
+                    }
+
+                    case SocialListClientFriendResultKind.Capacity:
+                        packet = new SocialListClientFriendResultPacket(kind, Array.Empty<SocialListClientFriendEntry>(), null, 0, 0, reader.ReadByte(), null);
+                        return true;
+
+                    case SocialListClientFriendResultKind.NoticeFailure:
+                    case SocialListClientFriendResultKind.NoticeBlocked:
+                    case SocialListClientFriendResultKind.NoticeFailureWithMessage:
+                    {
+                        string summary = reader.ReadByte() != 0 && reader.HasRemaining
+                            ? reader.ReadMapleString16().Trim()
+                            : null;
+                        packet = new SocialListClientFriendResultPacket(kind, Array.Empty<SocialListClientFriendEntry>(), null, 0, 0, 0, summary);
+                        return true;
+                    }
+
+                    case SocialListClientFriendResultKind.NoticeInviteBlocked:
+                    case SocialListClientFriendResultKind.NoticeTargetFull:
+                    case SocialListClientFriendResultKind.NoticeTargetUnknown:
+                    case SocialListClientFriendResultKind.NoticeSelf:
+                    case SocialListClientFriendResultKind.NoticeDuplicate:
+                    case SocialListClientFriendResultKind.NoticeCapacityExpanded:
+                        packet = new SocialListClientFriendResultPacket(kind, Array.Empty<SocialListClientFriendEntry>(), null, 0, 0, 0, null);
+                        return true;
+
+                    default:
+                        error = $"Unsupported client friend-result subtype {(byte)kind}.";
+                        return false;
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseClientPartyResult(ReadOnlySpan<byte> payload, out SocialListClientPartyResultPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload);
+                SocialListClientPartyResultKind kind = (SocialListClientPartyResultKind)reader.ReadByte();
+                switch (kind)
+                {
+                    case SocialListClientPartyResultKind.Load:
+                    case SocialListClientPartyResultKind.Refresh:
+                    {
+                        int partyId = reader.ReadInt32();
+                        IReadOnlyList<SocialListClientPartyEntry> entries = ReadClientPartyEntries(ref reader);
+                        packet = new SocialListClientPartyResultPacket(kind, partyId, entries, 0, 0, 0, null, null);
+                        return true;
+                    }
+
+                    case SocialListClientPartyResultKind.Join:
+                    {
+                        int partyId = reader.ReadInt32();
+                        int actorId = reader.ReadInt32();
+                        if (reader.ReadByte() != 0)
+                        {
+                            _ = reader.ReadByte();
+                            string actorName = reader.ReadMapleString16();
+                            IReadOnlyList<SocialListClientPartyEntry> entries = ReadClientPartyEntries(ref reader);
+                            packet = new SocialListClientPartyResultPacket(kind, partyId, entries, actorId, 0, 0, actorName, null);
+                            return true;
+                        }
+
+                        packet = new SocialListClientPartyResultPacket(kind, partyId, Array.Empty<SocialListClientPartyEntry>(), actorId, 0, 0, null, null);
+                        return true;
+                    }
+
+                    case SocialListClientPartyResultKind.Create:
+                    {
+                        int partyId = reader.ReadInt32();
+                        packet = new SocialListClientPartyResultPacket(kind, partyId, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, null);
+                        return true;
+                    }
+
+                    case SocialListClientPartyResultKind.LeaderChange:
+                    {
+                        int memberId = reader.ReadInt32();
+                        bool isLeader = reader.ReadByte() != 0;
+                        packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), memberId, isLeader ? 1 : 0, 0, null, null);
+                        return true;
+                    }
+
+                    case SocialListClientPartyResultKind.MemberJobLevel:
+                    {
+                        int memberId = reader.ReadInt32();
+                        int level = reader.ReadInt32();
+                        int jobId = reader.ReadInt32();
+                        packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), memberId, level, jobId, null, null);
+                        return true;
+                    }
+
+                    case SocialListClientPartyResultKind.Invite:
+                    case SocialListClientPartyResultKind.SearchPacket:
+                    case SocialListClientPartyResultKind.SearchPacket2:
+                    case SocialListClientPartyResultKind.SearchPacket3:
+                    case SocialListClientPartyResultKind.SearchApply:
+                    case SocialListClientPartyResultKind.SearchPacket4:
+                    case SocialListClientPartyResultKind.SearchPacket5:
+                        packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, null);
+                        return true;
+
+                    default:
+                        error = $"Unsupported client party-result subtype {(byte)kind}.";
+                        return false;
+                }
             }
             catch (InvalidOperationException ex)
             {
@@ -654,6 +920,83 @@ namespace HaCreator.MapSimulator.Interaction
                 (flags & 0x08) != 0);
         }
 
+        private static SocialListClientFriendEntry ReadClientFriendEntry(ref PacketReader reader, bool inShop)
+        {
+            int friendId = reader.ReadInt32();
+            string name = reader.ReadFixedString(13);
+            byte flag = reader.ReadByte();
+            int channelId = reader.ReadInt32();
+            string groupName = reader.ReadFixedString(17);
+            return new SocialListClientFriendEntry(
+                friendId,
+                string.IsNullOrWhiteSpace(name) ? $"Friend {friendId}" : name.Trim(),
+                string.IsNullOrWhiteSpace(groupName) ? string.Empty : groupName.Trim(),
+                channelId,
+                flag,
+                inShop);
+        }
+
+        private static IReadOnlyList<SocialListClientPartyEntry> ReadClientPartyEntries(ref PacketReader reader)
+        {
+            ReadOnlySpan<byte> partyData = reader.ReadBytes(0x17A);
+
+            const int memberCount = 6;
+            const int nameLength = 13;
+            const int idsOffset = 0;
+            const int namesOffset = idsOffset + (memberCount * sizeof(int));
+            const int jobsOffset = namesOffset + (memberCount * nameLength);
+            const int levelsOffset = jobsOffset + (memberCount * sizeof(int));
+            const int channelsOffset = levelsOffset + (memberCount * sizeof(int));
+            const int leaderOffset = channelsOffset + (memberCount * sizeof(int));
+            const int fieldIdsOffset = leaderOffset + sizeof(int);
+
+            int leaderId = ReadInt32(partyData, leaderOffset);
+            List<SocialListClientPartyEntry> entries = new(memberCount);
+            for (int i = 0; i < memberCount; i++)
+            {
+                int memberId = ReadInt32(partyData, idsOffset + (i * sizeof(int)));
+                if (memberId <= 0)
+                {
+                    continue;
+                }
+
+                string name = ReadFixedString(partyData.Slice(namesOffset + (i * nameLength), nameLength));
+                int jobId = ReadInt32(partyData, jobsOffset + (i * sizeof(int)));
+                int level = ReadInt32(partyData, levelsOffset + (i * sizeof(int)));
+                int channelId = ReadInt32(partyData, channelsOffset + (i * sizeof(int)));
+                int fieldId = ReadInt32(partyData, fieldIdsOffset + (i * sizeof(int)));
+                entries.Add(new SocialListClientPartyEntry(
+                    memberId,
+                    string.IsNullOrWhiteSpace(name) ? $"Member {memberId}" : name.Trim(),
+                    jobId,
+                    Math.Max(1, level),
+                    channelId,
+                    fieldId,
+                    memberId == leaderId));
+            }
+
+            return entries;
+        }
+
+        private static int ReadInt32(ReadOnlySpan<byte> buffer, int offset)
+        {
+            return buffer[offset]
+                | (buffer[offset + 1] << 8)
+                | (buffer[offset + 2] << 16)
+                | (buffer[offset + 3] << 24);
+        }
+
+        private static string ReadFixedString(ReadOnlySpan<byte> buffer)
+        {
+            int length = buffer.IndexOf((byte)0);
+            if (length < 0)
+            {
+                length = buffer.Length;
+            }
+
+            return length == 0 ? string.Empty : Encoding.UTF8.GetString(buffer[..length]);
+        }
+
         private static string NormalizeRoleLabel(string value, string fallback)
         {
             return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
@@ -742,6 +1085,27 @@ namespace HaCreator.MapSimulator.Interaction
                 EnsureRemaining(length);
                 string value = Encoding.UTF8.GetString(_payload.Slice(_offset, length));
                 _offset += length;
+                return value;
+            }
+
+            public string ReadMapleString16()
+            {
+                return ReadString16();
+            }
+
+            public string ReadFixedString(int length)
+            {
+                EnsureRemaining(length);
+                string value = SocialListPacketCodec.ReadFixedString(_payload.Slice(_offset, length));
+                _offset += length;
+                return value;
+            }
+
+            public ReadOnlySpan<byte> ReadBytes(int count)
+            {
+                EnsureRemaining(count);
+                ReadOnlySpan<byte> value = _payload.Slice(_offset, count);
+                _offset += count;
                 return value;
             }
 

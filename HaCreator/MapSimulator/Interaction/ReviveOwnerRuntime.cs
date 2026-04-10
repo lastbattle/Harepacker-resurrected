@@ -13,6 +13,14 @@ namespace HaCreator.MapSimulator.Interaction
         PremiumChoice = PremiumSafetyCharmChoice,
     }
 
+    internal enum ReviveOwnerRespawnPointSource
+    {
+        None = 0,
+        DeathPoint = 1,
+        AuthoredCurrentFieldPoint = 2,
+        SpawnApproximation = 3,
+    }
+
     internal readonly struct ReviveOwnerResolution
     {
         public ReviveOwnerResolution(

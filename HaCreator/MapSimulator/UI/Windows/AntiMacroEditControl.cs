@@ -449,14 +449,14 @@ namespace HaCreator.MapSimulator.UI
             if (Pressed(keyboardState, previousKeyboardState, Keys.Left))
             {
                 ClearCompositionText();
-                MoveCaret(GetPreviousCaretStop(_inputText, _caretIndex), shiftHeld);
+                MoveCaret(ResolveArrowCaretIndex(_inputText, _caretIndex, _selectionAnchorIndex, moveRight: false, shiftHeld), shiftHeld);
                 _caretBlinkTick = Environment.TickCount;
             }
 
             if (Pressed(keyboardState, previousKeyboardState, Keys.Right))
             {
                 ClearCompositionText();
-                MoveCaret(GetNextCaretStop(_inputText, _caretIndex), shiftHeld);
+                MoveCaret(ResolveArrowCaretIndex(_inputText, _caretIndex, _selectionAnchorIndex, moveRight: true, shiftHeld), shiftHeld);
                 _caretBlinkTick = Environment.TickCount;
             }
 
@@ -1061,6 +1061,26 @@ namespace HaCreator.MapSimulator.UI
             {
                 selectionEnd++;
             }
+        }
+
+        internal static int ResolveArrowCaretIndex(string text, int caretIndex, int selectionAnchorIndex, bool moveRight, bool shiftHeld)
+        {
+            string resolvedText = text ?? string.Empty;
+            int resolvedCaretIndex = Math.Clamp(caretIndex, 0, resolvedText.Length);
+            int resolvedSelectionAnchor = selectionAnchorIndex < 0
+                ? -1
+                : Math.Clamp(selectionAnchorIndex, 0, resolvedText.Length);
+
+            if (!shiftHeld && resolvedSelectionAnchor >= 0 && resolvedSelectionAnchor != resolvedCaretIndex)
+            {
+                return moveRight
+                    ? Math.Max(resolvedSelectionAnchor, resolvedCaretIndex)
+                    : Math.Min(resolvedSelectionAnchor, resolvedCaretIndex);
+            }
+
+            return moveRight
+                ? GetNextCaretStop(resolvedText, resolvedCaretIndex)
+                : GetPreviousCaretStop(resolvedText, resolvedCaretIndex);
         }
 
         private static bool IsWithinClientWordSelectionGroup(char character, bool selectWordCharacters, bool selectWhitespace)

@@ -72,6 +72,7 @@ namespace HaCreator.MapSimulator.Fields
     {
         public const int CurrentWrapperRelayOpcode = 163;
         private const int KillCountPacketType = 178;
+        private const int ChaosZakumPortalSessionFallbackFieldId = 180000002;
         private const int EscortFailOverlayDurationMs = 2500;
 
         private readonly SpecialEffectFields _specialEffects = new();
@@ -280,6 +281,43 @@ namespace HaCreator.MapSimulator.Fields
             return false;
         }
 
+        public bool TryDispatchCurrentWrapperSessionValue(string key, string value, out string message)
+        {
+            if (IsChaosZakumPortalSessionWrapperMap(_boundMapInfo)
+                && IsChaosZakumPortalSessionKey(key))
+            {
+                message = $"CField_ChaosZakum::OnSessionValue accepted {key?.Trim()}={value ?? string.Empty}.";
+                return true;
+            }
+
+            message = $"No active client-owned special-field wrapper session-value owner accepted {key}={value}.";
+            return false;
+        }
+
+        public bool TryDispatchCurrentWrapperFieldSpecificData(
+            Func<(bool Applied, string Message)> tryApplyPresentationOwner,
+            out string message)
+        {
+            if (!IsShowaBathWrapperMap(_boundMapInfo))
+            {
+                message = null;
+                return false;
+            }
+
+            const string ownerName = "CField_ShowaBath::OnFieldSpecificData";
+            if (tryApplyPresentationOwner == null)
+            {
+                message = $"{ownerName} rejected field-specific presentation update. no simulator presentation callback was supplied.";
+                return false;
+            }
+
+            (bool applied, string ownerMessage) = tryApplyPresentationOwner();
+            message = applied
+                ? $"{ownerName} accepted field-specific presentation update. {ownerMessage}"
+                : $"{ownerName} rejected field-specific presentation update. {ownerMessage}";
+            return applied;
+        }
+
         public static byte[] BuildCurrentWrapperRelayPayload(int packetType, byte[] payload)
         {
             payload ??= Array.Empty<byte>();
@@ -407,6 +445,14 @@ namespace HaCreator.MapSimulator.Fields
                 return true;
             }
 
+            if (packetType == MassacreField.PacketTypeResult && _specialEffects.Massacre.IsActive)
+            {
+                ownerName = "CField_Massacre::OnResult";
+                bool applied = _specialEffects.Massacre.TryApplyMassacreResultPayload(payload, currentTimeMs, out string errorMessage);
+                message = applied ? _specialEffects.Massacre.DescribeStatus() : errorMessage;
+                return applied;
+            }
+
             ownerName = null;
             message = null;
             return false;
@@ -507,6 +553,24 @@ namespace HaCreator.MapSimulator.Fields
         private static bool IsEscortResultWrapperMap(MapInfo mapInfo)
         {
             return mapInfo?.fieldType == FieldType.FIELDTYPE_ESCORT_RESULT;
+        }
+
+        private static bool IsShowaBathWrapperMap(MapInfo mapInfo)
+        {
+            return mapInfo?.fieldType == FieldType.FIELDTYPE_SHOWABATH
+                || mapInfo?.id == 801000200
+                || mapInfo?.id == 801000210;
+        }
+
+        private static bool IsChaosZakumPortalSessionWrapperMap(MapInfo mapInfo)
+        {
+            return mapInfo?.fieldType == FieldType.FIELDTYPE_CHAOSZAKUM
+                || mapInfo?.id == ChaosZakumPortalSessionFallbackFieldId;
+        }
+
+        private static bool IsChaosZakumPortalSessionKey(string key)
+        {
+            return string.Equals(key?.Trim(), "fire", StringComparison.Ordinal);
         }
 
         private static bool MatchesEscortFailKey(string key)

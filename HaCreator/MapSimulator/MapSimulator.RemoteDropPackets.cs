@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.Interaction;
 using Microsoft.Xna.Framework;
 using System;
 
@@ -9,6 +10,7 @@ namespace HaCreator.MapSimulator
     {
         private DateTime? _remoteDropPacketServerUtcAnchor;
         private int _remoteDropPacketServerTickAnchor;
+        private string _remoteDropPacketServerClockSource = "hostUtc";
 
         private ChatCommandHandler.CommandResult ApplyRemoteDropPacketCommand(int packetType, byte[] payload)
         {
@@ -56,21 +58,25 @@ namespace HaCreator.MapSimulator
             }
 
             string clockText = _remoteDropPacketServerUtcAnchor.HasValue
-                ? $"serverClock={ResolveRemoteDropPacketServerUtc():O}"
+                ? $"serverClock={ResolveRemoteDropPacketServerUtc():O} ({_remoteDropPacketServerClockSource})"
                 : "serverClock=hostUtc";
             return $"Drop pool count={_dropPool.ActiveDropCount}; {clockText}.";
         }
 
-        private void SetRemoteDropPacketServerClock(DateTime serverUtc, int currentTime)
+        private void SetRemoteDropPacketServerClock(DateTime serverUtc, int currentTime, string sourceLabel = "packet")
         {
             _remoteDropPacketServerUtcAnchor = NormalizeRemoteDropPacketClockUtc(serverUtc);
             _remoteDropPacketServerTickAnchor = currentTime;
+            _remoteDropPacketServerClockSource = string.IsNullOrWhiteSpace(sourceLabel)
+                ? "packet"
+                : sourceLabel;
         }
 
         private void ClearRemoteDropPacketServerClock()
         {
             _remoteDropPacketServerUtcAnchor = null;
             _remoteDropPacketServerTickAnchor = 0;
+            _remoteDropPacketServerClockSource = "hostUtc";
         }
 
         private DateTime ResolveRemoteDropPacketServerUtc()
@@ -92,6 +98,41 @@ namespace HaCreator.MapSimulator
                 DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Utc),
                 _ => value
             };
+        }
+
+        private void UpdateRemoteDropPacketServerClockFromSetField(PacketSetFieldPacket packet)
+        {
+            if (!TryResolveRemoteDropPacketServerClock(packet, out DateTime serverUtc))
+            {
+                return;
+            }
+
+            SetRemoteDropPacketServerClock(serverUtc, currTickCount, "setfield");
+        }
+
+        internal static bool TryResolveRemoteDropPacketServerClock(PacketSetFieldPacket packet, out DateTime serverUtc)
+        {
+            serverUtc = default;
+            return TryResolveRemoteDropPacketServerClock(packet.ServerFileTime, out serverUtc);
+        }
+
+        internal static bool TryResolveRemoteDropPacketServerClock(long serverFileTime, out DateTime serverUtc)
+        {
+            serverUtc = default;
+            if (serverFileTime <= 0 || serverFileTime == long.MaxValue)
+            {
+                return false;
+            }
+
+            try
+            {
+                serverUtc = DateTime.FromFileTimeUtc(serverFileTime);
+                return true;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return false;
+            }
         }
 
         private void BindRemoteDropPacketField()

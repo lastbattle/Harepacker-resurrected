@@ -1389,6 +1389,40 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            QuestItemRequirement guideItemRequirement = GetPreferredQuestGuideItemRequirement(definition.EndItemRequirements);
+            if (guideItemRequirement != null)
+            {
+                IReadOnlyList<int> itemMapIds = Array.Empty<int>();
+                if (TryBuildQuestDemandItemQuery(questId, out QuestDemandItemQueryState itemQueryState) &&
+                    itemQueryState?.VisibleItemMapIds != null &&
+                    itemQueryState.VisibleItemMapIds.TryGetValue(guideItemRequirement.ItemId, out IReadOnlyList<int> queryMapIds) &&
+                    queryMapIds != null &&
+                    queryMapIds.Count > 0)
+                {
+                    itemMapIds = queryMapIds;
+                }
+
+                if (itemMapIds.Count == 0)
+                {
+                    itemMapIds = ResolveQuestDemandItemMapIds(definition, guideItemRequirement.ItemId, currentMapId);
+                }
+
+                target = new QuestWorldMapTarget
+                {
+                    Kind = QuestWorldMapTargetKind.Item,
+                    QuestId = questId,
+                    MapId = itemMapIds.Count > 0 ? itemMapIds[0] : currentMapId,
+                    MapIds = itemMapIds,
+                    EntityId = guideItemRequirement.ItemId,
+                    Label = guideItemRequirement.IsSecret
+                        ? "Hidden required item"
+                        : ResolveItemName(guideItemRequirement.ItemId),
+                    Description = "Quest delivery item",
+                    FallbackNpcName = ResolveNpcName(definition.EndNpcId ?? definition.StartNpcId ?? 0)
+                };
+                return true;
+            }
+
             QuestMobRequirement incompleteMobRequirement = definition.EndMobRequirements
                 .FirstOrDefault(requirement => GetCurrentMobCount(progress, requirement.MobId) < requirement.RequiredCount);
             if (incompleteMobRequirement != null)
@@ -1403,42 +1437,6 @@ namespace HaCreator.MapSimulator.Interaction
                     EntityId = incompleteMobRequirement.MobId,
                     Label = ResolveMobName(incompleteMobRequirement.MobId),
                     Description = "Quest target mob",
-                    FallbackNpcName = ResolveNpcName(definition.EndNpcId ?? definition.StartNpcId ?? 0)
-                };
-                return true;
-            }
-
-            QuestItemRequirement incompleteItemRequirement = GetPreferredOutstandingItemRequirement(
-                definition.EndItemRequirements,
-                preferVisibleRequirements: true);
-            if (incompleteItemRequirement != null)
-            {
-                IReadOnlyList<int> itemMapIds = Array.Empty<int>();
-                if (TryBuildQuestDemandItemQuery(questId, out QuestDemandItemQueryState itemQueryState) &&
-                    itemQueryState?.VisibleItemMapIds != null &&
-                    itemQueryState.VisibleItemMapIds.TryGetValue(incompleteItemRequirement.ItemId, out IReadOnlyList<int> queryMapIds) &&
-                    queryMapIds != null &&
-                    queryMapIds.Count > 0)
-                {
-                    itemMapIds = queryMapIds;
-                }
-
-                if (itemMapIds.Count == 0)
-                {
-                    itemMapIds = ResolveQuestDemandItemMapIds(definition, incompleteItemRequirement.ItemId, currentMapId);
-                }
-
-                target = new QuestWorldMapTarget
-                {
-                    Kind = QuestWorldMapTargetKind.Item,
-                    QuestId = questId,
-                    MapId = itemMapIds.Count > 0 ? itemMapIds[0] : currentMapId,
-                    MapIds = itemMapIds,
-                    EntityId = incompleteItemRequirement.ItemId,
-                    Label = incompleteItemRequirement.IsSecret
-                        ? "Hidden required item"
-                        : ResolveItemName(incompleteItemRequirement.ItemId),
-                    Description = "Quest delivery item",
                     FallbackNpcName = ResolveNpcName(definition.EndNpcId ?? definition.StartNpcId ?? 0)
                 };
                 return true;
@@ -1470,11 +1468,6 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < definition.EndItemRequirements.Count; i++)
             {
                 QuestItemRequirement requirement = definition.EndItemRequirements[i];
-                if (GetResolvedItemCount(requirement.ItemId) >= requirement.RequiredCount)
-                {
-                    continue;
-                }
-
                 if (requirement.IsSecret)
                 {
                     hiddenItemCount++;
@@ -7230,20 +7223,23 @@ namespace HaCreator.MapSimulator.Interaction
                 return ParseConversationPages(selectedProperty);
             }
 
-            if (!HasConversationVariantMetadata(selectedProperty) || HasRenderableConversationContent(selectedProperty))
+            if (!HasConversationVariantMetadata(selectedProperty))
             {
                 return ParseConversationPages(selectedProperty);
             }
 
-            List<WzImageProperty> siblingPages = CollectConversationVariantSiblingPages(containerProperty, selectedProperty);
-            return siblingPages.Count > 0
-                ? ParseConversationPageSequence(
-                    siblingPages,
+            List<WzImageProperty> sequencePages = CollectConversationVariantPageSequence(containerProperty, selectedProperty);
+            if (sequencePages.Count > 0)
+            {
+                return ParseConversationPageSequence(
+                    sequencePages,
                     rootChoiceProperty: selectedProperty,
                     fallbackRootChoiceProperty: containerProperty,
                     rootStopProperty: selectedProperty?["stop"],
-                    fallbackRootStopProperty: containerProperty?["stop"])
-                : ParseConversationPages(selectedProperty);
+                    fallbackRootStopProperty: containerProperty?["stop"]);
+            }
+
+            return ParseConversationPages(selectedProperty);
         }
 
         internal static IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> ParseConversationVariantStopPages(
@@ -7442,14 +7438,14 @@ namespace HaCreator.MapSimulator.Interaction
             return numberedPages;
         }
 
-        private static List<WzImageProperty> CollectConversationVariantSiblingPages(
+        private static List<WzImageProperty> CollectConversationVariantPageSequence(
             WzImageProperty containerProperty,
             WzImageProperty selectedProperty)
         {
-            var siblingPages = new List<WzImageProperty>();
+            var sequencePages = new List<WzImageProperty>();
             if (containerProperty?.WzProperties == null || selectedProperty == null)
             {
-                return siblingPages;
+                return sequencePages;
             }
 
             int selectedIndex = -1;
@@ -7464,7 +7460,15 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (selectedIndex < 0)
             {
-                return siblingPages;
+                return sequencePages;
+            }
+
+            if (int.TryParse(selectedProperty.Name, out int selectedPageIndex) &&
+                selectedPageIndex >= 0 &&
+                selectedPageIndex < 200 &&
+                (!HasConversationPageChildren(selectedProperty) || HasRenderableConversationContent(selectedProperty)))
+            {
+                sequencePages.Add(selectedProperty);
             }
 
             for (int i = selectedIndex + 1; i < containerProperty.WzProperties.Count; i++)
@@ -7480,11 +7484,11 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
                 }
 
-                siblingPages.Add(sibling);
+                sequencePages.Add(sibling);
             }
 
-            SortConversationPagesByIndex(siblingPages);
-            return siblingPages;
+            SortConversationPagesByIndex(sequencePages);
+            return sequencePages;
         }
 
         private static void SortConversationPagesByIndex(List<WzImageProperty> pages)
@@ -9585,14 +9589,142 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string summaryText = BuildClientPacketQuestResultItemCategorySummary(actions, build);
-            if (string.IsNullOrWhiteSpace(summaryText))
+            IReadOnlyList<string> supplementalLines = BuildClientPacketQuestResultSupplementalActionLines(actions, build);
+            string noticeSummary = string.IsNullOrWhiteSpace(summaryText)
+                ? string.Empty
+                : actions.MesoReward < 0
+                    ? QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(summaryText)
+                    : summaryText;
+
+            if (string.IsNullOrWhiteSpace(noticeSummary))
             {
-                return string.Empty;
+                return supplementalLines.Count == 0
+                    ? string.Empty
+                    : string.Join("\n", supplementalLines);
             }
 
-            return actions.MesoReward < 0
-                ? QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(summaryText)
-                : summaryText;
+            if (supplementalLines.Count == 0)
+            {
+                return noticeSummary;
+            }
+
+            return $"{noticeSummary}\n{string.Join("\n", supplementalLines)}";
+        }
+
+        private List<string> BuildClientPacketQuestResultSupplementalActionLines(
+            QuestActionBundle actions,
+            CharacterBuild build)
+        {
+            var lines = new List<string>();
+            if (actions == null)
+            {
+                return lines;
+            }
+
+            NpcDialogueFormattingContext formattingContext = BuildDialogueFormattingContext(build, questId: 0);
+            bool actionApplies = MatchesActionJobFilter(actions, build);
+
+            lines.AddRange(BuildVisibleQuestActionMetadataLines(actions));
+
+            if (!actionApplies)
+            {
+                return lines;
+            }
+
+            if (actions.ExpReward > 0)
+            {
+                lines.Add($"EXP +{actions.ExpReward}");
+            }
+
+            if (actions.MesoReward != 0)
+            {
+                lines.Add($"Meso {actions.MesoReward:+#;-#;0}");
+            }
+
+            if (actions.FameReward != 0)
+            {
+                lines.Add($"Fame {actions.FameReward:+#;-#;0}");
+            }
+
+            if (actions.BuffItemId > 0)
+            {
+                lines.Add($"Buff {GetBuffItemRewardText(actions)}");
+            }
+
+            if (actions.PetTamenessReward != 0)
+            {
+                lines.Add(GetPetTamenessRewardText(actions.PetTamenessReward));
+            }
+
+            if (actions.PetSpeedReward != 0)
+            {
+                lines.Add(GetPetSpeedRewardText(actions.PetSpeedReward));
+            }
+
+            if (actions.BuffItemId <= 0 && actions.BuffItemMapIds.Count > 0)
+            {
+                lines.Add($"Maps: {FormatMapIdList(actions.BuffItemMapIds)}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(actions.NpcActionName))
+            {
+                lines.Add(QuestNpcActionResolver.FormatActionDetail(actions.NpcActionName));
+            }
+
+            for (int i = 0; i < actions.TraitRewards.Count; i++)
+            {
+                QuestTraitReward reward = actions.TraitRewards[i];
+                lines.Add($"{FormatTraitName(reward.Trait)} {reward.Amount:+#;-#;0}");
+            }
+
+            for (int i = 0; i < actions.SkillRewards.Count; i++)
+            {
+                QuestSkillReward reward = actions.SkillRewards[i];
+                if (build != null && !MatchesAllowedJobs(build.Job, reward.AllowedJobs))
+                {
+                    continue;
+                }
+
+                lines.Add(GetSkillRewardText(reward));
+            }
+
+            if (actions.PetSkillRewardMask > 0)
+            {
+                lines.Add(GetPetSkillRewardText(actions.PetSkillRewardMask));
+            }
+
+            for (int i = 0; i < actions.QuestMutations.Count; i++)
+            {
+                QuestStateMutation mutation = actions.QuestMutations[i];
+                lines.Add($"Quest state: {GetQuestName(mutation.QuestId)} -> {FormatQuestState(mutation.State)}");
+            }
+
+            for (int i = 0; i < actions.SpRewards.Count; i++)
+            {
+                QuestSpReward reward = actions.SpRewards[i];
+                if (build != null && !MatchesAllowedJobs(build.Job, reward.AllowedJobs))
+                {
+                    continue;
+                }
+
+                lines.Add($"SP {GetSpRewardText(reward)}");
+            }
+
+            if (actions.NextQuestId.HasValue && actions.NextQuestId.Value > 0)
+            {
+                lines.Add($"Next quest: {GetQuestName(actions.NextQuestId.Value)}");
+            }
+
+            for (int i = 0; i < actions.Messages.Count; i++)
+            {
+                string message = NormalizeQuestActionMessage(actions.Messages[i], formattingContext);
+                if (!string.IsNullOrWhiteSpace(message))
+                {
+                    lines.Add(message);
+                }
+            }
+
+            return lines;
         }
 
         private static string ResolvePacketQuestResultPrimaryText(
@@ -10323,6 +10455,19 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return preferVisibleRequirements ? null : firstOutstandingRequirement;
+        }
+
+        private QuestItemRequirement GetPreferredQuestGuideItemRequirement(IReadOnlyList<QuestItemRequirement> requirements)
+        {
+            if (requirements == null || requirements.Count == 0)
+            {
+                return null;
+            }
+
+            return GetPreferredOutstandingItemRequirement(requirements, preferVisibleRequirements: true)
+                ?? requirements.FirstOrDefault(static requirement => requirement != null && !requirement.IsSecret && requirement.ItemId > 0)
+                ?? GetPreferredOutstandingItemRequirement(requirements, preferVisibleRequirements: false)
+                ?? requirements.FirstOrDefault(static requirement => requirement != null && requirement.ItemId > 0);
         }
 
         private static QuestWindowActionKind ResolveDeliveryAction(QuestWindowDetailState state)

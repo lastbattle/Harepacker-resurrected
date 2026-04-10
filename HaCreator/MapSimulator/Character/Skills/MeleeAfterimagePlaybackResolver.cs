@@ -7,29 +7,23 @@ namespace HaCreator.MapSimulator.Character.Skills
 {
     public static class MeleeAfterimagePlaybackResolver
     {
-        internal readonly record struct Snapshot(int FrameIndex, SkillFrame Frame, float Alpha);
+        internal readonly record struct Snapshot(int FrameIndex, IReadOnlyList<AfterimageRenderableLayer> Layers);
 
         internal static void ApplySnapshotToCache(
             in Snapshot snapshot,
             ref int frameIndex,
-            ref SkillFrame frame,
-            ref float alpha)
+            ref IReadOnlyList<AfterimageRenderableLayer> layers)
         {
             frameIndex = snapshot.FrameIndex;
-            frame = snapshot.Frame;
-            alpha = snapshot.Frame != null
-                ? snapshot.Alpha
-                : 0f;
+            layers = snapshot.Layers ?? Array.Empty<AfterimageRenderableLayer>();
         }
 
         internal static void ClearSnapshotCache(
             ref int frameIndex,
-            ref SkillFrame frame,
-            ref float alpha)
+            ref IReadOnlyList<AfterimageRenderableLayer> layers)
         {
             frameIndex = -1;
-            frame = null;
-            alpha = 0f;
+            layers = Array.Empty<AfterimageRenderableLayer>();
         }
 
         internal static bool RefreshSnapshotCache(
@@ -38,8 +32,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             MeleeAfterImageAction action,
             int animationTime,
             ref int frameIndex,
-            ref SkillFrame frame,
-            ref float alpha)
+            ref IReadOnlyList<AfterimageRenderableLayer> layers)
         {
             if (TryResolveSnapshot(
                     assembler,
@@ -48,11 +41,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                     animationTime,
                     out Snapshot snapshot))
             {
-                ApplySnapshotToCache(snapshot, ref frameIndex, ref frame, ref alpha);
+                ApplySnapshotToCache(snapshot, ref frameIndex, ref layers);
                 return true;
             }
 
-            ClearSnapshotCache(ref frameIndex, ref frame, ref alpha);
+            ClearSnapshotCache(ref frameIndex, ref layers);
             return false;
         }
 
@@ -62,8 +55,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             MeleeAfterImageAction action,
             int animationTime,
             ref int frameIndex,
-            ref SkillFrame frame,
-            ref float alpha)
+            ref IReadOnlyList<AfterimageRenderableLayer> layers)
         {
             if (TryCaptureFadeSnapshot(
                     assembler,
@@ -72,11 +64,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                     animationTime,
                     out Snapshot snapshot))
             {
-                ApplySnapshotToCache(snapshot, ref frameIndex, ref frame, ref alpha);
+                ApplySnapshotToCache(snapshot, ref frameIndex, ref layers);
                 return true;
             }
 
-            ClearSnapshotCache(ref frameIndex, ref frame, ref alpha);
+            ClearSnapshotCache(ref frameIndex, ref layers);
             return false;
         }
 
@@ -115,7 +107,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return true;
                 }
 
-                snapshot = new Snapshot(frameIndex, null, 0f);
+                snapshot = new Snapshot(frameIndex, null);
                 return true;
             }
 
@@ -126,7 +118,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            snapshot = new Snapshot(fallbackFrameIndex, null, 0f);
+            snapshot = new Snapshot(fallbackFrameIndex, null);
             return true;
         }
 
@@ -142,13 +134,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            SkillFrame frame = ResolveFrame(action, frameIndex, frameElapsedMs);
-            snapshot = new Snapshot(
-                frameIndex,
-                frame,
-                frame != null
-                    ? ResolveFrameAlpha(frame, frameElapsedMs)
-                    : 0f);
+            snapshot = new Snapshot(frameIndex, ResolveRenderableLayers(action, frameIndex, frameElapsedMs));
             return true;
         }
 
@@ -162,7 +148,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
-            return ResolveFrame(frameSet, frameElapsedMs);
+            IReadOnlyList<AfterimageRenderableLayer> layers = ResolveRenderableLayers(frameSet, frameElapsedMs);
+            return layers.Count > 0
+                ? layers[0].Frame
+                : null;
         }
 
         internal static bool TryResolveFrameSet(
@@ -198,14 +187,37 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public static SkillFrame ResolveFrame(MeleeAfterImageFrameSet frameSet, int frameElapsedMs)
         {
-            IReadOnlyList<SkillFrame> frames = frameSet?.Frames;
-            if (frames == null || frames.Count == 0)
+            IReadOnlyList<AfterimageRenderableLayer> layers = ResolveRenderableLayers(frameSet, frameElapsedMs);
+            if (layers.Count == 0)
             {
                 return null;
             }
 
-            int elapsed = 0;
-            SkillFrame fallback = null;
+            return layers[0].Frame;
+        }
+
+        public static IReadOnlyList<AfterimageRenderableLayer> ResolveRenderableLayers(
+            MeleeAfterImageAction action,
+            int frameIndex,
+            int frameElapsedMs)
+        {
+            return TryResolveFrameSet(action, frameIndex, out MeleeAfterImageFrameSet frameSet)
+                ? ResolveRenderableLayers(frameSet, frameElapsedMs)
+                : Array.Empty<AfterimageRenderableLayer>();
+        }
+
+        public static IReadOnlyList<AfterimageRenderableLayer> ResolveRenderableLayers(
+            MeleeAfterImageFrameSet frameSet,
+            int frameElapsedMs)
+        {
+            IReadOnlyList<SkillFrame> frames = frameSet?.Frames;
+            if (frames == null || frames.Count == 0)
+            {
+                return Array.Empty<AfterimageRenderableLayer>();
+            }
+
+            int elapsed = Math.Max(0, frameElapsedMs);
+            List<AfterimageRenderableLayer> layers = null;
             for (int i = 0; i < frames.Count; i++)
             {
                 SkillFrame frame = frames[i];
@@ -214,17 +226,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                fallback = frame;
-                int frameDuration = frame.Delay > 0 ? frame.Delay : 0;
-                if (frameDuration <= 0 || frameElapsedMs < elapsed + frameDuration)
+                if (frame.Delay > 0 && elapsed >= frame.Delay)
                 {
-                    return frame;
+                    continue;
                 }
 
-                elapsed += frameDuration;
+                layers ??= new List<AfterimageRenderableLayer>(frames.Count);
+                layers.Add(new AfterimageRenderableLayer(frame, ResolveFrameAlpha(frame, elapsed)));
             }
 
-            return fallback;
+            return layers ?? (IReadOnlyList<AfterimageRenderableLayer>)Array.Empty<AfterimageRenderableLayer>();
         }
 
         public static float ResolveFrameAlpha(SkillFrame frame, int frameElapsedMs)

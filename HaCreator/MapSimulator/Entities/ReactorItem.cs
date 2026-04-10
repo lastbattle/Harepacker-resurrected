@@ -777,7 +777,32 @@ namespace HaCreator.MapSimulator.Entities
 
             return duration > 0
                 ? duration
-                : TryReadHitDuration(sourceProperty);
+                : ResolveApproximateLoadLayerDuration(sourceKind, sourceProperty);
+        }
+
+        internal static int ResolveApproximateLoadLayerDurationForTesting(
+            WzImageProperty sourceProperty,
+            bool treatAsStateOrEventBranch)
+        {
+            return ResolveApproximateLoadLayerDuration(
+                treatAsStateOrEventBranch ? HitAnimationSourceKind.StateLayer : HitAnimationSourceKind.StateHit,
+                sourceProperty);
+        }
+
+        private static int ResolveApproximateLoadLayerDuration(
+            HitAnimationSourceKind sourceKind,
+            WzImageProperty sourceProperty)
+        {
+            int duration = TryReadHitDuration(sourceProperty);
+            if (duration > 0
+                || sourceProperty == null
+                || (sourceKind != HitAnimationSourceKind.StateLayer
+                    && sourceKind != HitAnimationSourceKind.IndexedHit))
+            {
+                return duration;
+            }
+
+            return TryReadHitDuration(WzInfoTools.GetRealProperty(sourceProperty)?["hit"]);
         }
 
         private bool HasAuthoredState(int state)

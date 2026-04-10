@@ -7,5 +7,6 @@ namespace HaCreator.MapSimulator
         LoginNoticeCog = 2,
         LoginNoticeBar = 3,
         InGameFadeYesNo = 4,
+        UtilDlgNotice = 5,
     }
 }

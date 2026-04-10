@@ -31,6 +31,7 @@ namespace HaCreator.MapSimulator.UI
         private const int NoticeNexonButtonX = 89;
         private const int InputPaddingX = 4;
         private const int InputPaddingY = 1;
+        private const float UtilDlgNoticeBodyWrapWidth = 278f;
 
         private readonly IReadOnlyDictionary<LoginUtilityDialogFrameVariant, IDXObject> _framesByVariant;
         private readonly UIObject _okButton;
@@ -293,7 +294,7 @@ namespace HaCreator.MapSimulator.UI
             }
             else
             {
-                if (!UsesCompactFadeYesNoLayout)
+                if (ShouldDrawTitleHeader(_frameVariant, _title))
                 {
                     SelectorWindowDrawing.DrawShadowedText(
                         sprite,
@@ -306,7 +307,7 @@ namespace HaCreator.MapSimulator.UI
                 }
                 else
                 {
-                    y = Position.Y + 15;
+                    y = Position.Y + ResolveBodyStartOffsetY(_frameVariant);
                 }
             }
             foreach (string line in WrapText(_body, ResolveBodyWrapWidth()))
@@ -497,17 +498,14 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        private bool UsesCompactFadeYesNoLayout => _frameVariant == LoginUtilityDialogFrameVariant.InGameFadeYesNo;
+        private bool UsesCompactFadeYesNoLayout => UsesCompactFadeYesNoLayoutVariant(_frameVariant);
+
+        private bool UsesUtilDlgNoticeLayout => UsesUtilDlgNoticeLayoutVariant(_frameVariant);
 
         private float ResolveBodyWrapWidth()
         {
-            if (UsesCompactFadeYesNoLayout)
-            {
-                int frameWidth = Frame?.Width > 0 ? Frame.Width : 206;
-                return Math.Max(140f, frameWidth - 34f);
-            }
-
-            return BodyWrapWidth;
+            int frameWidth = Frame?.Width > 0 ? Frame.Width : 312;
+            return ResolveBodyWrapWidth(_frameVariant, frameWidth);
         }
 
         private int ResolveButtonY(UIObject button)
@@ -955,6 +953,47 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private bool UsesClientNoticeInputLane => HasInputField && (_inputBoundsOverride.HasValue || _noticeTextIndex.HasValue);
+
+        internal static bool UsesCompactFadeYesNoLayoutVariant(LoginUtilityDialogFrameVariant frameVariant)
+        {
+            return frameVariant == LoginUtilityDialogFrameVariant.InGameFadeYesNo;
+        }
+
+        internal static bool UsesUtilDlgNoticeLayoutVariant(LoginUtilityDialogFrameVariant frameVariant)
+        {
+            return frameVariant == LoginUtilityDialogFrameVariant.UtilDlgNotice;
+        }
+
+        internal static bool ShouldDrawTitleHeader(LoginUtilityDialogFrameVariant frameVariant, string title)
+        {
+            return !UsesCompactFadeYesNoLayoutVariant(frameVariant)
+                && !UsesUtilDlgNoticeLayoutVariant(frameVariant)
+                && !string.IsNullOrWhiteSpace(title);
+        }
+
+        internal static float ResolveBodyWrapWidth(LoginUtilityDialogFrameVariant frameVariant, int frameWidth)
+        {
+            if (UsesCompactFadeYesNoLayoutVariant(frameVariant))
+            {
+                int normalizedFrameWidth = frameWidth > 0 ? frameWidth : 206;
+                return Math.Max(140f, normalizedFrameWidth - 34f);
+            }
+
+            if (UsesUtilDlgNoticeLayoutVariant(frameVariant))
+            {
+                int normalizedFrameWidth = frameWidth > 0 ? frameWidth : 312;
+                return Math.Max(200f, Math.Min(UtilDlgNoticeBodyWrapWidth, normalizedFrameWidth - (TextOffsetX * 2f)));
+            }
+
+            return BodyWrapWidth;
+        }
+
+        internal static int ResolveBodyStartOffsetY(LoginUtilityDialogFrameVariant frameVariant)
+        {
+            return UsesCompactFadeYesNoLayoutVariant(frameVariant)
+                ? 15
+                : TextOffsetY;
+        }
 
         private void DrawImeCandidateWindow(SpriteBatch sprite)
         {

@@ -5,6 +5,7 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary;
 using HaSharedLibrary.Util;
@@ -40,6 +41,7 @@ namespace HaCreator.MapSimulator.Loaders
             public readonly Dictionary<string, List<MobAnimationSet.AttackEffectNode>> AttackExtraEffects = new(StringComparer.OrdinalIgnoreCase);
             public readonly Dictionary<int, List<IDXObject>> AngerGaugeAnimations = new();
             public List<IDXObject> AngerGaugeEffect;
+            public string AngerGaugeEffectPath;
         }
 
         private sealed class CachedMobActionAssets
@@ -490,6 +492,7 @@ namespace HaCreator.MapSimulator.Loaders
                     if (effectFrames.Count > 0)
                     {
                         cached.AngerGaugeEffect = effectFrames;
+                        cached.AngerGaugeEffectPath = MobAngerGaugeBurstStringPoolText.ResolvePath(mobInfo.ID);
                     }
 
                     continue;
@@ -674,7 +677,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             if (cachedAssets.AngerGaugeEffect != null)
             {
-                animationSet.SetAngerGaugeEffect(cachedAssets.AngerGaugeEffect);
+                animationSet.SetAngerGaugeEffect(cachedAssets.AngerGaugeEffect, cachedAssets.AngerGaugeEffectPath);
             }
 
             foreach (KeyValuePair<string, MobAnimationSet.AttackInfoMetadata> entry in cachedAssets.AttackMetadata)

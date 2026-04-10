@@ -36,6 +36,16 @@ namespace HaCreator.MapSimulator.UI
                 return preparedSkill.IsKeydownSkill ? "Maintaining" : "Ready";
             }
 
+            if (preparedSkill.IsPreparingPhase)
+            {
+                int preparingRemainingMs = preparedSkill.PrepareRemainingMs > 0
+                    ? preparedSkill.PrepareRemainingMs
+                    : preparedSkill.RemainingMs;
+                return preparingRemainingMs > 0
+                    ? $"Preparing {Math.Max(1, (int)Math.Ceiling(preparingRemainingMs / 1000f))} sec"
+                    : "Preparing";
+            }
+
             if (preparedSkill.RemainingMs > 0
                 && gaugeDurationMs > 0
                 && preparedSkill.DurationMs > gaugeDurationMs

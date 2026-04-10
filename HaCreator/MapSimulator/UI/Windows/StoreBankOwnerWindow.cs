@@ -29,8 +29,6 @@ namespace HaCreator.MapSimulator.UI
         private const int ScrollBarX = 190;
         private const int ScrollBarY = 93;
         private const int ScrollBarHeight = 203;
-        private const int PageTextX = 122;
-        private const int PageTextY = 74;
         private const int MoneyRightX = 170;
         private const int MoneyY = 304;
         private const int FooterX = 12;
@@ -104,9 +102,9 @@ namespace HaCreator.MapSimulator.UI
                 AddButton(exitButton);
                 exitButton.ButtonClickReleased += _ =>
                 {
-                    if (_closeAction?.Invoke() != false)
+                    bool handled = _closeAction?.Invoke() != false;
+                    if (handled)
                     {
-                        _runtime?.Close();
                         Hide();
                     }
                 };
@@ -252,7 +250,6 @@ namespace HaCreator.MapSimulator.UI
 
             DrawRows(sprite);
             DrawScrollBar(sprite);
-            DrawPageState(sprite);
             DrawMoney(sprite);
             DrawFooter(sprite);
         }
@@ -404,26 +401,6 @@ namespace HaCreator.MapSimulator.UI
                 0f);
         }
 
-        private void DrawPageState(SpriteBatch sprite)
-        {
-            if (_font == null)
-            {
-                return;
-            }
-
-            IReadOnlyList<StoreBankOwnerRowSnapshot> rows = GetRows();
-            string pageText = rows.Count == 0
-                ? "0/0"
-                : $"{_scrollOffset + 1}-{Math.Min(rows.Count, _scrollOffset + VisibleRowCount)}/{rows.Count}";
-            InventoryRenderUtil.DrawOutlinedText(
-                sprite,
-                _font,
-                pageText,
-                new Vector2(Position.X + PageTextX, Position.Y + PageTextY),
-                new Color(198, 214, 233),
-                0.55f);
-        }
-
         private void DrawFooter(SpriteBatch sprite)
         {
             if (_font == null)
@@ -556,7 +533,10 @@ namespace HaCreator.MapSimulator.UI
         private void UpdateInteractiveState()
         {
             IReadOnlyList<StoreBankOwnerRowSnapshot> rows = GetRows();
-            bool canSelect = IsVisible && rows.Count > 0;
+            bool rowSelectionLocked = _runtime?.HasPendingFeeCalculationRequest == true
+                || _runtime?.HasPendingGetAllRequest == true
+                || _runtime?.HasAcceptedGetAllRequestInFlight == true;
+            bool canSelect = IsVisible && rows.Count > 0 && !rowSelectionLocked;
             for (int i = 0; i < _rowButtons.Count; i++)
             {
                 bool visible = _scrollOffset + i < rows.Count;

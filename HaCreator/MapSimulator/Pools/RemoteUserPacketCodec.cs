@@ -4,6 +4,7 @@ using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Physics;
 using HaCreator.MapSimulator.UI;
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Text;
 
@@ -281,6 +282,28 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct RemoteUserPortableChairRecordRemovePacket(int CharacterId);
     public readonly record struct RemoteUserMountPacket(int CharacterId, int? TamingMobItemId);
     public readonly record struct RemoteUserActiveEffectItemPacket(int CharacterId, int? ItemId);
+    public enum RemoteUserEffectSubtype : byte
+    {
+        IncDecHp = 29,
+        QuestDeliveryStart = 30,
+        QuestDeliveryEnd = 31
+    }
+
+    public readonly record struct RemoteUserEffectPacket(
+        int CharacterId,
+        byte EffectType,
+        int? Int32Value,
+        byte[] RawPayload)
+    {
+        public RemoteUserEffectSubtype? KnownSubtype => EffectType switch
+        {
+            (byte)RemoteUserEffectSubtype.IncDecHp => RemoteUserEffectSubtype.IncDecHp,
+            (byte)RemoteUserEffectSubtype.QuestDeliveryStart => RemoteUserEffectSubtype.QuestDeliveryStart,
+            (byte)RemoteUserEffectSubtype.QuestDeliveryEnd => RemoteUserEffectSubtype.QuestDeliveryEnd,
+            _ => null
+        };
+    }
+
     public readonly record struct RemoteUserHitPacket(
         int CharacterId,
         sbyte AttackIndex,
@@ -991,6 +1014,25 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        public static bool TryParsePortableChairOfficial(ReadOnlySpan<byte> payload, out RemoteUserPortableChairPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+            if (payload.Length != sizeof(int) * 2)
+            {
+                error = $"Remote user official portable-chair packet expects 8 bytes but received {payload.Length}.";
+                return false;
+            }
+
+            if (!TryParseOptionalItemPacket(payload, "official portable-chair", out int characterId, out int? itemId, out error, out int? _))
+            {
+                return false;
+            }
+
+            packet = new RemoteUserPortableChairPacket(characterId, itemId, PairCharacterId: null);
+            return true;
+        }
+
         public static bool TryParsePortableChairRecordAdd(
             ReadOnlySpan<byte> payload,
             out RemoteUserPortableChairRecordAddPacket packet,
@@ -1211,6 +1253,58 @@ namespace HaCreator.MapSimulator.Pools
                     hitFlags,
                     hpDelta,
                     skillId);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseEffect(ReadOnlySpan<byte> payload, out RemoteUserEffectPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                byte effectType = reader.ReadByte();
+                byte[] effectPayload = reader.ReadRemainingBytes();
+
+                if (characterId <= 0)
+                {
+                    error = $"Remote user effect packet character ID {characterId} is invalid.";
+                    return false;
+                }
+
+                int? int32Value = null;
+                switch ((RemoteUserEffectSubtype)effectType)
+                {
+                    case RemoteUserEffectSubtype.IncDecHp:
+                    case RemoteUserEffectSubtype.QuestDeliveryStart:
+                        if (effectPayload.Length != sizeof(int))
+                        {
+                            error = $"Remote user effect subtype {effectType} expects 4 trailing bytes but received {effectPayload.Length}.";
+                            return false;
+                        }
+
+                        int32Value = BinaryPrimitives.ReadInt32LittleEndian(effectPayload);
+                        break;
+
+                    case RemoteUserEffectSubtype.QuestDeliveryEnd:
+                        if (effectPayload.Length != 0)
+                        {
+                            error = $"Remote user effect subtype {effectType} expects no trailing payload but received {effectPayload.Length} bytes.";
+                            return false;
+                        }
+
+                        break;
+                }
+
+                packet = new RemoteUserEffectPacket(characterId, effectType, int32Value, effectPayload);
                 return true;
             }
             catch (InvalidOperationException ex)

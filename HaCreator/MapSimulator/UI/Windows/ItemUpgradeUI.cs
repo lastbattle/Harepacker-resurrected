@@ -2694,8 +2694,16 @@ namespace HaCreator.MapSimulator.UI
                 TryGetScrollTargetSlots(consumable.Definition.ItemId, out targetSlots) &&
                 targetSlots.Count > 0)
             {
-                string targetText = string.Join(", ", targetSlots.Select(ResolveSlotLabel).Distinct());
-                reason = $"{consumable.Name} only applies to {targetText} equipment.";
+                string targetFamilyLabel = ResolveScrollTargetFamilyLabel(consumable.Definition.ItemId);
+                if (!string.IsNullOrWhiteSpace(targetFamilyLabel))
+                {
+                    reason = $"{consumable.Name} only applies to {targetFamilyLabel}.";
+                }
+                else
+                {
+                    string targetText = string.Join(", ", targetSlots.Select(ResolveSlotLabel).Distinct());
+                    reason = $"{consumable.Name} only applies to {targetText} equipment.";
+                }
             }
 
             return false;
@@ -3924,6 +3932,13 @@ namespace HaCreator.MapSimulator.UI
             return slots.Count > 0;
         }
 
+        private static string ResolveScrollTargetFamilyLabel(int itemId)
+        {
+            return ResolveTargetFamilyLabelFromItemMetadata(
+                ResolveCachedItemNameOrFallback(itemId),
+                ResolveCachedItemDescription(itemId));
+        }
+
         private static HashSet<EquipSlot> ResolveTargetSlotsFromItemMetadata(string itemName, string description)
         {
             string normalizedName = itemName ?? string.Empty;
@@ -3939,9 +3954,34 @@ namespace HaCreator.MapSimulator.UI
             return ResolveTargetSlotsFromText(description);
         }
 
+        private static string ResolveTargetFamilyLabelFromItemMetadata(string itemName, string description)
+        {
+            if (TryResolveTargetFamilyLabelFromText(description, out string descriptionLabel))
+            {
+                return descriptionLabel;
+            }
+
+            string normalizedName = itemName ?? string.Empty;
+            Match nameMatch = ScrollTargetRegex.Match(normalizedName);
+            if (nameMatch.Success &&
+                TryResolveTargetFamilyLabelFromText(nameMatch.Groups[1].Value, out string nameTargetLabel))
+            {
+                return nameTargetLabel;
+            }
+
+            return TryResolveTargetFamilyLabelFromText(normalizedName, out string nameLabel)
+                ? nameLabel
+                : null;
+        }
+
         internal static IReadOnlyCollection<EquipSlot> ResolveTargetSlotsForTesting(string itemName, string description)
         {
             return ResolveTargetSlotsFromItemMetadata(itemName, description).ToArray();
+        }
+
+        internal static string ResolveTargetFamilyLabelForTesting(string itemName, string description)
+        {
+            return ResolveTargetFamilyLabelFromItemMetadata(itemName, description);
         }
 
         internal static AuthoredStatDeltaProfile ResolveAuthoredStatDeltaProfileForTesting(string description)
@@ -4174,6 +4214,190 @@ namespace HaCreator.MapSimulator.UI
             {
                 targetSlots.Add(EquipSlot.Weapon);
             }
+        }
+
+        private static bool TryResolveTargetFamilyLabelFromText(string text, out string label)
+        {
+            label = null;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string normalized = text.Trim();
+            Match accessorySubsetMatch = AccessorySubsetRegex.Match(normalized);
+            if (accessorySubsetMatch.Success)
+            {
+                label = $"accessories ({NormalizeAccessorySubsetLabel(accessorySubsetMatch.Groups[1].Value)})";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "face accessories", "face accessory", "mask", "face eqp", "face equipment"))
+            {
+                label = "face accessories";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "eye accessories", "eye accessory", "glasses", "eye eqp", "eye equipment"))
+            {
+                label = "eye accessories";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "accessories", "accessory"))
+            {
+                label = "accessories";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "earrings", "earring"))
+            {
+                label = "earrings";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "rings", "ring"))
+            {
+                label = "rings";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "pendants", "pendant", "necklace"))
+            {
+                label = "pendants";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "belts", "belt"))
+            {
+                label = "belts";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "shoulders", "shoulder"))
+            {
+                label = "shoulders";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "pockets", "pocket"))
+            {
+                label = "pockets";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "badges", "badge"))
+            {
+                label = "badges";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "medals", "medal"))
+            {
+                label = "medals";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "overall"))
+            {
+                label = "overalls";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "tops", "top", "coats", "coat"))
+            {
+                label = "tops";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "bottoms", "bottom", "pants"))
+            {
+                label = "bottoms";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "helmets", "helmet", "caps", "cap", "hats", "hat", "circlet"))
+            {
+                label = "hats";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "armor"))
+            {
+                label = "armor";
+                return true;
+            }
+
+            if (ContainsAny(normalized,
+                    "weapon", "sword", "axe", "blunt", "dagger", "spear", "pole arm",
+                    "bow", "crossbow", "staff", "wand", "claw", "knuckle", "gun"))
+            {
+                label = "weapons";
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string NormalizeAccessorySubsetLabel(string subsetText)
+        {
+            if (string.IsNullOrWhiteSpace(subsetText))
+            {
+                return string.Empty;
+            }
+
+            var segments = subsetText
+                .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(static segment => segment.Trim())
+                .Where(static segment => !string.IsNullOrWhiteSpace(segment))
+                .Select(NormalizeAccessorySubsetToken)
+                .ToArray();
+            return segments.Length > 0
+                ? string.Join(", ", segments)
+                : subsetText.Trim();
+        }
+
+        private static string NormalizeAccessorySubsetToken(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return string.Empty;
+            }
+
+            string normalized = token.Trim();
+            return normalized.ToLowerInvariant() switch
+            {
+                "pendant" or "pendants" or "necklace" or "necklaces" => "pendant",
+                "belt" or "belts" => "belt",
+                "ring" or "rings" => "ring",
+                "face accessory" or "face accessories" or "mask" or "masks" => "face accessory",
+                "eye accessory" or "eye accessories" or "glasses" => "eye accessory",
+                "earring" or "earrings" => "earring",
+                "shoulder" or "shoulders" => "shoulder",
+                "pocket" or "pockets" => "pocket",
+                "badge" or "badges" => "badge",
+                "medal" or "medals" => "medal",
+                _ => normalized
+            };
+        }
+
+        private static bool ContainsAny(string text, params string[] patterns)
+        {
+            if (string.IsNullOrWhiteSpace(text) || patterns == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < patterns.Length; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(patterns[i]) &&
+                    text.IndexOf(patterns[i], StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool AreRatesEquivalent(float left, float right)

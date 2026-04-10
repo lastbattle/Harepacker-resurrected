@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     public class SkillLoader
     {
         private readonly record struct SummonActionCacheKey(int SkillId, int SkillLevel, string ActionKey);
+        private readonly record struct SummonSourceCandidate(int SkillId, SkillData Skill, WzImageProperty SkillNode);
 
         private static readonly string[] PreferredSummonAnimationBranches =
         {
@@ -165,6 +166,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly HashSet<int> _skillsWithoutCastSound = new();
         private readonly HashSet<int> _skillsWithoutRepeatSound = new();
         private readonly Dictionary<int, int[]> _affectedSkillParentCache = new();
+        private readonly Dictionary<int, int[]> _dummySkillParentCache = new();
         private readonly Dictionary<string, MeleeAfterImageCatalog> _characterAfterImageCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, MeleeAfterImageCatalog> _characterChargeAfterImageCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _missingCharacterAfterImageKeys = new(StringComparer.OrdinalIgnoreCase);
@@ -2922,46 +2924,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             WzImageProperty skillNode,
             out WzImageProperty summonNode)
         {
-            if (TryResolveClientSummonedUolProperty(skill?.ClientSummonedUolPath, out summonNode))
-            {
-                return true;
-            }
-
             summonNode = null;
-            foreach (WzImageProperty candidateSkillNode in EnumerateSummonSourceSkillNodes(skill, skillNode))
+            foreach (SummonSourceCandidate candidate in EnumerateSummonSourceCandidates(skill, skillNode))
             {
-                if (TryResolveSummonSourcePropertyFromSkillNode(candidateSkillNode, out summonNode))
+                if (TryResolveClientSummonedUolProperty(candidate.Skill?.ClientSummonedUolPath, out summonNode))
                 {
                     return true;
                 }
-            }
 
-            if (TryResolveReverseAffectedSummonSourceProperty(skill, out summonNode))
-            {
-                return true;
-            }
-
-            return false;
-        }
-
-        private bool TryResolveReverseAffectedSummonSourceProperty(
-            SkillData skill,
-            out WzImageProperty summonNode)
-        {
-            summonNode = null;
-            if (skill?.SkillId <= 0)
-            {
-                return false;
-            }
-
-            foreach (int parentSkillId in FindAffectedSkillParentIds(skill.SkillId))
-            {
-                if (parentSkillId <= 0 || !TryGetSkillNode(parentSkillId, out WzImageProperty parentSkillNode))
-                {
-                    continue;
-                }
-
-                if (TryResolveSummonSourcePropertyFromSkillNode(parentSkillNode, out summonNode))
+                if (TryResolveSummonSourcePropertyFromSkillNode(candidate.SkillNode, out summonNode))
                 {
                     return true;
                 }
@@ -2970,19 +2941,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
-        private IEnumerable<WzImageProperty> EnumerateSummonSourceSkillNodes(SkillData skill, WzImageProperty skillNode)
+        private IEnumerable<SummonSourceCandidate> EnumerateSummonSourceCandidates(SkillData skill, WzImageProperty skillNode)
         {
             var yieldedSkillIds = new HashSet<int>();
             if (skillNode != null)
             {
-                yield return skillNode;
-                if (skill?.SkillId > 0)
+                int currentSkillId = skill?.SkillId ?? 0;
+                yield return new SummonSourceCandidate(currentSkillId, skill, skillNode);
+                if (currentSkillId > 0)
                 {
-                    yieldedSkillIds.Add(skill.SkillId);
+                    yieldedSkillIds.Add(currentSkillId);
                 }
             }
 
-            foreach (int linkedSkillId in EnumerateSummonSourceCandidateSkillIds(skill, LoadSummonSourceCandidateSkillMetadata))
+            foreach (int linkedSkillId in EnumerateSummonSourceCandidateSkillIds(
+                         skill,
+                         LoadSummonSourceCandidateSkillMetadata,
+                         FindAffectedSkillParentIds))
             {
                 if (linkedSkillId <= 0 || !yieldedSkillIds.Add(linkedSkillId))
                 {
@@ -2991,7 +2966,10 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 if (TryGetSkillNode(linkedSkillId, out WzImageProperty linkedSkillNode))
                 {
-                    yield return linkedSkillNode;
+                    yield return new SummonSourceCandidate(
+                        linkedSkillId,
+                        LoadSummonSourceCandidateSkillMetadata(linkedSkillId),
+                        linkedSkillNode);
                 }
             }
         }
@@ -3025,7 +3003,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static IEnumerable<int> EnumerateSummonSourceCandidateSkillIds(
             SkillData skill,
-            Func<int, SkillData> linkedSkillResolver = null)
+            Func<int, SkillData> linkedSkillResolver = null,
+            Func<int, IReadOnlyList<int>> reverseAffectedSkillResolver = null)
         {
             if (skill == null)
             {
@@ -3033,18 +3012,19 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             var visitedSkillIds = new HashSet<int>();
+            var pendingSkillIds = new Queue<int>();
+            var enqueuedSkillIds = new HashSet<int>();
+
             if (skill.SkillId > 0)
             {
                 visitedSkillIds.Add(skill.SkillId);
+                enqueuedSkillIds.Add(skill.SkillId);
+                pendingSkillIds.Enqueue(skill.SkillId);
             }
 
-            var pendingSkillIds = new Queue<int>();
             foreach (int linkedSkillId in EnumerateDirectSummonSourceCandidateSkillIds(skill))
             {
-                if (linkedSkillId > 0)
-                {
-                    pendingSkillIds.Enqueue(linkedSkillId);
-                }
+                EnqueueSummonSourceCandidateSkillId(pendingSkillIds, enqueuedSkillIds, linkedSkillId);
             }
 
             while (pendingSkillIds.Count > 0)
@@ -3065,11 +3045,30 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 foreach (int nestedSkillId in EnumerateDirectSummonSourceCandidateSkillIds(linkedSkill))
                 {
-                    if (nestedSkillId > 0 && !visitedSkillIds.Contains(nestedSkillId))
+                    if (!visitedSkillIds.Contains(nestedSkillId))
                     {
-                        pendingSkillIds.Enqueue(nestedSkillId);
+                        EnqueueSummonSourceCandidateSkillId(pendingSkillIds, enqueuedSkillIds, nestedSkillId);
                     }
                 }
+
+                foreach (int reverseParentSkillId in reverseAffectedSkillResolver?.Invoke(linkedSkillId) ?? Array.Empty<int>())
+                {
+                    if (!visitedSkillIds.Contains(reverseParentSkillId))
+                    {
+                        EnqueueSummonSourceCandidateSkillId(pendingSkillIds, enqueuedSkillIds, reverseParentSkillId);
+                    }
+                }
+            }
+        }
+
+        private static void EnqueueSummonSourceCandidateSkillId(
+            Queue<int> pendingSkillIds,
+            HashSet<int> enqueuedSkillIds,
+            int skillId)
+        {
+            if (skillId > 0 && enqueuedSkillIds.Add(skillId))
+            {
+                pendingSkillIds.Enqueue(skillId);
             }
         }
 
@@ -3179,6 +3178,57 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             int[] resolvedParentIds = parentSkillIds.ToArray();
             _affectedSkillParentCache[affectedSkillId] = resolvedParentIds;
+            return resolvedParentIds;
+        }
+
+        internal IReadOnlyList<int> FindDummySkillParentIds(int dummySkillId)
+        {
+            if (dummySkillId <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            if (_dummySkillParentCache.TryGetValue(dummySkillId, out int[] cachedParentIds))
+            {
+                return cachedParentIds;
+            }
+
+            var parentSkillIds = new SortedSet<int>();
+            foreach (int jobId in EnumerateAffectedSkillParentCandidateJobIds(dummySkillId))
+            {
+                WzImage jobImage = GetSkillImage($"{jobId}.img");
+                if (jobImage == null)
+                {
+                    continue;
+                }
+
+                jobImage.ParseImage();
+                WzImageProperty skillRoot = jobImage["skill"];
+                if (skillRoot?.WzProperties == null)
+                {
+                    continue;
+                }
+
+                foreach (WzImageProperty candidateSkillNode in skillRoot.WzProperties)
+                {
+                    if (candidateSkillNode == null
+                        || !int.TryParse(candidateSkillNode.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parentSkillId)
+                        || parentSkillId <= 0
+                        || parentSkillId == dummySkillId)
+                    {
+                        continue;
+                    }
+
+                    int[] linkedDummySkillIds = ParseDummySkillParents(GetString(candidateSkillNode["info"], "dummyOf"));
+                    if (Array.IndexOf(linkedDummySkillIds, dummySkillId) >= 0)
+                    {
+                        parentSkillIds.Add(parentSkillId);
+                    }
+                }
+            }
+
+            int[] resolvedParentIds = parentSkillIds.ToArray();
+            _dummySkillParentCache[dummySkillId] = resolvedParentIds;
             return resolvedParentIds;
         }
 

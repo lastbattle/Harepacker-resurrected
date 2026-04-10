@@ -16,6 +16,7 @@ namespace HaCreator.MapSimulator.UI
         internal const int DefaultFrameHeight = 132;
         internal const int DefaultBodyLineCapacity = 3;
         internal const int FrameHeightStep = 13;
+        internal const int DefaultPrebuiltFrameLineCountLimit = 20;
         private const float NormalBodyWrapWidth = 200f;
         private const float TightLineBodyWrapWidth = 234f;
         private const float CenteredBodyAreaLeftX = 15f;
@@ -80,6 +81,44 @@ namespace HaCreator.MapSimulator.UI
             return key == Keys.Enter
                 || key == Keys.Space
                 || key == Keys.Escape;
+        }
+
+        internal static int ResolveAvailableFrameLineCount(
+            IEnumerable<int> availableLineCounts,
+            int requestedLineCount)
+        {
+            if (availableLineCounts == null)
+            {
+                return Math.Max(1, requestedLineCount);
+            }
+
+            int normalizedRequestedLineCount = Math.Max(1, requestedLineCount);
+            int? bestGreaterOrEqual = null;
+            int bestSmaller = 1;
+            foreach (int availableLineCount in availableLineCounts)
+            {
+                if (availableLineCount <= 0)
+                {
+                    continue;
+                }
+
+                if (availableLineCount >= normalizedRequestedLineCount)
+                {
+                    if (!bestGreaterOrEqual.HasValue || availableLineCount < bestGreaterOrEqual.Value)
+                    {
+                        bestGreaterOrEqual = availableLineCount;
+                    }
+
+                    continue;
+                }
+
+                if (availableLineCount > bestSmaller)
+                {
+                    bestSmaller = availableLineCount;
+                }
+            }
+
+            return bestGreaterOrEqual ?? bestSmaller;
         }
 
         public void Configure(string title, string body, bool autoSeparated = true, bool tightLine = false)
@@ -314,7 +353,8 @@ namespace HaCreator.MapSimulator.UI
         {
             _bodyLines = BuildBodyLines().ToArray();
             int lineCount = Math.Max(1, _bodyLines.Count);
-            Frame = _framesByLineCount.TryGetValue(lineCount, out IDXObject frame)
+            int resolvedFrameLineCount = ResolveAvailableFrameLineCount(_framesByLineCount?.Keys, lineCount);
+            Frame = _framesByLineCount.TryGetValue(resolvedFrameLineCount, out IDXObject frame)
                 ? frame
                 : _defaultFrame;
 

@@ -614,6 +614,7 @@ namespace HaCreator.MapSimulator
 
         private string SavePacketOwnedAntiMacroScreenshot(string userName)
         {
+            _lastPacketOwnedAntiMacroScreenshotPath = string.Empty;
             string screenshotDirectory = PacketOwnedAntiMacroScreenshotPathResolver.ResolveBaseFolder();
             _lastPacketOwnedAntiMacroScreenshotBaseFolder = screenshotDirectory;
             if (string.IsNullOrWhiteSpace(screenshotDirectory))
@@ -659,7 +660,10 @@ namespace HaCreator.MapSimulator
 
             if (definition?.SaveScreenshot == true)
             {
-                SavePacketOwnedAntiMacroScreenshot(resolvedName);
+                string screenshotSummary = SavePacketOwnedAntiMacroScreenshot(resolvedName);
+                _lastPacketOwnedAntiMacroSummary =
+                    $"Anti-macro branch mode {mode} for {resolvedName} applied through the simulator packet bridge. {screenshotSummary}";
+                return _lastPacketOwnedAntiMacroSummary;
             }
 
             _lastPacketOwnedAntiMacroSummary = $"Anti-macro branch mode {mode} for {resolvedName} applied through the simulator packet bridge.";

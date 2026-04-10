@@ -14,6 +14,23 @@ namespace HaCreator.MapSimulator.Managers
 {
     public sealed class MonsterBookManager
     {
+        public enum CardPickupOutcome
+        {
+            None,
+            Recorded,
+            AlreadyFull
+        }
+
+        public readonly record struct CardPickupResult(
+            CardPickupOutcome Outcome,
+            MonsterBookSnapshot Snapshot,
+            string MonsterName,
+            int PreviousCopies,
+            int CurrentCopies)
+        {
+            public bool Changed => CurrentCopies != PreviousCopies;
+        }
+
         private sealed class PersistedStore
         {
             public Dictionary<string, MonsterBookRecord> BookByCharacter { get; set; } = new(StringComparer.Ordinal);
@@ -227,17 +244,52 @@ namespace HaCreator.MapSimulator.Managers
 
         public MonsterBookSnapshot RecordCardPickup(CharacterBuild build, int itemId, int count = 1)
         {
+            return RecordCardPickupWithResult(build, itemId, count).Snapshot;
+        }
+
+        public CardPickupResult RecordCardPickupWithResult(CharacterBuild build, int itemId, int count = 1)
+        {
             if (itemId <= 0 || count <= 0)
             {
-                return GetSnapshot(build);
+                return new CardPickupResult(
+                    CardPickupOutcome.None,
+                    GetSnapshot(build),
+                    string.Empty,
+                    0,
+                    0);
             }
 
             if (!EnsureCatalogByItemId().TryGetValue(itemId, out MonsterBookCardDefinition definition) || definition == null)
             {
-                return GetSnapshot(build);
+                return new CardPickupResult(
+                    CardPickupOutcome.None,
+                    GetSnapshot(build),
+                    string.Empty,
+                    0,
+                    0);
             }
 
-            return RecordMobKill(build, definition.MobId, count);
+            MonsterBookRecord record = GetRecord(build, createIfMissing: true);
+            record.CardCountsByMob.TryGetValue(definition.MobId, out int previousCopies);
+            MonsterBookSnapshot snapshot = RecordMobKill(build, definition.MobId, count);
+            int currentCopies = Math.Clamp(previousCopies + count, 0, 5);
+            if (currentCopies == previousCopies)
+            {
+                currentCopies = previousCopies;
+            }
+
+            CardPickupOutcome outcome = currentCopies > previousCopies
+                ? CardPickupOutcome.Recorded
+                : previousCopies >= 5
+                    ? CardPickupOutcome.AlreadyFull
+                    : CardPickupOutcome.None;
+
+            return new CardPickupResult(
+                outcome,
+                snapshot,
+                definition.Name,
+                previousCopies,
+                currentCopies);
         }
 
         public bool TryResolveCardItemId(int mobId, out int cardItemId)

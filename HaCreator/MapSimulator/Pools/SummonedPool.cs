@@ -101,6 +101,7 @@ namespace HaCreator.MapSimulator.Pools
         private const int TeslaMinimumImpactDelayMs = 300;
         private const int PacketOwnedSummonBodyContactCooldownMs = 700;
         private const int PacketOwnedSummonPassiveEffectCooldownMs = 240;
+        private const int PacketOwnedHitRetainedAttackFrameWindowMs = 240;
         private const int SummonHitPeriodDurationMs = 1500;
 
         private sealed class PacketOwnedSummonState
@@ -132,6 +133,11 @@ namespace HaCreator.MapSimulator.Pools
             public int LastPassiveMovementUpdateTime { get; set; } = int.MinValue;
             public PlayerMovementSyncSnapshot MovementSnapshot { get; set; }
         }
+
+        internal readonly record struct RemoteSupportSummonCandidate(
+            ActiveSummon Summon,
+            int OwnerCharacterId,
+            bool OwnerIsPartyMember);
 
         private sealed class PacketOwnedSummonTimer
         {
@@ -311,19 +317,95 @@ namespace HaCreator.MapSimulator.Pools
                 return Array.Empty<ActiveSummon>();
             }
 
-            return _summonsByObjectId.Values
-                .Where(state => state?.Summon?.SkillData != null
-                                && state.Summon.LevelData != null
-                                && !state.Summon.IsPendingRemoval
+            IEnumerable<RemoteSupportSummonCandidate> candidates = _summonsByObjectId.Values
+                .Where(state => state?.Summon != null
                                 && state.OwnerCharacterId != localPlayerId
-                                && state.Summon.AssistType == SummonAssistType.Support
-                                && CanRemoteSupportSummonAffectLocalPlayer(
-                                    state.Summon,
-                                    localPlayerId,
-                                    state.OwnerCharacterId,
-                                    ownerIsPartyMemberEvaluator?.Invoke(state.OwnerCharacterId) == true))
-                .Select(state => state.Summon)
-                .ToArray();
+                                && state.Summon.AssistType == SummonAssistType.Support)
+                .Select(state => new RemoteSupportSummonCandidate(
+                    state.Summon,
+                    state.OwnerCharacterId,
+                    ownerIsPartyMemberEvaluator?.Invoke(state.OwnerCharacterId) == true));
+            return SelectSupportSummonsAffectingLocalPlayer(candidates, localPlayerId);
+        }
+
+        internal static IReadOnlyList<ActiveSummon> SelectSupportSummonsAffectingLocalPlayer(
+            IEnumerable<RemoteSupportSummonCandidate> candidates,
+            int localPlayerId)
+        {
+            if (localPlayerId <= 0 || candidates == null)
+            {
+                return Array.Empty<ActiveSummon>();
+            }
+
+            List<RemoteSupportSummonCandidate> filteredCandidates = new();
+            foreach (RemoteSupportSummonCandidate candidate in candidates)
+            {
+                ActiveSummon summon = candidate.Summon;
+                if (summon?.SkillData == null
+                    || summon.LevelData == null
+                    || summon.IsPendingRemoval
+                    || !CanRemoteSupportSummonAffectLocalPlayer(
+                        summon,
+                        localPlayerId,
+                        candidate.OwnerCharacterId,
+                        candidate.OwnerIsPartyMember))
+                {
+                    continue;
+                }
+
+                filteredCandidates.Add(candidate);
+            }
+
+            if (filteredCandidates.Count == 0)
+            {
+                return Array.Empty<ActiveSummon>();
+            }
+
+            Dictionary<(int OwnerCharacterId, int SkillId), RemoteSupportSummonCandidate> selectedSitdownSummons = new();
+            foreach (RemoteSupportSummonCandidate candidate in filteredCandidates)
+            {
+                ActiveSummon summon = candidate.Summon;
+                if (!SummonRuntimeRules.IsSitdownHealingSupportSummon(summon.SkillData))
+                {
+                    continue;
+                }
+
+                var key = (candidate.OwnerCharacterId, summon.SkillId);
+                if (!selectedSitdownSummons.TryGetValue(key, out RemoteSupportSummonCandidate existing)
+                    || IsPreferredSitdownHealingSupportSummon(candidate.Summon, existing.Summon))
+                {
+                    selectedSitdownSummons[key] = candidate;
+                }
+            }
+
+            List<ActiveSummon> result = new(filteredCandidates.Count);
+            HashSet<(int OwnerCharacterId, int SkillId)> emittedSitdownSummons = new();
+            foreach (RemoteSupportSummonCandidate candidate in filteredCandidates)
+            {
+                ActiveSummon summon = candidate.Summon;
+                if (!SummonRuntimeRules.IsSitdownHealingSupportSummon(summon.SkillData))
+                {
+                    result.Add(summon);
+                    continue;
+                }
+
+                var key = (candidate.OwnerCharacterId, summon.SkillId);
+                if (emittedSitdownSummons.Contains(key))
+                {
+                    continue;
+                }
+
+                if (selectedSitdownSummons.TryGetValue(key, out RemoteSupportSummonCandidate selected)
+                    && ReferenceEquals(selected.Summon, summon))
+                {
+                    result.Add(summon);
+                    emittedSitdownSummons.Add(key);
+                }
+            }
+
+            return result.Count > 0
+                ? result.ToArray()
+                : Array.Empty<ActiveSummon>();
         }
 
         internal static bool CanRemoteSupportSummonAffectLocalPlayer(
@@ -344,6 +426,26 @@ namespace HaCreator.MapSimulator.Pools
                 ownerIsPartyMember,
                 ownerIsSameTeamMember: false,
                 summon.LevelData);
+        }
+
+        internal static bool IsPreferredSitdownHealingSupportSummon(ActiveSummon candidate, ActiveSummon existing)
+        {
+            if (candidate == null)
+            {
+                return false;
+            }
+
+            if (existing == null)
+            {
+                return true;
+            }
+
+            if (candidate.StartTime != existing.StartTime)
+            {
+                return candidate.StartTime > existing.StartTime;
+            }
+
+            return candidate.ObjectId > existing.ObjectId;
         }
 
         public bool TryConsumeSummonByObjectId(int objectId)
@@ -2761,11 +2863,16 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             state.Summon.ExpiryActionTriggered = true;
+            ClearPacketOwnedOneTimeAction(state);
             ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
             state.Summon.LastAttackAnimationStartTime = currentTime;
-            state.Summon.CurrentAnimationBranchName = SummonRuntimeRules.ResolveSelfDestructFinalBranch(
-                state.Summon.SkillData,
-                state.Summon.AssistType);
+            (string actionBranchName, int explicitActionCode) =
+                ResolvePacketOwnedExplicitSelfDestructPlayback(state.Summon, requiresNaturalExpiry: true);
+            state.Summon.CurrentAnimationBranchName = actionBranchName;
+            if (explicitActionCode > 0)
+            {
+                ArmPacketOwnedOneTimeAction(state, currentTime, (byte)explicitActionCode, isSkillAction: true);
+            }
 
             bool hasPrepareAnimation = SummonRuntimeRules.ResolveSummonActionPrepareDurationMs(
                 state.Summon.SkillData,
@@ -2774,7 +2881,7 @@ namespace HaCreator.MapSimulator.Pools
                 ? SummonActorState.Prepare
                 : SummonActorState.Attack;
             state.Summon.LastStateChangeTime = currentTime;
-            TryDispatchLocalExpirySelfDestructSideEffects(state, currentTime);
+            TryDispatchExpirySelfDestructSideEffects(state, currentTime);
             RemovePuppet(state.Summon);
 
             int actionDuration = ResolveSummonPendingRemovalActionDurationMs(state.Summon);
@@ -3050,7 +3157,8 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            string actionBranchName = ResolvePacketOwnedSelfDestructActionBranch(state, requiresNaturalExpiry);
+            (string actionBranchName, int explicitActionCode) =
+                ResolvePacketOwnedExplicitSelfDestructPlayback(state.Summon, requiresNaturalExpiry);
             int attackWindowMs = ResolveSelfDestructActionWindowMs(state.Summon, actionBranchName);
             if (attackWindowMs <= 0)
             {
@@ -3063,15 +3171,21 @@ namespace HaCreator.MapSimulator.Pools
             ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
             state.Summon.LastAttackAnimationStartTime = currentTime;
             state.Summon.CurrentAnimationBranchName = actionBranchName;
-            bool hasPrepareAnimation = string.IsNullOrWhiteSpace(actionBranchName)
-                && state.Summon.SkillData?.SummonAttackPrepareAnimation?.Frames.Count > 0;
+            if (explicitActionCode > 0)
+            {
+                ArmPacketOwnedOneTimeAction(state, currentTime, (byte)explicitActionCode, isSkillAction: true);
+            }
+
+            bool hasPrepareAnimation = SummonRuntimeRules.ResolveSummonActionPrepareDurationMs(
+                state.Summon.SkillData,
+                actionBranchName) > 0;
             state.Summon.ActorState = hasPrepareAnimation
                 ? SummonActorState.Prepare
                 : SummonActorState.Attack;
             state.Summon.LastStateChangeTime = currentTime;
             if (requiresNaturalExpiry)
             {
-                TryDispatchLocalExpirySelfDestructSideEffects(state, currentTime);
+                TryDispatchExpirySelfDestructSideEffects(state, currentTime);
             }
 
             int removalWindowMs = ResolveSelfDestructRemovalWindowMs(state.Summon);
@@ -3081,19 +3195,19 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
-        private bool TryDispatchLocalExpirySelfDestructSideEffects(PacketOwnedSummonState state, int currentTime)
+        private bool TryDispatchExpirySelfDestructSideEffects(PacketOwnedSummonState state, int currentTime)
         {
-            if (!state.OwnerIsLocal || state.Summon?.SkillData == null)
+            if (state?.Summon?.SkillData == null)
             {
                 return false;
             }
 
             if (state.Summon.AssistType == SummonAssistType.Support)
             {
-                return TryDispatchLocalExpirySelfDestructSupportEffects(state, currentTime);
+                return TryDispatchExpirySelfDestructSupportEffects(state, currentTime);
             }
 
-            List<MobItem> targets = ResolveLocalExpirySelfDestructTargets(state, currentTime);
+            List<MobItem> targets = ResolveExpirySelfDestructTargets(state, currentTime);
             if (targets.Count == 0)
             {
                 return false;
@@ -3109,12 +3223,16 @@ namespace HaCreator.MapSimulator.Pools
                 .Select(static target => new SummonedAttackTargetPacket(target.PoolId, 0, 0))
                 .ToArray();
             SpawnPacketAttackVisuals(state, currentTime);
-            TryRegisterClientOwnedAttackTileOverlay(state, currentTime);
+            if (state.OwnerIsLocal)
+            {
+                TryRegisterClientOwnedAttackTileOverlay(state, currentTime);
+            }
+
             state.Summon.LastAttackTime = currentTime;
             return true;
         }
 
-        private bool TryDispatchLocalExpirySelfDestructSupportEffects(PacketOwnedSummonState state, int currentTime)
+        private bool TryDispatchExpirySelfDestructSupportEffects(PacketOwnedSummonState state, int currentTime)
         {
             if (state?.Summon?.SkillData == null || state.Summon.AssistType != SummonAssistType.Support)
             {
@@ -3122,18 +3240,18 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             ArmPacketOwnedSupportSuspend(state, currentTime);
-            if (!TryScheduleLocalExpirySelfDestructSupportTargetEffects(state, currentTime))
+            if (!TryScheduleExpirySelfDestructSupportTargetEffects(state, currentTime))
             {
-                ScheduleLocalExpirySelfDestructSupportHitEffect(state.Summon, currentTime);
+                ScheduleExpirySelfDestructSupportHitEffect(state.Summon, currentTime);
             }
 
             state.Summon.LastAttackTime = currentTime;
             return true;
         }
 
-        private bool TryScheduleLocalExpirySelfDestructSupportTargetEffects(PacketOwnedSummonState state, int currentTime)
+        private bool TryScheduleExpirySelfDestructSupportTargetEffects(PacketOwnedSummonState state, int currentTime)
         {
-            List<MobItem> targets = ResolveLocalExpirySelfDestructTargets(state, currentTime);
+            List<MobItem> targets = ResolveExpirySelfDestructTargets(state, currentTime);
             if (targets.Count == 0)
             {
                 return false;
@@ -3152,7 +3270,7 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
-        private void ScheduleLocalExpirySelfDestructSupportHitEffect(ActiveSummon summon, int currentTime)
+        private void ScheduleExpirySelfDestructSupportHitEffect(ActiveSummon summon, int currentTime)
         {
             SkillData skill = summon?.SkillData;
             if (skill == null)
@@ -3197,7 +3315,7 @@ namespace HaCreator.MapSimulator.Pools
             _hitEffects.Add(hitEffect);
         }
 
-        private List<MobItem> ResolveLocalExpirySelfDestructTargets(PacketOwnedSummonState state, int currentTime)
+        private List<MobItem> ResolveExpirySelfDestructTargets(PacketOwnedSummonState state, int currentTime)
         {
             ActiveSummon summon = state?.Summon;
             if (_mobPool?.ActiveMobs == null || summon?.SkillData == null)
@@ -3841,7 +3959,7 @@ namespace HaCreator.MapSimulator.Pools
             int ownerCharacterLevel = 1)
         {
             SkillData skill = summon?.SkillData;
-            if (summon?.SkillId == 4111007)
+            if (SummonClientPostEffectRules.IsReactiveAttackChainSkill(summon?.SkillId ?? 0))
             {
                 SkillAnimation resolvedBallAnimation = skill?.Projectile?.ResolveGetBallLikeAnimation(
                     summon.Level,
@@ -4151,7 +4269,7 @@ namespace HaCreator.MapSimulator.Pools
                 mob,
                 packet.MobTemplateId,
                 attackAction,
-                currentMobAttackFrameIndex: ResolvePacketHitMobAttackFrameIndex(mob, attackAction),
+                currentMobAttackFrameIndex: ResolvePacketHitMobAttackFrameIndex(mob, attackAction, currentTime),
                 soundManager: _soundManager,
                 texturePool: _texturePool,
                 graphicsDevice: _graphicsDevice,
@@ -4574,15 +4692,19 @@ namespace HaCreator.MapSimulator.Pools
                 : hitEffect.MirrorOffsetWithSummonFacing;
         }
 
-        private static int? ResolvePacketHitMobAttackFrameIndex(MobItem mob, string attackAction)
+        private static int? ResolvePacketHitMobAttackFrameIndex(MobItem mob, string attackAction, int currentTime)
         {
             if (mob == null || string.IsNullOrWhiteSpace(attackAction))
             {
                 return null;
             }
 
-            return string.Equals(mob.CurrentAction, attackAction, StringComparison.OrdinalIgnoreCase)
-                ? mob.CurrentFrameIndex
+            return mob.TryGetRecentAttackFrameIndex(
+                attackAction,
+                currentTime,
+                PacketOwnedHitRetainedAttackFrameWindowMs,
+                out int frameIndex)
+                ? frameIndex
                 : null;
         }
 
@@ -5242,21 +5364,36 @@ namespace HaCreator.MapSimulator.Pools
             return SummonRuntimeRules.ResolvePacketSkillBranch(skill, state.LastSkillAction, summon.AssistType);
         }
 
-        private static string ResolvePacketOwnedSelfDestructActionBranch(PacketOwnedSummonState state, bool requiresNaturalExpiry)
+        internal static (string BranchName, int ActionCode) ResolvePacketOwnedExplicitSelfDestructPlayback(
+            ActiveSummon summon,
+            bool requiresNaturalExpiry)
         {
-            ActiveSummon summon = state?.Summon;
             if (summon?.SkillData == null)
             {
-                return null;
+                return (null, 0);
             }
 
             string finalBranch = SummonRuntimeRules.ResolveSelfDestructFinalBranch(
                 summon.SkillData,
                 summon.AssistType);
             string attackBranch = ResolveSelfDestructAttackBranch(summon);
-            return requiresNaturalExpiry
+            string branchName = requiresNaturalExpiry
                 ? finalBranch ?? attackBranch
                 : attackBranch ?? finalBranch;
+            int actionCode = 0;
+            if (!string.IsNullOrWhiteSpace(branchName)
+                && SummonRuntimeRules.TryResolveExplicitSelfDestructPlayback(
+                    summon.SkillData,
+                    summon.AssistType,
+                    branchName,
+                    out string explicitBranchName,
+                    out int explicitActionCode))
+            {
+                branchName = explicitBranchName;
+                actionCode = explicitActionCode;
+            }
+
+            return (branchName, actionCode);
         }
 
         private static int? GetSkillAnimationDuration(SkillAnimation animation)

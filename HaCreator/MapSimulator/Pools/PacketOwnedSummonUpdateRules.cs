@@ -287,7 +287,7 @@ namespace HaCreator.MapSimulator.Pools
             bool flip = false)
         {
             SkillData skill = summon?.SkillData;
-            if (summon?.SkillId == 4111007)
+            if (SummonClientPostEffectRules.IsReactiveAttackChainSkill(summon?.SkillId ?? 0))
             {
                 string resolvedBallAnimationPath = skill?.Projectile?.ResolveGetBallLikeUolPath(
                     summon.Level,

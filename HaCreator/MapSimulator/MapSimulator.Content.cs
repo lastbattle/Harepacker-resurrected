@@ -336,6 +336,7 @@ namespace HaCreator.MapSimulator
 
 
                     MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(_texturePool, mob, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, _soundManager, usedProps);
+                    npcItem?.SetAnimationEffects(_animationEffects);
                     ConfigureMobAutoSkillSelection(npcItem);
 
 
@@ -530,6 +531,7 @@ namespace HaCreator.MapSimulator
             _engagementProposalController.SocialMessagesObserved = TryTriggerSpecialistPetSocialFeedback;
             _engagementProposalController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingWishListController.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
+            _weddingInvitationController.SocialMessagesObserved = TryTriggerSpecialistPetSocialFeedback;
             _weddingInvitationController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingWishListController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, uiWindowManager?.InventoryWindow as IInventoryRuntime, _fontChat, ShowUtilityFeedbackMessage);
             WireProgressionUtilityWindowLaunchers();
@@ -1475,6 +1477,7 @@ namespace HaCreator.MapSimulator
                     if (mob.Hide)
                         continue;
                     MobItem mobItem = MapSimulatorLoader.CreateMobFromProperty(_texturePool, mob, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, _soundManager, usedProps);
+                    mobItem?.SetAnimationEffects(_animationEffects);
                     ConfigureMobAutoSkillSelection(mobItem);
                     mapObjects_Mobs.Add(mobItem);
                     loadedCount++;
@@ -1660,6 +1663,7 @@ namespace HaCreator.MapSimulator
             _engagementProposalController.SocialMessagesObserved = TryTriggerSpecialistPetSocialFeedback;
             _engagementProposalController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingWishListController.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
+            _weddingInvitationController.SocialMessagesObserved = TryTriggerSpecialistPetSocialFeedback;
             _weddingInvitationController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingWishListController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, uiWindowManager?.InventoryWindow as IInventoryRuntime, _fontChat, ShowUtilityFeedbackMessage);
             WireProgressionUtilityWindowLaunchers();

@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator
         private readonly Texture2D[] _packetFieldBossTimerDigits = new Texture2D[10];
         private PacketFieldBossTimerVisualState _packetFieldBossTimerClockState;
         private PacketFieldClockVisualState _packetFieldClockState;
+        private Texture2D _packetFieldClockWindowPixelTexture;
         private Texture2D _packetFieldBossTimerBackgroundTexture;
         private Texture2D _packetFieldBossTimerHourBackgroundTexture;
         private Texture2D _packetFieldBossTimerSeparatorTexture;
@@ -45,6 +46,25 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedBossTimerOffsetY = 25;
         private const int PacketOwnedBossTimerDigitSpacing = 2;
         private const byte PacketOwnedUiClientAlpha = 255;
+        private const int PacketOwnedFieldClockReferenceWidth = 800;
+        private const int PacketOwnedFieldClockReferenceHeight = 600;
+        private const int PacketOwnedFieldClockDefaultWidth = 258;
+        private const int PacketOwnedFieldClockDefaultHeight = 58;
+        private const int PacketOwnedFieldClockEventOffsetX = 303;
+        private const int PacketOwnedFieldClockEventOffsetY = 30;
+        private const int PacketOwnedFieldClockEventWidth = 194;
+        private const int PacketOwnedFieldClockEventHeight = 83;
+        private const int PacketOwnedFieldClockCakePieSmallOffsetX = 260;
+        private const int PacketOwnedFieldClockCakePieSmallOffsetY = 25;
+        private const int PacketOwnedFieldClockCakePieSmallWidth = 279;
+        private const int PacketOwnedFieldClockCakePieSmallHeight = 88;
+        private const int PacketOwnedFieldClockCakePieLargeOffsetX = 204;
+        private const int PacketOwnedFieldClockCakePieLargeOffsetY = 25;
+        private const int PacketOwnedFieldClockCakePieLargeWidth = 391;
+        private const int PacketOwnedFieldClockCakePieLargeHeight = 83;
+        private static readonly Color PacketOwnedFieldClockEventBackColor = new(unchecked((uint)-16777152));
+        private static readonly Color PacketOwnedFieldClockEventTextColor = new(unchecked((uint)-224));
+        private static readonly Color PacketOwnedFieldClockDefaultTextColor = Color.White;
         private static readonly int[] PacketOwnedRewardRouletteLayerStringPoolIds =
         {
             0x11E0,
@@ -415,6 +435,9 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            _packetFieldClockWindowPixelTexture ??= new Texture2D(GraphicsDevice, 1, 1);
+            _packetFieldClockWindowPixelTexture.SetData(new[] { Color.White });
+
             WzImage mapEtcImage = Program.FindImage("Map", "Obj/etc.img")
                 ?? Program.FindImage("Map", "etc.img");
             mapEtcImage?.ParseImage();
@@ -557,15 +580,31 @@ namespace HaCreator.MapSimulator
 
             EnsurePacketOwnedBossTimerAssetsLoaded();
             Texture2D background = _packetFieldBossTimerHourBackgroundTexture ?? _packetFieldBossTimerBackgroundTexture;
-            if (background == null)
+            PacketOwnedFieldClockLayout layout = ResolvePacketOwnedFieldClockLayout(
+                _packetFieldClockState.Variant,
+                _renderParams.RenderWidth,
+                Height);
+            if (background == null && !layout.DrawSolidWindow)
             {
                 return;
             }
 
-            Vector2 boardPosition = new(
-                Math.Max(0f, (_renderParams.RenderWidth - background.Width) / 2f),
-                PacketOwnedBossTimerOffsetY);
-            _spriteBatch.Draw(background, boardPosition, Color.White);
+            Rectangle layoutBounds = ResolvePacketOwnedFieldClockBounds(
+                layout,
+                background?.Width ?? 0,
+                background?.Height ?? 0,
+                _renderParams.RenderWidth,
+                Height);
+            if (layout.DrawSolidWindow && _packetFieldClockWindowPixelTexture != null)
+            {
+                _spriteBatch.Draw(_packetFieldClockWindowPixelTexture, layoutBounds, layout.BackColor);
+            }
+
+            Vector2 boardPosition = ResolvePacketOwnedFieldClockBoardPosition(layoutBounds, background);
+            if (background != null)
+            {
+                _spriteBatch.Draw(background, boardPosition, Color.White);
+            }
 
             if (_packetFieldClockState.Kind == PacketFieldClockVisualKind.Realtime)
             {
@@ -574,7 +613,7 @@ namespace HaCreator.MapSimulator
                 Texture2D meridiemTexture = isPm ? _packetFieldClockPmTexture : _packetFieldClockAmTexture;
                 if (!TryDrawPacketOwnedClockDigits(timeText, meridiemTexture, boardPosition, background))
                 {
-                    DrawPacketOwnedClockFallbackText(boardPosition, background, $"{(isPm ? "PM" : "AM")} {timeText}");
+                    DrawPacketOwnedClockFallbackText(layoutBounds, background, $"{(isPm ? "PM" : "AM")} {timeText}", layout.FallbackTextColor);
                 }
 
                 return;
@@ -591,7 +630,7 @@ namespace HaCreator.MapSimulator
             string timerText = FormatPacketOwnedBossTimerText(remainingSeconds, showHours);
             if (!TryDrawPacketOwnedClockDigits(timerText, null, boardPosition, background))
             {
-                DrawPacketOwnedClockFallbackText(boardPosition, background, timerText);
+                DrawPacketOwnedClockFallbackText(layoutBounds, background, timerText, layout.FallbackTextColor);
             }
         }
 
@@ -624,15 +663,18 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private void DrawPacketOwnedClockFallbackText(Vector2 boardPosition, Texture2D background, string text)
+        private void DrawPacketOwnedClockFallbackText(Rectangle layoutBounds, Texture2D background, string text, Color color)
         {
             if (_fontChat == null || string.IsNullOrWhiteSpace(text))
             {
                 return;
             }
 
-            Vector2 fallbackPosition = boardPosition + new Vector2(24f, Math.Max(8f, (background.Height / 2f) - 10f));
-            _spriteBatch.DrawString(_fontChat, text, fallbackPosition, Color.White, 0f, Vector2.Zero, 0.65f, SpriteEffects.None, 0f);
+            int backgroundHeight = background?.Height ?? layoutBounds.Height;
+            Vector2 fallbackPosition = new(
+                layoutBounds.X + 24f,
+                layoutBounds.Y + Math.Max(8f, (backgroundHeight / 2f) - 10f));
+            _spriteBatch.DrawString(_fontChat, text, fallbackPosition, color, 0f, Vector2.Zero, 0.65f, SpriteEffects.None, 0f);
         }
 
         private void UpdatePacketOwnedFieldFeedbackUiAnimations(int currentTickCount)
@@ -1577,6 +1619,103 @@ namespace HaCreator.MapSimulator
             return (int)Math.Round(referenceOffset * (actualSize / (double)referenceSize), MidpointRounding.AwayFromZero);
         }
 
+        private static PacketOwnedFieldClockLayout ResolvePacketOwnedFieldClockLayout(
+            PacketFieldClockVisualVariant variant,
+            int renderWidth,
+            int renderHeight)
+        {
+            return variant switch
+            {
+                PacketFieldClockVisualVariant.Event => new PacketOwnedFieldClockLayout(
+                    PacketOwnedUiAnchorMode.WindowTopLeft,
+                    ScalePacketOwnedUiOffset(PacketOwnedFieldClockEventOffsetX, renderWidth, PacketOwnedFieldClockReferenceWidth),
+                    ScalePacketOwnedUiOffset(PacketOwnedFieldClockEventOffsetY, renderHeight, PacketOwnedFieldClockReferenceHeight),
+                    ScalePacketOwnedUiOffset(PacketOwnedFieldClockEventWidth, renderWidth, PacketOwnedFieldClockReferenceWidth),
+                    ScalePacketOwnedUiOffset(PacketOwnedFieldClockEventHeight, renderHeight, PacketOwnedFieldClockReferenceHeight),
+                    DrawSolidWindow: true,
+                    PacketOwnedFieldClockEventBackColor,
+                    PacketOwnedFieldClockEventTextColor),
+                PacketFieldClockVisualVariant.CakePieSmall => new PacketOwnedFieldClockLayout(
+                    PacketOwnedUiAnchorMode.WindowTopLeft,
+                    ScalePacketOwnedUiOffset(PacketOwnedFieldClockCakePieSmallOffsetX, renderWidth, PacketOwnedFieldClockReferenceWidth),
+                    ScalePacketOwnedUiOffset(PacketOwnedFieldClockCakePieSmallOffsetY, renderHeight, PacketOwnedFieldClockReferenceHeight),
+                    ScalePacketOwnedUiOffset(PacketOwnedFieldClockCakePieSmallWidth, renderWidth, PacketOwnedFieldClockReferenceWidth),
+                    ScalePacketOwnedUiOffset(PacketOwnedFieldClockCakePieSmallHeight, renderHeight, PacketOwnedFieldClockReferenceHeight),
+                    DrawSolidWindow: false,
+                    Color.Transparent,
+                    PacketOwnedFieldClockDefaultTextColor),
+                PacketFieldClockVisualVariant.CakePieLarge => new PacketOwnedFieldClockLayout(
+                    PacketOwnedUiAnchorMode.WindowTopLeft,
+                    ScalePacketOwnedUiOffset(PacketOwnedFieldClockCakePieLargeOffsetX, renderWidth, PacketOwnedFieldClockReferenceWidth),
+                    ScalePacketOwnedUiOffset(PacketOwnedFieldClockCakePieLargeOffsetY, renderHeight, PacketOwnedFieldClockReferenceHeight),
+                    ScalePacketOwnedUiOffset(PacketOwnedFieldClockCakePieLargeWidth, renderWidth, PacketOwnedFieldClockReferenceWidth),
+                    ScalePacketOwnedUiOffset(PacketOwnedFieldClockCakePieLargeHeight, renderHeight, PacketOwnedFieldClockReferenceHeight),
+                    DrawSolidWindow: false,
+                    Color.Transparent,
+                    PacketOwnedFieldClockDefaultTextColor),
+                _ => new PacketOwnedFieldClockLayout(
+                    PacketOwnedUiAnchorMode.WindowCenter,
+                    0,
+                    ScalePacketOwnedUiOffset(PacketOwnedBossTimerOffsetY, renderHeight, PacketOwnedFieldClockReferenceHeight),
+                    ScalePacketOwnedUiOffset(PacketOwnedFieldClockDefaultWidth, renderWidth, PacketOwnedFieldClockReferenceWidth),
+                    ScalePacketOwnedUiOffset(PacketOwnedFieldClockDefaultHeight, renderHeight, PacketOwnedFieldClockReferenceHeight),
+                    DrawSolidWindow: false,
+                    Color.Transparent,
+                    PacketOwnedFieldClockDefaultTextColor)
+            };
+        }
+
+        private static Rectangle ResolvePacketOwnedFieldClockBounds(
+            PacketOwnedFieldClockLayout layout,
+            int backgroundWidth,
+            int backgroundHeight,
+            int renderWidth,
+            int renderHeight)
+        {
+            int width = Math.Max(1, layout.Width > 0 ? layout.Width : backgroundWidth);
+            int height = Math.Max(1, layout.Height > 0 ? layout.Height : backgroundHeight);
+            int x = layout.AnchorMode switch
+            {
+                PacketOwnedUiAnchorMode.WindowCenter => Math.Max(0, ((renderWidth - width) / 2) + layout.OffsetX),
+                _ => Math.Max(0, layout.OffsetX)
+            };
+            int y = layout.AnchorMode switch
+            {
+                PacketOwnedUiAnchorMode.WindowCenter => Math.Max(0, layout.OffsetY),
+                _ => Math.Max(0, layout.OffsetY)
+            };
+            return new Rectangle(x, y, width, height);
+        }
+
+        private static Vector2 ResolvePacketOwnedFieldClockBoardPosition(Rectangle layoutBounds, Texture2D background)
+        {
+            if (background == null)
+            {
+                return new Vector2(layoutBounds.X, layoutBounds.Y);
+            }
+
+            return new Vector2(
+                layoutBounds.X + Math.Max(0f, (layoutBounds.Width - background.Width) / 2f),
+                layoutBounds.Y + Math.Max(0f, (layoutBounds.Height - background.Height) / 2f));
+        }
+
+        internal static (PacketOwnedUiAnchorMode AnchorMode, int OffsetX, int OffsetY, int Width, int Height, uint BackColorArgb, uint TextColorArgb, bool DrawSolidWindow) GetPacketOwnedFieldClockLayoutForTest(
+            PacketFieldClockVisualVariant variant,
+            int renderWidth,
+            int renderHeight)
+        {
+            PacketOwnedFieldClockLayout layout = ResolvePacketOwnedFieldClockLayout(variant, renderWidth, renderHeight);
+            return (
+                layout.AnchorMode,
+                layout.OffsetX,
+                layout.OffsetY,
+                layout.Width,
+                layout.Height,
+                layout.BackColor.PackedValue,
+                layout.FallbackTextColor.PackedValue,
+                layout.DrawSolidWindow);
+        }
+
         internal static (PacketOwnedUiAnchorMode AnchorMode, int OffsetX, int OffsetY, PacketOwnedUiDrawOrder DrawOrder, byte Alpha) GetPacketOwnedScreenEffectRegistrationForTest(
             int renderWidth,
             int renderHeight)
@@ -1874,6 +2013,16 @@ namespace HaCreator.MapSimulator
             PacketOwnedUiDrawOrder DrawOrder,
             byte Alpha,
             int LayerOrder);
+
+        private readonly record struct PacketOwnedFieldClockLayout(
+            PacketOwnedUiAnchorMode AnchorMode,
+            int OffsetX,
+            int OffsetY,
+            int Width,
+            int Height,
+            bool DrawSolidWindow,
+            Color BackColor,
+            Color FallbackTextColor);
 
         private readonly record struct PacketOwnedUiAlphaRange(
             byte StartAlpha,

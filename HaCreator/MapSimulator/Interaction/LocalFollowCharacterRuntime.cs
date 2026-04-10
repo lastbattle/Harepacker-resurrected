@@ -15,7 +15,8 @@ namespace HaCreator.MapSimulator.Interaction
         bool HasMorphTemplate,
         bool IsGhostAction,
         Vector2 Position,
-        bool FacingRight)
+        bool FacingRight,
+        int CurrentFootholdId)
     {
         public static LocalFollowUserSnapshot Missing(int characterId, string name = null)
         {
@@ -29,7 +30,8 @@ namespace HaCreator.MapSimulator.Interaction
                 HasMorphTemplate: false,
                 IsGhostAction: false,
                 Position: Vector2.Zero,
-                FacingRight: true);
+                FacingRight: true,
+                CurrentFootholdId: 0);
         }
 
         public string DisplayName => string.IsNullOrWhiteSpace(Name)
@@ -41,7 +43,9 @@ namespace HaCreator.MapSimulator.Interaction
         bool PlayerPositionChanged,
         Vector2 PlayerPosition,
         bool PlayerFacingRightChanged,
-        bool PlayerFacingRight);
+        bool PlayerFacingRight,
+        bool PlayerFootholdChanged,
+        int PlayerFootholdId);
 
     internal sealed class LocalFollowCharacterRuntime
     {
@@ -361,7 +365,9 @@ namespace HaCreator.MapSimulator.Interaction
                 PlayerPositionChanged: transferField && transferPosition.HasValue || previousDriver.Exists,
                 PlayerPosition: resolvedPosition,
                 PlayerFacingRightChanged: previousDriver.Exists,
-                PlayerFacingRight: resolvedFacingRight);
+                PlayerFacingRight: resolvedFacingRight,
+                PlayerFootholdChanged: !transferField && previousDriver.Exists && previousDriver.CurrentFootholdId != 0,
+                PlayerFootholdId: !transferField && previousDriver.Exists ? previousDriver.CurrentFootholdId : 0);
         }
 
         public string DescribeStatus(Func<int, string> nameResolver)

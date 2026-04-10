@@ -1261,6 +1261,20 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class WeaponPart : CharacterPart
     {
+        private enum ClientAttackActionFamily
+        {
+            None,
+            OneHandedMelee,
+            TwoHandedSwing,
+            TwoHandedStab,
+            PolearmSwing,
+            Shoot1,
+            Shoot2,
+            GunShoot,
+            HybridOneHandedMagic,
+            KataraSubWeapon
+        }
+
         public int AttackSpeed { get; set; } = 6;       // Attack speed modifier
         public int Attack { get; set; }                  // Weapon attack
         public string WeaponType { get; set; }           // "1h sword", "2h sword", "bow", etc.
@@ -1300,21 +1314,186 @@ namespace HaCreator.MapSimulator.Character
 
         private IEnumerable<string> EnumerateClientBasicAttackActionCandidates(AttackType fallbackAttackType)
         {
-            // Client CAvatar::NotifyAvatarModified caches info/attack as m_nAttackActionType.
-            // The ranged families are the clearest WZ-backed consumers: bows publish shoot1,
-            // crossbows publish shoot2, and guns publish shoot1/shoot2/shootF under attack type 9.
-            switch (AttackFrameCount)
+            switch (ResolveClientAttackActionFamily())
             {
-                case 3:
-                case 9:
+                case ClientAttackActionFamily.OneHandedMelee:
+                    foreach (string candidate in EnumerateOneHandedMeleeCandidates(fallbackAttackType))
+                    {
+                        yield return candidate;
+                    }
+
+                    yield break;
+                case ClientAttackActionFamily.TwoHandedSwing:
+                    foreach (string candidate in EnumerateTwoHandedSwingCandidates())
+                    {
+                        yield return candidate;
+                    }
+
+                    yield break;
+                case ClientAttackActionFamily.TwoHandedStab:
+                    foreach (string candidate in EnumerateTwoHandedStabCandidates())
+                    {
+                        yield return candidate;
+                    }
+
+                    yield break;
+                case ClientAttackActionFamily.PolearmSwing:
+                    foreach (string candidate in EnumeratePolearmSwingCandidates())
+                    {
+                        yield return candidate;
+                    }
+
+                    yield break;
+                case ClientAttackActionFamily.Shoot1:
                     yield return CharacterPart.GetActionString(CharacterAction.Shoot1);
                     break;
-                case 4:
+                case ClientAttackActionFamily.Shoot2:
                     yield return CharacterPart.GetActionString(CharacterAction.Shoot2);
                     break;
+                case ClientAttackActionFamily.GunShoot:
+                    yield return CharacterPart.GetActionString(CharacterAction.Shoot1);
+                    yield return CharacterPart.GetActionString(CharacterAction.Shoot2);
+                    yield return CharacterPart.GetActionString(CharacterAction.ShootF);
+                    break;
+                case ClientAttackActionFamily.HybridOneHandedMagic:
+                    if (fallbackAttackType == AttackType.Shoot)
+                    {
+                        yield return CharacterPart.GetActionString(CharacterAction.Shoot1);
+                        yield return CharacterPart.GetActionString(CharacterAction.ShootF);
+                    }
+
+                    foreach (string candidate in EnumerateOneHandedMeleeCandidates(fallbackAttackType))
+                    {
+                        yield return candidate;
+                    }
+
+                    if (fallbackAttackType != AttackType.Shoot)
+                    {
+                        yield return CharacterPart.GetActionString(CharacterAction.Shoot1);
+                        yield return CharacterPart.GetActionString(CharacterAction.ShootF);
+                    }
+
+                    yield break;
+                case ClientAttackActionFamily.KataraSubWeapon:
+                    foreach (string candidate in EnumerateKataraSubWeaponCandidates())
+                    {
+                        yield return candidate;
+                    }
+
+                    yield break;
             }
 
             yield return CharacterPart.GetActionString(ResolveFallbackAttackAction(fallbackAttackType));
+        }
+
+        private ClientAttackActionFamily ResolveClientAttackActionFamily()
+        {
+            string normalizedWeaponType = WeaponType?.Trim().ToLowerInvariant();
+            return AttackFrameCount switch
+            {
+                1 => ClientAttackActionFamily.OneHandedMelee,
+                2 when normalizedWeaponType == "polearm" => ClientAttackActionFamily.PolearmSwing,
+                2 => ClientAttackActionFamily.TwoHandedStab,
+                3 => ClientAttackActionFamily.Shoot1,
+                4 => ClientAttackActionFamily.Shoot2,
+                5 => ClientAttackActionFamily.TwoHandedSwing,
+                6 => ClientAttackActionFamily.HybridOneHandedMagic,
+                7 => ClientAttackActionFamily.OneHandedMelee,
+                8 => ClientAttackActionFamily.OneHandedMelee,
+                9 => ClientAttackActionFamily.GunShoot,
+                10 when normalizedWeaponType == "katara" => ClientAttackActionFamily.KataraSubWeapon,
+                _ => ClientAttackActionFamily.None
+            };
+        }
+
+        private static IEnumerable<string> EnumerateOneHandedMeleeCandidates(AttackType fallbackAttackType)
+        {
+            if (fallbackAttackType == AttackType.Stab || fallbackAttackType == AttackType.ProneStab)
+            {
+                foreach (string candidate in EnumerateActionNames(
+                             CharacterAction.StabO1,
+                             CharacterAction.StabO2,
+                             CharacterAction.StabOF,
+                             CharacterAction.SwingO1,
+                             CharacterAction.SwingO2,
+                             CharacterAction.SwingO3,
+                             CharacterAction.SwingOF))
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            foreach (string candidate in EnumerateActionNames(
+                         CharacterAction.SwingO1,
+                         CharacterAction.SwingO2,
+                         CharacterAction.SwingO3,
+                         CharacterAction.SwingOF,
+                         CharacterAction.StabO1,
+                         CharacterAction.StabO2,
+                         CharacterAction.StabOF))
+            {
+                yield return candidate;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateTwoHandedSwingCandidates()
+        {
+            return EnumerateActionNames(
+                CharacterAction.SwingT1,
+                CharacterAction.SwingT2,
+                CharacterAction.SwingT3,
+                CharacterAction.SwingTF,
+                CharacterAction.StabT1,
+                CharacterAction.StabT2,
+                CharacterAction.StabTF);
+        }
+
+        private static IEnumerable<string> EnumerateTwoHandedStabCandidates()
+        {
+            return EnumerateActionNames(
+                CharacterAction.StabT1,
+                CharacterAction.StabT2,
+                CharacterAction.StabTF,
+                CharacterAction.SwingT1,
+                CharacterAction.SwingT2,
+                CharacterAction.SwingT3,
+                CharacterAction.SwingTF);
+        }
+
+        private static IEnumerable<string> EnumeratePolearmSwingCandidates()
+        {
+            return EnumerateActionNames(
+                CharacterAction.SwingP1,
+                CharacterAction.SwingP2,
+                CharacterAction.SwingPF,
+                CharacterAction.StabT1,
+                CharacterAction.StabT2,
+                CharacterAction.StabTF,
+                CharacterAction.SwingT2);
+        }
+
+        private static IEnumerable<string> EnumerateKataraSubWeaponCandidates()
+        {
+            return EnumerateActionNames(
+                CharacterAction.StabO1,
+                CharacterAction.StabO2,
+                CharacterAction.StabOF,
+                CharacterAction.SwingO1,
+                CharacterAction.SwingO2,
+                CharacterAction.SwingO3,
+                CharacterAction.SwingOF,
+                CharacterAction.StabT1,
+                CharacterAction.SwingPF);
+        }
+
+        private static IEnumerable<string> EnumerateActionNames(params CharacterAction[] actions)
+        {
+            foreach (CharacterAction action in actions)
+            {
+                yield return CharacterPart.GetActionString(action);
+            }
         }
 
         private bool CanUseAction(string actionName)
@@ -1782,10 +1961,10 @@ namespace HaCreator.MapSimulator.Character
         public int TotalDEX => DEX + SumEquipmentBonus(part => part.BonusDEX) + GetSkillStatBonus(BuffStatType.Dexterity);
         public int TotalINT => INT + SumEquipmentBonus(part => part.BonusINT) + GetSkillStatBonus(BuffStatType.Intelligence);
         public int TotalLUK => LUK + SumEquipmentBonus(part => part.BonusLUK) + GetSkillStatBonus(BuffStatType.Luck);
-        public int TotalMaxHP => Math.Clamp(ApplyRateBonus(MaxHP + SumEquipmentBonus(part => part.BonusHP) + GetSkillStatBonus(BuffStatType.MaxHP), GetSkillStatBonus(BuffStatType.MaxHPPercent)), 1, MaxHpMpStat);
-        public int TotalMaxMP => Math.Clamp(ApplyRateBonus(MaxMP + SumEquipmentBonus(part => part.BonusMP) + GetSkillStatBonus(BuffStatType.MaxMP), GetSkillStatBonus(BuffStatType.MaxMPPercent)), 0, MaxHpMpStat);
-        public int TotalHP => Math.Clamp(HP + SumEquipmentBonus(part => part.BonusHP), 0, TotalMaxHP);
-        public int TotalMP => Math.Clamp(MP + SumEquipmentBonus(part => part.BonusMP), 0, TotalMaxMP);
+        public int TotalMaxHP => Math.Clamp(ApplyRateBonus(GetUnscaledTotalMaxHP(), GetSkillStatBonus(BuffStatType.MaxHPPercent)), 1, MaxHpMpStat);
+        public int TotalMaxMP => Math.Clamp(ApplyRateBonus(GetUnscaledTotalMaxMP(), GetSkillStatBonus(BuffStatType.MaxMPPercent)), 0, MaxHpMpStat);
+        public int TotalHP => Math.Clamp(HP + GetTotalMaxHpDelta(), 0, TotalMaxHP);
+        public int TotalMP => Math.Clamp(MP + GetTotalMaxMpDelta(), 0, TotalMaxMP);
         public int TotalMastery => Math.Clamp(SkillMasteryProvider?.Invoke() ?? MinimumMasteryPercent, MinimumMasteryPercent, 100);
         public int TotalWeaponAttackStat => Math.Max(0, ApplyRateBonus(Math.Max(0, Attack - DefaultAttackValue) + SumEquipmentBonus(part => part.BonusWeaponAttack) + GetSkillStatBonus(BuffStatType.Attack), GetSkillStatBonus(BuffStatType.AttackPercent)));
         public int TotalWeaponDefenseStat => Math.Max(0, ApplyRateBonus(Math.Max(0, Defense - DefaultDefenseValue) + SumEquipmentBonus(part => part.BonusWeaponDefense) + GetSkillStatBonus(BuffStatType.Defense), GetSkillStatBonus(BuffStatType.DefensePercent)));
@@ -2144,6 +2323,14 @@ namespace HaCreator.MapSimulator.Character
             return null;
         }
 
+        public WeaponPart GetEffectiveAttackActionWeapon()
+        {
+            WeaponPart subWeapon = GetSubWeapon();
+            return IsClientWeaponTypedSubWeapon(subWeapon)
+                ? subWeapon
+                : GetWeapon();
+        }
+
         public string GetEffectiveWeaponSfx()
         {
             string weaponSfx = GetWeapon()?.Sfx;
@@ -2158,12 +2345,27 @@ namespace HaCreator.MapSimulator.Character
         {
             int weaponAttackSpeed = GetWeapon()?.AttackSpeed ?? 6;
             WeaponPart subWeapon = GetSubWeapon();
-            if (subWeapon == null || string.IsNullOrWhiteSpace(subWeapon.WeaponType))
+            if (!IsClientWeaponTypedSubWeapon(subWeapon))
             {
                 return weaponAttackSpeed;
             }
 
             return Math.Max(weaponAttackSpeed, subWeapon.AttackSpeed);
+        }
+
+        private static bool IsClientWeaponTypedSubWeapon(WeaponPart subWeapon)
+        {
+            if (subWeapon == null)
+            {
+                return false;
+            }
+
+            int weaponCode = GetWeaponCode(subWeapon.ItemId);
+            return weaponCode switch
+            {
+                30 or 31 or 32 or 33 or 34 or 37 or 38 or 39 or 40 or 41 or 42 or 43 or 44 or 45 or 46 or 47 or 48 or 49 => true,
+                _ => false
+            };
         }
 
         private static int DefaultRollInclusive(int min, int max)
@@ -2380,6 +2582,35 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return MathF.Floor(value * (100f + percent) / 100f);
+        }
+
+        private int GetUnscaledTotalMaxHP()
+        {
+            return MaxHP + SumEquipmentBonus(part => part.BonusHP) + GetSkillStatBonus(BuffStatType.MaxHP);
+        }
+
+        private int GetUnscaledTotalMaxMP()
+        {
+            return MaxMP + SumEquipmentBonus(part => part.BonusMP) + GetSkillStatBonus(BuffStatType.MaxMP);
+        }
+
+        private int GetTotalMaxHpDelta()
+        {
+            int unscaledTotal = GetUnscaledTotalMaxHP();
+            return Math.Max(0, unscaledTotal - MaxHP)
+                   + GetRateBonusDelta(unscaledTotal, GetSkillStatBonus(BuffStatType.MaxHPPercent));
+        }
+
+        private int GetTotalMaxMpDelta()
+        {
+            int unscaledTotal = GetUnscaledTotalMaxMP();
+            return Math.Max(0, unscaledTotal - MaxMP)
+                   + GetRateBonusDelta(unscaledTotal, GetSkillStatBonus(BuffStatType.MaxMPPercent));
+        }
+
+        private static int GetRateBonusDelta(int value, int percent)
+        {
+            return ApplyRateBonus(value, percent) - value;
         }
 
         private int SumEquipmentBonus(Func<CharacterPart, int> selector)

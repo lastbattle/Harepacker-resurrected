@@ -807,6 +807,8 @@ namespace HaCreator.MapSimulator.Managers
                 .OrderByDescending(candidate => candidate.ObservationCount)
                 .ThenByDescending(candidate => candidate.DistinctPointValueCount)
                 .ThenByDescending(candidate => candidate.TransitionCount)
+                .ThenByDescending(candidate => candidate.GradeBucketCount)
+                .ThenByDescending(candidate => candidate.MaximumPoint - candidate.MinimumPoint)
                 .ThenBy(candidate => candidate.Opcode)
                 .ToList();
 

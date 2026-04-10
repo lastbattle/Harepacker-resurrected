@@ -840,6 +840,16 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             MemoryGamePromptState prompt = _pendingPrompt;
+            if (prompt.Type == MemoryGamePromptType.IncomingTieRequest)
+            {
+                ClearPendingPrompt();
+                return TryDispatchOfficialClientSubtype(
+                    MemoryGameTieResultPacketType,
+                    Environment.TickCount,
+                    out message,
+                    0);
+            }
+
             string statusMessageBeforePrompt = _statusMessageBeforePrompt;
             ClearPendingPrompt();
             string promptText = string.IsNullOrWhiteSpace(prompt.Text) ? "Match Cards prompt" : prompt.Text;
@@ -1691,10 +1701,14 @@ namespace HaCreator.MapSimulator.Fields
         private bool TryApplyOutgoingTieResponse(byte[] packetBytes, int tickCount, out string message)
         {
             bool accepted = packetBytes.Length <= 1 || packetBytes[1] != 0;
-            _localTieRequestSent = false;
             if (!accepted)
             {
-                return TryApplyTieResultStatus(out message);
+                _statusMessage = string.IsNullOrWhiteSpace(_statusMessageBeforePrompt)
+                    ? "Declined the opponent's tie request."
+                    : _statusMessageBeforePrompt;
+                SyncMiniRoomRuntime();
+                message = _statusMessage;
+                return true;
             }
 
             return TryClaimTie(out message);
@@ -2558,7 +2572,11 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool ConfirmIncomingTieRequest(int tickCount, out string message)
         {
-            return TryClaimTie(out message);
+            return TryDispatchOfficialClientSubtype(
+                MemoryGameTieResultPacketType,
+                tickCount,
+                out message,
+                1);
         }
 
         private bool ConfirmGiveUp(int playerIndex, out string message)

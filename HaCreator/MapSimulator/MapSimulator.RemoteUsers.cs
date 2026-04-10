@@ -12,18 +12,29 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Net;
 
 namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
         private const string RemoteUserCommandUsage =
-            "/remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw|inbox> ...";
+            "/remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw|inbox|session> ...";
         private const string RemoteUserPacketTokenUsage =
             "<-1101|-1102|-1103|-1104|-1105|-1106|-1107|-1108|-1109|-1110|-1004|-1005|179|180|181|182|183|184|210|211|212|213|214|215|216|218|219|220|221|222|223|224|225|226|227|228|229|230|coupleadd|coupleremove|friendadd|friendremove|marriageadd|marriageremove|newyearadd|newyearremove|couplechairadd|couplechairremove|chat|outsidechat|enter|leave|move|state|helper|team|follow|chair|mount|prepare|movingshootprepare|preparedclear|hit|emotion|activeeffect|upgradetomb|officialchair|usereffect|receivehp|throwgrenade|pickup|melee|effect|avatarmodified|tempset|tempreset|guildname|guildmark>";
+        private const int RemoteUserOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
         private readonly RemoteUserPacketInboxManager _remoteUserPacketInbox = new();
+        private readonly RemoteUserOfficialSessionBridgeManager _remoteUserOfficialSessionBridge = new();
         private readonly PacketOwnedRelationshipRecordRuntime _packetOwnedRelationshipRecordRuntime = new();
         private readonly PacketOwnedPortableChairRecordRuntime _packetOwnedPortableChairRecordRuntime = new();
+        private bool _remoteUserOfficialSessionBridgeEnabled;
+        private bool _remoteUserOfficialSessionBridgeUseDiscovery;
+        private int _remoteUserOfficialSessionBridgeConfiguredListenPort = RemoteUserOfficialSessionBridgeManager.DefaultListenPort;
+        private string _remoteUserOfficialSessionBridgeConfiguredRemoteHost = IPAddress.Loopback.ToString();
+        private int _remoteUserOfficialSessionBridgeConfiguredRemotePort;
+        private string _remoteUserOfficialSessionBridgeConfiguredProcessSelector;
+        private int? _remoteUserOfficialSessionBridgeConfiguredLocalPort;
+        private int _nextRemoteUserOfficialSessionBridgeDiscoveryRefreshAt;
 
         private void HandleRemoteUpgradeTombEffect(RemoteUserActorPool.RemoteUpgradeTombPresentation presentation)
         {
@@ -145,6 +156,7 @@ namespace HaCreator.MapSimulator
                 "packet" => HandleRemoteUserPacketCommand(args, currentTime),
                 "packetraw" => HandleRemoteUserPacketRawCommand(args, currentTime),
                 "inbox" => HandleRemoteUserInboxCommand(args),
+                "session" => HandleRemoteUserSessionCommand(args.Skip(1).ToArray()),
                 _ => ChatCommandHandler.CommandResult.Error($"Usage: {RemoteUserCommandUsage}")
             };
         }
@@ -607,9 +619,22 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Error("Visible state must be on or off.");
             }
 
-            return _remoteUserPool.TrySetWorldVisibility(characterId, isVisible.Value, out string message)
-                ? ChatCommandHandler.CommandResult.Ok($"Remote user {characterId} world visibility set to {args[2].ToLowerInvariant()}.")
-                : ChatCommandHandler.CommandResult.Error(message);
+            if (!_remoteUserPool.TrySetWorldVisibility(characterId, isVisible.Value, out string message))
+            {
+                return ChatCommandHandler.CommandResult.Error(message);
+            }
+
+            if (isVisible.Value)
+            {
+                SyncAnimationDisplayerRemoteUserState(characterId);
+                SyncAnimationDisplayerRemoteQuestDeliveryOwner(characterId);
+            }
+            else
+            {
+                ClearAnimationDisplayerRemotePresentationOwners(characterId);
+            }
+
+            return ChatCommandHandler.CommandResult.Ok($"Remote user {characterId} world visibility set to {args[2].ToLowerInvariant()}.");
         }
 
         private ChatCommandHandler.CommandResult HandleRemoteUserRemoveCommand(string[] args)
@@ -626,7 +651,7 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleRemoteUserRemovalCommandResult(int characterId)
         {
-            _animationEffects.RemoveUserState(characterId, currTickCount);
+            ClearAnimationDisplayerRemotePresentationOwners(characterId);
             return ChatCommandHandler.CommandResult.Ok($"Remote user {characterId} removed.");
         }
 
@@ -755,7 +780,7 @@ namespace HaCreator.MapSimulator
                         ? $"listening on 127.0.0.1:{_remoteUserPacketInbox.Port}"
                         : $"inactive (default 127.0.0.1:{RemoteUserPacketInboxManager.DefaultPort})";
                     return ChatCommandHandler.CommandResult.Info(
-                        $"Remote user packet inbox {listeningText}, received {_remoteUserPacketInbox.ReceivedCount} packet(s). {_remoteUserPacketInbox.LastStatus}");
+                        $"Remote user packet inbox {listeningText}, received {_remoteUserPacketInbox.ReceivedCount} packet(s). {_remoteUserPacketInbox.LastStatus}{Environment.NewLine}{DescribeRemoteUserOfficialSessionBridgeStatus()}");
 
                 case "start":
                     int port = RemoteUserPacketInboxManager.DefaultPort;
@@ -782,6 +807,256 @@ namespace HaCreator.MapSimulator
             {
                 bool applied = TryApplyRemoteUserPacket(message.PacketType, message.Payload, currentTime, out string result, sourceTag: message.Source);
                 _remoteUserPacketInbox.RecordDispatchResult(message, applied, result);
+            }
+        }
+
+        private string DescribeRemoteUserOfficialSessionBridgeStatus()
+        {
+            string enabledText = _remoteUserOfficialSessionBridgeEnabled ? "enabled" : "disabled";
+            string modeText = _remoteUserOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
+            string configuredTarget = _remoteUserOfficialSessionBridgeUseDiscovery
+                ? _remoteUserOfficialSessionBridgeConfiguredLocalPort.HasValue
+                    ? $"discover remote port {_remoteUserOfficialSessionBridgeConfiguredRemotePort} with local port {_remoteUserOfficialSessionBridgeConfiguredLocalPort.Value}"
+                    : $"discover remote port {_remoteUserOfficialSessionBridgeConfiguredRemotePort}"
+                : $"{_remoteUserOfficialSessionBridgeConfiguredRemoteHost}:{_remoteUserOfficialSessionBridgeConfiguredRemotePort}";
+            string processText = string.IsNullOrWhiteSpace(_remoteUserOfficialSessionBridgeConfiguredProcessSelector)
+                ? string.Empty
+                : $" for {_remoteUserOfficialSessionBridgeConfiguredProcessSelector}";
+            string listeningText = _remoteUserOfficialSessionBridge.IsRunning
+                ? $"listening on 127.0.0.1:{_remoteUserOfficialSessionBridge.ListenPort}"
+                : $"configured for 127.0.0.1:{_remoteUserOfficialSessionBridgeConfiguredListenPort}";
+            return $"Remote-user session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}. {_remoteUserOfficialSessionBridge.DescribeStatus()}";
+        }
+
+        private void EnsureRemoteUserOfficialSessionBridgeState(bool shouldRun)
+        {
+            if (!shouldRun || !_remoteUserOfficialSessionBridgeEnabled)
+            {
+                if (_remoteUserOfficialSessionBridge.IsRunning)
+                {
+                    _remoteUserOfficialSessionBridge.Stop();
+                }
+
+                return;
+            }
+
+            if (_remoteUserOfficialSessionBridgeConfiguredListenPort <= 0
+                || _remoteUserOfficialSessionBridgeConfiguredListenPort > ushort.MaxValue)
+            {
+                _remoteUserOfficialSessionBridge.Stop();
+                _remoteUserOfficialSessionBridgeEnabled = false;
+                _remoteUserOfficialSessionBridgeConfiguredListenPort = RemoteUserOfficialSessionBridgeManager.DefaultListenPort;
+                return;
+            }
+
+            if (_remoteUserOfficialSessionBridgeUseDiscovery)
+            {
+                if (_remoteUserOfficialSessionBridgeConfiguredRemotePort <= 0
+                    || _remoteUserOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue)
+                {
+                    _remoteUserOfficialSessionBridge.Stop();
+                    return;
+                }
+
+                _remoteUserOfficialSessionBridge.TryRefreshFromDiscovery(
+                    _remoteUserOfficialSessionBridgeConfiguredListenPort,
+                    _remoteUserOfficialSessionBridgeConfiguredRemotePort,
+                    _remoteUserOfficialSessionBridgeConfiguredProcessSelector,
+                    _remoteUserOfficialSessionBridgeConfiguredLocalPort,
+                    out _);
+                return;
+            }
+
+            if (_remoteUserOfficialSessionBridgeConfiguredRemotePort <= 0
+                || _remoteUserOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue
+                || string.IsNullOrWhiteSpace(_remoteUserOfficialSessionBridgeConfiguredRemoteHost))
+            {
+                _remoteUserOfficialSessionBridge.Stop();
+                return;
+            }
+
+            if (_remoteUserOfficialSessionBridge.IsRunning
+                && _remoteUserOfficialSessionBridge.ListenPort == _remoteUserOfficialSessionBridgeConfiguredListenPort
+                && string.Equals(_remoteUserOfficialSessionBridge.RemoteHost, _remoteUserOfficialSessionBridgeConfiguredRemoteHost, StringComparison.OrdinalIgnoreCase)
+                && _remoteUserOfficialSessionBridge.RemotePort == _remoteUserOfficialSessionBridgeConfiguredRemotePort)
+            {
+                return;
+            }
+
+            _remoteUserOfficialSessionBridge.Start(
+                _remoteUserOfficialSessionBridgeConfiguredListenPort,
+                _remoteUserOfficialSessionBridgeConfiguredRemoteHost,
+                _remoteUserOfficialSessionBridgeConfiguredRemotePort);
+        }
+
+        private void RefreshRemoteUserOfficialSessionBridgeDiscovery(int currentTickCount)
+        {
+            if (!_remoteUserOfficialSessionBridgeEnabled
+                || !_remoteUserOfficialSessionBridgeUseDiscovery
+                || _remoteUserOfficialSessionBridgeConfiguredRemotePort <= 0
+                || _remoteUserOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue
+                || _remoteUserOfficialSessionBridge.HasAttachedClient
+                || currentTickCount < _nextRemoteUserOfficialSessionBridgeDiscoveryRefreshAt)
+            {
+                return;
+            }
+
+            _nextRemoteUserOfficialSessionBridgeDiscoveryRefreshAt =
+                currentTickCount + RemoteUserOfficialSessionBridgeDiscoveryRefreshIntervalMs;
+            _remoteUserOfficialSessionBridge.TryRefreshFromDiscovery(
+                _remoteUserOfficialSessionBridgeConfiguredListenPort,
+                _remoteUserOfficialSessionBridgeConfiguredRemotePort,
+                _remoteUserOfficialSessionBridgeConfiguredProcessSelector,
+                _remoteUserOfficialSessionBridgeConfiguredLocalPort,
+                out _);
+        }
+
+        private void DrainRemoteUserOfficialSessionBridge(int currentTime)
+        {
+            while (_remoteUserOfficialSessionBridge.TryDequeue(out RemoteUserOfficialSessionBridgeMessage message))
+            {
+                if (message == null)
+                {
+                    continue;
+                }
+
+                bool applied = TryApplyRemoteUserPacket(message.PacketType, message.Payload, currentTime, out string detail, sourceTag: message.Source);
+                _remoteUserOfficialSessionBridge.RecordDispatchResult(message, applied, detail);
+            }
+        }
+
+        private ChatCommandHandler.CommandResult HandleRemoteUserSessionCommand(string[] args)
+        {
+            if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info(DescribeRemoteUserOfficialSessionBridgeStatus());
+            }
+
+            switch (args[0].ToLowerInvariant())
+            {
+                case "discover":
+                    if (args.Length < 2
+                        || !int.TryParse(args[1], out int discoverRemotePort)
+                        || discoverRemotePort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser session discover <remotePort> [processName|pid] [localPort]");
+                    }
+
+                    string discoverProcessSelector = args.Length >= 3 ? args[2] : null;
+                    int? discoverLocalPort = null;
+                    if (args.Length >= 4)
+                    {
+                        if (!int.TryParse(args[3], out int parsedDiscoverLocalPort) || parsedDiscoverLocalPort <= 0)
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser session discover <remotePort> [processName|pid] [localPort]");
+                        }
+
+                        discoverLocalPort = parsedDiscoverLocalPort;
+                    }
+
+                    return ChatCommandHandler.CommandResult.Info(
+                        _remoteUserOfficialSessionBridge.DescribeDiscoveredSessions(
+                            discoverRemotePort,
+                            discoverProcessSelector,
+                            discoverLocalPort));
+
+                case "start":
+                    if (args.Length < 4
+                        || !int.TryParse(args[1], out int listenPort)
+                        || listenPort <= 0
+                        || !int.TryParse(args[3], out int remotePort)
+                        || remotePort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser session start <listenPort> <serverHost> <serverPort>");
+                    }
+
+                    _remoteUserOfficialSessionBridgeEnabled = true;
+                    _remoteUserOfficialSessionBridgeUseDiscovery = false;
+                    _remoteUserOfficialSessionBridgeConfiguredListenPort = listenPort;
+                    _remoteUserOfficialSessionBridgeConfiguredRemoteHost = args[2];
+                    _remoteUserOfficialSessionBridgeConfiguredRemotePort = remotePort;
+                    _remoteUserOfficialSessionBridgeConfiguredProcessSelector = null;
+                    _remoteUserOfficialSessionBridgeConfiguredLocalPort = null;
+                    EnsureRemoteUserOfficialSessionBridgeState(shouldRun: true);
+                    return ChatCommandHandler.CommandResult.Ok(DescribeRemoteUserOfficialSessionBridgeStatus());
+
+                case "startauto":
+                    if (args.Length < 3
+                        || !int.TryParse(args[1], out int autoListenPort)
+                        || autoListenPort <= 0
+                        || !int.TryParse(args[2], out int autoRemotePort)
+                        || autoRemotePort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                    }
+
+                    string autoProcessSelector = args.Length >= 4 ? args[3] : null;
+                    int? autoLocalPort = null;
+                    if (args.Length >= 5)
+                    {
+                        if (!int.TryParse(args[4], out int parsedAutoLocalPort) || parsedAutoLocalPort <= 0)
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                        }
+
+                        autoLocalPort = parsedAutoLocalPort;
+                    }
+
+                    _remoteUserOfficialSessionBridgeEnabled = true;
+                    _remoteUserOfficialSessionBridgeUseDiscovery = true;
+                    _remoteUserOfficialSessionBridgeConfiguredListenPort = autoListenPort;
+                    _remoteUserOfficialSessionBridgeConfiguredRemoteHost = IPAddress.Loopback.ToString();
+                    _remoteUserOfficialSessionBridgeConfiguredRemotePort = autoRemotePort;
+                    _remoteUserOfficialSessionBridgeConfiguredProcessSelector = autoProcessSelector;
+                    _remoteUserOfficialSessionBridgeConfiguredLocalPort = autoLocalPort;
+                    _nextRemoteUserOfficialSessionBridgeDiscoveryRefreshAt = 0;
+                    return _remoteUserOfficialSessionBridge.TryRefreshFromDiscovery(
+                            autoListenPort,
+                            autoRemotePort,
+                            autoProcessSelector,
+                            autoLocalPort,
+                            out string startStatus)
+                        ? ChatCommandHandler.CommandResult.Ok($"{startStatus} {DescribeRemoteUserOfficialSessionBridgeStatus()}")
+                        : ChatCommandHandler.CommandResult.Error(startStatus);
+
+                case "map":
+                    if (args.Length < 3
+                        || !ushort.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort opcode)
+                        || !TryParseRemoteUserPacketType(args[2], out int mappedPacketType))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser session map <opcode> <packetType>");
+                    }
+
+                    return _remoteUserOfficialSessionBridge.TryConfigurePacketMapping(opcode, mappedPacketType, out string mapStatus)
+                        ? ChatCommandHandler.CommandResult.Ok(mapStatus)
+                        : ChatCommandHandler.CommandResult.Error(mapStatus);
+
+                case "unmap":
+                    if (args.Length < 2
+                        || !ushort.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort removeOpcode))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser session unmap <opcode>");
+                    }
+
+                    return _remoteUserOfficialSessionBridge.RemovePacketMapping(removeOpcode, out string removeStatus)
+                        ? ChatCommandHandler.CommandResult.Ok(removeStatus)
+                        : ChatCommandHandler.CommandResult.Error(removeStatus);
+
+                case "resetmap":
+                    _remoteUserOfficialSessionBridge.ClearPacketMappings();
+                    return ChatCommandHandler.CommandResult.Ok(_remoteUserOfficialSessionBridge.LastStatus);
+
+                case "stop":
+                    _remoteUserOfficialSessionBridgeEnabled = false;
+                    _remoteUserOfficialSessionBridgeUseDiscovery = false;
+                    _remoteUserOfficialSessionBridgeConfiguredRemotePort = 0;
+                    _remoteUserOfficialSessionBridgeConfiguredProcessSelector = null;
+                    _remoteUserOfficialSessionBridgeConfiguredLocalPort = null;
+                    _remoteUserOfficialSessionBridge.Stop();
+                    return ChatCommandHandler.CommandResult.Ok(DescribeRemoteUserOfficialSessionBridgeStatus());
+
+                default:
+                    return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode> <packetType>|unmap <opcode>|resetmap|stop]");
             }
         }
 
@@ -989,7 +1264,7 @@ namespace HaCreator.MapSimulator
 
             if (packetType == (int)RemoteUserPacketType.UserPortableChairOfficial)
             {
-                if (!RemoteUserPacketCodec.TryParsePortableChair(payload, out RemoteUserPortableChairPacket officialChairPacket, out string chairError))
+                if (!RemoteUserPacketCodec.TryParsePortableChairOfficial(payload, out RemoteUserPortableChairPacket officialChairPacket, out string chairError))
                 {
                     result = chairError;
                     return false;
@@ -1092,6 +1367,27 @@ namespace HaCreator.MapSimulator
                 return hitApplied;
             }
 
+            if (packetType == (int)RemoteUserPacketType.UserEffectOfficial)
+            {
+                if (!RemoteUserPacketCodec.TryParseEffect(payload, out RemoteUserEffectPacket effectPacket, out string effectError))
+                {
+                    result = effectError;
+                    return false;
+                }
+
+                bool effectApplied = _remoteUserPool.TryApplyEffect(effectPacket, currentTime, out string effectMessage);
+                if (effectApplied
+                    && effectPacket.KnownSubtype is RemoteUserEffectSubtype.QuestDeliveryStart or RemoteUserEffectSubtype.QuestDeliveryEnd)
+                {
+                    SyncAnimationDisplayerRemoteQuestDeliveryOwner(effectPacket.CharacterId);
+                }
+
+                result = effectApplied
+                    ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {effectPacket.CharacterId}."
+                    : effectMessage;
+                return effectApplied;
+            }
+
             switch ((RemoteUserPacketType)packetType)
             {
                 case RemoteUserPacketType.UserEnterField:
@@ -1163,7 +1459,7 @@ namespace HaCreator.MapSimulator
                     if (removed)
                     {
                         _summonedPool.RemoveOwnerSummons(leavePacket.CharacterId, currentTime);
-                        _animationEffects.RemoveUserState(leavePacket.CharacterId, currentTime);
+                        ClearAnimationDisplayerRemotePresentationOwners(leavePacket.CharacterId);
 
                         if (leavePosition.HasValue)
                         {

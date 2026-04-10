@@ -78,6 +78,55 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        internal static int MergePendingEntries(
+            List<PacketOwnedItemMakerHiddenRecipeUnlockEntry> pendingEntries,
+            PacketOwnedItemMakerHiddenRecipeUnlock packetUnlock)
+        {
+            if (pendingEntries == null)
+            {
+                return 0;
+            }
+
+            if (packetUnlock?.Entries == null || packetUnlock.Entries.Count == 0)
+            {
+                return pendingEntries.Count;
+            }
+
+            HashSet<(int BucketKey, int OutputItemId)> seen = new();
+            for (int i = 0; i < pendingEntries.Count; i++)
+            {
+                PacketOwnedItemMakerHiddenRecipeUnlockEntry existing = pendingEntries[i];
+                if (existing.OutputItemId > 0)
+                {
+                    seen.Add((existing.BucketKey, existing.OutputItemId));
+                }
+            }
+
+            for (int i = 0; i < packetUnlock.Entries.Count; i++)
+            {
+                PacketOwnedItemMakerHiddenRecipeUnlockEntry entry = packetUnlock.Entries[i];
+                if (entry.OutputItemId <= 0 || !seen.Add((entry.BucketKey, entry.OutputItemId)))
+                {
+                    continue;
+                }
+
+                pendingEntries.Add(entry);
+            }
+
+            return pendingEntries.Count;
+        }
+
+        internal static PacketOwnedItemMakerHiddenRecipeUnlock CreateReplayPayload(
+            IReadOnlyList<PacketOwnedItemMakerHiddenRecipeUnlockEntry> pendingEntries)
+        {
+            return new PacketOwnedItemMakerHiddenRecipeUnlock
+            {
+                Entries = pendingEntries?.Count > 0
+                    ? new List<PacketOwnedItemMakerHiddenRecipeUnlockEntry>(pendingEntries)
+                    : Array.Empty<PacketOwnedItemMakerHiddenRecipeUnlockEntry>()
+            };
+        }
+
         private static void EnsureReadable(BinaryReader reader, int requiredBytes, string message)
         {
             if (reader.BaseStream.Length - reader.BaseStream.Position < requiredBytes)

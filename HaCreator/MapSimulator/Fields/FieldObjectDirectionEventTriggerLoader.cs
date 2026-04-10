@@ -112,16 +112,26 @@ namespace HaCreator.MapSimulator.Fields
                 break;
             }
 
+            int publicationCountBeforeChildren = publications.Count;
             for (int i = 0; i < children.Count; i++)
             {
                 WzImageProperty child = children[i];
-                if (IsDelayPropertyName(child?.Name))
+                if (IsAliasMetadataPropertyName(child?.Name))
                 {
                     continue;
                 }
 
                 CollectScriptPublications(child, effectiveDelayMs, publications, seenPublications);
             }
+
+            if (publications.Count != publicationCountBeforeChildren
+                || !ShouldTreatPropertyNameAsScriptAlias(property.Name)
+                || !ChildrenContainOnlyAliasMetadata(children))
+            {
+                return;
+            }
+
+            AppendScriptPublications(property.Name, effectiveDelayMs, publications, seenPublications);
         }
 
         private static void AppendScriptPublications(
@@ -157,6 +167,57 @@ namespace HaCreator.MapSimulator.Fields
                     || propertyName.Equals("time", StringComparison.OrdinalIgnoreCase)
                     || propertyName.Equals("t", StringComparison.OrdinalIgnoreCase)
                     || propertyName.Equals("startDelay", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool ShouldTreatPropertyNameAsScriptAlias(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName)
+                || propertyName.Equals("EventQ", StringComparison.OrdinalIgnoreCase)
+                || IsDelayPropertyName(propertyName)
+                || propertyName.Equals("script", StringComparison.OrdinalIgnoreCase)
+                || propertyName.Equals("scripts", StringComparison.OrdinalIgnoreCase)
+                || propertyName.Equals("name", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < propertyName.Length; i++)
+            {
+                if (!char.IsDigit(propertyName[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool ChildrenContainOnlyAliasMetadata(IReadOnlyList<WzImageProperty> children)
+        {
+            if (children == null || children.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < children.Count; i++)
+            {
+                if (!IsAliasMetadataPropertyName(children[i]?.Name))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsAliasMetadataPropertyName(string propertyName)
+        {
+            return IsDelayPropertyName(propertyName)
+                || string.Equals(propertyName, "state", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "visible", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "value", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "show", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "on", StringComparison.OrdinalIgnoreCase);
         }
 
         private static int? TryReadInt(WzImageProperty property)

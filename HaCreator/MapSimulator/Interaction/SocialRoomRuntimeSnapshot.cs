@@ -60,6 +60,8 @@ namespace HaCreator.MapSimulator.Interaction
         public bool TradeVerificationMismatch { get; set; }
         public bool TradeLocalVerificationReady { get; set; }
         public bool TradeRemoteVerificationReady { get; set; }
+        public bool TradeLocalVerificationTransmitted { get; set; }
+        public bool TradeRemoteVerificationTransmitted { get; set; }
         public List<SocialRoomTradeVerificationEntrySnapshot> TradeLocalVerificationEntries { get; set; } = new();
         public List<SocialRoomTradeVerificationEntrySnapshot> TradeRemoteVerificationEntries { get; set; } = new();
         public DateTime? EntrustedPermitExpiresAtUtc { get; set; }

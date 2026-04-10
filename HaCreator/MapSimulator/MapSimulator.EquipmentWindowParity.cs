@@ -1539,10 +1539,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            bool touchesAndroidCompanion =
+            bool touchesAndroidEquipment =
                 request.TargetCompanionKind == EquipmentChangeCompanionKind.Android
-                || request.SourceCompanionKind == EquipmentChangeCompanionKind.Android;
-            if (!touchesAndroidCompanion)
+                || request.SourceCompanionKind == EquipmentChangeCompanionKind.Android
+                || IsAndroidEquipmentSlot(request.TargetEquipSlot)
+                || IsAndroidEquipmentSlot(request.SourceEquipSlot)
+                || IsAndroidEquipmentSlot(request.RequestedPart?.Slot);
+            if (!touchesAndroidEquipment)
             {
                 return false;
             }
@@ -1550,6 +1553,11 @@ namespace HaCreator.MapSimulator
             long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
             rejectReason = FieldInteractionRestrictionEvaluator.GetAndroidRestrictionMessage(fieldLimit);
             return !string.IsNullOrWhiteSpace(rejectReason);
+        }
+
+        private static bool IsAndroidEquipmentSlot(EquipSlot? slot)
+        {
+            return slot is EquipSlot.Android or EquipSlot.AndroidHeart;
         }
 
         private bool TryGetTamingMobEquipmentRestrictionRejectReason(EquipmentChangeRequest request, out string rejectReason)

@@ -718,6 +718,46 @@ namespace HaCreator.MapSimulator.UI
             int tabIndex = Math.Clamp(tab, TAB_BEGINNER, MAX_TAB_INDEX);
             _displaySkillRootByTab[tabIndex] = Math.Max(0, skillRootId);
         }
+
+        public bool TryGetDisplayedSkillRootId(int tab, out int skillRootId)
+        {
+            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, MAX_TAB_INDEX);
+            return _displaySkillRootByTab.TryGetValue(tabIndex, out skillRootId);
+        }
+
+        public int GetLoadedSkillCount(int jobAdvancement)
+        {
+            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, MAX_TAB_INDEX);
+            return skillsByTab.TryGetValue(tab, out List<SkillDisplayData> skills)
+                ? skills.Count
+                : 0;
+        }
+
+        public void SynchronizeLoadedSkillLevels(Func<int, int> resolveCurrentLevel, Func<int, int> resolveMaxLevel = null)
+        {
+            if (resolveCurrentLevel == null)
+                return;
+
+            foreach (List<SkillDisplayData> tabSkills in skillsByTab.Values)
+            {
+                foreach (SkillDisplayData skill in tabSkills)
+                {
+                    int currentLevel = Math.Max(0, resolveCurrentLevel(skill.SkillId));
+                    skill.CurrentLevel = currentLevel;
+
+                    if (resolveMaxLevel != null)
+                    {
+                        skill.MaxLevel = Math.Max(currentLevel, resolveMaxLevel(skill.SkillId));
+                    }
+                    else
+                    {
+                        skill.MaxLevel = Math.Max(skill.MaxLevel, currentLevel);
+                    }
+                }
+            }
+
+            RefreshVisibleTabsFromLoadedSkillRoots();
+        }
         #endregion
 
         #region Drawing

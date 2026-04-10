@@ -1990,6 +1990,50 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        public bool TryApplyEffect(RemoteUserEffectPacket packet, int currentTime, out string message)
+        {
+            message = null;
+            if (!_actorsById.TryGetValue(packet.CharacterId, out RemoteUserActor actor))
+            {
+                message = $"Remote user {packet.CharacterId} is not active.";
+                return false;
+            }
+
+            switch (packet.KnownSubtype)
+            {
+                case RemoteUserEffectSubtype.IncDecHp:
+                    int delta = packet.Int32Value.GetValueOrDefault();
+                    HitFeedbackRegistered?.Invoke(new RemoteHitFeedbackPresentation(
+                        packet.CharacterId,
+                        ResolveStandardWorldAnchor(actor, currentTime, verticalOffset: 24f),
+                        delta,
+                        currentTime));
+                    message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered inc/dec HP delta {delta}.";
+                    return true;
+
+                case RemoteUserEffectSubtype.QuestDeliveryStart:
+                    int itemId = packet.Int32Value.GetValueOrDefault();
+                    if (itemId <= 0)
+                    {
+                        message = $"Remote user {packet.CharacterId} quest-delivery item ID {itemId} is invalid.";
+                        return false;
+                    }
+
+                    actor.PacketOwnedQuestDeliveryEffectItemId = itemId;
+                    message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} started quest-delivery presentation with item {itemId}.";
+                    return true;
+
+                case RemoteUserEffectSubtype.QuestDeliveryEnd:
+                    actor.PacketOwnedQuestDeliveryEffectItemId = null;
+                    message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} cleared quest-delivery presentation.";
+                    return true;
+
+                default:
+                    message = $"Remote user effect subtype {packet.EffectType} is not supported by the shared remote-user owner.";
+                    return false;
+            }
+        }
+
         public bool TryApplyUpgradeTombEffect(RemoteUserUpgradeTombPacket packet, int currentTime, out string message)
         {
             message = null;
@@ -2307,7 +2351,9 @@ namespace HaCreator.MapSimulator.Pools
             overlay.GaugeDurationMs = prepared.GaugeDurationMs > 0 ? prepared.GaugeDurationMs : duration;
             overlay.Progress = progress;
             overlay.IsKeydownSkill = prepared.IsKeydownSkill;
+            overlay.IsPreparingPhase = prepared.AutoEnterHold && !isHolding && prepared.PrepareDurationMs > 0;
             overlay.IsHolding = isHolding;
+            overlay.PrepareRemainingMs = overlay.IsPreparingPhase ? remainingMs : 0;
             overlay.HoldElapsedMs = holdElapsedMs;
             overlay.MaxHoldDurationMs = prepared.MaxHoldDurationMs;
             overlay.TextVariant = prepared.TextVariant;
@@ -2893,8 +2939,14 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                MinimapUI.HelperMarkerType markerType = actor.HelperMarkerType
-                    ?? MinimapUI.HelperMarkerType.Another;
+                bool hasFriendshipOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Friendship);
+                bool hasCoupleOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Couple);
+                bool hasMarriageOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Marriage);
+                MinimapUI.HelperMarkerType markerType = ResolvePacketAuthoredMinimapHelperMarker(
+                    actor.HelperMarkerType,
+                    hasFriendshipOverlay,
+                    hasCoupleOverlay,
+                    hasMarriageOverlay);
 
                 MinimapUI.TrackedUserMarker marker = GetOrCreateHelperMarker(_helperMarkerCount++);
                 marker.WorldX = actor.Position.X;
@@ -2916,6 +2968,22 @@ namespace HaCreator.MapSimulator.Pools
             return isVisibleInWorld
                 && !hiddenLikeClient
                 && (hasExplicitHelperMarker || battlefieldTeamId.HasValue);
+        }
+
+        internal static MinimapUI.HelperMarkerType ResolvePacketAuthoredMinimapHelperMarker(
+            MinimapUI.HelperMarkerType? explicitHelperMarkerType,
+            bool hasFriendshipOverlay,
+            bool hasCoupleOverlay,
+            bool hasMarriageOverlay)
+        {
+            if (explicitHelperMarkerType.HasValue)
+            {
+                return explicitHelperMarkerType.Value;
+            }
+
+            return hasFriendshipOverlay || hasCoupleOverlay || hasMarriageOverlay
+                ? MinimapUI.HelperMarkerType.Friend
+                : MinimapUI.HelperMarkerType.Another;
         }
 
         public void Draw(
@@ -7698,31 +7766,33 @@ namespace HaCreator.MapSimulator.Pools
             bool activeAction = state.FadeStartTime < 0
                 && string.Equals(actor.ActionName, state.ActionName, StringComparison.OrdinalIgnoreCase);
             int frameIndex = state.LastFrameIndex;
-            SkillFrame frame = state.LastResolvedFrame;
-            float alpha = MathHelper.Clamp(state.LastResolvedAlpha, 0f, 1f);
+            IReadOnlyList<AfterimageRenderableLayer> layers = state.LastResolvedLayers;
 
             if (activeAction)
             {
                 int animationTime = Math.Max(0, currentTime - state.AnimationStartTime);
                 int lastFrameIndex = state.LastFrameIndex;
-                SkillFrame lastResolvedFrame = state.LastResolvedFrame;
-                float lastResolvedAlpha = state.LastResolvedAlpha;
+                IReadOnlyList<AfterimageRenderableLayer> lastResolvedLayers = state.LastResolvedLayers;
                 MeleeAfterimagePlaybackResolver.RefreshSnapshotCache(
                     actor.Assembler,
                     state.ActionName,
                     state.AfterImageAction,
                     animationTime,
                     ref lastFrameIndex,
-                    ref lastResolvedFrame,
-                    ref lastResolvedAlpha);
+                    ref lastResolvedLayers);
                 state.LastFrameIndex = lastFrameIndex;
-                state.LastResolvedFrame = lastResolvedFrame;
-                state.LastResolvedAlpha = lastResolvedAlpha;
+                state.LastResolvedLayers = lastResolvedLayers;
                 frameIndex = state.LastFrameIndex;
-                frame = state.LastResolvedFrame;
-                alpha = state.LastResolvedAlpha;
+                layers = state.LastResolvedLayers;
             }
-            else if (state.FadeStartTime >= 0)
+
+            if (layers == null || layers.Count == 0)
+            {
+                return;
+            }
+
+            float fadeAlpha = 1f;
+            if (!activeAction && state.FadeStartTime >= 0)
             {
                 int fadeElapsed = Math.Max(0, currentTime - state.FadeStartTime);
                 if (fadeElapsed >= state.FadeDuration)
@@ -7731,22 +7801,25 @@ namespace HaCreator.MapSimulator.Pools
                     return;
                 }
 
-                float fadeAlpha = 1f - (fadeElapsed / (float)Math.Max(1, state.FadeDuration));
-                alpha *= fadeAlpha;
+                fadeAlpha = 1f - (fadeElapsed / (float)Math.Max(1, state.FadeDuration));
             }
 
-            if (frame?.Texture == null)
+            foreach (AfterimageRenderableLayer layer in layers)
             {
-                return;
-            }
+                SkillFrame frame = layer.Frame;
+                if (frame?.Texture == null)
+                {
+                    continue;
+                }
 
-            Color tint = Color.White * MathHelper.Clamp(alpha, 0f, 1f);
-            bool shouldFlip = state.FacingRight ^ frame.Flip;
-            int drawX = shouldFlip
-                ? screenX - (frame.Texture.Width - frame.Origin.X)
-                : screenX - frame.Origin.X;
-            int drawY = screenY - frame.Origin.Y;
-            frame.Texture.DrawBackground(spriteBatch, skeletonMeshRenderer, null, drawX, drawY, tint, shouldFlip, null);
+                Color tint = Color.White * MathHelper.Clamp(layer.Alpha * fadeAlpha, 0f, 1f);
+                bool shouldFlip = state.FacingRight ^ frame.Flip;
+                int drawX = shouldFlip
+                    ? screenX - (frame.Texture.Width - frame.Origin.X)
+                    : screenX - frame.Origin.X;
+                int drawY = screenY - frame.Origin.Y;
+                frame.Texture.DrawBackground(spriteBatch, skeletonMeshRenderer, null, drawX, drawY, tint, shouldFlip, null);
+            }
         }
 
         private void ApplyMovementSnapshot(RemoteUserActor actor, int currentTime)
@@ -8027,6 +8100,7 @@ namespace HaCreator.MapSimulator.Pools
         public int? PartyMaxHp { get; set; }
         public int? PartyHpPercent { get; set; }
         public int? PartyHpGaugePos { get; set; }
+        public int? PacketOwnedQuestDeliveryEffectItemId { get; set; }
         public RemoteUserActorPool.RemoteHitState LastHit { get; set; }
         public int? LastThrowGrenadeSkillId { get; set; }
         public int? LastThrowGrenadeId { get; set; }
@@ -8094,19 +8168,16 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int lastFrameIndex = MeleeAfterImage.LastFrameIndex;
-            SkillFrame lastResolvedFrame = MeleeAfterImage.LastResolvedFrame;
-            float lastResolvedAlpha = MeleeAfterImage.LastResolvedAlpha;
+            IReadOnlyList<AfterimageRenderableLayer> lastResolvedLayers = MeleeAfterImage.LastResolvedLayers;
             MeleeAfterimagePlaybackResolver.CaptureFadeSnapshotOrClearCache(
                 Assembler,
                 MeleeAfterImage.ActionName,
                 MeleeAfterImage.AfterImageAction,
                 Math.Max(0, currentTime - MeleeAfterImage.AnimationStartTime),
                 ref lastFrameIndex,
-                ref lastResolvedFrame,
-                ref lastResolvedAlpha);
+                ref lastResolvedLayers);
             MeleeAfterImage.LastFrameIndex = lastFrameIndex;
-            MeleeAfterImage.LastResolvedFrame = lastResolvedFrame;
-            MeleeAfterImage.LastResolvedAlpha = lastResolvedAlpha;
+            MeleeAfterImage.LastResolvedLayers = lastResolvedLayers;
 
             MeleeAfterImage.FadeStartTime = currentTime;
         }
@@ -8197,9 +8268,8 @@ namespace HaCreator.MapSimulator.Pools
             public int FadeDuration { get; init; }
             public int FadeStartTime { get; set; } = -1;
             public int LastFrameIndex { get; set; } = -1;
-            public SkillFrame LastResolvedFrame { get; set; }
-            public float LastResolvedAlpha { get; set; } = 1f;
-    }
+            public IReadOnlyList<AfterimageRenderableLayer> LastResolvedLayers { get; set; } = Array.Empty<AfterimageRenderableLayer>();
+        }
 
     public sealed class RemotePreparedSkillState
     {

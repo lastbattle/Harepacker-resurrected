@@ -172,6 +172,7 @@ namespace HaCreator.MapSimulator.UI
     {
         private const int EntriesPerPage = 6;
         private const float ClientCollectionTextLaneWidth = 190f;
+        private const int ClientCollectionAnalyzedBlockCarry = 10;
         private const int ClientCollectionEntryRuleGap = 6;
         private const int ClientCollectionDetailLineStep = 9;
         private const int ClientCollectionAnalyzedTextLineHeight = 9;
@@ -519,9 +520,6 @@ namespace HaCreator.MapSimulator.UI
                     currentTop = ruleTop + ClientCollectionEntryRuleGap;
                 }
             }
-
-            records.Add(CreateRuleRecord(15, ClientCollectionFooterRuleTop, 166));
-            records.Add(CreateTextRecord(page?.Footer, ClientCollectionTextLaneLeft, 227, ClientCollectionTextLaneWidthInt, 11, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Footer));
             return records;
         }
 
@@ -546,9 +544,6 @@ namespace HaCreator.MapSimulator.UI
             {
                 currentTop = AddOverviewMetricEntryRecords(records, entries[row + 2], currentTop, measureTextWidth);
             }
-
-            records.Add(CreateRuleRecord(15, 221, 166));
-            records.Add(CreateTextRecord(page?.Footer, ClientCollectionTextLaneLeft, 227, ClientCollectionTextLaneWidthInt, 11, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Footer));
             return records;
         }
 
@@ -560,10 +555,10 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int headlineBottom = AddEntryHeadlineRecords(records, entry, top, measureTextWidth);
-            int detailTop = Math.Max(top + 10, headlineBottom + 1);
+            int detailTop = GetFollowingAnalyzedTextTop(top, headlineBottom);
             AddWrappedTextRecords(records, entry.Detail, ClientCollectionTextLaneLeft, detailTop, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
-            int detailBottom = GetWrappedRecordBottom(entry.Detail, detailTop, ClientCollectionTextLaneWidthInt, 10, measureTextWidth);
-            int ruleTop = Math.Max(headlineBottom, detailBottom) + 13;
+            int detailBottom = GetOptionalWrappedRecordBottom(entry.Detail, detailTop, ClientCollectionTextLaneWidthInt, 10, headlineBottom, measureTextWidth);
+            int ruleTop = Math.Max(headlineBottom, detailBottom) + ClientCollectionAnalyzedBlockCarry;
             records.Add(CreateRuleRecord(15, ruleTop, 166));
             return ruleTop + 5;
         }
@@ -576,10 +571,10 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int headlineBottom = AddEntryHeadlineRecords(records, entry, top, measureTextWidth);
-            int detailTop = Math.Max(top + 9, headlineBottom + 1);
+            int detailTop = GetFollowingAnalyzedTextTop(top, headlineBottom);
             AddWrappedTextRecords(records, entry.Detail, ClientCollectionTextLaneLeft, detailTop, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
-            int detailBottom = GetWrappedRecordBottom(entry.Detail, detailTop, ClientCollectionTextLaneWidthInt, 10, measureTextWidth);
-            int ruleTop = Math.Max(headlineBottom, detailBottom) + 7;
+            int detailBottom = GetOptionalWrappedRecordBottom(entry.Detail, detailTop, ClientCollectionTextLaneWidthInt, 10, headlineBottom, measureTextWidth);
+            int ruleTop = Math.Max(headlineBottom, detailBottom) + ClientCollectionAnalyzedBlockCarry;
             records.Add(CreateRuleRecord(15, ruleTop, 166));
             return ruleTop + 3;
         }
@@ -707,8 +702,8 @@ namespace HaCreator.MapSimulator.UI
         {
             int headlineBottom = GetEntryHeadlineBottom(entry, top, measureTextWidth);
             int detailTop = GetStandardEntryDetailTop(top, entry, measureTextWidth, headlineBottom);
-            int detailBottom = GetWrappedRecordBottom(entry?.Detail, detailTop, ClientCollectionTextLaneWidthInt, 10, measureTextWidth);
-            return Math.Max(headlineBottom, detailBottom) + 9;
+            int detailBottom = GetOptionalWrappedRecordBottom(entry?.Detail, detailTop, ClientCollectionTextLaneWidthInt, 10, headlineBottom, measureTextWidth);
+            return Math.Max(headlineBottom, detailBottom) + ClientCollectionAnalyzedBlockCarry;
         }
 
         private static int GetStandardEntryNextTop(int top, CollectionBookEntrySnapshot entry, Func<string, int, float> measureTextWidth = null)
@@ -719,7 +714,7 @@ namespace HaCreator.MapSimulator.UI
         private static int GetStandardEntryDetailTop(int top, CollectionBookEntrySnapshot entry, Func<string, int, float> measureTextWidth, int? headlineBottom = null)
         {
             int resolvedHeadlineBottom = headlineBottom ?? GetEntryHeadlineBottom(entry, top, measureTextWidth);
-            return Math.Max(top + 10, resolvedHeadlineBottom + 1);
+            return GetFollowingAnalyzedTextTop(top, resolvedHeadlineBottom);
         }
 
         private static int GetEntryHeadlineBottom(CollectionBookEntrySnapshot entry, int top, Func<string, int, float> measureTextWidth = null)
@@ -795,6 +790,18 @@ namespace HaCreator.MapSimulator.UI
             return top
                 + (Math.Max(1, lineCount) - 1) * ClientCollectionDetailLineStep
                 + ClientCollectionAnalyzedTextLineHeight;
+        }
+
+        private static int GetOptionalWrappedRecordBottom(string text, int top, int width, int styleIndex, int fallbackBottom, Func<string, int, float> measureTextWidth = null)
+        {
+            return string.IsNullOrWhiteSpace(text)
+                ? fallbackBottom
+                : GetWrappedRecordBottom(text, top, width, styleIndex, measureTextWidth);
+        }
+
+        private static int GetFollowingAnalyzedTextTop(int top, int precedingBlockBottom)
+        {
+            return Math.Max(top + ClientCollectionAnalyzedBlockCarry, precedingBlockBottom + ClientCollectionAnalyzedBlockCarry);
         }
 
         private static IReadOnlyList<string> WrapCollectionText(string text, int width, int styleIndex, Func<string, int, float> measureTextWidth = null)

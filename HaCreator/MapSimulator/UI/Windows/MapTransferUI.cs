@@ -74,6 +74,7 @@ namespace HaCreator.MapSimulator.UI
         private string _currentMapName = string.Empty;
         private string _statusMessage = "Register maps or select a route to transfer.";
         private string _manualTargetText = string.Empty;
+        private int _registerPromptMapId;
         private int _selectedIndex = -1;
         private int _scrollOffset;
         private int _previousScrollWheelValue;
@@ -201,6 +202,7 @@ namespace HaCreator.MapSimulator.UI
         public Action<DestinationEntry> MoveDestinationRequested { get; set; }
         public Action<DestinationEntry> WorldMapRequested { get; set; }
         public Action<int> ManualMapMoveRequested { get; set; }
+        public Func<int, string> PromptMapLabelResolver { get; set; }
 
         public override void Show()
         {
@@ -226,6 +228,11 @@ namespace HaCreator.MapSimulator.UI
         public void SetCurrentMapName(string displayName)
         {
             _currentMapName = displayName ?? string.Empty;
+        }
+
+        public void SetRegisterPromptMapId(int mapId)
+        {
+            _registerPromptMapId = Math.Max(0, mapId);
         }
 
         public void SetStatusMessage(string message)
@@ -867,7 +874,10 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            string targetLabel = TrimToWidth(entry.DisplayName, 150f);
+            string targetLabel = TrimPromptLabelToWidth(ResolvePromptLabel(
+                entry.MapId,
+                entry.DisplayName,
+                PromptMapLabelResolver));
             if (string.IsNullOrWhiteSpace(targetLabel))
             {
                 targetLabel = entry.MapId > 0 ? entry.MapId.ToString() : $"saved slot {entry.SavedSlotIndex + 1}";
@@ -885,12 +895,18 @@ namespace HaCreator.MapSimulator.UI
 
             if (entry != null)
             {
-                targetLabel = TrimToWidth(entry.DisplayName, 150f);
+                targetLabel = TrimPromptLabelToWidth(ResolvePromptLabel(
+                    entry.MapId,
+                    entry.DisplayName,
+                    PromptMapLabelResolver));
                 confirmationAction = () => MoveDestinationRequested?.Invoke(entry);
             }
             else if (manualTargetMapId.HasValue && manualTargetMapId.Value > 0)
             {
-                targetLabel = manualTargetMapId.Value.ToString();
+                targetLabel = TrimPromptLabelToWidth(ResolvePromptLabel(
+                    manualTargetMapId.Value,
+                    manualTargetMapId.Value.ToString(),
+                    PromptMapLabelResolver));
                 confirmationAction = () => ManualMapMoveRequested?.Invoke(manualTargetMapId.Value);
             }
             else
@@ -940,25 +956,57 @@ namespace HaCreator.MapSimulator.UI
 
         private string ResolveRegisterTargetLabel(DestinationEntry selectedEntry)
         {
-            if (_selectedIndex < 0 && TryParseManualTargetMapId(out int manualTargetMapId))
-            {
-                return manualTargetMapId.ToString();
-            }
+            string targetLabel = ResolveRegisterPromptLabel(
+                _registerPromptMapId,
+                _currentMapName,
+                PromptMapLabelResolver);
+            return TrimPromptLabelToWidth(targetLabel);
+        }
 
-            DestinationEntry registerTarget = selectedEntry?.IsSavedSlot == true
-                ? null
-                : selectedEntry;
-            if (registerTarget != null)
-            {
-                if (registerTarget.MapId > 0)
-                {
-                    return TrimToWidth(registerTarget.DisplayName, 150f);
-                }
-            }
-
-            return string.IsNullOrWhiteSpace(_currentMapName)
+        internal static string ResolveRegisterPromptLabel(
+            int registerPromptMapId,
+            string currentMapName,
+            Func<int, string> promptMapLabelResolver)
+        {
+            string fallbackLabel = string.IsNullOrWhiteSpace(currentMapName)
                 ? "the current field"
-                : TrimToWidth(_currentMapName, 150f);
+                : currentMapName.Trim();
+            return ResolvePromptLabel(registerPromptMapId, fallbackLabel, promptMapLabelResolver);
+        }
+
+        internal static string ResolvePromptLabel(
+            int mapId,
+            string fallbackLabel,
+            Func<int, string> promptMapLabelResolver)
+        {
+            string resolvedLabel = mapId > 0
+                ? promptMapLabelResolver?.Invoke(mapId)
+                : null;
+            if (string.IsNullOrWhiteSpace(resolvedLabel))
+            {
+                resolvedLabel = fallbackLabel;
+            }
+
+            if (string.IsNullOrWhiteSpace(resolvedLabel))
+            {
+                resolvedLabel = mapId > 0
+                    ? mapId.ToString()
+                    : "Unknown Map";
+            }
+
+            return resolvedLabel.Trim();
+        }
+
+        private string TrimPromptLabelToWidth(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            return _font == null
+                ? text.Trim()
+                : TrimToWidth(text, 150f);
         }
 
         private void UpdateConfirmationLayout()

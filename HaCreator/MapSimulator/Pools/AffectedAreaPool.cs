@@ -279,6 +279,7 @@ namespace HaCreator.MapSimulator.Pools
                 levelData,
                 loadLinkedSkill,
                 affectedSkillId => _skillLoader?.FindAffectedSkillParentIds(affectedSkillId) ?? Array.Empty<int>(),
+                dummySkillId => _skillLoader?.FindDummySkillParentIds(dummySkillId) ?? Array.Empty<int>(),
                 ResolveSkillLevel,
                 createInfo.SkillLevel);
             int expireTime = ResolveExpireTime(startTime, metadata.DurationSeconds);
@@ -392,6 +393,7 @@ namespace HaCreator.MapSimulator.Pools
             SkillLevelData levelData,
             Func<int, SkillData> loadSkill,
             Func<int, IReadOnlyList<int>> findParentSkillIds,
+            Func<int, IReadOnlyList<int>> findDummyParentSkillIds,
             Func<SkillData, int, SkillLevelData> resolveLevelData,
             int skillLevel)
         {
@@ -408,6 +410,7 @@ namespace HaCreator.MapSimulator.Pools
                 skill,
                 loadSkill,
                 findParentSkillIds,
+                findDummyParentSkillIds,
                 resolveLevelData,
                 Math.Max(1, skillLevel),
                 visitedSkillIds,
@@ -421,6 +424,7 @@ namespace HaCreator.MapSimulator.Pools
             SkillData skill,
             Func<int, SkillData> loadSkill,
             Func<int, IReadOnlyList<int>> findParentSkillIds,
+            Func<int, IReadOnlyList<int>> findDummyParentSkillIds,
             Func<SkillData, int, SkillLevelData> resolveLevelData,
             int skillLevel,
             ISet<int> visitedSkillIds,
@@ -463,6 +467,7 @@ namespace HaCreator.MapSimulator.Pools
                     linkedSkill,
                     loadSkill,
                     findParentSkillIds,
+                    findDummyParentSkillIds,
                     resolveLevelData,
                     skillLevel,
                     visitedSkillIds,
@@ -483,6 +488,28 @@ namespace HaCreator.MapSimulator.Pools
                     parentSkill,
                     loadSkill,
                     findParentSkillIds,
+                    findDummyParentSkillIds,
+                    resolveLevelData,
+                    skillLevel,
+                    visitedSkillIds,
+                    ref durationSeconds,
+                    ref zoneType,
+                    ref animation);
+            }
+
+            foreach (int parentSkillId in findDummyParentSkillIds?.Invoke(skillId) ?? Array.Empty<int>())
+            {
+                SkillData parentSkill = loadSkill(parentSkillId);
+                if (parentSkill == null)
+                {
+                    continue;
+                }
+
+                CollectLinkedPlayerSkillAreaMetadata(
+                    parentSkill,
+                    loadSkill,
+                    findParentSkillIds,
+                    findDummyParentSkillIds,
                     resolveLevelData,
                     skillLevel,
                     visitedSkillIds,

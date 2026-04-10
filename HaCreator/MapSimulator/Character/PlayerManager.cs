@@ -1992,7 +1992,7 @@ namespace HaCreator.MapSimulator.Character
 
         private string ResolveClientBasicAttackActionName(AttackType fallbackAttackType)
         {
-            return Player?.Build?.GetWeapon()?.ResolveClientBasicAttackActionName(fallbackAttackType)
+            return Player?.Build?.GetEffectiveAttackActionWeapon()?.ResolveClientBasicAttackActionName(fallbackAttackType)
                    ?? CharacterPart.GetActionString(fallbackAttackType == AttackType.Shoot
                        ? CharacterAction.Shoot1
                        : CharacterAction.SwingO1);
