@@ -89,6 +89,17 @@ namespace HaCreator.MapSimulator.Fields
                     yield return candidate;
                 }
             }
+
+            foreach (string quotedArgument in EnumerateQuotedAliasArguments(scriptName))
+            {
+                foreach (string candidate in EnumerateScriptAliasCandidatesCore(quotedArgument.Trim()))
+                {
+                    if (!string.IsNullOrWhiteSpace(candidate) && seen.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+            }
         }
 
         private static IEnumerable<string> EnumerateScriptAliasCandidatesCore(string scriptName)
@@ -111,6 +122,51 @@ namespace HaCreator.MapSimulator.Fields
             if (!string.Equals(fileStem, fileName, StringComparison.OrdinalIgnoreCase))
             {
                 yield return fileStem;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateQuotedAliasArguments(string scriptName)
+        {
+            if (string.IsNullOrWhiteSpace(scriptName)
+                || scriptName.IndexOf('(') < 0)
+            {
+                yield break;
+            }
+
+            char quote = '\0';
+            int argumentStart = -1;
+            for (int i = 0; i < scriptName.Length; i++)
+            {
+                char current = scriptName[i];
+                if (quote == '\0')
+                {
+                    if (current == '"' || current == '\'')
+                    {
+                        quote = current;
+                        argumentStart = i + 1;
+                    }
+
+                    continue;
+                }
+
+                if (current == '\\' && i + 1 < scriptName.Length)
+                {
+                    i++;
+                    continue;
+                }
+
+                if (current != quote)
+                {
+                    continue;
+                }
+
+                if (argumentStart >= 0 && i > argumentStart)
+                {
+                    yield return scriptName[argumentStart..i];
+                }
+
+                quote = '\0';
+                argumentStart = -1;
             }
         }
 

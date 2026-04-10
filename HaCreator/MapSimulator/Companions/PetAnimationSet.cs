@@ -221,6 +221,8 @@ namespace HaCreator.MapSimulator.Companions
                 static group => group.First().Value,
                 StringComparer.Ordinal);
 
+        private static readonly IReadOnlyDictionary<string, string[]> ReverseLookupCandidates = BuildReverseLookupCandidates();
+
         internal static IEnumerable<string> EnumerateCandidates(string actionName)
         {
             if (string.IsNullOrWhiteSpace(actionName))
@@ -228,40 +230,130 @@ namespace HaCreator.MapSimulator.Companions
                 yield break;
             }
 
-            if (LookupCandidates.TryGetValue(actionName, out string[] candidates))
+            string lookupActionName = null;
+            if (LookupCandidates.ContainsKey(actionName))
             {
-                for (int i = 0; i < candidates.Length; i++)
+                lookupActionName = actionName;
+            }
+            else
+            {
+                string normalizedActionName = NormalizeActionName(actionName);
+                if (!string.IsNullOrWhiteSpace(normalizedActionName) &&
+                    CanonicalLookupKeys.TryGetValue(normalizedActionName, out string canonicalActionName) &&
+                    !string.Equals(canonicalActionName, actionName, StringComparison.OrdinalIgnoreCase))
                 {
-                    yield return candidates[i];
+                    lookupActionName = canonicalActionName;
                 }
-
-                yield break;
             }
 
-            string normalizedActionName = NormalizeActionName(actionName);
-            if (!string.IsNullOrWhiteSpace(normalizedActionName) &&
-                CanonicalLookupKeys.TryGetValue(normalizedActionName, out string canonicalActionName) &&
-                !string.Equals(canonicalActionName, actionName, StringComparison.OrdinalIgnoreCase) &&
-                LookupCandidates.TryGetValue(canonicalActionName, out candidates))
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(lookupActionName) &&
+                LookupCandidates.TryGetValue(lookupActionName, out string[] candidates))
             {
-                var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                for (int i = 0; i < candidates.Length; i++)
+                foreach (string candidate in EnumerateAliasCandidates(lookupActionName, candidates, yielded))
                 {
-                    if (yielded.Add(candidates[i]))
-                    {
-                        yield return candidates[i];
-                    }
+                    yield return candidate;
                 }
 
-                if (yielded.Add(actionName))
+                if (!string.Equals(lookupActionName, actionName, StringComparison.OrdinalIgnoreCase) &&
+                    yielded.Add(actionName))
                 {
                     yield return actionName;
                 }
-
+            }
+            else if (yielded.Add(actionName))
+            {
+                yield return actionName;
                 yield break;
             }
 
-            yield return actionName;
+            if (!string.IsNullOrWhiteSpace(lookupActionName) &&
+                ReverseLookupCandidates.TryGetValue(lookupActionName, out string[] reverseCandidates))
+            {
+                foreach (string reverseCandidate in reverseCandidates)
+                {
+                    if (yielded.Add(reverseCandidate))
+                    {
+                        yield return reverseCandidate;
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateAliasCandidates(
+            string actionName,
+            IEnumerable<string> candidates,
+            HashSet<string> yielded)
+        {
+            foreach (string candidate in candidates ?? Array.Empty<string>())
+            {
+                if (yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+
+            if (ReverseLookupCandidates.TryGetValue(actionName, out string[] reverseCandidates))
+            {
+                foreach (string reverseCandidate in reverseCandidates)
+                {
+                    if (yielded.Add(reverseCandidate))
+                    {
+                        yield return reverseCandidate;
+                    }
+                }
+            }
+        }
+
+        private static IReadOnlyDictionary<string, string[]> BuildReverseLookupCandidates()
+        {
+            var reverseLookupCandidates = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach ((string actionName, string[] candidates) in LookupCandidates)
+            {
+                if (string.IsNullOrWhiteSpace(actionName) || candidates == null)
+                {
+                    continue;
+                }
+
+                foreach (string candidate in candidates)
+                {
+                    if (string.IsNullOrWhiteSpace(candidate) ||
+                        string.Equals(candidate, actionName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    if (!reverseLookupCandidates.TryGetValue(candidate, out List<string> reverseCandidates))
+                    {
+                        reverseCandidates = new List<string>();
+                        reverseLookupCandidates[candidate] = reverseCandidates;
+                    }
+
+                    if (!reverseCandidates.Contains(actionName, StringComparer.OrdinalIgnoreCase))
+                    {
+                        reverseCandidates.Add(actionName);
+                    }
+                }
+            }
+
+            return reverseLookupCandidates.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.ToArray(),
+                StringComparer.OrdinalIgnoreCase);
+        }
+
+        internal static IEnumerable<string> EnumerateReverseCandidatesForTesting(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName) ||
+                !ReverseLookupCandidates.TryGetValue(actionName, out string[] reverseCandidates))
+            {
+                yield break;
+            }
+
+            for (int i = 0; i < reverseCandidates.Length; i++)
+            {
+                yield return reverseCandidates[i];
+            }
         }
 
         internal static IEnumerable<string> EnumerateKnownActions()

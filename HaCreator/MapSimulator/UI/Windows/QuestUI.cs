@@ -1966,9 +1966,10 @@ namespace HaCreator.MapSimulator.UI
             string quantityLine = _hoveredQuestItem.Quantity.GetValueOrDefault(0) > 0
                 ? $"Quantity: {_hoveredQuestItem.Quantity.Value}"
                 : string.Empty;
-            string stackLine = InventoryItemMetadataResolver.TryResolveMaxStackForItem(_hoveredQuestItem.ItemId, out int maxStackSize)
+            string stackLine = !InventoryItemMetadataResolver.HasStackLimitMetadataLine(metadata.MetadataLines)
+                               && InventoryItemMetadataResolver.TryResolveMaxStackForItem(_hoveredQuestItem.ItemId, out int maxStackSize)
                                && maxStackSize > 1
-                ? $"Stack Max: {maxStackSize}"
+                ? InventoryItemMetadataResolver.FormatStackLimitMetadataLine(maxStackSize)
                 : string.Empty;
 
             string[] wrappedTitle = WrapText(title, titleWidth, titleScale);

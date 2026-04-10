@@ -80,7 +80,7 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class QuestRewardRaisePlacedPiece
     {
-        public int RequestId { get; init; }
+        public int RequestId { get; set; }
         public InventoryType InventoryType { get; init; }
         public int SlotIndex { get; init; }
         public int ItemId { get; init; }

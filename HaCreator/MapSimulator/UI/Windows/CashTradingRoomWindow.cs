@@ -65,6 +65,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ChatScrollHeight = 135;
         private const int ChatWheelRange = 223;
         private const int OfferStep = 50000;
+        private const int DefaultRemoteWallet = 275000;
         private const int MaxVisibleChatLines = 6;
         private const int MaxChatHistory = 24;
         private const int ChatMaxLength = 256;
@@ -105,7 +106,8 @@ namespace HaCreator.MapSimulator.UI
         private string _localTraderName = "ExplorerGM";
         private string _remoteTraderName = "Rondo";
         private int _localWalletSnapshot;
-        private int _remoteWallet = 275000;
+        private int _remoteWallet = DefaultRemoteWallet;
+        private int _remoteInitialMoney = DefaultRemoteWallet;
         private int _initialMoney;
         private int _localOffer;
         private int _remoteOffer = 75000;
@@ -206,6 +208,8 @@ namespace HaCreator.MapSimulator.UI
         {
             _initialMoney = Math.Max(0, _localWalletProvider?.Invoke() ?? 0);
             _localWalletSnapshot = _initialMoney;
+            _remoteInitialMoney = DefaultRemoteWallet;
+            _remoteWallet = _remoteInitialMoney;
             _localOffer = 0;
             _remoteOffer = 75000;
             _localLocked = false;
@@ -266,6 +270,8 @@ namespace HaCreator.MapSimulator.UI
 
         public void ResetTrade()
         {
+            _localWalletSnapshot = _initialMoney;
+            _remoteWallet = _remoteInitialMoney;
             _localOffer = 0;
             _remoteOffer = 75000;
             _localLocked = false;
@@ -278,8 +284,8 @@ namespace HaCreator.MapSimulator.UI
             _chatScrollOffset = 0;
             _remoteProgressTick = Environment.TickCount + 1800;
             _remoteProgressState = RemoteTradeProgressState.Reviewing;
-            AppendChatLine("System", "Trade draft reset and both escrow panes cleared.");
-            _statusMessage = "CCashTradingRoomDlg::OnTradeReset restored the initial trade draft and cleared acceptance.";
+            AppendChatLine("System", "Trade draft reset and both escrow panes cleared back to the init-money snapshot.");
+            _statusMessage = $"CCashTradingRoomDlg::OnTradeReset restored the session wallets to init money {_initialMoney.ToString("N0", CultureInfo.InvariantCulture)}.";
         }
 
         public void IncreaseTradeOffer()
@@ -532,10 +538,11 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(_font, $"Init money: {_initialMoney.ToString("N0", CultureInfo.InvariantCulture)}", new Vector2(Position.X + 22, leftY - 18), mutedColor);
             sprite.DrawString(_font, $"{_localTraderName} session wallet", new Vector2(Position.X + 22, leftY), itemColor);
             sprite.DrawString(_font, $"{_localWalletSnapshot.ToString("N0", CultureInfo.InvariantCulture)} meso", new Vector2(Position.X + 22, leftY + 16), moneyColor);
-            sprite.DrawString(_font, $"{_localTraderName} offer: {_localOffer.ToString("N0", CultureInfo.InvariantCulture)}", new Vector2(Position.X + 22, leftY + 36), textMoneyColor);
-            sprite.DrawString(_font, $"{_remoteTraderName} offer: {_remoteOffer.ToString("N0", CultureInfo.InvariantCulture)}", new Vector2(Position.X + 22, leftY + 52), textMoneyColor);
-            sprite.DrawString(_font, $"{_remoteTraderName} wallet: {_remoteWallet.ToString("N0", CultureInfo.InvariantCulture)}", new Vector2(Position.X + 22, leftY + 68), moneyColor);
-            sprite.DrawString(_font, $"Fonts: white / no-black / no-blue / gray / red / remain-gray / number-img  Context {contextWallet.ToString("N0", CultureInfo.InvariantCulture)}", new Vector2(Position.X + 22, leftY + 86), mutedColor);
+            sprite.DrawString(_font, $"{_localTraderName} remain: {GetLocalRemainingMoney().ToString("N0", CultureInfo.InvariantCulture)}", new Vector2(Position.X + 22, leftY + 32), mutedColor);
+            sprite.DrawString(_font, $"{_localTraderName} offer: {_localOffer.ToString("N0", CultureInfo.InvariantCulture)}", new Vector2(Position.X + 22, leftY + 48), textMoneyColor);
+            sprite.DrawString(_font, $"{_remoteTraderName} wallet: {_remoteWallet.ToString("N0", CultureInfo.InvariantCulture)}", new Vector2(Position.X + 22, leftY + 64), moneyColor);
+            sprite.DrawString(_font, $"{_remoteTraderName} remain: {GetRemoteRemainingMoney().ToString("N0", CultureInfo.InvariantCulture)}  Offer: {_remoteOffer.ToString("N0", CultureInfo.InvariantCulture)}", new Vector2(Position.X + 22, leftY + 80), textMoneyColor);
+            sprite.DrawString(_font, $"Fonts: white / no-black / no-blue / gray / red / remain-gray / number-img  Context {contextWallet.ToString("N0", CultureInfo.InvariantCulture)}", new Vector2(Position.X + 22, leftY + 96), mutedColor);
 
             float stateY = Position.Y + 188;
             sprite.DrawString(_font, $"Stage: {_sessionStage}  Lock: {(_localLocked ? "Locked" : "Open")}  Accept: {(_localAccepted ? "Accepted" : "Pending")}", new Vector2(Position.X + 22, stateY), labelColor);
@@ -639,6 +646,16 @@ namespace HaCreator.MapSimulator.UI
         private void ScrollChat(int delta)
         {
             _chatScrollOffset = Math.Clamp(_chatScrollOffset + delta, 0, GetMaxChatScrollOffset());
+        }
+
+        private int GetLocalRemainingMoney()
+        {
+            return Math.Max(0, _localWalletSnapshot - _localOffer);
+        }
+
+        private int GetRemoteRemainingMoney()
+        {
+            return Math.Max(0, _remoteWallet - _remoteOffer);
         }
 
         private int GetMaxChatScrollOffset()

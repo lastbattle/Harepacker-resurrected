@@ -117,36 +117,6 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        internal static bool TryRefreshCandidateWindowForm(
-            IntPtr windowHandle,
-            ImeCandidateListState state,
-            out ImeCandidateListState refreshedState)
-        {
-            refreshedState = state ?? ImeCandidateListState.Empty;
-            if (windowHandle == IntPtr.Zero
-                || state == null
-                || !state.HasCandidates
-                || state.ListIndex < 0)
-            {
-                return false;
-            }
-
-            IntPtr inputContext = ImmGetContext(windowHandle);
-            if (inputContext == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            try
-            {
-                return TryReadCandidateWindowForm(inputContext, state, out refreshedState);
-            }
-            finally
-            {
-                ImmReleaseContext(windowHandle, inputContext);
-            }
-        }
-
         private static bool TryReadCandidateWindowForm(
             IntPtr inputContext,
             ImeCandidateListState state,

@@ -43,6 +43,10 @@ namespace HaCreator.MapSimulator.UI
         private const int SLOT_ORIGIN_Y = 50;
         private const int MESO_TEXT_RIGHT_X = 152;
         private const int MESO_TEXT_Y = 266;
+        private const int MESO_TEXT_HIT_X = 28;
+        private const int MESO_TEXT_HIT_Y = 260;
+        private const int MESO_TEXT_HIT_WIDTH = 128;
+        private const int MESO_TEXT_HIT_HEIGHT = 18;
         private const float INVENTORY_TEXT_SCALE = 0.72f;
         private const int TOOLTIP_PADDING = 10;
         private const int TOOLTIP_ICON_SIZE = 32;
@@ -149,6 +153,9 @@ namespace HaCreator.MapSimulator.UI
         private InventorySlotData _pendingDropSlotData;
         private int _dropQuantityPromptValue = 1;
         private int _dropQuantityPromptMaximum = 1;
+        private bool _mesoDropPromptVisible;
+        private string _mesoDropPromptText = string.Empty;
+        private long _mesoDropPromptMaximum = 1L;
 
         protected Texture2D ActiveIconTexture;
         protected Texture2D DisabledSlotTexture;
@@ -164,6 +171,7 @@ namespace HaCreator.MapSimulator.UI
         public Func<int, InventoryType, bool> ItemUseRequested { get; set; }
         public Func<int, InventoryType, int, bool> ItemUseRequestedAtSlot { get; set; }
         public Func<InventoryType, int, InventorySlotData, int, bool> InventoryDropRequested { get; set; }
+        public Func<long, bool> MesoDropRequested { get; set; }
         public Func<bool> EquipmentDragStartBlocked { get; set; }
 
         public int CurrentTab
@@ -191,7 +199,7 @@ namespace HaCreator.MapSimulator.UI
         public InventoryType DraggedInventoryType => _draggedInventoryType;
         public int DraggedSlotIndex => _draggedSlotIndex;
         public InventorySlotData DraggedSlotData => _draggedSlotData?.Clone();
-        public bool HasPendingDropQuantityPrompt => _dropQuantityPromptVisible;
+        public bool HasPendingDropQuantityPrompt => _dropQuantityPromptVisible || _mesoDropPromptVisible;
         #endregion
 
         #region Constructor
@@ -1794,7 +1802,10 @@ namespace HaCreator.MapSimulator.UI
             string title = ResolveDisplayText(slot.ItemName, metadata.ItemName);
             string typeLine = ResolveDisplayText(slot.ItemTypeName, ResolveDisplayText(metadata.TypeName, _hoveredInventoryType.ToString()));
             string quantityLine = slot.Quantity > 1 ? $"Quantity: {slot.Quantity}" : string.Empty;
-            string stackLine = slot.MaxStackSize.GetValueOrDefault(1) > 1 ? $"Stack Max: {slot.MaxStackSize.Value}" : string.Empty;
+            string stackLine = !InventoryItemMetadataResolver.HasStackLimitMetadataLine(metadata.MetadataLines)
+                               && slot.MaxStackSize.GetValueOrDefault(1) > 1
+                ? InventoryItemMetadataResolver.FormatStackLimitMetadataLine(slot.MaxStackSize.Value)
+                : string.Empty;
             string description = ResolveDisplayText(slot.Description, metadata.Description);
             Texture2D cashLabelTexture = metadata.IsCashItem ? _equipTooltipAssets?.CashLabel : null;
 

@@ -47,8 +47,18 @@ namespace HaCreator.MapSimulator.UI
             public long SerialNumber { get; set; }
             public int ListingId { get; set; }
             public int ItemId { get; set; }
+            public int CommodityId { get; set; }
             public int Quantity { get; set; } = 1;
             public int Price { get; set; }
+            public int AccountId { get; set; }
+            public int CharacterId { get; set; }
+            public string BuyerCharacterId { get; set; } = string.Empty;
+            public long RawExpireFileTime { get; set; }
+            public int PaybackRate { get; set; }
+            public int DiscountRate { get; set; }
+            public int PacketRowIndex { get; set; }
+            public string PacketMessage { get; set; } = string.Empty;
+            public int RequestOpcode { get; set; }
         }
 
         private sealed class CashItemInfoPacketSnapshot
@@ -2173,6 +2183,7 @@ namespace HaCreator.MapSimulator.UI
                 ? "without a reply message"
                 : $"with reply \"{SanitizePacketString(replyText, "gift reply")}\"";
             _cashGiftPacketEntries.RemoveAt(selectedGiftIndex);
+            RemoveCashGiftPacketCatalogEntry(selectedEntry);
             _cashGiftLastSummary =
                 $"CUIReceiveGift accepted {selectedEntry.Title} from {sender} {reply}; {Math.Max(0, _cashGiftPacketEntries.Count).ToString(CultureInfo.InvariantCulture)} gift row(s) remain staged.";
             _noticeState = _cashGiftLastSummary;
@@ -3227,7 +3238,14 @@ namespace HaCreator.MapSimulator.UI
                 SerialNumber = snapshot?.SerialNumber ?? 0,
                 ListingId = commodityId,
                 ItemId = itemId,
-                Quantity = quantity
+                CommodityId = commodityId,
+                Quantity = quantity,
+                AccountId = snapshot?.AccountId ?? 0,
+                CharacterId = snapshot?.CharacterId ?? 0,
+                BuyerCharacterId = snapshot?.BuyerCharacterId ?? string.Empty,
+                RawExpireFileTime = snapshot?.RawExpireFileTime ?? 0,
+                PaybackRate = snapshot?.PaybackRate ?? 0,
+                DiscountRate = snapshot?.DiscountRate ?? 0
             };
         }
 
@@ -3253,7 +3271,10 @@ namespace HaCreator.MapSimulator.UI
                 SerialNumber = snapshot?.SerialNumber ?? 0,
                 ListingId = rowNumber,
                 ItemId = itemId,
-                Quantity = 1
+                Quantity = 1,
+                PacketRowIndex = rowNumber,
+                PacketMessage = message,
+                RequestOpcode = snapshot?.AcceptRequestOpcode ?? 154
             };
         }
 
@@ -3559,6 +3580,27 @@ namespace HaCreator.MapSimulator.UI
             _cashPacketCatalogEntries.RemoveAll(entry => entry.SerialNumber == serialNumber);
         }
 
+        private void RemoveCashGiftPacketCatalogEntry(PacketCatalogEntry giftEntry)
+        {
+            if (giftEntry == null)
+            {
+                return;
+            }
+
+            int existingIndex = _cashPacketCatalogEntries.FindIndex(entry =>
+                entry != null
+                && ((giftEntry.SerialNumber > 0 && entry.SerialNumber == giftEntry.SerialNumber)
+                    || (giftEntry.SerialNumber <= 0
+                        && entry.PacketRowIndex > 0
+                        && entry.PacketRowIndex == giftEntry.PacketRowIndex
+                        && entry.ItemId == giftEntry.ItemId
+                        && string.Equals(entry.StateLabel, giftEntry.StateLabel, StringComparison.Ordinal))));
+            if (existingIndex >= 0)
+            {
+                _cashPacketCatalogEntries.RemoveAt(existingIndex);
+            }
+        }
+
         private void ApplyCashPurchaseRecordStateToCatalogEntries(int commoditySerialNumber, bool purchased)
         {
             foreach (PacketCatalogEntry entry in _cashPacketCatalogEntries)
@@ -3626,10 +3668,21 @@ namespace HaCreator.MapSimulator.UI
                 Seller = source.Seller,
                 PriceLabel = source.PriceLabel,
                 StateLabel = stateLabel,
+                SerialNumber = source.SerialNumber,
                 ListingId = source.ListingId,
                 ItemId = source.ItemId,
+                CommodityId = source.CommodityId,
                 Quantity = source.Quantity,
-                Price = source.Price
+                Price = source.Price,
+                AccountId = source.AccountId,
+                CharacterId = source.CharacterId,
+                BuyerCharacterId = source.BuyerCharacterId,
+                RawExpireFileTime = source.RawExpireFileTime,
+                PaybackRate = source.PaybackRate,
+                DiscountRate = source.DiscountRate,
+                PacketRowIndex = source.PacketRowIndex,
+                PacketMessage = source.PacketMessage,
+                RequestOpcode = source.RequestOpcode
             };
         }
 

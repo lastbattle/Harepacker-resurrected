@@ -586,11 +586,6 @@ namespace HaCreator.MapSimulator.Fields
             int right = left + width;
             int bottom = top + height;
 
-            if (drawClientOwnedDarkLayer)
-            {
-                DrawClientOwnedDarkLayerAroundCurrentViewrange(spriteBatch, left, top, right, bottom, fogColor);
-            }
-
             if (restorePreviousClientOwnedViewranges)
             {
                 RestorePreviousClientOwnedViewrangePatches(spriteBatch, fogColor);
@@ -605,6 +600,11 @@ namespace HaCreator.MapSimulator.Fields
             // with the small-dark canvas, clears m_lpPrev, then copies
             // Viewrange/0 over the current user positions while appending each
             // current top-left back into m_lpPrev.
+            if (drawClientOwnedDarkLayer)
+            {
+                DrawClientOwnedDarkLayerAroundCurrentViewrange(spriteBatch, left, top, right, bottom, fogColor);
+            }
+
             spriteBatch.Draw(_clientOwnedViewrangeTexture, new Vector2(left, top), new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, fogColor.A));
         }
 

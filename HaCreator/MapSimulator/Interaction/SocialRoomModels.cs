@@ -1261,15 +1261,15 @@ namespace HaCreator.MapSimulator.Interaction
             if (Kind == SocialRoomKind.PersonalShop)
             {
                 int templateId = hasPooledEmployee ? pooledEmployee.TemplateId : _employeeTemplateId;
-                bool usesCashEmployee = templateId > 0;
+                SocialRoomFieldActorTemplate template = ResolvePersonalShopFieldActorTemplate(templateId);
                 string headline = ResolveEmployeeDisplayHeadline(ResolveEmployeeFuncHeadline(SocialRoomFieldActorTemplate.Merchant, "Merchant"));
                 string detail = $"{ResolveEmployeeDisplayOwnerName(pooledEmployee)} | {RoomState}";
                 return new SocialRoomFieldActorSnapshot(
                     Kind,
-                    usesCashEmployee ? SocialRoomFieldActorTemplate.CashEmployee : SocialRoomFieldActorTemplate.Merchant,
+                    template,
                     headline,
                     detail,
-                    $"{(usesCashEmployee ? "cash" : "merchant")}|{templateId}|{ModeName}|{RoomState}{BuildEmployeePacketStateKeySuffix()}",
+                    $"{ResolveEmployeeStateKeyTemplate(template)}|{templateId}|{ModeName}|{RoomState}{BuildEmployeePacketStateKeySuffix()}",
                     templateId: templateId,
                     useOwnerAnchor: hasPooledEmployee ? false : _employeeUseOwnerAnchor,
                     anchorOffsetX: _employeeAnchorOffsetX,
@@ -1324,7 +1324,7 @@ namespace HaCreator.MapSimulator.Interaction
                 entrustedTemplate,
                 entrustedHeadline,
                 entrustedDetail,
-                $"{ResolveEntrustedStateKeyTemplate(entrustedTemplate)}|{entrustedTemplateId}|{ModeName}|{RoomState}|{permitStatus}{BuildEmployeePacketStateKeySuffix()}",
+                $"{ResolveEmployeeStateKeyTemplate(entrustedTemplate)}|{entrustedTemplateId}|{ModeName}|{RoomState}|{permitStatus}{BuildEmployeePacketStateKeySuffix()}",
                 templateId: entrustedTemplateId,
                 useOwnerAnchor: hasPooledEmployee ? false : _employeeUseOwnerAnchor,
                 anchorOffsetX: _employeeAnchorOffsetX,
@@ -1341,9 +1341,16 @@ namespace HaCreator.MapSimulator.Interaction
                 miniRoomBalloonByte2: hasPooledEmployee ? pooledEmployee.BalloonByte2 : (byte)0);
         }
 
+        private static SocialRoomFieldActorTemplate ResolvePersonalShopFieldActorTemplate(int templateId)
+        {
+            return HasEmployeeTemplate(templateId)
+                ? SocialRoomFieldActorTemplate.CashEmployee
+                : SocialRoomFieldActorTemplate.Merchant;
+        }
+
         private static SocialRoomFieldActorTemplate ResolveEntrustedFieldActorTemplate(int templateId, byte miniRoomType)
         {
-            if (templateId > 0)
+            if (HasEmployeeTemplate(templateId))
             {
                 return SocialRoomFieldActorTemplate.CashEmployee;
             }
@@ -1353,7 +1360,7 @@ namespace HaCreator.MapSimulator.Interaction
                 : SocialRoomFieldActorTemplate.Merchant;
         }
 
-        private static string ResolveEntrustedStateKeyTemplate(SocialRoomFieldActorTemplate template)
+        private static string ResolveEmployeeStateKeyTemplate(SocialRoomFieldActorTemplate template)
         {
             return template switch
             {
@@ -1581,6 +1588,33 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return TryDispatchSyntheticDialogPacket(TradingRoomPutMoneyPacketType, stream.ToArray(), tickCount, out message);
+        }
+
+        public bool TryDispatchTradingRoomPacketOwnedItem(int traderIndex, int slotIndex, int itemId, int quantity, int tickCount, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Trading-room item packets only apply to the trading-room shell.";
+                return false;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            if (inventoryType == InventoryType.NONE || quantity <= 0)
+            {
+                message = "Trading-room item packets require a valid item id and quantity.";
+                return false;
+            }
+
+            using MemoryStream stream = new MemoryStream();
+            using (BinaryWriter writer = new BinaryWriter(stream, Encoding.ASCII, leaveOpen: true))
+            {
+                writer.Write((byte)Math.Clamp(traderIndex, 0, 1));
+                writer.Write((byte)Math.Clamp(slotIndex, 1, TradingRoomClientItemSlotCount));
+                WriteSyntheticTradingRoomItemSlot(writer, inventoryType, itemId, quantity);
+            }
+
+            return TryDispatchSyntheticDialogPacket(TradingRoomPutItemPacketType, stream.ToArray(), tickCount, out message);
         }
 
         public bool TryDispatchTradingRoomPacketOwnedTrade(int tickCount, out string message)
@@ -1875,6 +1909,82 @@ namespace HaCreator.MapSimulator.Interaction
             ApplyTradingRoomItemPacket(traderIndex, slotIndex, item);
             message = StatusMessage;
             return true;
+        }
+
+        private static void WriteSyntheticTradingRoomItemSlot(BinaryWriter writer, InventoryType inventoryType, int itemId, int quantity)
+        {
+            byte slotType = inventoryType switch
+            {
+                InventoryType.EQUIP => 1,
+                InventoryType.CASH when itemId / 10000 == 500 => 3,
+                _ => 2
+            };
+
+            writer.Write(slotType);
+            writer.Write(itemId);
+            writer.Write((byte)0);
+            writer.Write((long)0);
+
+            switch (slotType)
+            {
+                case 1:
+                    WriteSyntheticTradingRoomEquipBody(writer);
+                    break;
+                case 3:
+                    WriteSyntheticTradingRoomPetBody(writer);
+                    break;
+                default:
+                    WriteSyntheticTradingRoomBundleBody(writer, quantity);
+                    break;
+            }
+        }
+
+        private static void WriteSyntheticTradingRoomEquipBody(BinaryWriter writer)
+        {
+            writer.Write((byte)0);
+            writer.Write((byte)0);
+            for (int i = 0; i < 15; i++)
+            {
+                writer.Write((short)0);
+            }
+
+            writer.Write((ushort)0);
+            writer.Write((short)0);
+            writer.Write((byte)0);
+            writer.Write((byte)0);
+            writer.Write(0);
+            writer.Write(0);
+            writer.Write(0);
+            writer.Write((byte)0);
+            writer.Write((byte)0);
+            for (int i = 0; i < 5; i++)
+            {
+                writer.Write((short)0);
+            }
+
+            writer.Write((long)0);
+            writer.Write((long)0);
+            writer.Write(0);
+        }
+
+        private static void WriteSyntheticTradingRoomBundleBody(BinaryWriter writer, int quantity)
+        {
+            writer.Write((ushort)Math.Clamp(quantity, 1, ushort.MaxValue));
+            writer.Write((ushort)0);
+            writer.Write((short)0);
+        }
+
+        private static void WriteSyntheticTradingRoomPetBody(BinaryWriter writer)
+        {
+            writer.Write(new byte[13]);
+            writer.Write((byte)1);
+            writer.Write((short)0);
+            writer.Write((byte)100);
+            writer.Write((long)0);
+            writer.Write((short)0);
+            writer.Write((ushort)0);
+            writer.Write(0);
+            writer.Write((short)0);
         }
 
         private void ApplyTradingRoomTradePacket()

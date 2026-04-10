@@ -5,7 +5,7 @@ namespace HaCreator.MapSimulator.Character.Skills;
 internal static class ClientShootAttackFamilyResolver
 {
     public const int QueuedFinalAttackShootRange0 = 65;
-    private const int DefaultShootAttackPointYOffset = -28;
+    internal const int DefaultShootAttackPointYOffset = -28;
     private const int MechanicTamingMobItemId = 1932016;
     private static readonly HashSet<int> MountedBodyRelMoveVehicleIds = new()
     {

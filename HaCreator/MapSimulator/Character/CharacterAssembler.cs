@@ -279,6 +279,14 @@ namespace HaCreator.MapSimulator.Character
             return frames;
         }
 
+        internal int ResolveClientActionLayerDuration(string actionName)
+        {
+            int assembledDuration = ResolveAssembledAnimationDuration(GetAnimation(actionName));
+            return TryResolveMountedOneTimeActionDuration(actionName, out int tamingMobDuration)
+                ? Math.Max(assembledDuration, tamingMobDuration)
+                : assembledDuration;
+        }
+
         /// <summary>
         /// Get a single frame at a specific time using ping-pong animation.
         /// Animation plays forward (0,1,2,3) then backward (2,1) and repeats.
@@ -383,6 +391,26 @@ namespace HaCreator.MapSimulator.Character
                 }
                 return frames[1]; // Fallback to frame 1
             }
+        }
+
+        private static int ResolveAssembledAnimationDuration(AssembledFrame[] frames)
+        {
+            if (frames == null || frames.Length == 0)
+            {
+                return 0;
+            }
+
+            long duration = 0;
+            for (int i = 0; i < frames.Length; i++)
+            {
+                duration += Math.Max(0, frames[i]?.Duration ?? 0);
+                if (duration >= int.MaxValue)
+                {
+                    return int.MaxValue;
+                }
+            }
+
+            return (int)duration;
         }
 
         private static int GetFrameIndexAtTime(AssembledFrame[] frames, int timeMs)
@@ -634,6 +662,34 @@ namespace HaCreator.MapSimulator.Character
                 tamingMobFrame);
         }
 
+        private bool TryResolveMountedOneTimeActionDuration(string actionName, out int durationMs)
+        {
+            durationMs = 0;
+            if (_overrideAvatarPart != null)
+            {
+                return false;
+            }
+
+            string preparedActionName = AvatarActionLayerCoordinator.ResolvePreparedActionName(actionName, isMorphAvatar: false);
+            CharacterLoader.CharacterActionMergeInput mergeInput =
+                CharacterLoader.PrepareActionMergeInput(_build, preparedActionName, GetActiveTamingMobPart());
+            string resolvedActionName = mergeInput?.ActionName ?? preparedActionName;
+            CharacterPart activeTamingMob = mergeInput?.ActiveTamingMobPart;
+            if (!IsTamingMobRenderOwnershipAction(activeTamingMob, resolvedActionName))
+            {
+                return false;
+            }
+
+            CharacterAnimation tamingMobAnimation = GetPartAnimation(activeTamingMob, resolvedActionName);
+            durationMs = AvatarActionLayerCoordinator.ResolvePreparedAnimationDuration(
+                tamingMobAnimation,
+                resolvedActionName,
+                PreparedActionSpeedDegree,
+                PreparedWalkSpeed,
+                HeldActionFrameDelay);
+            return durationMs > 0;
+        }
+
         #region Assembly
 
         private AssembledFrame[] AssembleAnimation(string actionName)
@@ -660,8 +716,10 @@ namespace HaCreator.MapSimulator.Character
                 : _build.Body?.GetAnimation(CharacterPart.ParseActionString(resolvedActionName));
             if (bodyAnim == null || bodyAnim.Frames.Count == 0)
             {
-                // Try stand1 as fallback
-                bodyAnim = suppressBaseAvatar
+                // Strict vehicle-owned requests should fail closed instead of inheriting locomotion frames.
+                bodyAnim = suppressBaseAvatar && IsExactMechanicVehicleActionRequired(activeTamingMob, resolvedActionName)
+                    ? null
+                    : suppressBaseAvatar
                     ? GetPartAnimation(activeTamingMob, CharacterPart.GetActionString(CharacterAction.Stand1))
                     : _build.Body?.GetAnimation(CharacterAction.Stand1);
             }
@@ -686,9 +744,13 @@ namespace HaCreator.MapSimulator.Character
 
         private AssembledFrame[] AssembleStandaloneAnimation(CharacterPart part, string actionName)
         {
-            CharacterAnimation animation = GetPartAnimation(part, actionName)
-                ?? GetPartAnimation(part, CharacterPart.GetActionString(CharacterAction.Stand1))
-                ?? part?.Animations?.Values.FirstOrDefault(candidate => candidate?.Frames?.Count > 0);
+            bool requireExactMechanicVehicleAction = IsExactMechanicVehicleActionRequired(part, actionName);
+            CharacterAnimation animation = GetPartAnimation(part, actionName);
+            if (!requireExactMechanicVehicleAction)
+            {
+                animation ??= GetPartAnimation(part, CharacterPart.GetActionString(CharacterAction.Stand1))
+                    ?? part?.Animations?.Values.FirstOrDefault(candidate => candidate?.Frames?.Count > 0);
+            }
 
             if (animation == null || animation.Frames.Count == 0)
             {
@@ -1135,6 +1197,14 @@ namespace HaCreator.MapSimulator.Character
                    && tamingMobPart.ItemId == MechanicTamingMobItemId
                    && (IsMechanicVehicleAction(tamingMobPart, actionName)
                        || IsMechanicMountedSitFallbackAction(tamingMobPart, actionName));
+        }
+
+        private static bool IsExactMechanicVehicleActionRequired(CharacterPart tamingMobPart, string actionName)
+        {
+            return tamingMobPart?.Type == CharacterPartType.TamingMob
+                   && tamingMobPart.ItemId == MechanicTamingMobItemId
+                   && (ClientOwnedVehicleSkillClassifier.IsMechanicVehicleActionName(actionName, includeTransformStates: true)
+                       || ClientOwnedVehicleSkillClassifier.IsExplicitMechanicVehiclePresentationActionName(actionName));
         }
 
         private static bool IsMechanicVehicleAction(CharacterPart tamingMobPart, string actionName)

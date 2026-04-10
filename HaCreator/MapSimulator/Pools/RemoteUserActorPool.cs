@@ -64,6 +64,12 @@ namespace HaCreator.MapSimulator.Pools
             int Delta,
             int CurrentTime,
             byte GuardType = 0);
+        public readonly record struct RemoteStringEffectPresentation(
+            int CharacterId,
+            byte EffectType,
+            string EffectPath,
+            int CurrentTime,
+            bool UseOwnerFacing);
 
         private readonly record struct RemoteMechanicModePresentation(
             string StandActionName,
@@ -187,6 +193,7 @@ namespace HaCreator.MapSimulator.Pools
             PortableChairPairParticipant Left,
             PortableChairPairParticipant Right,
             int Priority,
+            int Order,
             float Score);
 
         private const float FollowDriverGroundHorizontalOffset = 50f;
@@ -337,6 +344,7 @@ namespace HaCreator.MapSimulator.Pools
         public event Action<RemoteGenericUserStatePresentation> GenericUserStateRegistered;
         public event Action<RemoteItemMakePresentation> ItemMakeRegistered;
         public event Action<RemoteHitFeedbackPresentation> HitFeedbackRegistered;
+        public event Action<RemoteStringEffectPresentation> StringEffectRegistered;
         public int PreparedSkillWorldOverlayCount => _preparedSkillWorldOverlayCount;
         public int HelperMarkerCount => _helperMarkerCount;
         public Action<int, string> ActorRemovedCallback { get; set; }
@@ -1988,6 +1996,11 @@ namespace HaCreator.MapSimulator.Pools
                 PacketTime = currentTime
             };
 
+            if (TryResolveRemoteHitStanceSpecialEffectSkillId(actor?.Build?.Job ?? 0, packet.HitFlags, out int stanceSkillId))
+            {
+                RegisterRemoteHitSpecialSkillUseEffect(actor, stanceSkillId, currentTime);
+            }
+
             if (packet.HpDelta > 0)
             {
                 if (actor.PacketOwnedEmotion?.ByItemOption != true
@@ -2025,18 +2038,62 @@ namespace HaCreator.MapSimulator.Pools
 
             if (packet.SkillId is > 0)
             {
-                SkillUseRegistered?.Invoke(new RemoteSkillUsePresentation(
-                    packet.CharacterId,
-                    packet.SkillId.Value,
-                    null,
-                    actor.FacingRight,
-                    currentTime));
+                RegisterRemoteHitSpecialSkillUseEffect(actor, packet.SkillId.Value, currentTime);
             }
 
             message = packet.SkillId is > 0
-                ? $"Remote user {packet.CharacterId} hit packet stored and registered skill effect {packet.SkillId.Value}."
+                ? $"Remote user {packet.CharacterId} hit packet stored and registered special skill effect {packet.SkillId.Value}."
                 : $"Remote user {packet.CharacterId} hit packet stored.";
             return true;
+        }
+
+        internal static bool TryResolveRemoteHitStanceSpecialEffectSkillId(int jobId, byte hitFlags, out int skillId)
+        {
+            skillId = 0;
+            if ((hitFlags & 1) == 0)
+            {
+                return false;
+            }
+
+            skillId = (hitFlags & 2) != 0
+                ? 33110000
+                : ResolveRemoteHitStanceSkillId(jobId);
+            return skillId > 0;
+        }
+
+        internal static int ResolveRemoteHitStanceSkillId(int jobId)
+        {
+            // Client `get_stance_skill_id` is used by `CUserRemote::OnHit` before `ShowSkillSpecialEffect`.
+            return jobId switch
+            {
+                112 => 1121002,
+                122 => 1221002,
+                132 => 1321002,
+                2112 => 21121003,
+                3212 => 32121005,
+                > 3309 and <= 3312 => 33101006,
+                _ => 0
+            };
+        }
+
+        private void RegisterRemoteHitSpecialSkillUseEffect(RemoteUserActor actor, int skillId, int currentTime)
+        {
+            if (actor == null || skillId <= 0)
+            {
+                return;
+            }
+
+            SkillUseRegistered?.Invoke(new RemoteSkillUsePresentation(
+                actor.CharacterId,
+                skillId,
+                null,
+                actor.FacingRight,
+                currentTime,
+                new[] { "special" },
+                WorldOrigin: null,
+                FollowOwnerPosition: true,
+                FollowOwnerFacing: false,
+                DelayRateOverride: 1000));
         }
 
         public bool TryApplyEffect(RemoteUserEffectPacket packet, int currentTime, out string message)
@@ -2094,6 +2151,25 @@ namespace HaCreator.MapSimulator.Pools
                     }
 
                     return TryApplyTransientItemEffect(actor, itemEffectItemId, currentTime, out message);
+
+                case RemoteUserEffectSubtype.ReservedEffect:
+                case RemoteUserEffectSubtype.CarnivalReservedEffect:
+                case RemoteUserEffectSubtype.StringEffect:
+                case RemoteUserEffectSubtype.ItemSoundStringEffect:
+                    if (string.IsNullOrWhiteSpace(packet.StringValue))
+                    {
+                        message = $"Remote user {packet.CharacterId} string-effect packet path is empty.";
+                        return false;
+                    }
+
+                    StringEffectRegistered?.Invoke(new RemoteStringEffectPresentation(
+                        packet.CharacterId,
+                        packet.EffectType,
+                        packet.StringValue,
+                        currentTime,
+                        packet.KnownSubtype == RemoteUserEffectSubtype.CarnivalReservedEffect));
+                    message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered packet-owned string effect {packet.StringValue}.";
+                    return true;
 
                 case RemoteUserEffectSubtype.IncDecHp:
                     int delta = packet.Int32Value.GetValueOrDefault();
@@ -3136,13 +3212,13 @@ namespace HaCreator.MapSimulator.Pools
                 return explicitHelperMarkerType.Value;
             }
 
-            if (hasFriendshipOverlay || hasCoupleOverlay || hasMarriageOverlay)
+            if (battlefieldTeamId.HasValue)
             {
-                return MinimapUI.HelperMarkerType.Friend;
+                return MinimapUI.HelperMarkerType.Match;
             }
 
-            return battlefieldTeamId.HasValue
-                ? MinimapUI.HelperMarkerType.Match
+            return hasFriendshipOverlay || hasCoupleOverlay || hasMarriageOverlay
+                ? MinimapUI.HelperMarkerType.Friend
                 : MinimapUI.HelperMarkerType.Another;
         }
 
@@ -4634,6 +4710,42 @@ namespace HaCreator.MapSimulator.Pools
             return explicitPairCharacterId;
         }
 
+        internal bool TryResolveRelationshipWhisperTarget(
+            int ownerCharacterId,
+            RemoteRelationshipOverlayType relationshipType,
+            out string whisperTarget)
+        {
+            whisperTarget = null;
+            if (ownerCharacterId <= 0)
+            {
+                return false;
+            }
+
+            Dictionary<int, RemoteUserRelationshipRecord> recordTable = GetRelationshipRecordTable(relationshipType);
+            if (recordTable.Count == 0
+                || !recordTable.TryGetValue(ownerCharacterId, out RemoteUserRelationshipRecord relationshipRecord))
+            {
+                return false;
+            }
+
+            int? pairCharacterId = ResolveRelationshipOverlayPairCharacterIdFromRecord(ownerCharacterId, relationshipType, relationshipRecord);
+            if (!pairCharacterId.HasValue
+                || pairCharacterId.Value <= 0
+                || !_actorsById.TryGetValue(pairCharacterId.Value, out RemoteUserActor targetActor))
+            {
+                return false;
+            }
+
+            string resolvedName = targetActor.Name?.Trim();
+            if (string.IsNullOrWhiteSpace(resolvedName))
+            {
+                return false;
+            }
+
+            whisperTarget = resolvedName;
+            return true;
+        }
+
         private bool TryFindMatchedRemoteRelationshipRecordOwner(
             int ownerCharacterId,
             RemoteRelationshipOverlayType relationshipType,
@@ -5054,35 +5166,41 @@ namespace HaCreator.MapSimulator.Pools
             IEnumerable<PortableChairPairRecord> pairRecords,
             bool preferVisibleOnly)
         {
-            IReadOnlyDictionary<int, PortableChairPairRecord> sourceRecordMap = pairRecords?
+            List<PortableChairPairRecord> orderedSourceRecords = pairRecords?
                 .Where(static record => record.CharacterId > 0 && record.ItemId > 0)
                 .GroupBy(static record => record.CharacterId)
-                .ToDictionary(static group => group.Key, static group => group.Last())
-                ?? new Dictionary<int, PortableChairPairRecord>();
-            List<PortableChairPairParticipant> resolvedParticipants = participants?
+                .Select(static group => group.Last())
+                .ToList()
+                ?? new List<PortableChairPairRecord>();
+            IReadOnlyDictionary<int, PortableChairPairRecord> sourceRecordMap = orderedSourceRecords
+                .ToDictionary(static record => record.CharacterId);
+            IReadOnlyDictionary<int, PortableChairPairParticipant> participantMap = participants?
                 .Where(participant =>
                     participant.CharacterId > 0
                     && participant.Chair?.IsCoupleChair == true
                     && participant.IsChairSessionActive
                     && sourceRecordMap.TryGetValue(participant.CharacterId, out PortableChairPairRecord record)
                     && participant.Chair.ItemId == record.ItemId)
-                .Select(participant =>
+                .GroupBy(static participant => participant.CharacterId)
+                .ToDictionary(static group => group.Key, static group => group.Last())
+                ?? new Dictionary<int, PortableChairPairParticipant>();
+            List<PortableChairPairParticipant> resolvedParticipants = orderedSourceRecords
+                .Where(record => participantMap.ContainsKey(record.CharacterId))
+                .Select(sourceRecord =>
                 {
-                    PortableChairPairRecord record = sourceRecordMap[participant.CharacterId];
+                    PortableChairPairParticipant participant = participantMap[sourceRecord.CharacterId];
                     return new PortableChairPairParticipant(
                         participant.CharacterId,
                         participant.Chair,
                         participant.Position,
                         participant.FacingRight,
-                        record.PreferredPairCharacterId,
-                        record.PairCharacterId,
+                        sourceRecord.PreferredPairCharacterId,
+                        sourceRecord.PairCharacterId,
                         participant.IsChairSessionActive,
                         participant.IsVisibleInWorld,
                         participant.IsRelationshipOverlaySuppressed);
                 })
-                .OrderBy(static participant => participant.CharacterId)
-                .ToList()
-                ?? new List<PortableChairPairParticipant>();
+                .ToList();
             if (resolvedParticipants.Count < 2)
             {
                 return sourceRecordMap.ToDictionary(
@@ -5095,18 +5213,21 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             List<PortableChairPairCandidate> candidates = new();
+            int candidateOrder = 0;
             for (int i = 0; i < resolvedParticipants.Count - 1; i++)
             {
                 PortableChairPairParticipant left = resolvedParticipants[i];
                 for (int j = i + 1; j < resolvedParticipants.Count; j++)
                 {
                     PortableChairPairParticipant right = resolvedParticipants[j];
-                    if (!TryBuildPortableChairPairCandidate(left, right, preferVisibleOnly, out PortableChairPairCandidate candidate))
+                    if (!TryBuildPortableChairPairCandidate(left, right, preferVisibleOnly, candidateOrder, out PortableChairPairCandidate candidate))
                     {
+                        candidateOrder++;
                         continue;
                     }
 
                     candidates.Add(candidate);
+                    candidateOrder++;
                 }
             }
 
@@ -5119,6 +5240,7 @@ namespace HaCreator.MapSimulator.Pools
                 });
             foreach (PortableChairPairCandidate candidate in candidates
                 .OrderBy(static candidate => candidate.Priority)
+                .ThenBy(static candidate => candidate.Order)
                 .ThenBy(static candidate => candidate.Score)
                 .ThenBy(static candidate => candidate.Left.CharacterId)
                 .ThenBy(static candidate => candidate.Right.CharacterId))
@@ -5329,6 +5451,7 @@ namespace HaCreator.MapSimulator.Pools
             PortableChairPairParticipant left,
             PortableChairPairParticipant right,
             bool preferVisibleOnly,
+            int order,
             out PortableChairPairCandidate candidate)
         {
             candidate = default;
@@ -5356,7 +5479,7 @@ namespace HaCreator.MapSimulator.Pools
 
             int priority = ResolvePortableChairPairPriority(left, right);
             float score = ComputePortableChairPairScore(left, right);
-            candidate = new PortableChairPairCandidate(left, right, priority, score);
+            candidate = new PortableChairPairCandidate(left, right, priority, order, score);
             return true;
         }
 

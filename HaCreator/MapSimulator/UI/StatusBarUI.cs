@@ -51,6 +51,8 @@ namespace HaCreator.MapSimulator.UI {
         public string IconKey { get; set; } = "united/buff";
         public Texture2D IconTexture { get; set; }
         public int RemainingMs { get; set; }
+        public string CounterText { get; set; }
+        public string TooltipStateText { get; set; }
         public int DurationMs { get; set; }
         public int SortOrder { get; set; }
         public string FamilyDisplayName { get; set; }
@@ -86,10 +88,10 @@ namespace HaCreator.MapSimulator.UI {
         public string Description { get; set; }
         public Texture2D IconTexture { get; set; }
         public int RemainingMs { get; set; }
-        public int DurationMs { get; set; }
-        public int MaskFrameIndex { get; set; } = 15;
         public string CounterText { get; set; }
         public string TooltipStateText { get; set; }
+        public int DurationMs { get; set; }
+        public int MaskFrameIndex { get; set; } = 15;
         public string TooltipCostLineMarkup { get; set; }
         public bool SuppressProgressOverlay { get; set; }
         public bool SuppressCounterText { get; set; }
@@ -981,12 +983,15 @@ namespace HaCreator.MapSimulator.UI {
                     sprite.Draw(iconTexture, iconRect, Color.White);
                 }
 
-                if (!HasStatusBarTextRenderer() || buffEntry.RemainingMs <= 0)
+                bool hasCounterText = !string.IsNullOrWhiteSpace(buffEntry.CounterText);
+                if (!HasStatusBarTextRenderer() || (buffEntry.RemainingMs <= 0 && !hasCounterText))
                 {
                     continue;
                 }
 
-                string remainingText = Math.Max(1, (int)Math.Ceiling(buffEntry.RemainingMs / 1000f)).ToString();
+                string remainingText = hasCounterText
+                    ? buffEntry.CounterText
+                    : Math.Max(1, (int)Math.Ceiling(buffEntry.RemainingMs / 1000f)).ToString();
                 Vector2 textSize = MeasureStatusBarText(remainingText, 0.5f);
                 Vector2 textPosition = new Vector2(
                     iconRect.Right - textSize.X - 2,
@@ -1026,12 +1031,22 @@ namespace HaCreator.MapSimulator.UI {
                 renderWidth,
                 renderHeight,
                 SanitizeTooltipText(buffEntry.SkillName),
-                buffEntry.RemainingMs > 0
-                    ? $"Time Left: {Math.Max(1, (int)Math.Ceiling(buffEntry.RemainingMs / 1000f))} sec"
-                    : "Time Left: --",
+                ResolveBuffTooltipStateLine(buffEntry),
                 secondaryLine,
                 SanitizeTooltipText(buffEntry.Description),
                 iconTexture);
+        }
+
+        private static string ResolveBuffTooltipStateLine(StatusBarBuffRenderData buffEntry)
+        {
+            if (!string.IsNullOrWhiteSpace(buffEntry?.TooltipStateText))
+            {
+                return buffEntry.TooltipStateText;
+            }
+
+            return buffEntry?.RemainingMs > 0
+                ? $"Time Left: {Math.Max(1, (int)Math.Ceiling(buffEntry.RemainingMs / 1000f))} sec"
+                : "Time Left: --";
         }
 
         private bool TryGetHoveredBuffEntry(out StatusBarBuffRenderData buffEntry, out Rectangle iconRect)

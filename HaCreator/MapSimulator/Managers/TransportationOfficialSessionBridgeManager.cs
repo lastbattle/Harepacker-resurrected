@@ -253,11 +253,12 @@ namespace HaCreator.MapSimulator.Managers
         {
             lock (_sync)
             {
-                int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+                bool autoSelectListenPort = listenPort <= 0;
+                int resolvedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
                 string resolvedRemoteHost = NormalizeRemoteHost(remoteHost);
                 if (HasAttachedClient)
                 {
-                    if (MatchesTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, resolvedRemoteHost, remotePort))
+                    if (MatchesRequestedTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, resolvedRemoteHost, remotePort, autoSelectListenPort))
                     {
                         status = $"Transport official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
                         LastStatus = status;
@@ -270,7 +271,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 if (IsRunning
-                    && MatchesTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, resolvedRemoteHost, remotePort))
+                    && MatchesRequestedTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, resolvedRemoteHost, remotePort, autoSelectListenPort))
                 {
                     status = $"Transport official-session bridge already listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
                     LastStatus = status;
@@ -279,7 +280,7 @@ namespace HaCreator.MapSimulator.Managers
 
                 StopInternal(clearPending: true);
 
-                if (!TryStartProxyListener(resolvedListenPort, resolvedRemoteHost, remotePort, out string startStatus))
+                if (!TryStartProxyListener(autoSelectListenPort ? 0 : resolvedListenPort, resolvedRemoteHost, remotePort, out string startStatus))
                 {
                     status = startStatus;
                     return false;
@@ -317,7 +318,7 @@ namespace HaCreator.MapSimulator.Managers
             int resolvedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
             if (HasAttachedClient)
             {
-                if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, candidate.RemoteEndpoint))
+                if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, candidate.RemoteEndpoint, autoSelectListenPort))
                 {
                     status = $"Transport official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
                     LastStatus = status;
@@ -330,7 +331,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             if (IsRunning
-                && MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, candidate.RemoteEndpoint))
+                && MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, candidate.RemoteEndpoint, autoSelectListenPort))
             {
                 status = $"Transport official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}.";
                 LastStatus = status;
@@ -440,7 +441,8 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            int requestedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+            bool autoSelectListenPort = listenPort <= 0;
+            int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
             string resolvedRemoteHost = candidate.RemoteEndpoint.Address.ToString();
             int resolvedRemotePort = candidate.RemoteEndpoint.Port;
 
@@ -454,7 +456,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 if (IsRunning
-                    && MatchesTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, resolvedRemoteHost, resolvedRemotePort))
+                    && MatchesRequestedTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, resolvedRemoteHost, resolvedRemotePort, autoSelectListenPort))
                 {
                     _passiveEstablishedSession = candidate;
                     status = $"Observed already-established transport Maple socket pair {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}. Transport official-session bridge remains armed on 127.0.0.1:{ListenPort}; reconnect Maple through that localhost proxy to recover transport packet ownership.";
@@ -465,7 +467,7 @@ namespace HaCreator.MapSimulator.Managers
                 StopInternal(clearPending: true);
                 _passiveEstablishedSession = candidate;
 
-                if (!TryStartProxyListener(requestedListenPort, resolvedRemoteHost, resolvedRemotePort, out string startStatus))
+                if (!TryStartProxyListener(autoSelectListenPort ? 0 : requestedListenPort, resolvedRemoteHost, resolvedRemotePort, out string startStatus))
                 {
                     LastStatus = $"Observed already-established transport Maple socket pair {DescribeEstablishedSession(candidate)}, but reconnect proxy startup failed. {startStatus}";
                     status = LastStatus;
@@ -1353,16 +1355,18 @@ namespace HaCreator.MapSimulator.Managers
             string currentRemoteHost,
             int currentRemotePort,
             int expectedListenPort,
-            IPEndPoint discoveredRemoteEndpoint)
+            IPEndPoint discoveredRemoteEndpoint,
+            bool ignoreListenPort = false)
         {
             return discoveredRemoteEndpoint != null
-                && MatchesTargetConfiguration(
+                && MatchesRequestedTargetConfiguration(
                     currentListenPort,
                     currentRemoteHost,
                     currentRemotePort,
                     expectedListenPort,
                     discoveredRemoteEndpoint.Address.ToString(),
-                    discoveredRemoteEndpoint.Port);
+                    discoveredRemoteEndpoint.Port,
+                    ignoreListenPort);
         }
 
         internal static bool MatchesTargetConfiguration(
@@ -1374,6 +1378,23 @@ namespace HaCreator.MapSimulator.Managers
             int expectedRemotePort)
         {
             return currentListenPort == expectedListenPort
+                && currentRemotePort == expectedRemotePort
+                && string.Equals(
+                    NormalizeRemoteHost(currentRemoteHost),
+                    NormalizeRemoteHost(expectedRemoteHost),
+                    StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool MatchesRequestedTargetConfiguration(
+            int currentListenPort,
+            string currentRemoteHost,
+            int currentRemotePort,
+            int expectedListenPort,
+            string expectedRemoteHost,
+            int expectedRemotePort,
+            bool ignoreListenPort)
+        {
+            return (ignoreListenPort || currentListenPort == expectedListenPort)
                 && currentRemotePort == expectedRemotePort
                 && string.Equals(
                     NormalizeRemoteHost(currentRemoteHost),

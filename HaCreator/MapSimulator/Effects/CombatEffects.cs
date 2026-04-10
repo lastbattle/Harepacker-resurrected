@@ -155,6 +155,13 @@ namespace HaCreator.MapSimulator.Effects
 
         public bool IsExpired(int currentTime) => currentTime - SpawnTime > DISPLAY_DURATION;
 
+        internal string GetDamageString()
+        {
+            return IsMiss
+                ? DamageNumberRenderer.ResolveSpecialTextName(SpecialTextName)
+                : DamageNumberRenderer.FormatDamageValue(Damage);
+        }
+
         public void Update(int currentTime)
         {
             int elapsed = currentTime - SpawnTime;
@@ -682,7 +689,7 @@ namespace HaCreator.MapSimulator.Effects
                 SpawnTime = currentTime,
                 IsCritical = false,
                 IsMiss = true,
-                SpecialTextName = specialTextName,
+                SpecialTextName = DamageNumberRenderer.ResolveSpecialTextName(specialTextName),
                 Alpha = 1.0f,
                 Scale = 1.0f,
                 ComboIndex = 0,
@@ -1567,7 +1574,7 @@ namespace HaCreator.MapSimulator.Effects
                 int screenX = (int)dmg.X - mapShiftX + centerX;
                 int screenY = (int)dmg.Y - mapShiftY + centerY;
 
-                string text = dmg.IsMiss ? (dmg.SpecialTextName ?? "MISS").ToUpperInvariant() : dmg.Damage.ToString();
+                string text = dmg.GetDamageString();
 
                 // Color based on damage type
                 Color color;

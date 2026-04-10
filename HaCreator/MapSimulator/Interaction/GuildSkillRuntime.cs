@@ -969,12 +969,14 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 return new[]
                 {
-                    _isInGuild ? $"Guild: {_guildName}" : "Current: Join a guild to use guild skills.",
+                    _isInGuild
+                        ? $"Guild: {_guildName}"
+                        : $"{SkillTooltipClientText.FormatCurrentLevelHeader(0)} Join a guild to use guild skills.",
                     _isInGuild
                         ? string.IsNullOrWhiteSpace(pendingActionLabel)
                             ? $"Role: {_guildRoleLabel}  |  Guild Lv. {_guildLevel}"
                             : $"Pending: {pendingActionLabel} approval  |  Guild Lv. {_guildLevel}"
-                        : "Next: Guild skills unlock with real guild membership.",
+                        : $"{SkillTooltipClientText.FormatNextLevelHeader(1)} Guild skills unlock with real guild membership.",
                     _isInGuild
                         ? $"SP: {_availablePoints}  |  GP: {FormatCompactGuildPoints(_guildPoints)}  |  Fund: {FormatCompactMeso(_guildFundMeso)}"
                         : "State: No guild"

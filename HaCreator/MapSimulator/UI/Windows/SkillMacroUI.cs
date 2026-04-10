@@ -2082,6 +2082,8 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Update(gameTime);
 
+            KeyboardState keyboardState = Keyboard.GetState();
+
             if (_softKeyboardPressedVisualUntil > 0 && Environment.TickCount >= _softKeyboardPressedVisualUntil)
             {
                 _pressedSoftKeyboardKeyIndex = -1;
@@ -2090,13 +2092,19 @@ namespace HaCreator.MapSimulator.UI
                 _softKeyboardPressedVisualUntil = 0;
             }
 
-            if (!CapturesKeyboardInput)
+            if (IsVisible && SkillMacroOwnerKeyHandler.ShouldCloseWindow(keyboardState, _previousKeyboardState))
             {
-                _previousKeyboardState = Keyboard.GetState();
+                OnCancelClicked(null);
+                _previousKeyboardState = keyboardState;
                 return;
             }
 
-            KeyboardState keyboardState = Keyboard.GetState();
+            if (!CapturesKeyboardInput)
+            {
+                _previousKeyboardState = keyboardState;
+                return;
+            }
+
             HandleKeyboardInput(keyboardState);
             _previousKeyboardState = keyboardState;
             UpdateImePresentationPlacement();

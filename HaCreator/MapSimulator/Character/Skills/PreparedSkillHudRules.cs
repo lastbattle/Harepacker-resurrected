@@ -30,6 +30,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             MonkeyWaveSkillId,
             WildHunterSwallowSkillId
         };
+        private static readonly HashSet<int> NonKeyDownPreparedReleaseSkillIds = new()
+        {
+            FireArrowIceArrowSkillId,
+            AssaulterShadowChargeSkillId
+        };
         private static readonly HashSet<int> SupportedKeyDownSkillIds = new()
         {
             4341002,
@@ -97,20 +102,21 @@ namespace HaCreator.MapSimulator.Character.Skills
                 2121001 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
                 2221001 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
                 2321001 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
-                3121004 => new PreparedSkillHudProfile(true, "KeyDownBar", 2000),
+                3121004 => new PreparedSkillHudProfile(false, "KeyDownBar", 2000),
                 3221001 => new PreparedSkillHudProfile(true, "KeyDownBar", 900),
                 4341003 => new PreparedSkillHudProfile(true, "KeyDownBar1", 1200),
                 // Release-owned branches such as Monkey Wave should use the caller's
                 // authored charge window when available, so the profile itself stays open.
                 MonkeyWaveSkillId => new PreparedSkillHudProfile(true, "KeyDownBar", 0),
+                5221004 => new PreparedSkillHudProfile(false, "KeyDownBar", 2000),
                 5201002 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
-                13111002 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
+                13111002 => new PreparedSkillHudProfile(false, "KeyDownBar", 1000),
                 22121000 => new PreparedSkillHudProfile(true, "KeyDownBar3", 500, PreparedSkillHudSurface.World, showText: false),
                 22151001 => new PreparedSkillHudProfile(true, "KeyDownBar2", 500, PreparedSkillHudSurface.World, showText: false),
                 WildHunterSwallowSkillId => new PreparedSkillHudProfile(true, "KeyDownBar", 900),
-                33121009 => new PreparedSkillHudProfile(true, "KeyDownBar", 2000),
-                35001001 => new PreparedSkillHudProfile(true, "KeyDownBar", 2000),
-                35101009 => new PreparedSkillHudProfile(true, "KeyDownBar", 2000),
+                33121009 => new PreparedSkillHudProfile(false, "KeyDownBar", 2000),
+                35001001 => new PreparedSkillHudProfile(false, "KeyDownBar", 2000),
+                35101009 => new PreparedSkillHudProfile(false, "KeyDownBar", 2000),
                 // The client `get_max_gauge_time` helper falls back to a 2s bar for
                 // keydown skills that do not have one of the explicit branch overrides.
                 _ => new PreparedSkillHudProfile(true, "KeyDownBar", DefaultKeyDownGaugeDurationMs)
@@ -134,6 +140,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public static bool UsesReleaseTriggeredExecution(int skillId) => ReleaseTriggeredSkillIds.Contains(skillId);
 
+        public static bool UsesReleaseTriggeredKeydownExecution(int skillId)
+        {
+            return UsesReleaseTriggeredExecution(skillId)
+                && !NonKeyDownPreparedReleaseSkillIds.Contains(skillId);
+        }
+
         public static bool IsSupportedKeyDownSkill(int skillId)
         {
             return SupportedKeyDownSkillIds.Contains(skillId)
@@ -142,8 +154,13 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public static bool ResolveKeyDownSkillState(int skillId, bool isKeydownSkill)
         {
+            if (NonKeyDownPreparedReleaseSkillIds.Contains(skillId))
+            {
+                return false;
+            }
+
             return isKeydownSkill
-                || UsesReleaseTriggeredExecution(skillId)
+                || UsesReleaseTriggeredKeydownExecution(skillId)
                 || IsSupportedKeyDownSkill(skillId);
         }
 
@@ -217,7 +234,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return ResolveMonkeyWaveGaugeDuration();
             }
 
-            if (UsesReleaseTriggeredExecution(skillId) && preparedDurationMs > 0)
+            if (UsesReleaseTriggeredKeydownExecution(skillId) && preparedDurationMs > 0)
             {
                 return preparedDurationMs;
             }
@@ -228,7 +245,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public static int ResolveReleaseChargeElapsedMs(int skillId, int elapsedMs, int gaugeDurationMs = 0)
         {
             int normalizedElapsedMs = Math.Max(0, elapsedMs);
-            if (!UsesReleaseTriggeredExecution(skillId))
+            if (!UsesReleaseTriggeredKeydownExecution(skillId))
             {
                 return normalizedElapsedMs;
             }
@@ -268,7 +285,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 && normalizedIsKeydownSkill
                 && supportsAutoHold
                 && (normalizedDurationMs > 0
-                    || (hasHoldWindow && UsesReleaseTriggeredExecution(skillId))
+                    || (hasHoldWindow && UsesReleaseTriggeredKeydownExecution(skillId))
                     || (hasHoldWindow && explicitAutoEnterHold));
 
             if (autoEnterHold)

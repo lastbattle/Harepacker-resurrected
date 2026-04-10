@@ -3646,6 +3646,12 @@ namespace HaCreator.MapSimulator
             }
 
             long listStart = reader.BaseStream.Position;
+            if (IsRemainingPayloadExactDeliveryTypeDiscriminator(reader))
+            {
+                reader.BaseStream.Position = listStart;
+                return questIds;
+            }
+
             if (remaining >= sizeof(int))
             {
                 int count = reader.ReadInt32();
@@ -3698,6 +3704,27 @@ namespace HaCreator.MapSimulator
             }
 
             return DecodePacketOwnedDisallowedDeliveryQuestIds(reader);
+        }
+
+        private static bool IsRemainingPayloadExactDeliveryTypeDiscriminator(BinaryReader reader)
+        {
+            if (reader == null)
+            {
+                return false;
+            }
+
+            long start = reader.BaseStream.Position;
+            int remaining = (int)(reader.BaseStream.Length - start);
+            int rawType = remaining switch
+            {
+                4 => reader.ReadInt32(),
+                2 => reader.ReadUInt16(),
+                1 => reader.ReadByte(),
+                _ => int.MinValue
+            };
+
+            reader.BaseStream.Position = start;
+            return rawType is >= 0 and <= 2;
         }
 
         private bool TryApplyPacketOwnedDirectionModePayload(byte[] payload, out string message)
@@ -4577,9 +4604,10 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedRadioAvailableDurationMs = realizedRemainingDurationMs;
                 _lastPacketOwnedRadioStartTick = startTick;
                 CapturePacketOwnedRadioCreateLayerSessionState();
-                _lastPacketOwnedRadioExpectedStopTick = ResolvePacketOwnedRadioExpectedStopTick(
+                _lastPacketOwnedRadioExpectedStopTick = ResolvePacketOwnedRadioMmsLastUpdateTick(
                     startTick,
-                    _lastPacketOwnedRadioAvailableDurationMs);
+                    _lastPacketOwnedRadioStartOffsetMs,
+                    _lastPacketOwnedRadioTrackDurationMs);
                 _lastPacketOwnedRadioLastPollTick = ResolvePacketOwnedRadioInitialUpdateTick(
                     startTick,
                     _lastPacketOwnedRadioAvailableDurationMs);
@@ -4686,9 +4714,29 @@ namespace HaCreator.MapSimulator
                     : (int)expectedStopTick;
         }
 
+        internal static int ResolvePacketOwnedRadioMmsLastUpdateTick(int currentTick, int positionMs, int lengthMs)
+        {
+            long mmsLastUpdateTick = (long)currentTick - Math.Max(0, positionMs) + Math.Max(0, lengthMs);
+            return mmsLastUpdateTick > int.MaxValue
+                ? int.MaxValue
+                : mmsLastUpdateTick < int.MinValue
+                    ? int.MinValue
+                    : (int)mmsLastUpdateTick;
+        }
+
         internal static int ResolvePacketOwnedRadioInitialUpdateTick(int startTick, int remainingDurationMs)
         {
             return ResolvePacketOwnedRadioExpectedStopTick(startTick, remainingDurationMs);
+        }
+
+        internal static int ResolvePacketOwnedRadioFirstCompletionPollTick(int lastUpdateTick)
+        {
+            long firstPollTick = (long)lastUpdateTick + PacketOwnedRadioUpdatePollIntervalMs + 1L;
+            return firstPollTick > int.MaxValue
+                ? int.MaxValue
+                : firstPollTick < int.MinValue
+                    ? int.MinValue
+                    : (int)firstPollTick;
         }
 
         internal static bool ShouldPollPacketOwnedRadioCompletion(int currentTickCount, int lastUpdateTick)
@@ -4743,7 +4791,7 @@ namespace HaCreator.MapSimulator
                     currentTickCount,
                     out SkillManager.CooldownUiState cooldownState)
                 || cooldownState.PresentationKind != SkillManager.CooldownUiPresentationKind.VehicleDurability
-                || cooldownState.RemainingMs <= 0)
+                || cooldownState.CurrentValue <= 0)
             {
                 if (_packetOwnedBattleshipDurabilityOverride?.MountPart != null)
                 {
@@ -5030,7 +5078,7 @@ namespace HaCreator.MapSimulator
                 : $"{Math.Max(0, unchecked(_lastPacketOwnedRadioExpectedStopTick - _lastPacketOwnedRadioStartTick)) / 1000f:0.0}s from session start";
             string firstPoll = _lastPacketOwnedRadioExpectedStopTick == int.MinValue
                 ? "immediate fallback"
-                : $"{Math.Max(0, unchecked(_lastPacketOwnedRadioExpectedStopTick + PacketOwnedRadioUpdatePollIntervalMs - _lastPacketOwnedRadioStartTick)) / 1000f:0.0}s from session start";
+                : $"{Math.Max(0, unchecked(ResolvePacketOwnedRadioFirstCompletionPollTick(_lastPacketOwnedRadioExpectedStopTick) - _lastPacketOwnedRadioStartTick)) / 1000f:0.000}s from session start";
             return $"Update cadence: CRadioManager seeds m_tLastUpdate from get_update_time() - ms_position + ms_length, then checks status once tCur-m_tLastUpdate > {PacketOwnedRadioUpdatePollIntervalMs} ms; simulator now mirrors that remaining-runtime schedule ({expectedStop} stop, first poll at {firstPoll}).";
         }
 
@@ -11392,11 +11440,16 @@ namespace HaCreator.MapSimulator
                         summary = parsedSummary;
                     }
 
-                    if (TryGetJsonArrayProperty(root, out JsonElement lineArray, "lines", "alarmLines", "ctLines", "texts", "messages"))
+                    if (TryGetJsonArrayProperty(root, out JsonElement lineArray, "lines", "alarmLines", "ctLines", "texts", "messages", "m_aCT", "ct")
+                        || TryGetJsonNestedArrayProperty(
+                            root,
+                            out lineArray,
+                            new[] { "alarm", "eventAlarm", "cUIEventAlarm", "payload", "data", "result", "body" },
+                            new[] { "lines", "alarmLines", "ctLines", "messages", "m_aCT", "ct" }))
                     {
                         AppendPacketOwnedEventAlarmJsonLines(lineArray, parsedLines);
                     }
-                    else if (TryGetJsonStringProperty(root, out string inlineText, "text", "message", "alarmText", "ctText"))
+                    else if (TryGetJsonStringProperty(root, out string inlineText, "text", "message", "alarmText", "ctText", "m_aCT", "ct"))
                     {
                         AppendPacketOwnedEventAlarmStringLines(inlineText, parsedLines);
                     }
@@ -11448,7 +11501,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 if (item.ValueKind != JsonValueKind.Object
-                    || !TryGetJsonString(item, "text", out string lineText)
+                    || !TryGetJsonStringProperty(item, out string lineText, "text", "message", "line", "caption", "label", "ct", "m_aCT")
                     || string.IsNullOrWhiteSpace(lineText))
                 {
                     continue;
@@ -11457,12 +11510,80 @@ namespace HaCreator.MapSimulator
                 destination.Add(new EventAlarmLineSnapshot
                 {
                     Text = lineText.Trim(),
-                    Left = TryGetJsonInt32(item, "left", out int left) ? Math.Max(0, left) : 0,
-                    Top = TryGetJsonInt32(item, "top", out int top) ? Math.Max(0, top) : index * 13,
-                    IsHighlighted = TryGetJsonBoolean(item, "highlight", out bool highlight) && highlight
+                    Left = TryGetJsonInt32(item, "left", out int left) ? left : 0,
+                    Top = TryGetJsonInt32(item, "top", out int top) ? top : index * 13,
+                    IsHighlighted = TryGetJsonBoolean(item, "highlight", out bool highlight) && highlight,
+                    TextColorArgb = TryGetPacketOwnedEventAlarmLineColor(item, out int colorArgb) ? colorArgb : null
                 });
                 index++;
             }
+        }
+
+        private static bool TryGetPacketOwnedEventAlarmLineColor(JsonElement element, out int colorArgb)
+        {
+            if (TryGetJsonInt32Property(
+                    element,
+                    out colorArgb,
+                    "textColorArgb",
+                    "fontColorArgb",
+                    "colorArgb",
+                    "argb",
+                    "fontColor",
+                    "color"))
+            {
+                return true;
+            }
+
+            if (TryGetJsonStringProperty(
+                    element,
+                    out string colorText,
+                    "textColorArgb",
+                    "fontColorArgb",
+                    "colorArgb",
+                    "argb",
+                    "fontColor",
+                    "color"))
+            {
+                return TryParsePacketOwnedEventAlarmLineColor(colorText, out colorArgb);
+            }
+
+            colorArgb = 0;
+            return false;
+        }
+
+        private static bool TryParsePacketOwnedEventAlarmLineColor(string colorText, out int colorArgb)
+        {
+            colorArgb = 0;
+            if (string.IsNullOrWhiteSpace(colorText))
+            {
+                return false;
+            }
+
+            string normalized = colorText.Trim();
+            if (normalized.StartsWith("#", StringComparison.Ordinal))
+            {
+                normalized = normalized[1..];
+            }
+            else if (normalized.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized[2..];
+            }
+
+            if (normalized.Length == 6
+                && uint.TryParse(normalized, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint rgb))
+            {
+                colorArgb = unchecked((int)(0xFF000000u | rgb));
+                return true;
+            }
+
+            if (normalized.Length == 8
+                && uint.TryParse(normalized, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint argb))
+            {
+                colorArgb = unchecked((int)argb);
+                return true;
+            }
+
+            return int.TryParse(colorText, NumberStyles.Integer, CultureInfo.InvariantCulture, out colorArgb);
         }
 
         private static void AppendPacketOwnedEventAlarmStringLines(string text, ICollection<EventAlarmLineSnapshot> destination)
@@ -11730,7 +11851,16 @@ namespace HaCreator.MapSimulator
                         "rankingEntries",
                         "rankingRows",
                         "cards",
-                        "items"))
+                        "items",
+                        "results",
+                        "records",
+                        "rankings",
+                        "rankingList")
+                        || TryGetJsonNestedArrayProperty(
+                            root,
+                            out entryArray,
+                            new[] { "ownerState", "web", "webOwner", "cwebwnd", "cWebWnd", "page", "payload", "data", "result", "body", "ranking", "rankings" },
+                            new[] { "entries", "rows", "standings", "rankingEntries", "rankingRows", "cards", "items", "results", "records", "rankingList" }))
                     {
                         AppendPacketOwnedRankingJsonEntries(entryArray, parsedEntries);
                     }
@@ -11786,14 +11916,23 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                JsonElement rankingItem = item;
+                if (TryGetJsonObjectProperty(rankingItem, out JsonElement nestedRankingEntry, "entry", "row", "standing", "card", "item", "record"))
+                {
+                    rankingItem = nestedRankingEntry;
+                }
+
                 string label = TryGetJsonStringProperty(
-                    item,
+                    rankingItem,
                     out string resolvedLabel,
                     "label",
                     "title",
                     "name",
                     "category",
                     "characterName",
+                    "charName",
+                    "userName",
+                    "avatarName",
                     "rowLabel")
                     ? resolvedLabel
                     : string.Empty;
@@ -11803,6 +11942,10 @@ namespace HaCreator.MapSimulator
                     "value",
                     "rank",
                     "position",
+                    "place",
+                    "ranking",
+                    "rankNo",
+                    "orderNo",
                     "score",
                     "level",
                     "worldRank")
@@ -11815,7 +11958,11 @@ namespace HaCreator.MapSimulator
                     "description",
                     "desc",
                     "job",
+                    "jobName",
                     "world",
+                    "worldName",
+                    "guild",
+                    "guildName",
                     "message",
                     "extra")
                     ? parsedDetail
@@ -11934,18 +12081,18 @@ namespace HaCreator.MapSimulator
                         || TryGetJsonNestedArrayProperty(
                             root,
                             out entryArray,
-                            new[] { "calendar", "attendance", "attendanceCalendar", "eventCalendar", "payload" },
-                            new[] { "entries", "rows", "events", "attendanceEntries", "calendarEntries" }))
+                            new[] { "calendar", "attendance", "attendanceCalendar", "eventCalendar", "payload", "data", "result", "body", "days", "month" },
+                            new[] { "entries", "rows", "events", "attendanceEntries", "calendarEntries", "eventRows", "schedules", "items", "days" }))
                     {
                         AppendPacketOwnedEventCalendarJsonEntries(entryArray, parsedEntries);
                     }
 
-                    if (TryGetJsonArrayProperty(root, out JsonElement lineArray, "alarmLines", "ctLines", "lines", "alarmTextLines", "eventAlarmLines")
+                    if (TryGetJsonArrayProperty(root, out JsonElement lineArray, "alarmLines", "ctLines", "lines", "alarmTextLines", "eventAlarmLines", "m_aCT", "ct")
                         || TryGetJsonNestedArrayProperty(
                             root,
                             out lineArray,
-                            new[] { "calendar", "attendance", "attendanceCalendar", "eventCalendar", "payload" },
-                            new[] { "alarmLines", "ctLines", "lines" }))
+                            new[] { "calendar", "attendance", "attendanceCalendar", "eventCalendar", "payload", "data", "result", "body", "alarm", "eventAlarm" },
+                            new[] { "alarmLines", "ctLines", "lines", "messages", "m_aCT", "ct" }))
                     {
                         List<EventAlarmLineSnapshot> parsedLines = new();
                         AppendPacketOwnedEventAlarmJsonLines(lineArray, parsedLines);
@@ -11955,7 +12102,7 @@ namespace HaCreator.MapSimulator
                             hasAlarmLines = true;
                         }
                     }
-                    else if (TryGetJsonStringProperty(root, out string inlineAlarmText, "alarmText", "ctText", "message"))
+                    else if (TryGetJsonStringProperty(root, out string inlineAlarmText, "alarmText", "ctText", "message", "m_aCT", "ct"))
                     {
                         List<EventAlarmLineSnapshot> parsedLines = new();
                         AppendPacketOwnedEventAlarmStringLines(inlineAlarmText, parsedLines);

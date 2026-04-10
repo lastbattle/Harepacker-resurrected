@@ -18,8 +18,12 @@ namespace HaCreator.MapSimulator.UI
     public sealed class QuestDetailWindow : UIWindowBase
     {
         private const float ClientContentX = 18f;
+        // CUIQuestInfoDetail::Draw clips body CT rows at x=18 but draws each entry at ct.x + 17.
+        private const float ClientTextArrayX = 17f;
         private const float ClientContentWidth = 253f;
         private const int ClientLogBaseY = 128;
+        // Log CT rows are drawn one pixel above the clip top; the clip still starts at ClientLogBaseY.
+        private const int ClientLogTextArrayBaseY = 127;
         private const int ClientSummaryClipY = 252;
         private const int ClientSummaryClipHeight = 111;
         private const int ClientScrLogLenWithSummary = 120;
@@ -626,16 +630,16 @@ namespace HaCreator.MapSimulator.UI
         private void DrawLogPane(SpriteBatch sprite)
         {
             Rectangle clipRect = GetLogClipRectangle();
-            float y = Position.Y + GetLogContentBaseY() - _logScrollOffset;
-            y = DrawRequirementSection(sprite, clipRect, y, Position.X + ClientContentX, ClientContentWidth);
-            y = DrawRewardSection(sprite, clipRect, y, Position.X + ClientContentX, ClientContentWidth);
+            float y = Position.Y + GetLogTextArrayBaseY() - _logScrollOffset;
+            y = DrawRequirementSection(sprite, clipRect, y, Position.X + ClientTextArrayX, ClientContentWidth);
+            y = DrawRewardSection(sprite, clipRect, y, Position.X + ClientTextArrayX, ClientContentWidth);
 
             if (!string.IsNullOrWhiteSpace(_state.HintText))
             {
                 DrawRichTextClipped(
                     sprite,
                     _state.HintText,
-                    new Vector2(Position.X + ClientContentX, y),
+                    new Vector2(Position.X + ClientTextArrayX, y),
                     ClientContentWidth,
                     new Color(243, 227, 168),
                     clipRect,
@@ -653,11 +657,11 @@ namespace HaCreator.MapSimulator.UI
 
             Rectangle clipRect = GetSummaryClipRectangle();
             float y = Position.Y + ClientSummaryY - _summaryScrollOffset;
-            DrawSectionHeaderClipped(sprite, clipRect, _summaryHeaderTexture, "Summary", Position.X + ClientContentX, ref y, ClientDetailScale);
+            DrawSectionHeaderClipped(sprite, clipRect, _summaryHeaderTexture, "Summary", Position.X + ClientTextArrayX, ref y, ClientDetailScale);
             y = DrawRichTextClipped(
                 sprite,
                 _state.SummaryText,
-                new Vector2(Position.X + ClientContentX, y),
+                new Vector2(Position.X + ClientTextArrayX, y),
                 ClientContentWidth,
                 new Color(228, 228, 228),
                 clipRect,
@@ -1246,7 +1250,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Rectangle logClipRect = GetLogClipRectangle();
-            float y = Position.Y + GetLogContentBaseY() - _logScrollOffset;
+            float y = Position.Y + GetLogTextArrayBaseY() - _logScrollOffset;
             if (!string.IsNullOrWhiteSpace(_state.RequirementText))
             {
                 y += AdvanceRichText(_state.RequirementText, ClientContentWidth, ClientDetailScale, QuestDetailTextLane.Detail);
@@ -1256,7 +1260,7 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            HoveredQuestItemInfo hovered = TryResolveHoveredConditionItem(mouseX, mouseY, logClipRect, _state.RequirementLines, Position.X + ClientContentX, ref y, ClientContentWidth, false);
+            HoveredQuestItemInfo hovered = TryResolveHoveredConditionItem(mouseX, mouseY, logClipRect, _state.RequirementLines, Position.X + ClientTextArrayX, ref y, ClientContentWidth, false);
             if (hovered != null)
             {
                 return hovered;
@@ -1271,7 +1275,7 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            return TryResolveHoveredConditionItem(mouseX, mouseY, logClipRect, _state.RewardLines, Position.X + ClientContentX, ref y, ClientContentWidth, true);
+            return TryResolveHoveredConditionItem(mouseX, mouseY, logClipRect, _state.RewardLines, Position.X + ClientTextArrayX, ref y, ClientContentWidth, true);
         }
 
         private void DrawNoticeSurface(SpriteBatch sprite, int tickCount)
@@ -1421,6 +1425,11 @@ namespace HaCreator.MapSimulator.UI
         private int GetLogContentBaseY()
         {
             return ClientLogBaseY + GetDetailTipHeight();
+        }
+
+        private int GetLogTextArrayBaseY()
+        {
+            return ClientLogTextArrayBaseY + GetDetailTipHeight();
         }
 
         private int GetClientScrLogLength()
@@ -1883,9 +1892,10 @@ namespace HaCreator.MapSimulator.UI
             string quantityLine = _hoveredQuestItem.Quantity.GetValueOrDefault(0) > 0
                 ? $"Quantity: {_hoveredQuestItem.Quantity.Value}"
                 : string.Empty;
-            string stackLine = InventoryItemMetadataResolver.TryResolveMaxStackForItem(_hoveredQuestItem.ItemId, out int maxStackSize)
+            string stackLine = !InventoryItemMetadataResolver.HasStackLimitMetadataLine(metadata.MetadataLines)
+                               && InventoryItemMetadataResolver.TryResolveMaxStackForItem(_hoveredQuestItem.ItemId, out int maxStackSize)
                                && maxStackSize > 1
-                ? $"Stack Max: {maxStackSize}"
+                ? InventoryItemMetadataResolver.FormatStackLimitMetadataLine(maxStackSize)
                 : string.Empty;
 
             string[] wrappedTitle = WrapTooltipText(title, titleWidth);

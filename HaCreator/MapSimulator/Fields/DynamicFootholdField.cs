@@ -468,6 +468,7 @@ namespace HaCreator.MapSimulator.Fields
             HashSet<string> aliases = new(StringComparer.OrdinalIgnoreCase);
             foreach (string tagAlias in SplitDynamicObjectTags(tagsValue))
             {
+                AddDynamicObjectAlias(aliases, tagAlias);
                 AddCoordinateAliases(aliases, tagAlias, x, y);
                 if (piece is int pieceValue && pieceValue >= 0)
                 {

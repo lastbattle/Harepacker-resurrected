@@ -1288,11 +1288,33 @@ namespace HaCreator.MapSimulator.UI
                     _font,
                     clippedLine,
                     new Vector2(drawX, drawY),
-                    lineSnapshot.IsHighlighted ? new Color(255, 228, 151) : new Color(224, 224, 224));
+                    ResolveAlarmLineColor(lineSnapshot));
                 maxLineBottom = Math.Max(maxLineBottom, drawY + _font.LineSpacing);
             }
 
             return (maxLineBottom - Position.Y) + 8;
+        }
+
+        private static Color ResolveAlarmLineColor(EventAlarmLineSnapshot lineSnapshot)
+        {
+            if (lineSnapshot?.TextColorArgb is int argb)
+            {
+                byte alpha = (byte)((argb >> 24) & 0xFF);
+                if (alpha == 0)
+                {
+                    alpha = 0xFF;
+                }
+
+                return new Color(
+                    (byte)((argb >> 16) & 0xFF),
+                    (byte)((argb >> 8) & 0xFF),
+                    (byte)(argb & 0xFF),
+                    alpha);
+            }
+
+            return lineSnapshot?.IsHighlighted == true
+                ? new Color(255, 228, 151)
+                : new Color(224, 224, 224);
         }
 
         private int GetContentTop(EventWindowSnapshot snapshot)

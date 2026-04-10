@@ -682,7 +682,7 @@ namespace HaCreator.MapSimulator
             }
 
             string payloadHex = Convert.ToHexString(payload);
-            string summary = $"Mirrored CUIRevive::Revive as opcode {ReviveOwnerTransferFieldRequestOpcode} [{payloadHex}] with premium={(request.Premium ? 1 : 0)} and synthetic field key {ReviveOwnerSyntheticFieldKey}.";
+            string summary = $"Mirrored CUIRevive::Revive as opcode {ReviveOwnerTransferFieldRequestOpcode} [{payloadHex}] with client bPremium={(request.ClientPremiumFlag ? 1 : 0)}, resolved premium branch={(request.Premium ? 1 : 0)}, and synthetic field key {ReviveOwnerSyntheticFieldKey}.";
             if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
                 ReviveOwnerTransferFieldRequestOpcode,
                 payload,

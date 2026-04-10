@@ -374,7 +374,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (startZoom == 0)
             {
-                startZoom = endZoom;
+                startZoom = 100;
             }
 
             float progress = frame.Delay <= 0

@@ -50,6 +50,7 @@ namespace HaCreator.MapSimulator.Interaction
         private FamilyEntitlementType _entitlementType = FamilyEntitlementType.DropAndExpBuff;
         private readonly Dictionary<FamilyEntitlementType, int> _entitlementUseCounts = new();
         private readonly Dictionary<FamilyEntitlementType, FamilyPrivilegeMetadata> _packetPrivilegeMetadata = new();
+        private readonly Dictionary<int, int> _packetChartStatistics = new();
         private string _familyName = string.Empty;
         private string _familyPrecept = string.Empty;
         private string _locationSummary = "Maple Island";
@@ -57,6 +58,8 @@ namespace HaCreator.MapSimulator.Interaction
         private FamilyPrivilegeState _activePrivilege;
         private FamilyAuthorityState _authorityState = FamilyAuthorityState.CreateSimulatorLocal();
         private FamilyInfoPacketSnapshot _lastInfoPacketSnapshot;
+        private int? _packetChartJuniorLimit;
+        private int? _packetChartLocalMemberId;
 
         private int FamilyHeadId => _familyHeadId;
 
@@ -402,8 +405,8 @@ namespace HaCreator.MapSimulator.Interaction
                     message = ApplySetPrivilegePacketPayload(payload);
                     return true;
                 case 98:
-                    message = "Family chart packet 98 (`CWvsContext::OnFamilyChartResult -> CUIFamilyChart::DecodeLocalChart`) is not modeled yet. Continue using the existing `/family packet upsert/remove/...` roster seam for chart topology.";
-                    return false;
+                    message = ApplyLocalChartPacketPayload(payload);
+                    return true;
                 default:
                     message = $"Family client packet opcode {opcode} is not modeled by this runtime.";
                     return false;
@@ -485,6 +488,16 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Applied packet-authored family privilege metadata for {_packetPrivilegeMetadata.Count} entitlement(s) through `CWvsContext::OnFamilyPrivilegeList` (opcode 104).";
         }
 
+        internal string ApplyLocalChartPacketPayload(byte[] payload)
+        {
+            if (!FamilyPacketCodec.TryDecodeLocalChartPayload(payload, out FamilyLocalChartPacketSnapshot snapshot, out string error))
+            {
+                return error;
+            }
+
+            return ApplyLocalChartPacketSnapshot(snapshot);
+        }
+
         internal string ApplySetPrivilegePacketPayload(byte[] payload)
         {
             if (!FamilyPacketCodec.TryDecodeSetPrivilegePayload(payload, out FamilyPrivilegeStatePacketSnapshot snapshot, out string error))
@@ -511,6 +524,93 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot.IncrementDropRate,
                 "packet privilege state");
             return $"Applied packet-authored family privilege state for {GetEntitlementLabel(entitlementType)} (+{snapshot.IncrementExpRate}% EXP, +{snapshot.IncrementDropRate}% drop, index {snapshot.Index}) through `CWvsContext::OnFamilySetPrivilege` (opcode 107).";
+        }
+
+        internal string ApplyLocalChartPacketSnapshot(FamilyLocalChartPacketSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return "Family local-chart packet snapshot is empty.";
+            }
+
+            _members.Clear();
+            _packetChartStatistics.Clear();
+            _entitlementUseCounts.Clear();
+            _packetChartLocalMemberId = snapshot.FocusMemberId > 0 ? snapshot.FocusMemberId : null;
+            _packetChartJuniorLimit = Math.Max(0, snapshot.JuniorLimit);
+
+            foreach (KeyValuePair<int, int> pair in snapshot.Statistics)
+            {
+                _packetChartStatistics[pair.Key] = Math.Max(0, pair.Value);
+            }
+
+            foreach (KeyValuePair<int, int> pair in snapshot.PrivilegeUses)
+            {
+                if (Enum.IsDefined(typeof(FamilyEntitlementType), pair.Key))
+                {
+                    _entitlementUseCounts[(FamilyEntitlementType)pair.Key] = Math.Max(0, pair.Value);
+                }
+            }
+
+            foreach (FamilyLocalChartMemberPacketSnapshot packetMember in snapshot.Members)
+            {
+                if (packetMember.CharacterId <= 0)
+                {
+                    continue;
+                }
+
+                int? parentId = packetMember.ParentId > 0 ? packetMember.ParentId : null;
+                if (parentId == packetMember.CharacterId)
+                {
+                    parentId = null;
+                }
+
+                _members[packetMember.CharacterId] = new FamilyMemberState(
+                    packetMember.CharacterId,
+                    string.IsNullOrWhiteSpace(packetMember.Name) ? $"Member {packetMember.CharacterId}" : packetMember.Name.Trim(),
+                    ResolvePacketJobName(packetMember.JobId),
+                    Math.Max(1, (int)packetMember.Level),
+                    FormatPacketLocation(packetMember.ChannelId, packetMember.LoginMinutes),
+                    parentId,
+                    Math.Max(0, packetMember.FamousPoint),
+                    Math.Max(0, packetMember.TodayParentPoint),
+                    packetMember.IsOnline,
+                    Vector2.Zero);
+            }
+
+            foreach (FamilyMemberState member in _members.Values)
+            {
+                if (member.ParentId.HasValue
+                    && _members.TryGetValue(member.ParentId.Value, out FamilyMemberState parent)
+                    && !parent.Children.Contains(member.Id))
+                {
+                    parent.Children.Add(member.Id);
+                }
+            }
+
+            if (_packetChartLocalMemberId.HasValue && _members.ContainsKey(_packetChartLocalMemberId.Value))
+            {
+                _selectedMemberId = _packetChartLocalMemberId.Value;
+            }
+
+            NormalizeRosterState();
+            if (_packetChartLocalMemberId.HasValue && _members.TryGetValue(_packetChartLocalMemberId.Value, out FamilyMemberState localChartMember))
+            {
+                FamilyMemberState root = localChartMember;
+                while (root.ParentId.HasValue && _members.TryGetValue(root.ParentId.Value, out FamilyMemberState parent))
+                {
+                    root = parent;
+                }
+
+                _familyHeadId = root.Id;
+                if (_members.TryGetValue(_packetChartLocalMemberId.Value, out FamilyMemberState selected))
+                {
+                    _selectedMemberId = selected.Id;
+                }
+            }
+
+            ValidateEmptyTreeSelection();
+            return $"Applied packet-authored family local chart for member #{_packetChartLocalMemberId ?? 0}: {snapshot.Members.Count} member(s), {snapshot.Statistics.Count} statistic entrie(s), {snapshot.PrivilegeUses.Count} privilege-use entrie(s), junior limit {_packetChartJuniorLimit.GetValueOrDefault()} through `CUIFamilyChart::DecodeLocalChart` (opcode 98).";
         }
 
         private string SetPreceptCore(string precept, bool packetAuthored)
@@ -869,12 +969,15 @@ namespace HaCreator.MapSimulator.Interaction
             _entitlementType = FamilyEntitlementType.DropAndExpBuff;
             _entitlementUseCounts.Clear();
             _packetPrivilegeMetadata.Clear();
+            _packetChartStatistics.Clear();
             _familyName = string.Empty;
             _familyPrecept = string.Empty;
             _activePrivilege = null;
             _selectedEmptyTreeSlot = -1;
             _authorityState = FamilyAuthorityState.CreateSimulatorLocal();
             _lastInfoPacketSnapshot = null;
+            _packetChartJuniorLimit = null;
+            _packetChartLocalMemberId = null;
         }
 
         private void SeedDefaultFamily()
@@ -1436,7 +1539,14 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (member == null)
             {
-                return _members.Count;
+                return TryGetPacketChartStatistic(-1, out int totalStatistic)
+                    ? totalStatistic
+                    : _members.Count;
+            }
+
+            if (TryGetPacketChartStatistic(member.Id, out int statistic))
+            {
+                return statistic;
             }
 
             return member.Id == _familyHeadId
@@ -1576,8 +1686,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string BuildJuniorCountText(Dictionary<int, int> slotMembers)
         {
-            FamilyMemberState rootMember = TryGetTreeMember(slotMembers, 0);
-            int juniorCount = Math.Max(0, GetStatisticValue(rootMember));
+            int juniorCount = TryGetPacketChartStatistic(0, out int packetJuniorCount)
+                ? Math.Max(0, packetJuniorCount)
+                : Math.Max(0, GetStatisticValue(TryGetTreeMember(slotMembers, 0)));
             if (slotMembers.ContainsKey(1))
             {
                 juniorCount--;
@@ -1605,6 +1716,45 @@ namespace HaCreator.MapSimulator.Interaction
                 : null;
         }
 
+        private bool TryGetPacketChartStatistic(int key, out int value)
+        {
+            if (_packetChartStatistics.TryGetValue(key, out value))
+            {
+                value = Math.Max(0, value);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string ResolvePacketJobName(short jobId)
+        {
+            int normalizedJobId = Math.Abs(jobId);
+            return normalizedJobId switch
+            {
+                0 => "Beginner",
+                >= 100 and < 200 => "Warrior",
+                >= 200 and < 300 => "Magician",
+                >= 300 and < 400 => "Bowman",
+                >= 400 and < 500 => "Thief",
+                >= 500 and < 600 => "Pirate",
+                >= 1000 and < 2000 => "Noblesse",
+                >= 2000 and < 3000 => "Legend",
+                >= 3000 and < 4000 => "Citizen",
+                _ => $"Job {jobId}"
+            };
+        }
+
+        private static string FormatPacketLocation(int channelId, int loginMinutes)
+        {
+            string channel = channelId > 0
+                ? $"CH {channelId}"
+                : "offline";
+            return loginMinutes > 0
+                ? $"Family session  {channel}  {loginMinutes} min"
+                : $"Family session  {channel}";
+        }
+
         private void NormalizeRosterState()
         {
             if (_members.Count == 0)
@@ -1612,6 +1762,9 @@ namespace HaCreator.MapSimulator.Interaction
                 _selectedMemberId = LocalPlayerId;
                 _familyHeadId = DefaultFamilyHeadId;
                 _entitlementUseCounts.Clear();
+                _packetChartStatistics.Clear();
+                _packetChartJuniorLimit = null;
+                _packetChartLocalMemberId = null;
                 return;
             }
 

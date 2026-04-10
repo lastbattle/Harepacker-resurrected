@@ -19,6 +19,9 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedStoreBankOutboundOpcode = -1;
         private byte[] _lastPacketOwnedStoreBankOutboundPayload = Array.Empty<byte>();
         private string _lastPacketOwnedStoreBankOutboundSummary;
+        private int _lastPacketOwnedBattleRecordOutboundOpcode = -1;
+        private byte[] _lastPacketOwnedBattleRecordOutboundPayload = Array.Empty<byte>();
+        private string _lastPacketOwnedBattleRecordOutboundSummary;
         private bool _packetOwnedStoreBankGetAllPromptActive;
 
         private bool TryApplyPacketOwnedNpcUtilityPacket(int packetType, byte[] payload, out string message)
@@ -156,7 +159,7 @@ namespace HaCreator.MapSimulator
 
         private string BuildPacketOwnedBattleRecordFooter()
         {
-            return _packetOwnedBattleRecordRuntime.BuildFooter();
+            return $"{_packetOwnedBattleRecordRuntime.BuildFooter()} {DescribePacketOwnedNpcUtilityOutboundStatus("battle-record", _lastPacketOwnedBattleRecordOutboundOpcode, _lastPacketOwnedBattleRecordOutboundPayload, _lastPacketOwnedBattleRecordOutboundSummary)}";
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedNpcUtilityCommand(string[] args)
@@ -197,7 +200,7 @@ namespace HaCreator.MapSimulator
                     $"Shop: {BuildPacketOwnedNpcShopFooter()}",
                     $"AdminShop: {BuildPacketOwnedAdminShopFooter()}",
                     $"StoreBank: {BuildPacketOwnedStoreBankFooter()}",
-                    $"BattleRecord: {_packetOwnedBattleRecordRuntime.BuildFooter()}"
+                $"BattleRecord: {BuildPacketOwnedBattleRecordFooter()}"
                 });
         }
 
@@ -788,6 +791,22 @@ namespace HaCreator.MapSimulator
                 ref _lastPacketOwnedStoreBankOutboundSummary);
         }
 
+        private string DispatchPacketOwnedBattleRecordOutboundRequest(
+            bool hasRequest,
+            PacketOwnedNpcUtilityOutboundRequest request,
+            string localMessage,
+            string requestError)
+        {
+            return DispatchPacketOwnedNpcUtilityOutboundRequest(
+                hasRequest,
+                request,
+                localMessage,
+                requestError,
+                ref _lastPacketOwnedBattleRecordOutboundOpcode,
+                ref _lastPacketOwnedBattleRecordOutboundPayload,
+                ref _lastPacketOwnedBattleRecordOutboundSummary);
+        }
+
         private string DispatchPacketOwnedNpcUtilityOutboundRequest(
             bool hasRequest,
             PacketOwnedNpcUtilityOutboundRequest request,
@@ -861,7 +880,7 @@ namespace HaCreator.MapSimulator
         {
             if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
-                return ChatCommandHandler.CommandResult.Info(_packetOwnedBattleRecordRuntime.BuildFooter());
+                return ChatCommandHandler.CommandResult.Info(BuildPacketOwnedBattleRecordFooter());
             }
 
             switch (args[0].ToLowerInvariant())
@@ -872,7 +891,35 @@ namespace HaCreator.MapSimulator
                         ShowPacketOwnedUniqueUtilityWindow(
                             MapSimulatorWindowNames.BattleRecord,
                             "Battle Record",
-                            _packetOwnedBattleRecordRuntime.BuildFooter()));
+                            BuildPacketOwnedBattleRecordFooter()));
+
+                case "on":
+                case "start":
+                    return HandlePacketOwnedBattleRecordOnCalcCommand(enabled: true);
+
+                case "off":
+                case "stop":
+                    return HandlePacketOwnedBattleRecordOnCalcCommand(enabled: false);
+
+                case "toggle":
+                    bool hasToggleOutbound = _packetOwnedBattleRecordRuntime.TryBuildToggleOnCalcOutboundRequest(
+                        out PacketOwnedNpcUtilityOutboundRequest toggleRequest,
+                        out string toggleMessage);
+                    return ChatCommandHandler.CommandResult.Ok(
+                        DispatchPacketOwnedBattleRecordOutboundRequest(
+                            hasToggleOutbound,
+                            toggleRequest,
+                            toggleMessage,
+                            hasToggleOutbound ? null : toggleMessage));
+
+                case "dot":
+                    return HandlePacketOwnedBattleRecordIncludeCommand(args.Skip(1).ToArray(), option: 0);
+
+                case "summon":
+                    return HandlePacketOwnedBattleRecordIncludeCommand(args.Skip(1).ToArray(), option: 1);
+
+                case "clear":
+                    return HandlePacketOwnedBattleRecordClearCommand(args.Skip(1).ToArray());
 
                 case "page":
                     if (args.Length < 2)
@@ -893,16 +940,95 @@ namespace HaCreator.MapSimulator
                     }
 
                     _packetOwnedBattleRecordRuntime.SelectPage(pageIndex);
-                    return ChatCommandHandler.CommandResult.Ok(_packetOwnedBattleRecordRuntime.BuildFooter());
+                    return ChatCommandHandler.CommandResult.Ok(BuildPacketOwnedBattleRecordFooter());
 
                 case "close":
+                    bool hasCloseOutbound = _packetOwnedBattleRecordRuntime.TryBuildRequestOnCalcOutboundRequest(
+                        enabled: false,
+                        out PacketOwnedNpcUtilityOutboundRequest closeRequest,
+                        out string closeOnCalcMessage);
                     _packetOwnedBattleRecordRuntime.Close();
                     uiWindowManager?.HideWindow(MapSimulatorWindowNames.BattleRecord);
-                    return ChatCommandHandler.CommandResult.Ok(_packetOwnedBattleRecordRuntime.BuildFooter());
+                    return ChatCommandHandler.CommandResult.Ok(
+                        DispatchPacketOwnedBattleRecordOutboundRequest(
+                            hasCloseOutbound,
+                            closeRequest,
+                            _packetOwnedBattleRecordRuntime.BuildFooter(),
+                            hasCloseOutbound ? null : closeOnCalcMessage));
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord [status|show|page <summary|dot|packets>|close]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord [status|show|on|off|toggle|dot <on|off>|summon <on|off>|clear <damage|recovery|all>|page <summary|dot|packets>|close]");
             }
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedBattleRecordOnCalcCommand(bool enabled)
+        {
+            bool hasOutbound = _packetOwnedBattleRecordRuntime.TryBuildRequestOnCalcOutboundRequest(
+                enabled,
+                out PacketOwnedNpcUtilityOutboundRequest request,
+                out string localMessage);
+            return ChatCommandHandler.CommandResult.Ok(
+                DispatchPacketOwnedBattleRecordOutboundRequest(
+                    hasOutbound,
+                    request,
+                    localMessage,
+                    hasOutbound ? null : localMessage));
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedBattleRecordIncludeCommand(string[] args, int option)
+        {
+            if (args == null
+                || args.Length < 1
+                || !TryParseOnOffArgument(args[0], out bool enabled))
+            {
+                string owner = option == 0 ? "dot" : "summon";
+                return ChatCommandHandler.CommandResult.Error($"Usage: /npcutility battlerecord {owner} <on|off>");
+            }
+
+            return ChatCommandHandler.CommandResult.Ok(_packetOwnedBattleRecordRuntime.SetAdditionDamageInclude(enabled, option));
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedBattleRecordClearCommand(string[] args)
+        {
+            if (args == null || args.Length < 1)
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord clear <damage|recovery|all>");
+            }
+
+            int option = args[0].ToLowerInvariant() switch
+            {
+                "damage" => 0,
+                "recovery" => 1,
+                "all" => 3,
+                _ => -1
+            };
+            if (option < 0)
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord clear <damage|recovery|all>");
+            }
+
+            return ChatCommandHandler.CommandResult.Ok(_packetOwnedBattleRecordRuntime.ClearInfo(option));
+        }
+
+        private static bool TryParseOnOffArgument(string value, out bool enabled)
+        {
+            enabled = false;
+            if (string.Equals(value, "on", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "true", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "1", StringComparison.Ordinal))
+            {
+                enabled = true;
+                return true;
+            }
+
+            if (string.Equals(value, "off", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "false", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "0", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            return false;
         }
     }
 }

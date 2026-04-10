@@ -137,6 +137,9 @@ namespace HaCreator.MapSimulator.UI
         private readonly IDXObject _mainFrame;
         private readonly Dictionary<InputAction, KeyBinding> _stagedBindings = new();
         private readonly Dictionary<InputAction, KeyBinding> _originalBindings = new();
+        private const int ClientFuncKeyMappedCellSize = 32;
+        private static readonly Color ClientFuncKeyMappedUnavailableTint = new(160, 160, 160, 215);
+        private static readonly Color ClientFuncKeyMappedUnavailableOverlay = new(128, 128, 128, 160);
         private static readonly IReadOnlyDictionary<int, string> PaletteSlotLabels = new Dictionary<int, string>
         {
             [0] = "Equip Tab",
@@ -986,6 +989,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (shortcutVisualState.DrawLayer != ShortcutVisualState.ClientDrawLayer.None)
+            {
+                DrawClientFuncKeyMappedCell(sprite, bounds, shortcutVisualState, compact);
+                return;
+            }
+
             Texture2D iconTexture = shortcutVisualState.IconTexture;
             float scale = ResolveShortcutVisualScale(bounds, iconTexture, shortcutVisualState.DrawLayer, compact);
             Vector2 drawPosition = ResolveShortcutVisualPosition(bounds, iconTexture, shortcutVisualState.DrawLayer, scale);
@@ -1024,6 +1033,104 @@ namespace HaCreator.MapSimulator.UI
                     SpriteEffects.None,
                     0f);
             }
+        }
+
+        private void DrawClientFuncKeyMappedCell(SpriteBatch sprite, Rectangle bounds, ShortcutVisualState shortcutVisualState, bool compact)
+        {
+            Texture2D iconTexture = shortcutVisualState.IconTexture;
+            Rectangle cellBounds = ResolveClientFuncKeyMappedCellBounds(bounds, compact);
+            if (!compact)
+            {
+                sprite.Draw(_highlightTexture, cellBounds, new Color(18, 24, 35, 160));
+            }
+
+            float scale = ResolveClientFuncKeyMappedScale(cellBounds, iconTexture, shortcutVisualState.DrawLayer, compact);
+            Vector2 drawPosition = ResolveClientFuncKeyMappedPosition(cellBounds, iconTexture, shortcutVisualState.DrawLayer, scale);
+            Color tint = shortcutVisualState.Unavailable ? ClientFuncKeyMappedUnavailableTint : Color.White;
+            sprite.Draw(iconTexture, drawPosition, null, tint, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+
+            if (shortcutVisualState.DrawLayer == ShortcutVisualState.ClientDrawLayer.ItemUnavailable)
+            {
+                sprite.Draw(_highlightTexture, cellBounds, ClientFuncKeyMappedUnavailableOverlay);
+            }
+
+            DrawClientFuncKeyMappedQuantity(sprite, cellBounds, shortcutVisualState, compact);
+        }
+
+        private static Rectangle ResolveClientFuncKeyMappedCellBounds(Rectangle bounds, bool compact)
+        {
+            if (compact || bounds.Width <= ClientFuncKeyMappedCellSize || bounds.Height <= ClientFuncKeyMappedCellSize)
+            {
+                return bounds;
+            }
+
+            int size = Math.Min(ClientFuncKeyMappedCellSize, Math.Min(bounds.Width, bounds.Height));
+            return new Rectangle(
+                bounds.Center.X - (size / 2),
+                bounds.Center.Y - (size / 2),
+                size,
+                size);
+        }
+
+        private static float ResolveClientFuncKeyMappedScale(
+            Rectangle cellBounds,
+            Texture2D iconTexture,
+            ShortcutVisualState.ClientDrawLayer drawLayer,
+            bool compact)
+        {
+            float maxWidth = Math.Max(1f, cellBounds.Width);
+            float maxHeight = Math.Max(1f, cellBounds.Height);
+            float scale = Math.Min(maxWidth / iconTexture.Width, maxHeight / iconTexture.Height);
+
+            if (compact)
+            {
+                return scale;
+            }
+
+            return drawLayer is ShortcutVisualState.ClientDrawLayer.ItemStack
+                or ShortcutVisualState.ClientDrawLayer.ItemUnavailable
+                or ShortcutVisualState.ClientDrawLayer.CashItem
+                    ? Math.Min(scale, 1f)
+                    : Math.Min(scale, 1f);
+        }
+
+        private static Vector2 ResolveClientFuncKeyMappedPosition(
+            Rectangle cellBounds,
+            Texture2D iconTexture,
+            ShortcutVisualState.ClientDrawLayer drawLayer,
+            float scale)
+        {
+            if (drawLayer is ShortcutVisualState.ClientDrawLayer.Skill or ShortcutVisualState.ClientDrawLayer.Macro)
+            {
+                return new Vector2(
+                    cellBounds.Right - (iconTexture.Width * scale),
+                    cellBounds.Bottom - (iconTexture.Height * scale));
+            }
+
+            return new Vector2(
+                cellBounds.Center.X - ((iconTexture.Width * scale) * 0.5f),
+                cellBounds.Center.Y - ((iconTexture.Height * scale) * 0.5f));
+        }
+
+        private void DrawClientFuncKeyMappedQuantity(SpriteBatch sprite, Rectangle cellBounds, ShortcutVisualState shortcutVisualState, bool compact)
+        {
+            if (string.IsNullOrWhiteSpace(shortcutVisualState.QuantityText))
+            {
+                return;
+            }
+
+            float scale = compact ? 0.28f : 0.36f;
+            Vector2 quantitySize = _font.MeasureString(shortcutVisualState.QuantityText) * scale;
+            sprite.DrawString(
+                _font,
+                shortcutVisualState.QuantityText,
+                new Vector2(cellBounds.Right - quantitySize.X - 1f, cellBounds.Y + 20f),
+                new Color(255, 248, 194),
+                0f,
+                Vector2.Zero,
+                scale,
+                SpriteEffects.None,
+                0f);
         }
 
         private static float ResolveShortcutVisualScale(

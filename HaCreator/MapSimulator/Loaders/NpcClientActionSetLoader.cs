@@ -205,7 +205,14 @@ namespace HaCreator.MapSimulator.Loaders
 
         internal static IEnumerable<string> EnumerateClientActionNameCandidates(int clientActionId)
         {
-            return EnumerateClientActionNameCandidates(clientActionId, null);
+            return EnumerateClientActionNameCandidates(clientActionId, (IEnumerable<string>)null);
+        }
+
+        internal static IEnumerable<string> EnumerateClientActionNameCandidates(
+            int clientActionId,
+            WzImage source)
+        {
+            return EnumerateClientActionNameCandidates(clientActionId, BuildClientTemplateActionOrder(source));
         }
 
         internal static IEnumerable<string> EnumerateClientActionNameCandidates(
@@ -336,6 +343,41 @@ namespace HaCreator.MapSimulator.Loaders
             return availableActionOrder ?? Array.Empty<string>();
         }
 
+        internal static IReadOnlyList<string> BuildClientTemplateActionOrder(WzImage source)
+        {
+            if (source == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            return BuildClientTemplateActionOrder(GetClientActionSets(source));
+        }
+
+        internal static IReadOnlyList<string> BuildClientTemplateActionOrder(
+            IReadOnlyList<NpcClientActionSetDefinition> actionSets)
+        {
+            if (actionSets == null || actionSets.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            HashSet<string> yielded = new(StringComparer.OrdinalIgnoreCase);
+            var templateActionOrder = new List<string>();
+            foreach (NpcClientActionSetDefinition actionSet in actionSets)
+            {
+                foreach (WzImageProperty action in actionSet.Actions ?? Array.Empty<WzImageProperty>())
+                {
+                    string actionName = action?.Name;
+                    if (IsClientTemplateExtraActionName(actionName) && yielded.Add(actionName))
+                    {
+                        templateActionOrder.Add(actionName);
+                    }
+                }
+            }
+
+            return templateActionOrder;
+        }
+
         private static IEnumerable<string> EnumerateAuthoredTemplateActionCandidates(
             int clientActionId,
             IEnumerable<string> authoredTemplateActionNames)
@@ -358,6 +400,13 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 yield return templateActionOrder[templateActionIndex];
             }
+        }
+
+        private static bool IsClientTemplateExtraActionName(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && !string.Equals(actionName, Animation.AnimationKeys.Stand, StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "default", StringComparison.OrdinalIgnoreCase);
         }
 
         internal static IEnumerable<string> EnumerateAuthoredSpeakFallbackActions(WzImage source)

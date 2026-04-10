@@ -1002,7 +1002,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            foreach ((int questId, long _) in completedQuestRecords)
+            foreach ((int questId, long completedAtRecord) in completedQuestRecords)
             {
                 if (questId <= 0)
                 {
@@ -1012,6 +1012,11 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestProgress progress = GetOrCreateProgress(questId);
                 progress.State = QuestStateType.Completed;
                 progress.MobKills.Clear();
+                DateTime? completedAtUtc = TryResolveQuestCompletionRecordUtc(completedAtRecord);
+                if (completedAtUtc.HasValue)
+                {
+                    progress.LastEndActionAtUtc = completedAtUtc.Value;
+                }
             }
         }
 
@@ -4551,6 +4556,23 @@ namespace HaCreator.MapSimulator.Interaction
             return nextResetUtc.HasValue && nowUtc >= nextResetUtc.Value
                 ? QuestStateType.Not_Started
                 : state;
+        }
+
+        internal static DateTime? TryResolveQuestCompletionRecordUtc(long recordValue)
+        {
+            if (recordValue <= 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                return DateTime.FromFileTimeUtc(recordValue);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return null;
+            }
         }
 
         private void AppendActionRepeatIntervalIssues(
@@ -8384,20 +8406,54 @@ namespace HaCreator.MapSimulator.Interaction
             var flippedPages = new NpcInteractionPage[pages.Count];
             for (int i = 0; i < pages.Count; i++)
             {
-                NpcInteractionPage page = pages[i];
-                flippedPages[i] = page == null
-                    ? null
-                    : new NpcInteractionPage
-                    {
-                        RawText = page.RawText,
-                        Text = page.Text,
-                        Choices = page.Choices,
-                        InputRequest = page.InputRequest,
-                        FlipSpeaker = true
-                    };
+                flippedPages[i] = ApplyFlipSpeakerToPage(pages[i]);
             }
 
             return flippedPages;
+        }
+
+        private static NpcInteractionPage ApplyFlipSpeakerToPage(NpcInteractionPage page)
+        {
+            if (page == null)
+            {
+                return null;
+            }
+
+            return new NpcInteractionPage
+            {
+                RawText = page.RawText,
+                Text = page.Text,
+                Choices = ApplyFlipSpeakerToChoices(page.Choices),
+                InputRequest = page.InputRequest,
+                FlipSpeaker = true
+            };
+        }
+
+        private static IReadOnlyList<NpcInteractionChoice> ApplyFlipSpeakerToChoices(IReadOnlyList<NpcInteractionChoice> choices)
+        {
+            if (choices == null || choices.Count == 0)
+            {
+                return Array.Empty<NpcInteractionChoice>();
+            }
+
+            var flippedChoices = new NpcInteractionChoice[choices.Count];
+            for (int i = 0; i < choices.Count; i++)
+            {
+                NpcInteractionChoice choice = choices[i];
+                flippedChoices[i] = choice == null
+                    ? null
+                    : new NpcInteractionChoice
+                    {
+                        Label = choice.Label,
+                        Pages = ApplyFlipSpeakerToPages(choice.Pages),
+                        SubmitSelection = choice.SubmitSelection,
+                        SubmissionKind = choice.SubmissionKind,
+                        SubmissionValue = choice.SubmissionValue,
+                        SubmissionNumericValue = choice.SubmissionNumericValue
+                    };
+            }
+
+            return flippedChoices;
         }
 
         private static bool ResolveConversationFlipSpeaker(WzImageProperty property)
@@ -10037,14 +10093,28 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string summaryText = BuildClientPacketQuestResultItemCategorySummary(actions, build);
-            if (string.IsNullOrWhiteSpace(summaryText))
+            bool wrapsNegativeMeso = !string.IsNullOrWhiteSpace(summaryText) && actions.MesoReward < 0;
+            var sections = new List<string>();
+            if (!string.IsNullOrWhiteSpace(summaryText))
             {
-                return string.Empty;
+                sections.Add(wrapsNegativeMeso
+                    ? QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(summaryText)
+                    : summaryText);
             }
 
-            return actions.MesoReward < 0
-                ? QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(summaryText)
-                : summaryText;
+            List<string> supplementalLines = BuildVisibleQuestActionLines(
+                actions,
+                build,
+                questId,
+                includeSelectionTag: false,
+                includeRewardItems: false,
+                suppressNegativeMesoLine: wrapsNegativeMeso);
+            if (supplementalLines.Count > 0)
+            {
+                sections.Add(string.Join("\n", supplementalLines));
+            }
+
+            return string.Join("\n", sections.Where(static section => !string.IsNullOrWhiteSpace(section)));
         }
 
         private static string ResolvePacketQuestResultPrimaryText(
@@ -10197,7 +10267,9 @@ namespace HaCreator.MapSimulator.Interaction
             QuestActionBundle actions,
             CharacterBuild build,
             int questId,
-            bool includeSelectionTag)
+            bool includeSelectionTag,
+            bool includeRewardItems = true,
+            bool suppressNegativeMesoLine = false)
         {
             var lines = new List<string>();
             if (actions == null)
@@ -10213,7 +10285,9 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add($"EXP +{actions.ExpReward}");
             }
 
-            if (actionApplies && actions.MesoReward != 0)
+            if (actionApplies &&
+                actions.MesoReward != 0 &&
+                !(suppressNegativeMesoLine && actions.MesoReward < 0))
             {
                 lines.Add($"Meso {actions.MesoReward:+#;-#;0}");
             }
@@ -10256,7 +10330,7 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add($"{FormatTraitName(reward.Trait)} {reward.Amount:+#;-#;0}");
             }
 
-            if (actionApplies)
+            if (actionApplies && includeRewardItems)
             {
                 lines.AddRange(BuildVisibleRewardItemActionLines(actions.RewardItems, build, includeSelectionTag));
             }
@@ -10591,24 +10665,38 @@ namespace HaCreator.MapSimulator.Interaction
             return target.Kind switch
             {
                 QuestWorldMapTargetKind.Mob => (
-                    QuestWindowActionKind.LocateMob,
+                    ResolveClientQuestGuideAction(target.Kind),
                     true,
                     "Locate Mob",
                     target.EntityId,
                     target.Label),
                 QuestWorldMapTargetKind.Item => (
-                    QuestWindowActionKind.LocateMob,
+                    ResolveClientQuestGuideAction(target.Kind),
                     true,
                     "Locate Item",
                     null,
                     string.Empty),
                 QuestWorldMapTargetKind.Npc => (
-                    QuestWindowActionKind.LocateMob,
+                    ResolveClientQuestGuideAction(target.Kind),
                     true,
                     "Mark NPC",
                     null,
                     string.Empty),
                 _ => (QuestWindowActionKind.None, false, string.Empty, null, string.Empty)
+            };
+        }
+
+        internal static QuestWindowActionKind ResolveClientQuestGuideActionForTesting(QuestWorldMapTargetKind targetKind)
+        {
+            return ResolveClientQuestGuideAction(targetKind);
+        }
+
+        private static QuestWindowActionKind ResolveClientQuestGuideAction(QuestWorldMapTargetKind targetKind)
+        {
+            return targetKind switch
+            {
+                QuestWorldMapTargetKind.Mob or QuestWorldMapTargetKind.Item or QuestWorldMapTargetKind.Npc => QuestWindowActionKind.QuestGuide,
+                _ => QuestWindowActionKind.None
             };
         }
 

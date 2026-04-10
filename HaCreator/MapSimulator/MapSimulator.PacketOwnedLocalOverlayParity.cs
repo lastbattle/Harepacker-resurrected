@@ -2454,7 +2454,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            PetRuntime requestPet = FindFirstEnabledFieldHazardAutoConsumePet(activePets);
+            PetRuntime requestPet = FindClientFirstFieldHazardAutoConsumePet(activePets);
             if (requestPet == null)
             {
                 return false;
@@ -2575,32 +2575,19 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private static PetRuntime FindFirstEnabledFieldHazardAutoConsumePet(IReadOnlyList<PetRuntime> activePets)
+        private static PetRuntime FindClientFirstFieldHazardAutoConsumePet(IReadOnlyList<PetRuntime> activePets)
         {
             if (activePets == null || activePets.Count == 0)
             {
                 return null;
             }
 
-            PetRuntime firstEnabledPet = null;
-            int firstEnabledSlotIndex = int.MaxValue;
-            for (int i = 0; i < activePets.Count; i++)
-            {
-                PetRuntime pet = activePets[i];
-                if (pet == null || !pet.AutoConsumeHpEnabled)
-                {
-                    continue;
-                }
-
-                int slotIndex = pet.SlotIndex >= 0 ? pet.SlotIndex : i;
-                if (firstEnabledPet == null || slotIndex < firstEnabledSlotIndex)
-                {
-                    firstEnabledPet = pet;
-                    firstEnabledSlotIndex = slotIndex;
-                }
-            }
-
-            return firstEnabledPet;
+            PetRuntime firstPet = activePets[0];
+            return ShouldUseClientFirstFieldHazardAutoConsumePet(
+                firstPet != null,
+                firstPet?.AutoConsumeHpEnabled == true)
+                ? firstPet
+                : null;
         }
 
         private PetRuntime GetFieldHazardAutoConsumePetBySlot(int petSlotIndex)
@@ -3289,6 +3276,13 @@ namespace HaCreator.MapSimulator
             return firstEnabledPetSlotIndex >= 0
                 && candidatePetSlotIndex >= 0
                 && candidatePetSlotIndex == firstEnabledPetSlotIndex;
+        }
+
+        internal static bool ShouldUseClientFirstFieldHazardAutoConsumePet(
+            bool firstPetExists,
+            bool firstPetAutoConsumeHpEnabled)
+        {
+            return firstPetExists && firstPetAutoConsumeHpEnabled;
         }
 
         private static string DescribeFieldHazardSharedPetConsumeSource(FieldHazardSharedPetConsumeSource source)

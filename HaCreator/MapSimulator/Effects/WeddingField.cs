@@ -82,6 +82,7 @@ namespace HaCreator.MapSimulator.Effects
         private const int PacketTypeUserMoveOfficial = 181;
         private const int PacketTypeUserMoveOrChairAlias = 210;
         private const int PacketTypeItemEffect = 215;
+        private const int PacketTypeUserProfile = -1003;
         private const int PacketTypeSetActivePortableChairLegacy = 222;
         private const int PacketTypeAvatarModified = 223;
         private const int PacketTypeTemporaryStatSet = 225;
@@ -410,6 +411,8 @@ namespace HaCreator.MapSimulator.Effects
                         return TryApplyMoveOrChairAliasPacket(payload, currentTimeMs, out errorMessage);
                     case PacketTypeItemEffect:
                         return TryApplyRemoteItemEffectPacket(payload, out errorMessage);
+                    case PacketTypeUserProfile:
+                        return TryApplyRemoteProfilePacket(payload, out errorMessage);
                     case PacketTypeSetActivePortableChairLegacy:
                         return TryApplyRemoteChairPacket(payload, out errorMessage);
                     case PacketTypeAvatarModified:
@@ -1382,6 +1385,23 @@ namespace HaCreator.MapSimulator.Effects
             return true;
         }
 
+        private bool TryApplyRemoteProfilePacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!RemoteUserPacketCodec.TryParseProfile(payload, out RemoteUserProfilePacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            if (!TryResolveParticipantForTemporaryStats(packet.CharacterId, out WeddingRemoteParticipant participant, out errorMessage))
+            {
+                return false;
+            }
+
+            ApplyParticipantProfileMetadata(participant, packet);
+            return true;
+        }
+
         private bool TryApplyRemoteGuildMarkChangedPacket(byte[] payload, out string errorMessage)
         {
             errorMessage = null;
@@ -1610,6 +1630,128 @@ namespace HaCreator.MapSimulator.Effects
             participant.Build.HasAuthoritativeProfileGuild = true;
         }
 
+        private static void ApplyParticipantProfileMetadata(WeddingRemoteParticipant participant, RemoteUserProfilePacket packet)
+        {
+            CharacterBuild build = participant?.Build;
+            if (build == null)
+            {
+                return;
+            }
+
+            if (packet.Level.HasValue && packet.Level.Value > 0)
+            {
+                build.Level = Math.Max(1, packet.Level.Value);
+                build.HasAuthoritativeProfileLevel = true;
+            }
+
+            if (packet.JobId.HasValue && packet.JobId.Value >= 0)
+            {
+                build.Job = packet.JobId.Value;
+                build.JobName = SkillDataLoader.GetJobName(packet.JobId.Value);
+                build.HasAuthoritativeProfileJob = true;
+            }
+
+            if (packet.GuildName != null)
+            {
+                build.GuildName = string.IsNullOrWhiteSpace(packet.GuildName) ? string.Empty : packet.GuildName.Trim();
+                build.HasAuthoritativeProfileGuild = true;
+            }
+
+            if (packet.AllianceName != null)
+            {
+                build.AllianceName = string.IsNullOrWhiteSpace(packet.AllianceName) ? string.Empty : packet.AllianceName.Trim();
+                build.HasAuthoritativeProfileAlliance = true;
+            }
+
+            if (packet.Fame.HasValue)
+            {
+                build.Fame = Math.Max(0, packet.Fame.Value);
+                build.HasAuthoritativeProfileFame = true;
+            }
+
+            if (packet.WorldRank.HasValue)
+            {
+                build.WorldRank = Math.Max(0, packet.WorldRank.Value);
+                build.HasAuthoritativeProfileWorldRank = true;
+            }
+
+            if (packet.JobRank.HasValue)
+            {
+                build.JobRank = Math.Max(0, packet.JobRank.Value);
+                build.HasAuthoritativeProfileJobRank = true;
+            }
+
+            if (packet.HasRide.HasValue)
+            {
+                build.HasMonsterRiding = packet.HasRide.Value;
+                build.HasAuthoritativeProfileRide = true;
+            }
+
+            if (packet.HasPendantSlot.HasValue)
+            {
+                build.HasPendantSlotExtension = packet.HasPendantSlot.Value;
+                build.HasAuthoritativeProfilePendantSlot = true;
+            }
+
+            if (packet.HasPocketSlot.HasValue)
+            {
+                build.HasPocketSlot = packet.HasPocketSlot.Value;
+                build.HasAuthoritativeProfilePocketSlot = true;
+            }
+
+            bool hasTraitUpdate = false;
+            if (packet.TraitCharisma.HasValue)
+            {
+                build.TraitCharisma = Math.Max(0, packet.TraitCharisma.Value);
+                hasTraitUpdate = true;
+            }
+
+            if (packet.TraitInsight.HasValue)
+            {
+                build.TraitInsight = Math.Max(0, packet.TraitInsight.Value);
+                hasTraitUpdate = true;
+            }
+
+            if (packet.TraitWill.HasValue)
+            {
+                build.TraitWill = Math.Max(0, packet.TraitWill.Value);
+                hasTraitUpdate = true;
+            }
+
+            if (packet.TraitCraft.HasValue)
+            {
+                build.TraitCraft = Math.Max(0, packet.TraitCraft.Value);
+                hasTraitUpdate = true;
+            }
+
+            if (packet.TraitSense.HasValue)
+            {
+                build.TraitSense = Math.Max(0, packet.TraitSense.Value);
+                hasTraitUpdate = true;
+            }
+
+            if (packet.TraitCharm.HasValue)
+            {
+                build.TraitCharm = Math.Max(0, packet.TraitCharm.Value);
+                hasTraitUpdate = true;
+            }
+
+            if (hasTraitUpdate)
+            {
+                build.HasAuthoritativeProfileTraits = true;
+            }
+
+            if (packet.HasMedal.HasValue)
+            {
+                build.HasAuthoritativeProfileMedal = true;
+            }
+
+            if (packet.HasCollection.HasValue)
+            {
+                build.HasAuthoritativeProfileCollection = true;
+            }
+        }
+
         private static void ApplyParticipantGuildMarkChanged(
             WeddingRemoteParticipant participant,
             int markBackgroundId,
@@ -1725,6 +1867,69 @@ namespace HaCreator.MapSimulator.Effects
             {
                 destination.GuildName = source.GuildName ?? string.Empty;
                 destination.HasAuthoritativeProfileGuild = true;
+            }
+
+            if (source.HasAuthoritativeProfileAlliance)
+            {
+                destination.AllianceName = source.AllianceName ?? string.Empty;
+                destination.HasAuthoritativeProfileAlliance = true;
+            }
+
+            if (source.HasAuthoritativeProfileFame)
+            {
+                destination.Fame = Math.Max(0, source.Fame);
+                destination.HasAuthoritativeProfileFame = true;
+            }
+
+            if (source.HasAuthoritativeProfileWorldRank)
+            {
+                destination.WorldRank = Math.Max(0, source.WorldRank);
+                destination.HasAuthoritativeProfileWorldRank = true;
+            }
+
+            if (source.HasAuthoritativeProfileJobRank)
+            {
+                destination.JobRank = Math.Max(0, source.JobRank);
+                destination.HasAuthoritativeProfileJobRank = true;
+            }
+
+            if (source.HasAuthoritativeProfileRide)
+            {
+                destination.HasMonsterRiding = source.HasMonsterRiding;
+                destination.HasAuthoritativeProfileRide = true;
+            }
+
+            if (source.HasAuthoritativeProfilePendantSlot)
+            {
+                destination.HasPendantSlotExtension = source.HasPendantSlotExtension;
+                destination.HasAuthoritativeProfilePendantSlot = true;
+            }
+
+            if (source.HasAuthoritativeProfilePocketSlot)
+            {
+                destination.HasPocketSlot = source.HasPocketSlot;
+                destination.HasAuthoritativeProfilePocketSlot = true;
+            }
+
+            if (source.HasAuthoritativeProfileTraits)
+            {
+                destination.TraitCharisma = Math.Max(0, source.TraitCharisma);
+                destination.TraitInsight = Math.Max(0, source.TraitInsight);
+                destination.TraitWill = Math.Max(0, source.TraitWill);
+                destination.TraitCraft = Math.Max(0, source.TraitCraft);
+                destination.TraitSense = Math.Max(0, source.TraitSense);
+                destination.TraitCharm = Math.Max(0, source.TraitCharm);
+                destination.HasAuthoritativeProfileTraits = true;
+            }
+
+            if (source.HasAuthoritativeProfileMedal)
+            {
+                destination.HasAuthoritativeProfileMedal = true;
+            }
+
+            if (source.HasAuthoritativeProfileCollection)
+            {
+                destination.HasAuthoritativeProfileCollection = true;
             }
 
             destination.GuildMarkBackgroundId = source.GuildMarkBackgroundId;
@@ -2011,6 +2216,7 @@ namespace HaCreator.MapSimulator.Effects
                 PacketTypeUserLeaveField => "userleave (180)",
                 PacketTypeUserMoveOrChairAlias => "usermove (210)",
                 PacketTypeItemEffect => "itemeffect (215)",
+                PacketTypeUserProfile => "profile (-1003)",
                 PacketTypeSetActivePortableChairLegacy => "chair (222)",
                 PacketTypeAvatarModified => "avatarmodified (223)",
                 PacketTypeTemporaryStatSet => "tempset (225)",

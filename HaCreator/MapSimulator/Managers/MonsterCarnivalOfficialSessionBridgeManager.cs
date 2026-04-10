@@ -184,11 +184,12 @@ namespace HaCreator.MapSimulator.Managers
         {
             lock (_sync)
             {
-                int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+                bool autoSelectListenPort = listenPort <= 0;
+                int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
                 string resolvedRemoteHost = NormalizeRemoteHost(remoteHost);
                 if (HasAttachedClient)
                 {
-                    if (MatchesTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, resolvedRemoteHost, remotePort))
+                    if (MatchesRequestedTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, resolvedRemoteHost, remotePort, autoSelectListenPort))
                     {
                         status = $"Monster Carnival official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
                         LastStatus = status;
@@ -201,7 +202,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 if (IsRunning
-                    && MatchesTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, resolvedRemoteHost, remotePort))
+                    && MatchesRequestedTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, resolvedRemoteHost, remotePort, autoSelectListenPort))
                 {
                     status = $"Monster Carnival official-session bridge already listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
                     LastStatus = status;
@@ -212,12 +213,12 @@ namespace HaCreator.MapSimulator.Managers
 
                 try
                 {
-                    ListenPort = resolvedListenPort;
                     RemoteHost = resolvedRemoteHost;
                     RemotePort = remotePort;
                     _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, ListenPort);
+                    _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
                     _listener.Start();
+                    ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
                     _passiveEstablishedSession = null;
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
                     LastStatus = $"Monster Carnival official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
@@ -257,10 +258,11 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+            bool autoSelectListenPort = listenPort <= 0;
+            int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
             if (HasAttachedClient)
             {
-                if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, candidate.RemoteEndpoint))
+                if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, candidate.RemoteEndpoint, autoSelectListenPort))
                 {
                     status = $"Monster Carnival official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
                     LastStatus = status;
@@ -273,7 +275,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             if (IsRunning
-                && MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, candidate.RemoteEndpoint))
+                && MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, candidate.RemoteEndpoint, autoSelectListenPort))
             {
                 status = $"Monster Carnival official-session bridge already listens on 127.0.0.1:{ListenPort} and remains armed for discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}.";
                 LastStatus = status;
@@ -1041,9 +1043,12 @@ namespace HaCreator.MapSimulator.Managers
 
         private static string NormalizeRemoteHost(string remoteHost)
         {
-            return string.IsNullOrWhiteSpace(remoteHost)
+            string trimmed = string.IsNullOrWhiteSpace(remoteHost)
                 ? IPAddress.Loopback.ToString()
                 : remoteHost.Trim();
+            return IPAddress.TryParse(trimmed, out IPAddress parsedAddress)
+                ? parsedAddress.ToString()
+                : trimmed;
         }
 
         private static bool MatchesTargetConfiguration(
@@ -1056,28 +1061,50 @@ namespace HaCreator.MapSimulator.Managers
         {
             return currentListenPort == requestedListenPort
                 && currentRemotePort == requestedRemotePort
-                && string.Equals(currentRemoteHost, requestedRemoteHost, StringComparison.OrdinalIgnoreCase);
+                && string.Equals(
+                    NormalizeRemoteHost(currentRemoteHost),
+                    NormalizeRemoteHost(requestedRemoteHost),
+                    StringComparison.OrdinalIgnoreCase);
         }
 
-        private static bool MatchesDiscoveredTargetConfiguration(
+        internal static bool MatchesRequestedTargetConfiguration(
             int currentListenPort,
             string currentRemoteHost,
             int currentRemotePort,
             int requestedListenPort,
-            IPEndPoint candidateRemoteEndpoint)
+            string requestedRemoteHost,
+            int requestedRemotePort,
+            bool ignoreListenPort)
+        {
+            return (ignoreListenPort || currentListenPort == requestedListenPort)
+                && currentRemotePort == requestedRemotePort
+                && string.Equals(
+                    NormalizeRemoteHost(currentRemoteHost),
+                    NormalizeRemoteHost(requestedRemoteHost),
+                    StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool MatchesDiscoveredTargetConfiguration(
+            int currentListenPort,
+            string currentRemoteHost,
+            int currentRemotePort,
+            int requestedListenPort,
+            IPEndPoint candidateRemoteEndpoint,
+            bool ignoreListenPort = false)
         {
             if (candidateRemoteEndpoint == null)
             {
                 return false;
             }
 
-            return MatchesTargetConfiguration(
+            return MatchesRequestedTargetConfiguration(
                 currentListenPort,
                 currentRemoteHost,
                 currentRemotePort,
                 requestedListenPort,
                 candidateRemoteEndpoint.Address.ToString(),
-                candidateRemoteEndpoint.Port);
+                candidateRemoteEndpoint.Port,
+                ignoreListenPort);
         }
 
         private static string DescribeSelector(int? owningProcessId, string owningProcessName)

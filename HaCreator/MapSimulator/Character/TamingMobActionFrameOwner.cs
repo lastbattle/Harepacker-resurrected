@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using HaCreator.MapSimulator.Character.Skills;
 
 namespace HaCreator.MapSimulator.Character
 {
@@ -237,6 +238,11 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
+            if (ShouldRequireExactMechanicVehicleAction(actionName))
+            {
+                yield break;
+            }
+
             if (ActionAliases.TryGetValue(actionName, out string[] aliases))
             {
                 foreach (string alias in aliases)
@@ -260,6 +266,13 @@ namespace HaCreator.MapSimulator.Character
                     }
                 }
             }
+        }
+
+        private bool ShouldRequireExactMechanicVehicleAction(string actionName)
+        {
+            return VehicleItemId == MechanicTamingMobItemId
+                   && (ClientOwnedVehicleSkillClassifier.IsMechanicVehicleActionName(actionName, includeTransformStates: true)
+                       || ClientOwnedVehicleSkillClassifier.IsExplicitMechanicVehiclePresentationActionName(actionName));
         }
 
         private static IEnumerable<string> EnumeratePortableChairRideCandidates()

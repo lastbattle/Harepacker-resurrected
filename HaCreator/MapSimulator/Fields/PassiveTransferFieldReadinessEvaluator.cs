@@ -101,6 +101,13 @@ namespace HaCreator.MapSimulator.Fields
             return !hasAttachedPacketOwnedDriver;
         }
 
+        public static bool CanQueuePassiveTransferFieldRequest(
+            bool hasClientOwnedOneTimeAction,
+            bool hasPassiveTransferFieldPortalCollision)
+        {
+            return hasClientOwnedOneTimeAction && hasPassiveTransferFieldPortalCollision;
+        }
+
         public static bool CanReplayHandleUpKeyDown(PassiveTransferFieldReplayState state)
         {
             return state.HasOneTimeActionCompleted

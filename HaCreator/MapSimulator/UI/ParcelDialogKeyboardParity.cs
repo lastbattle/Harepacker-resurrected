@@ -7,6 +7,7 @@ namespace HaCreator.MapSimulator.UI
     {
         None,
         CloseDialog,
+        ClaimReceiveAttachment,
         DispatchSend
     }
 
@@ -24,9 +25,12 @@ namespace HaCreator.MapSimulator.UI
                 return ParcelDialogKeyboardAction.None;
             }
 
-            return activeTab == global::HaCreator.MapSimulator.Interaction.ParcelDialogTab.Send
-                ? ParcelDialogKeyboardAction.DispatchSend
-                : ParcelDialogKeyboardAction.None;
+            return activeTab switch
+            {
+                global::HaCreator.MapSimulator.Interaction.ParcelDialogTab.Receive => ParcelDialogKeyboardAction.ClaimReceiveAttachment,
+                global::HaCreator.MapSimulator.Interaction.ParcelDialogTab.Send => ParcelDialogKeyboardAction.DispatchSend,
+                _ => ParcelDialogKeyboardAction.None
+            };
         }
     }
 }

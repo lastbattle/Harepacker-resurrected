@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator.UI
 
         private readonly string _windowName;
         private Texture2D _avatarTexture;
+        private Point _avatarTextureOrigin;
         private SpriteFont _font;
         private UIObject _okButton;
         private UIObject _cancelButton;
@@ -49,9 +50,10 @@ namespace HaCreator.MapSimulator.UI
             _lines = WrapText(_text);
         }
 
-        public void ConfigureVisuals(Texture2D avatarTexture, UIObject okButton, UIObject cancelButton)
+        public void ConfigureVisuals(Texture2D avatarTexture, Point avatarTextureOrigin, UIObject okButton, UIObject cancelButton)
         {
             _avatarTexture = avatarTexture;
+            _avatarTextureOrigin = avatarTextureOrigin;
 
             if (!ReferenceEquals(_okButton, okButton))
             {
@@ -88,6 +90,11 @@ namespace HaCreator.MapSimulator.UI
                     AddButton(_cancelButton);
                 }
             }
+        }
+
+        public void ConfigureVisuals(Texture2D avatarTexture, UIObject okButton, UIObject cancelButton)
+        {
+            ConfigureVisuals(avatarTexture, AvatarOrigin, okButton, cancelButton);
         }
 
         public void Configure(string text, int stringPoolId)
@@ -138,7 +145,12 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_avatarTexture != null)
             {
-                sprite.Draw(_avatarTexture, new Vector2(Position.X + AvatarOrigin.X, Position.Y + AvatarOrigin.Y), Color.White);
+                sprite.Draw(
+                    _avatarTexture,
+                    new Vector2(
+                        Position.X + AvatarOrigin.X - _avatarTextureOrigin.X,
+                        Position.Y + AvatarOrigin.Y - _avatarTextureOrigin.Y),
+                    Color.White);
             }
 
             if (_font == null || _lines.Length == 0)

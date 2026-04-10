@@ -37,6 +37,8 @@ namespace HaCreator.MapSimulator.Pools
         public bool PickedByPet { get; set; }
         public DropPickupActorKind ActorKind { get; set; } = DropPickupActorKind.Other;
         public string ActorName { get; set; }
+        public float PickupX { get; set; }
+        public float PickupY { get; set; }
     }
 
     /// <summary>
@@ -1408,6 +1410,21 @@ namespace HaCreator.MapSimulator.Pools
                 };
             }
 
+            if (closestFailureDrop == null)
+            {
+                RecentPickupRecord recentPickup = FindRecentPickupNear(x, y, range, currentTime);
+                if (recentPickup != null)
+                {
+                    return new DropPickupAttemptResult
+                    {
+                        Drop = null,
+                        ContextDrop = null,
+                        FailureReason = DropPickupFailureReason.Unavailable,
+                        RecentPickup = recentPickup
+                    };
+                }
+            }
+
             return new DropPickupAttemptResult
             {
                 Drop = null,
@@ -2136,7 +2153,9 @@ namespace HaCreator.MapSimulator.Pools
                 PickerId = pickerId,
                 PickedByPet = pickedByPet,
                 ActorKind = actorKind,
-                ActorName = actorName
+                ActorName = actorName,
+                PickupX = drop.State == DropState.PickingUp ? drop.PickupStartX : drop.X,
+                PickupY = drop.State == DropState.PickingUp ? drop.PickupStartY : drop.Y
             };
 
             _recentPickups.Enqueue(record);
@@ -2157,6 +2176,30 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return latestRecord;
+        }
+
+        public RecentPickupRecord FindRecentPickupNear(float x, float y, float maxRange, int currentTime)
+        {
+            PruneRecentPickupHistory(currentTime);
+
+            float maxDistanceSq = maxRange * maxRange;
+            RecentPickupRecord closestRecord = null;
+            float closestDistanceSq = float.MaxValue;
+            foreach (RecentPickupRecord record in _recentPickups)
+            {
+                float dx = record.PickupX - x;
+                float dy = record.PickupY - y;
+                float distanceSq = (dx * dx) + (dy * dy);
+                if (distanceSq > maxDistanceSq || distanceSq >= closestDistanceSq)
+                {
+                    continue;
+                }
+
+                closestRecord = record;
+                closestDistanceSq = distanceSq;
+            }
+
+            return closestRecord;
         }
 
         /// <summary>

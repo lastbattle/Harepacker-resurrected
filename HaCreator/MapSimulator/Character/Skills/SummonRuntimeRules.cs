@@ -10,6 +10,8 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         private const int Sg88SkillId = 35121003;
         private const int BeholderSummonSkillId = 1321007;
+        private const int HealingRobotSkillId = 35111011;
+        private const int HealingRobotInfoType = 33;
         private const int BeholderPddBranchIndex = 0;
         private const int BeholderMddBranchIndex = 1;
         private const int BeholderAccBranchIndex = 2;
@@ -175,6 +177,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public static bool IsSitdownHealingSupportSummon(SkillData skill)
         {
             return skill != null
+                   && skill.SkillId == HealingRobotSkillId
+                   && skill.ClientInfoType == HealingRobotInfoType
                    && HasMinionAbilityToken(skill.MinionAbility, "heal")
                    && string.Equals(skill.SummonCondition, "whenUserLieDown", StringComparison.OrdinalIgnoreCase);
         }

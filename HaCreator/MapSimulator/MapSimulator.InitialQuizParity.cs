@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
@@ -537,7 +538,14 @@ namespace HaCreator.MapSimulator
             Vector2 drawPosition = new(inputBounds.X + 4, inputBounds.Y - 1);
             if (!string.IsNullOrEmpty(visibleInputText))
             {
-                _spriteBatch.DrawString(_fontChat, visibleInputText, drawPosition, Color.Black, 0f, Vector2.Zero, InitialQuizOwnerInputTextScale, SpriteEffects.None, 0f);
+                ClientTextDrawing.Draw(
+                    _spriteBatch,
+                    visibleInputText,
+                    drawPosition,
+                    Color.Black,
+                    InitialQuizOwnerInputTextScale,
+                    _fontChat,
+                    textAreaWidth);
             }
 
             bool cursorVisible = inputFocused && ShouldDrawInitialQuizOwnerCursor(currentTickCount, _initialQuizOwnerCursorBlinkStartedAt);
@@ -565,7 +573,7 @@ namespace HaCreator.MapSimulator
 
         private int[] MeasureInitialQuizOwnerInputGlyphWidths(string inputText)
         {
-            if (_fontChat == null || string.IsNullOrEmpty(inputText))
+            if (string.IsNullOrEmpty(inputText))
             {
                 return Array.Empty<int>();
             }
@@ -575,7 +583,12 @@ namespace HaCreator.MapSimulator
             {
                 glyphWidths[i] = Math.Max(
                     1,
-                    (int)Math.Ceiling(_fontChat.MeasureString(inputText[i].ToString()).X * InitialQuizOwnerInputTextScale));
+                    (int)Math.Ceiling(
+                        ClientTextDrawing.Measure(
+                            GraphicsDevice,
+                            inputText[i].ToString(),
+                            InitialQuizOwnerInputTextScale,
+                            _fontChat).X));
             }
 
             return glyphWidths;
@@ -1007,18 +1020,25 @@ namespace HaCreator.MapSimulator
 
         private void DrawInitialQuizOwnerSingleLineText(string text, Rectangle bounds, Color color, float scale)
         {
-            if (_fontChat == null || bounds == Rectangle.Empty)
+            if (_spriteBatch == null || bounds == Rectangle.Empty)
             {
                 return;
             }
 
-            string displayText = FitInitialQuizOwnerTextToBounds(NormalizeInitialQuizOwnerSingleLineText(text), bounds.Width, scale);
+            string displayText = NormalizeInitialQuizOwnerSingleLineText(text);
             if (string.IsNullOrEmpty(displayText))
             {
                 return;
             }
 
-            _spriteBatch.DrawString(_fontChat, displayText, new Vector2(bounds.X, bounds.Y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(
+                _spriteBatch,
+                displayText,
+                new Vector2(bounds.X, bounds.Y),
+                color,
+                scale,
+                _fontChat,
+                bounds.Width);
         }
 
         private string FitInitialQuizOwnerTextToBounds(string text, int maxWidth, float scale)

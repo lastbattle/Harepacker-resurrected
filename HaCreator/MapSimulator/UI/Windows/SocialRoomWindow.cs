@@ -72,6 +72,10 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D[] _miniRoomOmokWhiteStoneFrames = Array.Empty<Texture2D>();
         private Texture2D _miniRoomOmokLastBlackStoneTexture;
         private Texture2D _miniRoomOmokLastWhiteStoneTexture;
+        private EntrustedShopBlacklistPromptRequest _activeEntrustedBlacklistPrompt;
+        private string _entrustedBlacklistPromptText = string.Empty;
+        private string _entrustedBlacklistCompositionText = string.Empty;
+        private KeyboardState _previousKeyboardState;
         private int? _pressedEntrustedChildRowIndex;
 
         private static readonly Color HeaderColor = new Color(79, 54, 18);
@@ -88,10 +92,12 @@ namespace HaCreator.MapSimulator.UI
             _windowName = windowName ?? throw new ArgumentNullException(nameof(windowName));
             _panelTexture = panelTexture;
             _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
+            _runtime.EntrustedBlacklistPromptRequested = ShowEntrustedBlacklistPrompt;
         }
 
         public override string WindowName => _windowName;
         public SocialRoomRuntime Runtime => _runtime;
+        public override bool CapturesKeyboardInput => IsVisible && HasActiveEntrustedBlacklistModal();
 
         public override void SetFont(SpriteFont font)
         {
@@ -692,6 +698,122 @@ namespace HaCreator.MapSimulator.UI
             {
                 sprite.Draw(_panelTexture, panel, new Color(0, 0, 0, 96));
                 DrawCenteredText(sprite, accepted ? "READY" : "LOCKED", panel.Center.X, panel.Center.Y - 8, Color.White, 0.6f);
+            }
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            base.Update(gameTime);
+
+            KeyboardState keyboard = Keyboard.GetState();
+            if (IsVisible && HasActiveEntrustedBlacklistModal())
+            {
+                HandleEntrustedBlacklistModalKeyboard(keyboard);
+            }
+
+            _previousKeyboardState = keyboard;
+        }
+
+        public override void HandleCommittedText(string text)
+        {
+            if (_activeEntrustedBlacklistPrompt == null || string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            AppendEntrustedBlacklistPromptText(text);
+            _entrustedBlacklistCompositionText = string.Empty;
+        }
+
+        public override void HandleCompositionText(string text)
+        {
+            _entrustedBlacklistCompositionText = _activeEntrustedBlacklistPrompt != null
+                ? text ?? string.Empty
+                : string.Empty;
+        }
+
+        public override void ClearCompositionText()
+        {
+            _entrustedBlacklistCompositionText = string.Empty;
+        }
+
+        private bool ShowEntrustedBlacklistPrompt(EntrustedShopBlacklistPromptRequest request)
+        {
+            if (request == null)
+            {
+                return false;
+            }
+
+            _activeEntrustedBlacklistPrompt = new EntrustedShopBlacklistPromptRequest
+            {
+                OwnerName = request.OwnerName,
+                Title = request.Title,
+                PromptText = request.PromptText,
+                DefaultText = request.DefaultText,
+                CurrentText = request.CurrentText,
+                StringPoolId = request.StringPoolId,
+                MinimumLength = request.MinimumLength,
+                MaximumLength = request.MaximumLength
+            };
+            _entrustedBlacklistPromptText = string.IsNullOrEmpty(request.CurrentText)
+                ? request.DefaultText ?? string.Empty
+                : request.CurrentText;
+            _entrustedBlacklistCompositionText = string.Empty;
+            return true;
+        }
+
+        private bool HasActiveEntrustedBlacklistModal()
+        {
+            return _activeEntrustedBlacklistPrompt != null;
+        }
+
+        private void AppendEntrustedBlacklistPromptText(string text)
+        {
+            if (_activeEntrustedBlacklistPrompt == null || string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            int maxLength = Math.Max(0, _activeEntrustedBlacklistPrompt.MaximumLength);
+            if (maxLength == 0)
+            {
+                return;
+            }
+
+            string appended = (_entrustedBlacklistPromptText ?? string.Empty) + text;
+            _entrustedBlacklistPromptText = appended.Length > maxLength
+                ? appended.Substring(0, maxLength)
+                : appended;
+        }
+
+        private void HandleEntrustedBlacklistModalKeyboard(KeyboardState keyboard)
+        {
+            if (_activeEntrustedBlacklistPrompt == null)
+            {
+                return;
+            }
+
+            bool Pressed(Keys key) => keyboard.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
+
+            if (Pressed(Keys.Back) && !string.IsNullOrEmpty(_entrustedBlacklistPromptText))
+            {
+                _entrustedBlacklistPromptText = _entrustedBlacklistPromptText.Substring(0, _entrustedBlacklistPromptText.Length - 1);
+                _entrustedBlacklistCompositionText = string.Empty;
+            }
+
+            if (Pressed(Keys.Enter))
+            {
+                _runtime.TrySubmitEntrustedBlacklistPrompt(_entrustedBlacklistPromptText, out _, out _);
+                _activeEntrustedBlacklistPrompt = null;
+                _entrustedBlacklistCompositionText = string.Empty;
+                return;
+            }
+
+            if (Pressed(Keys.Escape))
+            {
+                _runtime.CancelEntrustedBlacklistPrompt();
+                _activeEntrustedBlacklistPrompt = null;
+                _entrustedBlacklistCompositionText = string.Empty;
             }
         }
 

@@ -56,7 +56,8 @@ namespace HaCreator.MapSimulator.Managers
                 _ => null
             };
 
-            int fallbackIndex = -1;
+            int bookFallbackIndex = -1;
+            int typeFallbackIndex = -1;
             for (int index = 0; index < pendingRequests.Count; index++)
             {
                 MapTransferRuntimeRequest request = pendingRequests[index];
@@ -65,14 +66,47 @@ namespace HaCreator.MapSimulator.Managers
                     continue;
                 }
 
-                fallbackIndex = index;
-                if (!expectedType.HasValue || request.Type == expectedType.Value)
+                bookFallbackIndex = index;
+                if (!expectedType.HasValue)
+                {
+                    return index;
+                }
+
+                if (request.Type != expectedType.Value)
+                {
+                    continue;
+                }
+
+                if (typeFallbackIndex < 0)
+                {
+                    typeFallbackIndex = index;
+                }
+
+                if (MatchesAuthoritativeFieldList(request, authoritativeResponse))
                 {
                     return index;
                 }
             }
 
-            return fallbackIndex;
+            return typeFallbackIndex >= 0 ? typeFallbackIndex : bookFallbackIndex;
+        }
+
+        private static bool MatchesAuthoritativeFieldList(
+            MapTransferRuntimeRequest request,
+            MapTransferRuntimeResponse authoritativeResponse)
+        {
+            if (request == null || authoritativeResponse?.Applied != true || request.MapId <= 0)
+            {
+                return true;
+            }
+
+            bool fieldListContainsRequestMap = FindMapIdSlot(authoritativeResponse.FieldList, request.MapId) >= 0;
+            return request.Type switch
+            {
+                MapTransferRuntimeRequestType.Register => fieldListContainsRequestMap,
+                MapTransferRuntimeRequestType.Delete => !fieldListContainsRequestMap,
+                _ => true
+            };
         }
 
         private static int ResolveAuthoritativeFocusMapId(

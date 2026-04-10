@@ -80,6 +80,9 @@ namespace HaCreator.MapSimulator
             public byte? PacketOwnedTerminalCode { get; set; }
             public bool PacketOwnedResultObserved { get; set; }
             public bool? PacketOwnedPreludeSuccess { get; set; }
+            public bool? PacketOwnedTerminalSuccess { get; set; }
+            public int? PacketOwnedPreludeStartedAtTick { get; set; }
+            public int PacketOwnedPreludeDurationMs { get; set; }
         }
 
         private sealed class PendingVegaPromptState
@@ -762,9 +765,12 @@ namespace HaCreator.MapSimulator
                     _pendingVegaCastState.Request,
                     success);
                 result = RewriteVegaOwnerResultMessage(result, _pendingVegaCastState.UseWhiteScroll);
+                int preludeDurationMs = ResolveCurrentVegaResultPreludeDurationMs();
                 _pendingVegaCastState.PacketOwnedPreludeCode = resultCode;
                 _pendingVegaCastState.PacketOwnedResultObserved = true;
                 _pendingVegaCastState.PacketOwnedPreludeSuccess = success;
+                _pendingVegaCastState.PacketOwnedPreludeStartedAtTick = currTickCount;
+                _pendingVegaCastState.PacketOwnedPreludeDurationMs = preludeDurationMs;
                 _pendingVegaCastState.OutcomeResolved = true;
                 _pendingVegaCastState.ResolvedSuccess = success;
                 _pendingVegaCastState.Result = result;
@@ -786,29 +792,34 @@ namespace HaCreator.MapSimulator
                     terminalSuccess = _pendingVegaCastState.PacketOwnedPreludeSuccess.Value;
                 }
 
-                if (!_pendingVegaCastState.ResultApplied)
+                if (!_pendingVegaCastState.OutcomeResolved)
                 {
-                    if (!TryApplyPendingVegaPacketOwnedResult(
-                            terminalSuccess,
-                            out ItemUpgradeUI.ItemUpgradeAttemptResult result,
-                            out string error))
-                    {
-                        message = error;
-                        return false;
-                    }
-
+                    ItemUpgradeUI.ItemUpgradeAttemptResult result = BuildPacketOwnedVegaPreludeResult(
+                        _pendingVegaCastState.Request,
+                        terminalSuccess);
                     result = RewriteVegaOwnerResultMessage(result, _pendingVegaCastState.UseWhiteScroll);
-                    _pendingVegaCastState.ResultApplied = true;
+                    int preludeDurationMs = ResolveCurrentVegaResultPreludeDurationMs();
+                    _pendingVegaCastState.PacketOwnedPreludeStartedAtTick = currTickCount;
+                    _pendingVegaCastState.PacketOwnedPreludeDurationMs = preludeDurationMs;
+                    _pendingVegaCastState.PacketOwnedPreludeSuccess = terminalSuccess;
+                    _pendingVegaCastState.OutcomeResolved = true;
+                    _pendingVegaCastState.ResolvedSuccess = terminalSuccess;
                     _pendingVegaCastState.Result = result;
                     if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI vegaSpellWindow)
                     {
-                        vegaSpellWindow.ApplyResolvedSpellResult(result);
+                        vegaSpellWindow.ApplyPacketOwnedResultPrelude(result);
                     }
                 }
 
                 _pendingVegaCastState.PacketOwnedTerminalCode = resultCode;
                 _pendingVegaCastState.PacketOwnedResultObserved = true;
-                message = $"Applied packet-owned Vega terminal result code {resultCode} ({(terminalSuccess ? "success" : "failure")}) after the recovered prelude.";
+                _pendingVegaCastState.PacketOwnedTerminalSuccess = terminalSuccess;
+                _pendingVegaCastState.ResolvedSuccess = terminalSuccess;
+                _pendingVegaCastState.ResultReadyAtTick = ResolveVegaPacketOwnedTerminalApplyReadyTick(
+                    currTickCount,
+                    _pendingVegaCastState.PacketOwnedPreludeStartedAtTick ?? currTickCount,
+                    _pendingVegaCastState.PacketOwnedPreludeDurationMs);
+                message = $"Observed packet-owned Vega terminal result code {resultCode} ({(terminalSuccess ? "success" : "failure")}) and deferred equipment mutation until the recovered prelude handoff.";
                 return true;
             }
 
@@ -1145,6 +1156,17 @@ namespace HaCreator.MapSimulator
             return ResolveVegaDeferredTerminalApplyDelayMs(resultPreludeDurationMs);
         }
 
+        internal static int ResolveVegaPacketOwnedTerminalApplyReadyTickForTests(
+            int currentTick,
+            int preludeStartedTick,
+            int resultPreludeDurationMs)
+        {
+            return ResolveVegaPacketOwnedTerminalApplyReadyTick(
+                currentTick,
+                preludeStartedTick,
+                resultPreludeDurationMs);
+        }
+
         private static bool IsVegaExclusiveRequestBlocked(bool requestSent, int lastRequestTick, int currentTick)
         {
             if (requestSent)
@@ -1159,6 +1181,17 @@ namespace HaCreator.MapSimulator
         private static int ResolveVegaDeferredTerminalApplyDelayMs(int resultPreludeDurationMs)
         {
             return Math.Max(VegaOwnerResultDelayMs, resultPreludeDurationMs);
+        }
+
+        private static int ResolveVegaPacketOwnedTerminalApplyReadyTick(
+            int currentTick,
+            int preludeStartedTick,
+            int resultPreludeDurationMs)
+        {
+            int preludeReadyTick = preludeStartedTick + ResolveVegaDeferredTerminalApplyDelayMs(resultPreludeDurationMs);
+            return unchecked(currentTick - preludeReadyTick) >= 0
+                ? currentTick
+                : preludeReadyTick;
         }
 
         private readonly record struct VegaRequestContext(
@@ -1288,29 +1321,49 @@ namespace HaCreator.MapSimulator
         private static string ResolveVegaResultLoopSoundDescriptor()
         {
             return NormalizeVegaResultLoopSoundDescriptor(
-                VegaOwnerStringPoolText.GetResultLoopSoundDescriptor());
+                VegaOwnerStringPoolText.GetResultLoopSoundDescriptor(),
+                MapleStoryStringPool.GetOrFallback(
+                    VegaResultPreludeLoopSoundStringPoolId,
+                    VegaResultPreludeLoopSoundFallback));
         }
 
         internal static string NormalizeVegaResultLoopSoundDescriptorForTests(string descriptor)
         {
-            return NormalizeVegaResultLoopSoundDescriptor(descriptor);
+            return NormalizeVegaResultLoopSoundDescriptor(
+                descriptor,
+                VegaResultPreludeLoopSoundFallback);
         }
 
-        private static string NormalizeVegaResultLoopSoundDescriptor(string descriptor)
+        internal static string NormalizeVegaResultLoopSoundDescriptorForTests(string descriptor, string fallbackDescriptor)
         {
+            return NormalizeVegaResultLoopSoundDescriptor(descriptor, fallbackDescriptor);
+        }
+
+        private static string NormalizeVegaResultLoopSoundDescriptor(string descriptor, string fallbackDescriptor)
+        {
+            string fallback = string.IsNullOrWhiteSpace(fallbackDescriptor)
+                ? VegaResultPreludeLoopSoundFallback
+                : fallbackDescriptor.Trim();
             if (string.IsNullOrWhiteSpace(descriptor))
             {
-                return VegaResultPreludeLoopSoundFallback;
+                return fallback;
             }
 
             string normalized = descriptor.Trim();
             if (normalized.StartsWith("UI/", StringComparison.OrdinalIgnoreCase)
                 || normalized.StartsWith("Etc/", StringComparison.OrdinalIgnoreCase))
             {
-                return VegaResultPreludeLoopSoundFallback;
+                return fallback;
             }
 
             return normalized;
+        }
+
+        private int ResolveCurrentVegaResultPreludeDurationMs()
+        {
+            return uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI vegaSpellWindow
+                ? vegaSpellWindow.GetResultPreludeDurationMs()
+                : 0;
         }
 
         private static bool TryDecodeVegaResultPayload(byte[] payload, out byte resultCode)

@@ -134,6 +134,54 @@ namespace HaCreator.MapSimulator.Character.Skills
             "clawCut"
         };
 
+        private static readonly string[] ClientConfirmedMechanicVehicleCurrentActionNames =
+        {
+            // WZ publishes these exact roots on Character/TamingMob/01932016, and the client
+            // taming-mob action gates key the extra coverage by vehicle id rather than prefix.
+            "tank_pre",
+            "tank",
+            "tank_walk",
+            "tank_prone",
+            "tank_stand",
+            "tank_after",
+            "tank_laser",
+            "tank_siegepre",
+            "tank_siegeattack",
+            "tank_siegestand",
+            "tank_siegeafter",
+            "tank_msummon",
+            "tank_msummon2",
+            "tank_rbooster_pre",
+            "tank_rbooster_after",
+            "tank_mRush",
+            "siege_pre",
+            "siege",
+            "siege_stand",
+            "siege_after",
+            "rbooster_pre",
+            "rbooster",
+            "rbooster_after",
+            "gatlingshot",
+            "gatlingshot2",
+            "drillrush",
+            "mbooster",
+            "earthslug",
+            "rpunch",
+            "msummon",
+            "msummon2",
+            "ride2",
+            "getoff2",
+            "mRush",
+            "flamethrower_pre",
+            "flamethrower",
+            "flamethrower_after",
+            "flamethrower_pre2",
+            "flamethrower2",
+            "flamethrower_after2",
+            "herbalism_mechanic",
+            "mining_mechanic"
+        };
+
         internal static bool LooksLikeClientOwnedRideDescriptionBuff(SkillData skill)
         {
             if (skill?.IsBuff != true)
@@ -370,7 +418,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool SupportsExplicitMechanicVehiclePresentationCurrentAction(string actionName)
         {
             return string.IsNullOrWhiteSpace(actionName)
-                   || IsMechanicVehicleOwnedCurrentActionName(actionName, includeTransformStates: true);
+                   || IsKnownMechanicVehicleCurrentActionName(actionName);
         }
 
         internal static bool IsKnownClientOwnedVehicleCurrentActionName(int mountItemId, string actionName)
@@ -380,9 +428,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 1932000 => IsBattleshipVehicleOwnedCurrentActionName(
                     actionName,
                     includeSupportActions: true),
-                1932016 => IsMechanicVehicleOwnedCurrentActionName(
-                    actionName,
-                    includeTransformStates: true),
+                1932016 => IsKnownMechanicVehicleCurrentActionName(actionName),
                 _ => false
             };
         }
@@ -410,6 +456,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static bool IsMountedMoveActionName(string actionName)
         {
             return ContainsActionName(SharedClientOwnedVehicleMountedMoveActions, actionName);
+        }
+
+        private static bool IsKnownMechanicVehicleCurrentActionName(string actionName)
+        {
+            return IsMountedMoveActionName(actionName)
+                   || ContainsActionName(MechanicClientOwnedVehicleMountedMoveActions, actionName)
+                   || ContainsActionName(ClientConfirmedMechanicVehicleCurrentActionNames, actionName)
+                   || ContainsActionName(ClientConfirmedMechanicVehicleVehicleIdOnlyActionNames, actionName);
         }
 
         private static bool ContainsActionName(string[] candidates, string actionName)

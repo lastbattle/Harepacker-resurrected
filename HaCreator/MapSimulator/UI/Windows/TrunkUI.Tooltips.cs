@@ -83,7 +83,10 @@ namespace HaCreator.MapSimulator.UI
             string title = ResolveDisplayText(slot.ItemName, metadata.ItemName);
             string typeLine = ResolveDisplayText(slot.ItemTypeName, ResolveDisplayText(metadata.TypeName, inventoryType.ToString()));
             string quantityLine = slot.Quantity > 1 ? $"Quantity: {slot.Quantity}" : string.Empty;
-            string stackLine = slot.MaxStackSize.GetValueOrDefault(1) > 1 ? $"Stack Max: {slot.MaxStackSize.Value}" : string.Empty;
+            string stackLine = !InventoryItemMetadataResolver.HasStackLimitMetadataLine(metadata.MetadataLines)
+                               && slot.MaxStackSize.GetValueOrDefault(1) > 1
+                ? InventoryItemMetadataResolver.FormatStackLimitMetadataLine(slot.MaxStackSize.Value)
+                : string.Empty;
             string description = ResolveDisplayText(slot.Description, metadata.Description);
             Texture2D itemTexture = ResolveSlotItemTexture(sprite.GraphicsDevice, slot);
             Texture2D cashLabelTexture = metadata.IsCashItem ? _equipTooltipAssets?.CashLabel : null;

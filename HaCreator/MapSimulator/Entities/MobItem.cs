@@ -1212,7 +1212,7 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             string currentAction = _animationController?.CurrentAction;
-            if (string.Equals(currentAction, attackAction, StringComparison.OrdinalIgnoreCase))
+            if (MobAnimationSet.AreSameIndexedAttackFamily(attackAction, currentAction))
             {
                 frameIndex = Math.Max(0, _animationController?.CurrentFrameIndex ?? 0);
                 return true;
@@ -1241,7 +1241,7 @@ namespace HaCreator.MapSimulator.Entities
         {
             if (string.IsNullOrWhiteSpace(requestedAttackAction)
                 || string.IsNullOrWhiteSpace(observedAttackAction)
-                || !string.Equals(requestedAttackAction, observedAttackAction, StringComparison.OrdinalIgnoreCase)
+                || !MobAnimationSet.AreSameIndexedAttackFamily(requestedAttackAction, observedAttackAction)
                 || observedAt == int.MinValue)
             {
                 return false;

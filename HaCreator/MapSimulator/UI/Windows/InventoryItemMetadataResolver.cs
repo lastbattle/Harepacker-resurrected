@@ -77,6 +77,7 @@ namespace HaCreator.MapSimulator.UI
         private const int DefaultStackLimit = 100;
         private const int RewardPreviewLineLimit = 5;
         private const int ConsumeItemRequirementLineLimit = 4;
+        private const string StackLimitMetadataPrefix = "Max per Slot:";
         private static readonly Regex SkillBookSuccessRateRegex = new(@"(\d+)\s*%\s*chance", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly (string Key, string Label)[] CurableStatusEffectKeys =
         {
@@ -200,6 +201,31 @@ namespace HaCreator.MapSimulator.UI
 
             int resolved = slotMax ?? defaultValue;
             return resolved > 0 ? resolved : defaultValue;
+        }
+
+        public static string FormatStackLimitMetadataLine(int maxStackSize)
+        {
+            return maxStackSize > 0
+                ? $"{StackLimitMetadataPrefix} {maxStackSize.ToString("N0", CultureInfo.InvariantCulture)}"
+                : string.Empty;
+        }
+
+        public static bool HasStackLimitMetadataLine(IReadOnlyList<string> metadataLines)
+        {
+            if (metadataLines == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < metadataLines.Count; i++)
+            {
+                if (metadataLines[i]?.StartsWith(StackLimitMetadataPrefix, StringComparison.Ordinal) == true)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public static bool TryResolveItemName(int itemId, out string itemName)
@@ -2376,7 +2402,7 @@ namespace HaCreator.MapSimulator.UI
             int slotMax = GetIntOrStringValue(infoProperty["slotMax"]);
             if (slotMax > 0)
             {
-                metadataLines.Add($"Max per Slot: {slotMax.ToString("N0", CultureInfo.InvariantCulture)}");
+                metadataLines.Add(FormatStackLimitMetadataLine(slotMax));
             }
 
             int maxOwned = GetIntOrStringValue(infoProperty["max"]);

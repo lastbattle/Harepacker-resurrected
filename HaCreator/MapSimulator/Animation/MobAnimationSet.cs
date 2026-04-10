@@ -429,6 +429,24 @@ namespace HaCreator.MapSimulator.Animation
             return null;
         }
 
+        public static bool AreSameIndexedAttackFamily(string requestedAttackAction, string observedAttackAction)
+        {
+            string requestedKey = requestedAttackAction?.ToLowerInvariant() ?? string.Empty;
+            string observedKey = observedAttackAction?.ToLowerInvariant() ?? string.Empty;
+            if (requestedKey.Length == 0 || observedKey.Length == 0)
+            {
+                return false;
+            }
+
+            if (string.Equals(requestedKey, observedKey, System.StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            return TryResolveAlternateAttackKey(requestedKey, out string alternateKey)
+                   && string.Equals(alternateKey, observedKey, System.StringComparison.Ordinal);
+        }
+
         private static IEnumerable<string> EnumerateCompatibleAttackKeys(string attackAction)
         {
             string key = attackAction?.ToLowerInvariant() ?? string.Empty;

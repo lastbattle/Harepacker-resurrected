@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.UI;
 using Microsoft.Xna.Framework;
 using System;
 
@@ -331,6 +332,12 @@ namespace HaCreator.MapSimulator
             };
         }
 
+        internal static bool IsClientPartyHelperMarker(MinimapUI.HelperMarkerType? markerType)
+        {
+            return markerType == MinimapUI.HelperMarkerType.Party
+                || markerType == MinimapUI.HelperMarkerType.PartyMaster;
+        }
+
         private bool IsTrackedDropPartyActor(int actorId)
         {
             int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
@@ -344,7 +351,8 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            return _socialListRuntime.IsTrackedPartyMember(actor.Name);
+            return _socialListRuntime.IsTrackedPartyMember(actor.Name)
+                || IsClientPartyHelperMarker(actor.HelperMarkerType);
         }
 
         private string ResolveRemoteDropPacketActorName(PacketDropLeaveReason reason, RemoteDropLeavePacket packet)

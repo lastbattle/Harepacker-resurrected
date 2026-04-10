@@ -891,6 +891,57 @@ namespace HaCreator.MapSimulator
                 presentation.CurrentTime);
         }
 
+        private void HandleRemoteStringEffect(RemoteUserActorPool.RemoteStringEffectPresentation presentation)
+        {
+            if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor actor) != true
+                || actor == null
+                || !actor.IsVisibleInWorld)
+            {
+                return;
+            }
+
+            string effectUol = NormalizeRemotePacketOwnedStringEffectUol(presentation.EffectPath);
+            if (string.IsNullOrWhiteSpace(effectUol)
+                || !TryLoadRemotePacketOwnedStringEffectFrames(effectUol, out List<IDXObject> frames))
+            {
+                return;
+            }
+
+            Vector2 fallbackPosition = actor.Position;
+            bool fallbackFacingRight = presentation.UseOwnerFacing && actor.FacingRight;
+            _animationEffects.AddOneTimeAttached(
+                frames,
+                () =>
+                {
+                    if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
+                        && liveActor != null)
+                    {
+                        return liveActor.Position;
+                    }
+
+                    return fallbackPosition;
+                },
+                () =>
+                {
+                    if (!presentation.UseOwnerFacing)
+                    {
+                        return false;
+                    }
+
+                    if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
+                        && liveActor != null)
+                    {
+                        return liveActor.FacingRight;
+                    }
+
+                    return fallbackFacingRight;
+                },
+                fallbackPosition.X,
+                fallbackPosition.Y,
+                fallbackFacingRight,
+                presentation.CurrentTime);
+        }
+
         private void SyncAnimationDisplayerRemoteUserState(int characterId)
         {
             if (characterId <= 0)
@@ -2160,6 +2211,41 @@ namespace HaCreator.MapSimulator
         {
             WzImageProperty property = ResolveAnimationDisplayerProperty(effectUol);
             return ExtractPacketOwnedFrameSprites(LoadPacketOwnedAnimationFrames(property));
+        }
+
+        private bool TryLoadRemotePacketOwnedStringEffectFrames(string effectUol, out List<IDXObject> frames)
+        {
+            frames = LoadAnimationDisplayerFrames(effectUol);
+            if (Animation.AnimationEffects.HasFrames(frames))
+            {
+                return true;
+            }
+
+            string indexedEffectUol = $"{effectUol}/0";
+            frames = LoadAnimationDisplayerFrames(indexedEffectUol);
+            return Animation.AnimationEffects.HasFrames(frames);
+        }
+
+        internal static string NormalizeRemotePacketOwnedStringEffectUol(string effectPath)
+        {
+            string normalized = effectPath?.Replace('\\', '/').Trim().Trim('/');
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return null;
+            }
+
+            if (normalized.StartsWith("Effect/", StringComparison.OrdinalIgnoreCase))
+            {
+                return $"Effect/{normalized["Effect/".Length..]}";
+            }
+
+            string firstSegment = normalized.Split('/')[0];
+            if (firstSegment.EndsWith(".img", StringComparison.OrdinalIgnoreCase))
+            {
+                return $"Effect/{normalized}";
+            }
+
+            return normalized;
         }
 
         private WzImageProperty ResolveAnimationDisplayerProperty(string effectUol)

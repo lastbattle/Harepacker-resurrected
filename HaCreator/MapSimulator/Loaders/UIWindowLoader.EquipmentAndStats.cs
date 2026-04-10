@@ -408,6 +408,33 @@ namespace HaCreator.MapSimulator.Loaders
             return new Point((int)origin.Value.X, (int)origin.Value.Y);
         }
 
+        private static Point ResolveSkillTooltipOriginWithSameFamilyFallback(
+            WzCanvasProperty canvas,
+            WzCanvasProperty sameFamilyFallbackCanvas)
+        {
+            Point authoredOrigin = ResolveTooltipOrigin(canvas);
+            if (canvas == null || sameFamilyFallbackCanvas == null)
+            {
+                return authoredOrigin;
+            }
+
+            Point fallbackOrigin = ResolveTooltipOrigin(sameFamilyFallbackCanvas);
+            return SkillTooltipFrameLayout.ResolveSameFamilyOriginFallback(
+                authoredOrigin,
+                canvas.PngProperty?.Width ?? 0,
+                canvas.PngProperty?.Height ?? 0,
+                fallbackOrigin,
+                sameFamilyFallbackCanvas.PngProperty?.Width ?? 0,
+                sameFamilyFallbackCanvas.PngProperty?.Height ?? 0);
+        }
+
+        private static bool HasSkillTooltipFrameFamily(WzSubProperty skillProperty)
+        {
+            return skillProperty?["tip0"] is WzCanvasProperty
+                && skillProperty?["tip1"] is WzCanvasProperty
+                && skillProperty?["tip2"] is WzCanvasProperty;
+        }
+
         private static List<Texture2D> CreateFallbackProgressFrames(
             GraphicsDevice device,
             int width,
@@ -567,20 +594,29 @@ namespace HaCreator.MapSimulator.Loaders
 
             WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img");
             WzSubProperty postBigBangSkillMain = uiWindow2Image?["Skill"]?["main"] as WzSubProperty;
-            if (postBigBangSkillMain != null)
+            WzSubProperty skillTooltipProperty = HasSkillTooltipFrameFamily(skillProperty)
+                ? skillProperty
+                : postBigBangSkillMain;
+            if (skillTooltipProperty != null)
             {
                 Texture2D[] tooltipFrames =
                 {
-                    LoadCanvasTexture(postBigBangSkillMain, "tip0", device),
-                    LoadCanvasTexture(postBigBangSkillMain, "tip1", device),
-                    LoadCanvasTexture(postBigBangSkillMain, "tip2", device)
+                    LoadCanvasTexture(skillTooltipProperty, "tip0", device),
+                    LoadCanvasTexture(skillTooltipProperty, "tip1", device),
+                    LoadCanvasTexture(skillTooltipProperty, "tip2", device)
                 };
                 skill.SetTooltipTextures(tooltipFrames);
                 Point[] tooltipOrigins =
                 {
-                    ResolveTooltipOrigin(postBigBangSkillMain["tip0"] as WzCanvasProperty),
-                    ResolveTooltipOrigin(postBigBangSkillMain["tip1"] as WzCanvasProperty),
-                    ResolveTooltipOrigin(postBigBangSkillMain["tip2"] as WzCanvasProperty)
+                    ResolveSkillTooltipOriginWithSameFamilyFallback(
+                        skillTooltipProperty["tip0"] as WzCanvasProperty,
+                        postBigBangSkillMain?["tip0"] as WzCanvasProperty),
+                    ResolveSkillTooltipOriginWithSameFamilyFallback(
+                        skillTooltipProperty["tip1"] as WzCanvasProperty,
+                        postBigBangSkillMain?["tip1"] as WzCanvasProperty),
+                    ResolveSkillTooltipOriginWithSameFamilyFallback(
+                        skillTooltipProperty["tip2"] as WzCanvasProperty,
+                        postBigBangSkillMain?["tip2"] as WzCanvasProperty)
                 };
                 skill.SetTooltipOrigins(tooltipOrigins);
             }

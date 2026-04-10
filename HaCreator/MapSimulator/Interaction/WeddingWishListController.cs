@@ -53,6 +53,9 @@ namespace HaCreator.MapSimulator.Interaction
                 () => DeleteSelected(windowManager),
                 () => Confirm(windowManager),
                 () => Close(windowManager),
+                value => AppendPutQuantityDigit(windowManager, value),
+                () => BackspacePutQuantityDigit(windowManager),
+                () => CancelTransientPrompt(windowManager),
                 feedbackHandler);
             window.SetFont(font);
         }

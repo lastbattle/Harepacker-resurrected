@@ -822,9 +822,10 @@ namespace HaCreator.MapSimulator
                     .Select(line => new EventAlarmLineSnapshot
                     {
                         Text = line.Text,
-                        Left = Math.Max(0, line.Left),
-                        Top = Math.Max(0, line.Top),
-                        IsHighlighted = line.IsHighlighted
+                        Left = line.Left,
+                        Top = line.Top,
+                        IsHighlighted = line.IsHighlighted,
+                        TextColorArgb = line.TextColorArgb
                     })
                     .ToArray();
             }

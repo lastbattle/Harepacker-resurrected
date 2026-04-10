@@ -66,7 +66,29 @@ namespace HaCreator.MapSimulator.Managers
 
         private readonly ConcurrentQueue<RemoteUserOfficialSessionBridgeMessage> _pendingMessages = new();
         private readonly Dictionary<ushort, int> _packetMap = new(DefaultPacketMap);
+        private readonly Dictionary<ushort, LearnedOpcodeEntry> _learnedPacketMap = new();
         private readonly object _sync = new();
+
+        private sealed class LearnedOpcodeEntry
+        {
+            public LearnedOpcodeEntry(int packetType, string evidence)
+            {
+                PacketType = packetType;
+                Evidence = evidence ?? string.Empty;
+                Count = 1;
+            }
+
+            public int PacketType { get; private set; }
+            public string Evidence { get; private set; }
+            public int Count { get; private set; }
+
+            public void Update(int packetType, string evidence)
+            {
+                PacketType = packetType;
+                Evidence = evidence ?? string.Empty;
+                Count++;
+            }
+        }
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
@@ -132,7 +154,7 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Remote-user official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}. {LastStatus}";
+            return $"Remote-user official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; learned={DescribeLearnedPacketMappings()}. {LastStatus}";
         }
 
         public string DescribePacketMappings()
@@ -145,6 +167,24 @@ namespace HaCreator.MapSimulator.Managers
                         .OrderBy(entry => entry.Key)
                         .Select(entry =>
                             $"{entry.Key} -> {RemoteUserPacketInboxManager.DescribePacketType(entry.Value)}"));
+            }
+        }
+
+        public string DescribeLearnedPacketMappings()
+        {
+            lock (_sync)
+            {
+                if (_learnedPacketMap.Count == 0)
+                {
+                    return "none";
+                }
+
+                return string.Join(
+                    ", ",
+                    _learnedPacketMap
+                        .OrderBy(entry => entry.Key)
+                        .Select(entry =>
+                            $"{entry.Key}->{RemoteUserPacketInboxManager.DescribePacketType(entry.Value.PacketType)} ({entry.Value.Evidence}; count={entry.Value.Count})"));
             }
         }
 
@@ -260,6 +300,7 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 _packetMap[opcode] = packetType;
+                RememberLearnedOpcodeNoLock(opcode, packetType, "manual");
             }
 
             status = $"Mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)}.";
@@ -273,6 +314,7 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 removed = _packetMap.Remove(opcode);
+                _learnedPacketMap.Remove(opcode);
             }
 
             status = removed
@@ -287,6 +329,7 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 _packetMap.Clear();
+                _learnedPacketMap.Clear();
                 foreach (KeyValuePair<ushort, int> entry in DefaultPacketMap)
                 {
                     _packetMap[entry.Key] = entry.Value;
@@ -341,7 +384,15 @@ namespace HaCreator.MapSimulator.Managers
             {
                 if (!_packetMap.TryGetValue(opcode, out packetType))
                 {
-                    return false;
+                    byte[] inferencePayload = rawPacket.Skip(sizeof(ushort)).ToArray();
+                    if (!TryInferInboundRemoteTutorPacketTypeNoLock(inferencePayload, out packetType, out string inferenceReason))
+                    {
+                        return false;
+                    }
+
+                    _packetMap[opcode] = packetType;
+                    RememberLearnedOpcodeNoLock(opcode, packetType, $"auto:{inferenceReason}");
+                    LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from tutor payload inference ({inferenceReason}).";
                 }
             }
 
@@ -353,6 +404,60 @@ namespace HaCreator.MapSimulator.Managers
             byte[] payload = rawPacket.Skip(sizeof(ushort)).ToArray();
             message = new RemoteUserOfficialSessionBridgeMessage(packetType, payload, source, opcode);
             return true;
+        }
+
+        private static bool TryInferInboundRemoteTutorPacketTypeNoLock(
+            byte[] payload,
+            out int packetType,
+            out string reason)
+        {
+            packetType = 0;
+            reason = string.Empty;
+            if (payload == null || payload.Length < sizeof(int) + 1)
+            {
+                return false;
+            }
+
+            if (HaCreator.MapSimulator.MapSimulator.TryDecodeRemotePacketOwnedTutorHirePayload(
+                    payload,
+                    out int hireCharacterId,
+                    out bool enabled,
+                    out _))
+            {
+                packetType = (int)Pools.RemoteUserPacketType.UserTutorHire;
+                reason = $"exact remote tutor-hire wrapper for character {hireCharacterId}, enabled={enabled}";
+                return true;
+            }
+
+            if (HaCreator.MapSimulator.MapSimulator.TryDecodeRemotePacketOwnedTutorMessagePayload(
+                    payload,
+                    out int messageCharacterId,
+                    out bool indexedPayload,
+                    out int messageIndex,
+                    out int durationMs,
+                    out string text,
+                    out int width,
+                    out _))
+            {
+                packetType = (int)Pools.RemoteUserPacketType.UserTutorMessage;
+                reason = indexedPayload
+                    ? $"exact remote tutor-indexed-message wrapper for character {messageCharacterId}, index={messageIndex}, duration={durationMs}"
+                    : $"exact remote tutor-text-message wrapper for character {messageCharacterId}, width={width}, duration={durationMs}, textLength={text?.Length ?? 0}";
+                return true;
+            }
+
+            return false;
+        }
+
+        private void RememberLearnedOpcodeNoLock(ushort opcode, int packetType, string evidence)
+        {
+            if (_learnedPacketMap.TryGetValue(opcode, out LearnedOpcodeEntry existing))
+            {
+                existing.Update(packetType, evidence);
+                return;
+            }
+
+            _learnedPacketMap[opcode] = new LearnedOpcodeEntry(packetType, evidence);
         }
 
         private async Task ListenLoopAsync(CancellationToken cancellationToken)

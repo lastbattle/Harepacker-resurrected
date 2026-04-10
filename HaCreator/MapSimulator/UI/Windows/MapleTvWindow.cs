@@ -299,7 +299,10 @@ namespace HaCreator.MapSimulator.UI
 
             if (_receiverButton != null)
             {
-                bool showReceiverToggle = snapshot.MessageType != 1;
+                // CUIMapleTV::OnCreate keeps the receiver surface visible for dialog type 0
+                // (flexible, checkbox-owned) and dialog type 2 (dedication, enabled art only),
+                // while dialog type 1 hides it entirely.
+                bool showReceiverToggle = snapshot.CanToggleReceiver || snapshot.UseReceiver;
                 _receiverButton.SetVisible(showReceiverToggle);
                 if (showReceiverToggle)
                 {

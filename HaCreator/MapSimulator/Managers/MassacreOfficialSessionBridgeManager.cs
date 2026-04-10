@@ -28,6 +28,9 @@ namespace HaCreator.MapSimulator.Managers
         private const int CurrentWrapperRelayOpcode = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
         private const int PacketTypeIncGauge = 173;
         private const int PacketTypeResult = 174;
+        private const string DiscoverCommandUsage = "/massacre session discover <remotePort> [processName|pid] [localPort]";
+        private const string AttachCommandUsage = "/massacre session attach <remotePort> [processName|pid] [localPort]";
+        private const string StartAutoCommandUsage = "/massacre session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]";
 
         private readonly ConcurrentQueue<MassacrePacketInboxMessage> _pendingMessages = new();
         private readonly Dictionary<int, MassacrePacketInboxMessageKind> _mappedInboundOpcodes = new();
@@ -879,7 +882,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 string matches = string.Join(", ", filteredCandidates.Select(candidate =>
                     $"{candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} via {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}"));
-                status = $"Massacre official-session discovery found multiple candidates for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}: {matches}. Use /massacre session discover to inspect them, or add a localPort filter.";
+                status = $"Massacre official-session discovery found multiple candidates for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}: {matches}. Use {DiscoverCommandUsage} to inspect them, then narrow with a localPort filter before using {AttachCommandUsage} for passive observation or {StartAutoCommandUsage} for reconnect proxy ownership.";
                 candidate = default;
                 return false;
             }
@@ -904,8 +907,14 @@ namespace HaCreator.MapSimulator.Managers
 
             return string.Join(
                 Environment.NewLine,
-                filteredCandidates.Select(candidate =>
-                    $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}"));
+                filteredCandidates
+                    .Select(candidate =>
+                        $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}")
+                    .Concat(new[]
+                    {
+                        $"Use {AttachCommandUsage} for passive observation of an already-established Maple socket pair.",
+                        $"Use {StartAutoCommandUsage} when you need a reconnect through the localhost proxy for decryptable traffic and outbound injection."
+                    }));
         }
 
         private static IReadOnlyList<SessionDiscoveryCandidate> FilterCandidatesByLocalPort(

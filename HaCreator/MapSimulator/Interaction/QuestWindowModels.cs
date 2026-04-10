@@ -14,6 +14,7 @@ namespace HaCreator.MapSimulator.Interaction
         Track,
         LocateNpc,
         LocateMob,
+        QuestGuide,
         QuestDeliveryAccept,
         QuestDeliveryComplete
     }

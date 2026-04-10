@@ -111,55 +111,39 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
-            stageSystemImage.ParseImage();
-            Dictionary<string, ContextOwnedStageThemeCatalogEntry> themes = BuildThemes(stageSystemImage.WzProperties.OfType<WzImageProperty>());
-            if (themes.Count == 0)
+            if (!TryLoadImage(stageKeywordPath, out WzImage stageKeywordImage))
             {
-                error = $"Context-owned stage-period validation loaded {stageSystemPath}, but no client stage themes with concrete period entries were discovered.";
+                error = $"Context-owned stage-period validation could not load {stageKeywordPath}, so the simulator cannot mirror CStageSystem::IterateStageSystemClient acceptance yet.";
                 return null;
             }
 
-            if (TryLoadImage(stageKeywordPath, out WzImage stageKeywordImage))
-            {
-                stageKeywordImage.ParseImage();
-                ApplyStageKeywordAugmentations(themes, stageKeywordImage.WzProperties.OfType<WzImageProperty>());
-            }
-
-            Dictionary<int, IReadOnlyList<ContextOwnedStageAffectedMapEntry>> affectedMapsByFieldId = new();
-            if (TryLoadImage(stageAffectedMapPath, out WzImage stageAffectedMapImage))
-            {
-                stageAffectedMapImage.ParseImage();
-                affectedMapsByFieldId = BuildAffectedMapCatalog(stageAffectedMapImage.WzProperties.OfType<WzImageProperty>());
-                ApplyAffectedMapAugmentations(themes, affectedMapsByFieldId);
-            }
-
-            return new ContextOwnedStageSystemCatalog(themes, affectedMapsByFieldId);
+            WzImage stageAffectedMapImage = null;
+            TryLoadImage(stageAffectedMapPath, out stageAffectedMapImage);
+            return BuildCore(
+                stageSystemPath,
+                stageSystemImage,
+                stageKeywordPath,
+                stageKeywordImage,
+                stageAffectedMapImage,
+                requireStageKeywordImage: true,
+                out error);
         }
 
         internal static ContextOwnedStageSystemCatalog BuildForTesting(
             WzImageProperty stageSystemRoot,
             out string error,
             WzImageProperty stageKeywordRoot = null,
-            WzImageProperty stageAffectedMapRoot = null)
+            WzImageProperty stageAffectedMapRoot = null,
+            bool requireStageKeywordImage = false)
         {
-            error = null;
-            Dictionary<string, ContextOwnedStageThemeCatalogEntry> themes = BuildThemes(stageSystemRoot?.WzProperties.OfType<WzImageProperty>());
-            if (themes.Count == 0)
-            {
-                error = "Context-owned stage-period validation could not discover any concrete theme periods from the supplied StageSystem root.";
-                return null;
-            }
-
-            if (stageKeywordRoot != null)
-            {
-                ApplyStageKeywordAugmentations(themes, stageKeywordRoot.WzProperties.OfType<WzImageProperty>());
-            }
-
-            Dictionary<int, IReadOnlyList<ContextOwnedStageAffectedMapEntry>> affectedMapsByFieldId = stageAffectedMapRoot != null
-                ? BuildAffectedMapCatalog(stageAffectedMapRoot.WzProperties.OfType<WzImageProperty>())
-                : new Dictionary<int, IReadOnlyList<ContextOwnedStageAffectedMapEntry>>();
-            ApplyAffectedMapAugmentations(themes, affectedMapsByFieldId);
-            return new ContextOwnedStageSystemCatalog(themes, affectedMapsByFieldId);
+            return BuildCore(
+                "Etc/StageSystem.img",
+                stageSystemRoot,
+                "Etc/StageKeyword.img",
+                stageKeywordRoot,
+                stageAffectedMapRoot,
+                requireStageKeywordImage,
+                out error);
         }
 
         internal IEnumerable<ContextOwnedStagePeriodCatalogEntry> EnumeratePeriods()
@@ -589,6 +573,69 @@ namespace HaCreator.MapSimulator.Interaction
 
             image = Program.FindImage(category, imageName);
             return image != null;
+        }
+
+        private static ContextOwnedStageSystemCatalog BuildCore(
+            string stageSystemPath,
+            WzImageProperty stageSystemRoot,
+            string stageKeywordPath,
+            WzImageProperty stageKeywordRoot,
+            WzImageProperty stageAffectedMapRoot,
+            bool requireStageKeywordImage,
+            out string error)
+        {
+            error = null;
+            if (stageSystemRoot == null)
+            {
+                error = $"Context-owned stage-period validation could not load {stageSystemPath}, so the simulator cannot mirror CStageSystem::BuildCacheData acceptance yet.";
+                return null;
+            }
+
+            if (requireStageKeywordImage && stageKeywordRoot == null)
+            {
+                error = $"Context-owned stage-period validation could not load {stageKeywordPath}, so the simulator cannot mirror CStageSystem::IterateStageSystemClient acceptance yet.";
+                return null;
+            }
+
+            Dictionary<string, ContextOwnedStageThemeCatalogEntry> themes = BuildThemes(stageSystemRoot.WzProperties.OfType<WzImageProperty>());
+            if (themes.Count == 0)
+            {
+                error = $"Context-owned stage-period validation loaded {stageSystemPath}, but no client stage themes with concrete period entries were discovered.";
+                return null;
+            }
+
+            if (stageKeywordRoot != null)
+            {
+                ApplyStageKeywordAugmentations(themes, stageKeywordRoot.WzProperties.OfType<WzImageProperty>());
+            }
+
+            Dictionary<int, IReadOnlyList<ContextOwnedStageAffectedMapEntry>> affectedMapsByFieldId = stageAffectedMapRoot != null
+                ? BuildAffectedMapCatalog(stageAffectedMapRoot.WzProperties.OfType<WzImageProperty>())
+                : new Dictionary<int, IReadOnlyList<ContextOwnedStageAffectedMapEntry>>();
+            ApplyAffectedMapAugmentations(themes, affectedMapsByFieldId);
+            return new ContextOwnedStageSystemCatalog(themes, affectedMapsByFieldId);
+        }
+
+        private static ContextOwnedStageSystemCatalog BuildCore(
+            string stageSystemPath,
+            WzImage stageSystemImage,
+            string stageKeywordPath,
+            WzImage stageKeywordImage,
+            WzImage stageAffectedMapImage,
+            bool requireStageKeywordImage,
+            out string error)
+        {
+            stageSystemImage?.ParseImage();
+            stageKeywordImage?.ParseImage();
+            stageAffectedMapImage?.ParseImage();
+            return BuildCore(
+                stageSystemPath,
+                stageSystemImage,
+                stageKeywordPath,
+                stageKeywordImage,
+                stageAffectedMapImage,
+                requireStageKeywordImage,
+                out error);
         }
 
         private static bool TrySplitPath(string path, out string category, out string imageName)

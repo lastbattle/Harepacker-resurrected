@@ -330,9 +330,22 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            HashSet<EquipSlot> appliedSlots = new();
             for (int i = 0; i < slotStates.Count; i++)
             {
                 CharacterEquipmentAuthoritySlotState state = slotStates[i];
+                if (state.Slot == EquipSlot.None)
+                {
+                    rejectReason = "Character equipment authority result cannot apply the empty equipment slot.";
+                    return false;
+                }
+
+                if (!appliedSlots.Add(state.Slot))
+                {
+                    rejectReason = "Character equipment authority result returned duplicate slot states.";
+                    return false;
+                }
+
                 if (!TryResolveAuthorityPart(build, state.Slot, state.VisibleItemId, out CharacterPart visiblePart, out rejectReason)
                     || !TryResolveAuthorityPart(build, state.Slot, state.HiddenItemId, out CharacterPart hiddenPart, out rejectReason))
                 {

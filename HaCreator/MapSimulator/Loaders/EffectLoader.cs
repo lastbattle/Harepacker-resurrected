@@ -323,21 +323,16 @@ namespace HaCreator.MapSimulator.Loaders
                     continue;
                 }
 
-                foreach (WzImageProperty child in stateProperty.WzProperties)
+                foreach ((int properEventIndex, WzImageProperty eventProperty) in EnumerateReactorIndexedHitProperties(stateProperty))
                 {
-                    if (!int.TryParse(child?.Name, out int properEventIndex))
+                    if (!IsReactorIndexedHitPropertyCandidate(eventProperty))
                     {
                         continue;
                     }
 
-                    if (!IsReactorIndexedHitPropertyCandidate(child))
-                    {
-                        continue;
-                    }
-
-                    List<IDXObject> frames = LoadReactorFramesForProperty(
+                    List<IDXObject> frames = LoadReactorFramesForExactSourceProperty(
                         texturePool,
-                        WzInfoTools.GetRealProperty(child),
+                        WzInfoTools.GetRealProperty(eventProperty),
                         reactorInstance.X,
                         reactorInstance.Y,
                         device,
@@ -352,7 +347,7 @@ namespace HaCreator.MapSimulator.Loaders
             return indexedHitFrames;
         }
 
-        private static Dictionary<(int State, int ProperEventIndex), WzImageProperty> GetReactorIndexedHitProperties(WzImage linkedReactorImage)
+        internal static Dictionary<(int State, int ProperEventIndex), WzImageProperty> GetReactorIndexedHitProperties(WzImage linkedReactorImage)
         {
             Dictionary<(int State, int ProperEventIndex), WzImageProperty> indexedHitProperties = new Dictionary<(int State, int ProperEventIndex), WzImageProperty>();
             if (linkedReactorImage == null)
@@ -374,14 +369,9 @@ namespace HaCreator.MapSimulator.Loaders
                     continue;
                 }
 
-                foreach (WzImageProperty child in stateProperty.WzProperties)
+                foreach ((int properEventIndex, WzImageProperty eventProperty) in EnumerateReactorIndexedHitProperties(stateProperty))
                 {
-                    if (!int.TryParse(child?.Name, out int properEventIndex))
-                    {
-                        continue;
-                    }
-
-                    WzImageProperty hitProperty = ResolveExactReactorSourceProperty(child);
+                    WzImageProperty hitProperty = ResolveExactReactorSourceProperty(eventProperty);
                     if (hitProperty == null)
                     {
                         continue;
@@ -402,7 +392,40 @@ namespace HaCreator.MapSimulator.Loaders
                 return false;
             }
 
-            return ResolveReactorFrameSourceProperty(resolvedProperty) != null;
+            return ResolveReactorFrameSourceProperty(resolvedProperty) != null
+                || ResolveReactorFrameSourceProperty(WzInfoTools.GetRealProperty(resolvedProperty["hit"])) != null;
+        }
+
+        private static IEnumerable<(int ProperEventIndex, WzImageProperty EventProperty)> EnumerateReactorIndexedHitProperties(WzImageProperty stateProperty)
+        {
+            WzImageProperty resolvedStateProperty = WzInfoTools.GetRealProperty(stateProperty);
+            if (resolvedStateProperty?.WzProperties == null)
+            {
+                yield break;
+            }
+
+            HashSet<int> yieldedIndices = new HashSet<int>();
+            if (WzInfoTools.GetRealProperty(resolvedStateProperty["event"]) is WzSubProperty eventProperty)
+            {
+                foreach (WzImageProperty child in eventProperty.WzProperties)
+                {
+                    if (int.TryParse(child?.Name, out int properEventIndex)
+                        && yieldedIndices.Add(properEventIndex))
+                    {
+                        yield return (properEventIndex, child);
+                    }
+                }
+            }
+
+            foreach (WzImageProperty child in resolvedStateProperty.WzProperties)
+            {
+                if (int.TryParse(child?.Name, out int properEventIndex)
+                    && WzInfoTools.GetRealProperty(child) is WzSubProperty
+                    && yieldedIndices.Add(properEventIndex))
+                {
+                    yield return (properEventIndex, child);
+                }
+            }
         }
 
         private static List<IDXObject> LoadReactorFramesForProperty(

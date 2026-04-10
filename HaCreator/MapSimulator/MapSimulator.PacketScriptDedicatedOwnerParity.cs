@@ -16,6 +16,13 @@ namespace HaCreator.MapSimulator
         private const float PacketScriptDedicatedOwnerDetailScale = 0.36f;
         private const float PacketScriptDedicatedOwnerChoiceScale = 0.42f;
 
+        private PacketScriptOwnerLayer[] _packetScriptAvatarOwnerLayers;
+        private PacketScriptButtonVisuals _packetScriptAvatarPrevButtonVisuals;
+        private PacketScriptButtonVisuals _packetScriptAvatarNextButtonVisuals;
+        private PacketScriptButtonVisuals _packetScriptAvatarOkButtonVisuals;
+        private PacketScriptButtonVisuals _packetScriptAvatarCancelButtonVisuals;
+        private PacketScriptOwnerLayer _packetScriptAvatarNameTagLayer;
+        private PacketScriptOwnerLayer _packetScriptAvatarShadowLayer;
         private PacketScriptOwnerLayer[] _packetScriptPetOwnerLayers;
         private PacketScriptOwnerLayer[] _packetScriptMultiPetOwnerLayers;
         private PacketScriptButtonVisuals _packetScriptPetPrevButtonVisuals;
@@ -242,6 +249,15 @@ namespace HaCreator.MapSimulator
 
             switch (snapshot.Kind)
             {
+                case PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.AvatarSelection:
+                case PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.MembershopAvatarSelection:
+                    DrawPacketScriptAvatarSelectionOwner(ownerBounds, layout.SelectionBounds);
+                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptAvatarPrevButtonVisuals, layout.PrevBounds, PacketScriptDedicatedOwnerButtonKind.Prev, "Prev");
+                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptAvatarNextButtonVisuals, layout.NextBounds, PacketScriptDedicatedOwnerButtonKind.Next, "Next");
+                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptAvatarOkButtonVisuals, layout.ConfirmBounds, PacketScriptDedicatedOwnerButtonKind.Confirm, "OK");
+                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptAvatarCancelButtonVisuals, layout.CancelBounds, PacketScriptDedicatedOwnerButtonKind.Cancel, "Cancel");
+                    break;
+
                 case PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.SlideMenu:
                     DrawPacketScriptSlideMenuOwner(snapshot, ownerBounds, layout.SelectionBounds, currentTickCount);
                     DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptSlideMenuLeftButtonVisuals, layout.PrevBounds, PacketScriptDedicatedOwnerButtonKind.Prev, "Prev");
@@ -265,6 +281,30 @@ namespace HaCreator.MapSimulator
             if (!string.IsNullOrWhiteSpace(snapshot.DetailText))
             {
                 DrawPacketScriptOwnerWrappedText(snapshot.DetailText, detailBounds, new Color(92, 64, 38), PacketScriptDedicatedOwnerDetailScale, maxLines: 5);
+            }
+        }
+
+        private void DrawPacketScriptAvatarSelectionOwner(Rectangle ownerBounds, Rectangle selectionBounds)
+        {
+            DrawPacketScriptOwnerLayers(ownerBounds, _packetScriptAvatarOwnerLayers);
+            if (_packetScriptAvatarShadowLayer?.Texture != null)
+            {
+                Vector2 position = new(
+                    selectionBounds.Center.X - (_packetScriptAvatarShadowLayer.Texture.Width * 0.5f) - _packetScriptAvatarShadowLayer.Origin.X,
+                    selectionBounds.Y - 42 - _packetScriptAvatarShadowLayer.Origin.Y);
+                _spriteBatch.Draw(_packetScriptAvatarShadowLayer.Texture, position, Color.White);
+            }
+
+            if (_packetScriptAvatarNameTagLayer?.Texture != null)
+            {
+                Vector2 position = new(
+                    selectionBounds.Center.X - (_packetScriptAvatarNameTagLayer.Texture.Width * 0.5f) - _packetScriptAvatarNameTagLayer.Origin.X,
+                    selectionBounds.Y - _packetScriptAvatarNameTagLayer.Origin.Y);
+                _spriteBatch.Draw(_packetScriptAvatarNameTagLayer.Texture, position, Color.White);
+            }
+            else
+            {
+                DrawPacketScriptOwnerFrame(selectionBounds, new Color(255, 255, 255, 214), new Color(126, 92, 54));
             }
         }
 
@@ -363,6 +403,7 @@ namespace HaCreator.MapSimulator
             {
                 PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.SlideMenu => ResolvePacketScriptSlideMenuOwnerSize(snapshot.Mode, currentTickCount),
                 PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.MultiPetSelection => ResolvePacketScriptLayeredOwnerSize(_packetScriptMultiPetOwnerLayers, new Point(415, 215)),
+                PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.AvatarSelection or PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.MembershopAvatarSelection => ResolvePacketScriptLayeredOwnerSize(_packetScriptAvatarOwnerLayers, new Point(367, 259)),
                 _ => ResolvePacketScriptLayeredOwnerSize(_packetScriptPetOwnerLayers, new Point(367, 259))
             };
             int x = Math.Max(0, (_renderParams.RenderWidth - size.X) / 2);
@@ -521,6 +562,19 @@ namespace HaCreator.MapSimulator
                 int petSelectionY = Math.Max(ownerBounds.Y + 132, prevBounds.Y - 2);
                 selectionBounds = new Rectangle(petSelectionLeft, petSelectionY, petSelectionWidth, PacketScriptDedicatedOwnerRowHeight);
             }
+            else if (snapshot.Kind is PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.AvatarSelection or PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.MembershopAvatarSelection)
+            {
+                prevBounds = TryResolveAnchoredButtonBounds(ownerBounds, _packetScriptAvatarPrevButtonVisuals, prevBounds);
+                nextBounds = TryResolveAnchoredButtonBounds(ownerBounds, _packetScriptAvatarNextButtonVisuals, nextBounds);
+                confirmBounds = TryResolveAnchoredButtonBounds(ownerBounds, _packetScriptAvatarOkButtonVisuals, confirmBounds);
+                cancelBounds = TryResolveAnchoredButtonBounds(ownerBounds, _packetScriptAvatarCancelButtonVisuals, cancelBounds);
+
+                int avatarSelectionLeft = Math.Max(ownerBounds.X + 64, prevBounds.Right + 10);
+                int avatarSelectionRight = Math.Min(ownerBounds.Right - 64, nextBounds.X - 10);
+                int avatarSelectionWidth = Math.Max(150, avatarSelectionRight - avatarSelectionLeft);
+                int avatarSelectionY = Math.Max(ownerBounds.Y + 164, prevBounds.Y - 2);
+                selectionBounds = new Rectangle(avatarSelectionLeft, avatarSelectionY, avatarSelectionWidth, PacketScriptDedicatedOwnerRowHeight);
+            }
             else if (snapshot.Kind == PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.SlideMenu)
             {
                 PacketScriptButtonVisuals leftVisuals = _packetScriptSlideMenuLeftButtonVisuals;
@@ -610,6 +664,25 @@ namespace HaCreator.MapSimulator
 
             WzImage uiWindowImage = Program.FindImage("UI", "UIWindow.img");
             WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img") ?? uiWindowImage;
+
+            WzSubProperty avatarPreferred = uiWindow2Image?["UtilDlgEx_Avatar"] as WzSubProperty;
+            WzSubProperty avatarFallback = uiWindowImage?["UtilDlgEx_Avatar"] as WzSubProperty;
+            _packetScriptAvatarOwnerLayers = new[]
+            {
+                LoadPacketScriptOwnerLayer((avatarPreferred?["backgrnd"] ?? avatarFallback?["backgrnd"]) as WzCanvasProperty),
+                LoadPacketScriptOwnerLayer((avatarPreferred?["backgrnd2"] ?? avatarFallback?["backgrnd2"]) as WzCanvasProperty),
+                LoadPacketScriptOwnerLayer((avatarPreferred?["backgrnd3"] ?? avatarFallback?["backgrnd3"]) as WzCanvasProperty)
+            };
+            _packetScriptAvatarPrevButtonVisuals = LoadPacketScriptButtonVisuals(avatarPreferred?["BtPrev"] as WzSubProperty, avatarFallback?["BtPrev"] as WzSubProperty);
+            _packetScriptAvatarNextButtonVisuals = LoadPacketScriptButtonVisuals(avatarPreferred?["BtNext"] as WzSubProperty, avatarFallback?["BtNext"] as WzSubProperty);
+            _packetScriptAvatarOkButtonVisuals = LoadPacketScriptButtonVisuals(
+                avatarPreferred?["BtOK"] as WzSubProperty ?? avatarPreferred?["BtOn"] as WzSubProperty,
+                avatarFallback?["BtOK"] as WzSubProperty ?? avatarFallback?["BtOn"] as WzSubProperty);
+            _packetScriptAvatarCancelButtonVisuals = LoadPacketScriptButtonVisuals(
+                avatarPreferred?["BtCancle"] as WzSubProperty ?? avatarPreferred?["BtOff"] as WzSubProperty ?? avatarPreferred?["BtExit"] as WzSubProperty,
+                avatarFallback?["BtCancle"] as WzSubProperty ?? avatarFallback?["BtOff"] as WzSubProperty ?? avatarFallback?["BtExit"] as WzSubProperty);
+            _packetScriptAvatarNameTagLayer = LoadPacketScriptOwnerLayer((avatarPreferred?["nameTag"] ?? avatarFallback?["nameTag"]) as WzCanvasProperty);
+            _packetScriptAvatarShadowLayer = LoadPacketScriptOwnerLayer((avatarPreferred?["shadow"] ?? avatarFallback?["shadow"]) as WzCanvasProperty);
 
             WzSubProperty petPreferred = uiWindow2Image?["UtilDlgEx_Pet"] as WzSubProperty;
             WzSubProperty petFallback = uiWindowImage?["UtilDlgEx_Pet"] as WzSubProperty;

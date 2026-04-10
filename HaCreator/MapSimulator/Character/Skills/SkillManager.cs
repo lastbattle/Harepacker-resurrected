@@ -1072,6 +1072,43 @@ namespace HaCreator.MapSimulator.Character.Skills
             return routedCount;
         }
 
+        internal static int RouteExpiredBuffTimerBatchToClientCancel(
+            IReadOnlyList<ClientSkillTimerExpiration> expirations,
+            Func<int, IReadOnlyList<int>> resolveCancelRequestSkillIds,
+            Func<int, int, bool> requestClientSkillCancel)
+        {
+            if (expirations == null
+                || expirations.Count == 0
+                || requestClientSkillCancel == null)
+            {
+                return 0;
+            }
+
+            int routedCount = 0;
+            HashSet<int> routedCancelFamilies = new();
+            foreach (ClientSkillTimerExpiration expiration in expirations)
+            {
+                if (expiration.SkillId <= 0
+                    || !string.Equals(expiration.Source, ClientTimerSourceBuffExpire, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                int cancelFamilyKey = ResolveClientCancelFamilyBatchKey(expiration.SkillId, resolveCancelRequestSkillIds);
+                if (!routedCancelFamilies.Add(cancelFamilyKey))
+                {
+                    continue;
+                }
+
+                if (requestClientSkillCancel(expiration.SkillId, expiration.ExpireTime))
+                {
+                    routedCount++;
+                }
+            }
+
+            return routedCount;
+        }
+
         internal static int ResolveClientCancelFamilyBatchKey(int skillId, Func<int, IReadOnlyList<int>> resolveCancelRequestSkillIds)
         {
             if (skillId <= 0)
@@ -1918,6 +1955,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int MINE_SKILL_ID = 33101008;
         private const int SG88_SKILL_ID = 35121003;
         private const int TESLA_COIL_SKILL_ID = 35111002;
+        private const int TESLA_COIL_MASTERY_SKILL_ID = 35120001;
         private const int TeslaMinimumImpactDelayMs = 300;
         private const int SATELLITE_SKILL_ID = 35111001;
         private const int ENHANCED_SATELLITE_SKILL_ID = 35111009;
@@ -2587,16 +2625,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             state = default;
 
             int remainingMs = GetCooldownRemaining(skillId, currentTime);
-            if (remainingMs <= 0)
-            {
-                return false;
-            }
-
-            int durationMs = Math.Max(remainingMs, GetCooldownDuration(skillId, currentTime));
             if (_cooldownUiPresentations.TryGetValue(skillId, out CooldownUiPresentationState presentation)
                 && presentation?.Kind == CooldownUiPresentationKind.VehicleDurability)
             {
                 int currentValue = Math.Max(0, presentation.CurrentValue);
+                if (currentValue <= 0)
+                {
+                    return false;
+                }
+
                 int maxValue = Math.Max(currentValue, presentation.MaxValue);
                 float progress = maxValue > 0
                     ? Math.Clamp(currentValue / (float)maxValue, 0f, 1f)
@@ -2604,9 +2641,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 string tooltipStateText = maxValue > 0
                     ? $"Durability: {currentValue}/{maxValue}"
                     : $"Durability: {currentValue}";
+                int uiDurationMs = Math.Max(
+                    Math.Max(remainingMs, GetCooldownDuration(skillId, currentTime)),
+                    maxValue);
                 state = new CooldownUiState(
-                    remainingMs,
-                    durationMs,
+                    Math.Max(0, remainingMs),
+                    uiDurationMs,
                     progress,
                     currentValue.ToString(),
                     tooltipStateText,
@@ -2619,6 +2659,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
+            if (remainingMs <= 0)
+            {
+                return false;
+            }
+
+            int durationMs = Math.Max(remainingMs, GetCooldownDuration(skillId, currentTime));
             string counterText = Math.Max(1, (int)Math.Ceiling(remainingMs / 1000f)).ToString();
             state = new CooldownUiState(
                 remainingMs,
@@ -2740,6 +2786,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 StartTime = startTime,
                 DurationMs = cooldownState.DurationMs,
                 RemainingMs = cooldownState.RemainingMs,
+                CounterText = currentValue.ToString(CultureInfo.InvariantCulture),
+                TooltipStateText = durabilityText,
                 SortOrder = int.MinValue,
                 FamilyDisplayName = "Vehicle Durability",
                 TemporaryStatLabels = new[] { "VehicleDurability" },
@@ -6130,7 +6178,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return attackOriginOverride.Value;
             }
 
-            usesAuthoredShootPoint = handMovePoint.HasValue || handPoint.HasValue || bodyOrigin.HasValue;
+            usesAuthoredShootPoint = handMovePoint.HasValue || handPoint.HasValue;
             return ResolveCurrentShootAttackOrigin(
                 playerPosition,
                 playerFacingRight,
@@ -7891,7 +7939,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool UsesReleaseTriggeredKeydownExecution(SkillData skill)
         {
-            return PreparedSkillHudRules.UsesReleaseTriggeredExecution(skill?.SkillId ?? 0);
+            return PreparedSkillHudRules.UsesReleaseTriggeredKeydownExecution(skill?.SkillId ?? 0);
         }
 
         private static bool UsesPreparedSkillChargeDamageScaling(SkillData skill)
@@ -8329,7 +8377,10 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static ClientDoActiveSkillExecutionLane ResolveDoActiveSkillExecutionLane(SkillData skill)
         {
-            if (skill == null || skill.IsPassive || skill.Invisible || skill.SuppressesStandaloneActiveCast)
+            if (skill == null
+                || skill.IsPassive
+                || (skill.Invisible && !skill.HasStandaloneActiveCastSurface)
+                || skill.SuppressesStandaloneActiveCast)
             {
                 return ClientDoActiveSkillExecutionLane.None;
             }
@@ -9259,7 +9310,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             ActiveProjectile projectile,
             Vector2 refreshedOrigin,
             bool usesAuthoredShootPoint,
-            float fallbackShootPointYOffset = -20f)
+            float fallbackShootPointYOffset = ClientShootAttackFamilyResolver.DefaultShootAttackPointYOffset)
         {
             if (projectile == null)
             {
@@ -9859,6 +9910,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool IsExplicitBoundJumpSkill(SkillData skill)
         {
+            // `DoActiveSkill_BoundJump` still directly owns these Flash Jump rows
+            // even when WZ does not publish an authored `action/0` surface.
             return skill != null
                    && (skill.SkillId == WindWalkSkillId
                        || skill.SkillId == NightLordFlashJumpSkillId
@@ -11842,8 +11895,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             int bulletItemId,
             string ballUol)
         {
-            if (bulletItemId <= 0
-                && ShouldRegisterMagicBulletAnimation(ballUol)
+            if (ShouldRegisterMagicBulletAnimation(ballUol)
                 && (skill?.AttackType == SkillAttackType.Magic
                     || skill?.Type == SkillType.Magic
                     || skill?.IsMagicDamageSkill == true))
@@ -11950,6 +12002,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                 presentation.SourcePoint,
                 presentation.DestinationPoint,
                 progress);
+        }
+
+        internal static bool ShouldUseQueuedFollowUpBulletPresentationPath(ActiveProjectile projectile)
+        {
+            return projectile?.BulletAnimation != null
+                   && (projectile.IsQueuedFinalAttack || projectile.IsQueuedSparkAttack);
+        }
+
+        internal static Vector2 ResolveBulletAnimationOwnerCurrentPosition(
+            ActiveProjectile projectile,
+            BulletAnimationPresentation presentation,
+            Vector2 projectilePosition,
+            int currentTime)
+        {
+            return presentation != null && ShouldUseQueuedFollowUpBulletPresentationPath(projectile)
+                ? ResolveBulletAnimationInterpolatedPosition(presentation, currentTime)
+                : projectilePosition;
         }
 
         internal static bool ResolveBulletAnimationFacing(
@@ -13072,7 +13141,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (projectile != null && !projectile.IsExpired && !projectile.IsExploding)
             {
-                owner.CurrentPosition = new Vector2(projectile.X, projectile.Y);
+                owner.CurrentPosition = ResolveBulletAnimationOwnerCurrentPosition(
+                    projectile,
+                    owner.Presentation,
+                    new Vector2(projectile.X, projectile.Y),
+                    currentTime);
                 owner.FacingRight = ResolveQueuedProjectilePresentationFacing(projectile);
                 return;
             }
@@ -13188,7 +13261,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 RemoveSummonsBySkill(skill.SkillId);
                 return;
             }
-            else if (skill.SkillId == TESLA_COIL_SKILL_ID)
+            else if (skill.SkillId == TESLA_COIL_SKILL_ID && sameSkillSummons.Count >= maxConcurrentSummons)
             {
                 RemoveSummonsBySkill(skill.SkillId);
                 sameSkillSummons.Clear();
@@ -13196,6 +13269,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             int durationMs = ResolveSummonDurationMs(skill, levelData, level);
             int summonCountToSpawn = ResolveSummonSpawnCount(skill, maxConcurrentSummons, sameSkillSummons.Count);
+            int placementInstanceCount = ResolveSummonPlacementInstanceCount(skill, maxConcurrentSummons, summonCountToSpawn);
             for (int spawnIndex = 0; spawnIndex < summonCountToSpawn; spawnIndex++)
             {
                 int instanceIndex = sameSkillSummons.Count + spawnIndex;
@@ -13206,7 +13280,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     _player.Position,
                     _player.FacingRight,
                     instanceIndex,
-                    summonCountToSpawn);
+                    placementInstanceCount);
                 spawnPosition = SettleSummonOnFoothold(skill.SummonMovementStyle, spawnPosition);
 
                 var summon = new ActiveSummon
@@ -13244,6 +13318,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 RegisterSummonExpiryTimer(summon);
                 SyncSummonPuppet(summon, currentTime);
             }
+
+            TryRefreshLocalTeslaCoilDurations(skill, levelData, currentTime);
         }
 
         private bool TryBeginRocketBoosterLaunch(
@@ -13310,7 +13386,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             return 1;
         }
 
-        private static int ResolveSummonSpawnCount(SkillData skill, int maxConcurrentSummons, int activeCount)
+        internal static int ResolveSummonSpawnCount(SkillData skill, int maxConcurrentSummons, int activeCount)
         {
             if (skill == null)
             {
@@ -13319,7 +13395,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (skill.SkillId == TESLA_COIL_SKILL_ID)
             {
-                return maxConcurrentSummons;
+                return Math.Max(0, maxConcurrentSummons - activeCount) > 0 ? 1 : 0;
             }
 
             if (maxConcurrentSummons > 1)
@@ -13328,6 +13404,60 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return 1;
+        }
+
+        internal static int ResolveSummonPlacementInstanceCount(
+            SkillData skill,
+            int maxConcurrentSummons,
+            int summonCountToSpawn)
+        {
+            return skill?.SkillId == TESLA_COIL_SKILL_ID
+                ? Math.Max(1, maxConcurrentSummons)
+                : Math.Max(1, summonCountToSpawn);
+        }
+
+        private void TryRefreshLocalTeslaCoilDurations(
+            SkillData skill,
+            SkillLevelData levelData,
+            int currentTime)
+        {
+            if (skill?.SkillId != TESLA_COIL_SKILL_ID)
+            {
+                return;
+            }
+
+            List<ActiveSummon> teslaCoils = GetActiveTeslaCoils(currentTime);
+            if (teslaCoils.Count != ResolveMaxConcurrentSummons(skill, levelData))
+            {
+                return;
+            }
+
+            SkillData masterySkill = GetSkillData(TESLA_COIL_MASTERY_SKILL_ID) ?? _loader?.LoadSkill(TESLA_COIL_MASTERY_SKILL_ID);
+            int masteryLevel = Math.Max(0, GetSkillLevel(TESLA_COIL_MASTERY_SKILL_ID));
+            SkillLevelData masteryLevelData = masteryLevel > 0
+                ? masterySkill?.GetLevel(masteryLevel)
+                : null;
+            int refreshedDurationMs = ResolveTeslaCoilRefreshedDurationMs(levelData, masteryLevelData);
+            if (refreshedDurationMs <= 0)
+            {
+                return;
+            }
+
+            foreach (ActiveSummon teslaCoil in teslaCoils)
+            {
+                teslaCoil.StartTime = currentTime;
+                teslaCoil.Duration = refreshedDurationMs;
+                RegisterSummonExpiryTimer(teslaCoil);
+            }
+        }
+
+        internal static int ResolveTeslaCoilRefreshedDurationMs(
+            SkillLevelData teslaLevelData,
+            SkillLevelData masteryLevelData)
+        {
+            int baseDurationMs = Math.Max(0, (teslaLevelData?.Y ?? 0) * 1000);
+            int masteryBonusMs = Math.Max(0, ((masteryLevelData?.Y ?? 0) * baseDurationMs) / 100);
+            return baseDurationMs + masteryBonusMs;
         }
 
         private static bool IsSatelliteSummonSkill(int skillId)
@@ -18161,6 +18291,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             };
         }
 
+        internal static SkillData CreateMapFlyingRepeatAvatarEffectSkillForTesting(SkillData skill)
+        {
+            return CreateMapFlyingRepeatAvatarEffectSkill(skill);
+        }
+
         private void ClearMapFlyingRepeatAvatarEffect(int currentTime)
         {
             if (_player != null && _activeMapFlyingRepeatAvatarEffectSkillId > 0)
@@ -18866,8 +19001,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach ((int skillId, (CooldownUiState state, SkillData skill, int startTime)) in passiveCooldownStates)
             {
                 if (existingSkillIds.Contains(skillId)
-                    || state.RemainingMs <= 0
-                    || state.PresentationKind != CooldownUiPresentationKind.VehicleDurability)
+                    || state.PresentationKind != CooldownUiPresentationKind.VehicleDurability
+                    || state.CurrentValue <= 0)
                 {
                     continue;
                 }
@@ -19653,14 +19788,21 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 foreach (string propertyName in levelData.AuthoredPropertyOrder)
                 {
-                    if (!TryResolveAuthoredTemporaryStatDisplayName(propertyName, activeTemporaryStatsByLabel, representedLabels, out string displayName))
+                    if (!TryResolveAuthoredTemporaryStatDisplayNames(
+                            propertyName,
+                            activeTemporaryStatsByLabel,
+                            representedLabels,
+                            out IReadOnlyList<string> displayNames))
                     {
                         continue;
                     }
 
-                    if (seenDisplayNames.Add(displayName))
+                    foreach (string displayName in displayNames)
                     {
-                        resolvedDisplayNames.Add(displayName);
+                        if (seenDisplayNames.Add(displayName))
+                        {
+                            resolvedDisplayNames.Add(displayName);
+                        }
                     }
                 }
             }
@@ -19689,13 +19831,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             return resolvedDisplayNames;
         }
 
-        private static bool TryResolveAuthoredTemporaryStatDisplayName(
+        private static bool TryResolveAuthoredTemporaryStatDisplayNames(
             string propertyName,
             IReadOnlyDictionary<string, BuffTemporaryStatPresentation> activeTemporaryStatsByLabel,
             ISet<string> representedLabels,
-            out string displayName)
+            out IReadOnlyList<string> displayNames)
         {
-            displayName = null;
+            displayNames = null;
             if (string.IsNullOrWhiteSpace(propertyName)
                 || activeTemporaryStatsByLabel == null
                 || activeTemporaryStatsByLabel.Count == 0
@@ -19712,17 +19854,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                 && !string.IsNullOrWhiteSpace(overrideDisplayName))
             {
                 TrackRepresentedLabels(labels, representedLabels, activeTemporaryStatsByLabel);
-                displayName = overrideDisplayName;
+                displayNames = new[] { overrideDisplayName };
                 return true;
             }
 
             if (TryResolveAuthoredPropertyTooltipDisplayName(propertyName, out string authoredDisplayName))
             {
                 TrackRepresentedLabels(labels, representedLabels, activeTemporaryStatsByLabel);
-                displayName = authoredDisplayName;
+                displayNames = new[] { authoredDisplayName };
                 return true;
             }
 
+            var resolvedDisplayNames = new List<string>(labels.Length);
             foreach (string label in labels)
             {
                 if (string.IsNullOrWhiteSpace(label)
@@ -19733,11 +19876,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
 
                 representedLabels?.Add(label);
-                displayName = temporaryStat.DisplayName;
-                return true;
+                resolvedDisplayNames.Add(temporaryStat.DisplayName);
             }
 
-            return false;
+            if (resolvedDisplayNames.Count == 0)
+            {
+                return false;
+            }
+
+            displayNames = resolvedDisplayNames;
+            return true;
         }
 
         private static bool TryResolveAuthoredPropertyTemporaryStatLabelsForTooltip(
@@ -19779,6 +19927,35 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (string.Equals(propertyName, "x", StringComparison.OrdinalIgnoreCase))
             {
+                if (activeTemporaryStatsByLabel.ContainsKey(BlessBuffLabel)
+                    && HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, "PAD", "MAD", "PDD", "MDD", "ACC", "EVA"))
+                {
+                    labels = new[] { "PAD" };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(DashBuffLabel)
+                    && HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, "Speed", "Jump"))
+                {
+                    labels = new[] { "Speed" };
+                    return true;
+                }
+
+                if (!activeTemporaryStatsByLabel.ContainsKey(BlessBuffLabel)
+                    && HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, "PAD", "MAD", "ACC", "EVA")
+                    && !activeTemporaryStatsByLabel.ContainsKey("PDD")
+                    && !activeTemporaryStatsByLabel.ContainsKey("MDD"))
+                {
+                    labels = new[] { "PAD" };
+                    return true;
+                }
+
+                if (HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, MaxHpBuffLabel, "PAD", "Speed"))
+                {
+                    labels = new[] { MaxHpBuffLabel };
+                    return true;
+                }
+
                 if (activeTemporaryStatsByLabel.ContainsKey(MaxHpBuffLabel)
                     && activeTemporaryStatsByLabel.ContainsKey(HyperBodyBuffLabel))
                 {
@@ -19801,12 +19978,115 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
-            if (string.Equals(propertyName, "y", StringComparison.OrdinalIgnoreCase)
-                && activeTemporaryStatsByLabel.ContainsKey(MaxMpBuffLabel)
-                && activeTemporaryStatsByLabel.ContainsKey(HyperBodyBuffLabel))
+            if (string.Equals(propertyName, "y", StringComparison.OrdinalIgnoreCase))
             {
-                labels = new[] { MaxMpBuffLabel };
+                if (activeTemporaryStatsByLabel.ContainsKey(BlessBuffLabel)
+                    && HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, "PAD", "MAD", "PDD", "MDD", "ACC", "EVA"))
+                {
+                    labels = new[] { "MAD" };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(DashBuffLabel)
+                    && HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, "Speed", "Jump"))
+                {
+                    labels = new[] { "Jump" };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(ComboBuffLabel)
+                    && HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, "PAD", "PDD", "MDD", "Speed"))
+                {
+                    labels = new[] { "PAD" };
+                    return true;
+                }
+
+                if (!activeTemporaryStatsByLabel.ContainsKey(BlessBuffLabel)
+                    && HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, "PAD", "MAD", "ACC", "EVA")
+                    && !activeTemporaryStatsByLabel.ContainsKey("PDD")
+                    && !activeTemporaryStatsByLabel.ContainsKey("MDD"))
+                {
+                    labels = new[] { "MAD" };
+                    return true;
+                }
+
+                if (HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, MaxHpBuffLabel, "PAD", "Speed"))
+                {
+                    labels = new[] { "Speed" };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(MaxMpBuffLabel)
+                    && activeTemporaryStatsByLabel.ContainsKey(HyperBodyBuffLabel))
+                {
+                    labels = new[] { MaxMpBuffLabel };
+                    return true;
+                }
+            }
+
+            if (string.Equals(propertyName, "z", StringComparison.OrdinalIgnoreCase))
+            {
+                if (activeTemporaryStatsByLabel.ContainsKey(BlessBuffLabel)
+                    && HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, "PAD", "MAD", "PDD", "MDD", "ACC", "EVA"))
+                {
+                    labels = new[] { "PDD" };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(ComboBuffLabel)
+                    && HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, "PAD", "PDD", "MDD", "Speed"))
+                {
+                    labels = new[] { "PDD", "MDD" };
+                    return true;
+                }
+
+                if (!activeTemporaryStatsByLabel.ContainsKey(BlessBuffLabel)
+                    && HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, "PAD", "MAD", "ACC", "EVA")
+                    && !activeTemporaryStatsByLabel.ContainsKey("PDD")
+                    && !activeTemporaryStatsByLabel.ContainsKey("MDD"))
+                {
+                    labels = new[] { "ACC", "EVA" };
+                    return true;
+                }
+
+                if (HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, MaxHpBuffLabel, "PAD", "Speed"))
+                {
+                    labels = new[] { "PAD" };
+                    return true;
+                }
+            }
+
+            if (string.Equals(propertyName, "u", StringComparison.OrdinalIgnoreCase)
+                && activeTemporaryStatsByLabel.ContainsKey(BlessBuffLabel)
+                && HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, "PAD", "MAD", "PDD", "MDD", "ACC", "EVA"))
+            {
+                labels = new[] { "MDD" };
                 return true;
+            }
+
+            if (string.Equals(propertyName, "v", StringComparison.OrdinalIgnoreCase)
+                && activeTemporaryStatsByLabel.ContainsKey(BlessBuffLabel)
+                && HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, "PAD", "MAD", "PDD", "MDD", "ACC", "EVA"))
+            {
+                labels = new[] { "ACC" };
+                return true;
+            }
+
+            if (string.Equals(propertyName, "w", StringComparison.OrdinalIgnoreCase))
+            {
+                if (activeTemporaryStatsByLabel.ContainsKey(BlessBuffLabel)
+                    && HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, "PAD", "MAD", "PDD", "MDD", "ACC", "EVA"))
+                {
+                    labels = new[] { "EVA" };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(ComboBuffLabel)
+                    && HasAllActiveTemporaryStats(activeTemporaryStatsByLabel, "PAD", "PDD", "MDD", "Speed"))
+                {
+                    labels = new[] { "Speed" };
+                    return true;
+                }
             }
 
             if ((string.Equals(propertyName, "y", StringComparison.OrdinalIgnoreCase)
@@ -19820,6 +20100,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return false;
+        }
+
+        private static bool HasAllActiveTemporaryStats(
+            IReadOnlyDictionary<string, BuffTemporaryStatPresentation> activeTemporaryStatsByLabel,
+            params string[] labels)
+        {
+            return activeTemporaryStatsByLabel != null
+                && labels != null
+                && labels.All(label => !string.IsNullOrWhiteSpace(label) && activeTemporaryStatsByLabel.ContainsKey(label));
         }
 
         private static bool ShouldSuppressCompoundFamilyTooltipDisplayName(
@@ -19852,6 +20141,30 @@ namespace HaCreator.MapSimulator.Character.Skills
                     || activeTemporaryStatsByLabel.ContainsKey(DexterityBuffLabel)
                     || activeTemporaryStatsByLabel.ContainsKey(IntelligenceBuffLabel)
                     || activeTemporaryStatsByLabel.ContainsKey(LuckBuffLabel);
+            }
+
+            if (string.Equals(label, BlessBuffLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                return activeTemporaryStatsByLabel.ContainsKey("PAD")
+                    || activeTemporaryStatsByLabel.ContainsKey("MAD")
+                    || activeTemporaryStatsByLabel.ContainsKey("PDD")
+                    || activeTemporaryStatsByLabel.ContainsKey("MDD")
+                    || activeTemporaryStatsByLabel.ContainsKey("ACC")
+                    || activeTemporaryStatsByLabel.ContainsKey("EVA");
+            }
+
+            if (string.Equals(label, DashBuffLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                return activeTemporaryStatsByLabel.ContainsKey("Speed")
+                    || activeTemporaryStatsByLabel.ContainsKey("Jump");
+            }
+
+            if (string.Equals(label, ComboBuffLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                return activeTemporaryStatsByLabel.ContainsKey("PAD")
+                    || activeTemporaryStatsByLabel.ContainsKey("PDD")
+                    || activeTemporaryStatsByLabel.ContainsKey("MDD")
+                    || activeTemporaryStatsByLabel.ContainsKey("Speed");
             }
 
             return false;
@@ -20384,23 +20697,37 @@ namespace HaCreator.MapSimulator.Character.Skills
             var activeLabels = new HashSet<string>(
                 temporaryStats.Select(stat => stat.Label),
                 StringComparer.OrdinalIgnoreCase);
+            var activeTemporaryStatsByLabel = temporaryStats
+                .Where(stat => stat != null && !string.IsNullOrWhiteSpace(stat.Label))
+                .GroupBy(stat => stat.Label, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
             var authoredOrder = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             int nextOrder = 0;
 
             foreach (string propertyName in levelData.AuthoredPropertyOrder)
             {
                 if (string.IsNullOrWhiteSpace(propertyName)
-                    || !AuthoredPropertyTemporaryStatLabels.TryGetValue(propertyName, out string[] labels))
+                    || !TryResolveAuthoredPropertyTemporaryStatLabelsForTooltip(
+                        propertyName,
+                        activeTemporaryStatsByLabel,
+                        out string[] labels))
                 {
                     continue;
                 }
 
+                bool addedPropertyLabel = false;
                 foreach (string label in labels)
                 {
                     if (activeLabels.Contains(label) && !authoredOrder.ContainsKey(label))
                     {
-                        authoredOrder[label] = nextOrder++;
+                        authoredOrder[label] = nextOrder;
+                        addedPropertyLabel = true;
                     }
+                }
+
+                if (addedPropertyLabel)
+                {
+                    nextOrder++;
                 }
             }
 
@@ -22599,6 +22926,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             RouteExpiredLocalSummonTimerBatchToClientCancel(
                 expirations,
                 TryPrimeExpiredLocalSummonNaturalExpiry,
+                ResolveClientCancelRequestSkillIds,
+                (skillId, tickCount) => RequestClientSkillCancel(skillId, tickCount));
+            RouteExpiredBuffTimerBatchToClientCancel(
+                expirations,
                 ResolveClientCancelRequestSkillIds,
                 (skillId, tickCount) => RequestClientSkillCancel(skillId, tickCount));
 

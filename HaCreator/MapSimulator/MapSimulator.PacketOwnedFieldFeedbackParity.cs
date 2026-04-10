@@ -45,6 +45,14 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedRewardRouletteOffsetY = 260;
         private const int PacketOwnedBossTimerOffsetY = 25;
         private const int PacketOwnedBossTimerDigitSpacing = 2;
+        private const int PacketOwnedClockTimerDigitY = 12;
+        private const int PacketOwnedClockTimerDigitX1 = 86;
+        private const int PacketOwnedClockTimerDigitX2 = 112;
+        private const int PacketOwnedClockTimerDigitX3 = 179;
+        private const int PacketOwnedClockTimerDigitX4 = 205;
+        private const int PacketOwnedClockRealtimeColonBlinkAlpha = 64;
+        private const int PacketOwnedClockRealtimeDigitSpacing = 2;
+        private const int PacketOwnedClockRealtimeMeridiemPadding = 8;
         private const int PacketOwnedRewardRouletteMaxNumericSuffix = 31;
         private const byte PacketOwnedUiClientAlpha = 255;
         private const int PacketOwnedFieldClockReferenceWidth = 800;
@@ -582,6 +590,28 @@ namespace HaCreator.MapSimulator
             return FormatPacketOwnedBossTimerText(remainingSeconds, showHours);
         }
 
+        internal static IReadOnlyList<(int Digit, int X, int Y)> GetPacketOwnedClockTimerDigitPlanForTest(int remainingSeconds, bool showHours)
+        {
+            return BuildPacketOwnedClockTimerDigitPlan(remainingSeconds, showHours);
+        }
+
+        internal static (float MeridiemX, float Y, float HourTensX, float HourOnesX, float ColonX, float MinuteTensX, float MinuteOnesX) GetPacketOwnedRealtimeClockDigitPositionsForTest(
+            int backgroundWidth,
+            int backgroundHeight,
+            int digitWidth,
+            int digitHeight,
+            int separatorWidth,
+            int meridiemWidth)
+        {
+            return ResolvePacketOwnedRealtimeClockDigitPositions(
+                backgroundWidth,
+                backgroundHeight,
+                digitWidth,
+                digitHeight,
+                separatorWidth,
+                meridiemWidth);
+        }
+
         private void DrawPacketOwnedFieldClock(int currentTickCount)
         {
             if (_spriteBatch == null || _packetFieldClockState == null)
@@ -620,9 +650,8 @@ namespace HaCreator.MapSimulator
             if (_packetFieldClockState.Kind == PacketFieldClockVisualKind.Realtime)
             {
                 (bool isPm, int hour, int minute, int second) = PacketFieldFeedbackRuntime.ResolveFieldClockDisplayTimeForTest(_packetFieldClockState, currentTickCount);
-                string timeText = string.Format(CultureInfo.InvariantCulture, "{0:00}:{1:00}:{2:00}", hour, minute, second);
-                Texture2D meridiemTexture = isPm ? _packetFieldClockPmTexture : _packetFieldClockAmTexture;
-                if (!TryDrawPacketOwnedClockDigits(timeText, meridiemTexture, boardPosition, background))
+                string timeText = string.Format(CultureInfo.InvariantCulture, "{0:00}:{1:00}", hour, minute);
+                if (!TryDrawPacketOwnedRealtimeClockDigits(isPm, hour, minute, second, boardPosition, background))
                 {
                     DrawPacketOwnedClockFallbackText(layoutBounds, background, $"{(isPm ? "PM" : "AM")} {timeText}", layout.FallbackTextColor);
                 }
@@ -639,39 +668,112 @@ namespace HaCreator.MapSimulator
 
             bool showHours = remainingSeconds >= 3600;
             string timerText = FormatPacketOwnedBossTimerText(remainingSeconds, showHours);
-            if (!TryDrawPacketOwnedClockDigits(timerText, null, boardPosition, background))
+            if (!TryDrawPacketOwnedClockTimerDigits(remainingSeconds, showHours, boardPosition, background))
             {
                 DrawPacketOwnedClockFallbackText(layoutBounds, background, timerText, layout.FallbackTextColor);
             }
         }
 
-        private bool TryDrawPacketOwnedClockDigits(string timerText, Texture2D meridiemTexture, Vector2 boardPosition, Texture2D background)
+        private bool TryDrawPacketOwnedClockTimerDigits(int remainingSeconds, bool showHours, Vector2 boardPosition, Texture2D background)
         {
-            if (!TryDrawPacketOwnedBossTimerDigits(timerText, boardPosition, background))
+            if (background == null || _packetFieldBossTimerDigits.Any(static texture => texture == null))
             {
                 return false;
             }
 
-            if (meridiemTexture == null)
+            foreach ((int digit, int x, int y) in BuildPacketOwnedClockTimerDigitPlan(remainingSeconds, showHours))
             {
-                return true;
+                _spriteBatch.Draw(
+                    _packetFieldBossTimerDigits[digit],
+                    new Vector2(boardPosition.X + x, boardPosition.Y + y),
+                    Color.White);
             }
 
-            string sampleText = string.IsNullOrWhiteSpace(timerText) ? "00:00:00" : timerText;
-            int totalGlyphWidth = 0;
-            foreach (char character in sampleText)
-            {
-                totalGlyphWidth += character == ':'
-                    ? _packetFieldBossTimerSeparatorTexture?.Width ?? 0
-                    : _packetFieldBossTimerDigits[character - '0']?.Width ?? 0;
-            }
-
-            totalGlyphWidth += PacketOwnedBossTimerDigitSpacing * Math.Max(0, sampleText.Length - 1);
-            float glyphStartX = boardPosition.X + Math.Max(0f, (background.Width - totalGlyphWidth) / 2f);
-            float meridiemX = Math.Max(boardPosition.X + 8f, glyphStartX - meridiemTexture.Width - 8f);
-            float meridiemY = boardPosition.Y + 9f;
-            _spriteBatch.Draw(meridiemTexture, new Vector2(meridiemX, meridiemY), Color.White);
             return true;
+        }
+
+        private bool TryDrawPacketOwnedRealtimeClockDigits(
+            bool isPm,
+            int hour,
+            int minute,
+            int second,
+            Vector2 boardPosition,
+            Texture2D background)
+        {
+            Texture2D meridiemTexture = isPm ? _packetFieldClockPmTexture : _packetFieldClockAmTexture;
+            if (background == null
+                || meridiemTexture == null
+                || _packetFieldBossTimerSeparatorTexture == null
+                || _packetFieldBossTimerDigits.Any(static texture => texture == null))
+            {
+                return false;
+            }
+
+            (float meridiemX, float y, float hourTensX, float hourOnesX, float colonX, float minuteTensX, float minuteOnesX) =
+                ResolvePacketOwnedRealtimeClockDigitPositions(
+                    background.Width,
+                    background.Height,
+                    _packetFieldBossTimerDigits[0].Width,
+                    _packetFieldBossTimerDigits[0].Height,
+                    _packetFieldBossTimerSeparatorTexture.Width,
+                    meridiemTexture.Width);
+
+            _spriteBatch.Draw(meridiemTexture, boardPosition + new Vector2(meridiemX, y), Color.White);
+            _spriteBatch.Draw(_packetFieldBossTimerDigits[(Math.Max(0, hour) / 10) % 10], boardPosition + new Vector2(hourTensX, y), Color.White);
+            _spriteBatch.Draw(_packetFieldBossTimerDigits[Math.Max(0, hour) % 10], boardPosition + new Vector2(hourOnesX, y), Color.White);
+            byte colonAlpha = second % 2 == 0
+                ? (byte)PacketOwnedUiClientAlpha
+                : (byte)PacketOwnedClockRealtimeColonBlinkAlpha;
+            _spriteBatch.Draw(
+                _packetFieldBossTimerSeparatorTexture,
+                boardPosition + new Vector2(colonX, y),
+                new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, colonAlpha));
+            _spriteBatch.Draw(_packetFieldBossTimerDigits[(Math.Max(0, minute) / 10) % 10], boardPosition + new Vector2(minuteTensX, y), Color.White);
+            _spriteBatch.Draw(_packetFieldBossTimerDigits[Math.Max(0, minute) % 10], boardPosition + new Vector2(minuteOnesX, y), Color.White);
+            return true;
+        }
+
+        private static IReadOnlyList<(int Digit, int X, int Y)> BuildPacketOwnedClockTimerDigitPlan(int remainingSeconds, bool showHours)
+        {
+            remainingSeconds = Math.Max(0, remainingSeconds);
+            int leftValue = showHours
+                ? (remainingSeconds / 3600) % 100
+                : (remainingSeconds / 60) % 100;
+            int rightValue = showHours
+                ? (remainingSeconds / 60) % 60
+                : remainingSeconds % 60;
+
+            List<(int Digit, int X, int Y)> digits = new(4);
+            int leftTens = (leftValue / 10) % 10;
+            if (leftTens != 0)
+            {
+                digits.Add((leftTens, PacketOwnedClockTimerDigitX1, PacketOwnedClockTimerDigitY));
+            }
+
+            digits.Add((leftValue % 10, PacketOwnedClockTimerDigitX2, PacketOwnedClockTimerDigitY));
+            digits.Add(((rightValue / 10) % 10, PacketOwnedClockTimerDigitX3, PacketOwnedClockTimerDigitY));
+            digits.Add((rightValue % 10, PacketOwnedClockTimerDigitX4, PacketOwnedClockTimerDigitY));
+            return digits;
+        }
+
+        private static (float MeridiemX, float Y, float HourTensX, float HourOnesX, float ColonX, float MinuteTensX, float MinuteOnesX) ResolvePacketOwnedRealtimeClockDigitPositions(
+            int backgroundWidth,
+            int backgroundHeight,
+            int digitWidth,
+            int digitHeight,
+            int separatorWidth,
+            int meridiemWidth)
+        {
+            float meridiemX = Math.Max(
+                0f,
+                (backgroundWidth - ((2 * ((2 * digitWidth) + separatorWidth)) + meridiemWidth + PacketOwnedClockRealtimeMeridiemPadding)) / 2f);
+            float y = Math.Max(0f, (backgroundHeight - digitHeight) / 2f);
+            float hourTensX = meridiemX + meridiemWidth + separatorWidth;
+            float hourOnesX = hourTensX + digitWidth + PacketOwnedClockRealtimeDigitSpacing;
+            float colonX = hourOnesX + digitWidth + PacketOwnedClockRealtimeDigitSpacing;
+            float minuteTensX = colonX + separatorWidth + PacketOwnedClockRealtimeDigitSpacing;
+            float minuteOnesX = minuteTensX + digitWidth + PacketOwnedClockRealtimeDigitSpacing;
+            return (meridiemX, y, hourTensX, hourOnesX, colonX, minuteTensX, minuteOnesX);
         }
 
         private void DrawPacketOwnedClockFallbackText(Rectangle layoutBounds, Texture2D background, string text, Color color)

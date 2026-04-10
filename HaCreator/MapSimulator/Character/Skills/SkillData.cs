@@ -275,6 +275,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int AlphaEnd { get; set; } = 255;
         public int ZoomStart { get; set; }
         public int ZoomEnd { get; set; }
+        public int RotationDegrees { get; set; }
     }
 
     public readonly record struct AfterimageRenderableLayer(SkillFrame Frame, float Alpha, float Zoom = 1f);
@@ -2087,7 +2088,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Vector2? PreferredTargetPosition { get; set; }
         public bool PreferStoredTargetPosition { get; set; }
         public bool UsesAuthoredShootPoint { get; set; }
-        public float FallbackShootPointYOffset { get; set; } = -20f;
+        public float FallbackShootPointYOffset { get; set; } = ClientShootAttackFamilyResolver.DefaultShootAttackPointYOffset;
         public bool HasExplicitAttackOriginOverride { get; set; }
         public ShootAmmoSelection ResolvedShootAmmoSelection { get; set; }
         public int ResolvedShootWeaponCode { get; set; }

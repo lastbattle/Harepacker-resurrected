@@ -963,6 +963,34 @@ namespace HaCreator.MapSimulator.Fields
                 _pendingAttackPacketRequests.Add(remaining[0]);
                 remaining.RemoveAt(0);
             }
+
+            if (acknowledged)
+            {
+                RecalculateLocalBasicActionOwnership();
+            }
+        }
+
+        private void RecalculateLocalBasicActionOwnership()
+        {
+            if (_pendingAttackPacketRequests.Count == 0)
+            {
+                _localBasicActionOwnerUntilTick = int.MinValue;
+                return;
+            }
+
+            int ownerUntil = int.MinValue;
+            for (int i = 0; i < _pendingAttackPacketRequests.Count; i++)
+            {
+                AttackPacketRequest request = _pendingAttackPacketRequests[i];
+                int ownershipWindowMs = Math.Max(DefaultLocalNormalAttackDelayMs, request.DelayMs) + DefaultLocalNormalAttackDelayMs;
+                int requestOwnerUntil = unchecked(request.RequestedAtTick + ownershipWindowMs);
+                if (unchecked(requestOwnerUntil - ownerUntil) > 0)
+                {
+                    ownerUntil = requestOwnerUntil;
+                }
+            }
+
+            _localBasicActionOwnerUntilTick = ownerUntil;
         }
         private void ApplyPacketState(Coconut coconut, CoconutState newState)
         {

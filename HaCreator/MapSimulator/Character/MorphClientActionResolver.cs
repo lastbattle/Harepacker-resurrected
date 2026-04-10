@@ -299,6 +299,25 @@ namespace HaCreator.MapSimulator.Character
                 // checked morph templates keep only generic stab/swing families.
                 ["showdown"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["flyingAssaulter"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                // Dual-blade skill rows still publish these raw action names, but Morph/*.img
+                // keeps them on generic stab/swing roots instead of verbatim dual-blade nodes.
+                ["stabD1"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["tripleStab"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["fatalBlow"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["slashStorm1"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["slashStorm2"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["bloodyStorm"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["upperStab"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["chainPull"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["chainAttack"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["tornadoRush"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["finalCutPrepare"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["finalCut"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["phantomBlow"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["bladeFury"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["finishAttack"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["finishAttack_link"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["finishAttack_link2"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 // The client raw table still exposes dual-blade swing-family names while
                 // archer morphs such as 1003/1103 only publish generic swingT branches.
                 ["swingC1"] = new[] { "swingT1", "swingT3" },
@@ -1346,6 +1365,23 @@ namespace HaCreator.MapSimulator.Character
                    || string.Equals(actionName, "showdown", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "assaulter", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "flyingAssaulter", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "stabD1", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "tripleStab", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "fatalBlow", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "slashStorm1", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "slashStorm2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "bloodyStorm", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "upperStab", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "chainPull", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "chainAttack", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "tornadoRush", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "finalCutPrepare", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "finalCut", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "phantomBlow", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "bladeFury", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "finishAttack", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "finishAttack_link", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "finishAttack_link2", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "assassination", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "assassinationS", StringComparison.OrdinalIgnoreCase);
         }

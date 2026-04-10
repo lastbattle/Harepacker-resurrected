@@ -289,10 +289,19 @@ namespace HaCreator.MapSimulator.Pools
         GenericUserState = 0,
         SkillUse = 1,
         ItemMake = 18,
+        MakerSkill = 19,
+        ReservedEffect = 20,
         EffectByItem = 22,
+        MakerResultMessage = 23,
+        CarnivalReservedEffect = 24,
+        StringEffect = 25,
+        ItemSoundStringEffect = 26,
+        FieldSound = 27,
+        IncubatorMessage = 28,
         IncDecHp = 29,
         QuestDeliveryStart = 30,
-        QuestDeliveryEnd = 31
+        QuestDeliveryEnd = 31,
+        EvolRingStatusBar = 32
     }
 
     public readonly record struct RemoteUserEffectPacket(
@@ -302,17 +311,28 @@ namespace HaCreator.MapSimulator.Pools
         byte[] RawPayload,
         int? SkillId = null,
         byte? CharacterLevel = null,
-        byte? SkillLevel = null)
+        byte? SkillLevel = null,
+        string StringValue = null,
+        int? SecondaryInt32Value = null)
     {
         public RemoteUserEffectSubtype? KnownSubtype => EffectType switch
         {
             (byte)RemoteUserEffectSubtype.GenericUserState => RemoteUserEffectSubtype.GenericUserState,
             (byte)RemoteUserEffectSubtype.SkillUse => RemoteUserEffectSubtype.SkillUse,
             (byte)RemoteUserEffectSubtype.ItemMake => RemoteUserEffectSubtype.ItemMake,
+            (byte)RemoteUserEffectSubtype.MakerSkill => RemoteUserEffectSubtype.MakerSkill,
+            (byte)RemoteUserEffectSubtype.ReservedEffect => RemoteUserEffectSubtype.ReservedEffect,
             (byte)RemoteUserEffectSubtype.EffectByItem => RemoteUserEffectSubtype.EffectByItem,
+            (byte)RemoteUserEffectSubtype.MakerResultMessage => RemoteUserEffectSubtype.MakerResultMessage,
+            (byte)RemoteUserEffectSubtype.CarnivalReservedEffect => RemoteUserEffectSubtype.CarnivalReservedEffect,
+            (byte)RemoteUserEffectSubtype.StringEffect => RemoteUserEffectSubtype.StringEffect,
+            (byte)RemoteUserEffectSubtype.ItemSoundStringEffect => RemoteUserEffectSubtype.ItemSoundStringEffect,
+            (byte)RemoteUserEffectSubtype.FieldSound => RemoteUserEffectSubtype.FieldSound,
+            (byte)RemoteUserEffectSubtype.IncubatorMessage => RemoteUserEffectSubtype.IncubatorMessage,
             (byte)RemoteUserEffectSubtype.IncDecHp => RemoteUserEffectSubtype.IncDecHp,
             (byte)RemoteUserEffectSubtype.QuestDeliveryStart => RemoteUserEffectSubtype.QuestDeliveryStart,
             (byte)RemoteUserEffectSubtype.QuestDeliveryEnd => RemoteUserEffectSubtype.QuestDeliveryEnd,
+            (byte)RemoteUserEffectSubtype.EvolRingStatusBar => RemoteUserEffectSubtype.EvolRingStatusBar,
             _ => null
         };
     }
@@ -332,7 +352,9 @@ namespace HaCreator.MapSimulator.Pools
         byte IncDecType,
         byte HitFlags,
         int HpDelta,
-        int? SkillId);
+        int? SkillId,
+        byte[] RawTrailingPayload = null,
+        string HitString = null);
     public readonly record struct RemoteUserEmotionPacket(int CharacterId, int EmotionId, int DurationMs, bool ByItemOption);
     public readonly record struct RemoteUserUpgradeTombPacket(int CharacterId, int ItemId, int PositionX, int PositionY);
     public readonly record struct RemoteUserReceiveHpPacket(int CharacterId, int CurrentHp, int MaxHp);
@@ -1304,10 +1326,15 @@ namespace HaCreator.MapSimulator.Pools
                 int? skillId = null;
                 byte? characterLevel = null;
                 byte? skillLevel = null;
+                string stringValue = null;
+                int? secondaryInt32Value = null;
                 switch ((RemoteUserEffectSubtype)effectType)
                 {
                     case RemoteUserEffectSubtype.GenericUserState:
+                    case RemoteUserEffectSubtype.MakerSkill:
+                    case RemoteUserEffectSubtype.IncubatorMessage:
                     case RemoteUserEffectSubtype.QuestDeliveryEnd:
+                    case RemoteUserEffectSubtype.EvolRingStatusBar:
                         if (effectPayload.Length != 0)
                         {
                             error = $"Remote user effect subtype {effectType} expects no trailing payload but received {effectPayload.Length} bytes.";
@@ -1328,6 +1355,21 @@ namespace HaCreator.MapSimulator.Pools
                         skillLevel = effectPayload[sizeof(int) + 1];
                         break;
 
+                    case RemoteUserEffectSubtype.ReservedEffect:
+                    case RemoteUserEffectSubtype.CarnivalReservedEffect:
+                    case RemoteUserEffectSubtype.FieldSound:
+                        {
+                            var payloadReader = new PacketReader(effectPayload);
+                            stringValue = payloadReader.ReadString16();
+                            if (payloadReader.RemainingLength != 0)
+                            {
+                                error = $"Remote user effect subtype {effectType} has {payloadReader.RemainingLength} unread bytes remaining.";
+                                return false;
+                            }
+
+                            break;
+                        }
+
                     case RemoteUserEffectSubtype.ItemMake:
                     case RemoteUserEffectSubtype.EffectByItem:
                     case RemoteUserEffectSubtype.IncDecHp:
@@ -1340,6 +1382,44 @@ namespace HaCreator.MapSimulator.Pools
 
                         int32Value = BinaryPrimitives.ReadInt32LittleEndian(effectPayload);
                         break;
+
+                    case RemoteUserEffectSubtype.MakerResultMessage:
+                        if (effectPayload.Length != sizeof(byte))
+                        {
+                            error = $"Remote user effect subtype {effectType} expects 1 trailing byte but received {effectPayload.Length}.";
+                            return false;
+                        }
+
+                        int32Value = effectPayload[0];
+                        break;
+
+                    case RemoteUserEffectSubtype.StringEffect:
+                        {
+                            var payloadReader = new PacketReader(effectPayload);
+                            stringValue = payloadReader.ReadString16();
+                            secondaryInt32Value = payloadReader.ReadInt32();
+                            if (payloadReader.RemainingLength != 0)
+                            {
+                                error = $"Remote user effect subtype {effectType} has {payloadReader.RemainingLength} unread bytes remaining.";
+                                return false;
+                            }
+
+                            break;
+                        }
+
+                    case RemoteUserEffectSubtype.ItemSoundStringEffect:
+                        {
+                            var payloadReader = new PacketReader(effectPayload);
+                            int32Value = payloadReader.ReadInt32();
+                            stringValue = payloadReader.ReadString16();
+                            if (payloadReader.RemainingLength != 0)
+                            {
+                                error = $"Remote user effect subtype {effectType} has {payloadReader.RemainingLength} unread bytes remaining.";
+                                return false;
+                            }
+
+                            break;
+                        }
                 }
 
                 packet = new RemoteUserEffectPacket(
@@ -1349,7 +1429,9 @@ namespace HaCreator.MapSimulator.Pools
                     effectPayload,
                     skillId,
                     characterLevel,
-                    skillLevel);
+                    skillLevel,
+                    stringValue,
+                    secondaryInt32Value);
                 return true;
             }
             catch (InvalidOperationException ex)

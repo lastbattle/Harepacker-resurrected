@@ -180,6 +180,8 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientCollectionFooterRuleTop = 221;
         private const int ClientCollectionTextLaneLeft = 0;
         private const int ClientCollectionTextLaneWidthInt = 190;
+        private const int ClientCollectionRuleLaneLeft = ClientCollectionTextLaneLeft;
+        private const int ClientCollectionRuleLaneWidth = ClientCollectionTextLaneWidthInt;
         private const int ClientCollectionTextAnalyzerMargin = 1;
         private const int ClientCollectionTextAnalyzerWrapWidth = ClientCollectionTextLaneWidthInt - (ClientCollectionTextAnalyzerMargin * 2);
         private const int ClientCollectionValueLaneWidth = 72;
@@ -505,7 +507,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 CreateTextRecord(page?.Title, ClientCollectionTextLaneLeft, 14, ClientCollectionTextLaneWidthInt, 0, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Title),
                 CreateTextRecord(page?.Subtitle, ClientCollectionTextLaneLeft, 34, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Subtitle),
-                CreateRuleRecord(15, 56, 166),
+                CreateClientRuleRecord(56),
             };
 
             IReadOnlyList<CollectionBookEntrySnapshot> entries = page?.Entries ?? Array.Empty<CollectionBookEntrySnapshot>();
@@ -518,7 +520,7 @@ namespace HaCreator.MapSimulator.UI
                 if (row < entries.Count - 1)
                 {
                     int ruleTop = GetStandardEntryRuleTop(currentTop, entry, measureTextWidth);
-                    records.Add(CreateRuleRecord(15, ruleTop, 166));
+                    records.Add(CreateClientRuleRecord(ruleTop));
                     currentTop = ruleTop + ClientCollectionEntryRuleGap;
                 }
             }
@@ -531,7 +533,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 CreateTextRecord(page?.Title, ClientCollectionTextLaneLeft, 14, ClientCollectionTextLaneWidthInt, 0, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Title),
                 CreateTextRecord(page?.Subtitle, ClientCollectionTextLaneLeft, 34, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Subtitle),
-                CreateRuleRecord(15, 56, 166),
+                CreateClientRuleRecord(56),
             };
 
             IReadOnlyList<CollectionBookEntrySnapshot> entries = page?.Entries ?? Array.Empty<CollectionBookEntrySnapshot>();
@@ -561,7 +563,7 @@ namespace HaCreator.MapSimulator.UI
             AddWrappedTextRecords(records, entry.Detail, ClientCollectionTextLaneLeft, detailTop, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
             int detailBottom = GetOptionalWrappedRecordBottom(entry.Detail, detailTop, ClientCollectionTextLaneWidthInt, 10, headlineBottom, measureTextWidth);
             int ruleTop = Math.Max(headlineBottom, detailBottom) + ClientCollectionAnalyzedBlockCarry;
-            records.Add(CreateRuleRecord(15, ruleTop, 166));
+            records.Add(CreateClientRuleRecord(ruleTop));
             return ruleTop + 5;
         }
 
@@ -577,7 +579,7 @@ namespace HaCreator.MapSimulator.UI
             AddWrappedTextRecords(records, entry.Detail, ClientCollectionTextLaneLeft, detailTop, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
             int detailBottom = GetOptionalWrappedRecordBottom(entry.Detail, detailTop, ClientCollectionTextLaneWidthInt, 10, headlineBottom, measureTextWidth);
             int ruleTop = Math.Max(headlineBottom, detailBottom) + ClientCollectionAnalyzedBlockCarry;
-            records.Add(CreateRuleRecord(15, ruleTop, 166));
+            records.Add(CreateClientRuleRecord(ruleTop));
             return ruleTop + 3;
         }
 
@@ -890,6 +892,11 @@ namespace HaCreator.MapSimulator.UI
                 Width = width,
                 Height = 2
             };
+        }
+
+        private static CollectionBookRecordSnapshot CreateClientRuleRecord(int top)
+        {
+            return CreateRuleRecord(ClientCollectionRuleLaneLeft, top, ClientCollectionRuleLaneWidth);
         }
 
         internal static IReadOnlyList<CollectionBookPageSnapshot> CreateStandardEntryPagesForTests(
@@ -1264,6 +1271,7 @@ namespace HaCreator.MapSimulator.UI
         public int Left { get; init; }
         public int Top { get; init; }
         public bool IsHighlighted { get; init; }
+        public int? TextColorArgb { get; init; }
     }
 
     internal sealed class EventWindowSnapshot

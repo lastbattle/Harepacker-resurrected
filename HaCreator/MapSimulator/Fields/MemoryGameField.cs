@@ -976,16 +976,16 @@ namespace HaCreator.MapSimulator.Fields
             byte packetType = packetBytes[0];
             bool handled = packetType switch
             {
-                MiniRoomBaseLeavePacketType => TryDispatchPacket(MemoryGamePacketType.EndRoom, tickCount, out message),
+                MiniRoomBaseLeavePacketType => TryApplyOutgoingLobbyLeavePacket(out message),
                 MemoryGameTieRequestPacketType => TryApplyOutgoingTieRequest(out message),
                 MemoryGameTieResultPacketType => TryApplyOutgoingTieResponse(packetBytes, tickCount, out message),
-                MemoryGameClientGiveUpPacketType => TryApplyOutgoingGiveUpRequest(tickCount, out message),
+                MemoryGameClientGiveUpPacketType => TryApplyOutgoingGiveUpRequest(out message),
                 MemoryGameClientBookLeavePacketType => TryApplyLeaveBookingStatus(_localPlayerIndex, booked: true, out message),
                 MemoryGameClientCancelLeavePacketType => TryApplyLeaveBookingStatus(_localPlayerIndex, booked: false, out message),
-                MemoryGameReadyPacketType => TryDispatchPacket(MemoryGamePacketType.SetReady, tickCount, out message, _localPlayerIndex, readyState: true),
-                MemoryGameCancelReadyPacketType => TryDispatchPacket(MemoryGamePacketType.SetReady, tickCount, out message, _localPlayerIndex, readyState: false),
+                MemoryGameReadyPacketType => TryApplyOutgoingReadyRequest(isReady: true, out message),
+                MemoryGameCancelReadyPacketType => TryApplyOutgoingReadyRequest(isReady: false, out message),
                 MemoryGameClientBanOrTurnUpCardPacketType => TryApplyClientBanOrTurnUpCardPacket(packetBytes, tickCount, out message),
-                MemoryGameStartPacketType => TryDispatchPacket(MemoryGamePacketType.StartGame, tickCount, out message),
+                MemoryGameStartPacketType => TryApplyOutgoingStartRequest(out message),
                 _ => FailOfficialClientPacket(packetType, out message)
             };
 
@@ -1726,10 +1726,37 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
-        private bool TryApplyOutgoingGiveUpRequest(int tickCount, out string message)
+        private bool TryApplyOutgoingLobbyLeavePacket(out string message)
         {
+            if (_stage != RoomStage.Lobby)
+            {
+                message = "Client leave packet 10 is only emitted from the Match Cards lobby; active rounds use leave-book packets 56/57.";
+                return false;
+            }
+
+            return TryResolveLobbyExit(_localPlayerIndex, out message);
+        }
+
+        private bool TryApplyOutgoingGiveUpRequest(out string message)
+        {
+            if (_stage != RoomStage.Playing)
+            {
+                message = "Give-up requests are only valid during an active Match Cards round.";
+                return false;
+            }
+
+            if (_localGiveUpRequestSent)
+            {
+                message = "A Match Cards give-up request is already pending.";
+                return false;
+            }
+
             _localGiveUpRequestSent = true;
-            return TryDispatchPacket(MemoryGamePacketType.GiveUp, tickCount, out message, _localPlayerIndex);
+            _statusMessage = "Give-up request sent. Waiting for the server response.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
+            SyncMiniRoomRuntime();
+            message = _statusMessage;
+            return true;
         }
 
 
@@ -1756,17 +1783,19 @@ namespace HaCreator.MapSimulator.Fields
         private bool TryApplyOutgoingTieResponse(byte[] packetBytes, int tickCount, out string message)
         {
             bool accepted = packetBytes.Length <= 1 || packetBytes[1] != 0;
-            if (!accepted)
+            if (accepted)
             {
-                _statusMessage = string.IsNullOrWhiteSpace(_statusMessageBeforePrompt)
-                    ? "Declined the opponent's tie request."
-                    : _statusMessageBeforePrompt;
+                _statusMessage = "Accepted the opponent's tie request. Waiting for the server response.";
+                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
                 SyncMiniRoomRuntime();
                 message = _statusMessage;
                 return true;
             }
 
-            return TryClaimTie(out message);
+            _statusMessage = "Declined the opponent's tie request.";
+            SyncMiniRoomRuntime();
+            message = _statusMessage;
+            return true;
         }
 
 
@@ -1774,12 +1803,75 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (packetBytes.Length <= 1)
             {
-                return TryDispatchPacket(MemoryGamePacketType.BanUser, tickCount, out message, _localPlayerIndex);
+                if (_stage != RoomStage.Lobby)
+                {
+                    message = "Ban requests are only valid while the Match Cards room is in the lobby.";
+                    return false;
+                }
+
+                string targetName = ResolveParticipantName(_localPlayerIndex == 0 ? 1 : 0);
+                _statusMessage = $"Ban request sent for {targetName}. Waiting for the server response.";
+                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
+                SyncMiniRoomRuntime();
+                message = _statusMessage;
+                return true;
             }
 
 
             int cardIndex = packetBytes[1];
-            return TryDispatchPacket(MemoryGamePacketType.RevealCard, tickCount, out message, _localPlayerIndex, cardIndex);
+            if (_stage != RoomStage.Playing)
+            {
+                message = "Turn-up requests are only valid while Match Cards is in play.";
+                return false;
+            }
+
+            if (!TryEnsureCardIndex(cardIndex, out message))
+            {
+                return false;
+            }
+
+            _statusMessage = $"Turn-up request sent for card {cardIndex}. Waiting for the server response.";
+            SyncMiniRoomRuntime();
+            message = _statusMessage;
+            return true;
+        }
+
+        private bool TryApplyOutgoingReadyRequest(bool isReady, out string message)
+        {
+            if (_stage != RoomStage.Lobby)
+            {
+                message = "Ready requests are only valid from the Match Cards lobby.";
+                return false;
+            }
+
+            _statusMessage = isReady
+                ? "Ready request sent. Waiting for the server response."
+                : "Ready-cancel request sent. Waiting for the server response.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
+            SyncMiniRoomRuntime();
+            message = _statusMessage;
+            return true;
+        }
+
+        private bool TryApplyOutgoingStartRequest(out string message)
+        {
+            if (_stage != RoomStage.Lobby)
+            {
+                message = "Start requests are only valid from the Match Cards lobby.";
+                return false;
+            }
+
+            if (!HasClientStartTarget())
+            {
+                message = "Start request ignored because no opponent is seated in the Match Cards room yet.";
+                return false;
+            }
+
+            _statusMessage = "Start request sent. Waiting for the server board shuffle.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
+            SyncMiniRoomRuntime();
+            message = _statusMessage;
+            return true;
         }
 
 
@@ -2515,6 +2607,22 @@ namespace HaCreator.MapSimulator.Fields
                 1 => "Guest seat",
                 _ => $"Visitor seat {slot}"
             };
+        }
+
+        private bool HasClientStartTarget()
+        {
+            if (_miniRoomParticipants.ContainsKey(1))
+            {
+                return true;
+            }
+
+            if (_miniRoomRuntime?.Occupants.Count > 1)
+            {
+                return true;
+            }
+
+            return !string.IsNullOrWhiteSpace(_playerNames[1])
+                && !string.Equals(_playerNames[1], "Opponent", StringComparison.Ordinal);
         }
 
 

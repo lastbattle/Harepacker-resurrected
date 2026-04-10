@@ -1880,13 +1880,9 @@ namespace HaCreator.MapSimulator.Character
                 }
 
                 // Check if attack animation is complete
-                var anim = Assembler?.GetAnimation(CurrentActionName);
-                if (anim != null && anim.Length > 0)
+                int attackDuration = Assembler?.ResolveClientActionLayerDuration(CurrentActionName) ?? 0;
+                if (attackDuration > 0)
                 {
-                    int attackDuration = 0;
-                    foreach (var frame in anim)
-                        attackDuration += frame.Duration;
-
                     if (currentTime - _animationStartTime >= attackDuration)
                     {
                         BeginMeleeAfterImageFade(currentTime);
@@ -4470,6 +4466,14 @@ namespace HaCreator.MapSimulator.Character
 
             if (frame?.AvatarRenderLayers == null || frame.AvatarRenderLayers.Length == 0)
             {
+                if (CanPreserveMirrorImagePreparedSourceLayerArrayWhenLiveFrameUnavailable(
+                    _activeMirrorImage.PreparedSourceLayers,
+                    FacingRight))
+                {
+                    RefreshMirrorImagePreparedSourceLayerMetadata(_activeMirrorImage.PreparedSourceLayers);
+                    return;
+                }
+
                 ResetMirrorImagePreparedSourceLayers();
                 return;
             }
@@ -4542,6 +4546,12 @@ namespace HaCreator.MapSimulator.Character
         {
             if (sourceLayers == null || sourceLayers.Length == 0)
             {
+                if (CanPreserveMirrorImagePreparedSourceLayerArrayWhenLiveFrameUnavailable(existingLayers, facingRight))
+                {
+                    RefreshMirrorImagePreparedSourceLayerMetadata(existingLayers);
+                    return existingLayers;
+                }
+
                 DisposeMirrorImagePreparedSourceLayers(existingLayers);
                 return CreateEmptyMirrorImagePreparedSourceLayers();
             }
@@ -4839,6 +4849,36 @@ namespace HaCreator.MapSimulator.Character
                    && existingFacingRight == currentFacingRight;
         }
 
+        internal static bool CanPreserveMirrorImagePreparedSourceLayerArrayWhenSourceListMissing(
+            IReadOnlyList<int> existingPartCounts,
+            IReadOnlyList<bool> existingFacingRightByLayer,
+            bool currentFacingRight)
+        {
+            if (existingPartCounts == null || existingFacingRightByLayer == null)
+            {
+                return false;
+            }
+
+            int layerCount = Math.Min(existingPartCounts.Count, existingFacingRightByLayer.Count);
+            bool hasPreservableLayer = false;
+            for (int layerIndex = 0; layerIndex < layerCount; layerIndex++)
+            {
+                if (existingPartCounts[layerIndex] <= 0)
+                {
+                    continue;
+                }
+
+                if (existingFacingRightByLayer[layerIndex] != currentFacingRight)
+                {
+                    return false;
+                }
+
+                hasPreservableLayer = true;
+            }
+
+            return hasPreservableLayer;
+        }
+
         internal static bool CanPreserveMirrorImagePreparedSourceLayerWhenSourceMissing(
             bool existingFacingRight,
             bool currentFacingRight,
@@ -4848,6 +4888,51 @@ namespace HaCreator.MapSimulator.Character
                 existingFacingRight,
                 currentFacingRight,
                 existingPartCount);
+        }
+
+        private static bool CanPreserveMirrorImagePreparedSourceLayerArrayWhenLiveFrameUnavailable(
+            MirrorImagePreparedSourceLayer[] existingLayers,
+            bool currentFacingRight)
+        {
+            if (existingLayers == null || existingLayers.Length == 0)
+            {
+                return false;
+            }
+
+            int[] existingPartCounts = new int[existingLayers.Length];
+            bool[] existingFacingRightByLayer = new bool[existingLayers.Length];
+            for (int layerIndex = 0; layerIndex < existingLayers.Length; layerIndex++)
+            {
+                MirrorImagePreparedSourceLayer existingLayer = existingLayers[layerIndex];
+                existingPartCounts[layerIndex] = existingLayer?.Parts?.Count ?? 0;
+                existingFacingRightByLayer[layerIndex] = existingLayer?.PreparedFacingRight ?? false;
+            }
+
+            return CanPreserveMirrorImagePreparedSourceLayerArrayWhenSourceListMissing(
+                existingPartCounts,
+                existingFacingRightByLayer,
+                currentFacingRight);
+        }
+
+        private static void RefreshMirrorImagePreparedSourceLayerMetadata(MirrorImagePreparedSourceLayer[] preparedLayers)
+        {
+            if (preparedLayers == null)
+            {
+                return;
+            }
+
+            for (int layerIndex = 0; layerIndex < preparedLayers.Length; layerIndex++)
+            {
+                MirrorImagePreparedSourceLayer preparedLayer = preparedLayers[layerIndex];
+                if (preparedLayer == null)
+                {
+                    continue;
+                }
+
+                AvatarRenderLayer renderLayer = (AvatarRenderLayer)layerIndex;
+                preparedLayer.RenderLayer = renderLayer;
+                preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
+            }
         }
 
         internal static int ResolveMirrorImagePreparedSourceLayerUpdateTime(

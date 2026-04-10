@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework.Graphics;
@@ -119,6 +120,7 @@ namespace HaCreator.MapSimulator
             Profession = 9,
             Event = 10,
             Expedition = 11,
+            SpouseWhisper = 12,
             QuestAlarm = 13,
         }
 
@@ -1336,6 +1338,9 @@ namespace HaCreator.MapSimulator
                 case PacketOwnedRawFunctionOwner.Expedition:
                     ShowPacketOwnedExpeditionSearchWindow();
                     return true;
+                case PacketOwnedRawFunctionOwner.SpouseWhisper:
+                    OpenPacketOwnedSpouseWhisperOwner(currentTime);
+                    return true;
                 case PacketOwnedRawFunctionOwner.QuestAlarm:
                     TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.QuestAlarm, () =>
                         ShowUtilityWindow(MapSimulatorWindowNames.QuestAlarm, "packet-owned-funckey:20"));
@@ -1415,6 +1420,34 @@ namespace HaCreator.MapSimulator
             _socialListRuntime.OpenSearchWindow(SocialSearchTab.Expedition);
             WireSocialSearchWindowData();
             ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialSearch);
+        }
+
+        private void OpenPacketOwnedSpouseWhisperOwner(int currentTime)
+        {
+            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+            if (localCharacterId > 0
+                && _remoteUserPool.TryResolveRelationshipWhisperTarget(
+                    localCharacterId,
+                    RemoteRelationshipOverlayType.Marriage,
+                    out string whisperTarget))
+            {
+                _chat.BeginWhisperTo(whisperTarget, currentTime);
+                return;
+            }
+
+            if (localCharacterId > 0
+                && _remoteUserPool.TryResolveRelationshipWhisperTarget(
+                    localCharacterId,
+                    RemoteRelationshipOverlayType.Couple,
+                    out whisperTarget))
+            {
+                _chat.BeginWhisperTo(whisperTarget, currentTime);
+                return;
+            }
+
+            _chat.OpenWhisperTargetPicker(
+                currentTime,
+                presentation: MapSimulatorChat.WhisperTargetPickerPresentation.Modal);
         }
 
         private static bool WasPacketOwnedFuncKeyPressed(KeyboardState keyboardState, KeyboardState previousKeyboardState, Keys key)
@@ -1517,6 +1550,7 @@ namespace HaCreator.MapSimulator
                 14 => PacketOwnedRawFunctionOwner.ShortcutMenu,
                 24 => PacketOwnedRawFunctionOwner.PartySearch,
                 25 => PacketOwnedRawFunctionOwner.Family,
+                21 => PacketOwnedRawFunctionOwner.SpouseWhisper,
                 27 => PacketOwnedRawFunctionOwner.Expedition,
                 29 => PacketOwnedRawFunctionOwner.Profession,
                 31 => PacketOwnedRawFunctionOwner.Event,

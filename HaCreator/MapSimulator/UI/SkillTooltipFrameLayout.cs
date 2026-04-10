@@ -6,6 +6,29 @@ namespace HaCreator.MapSimulator.UI
     internal static class SkillTooltipFrameLayout
     {
         internal readonly record struct FrameGeometry(int Width, int Height, Point Origin);
+        private const int MountedSkillTooltipFrameWidth = 193;
+        private const int MountedSkillTooltipFrameHeight = 102;
+
+        internal static Point ResolveSameFamilyOriginFallback(
+            Point authoredOrigin,
+            int authoredWidth,
+            int authoredHeight,
+            Point fallbackOrigin,
+            int fallbackWidth,
+            int fallbackHeight)
+        {
+            if (authoredOrigin != Point.Zero
+                || fallbackOrigin == Point.Zero
+                || authoredWidth != fallbackWidth
+                || authoredHeight != fallbackHeight
+                || authoredWidth != MountedSkillTooltipFrameWidth
+                || authoredHeight != MountedSkillTooltipFrameHeight)
+            {
+                return authoredOrigin;
+            }
+
+            return fallbackOrigin;
+        }
 
         internal static Rectangle ResolveTooltipRect(
             Point anchorPoint,

@@ -92,6 +92,7 @@ namespace HaCreator.MapSimulator.UI
 
         private readonly int _maxLength;
         private readonly WndProcDelegate _subclassWndProc;
+        private readonly HashSet<int> _clientOwnedKeyDowns = new();
 
         private IntPtr _parentHandle;
         private IntPtr _editHandle;
@@ -238,6 +239,7 @@ namespace HaCreator.MapSimulator.UI
             SendMessage(_editHandle, EmSetSel, IntPtr.Zero, IntPtr.Zero);
             _mouseSelecting = false;
             _mouseSelectionAnchor = -1;
+            _clientOwnedKeyDowns.Clear();
             SynchronizeState();
             UpdateImePlacement();
         }
@@ -264,6 +266,7 @@ namespace HaCreator.MapSimulator.UI
 
             _mouseSelecting = false;
             _mouseSelectionAnchor = -1;
+            _clientOwnedKeyDowns.Clear();
             CancelImeComposition();
             SetFocus(_parentHandle);
         }
@@ -394,6 +397,7 @@ namespace HaCreator.MapSimulator.UI
 
             _parentHandle = IntPtr.Zero;
             _lastKnownText = string.Empty;
+            _clientOwnedKeyDowns.Clear();
         }
 
         private void ApplyClientFont()
@@ -628,6 +632,7 @@ namespace HaCreator.MapSimulator.UI
             bool allowImeOwnedDownHandling = ShouldDeferDownKeyToIme(controlHeld, shiftHeld, HasActiveImeComposition());
             if (msg == WmKeyDown && !allowImeOwnedDownHandling && HandleClientOwnedKeyDown(virtualKey, controlHeld, shiftHeld, wParam, lParam))
             {
+                _clientOwnedKeyDowns.Add(virtualKey);
                 return IntPtr.Zero;
             }
 
@@ -663,9 +668,13 @@ namespace HaCreator.MapSimulator.UI
             {
                 ForwardKeyToParent(WmKeyDown, wParam, lParam);
             }
-            else if (msg == WmKeyUp && ShouldForwardClientOwnedKeyUpToParent(virtualKey))
+            else if (msg == WmKeyUp)
             {
-                ForwardKeyToParent(WmKeyUp, wParam, lParam);
+                bool wasClientOwnedKeyDown = _clientOwnedKeyDowns.Remove(virtualKey);
+                if (ShouldForwardClientOwnedKeyUpToParent(virtualKey, wasClientOwnedKeyDown))
+                {
+                    ForwardKeyToParent(WmKeyUp, wParam, lParam);
+                }
             }
 
             if (msg == WmSetFocus)
@@ -675,6 +684,7 @@ namespace HaCreator.MapSimulator.UI
             }
             else if (msg == WmKillFocus)
             {
+                _clientOwnedKeyDowns.Clear();
                 CancelImeComposition();
                 FocusChanged?.Invoke(false);
             }
@@ -824,6 +834,19 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool ShouldForwardClientOwnedKeyUpToParent(int virtualKey)
         {
+            return ShouldForwardClientOwnedKeyUpToParent(virtualKey, wasClientOwnedKeyDown: false);
+        }
+
+        internal static bool ShouldForwardClientOwnedKeyUpToParent(int virtualKey, bool wasClientOwnedKeyDown)
+        {
+            // `CCtrlEdit::OnKey` forwards every key-up into the parent path before
+            // its switch handles down-only edit behavior; track consumed downs so
+            // hosted EDIT key-up no longer stops at arrow keys alone.
+            if (wasClientOwnedKeyDown)
+            {
+                return true;
+            }
+
             return virtualKey is VkLeft or VkRight or VkUp or VkDown
                 || IsStagePassthroughVirtualKey(virtualKey);
         }

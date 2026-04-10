@@ -92,6 +92,7 @@ namespace HaCreator.MapSimulator.Interaction
             _guildManageCurrentTab = tab;
             _guildManageEditing = false;
             _guildManageDraft = string.Empty;
+            NotifyGuildManageTabObserved();
         }
 
         internal void SelectGuildManageRank(int visibleIndex)
@@ -102,6 +103,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _guildManageSelectedRankIndex = visibleIndex;
+            NotifyGuildManageRankObserved();
         }
 
         internal void MoveGuildManageRankSelection(int delta)
@@ -111,33 +113,38 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
+            int previousIndex = _guildManageSelectedRankIndex;
             _guildManageSelectedRankIndex = Math.Clamp(_guildManageSelectedRankIndex + delta, 0, _guildRankTitles.Count - 1);
+            if (_guildManageSelectedRankIndex != previousIndex)
+            {
+                NotifyGuildManageRankObserved();
+            }
         }
 
         internal string BeginGuildManageEdit()
         {
             if (_guildManageCurrentTab == GuildManageTab.Position && !CanManageGuildRanks())
             {
-                return $"Guild rank titles are read-only while the active authority role is {GetEffectiveGuildRoleLabel()}.";
+                return NotifySocialEditorPrompt($"Guild rank titles are read-only while the active authority role is {GetEffectiveGuildRoleLabel()}.");
             }
 
             if (_guildManageCurrentTab == GuildManageTab.Admission)
             {
-                return "Guild admission uses the OK/NO controls instead of freeform text.";
+                return NotifySocialEditorPrompt("Guild admission uses the OK/NO controls instead of freeform text.");
             }
 
             if (_guildManageCurrentTab == GuildManageTab.Change && !CanEditGuildNotice())
             {
-                return $"Guild notice editing is read-only while the active authority role is {GetEffectiveGuildRoleLabel()}.";
+                return NotifySocialEditorPrompt($"Guild notice editing is read-only while the active authority role is {GetEffectiveGuildRoleLabel()}.");
             }
 
             _guildManageEditing = true;
             _guildManageDraft = _guildManageCurrentTab == GuildManageTab.Position
                 ? _guildRankTitles[_guildManageSelectedRankIndex]
                 : _guildNoticeText;
-            return _guildManageCurrentTab == GuildManageTab.Position
+            return NotifySocialEditorPrompt(_guildManageCurrentTab == GuildManageTab.Position
                 ? $"Editing guild rank title {_guildManageSelectedRankIndex + 1}."
-                : "Editing guild notice text.";
+                : "Editing guild notice text.");
         }
 
         internal void SetGuildManageDraft(string value)
@@ -187,7 +194,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _guildManageEditing = false;
             _guildManageDraft = string.Empty;
-            return "Guild management edit canceled.";
+            return NotifySocialEditorPrompt("Guild management edit canceled.");
         }
 
         internal string SetGuildAdmission(bool requiresApproval)
@@ -243,32 +250,34 @@ namespace HaCreator.MapSimulator.Interaction
 
             _allianceEditorFocus = AllianceEditorFocus.RankTitle;
             _allianceSelectedRankIndex = visibleIndex;
+            NotifyAllianceRankObserved();
         }
 
         internal void FocusAllianceNotice()
         {
             _allianceEditorFocus = AllianceEditorFocus.Notice;
+            NotifySocialEditorPrompt("Alliance editor focus: notice text.");
         }
 
         internal string BeginAllianceEdit()
         {
             if (_allianceEditorFocus == AllianceEditorFocus.Notice && !CanEditAllianceNotice())
             {
-                return $"Alliance notice editing is read-only while the active authority role is {GetEffectiveAllianceRoleLabel()}.";
+                return NotifySocialEditorPrompt($"Alliance notice editing is read-only while the active authority role is {GetEffectiveAllianceRoleLabel()}.");
             }
 
             if (_allianceEditorFocus == AllianceEditorFocus.RankTitle && !CanEditAllianceRanks())
             {
-                return $"Alliance rank titles are read-only while the active authority role is {GetEffectiveAllianceRoleLabel()}.";
+                return NotifySocialEditorPrompt($"Alliance rank titles are read-only while the active authority role is {GetEffectiveAllianceRoleLabel()}.");
             }
 
             _allianceEditorEditing = true;
             _allianceEditorDraft = _allianceEditorFocus == AllianceEditorFocus.Notice
                 ? _allianceNoticeText
                 : _allianceRankTitles[_allianceSelectedRankIndex];
-            return _allianceEditorFocus == AllianceEditorFocus.Notice
+            return NotifySocialEditorPrompt(_allianceEditorFocus == AllianceEditorFocus.Notice
                 ? "Editing alliance notice text."
-                : $"Editing alliance rank title {_allianceSelectedRankIndex + 1}.";
+                : $"Editing alliance rank title {_allianceSelectedRankIndex + 1}.");
         }
 
         internal void SetAllianceEditorDraft(string value)
@@ -390,7 +399,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _allianceEditorEditing = false;
             _allianceEditorDraft = string.Empty;
-            return "Alliance edit canceled.";
+            return NotifySocialEditorPrompt("Alliance edit canceled.");
         }
 
         private IReadOnlyList<string> BuildGuildManageSummary(string localRole, string selectedTitle)
@@ -424,6 +433,49 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 NotifySocialChatObserved(text.Trim());
             }
+        }
+
+        private string NotifySocialEditorPrompt(string message)
+        {
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                NotifySocialChatObserved(message.Trim());
+            }
+
+            return message;
+        }
+
+        private void NotifyGuildManageTabObserved()
+        {
+            NotifySocialEditorPrompt(_guildManageCurrentTab switch
+            {
+                GuildManageTab.Position => "Guild management tab: rank titles.",
+                GuildManageTab.Admission => "Guild management tab: admission mode.",
+                GuildManageTab.Change => "Guild management tab: notice text.",
+                _ => null
+            });
+        }
+
+        private void NotifyGuildManageRankObserved()
+        {
+            if (_guildRankTitles.Count == 0)
+            {
+                return;
+            }
+
+            int rankIndex = Math.Clamp(_guildManageSelectedRankIndex, 0, _guildRankTitles.Count - 1);
+            NotifySocialEditorPrompt($"Guild rank title {rankIndex + 1} selected: {_guildRankTitles[rankIndex]}.");
+        }
+
+        private void NotifyAllianceRankObserved()
+        {
+            if (_allianceRankTitles.Count == 0)
+            {
+                return;
+            }
+
+            int rankIndex = Math.Clamp(_allianceSelectedRankIndex, 0, _allianceRankTitles.Count - 1);
+            NotifySocialEditorPrompt($"Alliance rank title {rankIndex + 1} selected: {_allianceRankTitles[rankIndex]}.");
         }
 
         private IReadOnlyList<string> BuildAllianceEditorSummary(string selectedTitle)

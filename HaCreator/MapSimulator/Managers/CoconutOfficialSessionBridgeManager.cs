@@ -34,6 +34,7 @@ namespace HaCreator.MapSimulator.Managers
         private CancellationTokenSource _listenerCancellation;
         private Task _listenerTask;
         private BridgePair _activePair;
+        private SessionDiscoveryCandidate? _passiveEstablishedSession;
 
         public readonly record struct SessionDiscoveryCandidate(
             int ProcessId,
@@ -87,6 +88,7 @@ namespace HaCreator.MapSimulator.Managers
         public int RemotePort { get; private set; }
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public bool HasAttachedClient => _activePair != null;
+        public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && _activePair == null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
@@ -99,6 +101,8 @@ namespace HaCreator.MapSimulator.Managers
                 : "inactive";
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                : HasPassiveEstablishedSocketPair
+                    ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no live Maple session";
             return $"Coconut official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}. {LastStatus}";
         }
@@ -275,6 +279,57 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public bool TryAttachEstablishedSession(int remotePort, string processSelector, int? localPort, out string status)
+        {
+            int? owningProcessId = null;
+            string owningProcessName = null;
+            if (!TryResolveProcessSelector(processSelector, out owningProcessId, out owningProcessName, out string selectorError))
+            {
+                status = selectorError;
+                LastStatus = status;
+                return false;
+            }
+
+            IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
+            if (!TryResolveDiscoveryCandidate(candidates, remotePort, owningProcessId, owningProcessName, localPort, out SessionDiscoveryCandidate candidate, out status))
+            {
+                LastStatus = status;
+                return false;
+            }
+
+            return TryAttachEstablishedSession(candidate, out status);
+        }
+
+        public bool TryAttachEstablishedSession(SessionDiscoveryCandidate candidate, out string status)
+        {
+            if (candidate.LocalEndpoint == null || candidate.RemoteEndpoint == null || candidate.RemoteEndpoint.Port <= 0)
+            {
+                status = "Coconut official-session attach requires an established Maple client socket pair.";
+                LastStatus = status;
+                return false;
+            }
+
+            lock (_sync)
+            {
+                if (HasAttachedClient)
+                {
+                    status = $"Coconut official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before observing an already-established socket pair.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                StopInternal(clearPending: true);
+                _passiveEstablishedSession = candidate;
+                RemoteHost = candidate.RemoteEndpoint.Address.ToString();
+                RemotePort = candidate.RemoteEndpoint.Port;
+                LastStatus =
+                    $"Observed already-established Coconut Maple socket pair {DescribeEstablishedSession(candidate)}. " +
+                    $"This passive attach keeps the live socket pair visible to the CField_Coconut ownership seam, but it still cannot decrypt inbound {CoconutField.PacketTypeHit}/{CoconutField.PacketTypeScore} traffic or inject opcode 257 after the Maple handshake; reconnect through the localhost proxy for live packet ownership.";
+                status = LastStatus;
+                return true;
+            }
+        }
+
         public string DescribeDiscoveredSessions(int remotePort, string processSelector = null, int? localPort = null)
         {
             int? owningProcessId = null;
@@ -305,6 +360,13 @@ namespace HaCreator.MapSimulator.Managers
         public bool TrySendAttackRequest(CoconutField.AttackPacketRequest request, out string status)
         {
             BridgePair pair = _activePair;
+            if (HasPassiveEstablishedSocketPair)
+            {
+                status = $"Coconut official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. It cannot inject opcode 257 into an already-established Maple socket pair after the handshake; reconnect through the localhost proxy first.";
+                LastStatus = status;
+                return false;
+            }
+
             if (pair == null || !pair.InitCompleted)
             {
                 status = "Coconut official-session bridge has no active Maple session.";
@@ -537,6 +599,7 @@ namespace HaCreator.MapSimulator.Managers
             BridgePair pair = _activePair;
             _activePair = null;
             pair?.Close();
+            _passiveEstablishedSession = null;
 
             if (clearPending)
             {
@@ -746,10 +809,14 @@ namespace HaCreator.MapSimulator.Managers
                 return $"No established TCP sessions matched {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
             }
 
-            return string.Join(
-                Environment.NewLine,
-                filteredCandidates.Select(candidate =>
-                    $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}"));
+            return "Coconut official-session bridge discovery candidates:"
+                + Environment.NewLine
+                + string.Join(
+                    Environment.NewLine,
+                    filteredCandidates.Select(candidate =>
+                        $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}"))
+                + Environment.NewLine
+                + "Discovery identifies established Maple sockets. Use `/coconut session attach ...` to bind the simulator to the current socket pair for passive status-only observation, or `/coconut session startauto ...` to arm the localhost proxy for decrypt/inject ownership after Maple reconnects through it.";
         }
 
         private static IReadOnlyList<SessionDiscoveryCandidate> FilterCandidatesByLocalPort(
@@ -772,6 +839,16 @@ namespace HaCreator.MapSimulator.Managers
             return localPort.HasValue
                 ? $"{selectorLabel} on remote port {remotePort} and local port {localPort.Value}"
                 : $"{selectorLabel} on remote port {remotePort}";
+        }
+
+        private static string DescribePassiveEstablishedSession(SessionDiscoveryCandidate candidate)
+        {
+            return $"observing established socket pair {DescribeEstablishedSession(candidate)}; proxy reconnect required for decrypt/inject";
+        }
+
+        private static string DescribeEstablishedSession(SessionDiscoveryCandidate candidate)
+        {
+            return $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}";
         }
 
         private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)

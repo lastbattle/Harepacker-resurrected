@@ -325,6 +325,7 @@ namespace HaCreator.MapSimulator.UI
         public Action WhisperTargetPickerModalButtonFocusRequested { get; set; }
         public Action WhisperTargetPickerModalComboFocusRequested { get; set; }
         public Action WhisperTargetPickerModalComboDropdownToggleRequested { get; set; }
+        public Action<string> WhisperTargetPickerModalComboDropdownHoverRequested { get; set; }
 
         private enum WhisperPickerButtonAction
         {
@@ -2055,10 +2056,16 @@ namespace HaCreator.MapSimulator.UI
             bool promptHovered = _whisperPromptBounds?.Contains(mouseState.X, mouseState.Y) == true;
             bool comboHovered = _whisperPickerComboBounds?.Contains(mouseState.X, mouseState.Y) == true;
             bool comboToggleHovered = _whisperPickerComboToggleBounds?.Contains(mouseState.X, mouseState.Y) == true;
+            bool dropdownHovered = _whisperPickerDropdownBounds?.Contains(mouseState.X, mouseState.Y) == true;
             bool isPressStarted = mouseState.LeftButton == ButtonState.Pressed
                 && _previousLeftButtonState == ButtonState.Released;
             bool isRelease = mouseState.LeftButton == ButtonState.Released
                 && _previousLeftButtonState == ButtonState.Pressed;
+
+            if (dropdownHovered && hoveredPickerRegion != null)
+            {
+                WhisperTargetPickerModalComboDropdownHoverRequested?.Invoke(hoveredPickerRegion.WhisperTarget);
+            }
 
             if (isPressStarted)
             {

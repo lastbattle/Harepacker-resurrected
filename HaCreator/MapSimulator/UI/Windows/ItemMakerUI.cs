@@ -3317,20 +3317,43 @@ namespace HaCreator.MapSimulator.UI
 
             if (!recipe.UsesRandomReward || recipe.RandomRewards.Length == 0)
             {
-                return _inventory.CanAcceptItem(recipe.OutputInventoryType, recipe.OutputItemId, recipe.OutputQuantity);
+                return HasClientEmptyResultSlot(_inventory, recipe.OutputInventoryType);
             }
 
             for (int i = 0; i < recipe.RandomRewards.Length; i++)
             {
                 ItemMakerReward reward = recipe.RandomRewards[i];
                 InventoryType rewardType = ResolveInventoryType(reward.ItemId);
-                if (!_inventory.CanAcceptItem(rewardType, reward.ItemId, reward.Quantity))
+                if (!HasClientEmptyResultSlot(_inventory, rewardType))
                 {
                     return false;
                 }
             }
 
             return true;
+        }
+
+        internal static bool HasClientEmptyResultSlot(IInventoryRuntime inventory, InventoryType inventoryType)
+        {
+            if (inventory == null || inventoryType == InventoryType.NONE)
+            {
+                return false;
+            }
+
+            IReadOnlyList<InventorySlotData> slots = inventory.GetSlots(inventoryType);
+            int occupiedCount = 0;
+            if (slots != null)
+            {
+                for (int i = 0; i < slots.Count; i++)
+                {
+                    if (slots[i] != null)
+                    {
+                        occupiedCount++;
+                    }
+                }
+            }
+
+            return Math.Max(0, inventory.GetSlotLimit(inventoryType) - occupiedCount) > 0;
         }
     }
 }

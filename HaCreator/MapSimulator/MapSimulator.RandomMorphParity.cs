@@ -52,16 +52,23 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.RandomMorph) is not RandomMorphWindow randomMorphWindow)
+            {
+                _lastRandomMorphOutboundSummary = "Random morph dialog owner is unavailable in this UI build.";
+                return true;
+            }
+
+            if (randomMorphWindow.IsVisible)
+            {
+                _lastRandomMorphOutboundSummary =
+                    $"Random morph dialog launch for item {itemId} stayed suppressed because the Random Morph owner already holds the unique modeless slot.";
+                return true;
+            }
+
             string blockingOwner = GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.RandomMorph);
             if (!string.IsNullOrWhiteSpace(blockingOwner))
             {
                 _lastRandomMorphOutboundSummary = $"Random morph dialog launch for item {itemId} stayed suppressed because unique modeless owner '{blockingOwner}' is already visible.";
-                return true;
-            }
-
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.RandomMorph) is not RandomMorphWindow randomMorphWindow)
-            {
-                _lastRandomMorphOutboundSummary = "Random morph dialog owner is unavailable in this UI build.";
                 return true;
             }
 

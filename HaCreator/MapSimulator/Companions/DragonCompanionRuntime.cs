@@ -91,6 +91,22 @@ namespace HaCreator.MapSimulator.Companions
             Hidden = 6
         }
 
+        internal readonly struct OwnerPhaseContext
+        {
+            public OwnerPhaseContext(bool hasLocalUser, bool ownerMatchesLocalPhase, int phaseAlpha)
+            {
+                HasLocalUser = hasLocalUser;
+                OwnerMatchesLocalPhase = ownerMatchesLocalPhase;
+                PhaseAlpha = Math.Clamp(phaseAlpha, 0, 255);
+            }
+
+            public bool HasLocalUser { get; }
+            public bool OwnerMatchesLocalPhase { get; }
+            public int PhaseAlpha { get; }
+
+            public static OwnerPhaseContext NoLocalUser { get; } = new(false, false, 255);
+        }
+
         private readonly GraphicsDevice _device;
         private readonly DragonActionLoader _actionLoader;
         private readonly Dictionary<int, DragonAnimationSet> _animationCache = new();
@@ -107,7 +123,7 @@ namespace HaCreator.MapSimulator.Companions
         private Func<MapInfo> _currentMapInfoProvider;
         private Func<int?> _questInfoStateProvider;
         private Func<bool> _dragonFuryVisibleProvider;
-        private Func<int?> _ownerPhaseActionAlphaProvider;
+        private Func<OwnerPhaseContext> _ownerPhaseContextProvider;
         private DragonAnimationSet _currentSet;
         private string _currentActionName;
         private int _currentActionStartTime;
@@ -216,7 +232,16 @@ namespace HaCreator.MapSimulator.Companions
 
         public void SetOwnerPhaseActionAlphaProvider(Func<int?> ownerPhaseActionAlphaProvider)
         {
-            _ownerPhaseActionAlphaProvider = ownerPhaseActionAlphaProvider;
+            _ownerPhaseContextProvider = ownerPhaseActionAlphaProvider == null
+                ? null
+                : () => ownerPhaseActionAlphaProvider() is int ownerPhaseAlpha
+                    ? new OwnerPhaseContext(hasLocalUser: true, ownerMatchesLocalPhase: false, ownerPhaseAlpha)
+                    : OwnerPhaseContext.NoLocalUser;
+        }
+
+        internal void SetOwnerPhaseContextProvider(Func<OwnerPhaseContext> ownerPhaseContextProvider)
+        {
+            _ownerPhaseContextProvider = ownerPhaseContextProvider;
         }
 
         public void Update(PlayerCharacter owner, int currentTime)
@@ -298,13 +323,13 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             _alpha = ResolveClientLayerAlpha(!_isSuppressed);
-            int? ownerPhaseAlpha = _ownerPhaseActionAlphaProvider?.Invoke();
+            OwnerPhaseContext ownerPhaseContext = _ownerPhaseContextProvider?.Invoke() ?? OwnerPhaseContext.NoLocalUser;
             _actionLayerColor = ResolveClientActionLayerColorAfterOwnerUpdate(
                 ResolveClientActionLayerColor(Color.White, _alpha, null),
                 ownerUpdateVisible: !suppressedForMap,
-                hasLocalUser: ownerPhaseAlpha.HasValue,
-                ownerMatchesLocalPhase: !ownerPhaseAlpha.HasValue,
-                ownerPhaseAlpha: ownerPhaseAlpha ?? 255,
+                hasLocalUser: ownerPhaseContext.HasLocalUser,
+                ownerMatchesLocalPhase: ownerPhaseContext.OwnerMatchesLocalPhase,
+                ownerPhaseAlpha: ownerPhaseContext.PhaseAlpha,
                 hasSpecialDragonRidingMount: suppressedForMount);
             _ownerPhaseActionAlpha = _actionLayerColor.A / 255f;
             _hasActiveOneTimeAction = HasClientOwnedOneTimeAction(explicitActionName, currentTime);
@@ -923,7 +948,7 @@ namespace HaCreator.MapSimulator.Companions
                 return currentY;
             }
 
-            if (followingState < 0 && absoluteDeltaY <= PassiveArrivalDistance)
+            if (followingState < 0 && currentY == targetY)
             {
                 followingState = 0;
                 velocityY = deltaY >= 0f ? 1d : -1d;

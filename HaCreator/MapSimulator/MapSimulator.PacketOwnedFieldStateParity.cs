@@ -13,8 +13,7 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
-        private PendingPortalSessionValueImpact _pendingPortalSessionValueImpact;
-        private int _pendingPortalSessionValueImpactMapId = -1;
+        private readonly List<PendingPortalSessionValueImpact> _pendingPortalSessionValueImpacts = new();
         private int _lastPortalSessionValueRequestOpcode = -1;
         private byte[] _lastPortalSessionValueRequestPayload = Array.Empty<byte>();
         private string _lastPortalSessionValueRequestSummary;
@@ -72,13 +71,22 @@ namespace HaCreator.MapSimulator
             }
 
             _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
-            return _packetFieldStateRuntime.TryApplyPacket(
+            bool packetApplied = _packetFieldStateRuntime.TryApplyPacket(
                 packetType,
                 payload,
                 currTickCount,
                 (tag, state, transitionTimeMs, currentTimeMs) => SetDynamicObjectTagState(tag, state, transitionTimeMs, currentTimeMs),
                 HandleFieldSpecificDataPacketHandoff,
                 out message);
+            if (TryApplyPendingPortalSessionValueImpactFromPacket(packetType, payload, out string fieldStatePortalImpactMessage))
+            {
+                message = string.IsNullOrWhiteSpace(message)
+                    ? fieldStatePortalImpactMessage
+                    : $"{message} {fieldStatePortalImpactMessage}";
+                return true;
+            }
+
+            return packetApplied;
         }
 
         private bool TryApplyClientOwnedSessionValuePacket(byte[] payload, int currentTick, out string message)
@@ -96,6 +104,11 @@ namespace HaCreator.MapSimulator
                     currentTick,
                     out string target))
             {
+                TryApplyPendingPortalSessionValueImpact(
+                    key,
+                    value,
+                    PartyRaidField.ClientSessionValuePacketType,
+                    PacketFieldSpecificDataOwnerHint.Session);
                 message = $"CWvsContext::OnSessionValue applied {key}={value} ({target}).";
                 return true;
             }
@@ -178,7 +191,7 @@ namespace HaCreator.MapSimulator
                 _specialFieldRuntime.PartyRaid.IsActive &&
                 _specialFieldRuntime.PartyRaid.TryApplyFieldSpecificPair(key, value, ownerHint, currentTick, out string partyRaidOwner))
             {
-                TryApplyPendingPortalSessionValueImpact(key, value);
+                TryApplyPendingPortalSessionValueImpact(key, value, 149, ownerHint);
                 target = _specialFieldRuntime.PartyRaid.DescribeStructuredFieldSpecificTarget(partyRaidOwner);
                 return true;
             }
@@ -187,7 +200,7 @@ namespace HaCreator.MapSimulator
                 IsEscortResultWrapperMap(_mapBoard?.MapInfo) &&
                 _specialFieldRuntime.TryDispatchCurrentWrapperFieldValue(key, value, currentTick, out string wrapperMessage))
             {
-                TryApplyPendingPortalSessionValueImpact(key, value);
+                TryApplyPendingPortalSessionValueImpact(key, value, 149, ownerHint);
                 target = wrapperMessage;
                 return true;
             }
@@ -195,7 +208,7 @@ namespace HaCreator.MapSimulator
             if (ShouldRouteFieldSpecificPairToFieldWrappers(ownerHint) &&
                 _specialFieldRuntime.TryDispatchCurrentWrapperSessionValue(key, value, out string sessionMessage))
             {
-                TryApplyPendingPortalSessionValueImpact(key, value);
+                TryApplyPendingPortalSessionValueImpact(key, value, 149, ownerHint);
                 target = sessionMessage;
                 return true;
             }
@@ -204,7 +217,7 @@ namespace HaCreator.MapSimulator
                 _mapBoard?.MapInfo?.fieldType == MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_HUNTINGADBALLOON &&
                 _specialFieldRuntime.TryDispatchCurrentWrapperFieldValue(key, value, currentTick, out string huntingAdBalloonMessage))
             {
-                TryApplyPendingPortalSessionValueImpact(key, value);
+                TryApplyPendingPortalSessionValueImpact(key, value, 149, ownerHint);
                 target = huntingAdBalloonMessage;
                 return true;
             }
@@ -286,13 +299,17 @@ namespace HaCreator.MapSimulator
         {
             if (pendingImpact?.IsValid != true)
             {
-                _pendingPortalSessionValueImpact = null;
-                _pendingPortalSessionValueImpactMapId = -1;
+                _pendingPortalSessionValueImpacts.Clear();
                 return;
             }
 
-            _pendingPortalSessionValueImpact = pendingImpact;
-            _pendingPortalSessionValueImpactMapId = _mapBoard?.MapInfo?.id ?? -1;
+            int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
+            PrunePendingPortalSessionValueImpacts(currentMapId);
+            _pendingPortalSessionValueImpacts.RemoveAll(entry =>
+                entry.MapId == pendingImpact.MapId
+                && entry.OwnerKind == pendingImpact.OwnerKind
+                && PendingPortalSessionValueImpact.IsMatch(entry.Key, entry.Value, pendingImpact.Key, pendingImpact.Value));
+            _pendingPortalSessionValueImpacts.Add(pendingImpact);
         }
 
         private bool TryDispatchPortalSessionValueRequest(string key)
@@ -352,12 +369,41 @@ namespace HaCreator.MapSimulator
             return $"{source} The request remained simulator-owned because neither the live bridge nor the packet outbox accepted opcode {PortalSessionValueRequestCodec.Opcode}. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
         }
 
-        private bool TryApplyPendingPortalSessionValueImpact(string key, string value)
+        private void PrunePendingPortalSessionValueImpacts(int currentMapId)
         {
-            PendingPortalSessionValueImpact pendingImpact = _pendingPortalSessionValueImpact;
-            if (pendingImpact?.IsValid != true
-                || _pendingPortalSessionValueImpactMapId != (_mapBoard?.MapInfo?.id ?? -1)
-                || !pendingImpact.Matches(key, value))
+            _pendingPortalSessionValueImpacts.RemoveAll(entry => entry?.IsValid != true || entry.MapId != currentMapId);
+        }
+
+        private bool TryApplyPendingPortalSessionValueImpact(
+            string key,
+            string value,
+            int packetType,
+            PacketFieldSpecificDataOwnerHint ownerHint)
+        {
+            int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
+            PrunePendingPortalSessionValueImpacts(currentMapId);
+            if (_pendingPortalSessionValueImpacts.Count == 0)
+            {
+                return false;
+            }
+
+            PortalSessionValueImpactIngress ingress = new(key, value, packetType, ownerHint);
+            int pendingIndex = -1;
+            PendingPortalSessionValueImpact pendingImpact = null;
+            for (int i = _pendingPortalSessionValueImpacts.Count - 1; i >= 0; i--)
+            {
+                PendingPortalSessionValueImpact candidate = _pendingPortalSessionValueImpacts[i];
+                if (!candidate.Matches(currentMapId, ingress))
+                {
+                    continue;
+                }
+
+                pendingIndex = i;
+                pendingImpact = candidate;
+                break;
+            }
+
+            if (pendingIndex < 0 || pendingImpact?.IsValid != true)
             {
                 return false;
             }
@@ -369,8 +415,7 @@ namespace HaCreator.MapSimulator
             }
 
             player.Physics.SetImpactNext(pendingImpact.VelocityX, pendingImpact.VelocityY);
-            _pendingPortalSessionValueImpact = null;
-            _pendingPortalSessionValueImpactMapId = -1;
+            _pendingPortalSessionValueImpacts.RemoveAt(pendingIndex);
             _ = ClearPacketOwnedTeleportPassengerLink();
             return true;
         }
@@ -383,15 +428,17 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPendingPortalSessionValueImpactFromPacket(int packetType, byte[] payload, out string message)
         {
             message = null;
-            if (_pendingPortalSessionValueImpact?.IsValid != true
-                || !TryDecodePortalSessionValueImpactPacketPairs(packetType, payload, out IReadOnlyList<KeyValuePair<string, string>> pairs, out _))
+            int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
+            PrunePendingPortalSessionValueImpacts(currentMapId);
+            if (_pendingPortalSessionValueImpacts.Count == 0
+                || !TryDecodePortalSessionValueImpactPacketPairs(packetType, payload, out IReadOnlyList<PortalSessionValueImpactIngress> pairs, out _))
             {
                 return false;
             }
 
-            foreach (KeyValuePair<string, string> pair in pairs)
+            foreach (PortalSessionValueImpactIngress pair in pairs)
             {
-                if (TryApplyPendingPortalSessionValueImpact(pair.Key, pair.Value))
+                if (TryApplyPendingPortalSessionValueImpact(pair.Key, pair.Value, pair.PacketType, pair.OwnerHint))
                 {
                     message = $"Released pending portal session-value impact from packet {packetType} for {pair.Key}={pair.Value}.";
                     return true;
@@ -404,10 +451,10 @@ namespace HaCreator.MapSimulator
         internal static bool TryDecodePortalSessionValueImpactPacketPairs(
             int packetType,
             byte[] payload,
-            out IReadOnlyList<KeyValuePair<string, string>> pairs,
+            out IReadOnlyList<PortalSessionValueImpactIngress> pairs,
             out string error)
         {
-            pairs = Array.Empty<KeyValuePair<string, string>>();
+            pairs = Array.Empty<PortalSessionValueImpactIngress>();
             error = null;
             payload ??= Array.Empty<byte>();
 
@@ -435,19 +482,22 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
-                pairs = new[] { new KeyValuePair<string, string>(key, value) };
+                PacketFieldSpecificDataOwnerHint ownerHint = packetType == PartyRaidField.ClientFieldSetVariablePacketType
+                    ? PacketFieldSpecificDataOwnerHint.Field
+                    : PacketFieldSpecificDataOwnerHint.Session;
+                pairs = new[] { new PortalSessionValueImpactIngress(key, value, packetType, ownerHint) };
                 return true;
             }
 
             if (packetType == 149)
             {
-                if (!PacketFieldSpecificDataCodec.TryDecodeStringPairs(payload, out pairs, out int headerSize))
+                if (!PacketFieldSpecificDataCodec.TryDecodeStringPairs(payload, out IReadOnlyList<KeyValuePair<string, string>> decodedPairs, out int headerSize))
                 {
                     error = "Portal session-value impact packet did not decode into Maple string pairs.";
                     return false;
                 }
 
-                if (!TryNormalizePortalSessionValueImpactPairs(pairs, out pairs))
+                if (!TryNormalizePortalSessionValueImpactPairs(packetType, decodedPairs, out pairs))
                 {
                     error = "Portal session-value impact packet did not contain any usable session or field key/value pairs.";
                     return false;
@@ -462,26 +512,27 @@ namespace HaCreator.MapSimulator
         }
 
         private static bool TryNormalizePortalSessionValueImpactPairs(
+            int packetType,
             IReadOnlyList<KeyValuePair<string, string>> pairs,
-            out IReadOnlyList<KeyValuePair<string, string>> normalizedPairs)
+            out IReadOnlyList<PortalSessionValueImpactIngress> normalizedPairs)
         {
-            normalizedPairs = Array.Empty<KeyValuePair<string, string>>();
+            normalizedPairs = Array.Empty<PortalSessionValueImpactIngress>();
             if (pairs == null || pairs.Count == 0)
             {
                 return false;
             }
 
-            List<KeyValuePair<string, string>> normalized = new(pairs.Count);
+            List<PortalSessionValueImpactIngress> normalized = new(pairs.Count);
             foreach (KeyValuePair<string, string> pair in pairs)
             {
                 string key = pair.Key;
-                _ = PacketFieldSpecificDataCodec.ResolveOwnerHint(ref key);
+                PacketFieldSpecificDataOwnerHint ownerHint = PacketFieldSpecificDataCodec.ResolveOwnerHint(ref key);
                 if (string.IsNullOrWhiteSpace(key))
                 {
                     continue;
                 }
 
-                normalized.Add(new KeyValuePair<string, string>(key, pair.Value));
+                normalized.Add(new PortalSessionValueImpactIngress(key, pair.Value, packetType, ownerHint));
             }
 
             if (normalized.Count == 0)

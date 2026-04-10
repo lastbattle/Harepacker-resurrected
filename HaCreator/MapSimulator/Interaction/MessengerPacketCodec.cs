@@ -140,6 +140,14 @@ namespace HaCreator.MapSimulator.Interaction
             return writer.ToArray();
         }
 
+        public static byte[] BuildAcceptInviteRequestPayload(int inviteSequence)
+        {
+            PacketWriter writer = new();
+            writer.WriteByte(0);
+            writer.WriteInt(inviteSequence);
+            return writer.ToArray();
+        }
+
         public static byte[] BuildProcessChatRequestPayload(string localCharacterName, string message)
         {
             PacketWriter writer = new();

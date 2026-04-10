@@ -157,11 +157,21 @@ namespace HaCreator.MapSimulator.Interaction
                     $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.SkillRecord}) decoded guild-skill record {packet.GuildSkillRecord.Value.SkillId} for guild {packet.GuildId}.",
                 SocialListClientGuildResultKind.ResultNotice => SetPacketSyncSummary(
                     SocialListTab.Guild,
-                    string.IsNullOrWhiteSpace(packet.ResultNotice)
-                        ? $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.ResultNotice}) reported {(packet.Approved ? "success" : "failure")}."
-                        : $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.ResultNotice}) reported {(packet.Approved ? "success" : "failure")}: {packet.ResultNotice}."),
+                    BuildClientGuildResultNoticeSummary(packet)),
                 _ => $"Unsupported client guild-result subtype {(byte)packet.Kind}."
             };
+        }
+
+        private static string BuildClientGuildResultNoticeSummary(SocialListClientGuildResultPacket packet)
+        {
+            string notice = packet.HasExplicitNotice
+                ? packet.ResultNotice?.Trim() ?? string.Empty
+                : SocialListGuildResultClientText.GetSharedResultNoticeFallback();
+            string noticeSource = packet.HasExplicitNotice
+                ? "explicit notice"
+                : $"shared StringPool 0x{SocialListGuildResultClientText.SharedResultNoticeStringPoolId:X} notice";
+
+            return $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.ResultNotice}) reported {noticeSource}: {notice}.";
         }
 
         internal string ApplyClientFriendResultDelta(SocialListClientFriendResultPacket packet)

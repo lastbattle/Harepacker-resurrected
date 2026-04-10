@@ -19,14 +19,24 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class SocialRoomMerchantOfficialSessionBridgeManager : IDisposable
     {
         public const int DefaultListenPort = 18490;
+        private const int MaxRecentOutboundPackets = 32;
 
         private readonly ConcurrentQueue<SocialRoomMerchantPacketInboxMessage> _pendingMessages = new();
         private readonly object _sync = new();
+        private readonly Queue<OutboundPacketTrace> _recentOutboundPackets = new();
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
         private Task _listenerTask;
         private BridgePair _activePair;
+
+        public readonly record struct OutboundPacketTrace(
+            int Opcode,
+            byte PacketType,
+            int PayloadLength,
+            string PayloadHex,
+            string RawPacketHex,
+            string Source);
 
         private sealed class BridgePair
         {
@@ -77,6 +87,9 @@ namespace HaCreator.MapSimulator.Managers
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
+        public int ForwardedOutboundCount { get; private set; }
+        public int SentCount { get; private set; }
+        public int LastSentOpcode { get; private set; } = -1;
         public string LastStatus { get; private set; } = "Merchant-room official-session bridge inactive.";
 
         public string DescribeStatus()
@@ -93,7 +106,91 @@ namespace HaCreator.MapSimulator.Managers
             string preferredKind = PreferredKind.HasValue
                 ? $"targeting {DescribeKind(PreferredKind.Value)}"
                 : "merchant owner unset";
-            return $"Merchant-room official-session bridge {lifecycle}; {session}; received={ReceivedCount}; {inboundOpcode}; {preferredKind}. {LastStatus}";
+            return $"Merchant-room official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; injected={SentCount}; {inboundOpcode}; {preferredKind}. {LastStatus}";
+        }
+
+        public string DescribeRecentOutboundPackets(int maxCount = 10)
+        {
+            int normalizedCount = Math.Clamp(maxCount, 1, MaxRecentOutboundPackets);
+            lock (_sync)
+            {
+                if (_recentOutboundPackets.Count == 0)
+                {
+                    return "Merchant-room official-session bridge outbound history is empty.";
+                }
+
+                OutboundPacketTrace[] entries = _recentOutboundPackets
+                    .Reverse()
+                    .Take(normalizedCount)
+                    .ToArray();
+                return "Merchant-room official-session bridge outbound history:"
+                    + Environment.NewLine
+                    + string.Join(
+                        Environment.NewLine,
+                        entries.Select(entry =>
+                            $"opcode={entry.Opcode} type={entry.PacketType} payloadLen={entry.PayloadLength} source={entry.Source} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+            }
+        }
+
+        public string ClearRecentOutboundPackets()
+        {
+            lock (_sync)
+            {
+                _recentOutboundPackets.Clear();
+            }
+
+            LastStatus = "Merchant-room official-session bridge outbound history cleared.";
+            return LastStatus;
+        }
+
+        public bool TryReplayRecentOutboundPacket(int historyIndexFromNewest, out string status)
+        {
+            if (historyIndexFromNewest <= 0)
+            {
+                status = "Merchant-room replay index must be 1 or greater.";
+                LastStatus = status;
+                return false;
+            }
+
+            OutboundPacketTrace[] entries;
+            lock (_sync)
+            {
+                if (_recentOutboundPackets.Count == 0)
+                {
+                    status = "No captured merchant-room outbound client packets are available to replay.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                if (historyIndexFromNewest > _recentOutboundPackets.Count)
+                {
+                    status = $"Merchant-room replay index {historyIndexFromNewest} exceeds the {_recentOutboundPackets.Count} captured outbound packet(s).";
+                    LastStatus = status;
+                    return false;
+                }
+
+                entries = _recentOutboundPackets.ToArray();
+            }
+
+            OutboundPacketTrace trace = entries[^historyIndexFromNewest];
+            if (string.IsNullOrWhiteSpace(trace.RawPacketHex))
+            {
+                status = $"Captured merchant-room outbound packet {historyIndexFromNewest} has no raw payload to replay.";
+                LastStatus = status;
+                return false;
+            }
+
+            try
+            {
+                byte[] rawPacket = Convert.FromHexString(trace.RawPacketHex);
+                return TrySendOutboundRawPacket(rawPacket, out status);
+            }
+            catch (FormatException ex)
+            {
+                status = $"Captured merchant-room outbound packet {historyIndexFromNewest} could not be replayed: {ex.Message}";
+                LastStatus = status;
+                return false;
+            }
         }
 
         public void Start(SocialRoomKind preferredKind, int listenPort, string remoteHost, int remotePort, ushort inboundOpcode)
@@ -208,6 +305,47 @@ namespace HaCreator.MapSimulator.Managers
             LastStatus = success
                 ? $"Applied {summary} from {source}."
                 : $"Ignored {summary} from {source}.";
+        }
+
+        public bool TrySendOutboundRawPacket(byte[] rawPacket, out string status)
+        {
+            if (!TryValidateOutboundRawPacket(rawPacket, out int opcode, out byte packetType, out string error))
+            {
+                status = error;
+                LastStatus = status;
+                return false;
+            }
+
+            BridgePair pair;
+            lock (_sync)
+            {
+                pair = _activePair;
+            }
+
+            if (pair == null || !pair.InitCompleted)
+            {
+                status = "Merchant-room official-session bridge has no connected Maple session for outbound injection.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] clonedRawPacket = (byte[])rawPacket.Clone();
+            try
+            {
+                pair.ServerSession.SendPacket(clonedRawPacket);
+                SentCount++;
+                LastSentOpcode = opcode;
+                RecordObservedOutboundPacket(clonedRawPacket, "simulator-send");
+                status = $"Injected merchant-room outbound opcode {opcode} subtype {packetType} into live session {pair.RemoteEndpoint}.";
+                LastStatus = status;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ClearActivePair(pair, $"Merchant-room official-session outbound injection failed: {ex.Message}");
+                status = LastStatus;
+                return false;
+            }
         }
 
         public void Dispose()
@@ -343,11 +481,40 @@ namespace HaCreator.MapSimulator.Managers
             {
                 byte[] raw = packet.ToArray();
                 pair.ServerSession.SendPacket((byte[])raw.Clone());
+                RecordObservedOutboundPacket(raw, $"official-session-client:{pair.ClientEndpoint}");
             }
             catch (Exception ex)
             {
                 ClearActivePair(pair, $"Merchant-room official-session client handling failed: {ex.Message}");
             }
+        }
+
+        private void RecordObservedOutboundPacket(byte[] rawPacket, string source)
+        {
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload)
+                || payload.Length == 0)
+            {
+                return;
+            }
+
+            ForwardedOutboundCount++;
+            lock (_sync)
+            {
+                while (_recentOutboundPackets.Count >= MaxRecentOutboundPackets)
+                {
+                    _recentOutboundPackets.Dequeue();
+                }
+
+                _recentOutboundPackets.Enqueue(new OutboundPacketTrace(
+                    opcode,
+                    payload[0],
+                    payload.Length,
+                    Convert.ToHexString(payload),
+                    Convert.ToHexString(rawPacket),
+                    source));
+            }
+
+            LastStatus = $"Forwarded live merchant-room outbound opcode {opcode} subtype {payload[0]} from {source}.";
         }
 
         private void ClearActivePair(BridgePair pair, string status)
@@ -407,6 +574,14 @@ namespace HaCreator.MapSimulator.Managers
         private void ResetInboundState()
         {
             ReceivedCount = 0;
+            ForwardedOutboundCount = 0;
+            SentCount = 0;
+            LastSentOpcode = -1;
+            lock (_sync)
+            {
+                _recentOutboundPackets.Clear();
+            }
+
             while (_pendingMessages.TryDequeue(out _))
             {
             }
@@ -459,6 +634,27 @@ namespace HaCreator.MapSimulator.Managers
 
             opcode = BitConverter.ToUInt16(rawPacket, 0);
             payload = rawPacket.Skip(sizeof(short)).ToArray();
+            return true;
+        }
+
+        private static bool TryValidateOutboundRawPacket(byte[] rawPacket, out int opcode, out byte packetType, out string error)
+        {
+            opcode = 0;
+            packetType = 0;
+            error = null;
+            if (!TryDecodeOpcode(rawPacket, out opcode, out byte[] payload))
+            {
+                error = "Merchant-room outbound packet requires an opcode-wrapped frame.";
+                return false;
+            }
+
+            if (payload.Length == 0)
+            {
+                error = "Merchant-room outbound payload is empty.";
+                return false;
+            }
+
+            packetType = payload[0];
             return true;
         }
 

@@ -1241,6 +1241,32 @@ namespace HaCreator.MapSimulator
             MoveWhisperTargetPickerSelection(delta, WhisperTargetPickerNavigationMode.Step);
         }
 
+        internal void HighlightWhisperTargetPickerModalComboDropdownCandidate(string whisperTarget)
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || !_isWhisperTargetPickerComboDropdownOpen)
+            {
+                return;
+            }
+
+            string normalizedTarget = NormalizeChatSpeakerCandidate(whisperTarget);
+            if (string.IsNullOrWhiteSpace(normalizedTarget))
+            {
+                return;
+            }
+
+            for (int i = 0; i < _whisperCandidates.Count; i++)
+            {
+                if (string.Equals(_whisperCandidates[i], normalizedTarget, StringComparison.OrdinalIgnoreCase))
+                {
+                    _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+                    _whisperTargetPickerSelectionIndex = i;
+                    return;
+                }
+            }
+        }
+
         internal void PageWhisperTargetPickerSelection(int deltaPages)
         {
             PageWhisperTargetPickerSelection(deltaPages, updateInputText: true);
@@ -1975,14 +2001,15 @@ namespace HaCreator.MapSimulator
             out string normalizedTarget)
         {
             normalizedTarget = string.Empty;
-            string trimmedInput = whisperTarget?.Trim() ?? string.Empty;
-            if (trimmedInput.Length == 0)
+            string rawInput = whisperTarget ?? string.Empty;
+            if (rawInput.Length == 0)
             {
                 return WhisperTargetValidationResult.Empty;
             }
 
-            string extractedTarget = ExtractCharacterName(trimmedInput);
+            string extractedTarget = ExtractCharacterName(rawInput);
             if (string.IsNullOrWhiteSpace(extractedTarget)
+                || extractedTarget.Length != rawInput.Length
                 || !IsPlausibleCharacterName(extractedTarget))
             {
                 return WhisperTargetValidationResult.Invalid;

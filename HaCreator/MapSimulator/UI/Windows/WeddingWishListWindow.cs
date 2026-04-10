@@ -44,6 +44,9 @@ namespace HaCreator.MapSimulator.UI
         private Func<string> _deleteSelectedHandler;
         private Func<string> _confirmHandler;
         private Func<string> _closeHandler;
+        private Func<char, string> _appendPutQuantityDigitHandler;
+        private Func<string> _backspacePutQuantityDigitHandler;
+        private Func<string> _cancelTransientPromptHandler;
         private Action<string> _feedbackHandler;
         private WeddingWishListSnapshot _snapshot = new();
         private WeddingWishListSelectionPane? _hoveredPane;
@@ -115,6 +118,9 @@ namespace HaCreator.MapSimulator.UI
             Func<string> deleteSelectedHandler,
             Func<string> confirmHandler,
             Func<string> closeHandler,
+            Func<char, string> appendPutQuantityDigitHandler,
+            Func<string> backspacePutQuantityDigitHandler,
+            Func<string> cancelTransientPromptHandler,
             Action<string> feedbackHandler)
         {
             _focusPaneHandler = focusPaneHandler;
@@ -129,6 +135,9 @@ namespace HaCreator.MapSimulator.UI
             _deleteSelectedHandler = deleteSelectedHandler;
             _confirmHandler = confirmHandler;
             _closeHandler = closeHandler;
+            _appendPutQuantityDigitHandler = appendPutQuantityDigitHandler;
+            _backspacePutQuantityDigitHandler = backspacePutQuantityDigitHandler;
+            _cancelTransientPromptHandler = cancelTransientPromptHandler;
             _feedbackHandler = feedbackHandler;
         }
 
@@ -191,6 +200,7 @@ namespace HaCreator.MapSimulator.UI
             DrawTabs(sprite);
             DrawRows(sprite);
             DrawStatus(sprite);
+            DrawTransientPrompt(sprite);
             DrawTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
         }
 
@@ -241,6 +251,11 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleKeyboard(KeyboardState keyboardState)
         {
+            if (HandleTransientPromptKeyboard(keyboardState))
+            {
+                return;
+            }
+
             if (_snapshot.Mode != WeddingWishListDialogMode.Input && Pressed(keyboardState, Keys.Escape))
             {
                 ShowFeedback(_closeHandler?.Invoke());
@@ -336,6 +351,68 @@ namespace HaCreator.MapSimulator.UI
             {
                 ShowFeedback(_deleteSelectedHandler?.Invoke());
             }
+        }
+
+        private bool HandleTransientPromptKeyboard(KeyboardState keyboardState)
+        {
+            if (!HasTransientPrompt())
+            {
+                return false;
+            }
+
+            if (Pressed(keyboardState, Keys.Escape))
+            {
+                ShowFeedback(_cancelTransientPromptHandler?.Invoke());
+                return true;
+            }
+
+            if (_snapshot.IsPutQuantityPromptOpen)
+            {
+                if (Pressed(keyboardState, Keys.Back))
+                {
+                    ShowFeedback(_backspacePutQuantityDigitHandler?.Invoke());
+                    return true;
+                }
+
+                bool handledDigit = false;
+                foreach (char character in EnumerateTypedCharacters(keyboardState))
+                {
+                    if (!char.IsDigit(character))
+                    {
+                        continue;
+                    }
+
+                    handledDigit = true;
+                    ShowFeedback(_appendPutQuantityDigitHandler?.Invoke(character));
+                }
+
+                if (handledDigit)
+                {
+                    return true;
+                }
+            }
+
+            if (Pressed(keyboardState, Keys.Enter))
+            {
+                switch (_snapshot.Mode)
+                {
+                    case WeddingWishListDialogMode.Receive:
+                        ShowFeedback(_getSelectedHandler?.Invoke());
+                        break;
+
+                    case WeddingWishListDialogMode.Give:
+                        ShowFeedback(_putSelectedHandler?.Invoke());
+                        break;
+
+                    case WeddingWishListDialogMode.Input:
+                        ShowFeedback(_confirmHandler?.Invoke());
+                        break;
+                }
+
+                return true;
+            }
+
+            return true;
         }
 
         private void HandleMouse(MouseState mouseState)
@@ -634,6 +711,35 @@ namespace HaCreator.MapSimulator.UI
             InventoryRenderUtil.DrawOutlinedText(sprite, _font, message, new Vector2(statusBounds.X, statusBounds.Y), new Color(255, 241, 164), ItemTextScale);
         }
 
+        private void DrawTransientPrompt(SpriteBatch sprite)
+        {
+            if (_font == null || !HasTransientPrompt())
+            {
+                return;
+            }
+
+            Rectangle promptBounds = GetTransientPromptBounds();
+            sprite.Draw(_pixel, promptBounds, new Color(28, 23, 14, 224));
+            sprite.Draw(_pixel, new Rectangle(promptBounds.X, promptBounds.Y, promptBounds.Width, 1), new Color(252, 235, 173));
+            sprite.Draw(_pixel, new Rectangle(promptBounds.X, promptBounds.Bottom - 1, promptBounds.Width, 1), new Color(121, 96, 37));
+            sprite.Draw(_pixel, new Rectangle(promptBounds.X, promptBounds.Y, 1, promptBounds.Height), new Color(252, 235, 173));
+            sprite.Draw(_pixel, new Rectangle(promptBounds.Right - 1, promptBounds.Y, 1, promptBounds.Height), new Color(121, 96, 37));
+
+            string promptText = BuildTransientPromptText();
+            string[] lines = WrapText(promptText, promptBounds.Width - 16, TooltipBodyScale);
+            int currentY = promptBounds.Y + 8;
+            foreach (string line in lines.Take(4))
+            {
+                InventoryRenderUtil.DrawOutlinedText(sprite, _font, line, new Vector2(promptBounds.X + 8, currentY), new Color(255, 241, 164), TooltipBodyScale);
+                currentY += (int)Math.Ceiling(_font.LineSpacing * TooltipBodyScale);
+            }
+
+            string hint = _snapshot.IsPutQuantityPromptOpen
+                ? "Digits: count  Enter: OK  Esc: Cancel"
+                : "Enter: OK  Esc: Cancel";
+            InventoryRenderUtil.DrawOutlinedText(sprite, _font, hint, new Vector2(promptBounds.X + 8, promptBounds.Bottom - 18), new Color(220, 220, 220), TooltipBodyScale);
+        }
+
         private void DrawTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
         {
             InventorySlotData hoveredItem = GetHoveredItem();
@@ -809,6 +915,16 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        private Rectangle GetTransientPromptBounds()
+        {
+            WeddingWishListRoleAssets roleAssets = GetModeAssets()?.GetRoleAssets(_snapshot.Role);
+            int width = Math.Min(260, Math.Max(160, (roleAssets?.Background?.Width ?? DefaultWidth) - 48));
+            int height = 74;
+            int x = Position.X + Math.Max(12, ((roleAssets?.Background?.Width ?? DefaultWidth) - width) / 2);
+            int y = Position.Y + Math.Max(24, ((roleAssets?.Background?.Height ?? DefaultHeight) - height) / 2);
+            return new Rectangle(x, y, width, height);
+        }
+
         private int GetSelectedIndex(WeddingWishListSelectionPane pane)
         {
             return pane switch
@@ -918,6 +1034,24 @@ namespace HaCreator.MapSimulator.UI
             button.SetVisible(visible);
             button.SetEnabled(visible);
             button.ButtonVisible = visible;
+        }
+
+        private bool HasTransientPrompt()
+        {
+            return _snapshot.IsGetConfirmationArmed
+                || _snapshot.IsPutQuantityPromptOpen
+                || _snapshot.IsPutConfirmationArmed
+                || _snapshot.IsInputConfirmationArmed;
+        }
+
+        private string BuildTransientPromptText()
+        {
+            if (_snapshot.IsPutQuantityPromptOpen)
+            {
+                return $"{_snapshot.PutQuantityPromptText} {_snapshot.PutQuantityPromptItemLabel} [{_snapshot.PutQuantityPromptQuantity}/{_snapshot.PutQuantityPromptMaxQuantity}]";
+            }
+
+            return _snapshot.StatusMessage ?? string.Empty;
         }
 
         private WeddingWishListModeAssets GetModeAssets()

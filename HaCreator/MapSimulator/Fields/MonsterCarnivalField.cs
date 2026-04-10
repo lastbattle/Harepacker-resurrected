@@ -204,6 +204,8 @@ namespace HaCreator.MapSimulator.Fields
         public int ActiveSpelledMobRows { get; private set; }
         public int ActiveSpelledMobCount { get; private set; }
         public string ActiveSpelledMobPreview { get; private set; }
+        public string LastHudSyncSummary { get; private set; }
+        public string LastRequestUiSummary { get; private set; }
 
         public int TotalRows => MobRows + SkillRows + GuardianRows;
         public IReadOnlyList<MonsterCarnivalUiDataRowState> MobDataRows => _mobDataRows;
@@ -239,6 +241,8 @@ namespace HaCreator.MapSimulator.Fields
             ActiveSpelledMobRows = 0;
             ActiveSpelledMobCount = 0;
             ActiveSpelledMobPreview = null;
+            LastHudSyncSummary = null;
+            LastRequestUiSummary = null;
             _mobDataRows.Clear();
             _skillDataRows.Clear();
             _guardianDataRows.Clear();
@@ -266,6 +270,8 @@ namespace HaCreator.MapSimulator.Fields
             ActiveSpelledMobRows = 0;
             ActiveSpelledMobCount = 0;
             ActiveSpelledMobPreview = null;
+            LastHudSyncSummary = null;
+            LastRequestUiSummary = null;
             _mobDataRows.Clear();
             _skillDataRows.Clear();
             _guardianDataRows.Clear();
@@ -302,6 +308,8 @@ namespace HaCreator.MapSimulator.Fields
             LastRequestIndex = -1;
             ApplyUiDataRows(definition);
             SyncSpelledMobCounts(null);
+            LastHudSyncSummary = null;
+            LastRequestUiSummary = null;
         }
 
         public void ApplyEnter(
@@ -331,6 +339,16 @@ namespace HaCreator.MapSimulator.Fields
             LastRequestIndex = entryIndex;
         }
 
+        public void MarkHudSyncSummary(string summary)
+        {
+            LastHudSyncSummary = string.IsNullOrWhiteSpace(summary) ? null : summary.Trim();
+        }
+
+        public void MarkRequestUiSummary(string summary)
+        {
+            LastRequestUiSummary = string.IsNullOrWhiteSpace(summary) ? null : summary.Trim();
+        }
+
         public string DescribeStatus()
         {
             if (UsesWrapperOnlySurface)
@@ -352,10 +370,16 @@ namespace HaCreator.MapSimulator.Fields
             string spelledText = ActiveSpelledMobCount > 0
                 ? $"spelledMobs={ActiveSpelledMobCount} across {ActiveSpelledMobRows} row(s) preview={ActiveSpelledMobPreview}"
                 : "spelledMobs=none";
+            string hudSyncText = string.IsNullOrWhiteSpace(LastHudSyncSummary)
+                ? "hudSync=none"
+                : $"hudSync={LastHudSyncSummary}";
+            string requestUiText = string.IsNullOrWhiteSpace(LastRequestUiSummary)
+                ? "requestUi=none"
+                : $"requestUi={LastRequestUiSummary}";
             string assetText = UsesWindow2Assets
                 ? $"assets=UIWindow2 ({PrimaryAssetRoot}, {SecondaryAssetRoot}, {TertiaryAssetRoot})"
                 : $"assets=UIWindow ({PrimaryAssetRoot}, {SecondaryAssetRoot}, {TertiaryAssetRoot})";
-            return $"CUIMonsterCarnival: created | rows mob/skill/guardian={MobRows}/{SkillRows}/{GuardianRows} total={TotalRows} | ResetUI={ResetCount} | team={teamText} | personalCP={PersonalCp}/{PersonalTotalCp} | myTeamCP={MyTeamCp}/{MyTeamTotalCp} | enemyTeamCP={EnemyTeamCp}/{EnemyTeamTotalCp} | {assetText} | {spelledText} | {requestText}";
+            return $"CUIMonsterCarnival: created | rows mob/skill/guardian={MobRows}/{SkillRows}/{GuardianRows} total={TotalRows} | ResetUI={ResetCount} | team={teamText} | personalCP={PersonalCp}/{PersonalTotalCp} | myTeamCP={MyTeamCp}/{MyTeamTotalCp} | enemyTeamCP={EnemyTeamCp}/{EnemyTeamTotalCp} | {assetText} | {spelledText} | {hudSyncText} | {requestUiText} | {requestText}";
         }
 
         public void SyncSpelledMobCounts(IReadOnlyDictionary<int, int> mobCounts)

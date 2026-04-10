@@ -34,6 +34,10 @@ namespace HaCreator.MapSimulator.Managers
         public const ushort DefaultInboundResultOpcode = 372;
         private const string DefaultProcessName = "MapleStory";
 
+        private readonly string _ownerName;
+        private readonly int _defaultListenPort;
+        private readonly ushort _defaultInboundOpcode;
+        private readonly ushort _defaultOutboundOpcode;
         private readonly ConcurrentQueue<MessengerOfficialSessionBridgeMessage> _pendingMessages = new();
         private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
         private readonly object _sync = new();
@@ -103,6 +107,22 @@ namespace HaCreator.MapSimulator.Managers
         public byte[] LastQueuedRawPacket { get; private set; } = Array.Empty<byte>();
         public string LastStatus { get; private set; } = "Messenger official-session bridge inactive.";
 
+        public MessengerOfficialSessionBridgeManager()
+            : this("Messenger", DefaultListenPort, DefaultInboundResultOpcode, MessengerPacketCodec.ClientMessengerRequestOpcode)
+        {
+        }
+
+        internal MessengerOfficialSessionBridgeManager(string ownerName, int defaultListenPort, ushort defaultInboundOpcode, ushort defaultOutboundOpcode = 0)
+        {
+            _ownerName = string.IsNullOrWhiteSpace(ownerName) ? "Messenger" : ownerName.Trim();
+            _defaultListenPort = defaultListenPort <= 0 ? DefaultListenPort : defaultListenPort;
+            _defaultInboundOpcode = defaultInboundOpcode == 0 ? DefaultInboundResultOpcode : defaultInboundOpcode;
+            _defaultOutboundOpcode = defaultOutboundOpcode;
+            ListenPort = _defaultListenPort;
+            MessengerOpcode = _defaultInboundOpcode;
+            LastStatus = $"{_ownerName} official-session bridge inactive.";
+        }
+
         public string DescribeStatus()
         {
             string lifecycle = IsRunning
@@ -117,7 +137,10 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Messenger official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingOutboundPacketCount}; queued={QueuedCount}; inbound opcode={MessengerOpcode}; outbound opcode={MessengerPacketCodec.ClientMessengerRequestOpcode}.{lastOutbound}{lastQueued} {LastStatus}";
+            string outboundText = _defaultOutboundOpcode > 0
+                ? $"; outbound opcode={_defaultOutboundOpcode}"
+                : string.Empty;
+            return $"{_ownerName} official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingOutboundPacketCount}; queued={QueuedCount}; inbound opcode={MessengerOpcode}{outboundText}.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort, ushort messengerOpcode)
@@ -129,20 +152,20 @@ namespace HaCreator.MapSimulator.Managers
 
                 try
                 {
-                    ListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+                    ListenPort = listenPort <= 0 ? _defaultListenPort : listenPort;
                     RemoteHost = string.IsNullOrWhiteSpace(remoteHost) ? IPAddress.Loopback.ToString() : remoteHost.Trim();
                     RemotePort = remotePort;
-                    MessengerOpcode = messengerOpcode == 0 ? DefaultInboundResultOpcode : messengerOpcode;
+                    MessengerOpcode = messengerOpcode == 0 ? _defaultInboundOpcode : messengerOpcode;
                     _listenerCancellation = new CancellationTokenSource();
                     _listener = new TcpListener(IPAddress.Loopback, ListenPort);
                     _listener.Start();
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Messenger official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and filtering opcode {MessengerOpcode}.";
+                    LastStatus = $"{_ownerName} official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and filtering opcode {MessengerOpcode}.";
                 }
                 catch (Exception ex)
                 {
                     StopInternal(clearPending: false);
-                    LastStatus = $"Messenger official-session bridge failed to start: {ex.Message}";
+                    LastStatus = $"{_ownerName} official-session bridge failed to start: {ex.Message}";
                 }
             }
         }
@@ -151,12 +174,12 @@ namespace HaCreator.MapSimulator.Managers
         {
             if (HasAttachedClient)
             {
-                status = $"Messenger official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
+                status = $"{_ownerName} official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
                 LastStatus = status;
                 return true;
             }
 
-            int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+            int resolvedListenPort = listenPort <= 0 ? _defaultListenPort : listenPort;
             if (!TryResolveProcessSelector(processSelector, out int? owningProcessId, out string owningProcessName, out string selectorError))
             {
                 status = selectorError;
@@ -171,20 +194,20 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            ushort resolvedOpcode = messengerOpcode == 0 ? DefaultInboundResultOpcode : messengerOpcode;
+            ushort resolvedOpcode = messengerOpcode == 0 ? _defaultInboundOpcode : messengerOpcode;
             if (IsRunning
                 && ListenPort == resolvedListenPort
                 && RemotePort == candidate.RemoteEndpoint.Port
                 && MessengerOpcode == resolvedOpcode
                 && string.Equals(RemoteHost, candidate.RemoteEndpoint.Address.ToString(), StringComparison.OrdinalIgnoreCase))
             {
-                status = $"Messenger official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} using opcode {resolvedOpcode}.";
+                status = $"{_ownerName} official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} using opcode {resolvedOpcode}.";
                 LastStatus = status;
                 return true;
             }
 
             Start(resolvedListenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, resolvedOpcode);
-            status = $"Messenger official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {LastStatus}";
+            status = $"{_ownerName} official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {LastStatus}";
             LastStatus = status;
             return true;
         }
@@ -214,7 +237,7 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 StopInternal(clearPending: true);
-                LastStatus = "Messenger official-session bridge stopped.";
+                LastStatus = $"{_ownerName} official-session bridge stopped.";
             }
         }
 
@@ -233,7 +256,7 @@ namespace HaCreator.MapSimulator.Managers
 
             if (pair == null || !pair.InitCompleted)
             {
-                status = "Messenger official-session bridge has no connected Maple session for outbound injection.";
+                status = $"{_ownerName} official-session bridge has no connected Maple session for outbound injection.";
                 LastStatus = status;
                 return false;
             }
@@ -250,13 +273,13 @@ namespace HaCreator.MapSimulator.Managers
                 SentCount++;
                 LastSentOpcode = opcode;
                 LastSentRawPacket = rawPacket;
-                status = $"Injected Messenger outbound opcode {opcode} into live session {pair.RemoteEndpoint}.";
+                status = $"Injected {_ownerName} outbound opcode {opcode} into live session {pair.RemoteEndpoint}.";
                 LastStatus = status;
                 return true;
             }
             catch (Exception ex)
             {
-                ClearActivePair(pair, $"Messenger official-session outbound injection failed: {ex.Message}");
+                ClearActivePair(pair, $"{_ownerName} official-session outbound injection failed: {ex.Message}");
                 status = LastStatus;
                 return false;
             }
@@ -274,7 +297,7 @@ namespace HaCreator.MapSimulator.Managers
             QueuedCount++;
             LastQueuedOpcode = opcode;
             LastQueuedRawPacket = rawPacket;
-            status = $"Queued Messenger outbound opcode {opcode} for deferred live-session injection.";
+            status = $"Queued {_ownerName} outbound opcode {opcode} for deferred live-session injection.";
             LastStatus = status;
             return true;
         }
@@ -313,7 +336,7 @@ namespace HaCreator.MapSimulator.Managers
             }
             catch (Exception ex)
             {
-                LastStatus = $"Messenger official-session bridge error: {ex.Message}";
+                LastStatus = $"{_ownerName} official-session bridge error: {ex.Message}";
             }
         }
 
@@ -326,7 +349,7 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     if (_activePair != null)
                     {
-                        LastStatus = "Rejected Messenger official-session client because a live Maple session is already attached.";
+                        LastStatus = $"Rejected {_ownerName} official-session client because a live Maple session is already attached.";
                         client.Close();
                         return;
                     }
@@ -349,14 +372,14 @@ namespace HaCreator.MapSimulator.Managers
                     _activePair = pair;
                 }
 
-                LastStatus = $"Messenger official-session bridge connected {pair.ClientEndpoint} -> {pair.RemoteEndpoint}. Waiting for Maple init packet.";
+                LastStatus = $"{_ownerName} official-session bridge connected {pair.ClientEndpoint} -> {pair.RemoteEndpoint}. Waiting for Maple init packet.";
                 serverSession.WaitForDataNoEncryption();
             }
             catch (Exception ex)
             {
                 client.Close();
                 pair?.Close();
-                LastStatus = $"Messenger official-session bridge connect failed: {ex.Message}";
+                LastStatus = $"{_ownerName} official-session bridge connect failed: {ex.Message}";
             }
         }
 
@@ -381,8 +404,8 @@ namespace HaCreator.MapSimulator.Managers
                     pair.InitCompleted = true;
                     int flushed = FlushPendingOutboundPackets(pair);
                     LastStatus = flushed > 0
-                        ? $"Messenger official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint} and flushed {flushed} queued Messenger request(s)."
-                        : $"Messenger official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
+                        ? $"{_ownerName} official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint} and flushed {flushed} queued request(s)."
+                        : $"{_ownerName} official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
                     pair.ClientSession.WaitForData();
                     return;
                 }
@@ -395,11 +418,11 @@ namespace HaCreator.MapSimulator.Managers
 
                 _pendingMessages.Enqueue(message);
                 ReceivedCount++;
-                LastStatus = $"Queued Messenger opcode {message.Opcode} ({message.Payload.Length} byte(s)) from live session {pair.RemoteEndpoint}.";
+                LastStatus = $"Queued {_ownerName} opcode {message.Opcode} ({message.Payload.Length} byte(s)) from live session {pair.RemoteEndpoint}.";
             }
             catch (Exception ex)
             {
-                ClearActivePair(pair, $"Messenger official-session server handling failed: {ex.Message}");
+                ClearActivePair(pair, $"{_ownerName} official-session server handling failed: {ex.Message}");
             }
         }
 
@@ -416,7 +439,7 @@ namespace HaCreator.MapSimulator.Managers
             }
             catch (Exception ex)
             {
-                ClearActivePair(pair, $"Messenger official-session client handling failed: {ex.Message}");
+                ClearActivePair(pair, $"{_ownerName} official-session client handling failed: {ex.Message}");
             }
         }
 
@@ -600,7 +623,7 @@ namespace HaCreator.MapSimulator.Managers
             var filteredCandidates = FilterCandidatesByLocalPort(candidates, localPort);
             if (filteredCandidates.Count == 0)
             {
-                status = $"Messenger official-session discovery found no established TCP session for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
+                status = $"{DescribeDiscoveryOwner()} official-session discovery found no established TCP session for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
                 candidate = default;
                 return false;
             }
@@ -609,7 +632,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 string matches = string.Join(", ", filteredCandidates.Select(match =>
                     $"{match.ProcessName}({match.ProcessId}) local {match.LocalEndpoint.Port} -> remote {match.RemoteEndpoint.Port}"));
-                status = $"Messenger official-session discovery found multiple candidates for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}: {matches}. Add a localPort filter.";
+                status = $"{DescribeDiscoveryOwner()} official-session discovery found multiple candidates for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}: {matches}. Add a localPort filter.";
                 candidate = default;
                 return false;
             }
@@ -631,6 +654,11 @@ namespace HaCreator.MapSimulator.Managers
             return (candidates ?? Array.Empty<CoconutOfficialSessionBridgeManager.SessionDiscoveryCandidate>())
                 .Where(candidate => candidate.LocalEndpoint.Port == localPort.Value)
                 .ToArray();
+        }
+
+        private static string DescribeDiscoveryOwner()
+        {
+            return "Messenger";
         }
 
         private static string DescribeDiscoveryScope(int? owningProcessId, string owningProcessName, int remotePort, int? localPort)

@@ -293,6 +293,7 @@ namespace HaCreator.MapSimulator.Interaction
             // The generated table in this workspace drifts across the stage-system block,
             // so pin the client-owned WZ paths here before context-owned stage-period
             // validation resolves the catalog inputs through StringPool.
+            [0x17BE] = "Etc/StageAffectedMap.img",
             [0x17BF] = "Etc/StageSystem.img",
             [0x17C0] = "Etc/StageKeyword.img",
             // Recovered from MapleStory.exe v95 `CUIQuestAlarm::Draw` and

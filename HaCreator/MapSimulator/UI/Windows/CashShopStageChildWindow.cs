@@ -93,15 +93,19 @@ namespace HaCreator.MapSimulator.UI
             public string NoticeState { get; init; } = string.Empty;
             public int SelectorIndex { get; init; }
             public int SelectorCount { get; init; } = 2;
+            public int SelectorControlId { get; init; } = 2001;
             public int SelectorStartX { get; init; } = 2;
             public int SelectorStartY { get; init; } = 2;
+            public Point SelectorPosition { get; init; } = new(412, 406);
             public string TodaySelectorLabel { get; init; } = "Today";
             public string PreviousSelectorLabel { get; init; } = "Previous";
             public bool HasKeyFocusCanvas { get; init; }
             public bool HasPlateCanvas { get; init; }
             public bool HasPlateBigCanvas { get; init; }
             public int NumberCanvasCount { get; init; }
+            public int ExpectedNumberCanvasCount { get; init; } = 10;
             public int PlateCount { get; init; } = 3;
+            public int PlateButtonCount { get; init; } = 12;
             public int PreviousOfferCount { get; init; } = 12;
             public string PlateCanvasBaseName { get; init; } = "NoItem";
             public string ShortcutHelpCanvasName { get; init; } = "ShortcutHelp";
@@ -187,6 +191,7 @@ namespace HaCreator.MapSimulator.UI
         private bool _oneADayPending;
         private int _oneADayRemainingSeconds;
         private int _oneADayCountdownDeadlineTick = int.MinValue;
+        private string _oneADayCounterDigits = "00:00:00";
         private string _oneADaySessionState = "Reward session idle.";
         private bool _oneADayRuntimeSeeded;
         private string _oneADayPacketStateSignature = string.Empty;
@@ -674,7 +679,7 @@ namespace HaCreator.MapSimulator.UI
             string previousLabel = string.IsNullOrWhiteSpace(state.PreviousSelectorLabel) ? "Previous" : state.PreviousSelectorLabel.Trim();
             sprite.DrawString(
                 _font,
-                $"Selector {(_oneADaySelectorIndex == 0 ? ">" : " ")} {todayLabel}  {(_oneADaySelectorIndex == 1 ? ">" : " ")} {previousLabel}  @ {state.SelectorStartX.ToString(CultureInfo.InvariantCulture)},{state.SelectorStartY.ToString(CultureInfo.InvariantCulture)}",
+                $"Selector#{state.SelectorControlId.ToString(CultureInfo.InvariantCulture)} {(_oneADaySelectorIndex == 0 ? ">" : " ")} {todayLabel}  {(_oneADaySelectorIndex == 1 ? ">" : " ")} {previousLabel}  start {state.SelectorStartX.ToString(CultureInfo.InvariantCulture)},{state.SelectorStartY.ToString(CultureInfo.InvariantCulture)}  pos {state.SelectorPosition.X.ToString(CultureInfo.InvariantCulture)},{state.SelectorPosition.Y.ToString(CultureInfo.InvariantCulture)}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 accentColor);
             lineY += _font.LineSpacing;
@@ -706,13 +711,13 @@ namespace HaCreator.MapSimulator.UI
             }
             sprite.DrawString(
                 _font,
-                $"Remain {(_oneADayRemainingSeconds / 3600).ToString("00", CultureInfo.InvariantCulture)}:{((_oneADayRemainingSeconds / 60) % 60).ToString("00", CultureInfo.InvariantCulture)}:{(_oneADayRemainingSeconds % 60).ToString("00", CultureInfo.InvariantCulture)}",
+                $"Remain {_oneADayCounterDigits}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
             lineY += _font.LineSpacing;
             sprite.DrawString(
                 _font,
-                $"KeyFocus {(state.HasKeyFocusCanvas ? "on" : "off")}  Plate {(state.HasPlateCanvas ? "small" : "off")}/{(state.HasPlateBigCanvas ? "big" : "off")}  Digits {state.NumberCanvasCount.ToString(CultureInfo.InvariantCulture)}",
+                $"KeyFocus {(state.HasKeyFocusCanvas ? "on" : "off")}  Plate {(state.HasPlateCanvas ? "small" : "off")}/{(state.HasPlateBigCanvas ? "big" : "off")}  Digits {state.NumberCanvasCount.ToString(CultureInfo.InvariantCulture)}/{state.ExpectedNumberCanvasCount.ToString(CultureInfo.InvariantCulture)}  Plate buttons {state.PlateButtonCount.ToString(CultureInfo.InvariantCulture)}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
             lineY += _font.LineSpacing;
@@ -1907,6 +1912,7 @@ namespace HaCreator.MapSimulator.UI
                     : int.MinValue;
             }
 
+            _oneADayCounterDigits = FormatOneADayCounterDigits(_oneADayRemainingSeconds);
             _oneADayRuntimeSeeded = true;
             _oneADaySessionState = state.IsPending
                 ? "CCSWnd_OneADay::ChangeState(0,1) armed the Today/Previous selector, key-focus canvas, and reward plate surfaces."
@@ -1916,7 +1922,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void UpdateOneADaySessionTimer()
         {
-            if (!_oneADayPending || _oneADayCountdownDeadlineTick == int.MinValue || _oneADayShortcutHelpActive)
+            if (!_oneADayPending || _oneADayCountdownDeadlineTick == int.MinValue)
             {
                 return;
             }
@@ -1929,6 +1935,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _oneADayRemainingSeconds = nextRemainingSeconds;
+            _oneADayCounterDigits = FormatOneADayCounterDigits(_oneADayRemainingSeconds);
             if (_oneADayRemainingSeconds == 0)
             {
                 _oneADayPending = false;
@@ -1936,6 +1943,25 @@ namespace HaCreator.MapSimulator.UI
                 _oneADaySessionState = "CCSWnd_OneADay exhausted the current reward countdown and returned to the idle owner state.";
                 _statusMessage = _oneADaySessionState;
             }
+        }
+
+        private static string FormatOneADayCounterDigits(int remainingSeconds)
+        {
+            int clampedSeconds = Math.Max(0, remainingSeconds);
+            int hours = clampedSeconds / 3600;
+            int minutes = (clampedSeconds / 60) % 60;
+            int seconds = clampedSeconds % 60;
+            return string.Create(
+                8,
+                (hours, minutes, seconds),
+                static (span, state) =>
+                {
+                    state.hours.TryFormat(span[..2], out _, "00", CultureInfo.InvariantCulture);
+                    span[2] = ':';
+                    state.minutes.TryFormat(span.Slice(3, 2), out _, "00", CultureInfo.InvariantCulture);
+                    span[5] = ':';
+                    state.seconds.TryFormat(span.Slice(6, 2), out _, "00", CultureInfo.InvariantCulture);
+                });
         }
 
         private string ResolveOneADayPlateName(OneADayOwnerState state)

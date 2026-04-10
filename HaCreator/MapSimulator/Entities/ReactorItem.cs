@@ -21,11 +21,13 @@ namespace HaCreator.MapSimulator.Entities
         public ReactorTransitionRequest(
             ReactorActivationType activationType,
             ReactorType reactorType = ReactorType.UNKNOWN,
-            int activationValue = 0)
+            int activationValue = 0,
+            int hitOption = -1)
         {
             ActivationType = activationType;
             ReactorType = reactorType;
             ActivationValue = activationValue;
+            HitOption = hitOption;
         }
 
         public ReactorActivationType ActivationType { get; }
@@ -33,6 +35,8 @@ namespace HaCreator.MapSimulator.Entities
         public ReactorType ReactorType { get; }
 
         public int ActivationValue { get; }
+
+        public int HitOption { get; }
     }
 
     public class ReactorItem : BaseDXDrawableItem
@@ -1265,6 +1269,7 @@ namespace HaCreator.MapSimulator.Entities
                 .OrderBy(transition => GetEventTypePriority(transition.EventType, request))
                 .ThenBy(transition => GetSelectorPriority(transition, request))
                 .ThenBy(transition => GetSelectorLookaheadPriority(transition, request))
+                .ThenBy(transition => GetHitPriorityLookaheadPriority(transition, request))
                 .ThenBy(transition => transition.Order)
                 .ToArray();
 
@@ -1402,6 +1407,67 @@ namespace HaCreator.MapSimulator.Entities
             return false;
         }
 
+        private int GetHitPriorityLookaheadPriority(AuthoredStateTransition transition, ReactorTransitionRequest request)
+        {
+            if (request.ActivationType != ReactorActivationType.Hit)
+            {
+                return 0;
+            }
+
+            int resolvedTargetState = ResolveState(transition.TargetState);
+            int? priority = TryResolveDescendantHitPriority(
+                resolvedTargetState,
+                request,
+                new HashSet<int> { resolvedTargetState });
+            return priority ?? int.MaxValue;
+        }
+
+        private int? TryResolveDescendantHitPriority(
+            int state,
+            ReactorTransitionRequest request,
+            HashSet<int> visitedStates)
+        {
+            int resolvedState = ResolveState(state);
+            if (!_stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
+                || transitions.Length == 0)
+            {
+                return null;
+            }
+
+            int? bestPriority = null;
+            foreach (AuthoredStateTransition transition in transitions)
+            {
+                if (!MatchesAuthoredEventType(transition.EventType, ReactorActivationType.Hit)
+                    || transition.TargetState == resolvedState
+                    || !_stateFrames.ContainsKey(transition.TargetState))
+                {
+                    continue;
+                }
+
+                int? transitionPriority = TryResolveClientHitEventPriority(transition.EventType, request);
+                if (transitionPriority.HasValue
+                    && (!bestPriority.HasValue || transitionPriority.Value < bestPriority.Value))
+                {
+                    bestPriority = transitionPriority.Value;
+                }
+
+                int nextState = ResolveState(transition.TargetState);
+                if (!visitedStates.Add(nextState))
+                {
+                    continue;
+                }
+
+                int? descendantPriority = TryResolveDescendantHitPriority(nextState, request, visitedStates);
+                if (descendantPriority.HasValue
+                    && (!bestPriority.HasValue || descendantPriority.Value < bestPriority.Value))
+                {
+                    bestPriority = descendantPriority.Value;
+                }
+            }
+
+            return bestPriority;
+        }
+
         internal static bool ShouldRejectSelectorDrivenTransitionWithoutSelector(ReactorActivationType activationType)
         {
             return activationType == ReactorActivationType.Item
@@ -1434,7 +1500,7 @@ namespace HaCreator.MapSimulator.Entities
                     0 => 2,
                     _ => 3
                 },
-                ReactorActivationType.Hit => GetHitEventPriority(eventType, request.ReactorType),
+                ReactorActivationType.Hit => GetHitEventPriority(eventType, request),
                 ReactorActivationType.Time => eventType switch
                 {
                     101 => 0,
@@ -1445,15 +1511,15 @@ namespace HaCreator.MapSimulator.Entities
             };
         }
 
-        private static int GetHitEventPriority(int eventType, ReactorType reactorType)
+        private static int GetHitEventPriority(int eventType, ReactorTransitionRequest request)
         {
-            int? clientPriority = TryResolveClientHitEventPriority(eventType, reactorType);
+            int? clientPriority = TryResolveClientHitEventPriority(eventType, request);
             if (clientPriority.HasValue)
             {
                 return clientPriority.Value;
             }
 
-            return reactorType switch
+            return request.ReactorType switch
             {
                 ReactorType.ActivatedLeftHit => eventType switch
                 {
@@ -1484,6 +1550,20 @@ namespace HaCreator.MapSimulator.Entities
                     _ => 3
                 }
             };
+        }
+
+        private static int? TryResolveClientHitEventPriority(int eventType, ReactorTransitionRequest request)
+        {
+            if (request.HitOption >= 0)
+            {
+                int? hitOptionPriority = ResolveClientHitTypePriority(request.HitOption, eventType);
+                if (hitOptionPriority.HasValue)
+                {
+                    return hitOptionPriority.Value;
+                }
+            }
+
+            return TryResolveClientHitEventPriority(eventType, request.ReactorType);
         }
 
         private static int? TryResolveClientHitEventPriority(int eventType, ReactorType reactorType)
@@ -1633,9 +1713,17 @@ namespace HaCreator.MapSimulator.Entities
 
         private static Dictionary<(int State, int ProperEventIndex), int> LoadStateIndexedHitDurations(ReactorInstance reactorInstance)
         {
-            var hitDurations = new Dictionary<(int State, int ProperEventIndex), int>();
+            return LoadStateIndexedHitDurations(reactorInstance?.ReactorInfo?.LinkedWzImage);
+        }
 
-            WzImage linkedImage = reactorInstance?.ReactorInfo?.LinkedWzImage;
+        internal static Dictionary<(int State, int ProperEventIndex), int> LoadStateIndexedHitDurationsForTesting(WzImage linkedImage)
+        {
+            return LoadStateIndexedHitDurations(linkedImage);
+        }
+
+        private static Dictionary<(int State, int ProperEventIndex), int> LoadStateIndexedHitDurations(WzImage linkedImage)
+        {
+            var hitDurations = new Dictionary<(int State, int ProperEventIndex), int>();
             if (linkedImage == null)
             {
                 return hitDurations;
@@ -1654,14 +1742,9 @@ namespace HaCreator.MapSimulator.Entities
                     continue;
                 }
 
-                foreach (WzImageProperty child in realStateProperty.WzProperties)
+                foreach ((int properEventIndex, WzImageProperty eventProperty) in EnumerateIndexedHitProperties(realStateProperty))
                 {
-                    if (!int.TryParse(child?.Name, out int properEventIndex))
-                    {
-                        continue;
-                    }
-
-                    int duration = TryReadHitDuration(child);
+                    int duration = TryReadIndexedHitDuration(eventProperty);
                     if (duration > 0)
                     {
                         hitDurations[(stateId, properEventIndex)] = duration;
@@ -1670,6 +1753,49 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return hitDurations;
+        }
+
+        private static IEnumerable<(int ProperEventIndex, WzImageProperty EventProperty)> EnumerateIndexedHitProperties(WzImageProperty stateProperty)
+        {
+            WzImageProperty realStateProperty = WzInfoTools.GetRealProperty(stateProperty);
+            if (realStateProperty?.WzProperties == null)
+            {
+                yield break;
+            }
+
+            HashSet<int> yieldedIndices = new HashSet<int>();
+            if (WzInfoTools.GetRealProperty(realStateProperty["event"]) is WzSubProperty eventProperty)
+            {
+                foreach (WzImageProperty child in eventProperty.WzProperties)
+                {
+                    if (int.TryParse(child?.Name, out int properEventIndex)
+                        && yieldedIndices.Add(properEventIndex))
+                    {
+                        yield return (properEventIndex, child);
+                    }
+                }
+            }
+
+            foreach (WzImageProperty child in realStateProperty.WzProperties)
+            {
+                if (int.TryParse(child?.Name, out int properEventIndex)
+                    && WzInfoTools.GetRealProperty(child) is WzSubProperty
+                    && yieldedIndices.Add(properEventIndex))
+                {
+                    yield return (properEventIndex, child);
+                }
+            }
+        }
+
+        private static int TryReadIndexedHitDuration(WzImageProperty property)
+        {
+            int duration = TryReadHitDuration(property);
+            if (duration > 0 || property == null)
+            {
+                return duration;
+            }
+
+            return TryReadHitDuration(WzInfoTools.GetRealProperty(property)?["hit"]);
         }
 
         private static Dictionary<int, bool> LoadStateRepeatModes(ReactorInstance reactorInstance)

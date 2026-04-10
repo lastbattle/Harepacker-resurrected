@@ -106,12 +106,24 @@ namespace HaCreator.MapSimulator.Interaction
     internal enum SocialListClientPartyResultKind : byte
     {
         Invite = 4,
-        Create = 8,
-        Join = 12,
         Load = 7,
+        Create = 8,
+        Notice9 = 9,
+        Notice10 = 10,
+        Join = 12,
+        Notice16 = 16,
+        Notice17 = 17,
+        Notice18 = 18,
+        NoticeNamed = 22,
+        Notice29 = 29,
         Refresh = 38,
         LeaderChange = 31,
+        Notice32 = 32,
+        Notice33 = 33,
+        Notice34 = 34,
+        Notice36 = 36,
         MemberJobLevel = 39,
+        NoticeOptionalMessage = 45,
         SearchPacket = 75,
         SearchPacket2 = 76,
         SearchPacket3 = 77,
@@ -167,7 +179,7 @@ namespace HaCreator.MapSimulator.Interaction
         GuildMarkSelection? MarkSelection,
         int GuildPoints,
         int GuildLevel,
-        bool Approved,
+        bool HasExplicitNotice,
         string ResultNotice,
         SocialListGradeChangePacket GradeChange,
         SocialListGuildSkillRecordPacket? GuildSkillRecord);
@@ -468,12 +480,27 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     case SocialListClientFriendResultKind.NoticeInviteBlocked:
+                        packet = new SocialListClientFriendResultPacket(kind, Array.Empty<SocialListClientFriendEntry>(), null, 0, 0, 0, ResolveFriendResultNoticeText(0x02E0, kind));
+                        return true;
+
                     case SocialListClientFriendResultKind.NoticeTargetFull:
+                        packet = new SocialListClientFriendResultPacket(kind, Array.Empty<SocialListClientFriendEntry>(), null, 0, 0, 0, ResolveFriendResultNoticeText(0x02E1, kind));
+                        return true;
+
                     case SocialListClientFriendResultKind.NoticeTargetUnknown:
+                        packet = new SocialListClientFriendResultPacket(kind, Array.Empty<SocialListClientFriendEntry>(), null, 0, 0, 0, ResolveFriendResultNoticeText(0x02E2, kind));
+                        return true;
+
                     case SocialListClientFriendResultKind.NoticeSelf:
+                        packet = new SocialListClientFriendResultPacket(kind, Array.Empty<SocialListClientFriendEntry>(), null, 0, 0, 0, ResolveFriendResultNoticeText(0x02E4, kind));
+                        return true;
+
                     case SocialListClientFriendResultKind.NoticeDuplicate:
+                        packet = new SocialListClientFriendResultPacket(kind, Array.Empty<SocialListClientFriendEntry>(), null, 0, 0, 0, ResolveFriendResultNoticeText(0x02E3, kind));
+                        return true;
+
                     case SocialListClientFriendResultKind.NoticeCapacityExpanded:
-                        packet = new SocialListClientFriendResultPacket(kind, Array.Empty<SocialListClientFriendEntry>(), null, 0, 0, 0, null);
+                        packet = new SocialListClientFriendResultPacket(kind, Array.Empty<SocialListClientFriendEntry>(), null, 0, 0, 0, ResolveFriendResultNoticeText(0x0180, kind));
                         return true;
 
                     default:
@@ -499,6 +526,25 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialListClientPartyResultKind kind = (SocialListClientPartyResultKind)reader.ReadByte();
                 switch (kind)
                 {
+                    case SocialListClientPartyResultKind.Invite:
+                    {
+                        int partyId = reader.ReadInt32();
+                        string inviterName = reader.ReadMapleString16().Trim();
+                        _ = reader.ReadInt32();
+                        _ = reader.ReadInt32();
+                        bool hasAcceptedFlag = reader.ReadByte() != 0;
+                        string summary = string.IsNullOrWhiteSpace(inviterName)
+                            ? $"Client OnPartyResult({(byte)kind}) opened a party invite."
+                            : $"Client OnPartyResult({(byte)kind}) opened a party invite from {inviterName}.";
+                        if (hasAcceptedFlag)
+                        {
+                            summary += " The client packet also carried an immediate invite-response flag.";
+                        }
+
+                        packet = new SocialListClientPartyResultPacket(kind, partyId, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, inviterName, summary);
+                        return true;
+                    }
+
                     case SocialListClientPartyResultKind.Load:
                     case SocialListClientPartyResultKind.Refresh:
                     {
@@ -528,9 +574,53 @@ namespace HaCreator.MapSimulator.Interaction
                     case SocialListClientPartyResultKind.Create:
                     {
                         int partyId = reader.ReadInt32();
-                        packet = new SocialListClientPartyResultPacket(kind, partyId, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, null);
+                        packet = new SocialListClientPartyResultPacket(kind, partyId, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, ResolvePartyResultNoticeText(0x0143, kind));
                         return true;
                     }
+
+                    case SocialListClientPartyResultKind.Notice9:
+                        packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, ResolvePartyResultNoticeText(0x014C, kind));
+                        return true;
+
+                    case SocialListClientPartyResultKind.Notice10:
+                        packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, ResolvePartyResultNoticeText(0x014D, kind));
+                        return true;
+
+                    case SocialListClientPartyResultKind.Notice16:
+                        packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, ResolvePartyResultNoticeText(0x014E, kind));
+                        return true;
+
+                    case SocialListClientPartyResultKind.Notice17:
+                        packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, ResolvePartyResultNoticeText(0x014C, kind));
+                        return true;
+
+                    case SocialListClientPartyResultKind.Notice18:
+                        packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, ResolvePartyResultNoticeText(0x014F, kind));
+                        return true;
+
+                    case SocialListClientPartyResultKind.NoticeNamed:
+                    {
+                        string characterName = reader.ReadMapleString16().Trim();
+                        string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                            0x158A,
+                            "Party notice for %s.",
+                            1,
+                            out _);
+                        packet = new SocialListClientPartyResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<SocialListClientPartyEntry>(),
+                            0,
+                            0,
+                            0,
+                            characterName,
+                            FormatSingleStringArgument(format, characterName));
+                        return true;
+                    }
+
+                    case SocialListClientPartyResultKind.Notice29:
+                        packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, ResolvePartyResultNoticeText(0x13D5, kind));
+                        return true;
 
                     case SocialListClientPartyResultKind.LeaderChange:
                     {
@@ -549,7 +639,31 @@ namespace HaCreator.MapSimulator.Interaction
                         return true;
                     }
 
-                    case SocialListClientPartyResultKind.Invite:
+                    case SocialListClientPartyResultKind.Notice32:
+                        packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, ResolvePartyResultNoticeText(0x0FF9, kind));
+                        return true;
+
+                    case SocialListClientPartyResultKind.Notice33:
+                        packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, ResolvePartyResultNoticeText(0x0FFB, kind));
+                        return true;
+
+                    case SocialListClientPartyResultKind.Notice34:
+                        packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, ResolvePartyResultNoticeText(0x0FFA, kind));
+                        return true;
+
+                    case SocialListClientPartyResultKind.Notice36:
+                        packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, ResolvePartyResultNoticeText(0x0153, kind));
+                        return true;
+
+                    case SocialListClientPartyResultKind.NoticeOptionalMessage:
+                    {
+                        string summary = reader.ReadByte() != 0 && reader.HasRemaining
+                            ? reader.ReadMapleString16().Trim()
+                            : ResolvePartyResultNoticeText(0x0156, kind);
+                        packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, summary);
+                        return true;
+                    }
+
                     case SocialListClientPartyResultKind.SearchPacket:
                     case SocialListClientPartyResultKind.SearchPacket2:
                     case SocialListClientPartyResultKind.SearchPacket3:
@@ -602,7 +716,7 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             0,
                             0,
-                            Approved: false,
+                            HasExplicitNotice: false,
                             null,
                             new SocialListGradeChangePacket(memberId, 0, absoluteGrade, null),
                             null);
@@ -636,7 +750,7 @@ namespace HaCreator.MapSimulator.Interaction
                                 IsPacketOwned: true));
                         }
 
-                        packet = new SocialListClientGuildResultPacket(kind, guildId, rankingEntries, Array.Empty<string>(), null, null, 0, 0, Approved: false, null, default, null);
+                        packet = new SocialListClientGuildResultPacket(kind, guildId, rankingEntries, Array.Empty<string>(), null, null, 0, 0, HasExplicitNotice: false, null, default, null);
                         return true;
                     }
 
@@ -649,7 +763,7 @@ namespace HaCreator.MapSimulator.Interaction
                             titles[i] = NormalizeRoleLabel(reader.ReadString16(), $"Rank {i + 1}");
                         }
 
-                        packet = new SocialListClientGuildResultPacket(kind, guildId, Array.Empty<GuildRankingSeedEntry>(), titles, null, null, 0, 0, Approved: false, null, default, null);
+                        packet = new SocialListClientGuildResultPacket(kind, guildId, Array.Empty<GuildRankingSeedEntry>(), titles, null, null, 0, 0, HasExplicitNotice: false, null, default, null);
                         return true;
                     }
 
@@ -665,7 +779,7 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             0,
                             0,
-                            Approved: false,
+                            HasExplicitNotice: false,
                             null,
                             default,
                             null);
@@ -690,7 +804,7 @@ namespace HaCreator.MapSimulator.Interaction
                             selection,
                             0,
                             0,
-                            Approved: false,
+                            HasExplicitNotice: false,
                             null,
                             default,
                             null);
@@ -711,7 +825,7 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             guildPoints,
                             guildLevel,
-                            Approved: false,
+                            HasExplicitNotice: false,
                             null,
                             default,
                             null);
@@ -753,7 +867,7 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             0,
                             0,
-                            Approved: false,
+                            HasExplicitNotice: false,
                             null,
                             default,
                             new SocialListGuildSkillRecordPacket(skillId, skillLevel, expiration, buyCharacterName));
@@ -762,8 +876,8 @@ namespace HaCreator.MapSimulator.Interaction
 
                     case SocialListClientGuildResultKind.ResultNotice:
                     {
-                        bool approved = reader.ReadBoolean();
-                        string resultNotice = approved && reader.HasRemaining
+                        bool hasExplicitNotice = reader.ReadBoolean();
+                        string resultNotice = hasExplicitNotice && reader.HasRemaining
                             ? reader.ReadString16().Trim()
                             : null;
                         packet = new SocialListClientGuildResultPacket(
@@ -775,7 +889,7 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             0,
                             0,
-                            approved,
+                            hasExplicitNotice,
                             resultNotice,
                             default,
                             null);
@@ -985,6 +1099,41 @@ namespace HaCreator.MapSimulator.Interaction
                 channelId,
                 flag,
                 inShop);
+        }
+
+        private static string ResolveFriendResultNoticeText(int stringPoolId, SocialListClientFriendResultKind kind)
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                stringPoolId,
+                $"Client OnFriendResult({(byte)kind}) notice.",
+                appendFallbackSuffix: true,
+                minimumHexWidth: 3);
+        }
+
+        private static string ResolvePartyResultNoticeText(int stringPoolId, SocialListClientPartyResultKind kind)
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                stringPoolId,
+                $"Client OnPartyResult({(byte)kind}) notice.",
+                appendFallbackSuffix: true,
+                minimumHexWidth: 3);
+        }
+
+        private static string FormatSingleStringArgument(string format, string value)
+        {
+            string normalizedValue = string.IsNullOrWhiteSpace(value) ? "the character" : value.Trim();
+            string normalizedFormat = string.IsNullOrWhiteSpace(format) ? "%s" : format;
+            try
+            {
+                return string.Format(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    normalizedFormat.Replace("%s", "{0}", StringComparison.Ordinal),
+                    normalizedValue);
+            }
+            catch (FormatException)
+            {
+                return $"{normalizedFormat} {normalizedValue}".Trim();
+            }
         }
 
         private static IReadOnlyList<SocialListClientPartyEntry> ReadClientPartyEntries(ref PacketReader reader)

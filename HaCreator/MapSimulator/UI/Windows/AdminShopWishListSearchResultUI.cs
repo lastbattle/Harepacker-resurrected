@@ -93,7 +93,7 @@ namespace HaCreator.MapSimulator.UI
                 _closeButton.X = CloseButtonX;
                 _closeButton.Y = CloseButtonY;
                 AddButton(_closeButton);
-                _closeButton.ButtonClickReleased += _ => HideForOwner("Wish-list results closed.");
+                _closeButton.ButtonClickReleased += _ => HideForOwner("CUIAdminShopWishListSearchResult::OnButtonClicked(1000) closed through the parent ToggleAddOn(0) path.");
             }
 
             if (_previousButton != null)
@@ -575,7 +575,7 @@ namespace HaCreator.MapSimulator.UI
 
             _isRegisterConfirmationOpen = true;
             _confirmAcceptFocused = true;
-            _statusMessage = $"BtRegist opened the registration confirmation for {result.Title}.";
+            _statusMessage = $"BtRegist opened CUtilDlg::YesNo with StringPool 0x{AdminShopWishListClientParityText.RegisterConfirmationFormatStringPoolId:X} for {result.Title}.";
             UpdateButtons();
         }
 
@@ -787,13 +787,35 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_pixelTexture, cancelButtonBounds, !_confirmAcceptFocused ? new Color(255, 233, 160) : new Color(214, 223, 236));
 
             AdminShopDialogUI.WishlistSearchResult selectedResult = GetSelectedResult();
-            string title = selectedResult != null
-                ? AdminShopWishListClientParityText.GetRegisterConfirmationText(selectedResult.Title)
-                : "this result";
-            sprite.DrawString(_font, TrimToWidth(title, 206f), new Vector2(confirmBounds.X + 10, confirmBounds.Y + 10), Color.White);
-            sprite.DrawString(_font, "Enter = Yes / Esc = No", new Vector2(confirmBounds.X + 44, confirmBounds.Y + 28), new Color(255, 233, 160));
+            DrawRegisterConfirmationPrompt(sprite, confirmBounds, selectedResult);
+            sprite.DrawString(_font, "Enter = Yes / Esc = No", new Vector2(confirmBounds.X + 44, confirmBounds.Y + 30), new Color(255, 233, 160));
             sprite.DrawString(_font, "Yes", new Vector2(confirmButtonBounds.X + 25, confirmButtonBounds.Y + 3), new Color(40, 55, 96));
             sprite.DrawString(_font, "No", new Vector2(cancelButtonBounds.X + 28, cancelButtonBounds.Y + 3), new Color(40, 55, 96));
+        }
+
+        private void DrawRegisterConfirmationPrompt(
+            SpriteBatch sprite,
+            Rectangle confirmBounds,
+            AdminShopDialogUI.WishlistSearchResult selectedResult)
+        {
+            string prompt = selectedResult != null
+                ? AdminShopWishListClientParityText.GetRegisterConfirmationText(selectedResult.Title)
+                : AdminShopWishListClientParityText.GetRegisterConfirmationText(null);
+            string[] promptLines = prompt.Replace("\r\n", "\n").Split('\n');
+            int maxLines = Math.Min(2, promptLines.Length);
+            for (int i = 0; i < maxLines; i++)
+            {
+                if (string.IsNullOrWhiteSpace(promptLines[i]))
+                {
+                    continue;
+                }
+
+                sprite.DrawString(
+                    _font,
+                    TrimToWidth(promptLines[i], 206f),
+                    new Vector2(confirmBounds.X + 10, confirmBounds.Y + 9 + (i * 12)),
+                    Color.White);
+            }
         }
 
         private void HandleConfirmationKeyboardInput(KeyboardState keyboardState)

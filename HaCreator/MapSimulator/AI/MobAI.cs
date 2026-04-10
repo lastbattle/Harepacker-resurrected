@@ -370,7 +370,8 @@ namespace HaCreator.MapSimulator.AI
         private int _angerChargeTarget = 0;
         private int _angerChargeCount = 0;
         private int _angerAttackIndex = -1;
-        private int _angerGaugeFullChargeEffectIntervalMs;
+        private int _authoredAngerGaugeFullChargeEffectIntervalMs;
+        private int _runtimeAngerGaugeFullChargeEffectIntervalMs;
 
         // Status effects
         private MobStatusEffect _statusEffects = MobStatusEffect.None;
@@ -413,7 +414,10 @@ namespace HaCreator.MapSimulator.AI
         public int AngerChargeTarget => _angerChargeTarget;
         public int AngerChargeCount => _angerChargeCount;
         public bool IsAngerCharged => HasAngerGauge && _angerChargeCount >= _angerChargeTarget;
-        public int AngerGaugeFullChargeEffectIntervalMs => _angerGaugeFullChargeEffectIntervalMs;
+        public int AngerGaugeFullChargeEffectIntervalMs =>
+            _runtimeAngerGaugeFullChargeEffectIntervalMs > 0
+                ? _runtimeAngerGaugeFullChargeEffectIntervalMs
+                : _authoredAngerGaugeFullChargeEffectIntervalMs;
 
         // Status effect properties
         public MobStatusEffect StatusEffects => _statusEffects;
@@ -470,7 +474,8 @@ namespace HaCreator.MapSimulator.AI
             _angerChargeTarget = 0;
             _angerChargeCount = 0;
             _angerAttackIndex = -1;
-            _angerGaugeFullChargeEffectIntervalMs = 0;
+            _authoredAngerGaugeFullChargeEffectIntervalMs = 0;
+            _runtimeAngerGaugeFullChargeEffectIntervalMs = 0;
 
             // Bosses have larger aggro range
             if (isBoss)
@@ -524,8 +529,8 @@ namespace HaCreator.MapSimulator.AI
 
             if (attack?.IsSpecialAttack == true && attack.AttackAfter > 0)
             {
-                _angerGaugeFullChargeEffectIntervalMs = _angerGaugeFullChargeEffectIntervalMs > 0
-                    ? Math.Min(_angerGaugeFullChargeEffectIntervalMs, attack.AttackAfter)
+                _authoredAngerGaugeFullChargeEffectIntervalMs = _authoredAngerGaugeFullChargeEffectIntervalMs > 0
+                    ? Math.Min(_authoredAngerGaugeFullChargeEffectIntervalMs, attack.AttackAfter)
                     : attack.AttackAfter;
             }
 
@@ -1381,6 +1386,7 @@ namespace HaCreator.MapSimulator.AI
             _selfDestructTriggered = false;
             _selfDestructPending = false;
             _angerChargeCount = 0;
+            _runtimeAngerGaugeFullChargeEffectIntervalMs = 0;
             _skillUseCounts.Clear();
             _skillForbidUntil = 0;
             _externalTargetSource = MobExternalTargetSource.None;
@@ -1888,6 +1894,7 @@ namespace HaCreator.MapSimulator.AI
 
             _currentAttackIndex = attackIndex;
             MobAttackEntry attack = _attacks[attackIndex];
+            UpdateAngerGaugeFullChargeEffectInterval(attack);
             attack.LastUseTime = currentTick;
             _actionAnimationCompleted = false;
             _actionRecoveryUntil = currentTick + GetActionRecoveryDelay(attack);
@@ -2295,6 +2302,7 @@ namespace HaCreator.MapSimulator.AI
                 }
 
                 _currentAttackIndex = i;
+                UpdateAngerGaugeFullChargeEffectInterval(attack);
                 attack.LastUseTime = currentTick;
                 _selfDestructPending = true;
                 SetState(MobAIState.Attack, currentTick);
@@ -2365,6 +2373,14 @@ namespace HaCreator.MapSimulator.AI
             }
 
             _angerChargeCount = Math.Min(_angerChargeTarget, _angerChargeCount + 1);
+        }
+
+        private void UpdateAngerGaugeFullChargeEffectInterval(MobAttackEntry attack)
+        {
+            if (attack?.IsSpecialAttack == true && attack.AttackAfter > 0)
+            {
+                _runtimeAngerGaugeFullChargeEffectIntervalMs = attack.AttackAfter;
+            }
         }
         #endregion
 

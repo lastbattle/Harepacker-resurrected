@@ -13,7 +13,9 @@ namespace HaCreator.MapSimulator.Character
             string PieceActionName,
             int? SourceFrameIndex,
             int? DelayOverrideMs = null,
-            bool Flip = false);
+            bool Flip = false,
+            Point? Move = null,
+            int RotationDegrees = 0);
 
         private static readonly string[] SwingHeuristicFragments =
         {
@@ -151,75 +153,72 @@ namespace HaCreator.MapSimulator.Character
             {
                 // CActionMan::Init builds the helper table from Character/00002000.img
                 // action-piece rows before LoadShadowPartnerAction copies source canvases.
-                ["avenger"] = CreateIndexedPieces(("swingO3", 0), ("swingO3", 1), ("swingO3", 2)),
-                ["assaulter"] = CreateIndexedPieces(("swingO1", 0), ("swingOF", 3)),
+                ["avenger"] = CreateIndexedPieces(
+                    ("swingO3", 0, -720),
+                    ("swingO3", 1, 60),
+                    ("swingO3", 2, 60)),
+                ["assaulter"] = CreateIndexedPieces(
+                    ("swingO1", 0, -600),
+                    ("swingOF", 3, 600)),
                 ["flyingAssaulter"] = CreateIndexedPieces(
-                    ("swingPF", 2),
-                    ("swingOF", 3),
-                    ("swingOF", 3),
-                    ("stabT1", 2),
-                    ("stabT1", 2),
-                    ("stabT1", 2),
-                    ("swingO2", 0)),
+                    ("swingPF", 2, 180, false),
+                    ("swingOF", 3, 90, false),
+                    ("swingOF", 3, 90, false),
+                    ("stabT1", 2, 90, false),
+                    ("stabT1", 2, 120, true),
+                    ("stabT1", 2, 450, false),
+                    ("swingO2", 0, 360, false)),
                 ["savage"] = CreateIndexedPieces(
-                    ("stabO1", 0),
-                    ("swingOF", 3),
-                    ("proneStab", 0),
-                    ("swingO1", 2),
-                    ("swingO2", 0),
-                    ("stabOF", 2),
-                    ("alert", 1),
-                    ("swingO3", 2)),
+                    ("stabO1", 0, -120),
+                    ("swingOF", 3, -120),
+                    ("proneStab", 0, -120),
+                    ("swingO1", 2, 120),
+                    ("swingO2", 0, 120),
+                    ("stabOF", 2, 120),
+                    ("alert", 1, 120),
+                    ("swingO3", 2, 120)),
                 ["showdown"] = CreateIndexedPieces(
-                    ("proneStab", 0),
-                    ("swingOF", 0),
-                    ("swingOF", 1),
-                    ("swingOF", 2),
-                    ("swingOF", 3)),
+                    ("proneStab", 0, -900),
+                    ("swingOF", 0, -90),
+                    ("swingOF", 1, -90),
+                    ("swingOF", 2, -90),
+                    ("swingOF", 3, 180)),
                 ["assassination"] = CreateIndexedPieces(
-                    ("stand1", 0),
-                    ("swingOF", 0),
-                    ("swingOF", 1),
-                    ("swingOF", 2),
-                    ("swingOF", 3),
-                    ("swingO3", 0),
-                    ("swingO3", 1),
-                    ("swingO3", 2),
-                    ("swingO2", 0),
-                    ("swingO2", 1),
-                    ("swingO2", 2)),
+                    ("stand1", 0, -540),
+                    ("swingOF", 0, -80),
+                    ("swingOF", 1, -80),
+                    ("swingOF", 2, 80),
+                    ("swingOF", 3, 320),
+                    ("swingO3", 0, 80),
+                    ("swingO3", 1, 80),
+                    ("swingO3", 2, 80),
+                    ("swingO2", 0, 80),
+                    ("swingO2", 1, 80),
+                    ("swingO2", 2, 320)),
                 // `get_action_name_from_code(62)` resolves to `assassinationS` in the client
                 // action table; keep the earlier compatibility alias too until the simulator
                 // no longer carries call sites or saved state that can surface the older name.
                 ["assassinationS"] = CreateIndexedPieces(
-                    ("stand1", 0),
-                    ("swingOF", 0),
-                    ("swingOF", 1),
-                    ("swingOF", 2),
-                    ("swingOF", 3),
-                    ("swingO3", 0),
-                    ("swingO3", 1),
-                    ("swingO3", 2),
-                    ("swingO2", 0),
-                    ("swingO2", 1),
-                    ("swingO2", 2)),
+                    ("stabOF", 0, 60),
+                    ("stabOF", 2, 180),
+                    ("stabOF", 2, 180)),
                 ["assassinations"] = CreateIndexedPieces(
-                    ("stand1", 0),
-                    ("swingOF", 0),
-                    ("swingOF", 1),
-                    ("swingOF", 2),
-                    ("swingOF", 3),
-                    ("swingO3", 0),
-                    ("swingO3", 1),
-                    ("swingO3", 2),
-                    ("swingO2", 0),
-                    ("swingO2", 1),
-                    ("swingO2", 2)),
-                ["ninjastorm"] = CreateIndexedPieces(("alert", 0), ("alert", 1), ("alert", 2)),
-                ["vampire"] = CreateIndexedPieces(("alert", 0), ("alert", 1), ("alert", 2)),
+                    ("stabOF", 0, 60),
+                    ("stabOF", 2, 180),
+                    ("stabOF", 2, 180)),
+                ["ninjastorm"] = CreateIndexedPieces(
+                    ("alert", 0, -480),
+                    ("alert", 1, 210),
+                    ("alert", 2, 240)),
+                ["vampire"] = CreateIndexedPieces(
+                    ("alert", 0, -450),
+                    ("alert", 1, -450),
+                    ("alert", 2, -450)),
                 // `Skill/421.img/skill/4211006/action/0 = prone2`; the loader
                 // disassembly shows hidden piece entries carry source frame slots.
-                ["prone2"] = CreateIndexedPieces(("prone", 1)),
+                ["prone2"] = CreateIndexedPieces(
+                    ("proneStab", 0, -700),
+                    ("proneStab", 0, 300)),
                 // `Character/00002000.img` publishes full helper-piece rows for these
                 // indexed alert aliases, including per-piece frame delays.
                 ["alert2"] = CreateIndexedPieces(
@@ -258,40 +257,40 @@ namespace HaCreator.MapSimulator.Character
                     ("alert", 1, 270),
                     ("alert", 2, 270)),
                 ["stabD1"] = CreateIndexedPieces(
-                    ("stabO1", 0),
-                    ("stabO1", 1),
-                    ("swingO3", 2),
-                    ("stabT1", 2)),
+                    ("stabO1", 0, -180),
+                    ("stabO1", 1, 240),
+                    ("swingO3", 2, 150),
+                    ("stabT1", 2, 330)),
                 ["swingD1"] = CreateIndexedPieces(
-                    ("swingO2", 0),
-                    ("swingO2", 2),
-                    ("swingO2", 1),
-                    ("swingOF", 3)),
+                    ("swingO2", 0, -180),
+                    ("swingO2", 2, 300),
+                    ("swingO2", 1, 150),
+                    ("swingOF", 3, 300)),
                 ["swingD2"] = CreateIndexedPieces(
-                    ("swingO2", 0),
-                    ("swingO2", 2),
-                    ("swingO2", 1),
-                    ("swingOF", 0)),
+                    ("swingO2", 0, -180),
+                    ("swingO2", 2, 300),
+                    ("swingO2", 1, 120),
+                    ("swingOF", 0, 330)),
                 ["doubleSwing"] = CreateIndexedPieces(
-                    ("swingP2", 2),
-                    ("swingPF", 0),
-                    ("stabTF", 0),
-                    ("stabTF", 2),
-                    ("stabTF", 2)),
+                    ("swingP2", 2, -90, false),
+                    ("swingPF", 0, 90, true),
+                    ("stabTF", 0, 60, true),
+                    ("stabTF", 2, 90, true),
+                    ("stabTF", 2, 90, true)),
                 ["tripleSwing"] = CreateIndexedPieces(
-                    ("swingPF", 1),
-                    ("proneStab", 0),
-                    ("proneStab", 0),
-                    ("swingPF", 2),
-                    ("swingPF", 2),
-                    ("swingP2", 2),
-                    ("swingP2", 2),
-                    ("swingP2", 2)),
+                    ("swingPF", 1, -60, false),
+                    ("proneStab", 0, -60, false),
+                    ("proneStab", 0, -60, true),
+                    ("swingPF", 2, -60, false),
+                    ("swingPF", 2, -90, false),
+                    ("swingP2", 2, 120, false),
+                    ("swingP2", 2, 120, false),
+                    ("swingP2", 2, 90, false)),
                 ["shotC1"] = CreateIndexedPieces(
-                    ("alert", 2),
-                    ("stabO1", 0),
-                    ("stabO1", 0),
-                    ("stabO1", 0))
+                    ("alert", 2, -210),
+                    ("stabO1", 0, 120),
+                    ("stabO1", 0, 120),
+                    ("stabO1", 0, 150))
             };
 
         private static readonly HashSet<string> ClientAttackAliasActionNames = new(StringComparer.OrdinalIgnoreCase)
@@ -764,7 +763,9 @@ namespace HaCreator.MapSimulator.Character
                     SkillFrame frame = CloneSkillFrame(
                         pieceAnimation.Frames[frameIndex],
                         piece.DelayOverrideMs,
-                        piece.Flip);
+                        piece.Flip,
+                        piece.Move,
+                        piece.RotationDegrees);
                     if (frame != null)
                     {
                         frames.Add(frame);
@@ -775,7 +776,12 @@ namespace HaCreator.MapSimulator.Character
 
                 foreach (SkillFrame frame in pieceAnimation.Frames)
                 {
-                    SkillFrame clonedFrame = CloneSkillFrame(frame, piece.DelayOverrideMs, piece.Flip);
+                    SkillFrame clonedFrame = CloneSkillFrame(
+                        frame,
+                        piece.DelayOverrideMs,
+                        piece.Flip,
+                        piece.Move,
+                        piece.RotationDegrees);
                     if (clonedFrame != null)
                     {
                         frames.Add(clonedFrame);
@@ -804,25 +810,36 @@ namespace HaCreator.MapSimulator.Character
         private static SkillFrame CloneSkillFrame(
             SkillFrame sourceFrame,
             int? delayOverrideMs = null,
-            bool pieceFlip = false)
+            bool pieceFlip = false,
+            Point? pieceMove = null,
+            int pieceRotationDegrees = 0)
         {
             if (sourceFrame == null)
             {
                 return null;
             }
 
+            Point origin = sourceFrame.Origin;
+            if (pieceMove.HasValue)
+            {
+                origin = new Point(origin.X - pieceMove.Value.X, origin.Y - pieceMove.Value.Y);
+            }
+
             return new SkillFrame
             {
                 Texture = sourceFrame.Texture,
-                Origin = sourceFrame.Origin,
+                Origin = origin,
                 Delay = delayOverrideMs ?? sourceFrame.Delay,
-                Bounds = sourceFrame.Bounds,
+                Bounds = pieceMove.HasValue
+                    ? new Rectangle(-origin.X, -origin.Y, sourceFrame.Bounds.Width, sourceFrame.Bounds.Height)
+                    : sourceFrame.Bounds,
                 Flip = pieceFlip ? !sourceFrame.Flip : sourceFrame.Flip,
                 Z = sourceFrame.Z,
                 AlphaStart = sourceFrame.AlphaStart,
                 AlphaEnd = sourceFrame.AlphaEnd,
                 ZoomStart = sourceFrame.ZoomStart,
-                ZoomEnd = sourceFrame.ZoomEnd
+                ZoomEnd = sourceFrame.ZoomEnd,
+                RotationDegrees = sourceFrame.RotationDegrees + pieceRotationDegrees
             };
         }
 
@@ -1581,6 +1598,28 @@ namespace HaCreator.MapSimulator.Character
                     pieceFrames[i].PieceActionName,
                     pieceFrames[i].SourceFrameIndex,
                     pieceFrames[i].DelayOverrideMs);
+            }
+
+            return pieces;
+        }
+
+        private static ShadowPartnerActionPiece[] CreateIndexedPieces(
+            params (string PieceActionName, int SourceFrameIndex, int DelayOverrideMs, bool Flip)[] pieceFrames)
+        {
+            if (pieceFrames == null || pieceFrames.Length == 0)
+            {
+                return Array.Empty<ShadowPartnerActionPiece>();
+            }
+
+            var pieces = new ShadowPartnerActionPiece[pieceFrames.Length];
+            for (int i = 0; i < pieceFrames.Length; i++)
+            {
+                pieces[i] = new ShadowPartnerActionPiece(
+                    i,
+                    pieceFrames[i].PieceActionName,
+                    pieceFrames[i].SourceFrameIndex,
+                    pieceFrames[i].DelayOverrideMs,
+                    pieceFrames[i].Flip);
             }
 
             return pieces;

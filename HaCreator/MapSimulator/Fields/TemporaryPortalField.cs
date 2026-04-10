@@ -25,9 +25,9 @@ namespace HaCreator.MapSimulator.Fields
         private const int OpenGateDefaultDurationMs = 30_000;
         private const int OpenGateTeleportDelayMs = 120;
         private const int CrossMapPortalTeleportDelayMs = 0;
-        private const int OpenGateOpeningDurationMs = 1960;
-        private const int OpenGateRemovalDurationMs = 1800;
-        private const int TownPortalOpeningDurationMs = 1700;
+        private const int DefaultOpenGateOpeningDurationMs = 1960;
+        private const int DefaultOpenGateRemovalDurationMs = 1800;
+        private const int DefaultTownPortalOpeningDurationMs = 1700;
         private const int TownPortalRemovalFadeDurationMs = 1000;
         private const float PortalInteractRangeX = 40f;
         private const float PortalInteractRangeY = 60f;
@@ -875,6 +875,13 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
+        private int GetTownPortalOpeningDurationMs()
+        {
+            return _mysticDoorCurrentMapVisuals?.DurationMs > 0
+                ? _mysticDoorCurrentMapVisuals.DurationMs
+                : DefaultTownPortalOpeningDurationMs;
+        }
+
         private BaseDXDrawableItem[] CreateRemoteTownPortalDrawables(
             RemoteTownPortalState state,
             float x,
@@ -1006,7 +1013,7 @@ namespace HaCreator.MapSimulator.Fields
                 switch (state.Phase)
                 {
                     case RemoteTownPortalVisualPhase.Opening:
-                        if (unchecked(currentTime - state.PhaseStartedAt) >= TownPortalOpeningDurationMs)
+                        if (unchecked(currentTime - state.PhaseStartedAt) >= GetTownPortalOpeningDurationMs())
                         {
                             _remoteTownPortals[ownerId] = state with
                             {
@@ -1060,7 +1067,7 @@ namespace HaCreator.MapSimulator.Fields
                 switch (state.Phase)
                 {
                     case RemoteOpenGateVisualPhase.Opening:
-                        if (unchecked(currentTime - state.PhaseStartedAt) >= OpenGateOpeningDurationMs)
+                        if (unchecked(currentTime - state.PhaseStartedAt) >= GetOpenGateOpeningDurationMs())
                         {
                             _remoteOpenGates[key] = state with
                             {
@@ -1072,7 +1079,7 @@ namespace HaCreator.MapSimulator.Fields
                         break;
 
                     case RemoteOpenGateVisualPhase.Removing:
-                        if (unchecked(currentTime - state.PhaseStartedAt) >= OpenGateRemovalDurationMs)
+                        if (unchecked(currentTime - state.PhaseStartedAt) >= GetOpenGateRemovalDurationMs())
                         {
                             keysToRemove ??= new List<RemoteOpenGateKey>();
                             keysToRemove.Add(key);
@@ -1490,6 +1497,14 @@ namespace HaCreator.MapSimulator.Fields
             if (observationDestination.HasValue)
             {
                 return observationDestination.Value;
+            }
+
+            if (preferredSourceMapId.HasValue
+                && existingState.HasValue
+                && existingState.Value.Destination.HasValue
+                && existingState.Value.Destination.Value.MapId == preferredSourceMapId.Value)
+            {
+                return existingState.Value.Destination.Value;
             }
 
             if (incomingDestination.HasValue)
@@ -2156,6 +2171,20 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
+        private int GetOpenGateOpeningDurationMs()
+        {
+            return _openGateOpeningVisuals?.DurationMs > 0
+                ? _openGateOpeningVisuals.DurationMs
+                : DefaultOpenGateOpeningDurationMs;
+        }
+
+        private int GetOpenGateRemovalDurationMs()
+        {
+            return _openGateRemovalVisuals?.DurationMs > 0
+                ? _openGateRemovalVisuals.DurationMs
+                : DefaultOpenGateRemovalDurationMs;
+        }
+
         private PortalVisualSet LoadPortalVisualSet(WzImageProperty framesProperty, TemporaryPortalKind kind)
         {
             if (framesProperty == null)
@@ -2253,9 +2282,11 @@ namespace HaCreator.MapSimulator.Fields
             {
                 Kind = kind;
                 _frames = frames?.ToArray() ?? throw new ArgumentNullException(nameof(frames));
+                DurationMs = _frames.Sum(frame => Math.Max(1, frame.Delay));
             }
 
             public TemporaryPortalKind Kind { get; }
+            public int DurationMs { get; }
 
             public BaseDXDrawableItem CreateDrawable(float x, float y)
             {
@@ -2707,7 +2738,7 @@ namespace HaCreator.MapSimulator.Fields
         internal static RemoteTownPortalVisualPhase AdvanceRemoteTownPortalPhaseForTesting(RemoteTownPortalVisualPhase phase, int phaseStartedAt, int currentTime)
         {
             if (phase == RemoteTownPortalVisualPhase.Opening
-                && unchecked(currentTime - phaseStartedAt) >= TownPortalOpeningDurationMs)
+                && unchecked(currentTime - phaseStartedAt) >= DefaultTownPortalOpeningDurationMs)
             {
                 return RemoteTownPortalVisualPhase.Stable;
             }
@@ -3134,13 +3165,13 @@ namespace HaCreator.MapSimulator.Fields
         internal static RemoteOpenGateVisualPhase AdvanceRemoteOpenGatePhaseForTesting(RemoteOpenGateVisualPhase phase, int phaseStartedAt, int currentTime)
         {
             if (phase == RemoteOpenGateVisualPhase.Opening
-                && unchecked(currentTime - phaseStartedAt) >= OpenGateOpeningDurationMs)
+                && unchecked(currentTime - phaseStartedAt) >= DefaultOpenGateOpeningDurationMs)
             {
                 return RemoteOpenGateVisualPhase.Stable;
             }
 
             if (phase == RemoteOpenGateVisualPhase.Removing
-                && unchecked(currentTime - phaseStartedAt) >= OpenGateRemovalDurationMs)
+                && unchecked(currentTime - phaseStartedAt) >= DefaultOpenGateRemovalDurationMs)
             {
                 return RemoteOpenGateVisualPhase.Removing;
             }

@@ -479,12 +479,11 @@ namespace HaCreator.MapSimulator
             if (string.Equals(args[0], "start", StringComparison.OrdinalIgnoreCase))
             {
                 if (args.Length < 4 ||
-                    !int.TryParse(args[1], out int listenPort) ||
-                    listenPort <= 0 ||
+                    !RockPaperScissorsSessionCommandParsing.TryParseProxyListenPort(args[1], out int listenPort) ||
                     !int.TryParse(args[3], out int remotePort) ||
                     remotePort <= 0)
                 {
-                    return ChatCommandHandler.CommandResult.Error("Usage: /rps session start <listenPort> <serverHost> <serverPort>");
+                    return ChatCommandHandler.CommandResult.Error(RockPaperScissorsSessionCommandParsing.StartUsage);
                 }
 
                 _rockPaperScissorsOfficialSessionBridgeEnabled = true;
@@ -503,12 +502,11 @@ namespace HaCreator.MapSimulator
             if (string.Equals(args[0], "startauto", StringComparison.OrdinalIgnoreCase))
             {
                 if (args.Length < 3 ||
-                    !int.TryParse(args[1], out int listenPort) ||
-                    listenPort <= 0 ||
+                    !RockPaperScissorsSessionCommandParsing.TryParseProxyListenPort(args[1], out int listenPort) ||
                     !int.TryParse(args[2], out int remotePort) ||
                     remotePort <= 0)
                 {
-                    return ChatCommandHandler.CommandResult.Error("Usage: /rps session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                    return ChatCommandHandler.CommandResult.Error(RockPaperScissorsSessionCommandParsing.StartAutoUsage);
                 }
 
                 string processSelector = args.Length >= 4 ? args[3] : null;
@@ -517,7 +515,7 @@ namespace HaCreator.MapSimulator
                 {
                     if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /rps session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                        return ChatCommandHandler.CommandResult.Error(RockPaperScissorsSessionCommandParsing.StartAutoUsage);
                     }
 
                     localPort = parsedLocalPort;
@@ -547,7 +545,7 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Ok(DescribeRockPaperScissorsOfficialSessionBridgeStatus());
             }
 
-            return ChatCommandHandler.CommandResult.Error("Usage: /rps session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
+            return ChatCommandHandler.CommandResult.Error(RockPaperScissorsSessionCommandParsing.SessionUsage);
         }
 
         private void DrainRockPaperScissorsPendingNotice(RockPaperScissorsField field)

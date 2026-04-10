@@ -2473,7 +2473,10 @@ namespace HaCreator.MapSimulator.Character
         public string GetEffectiveWeaponSfx()
         {
             string weaponSfx = GetWeapon()?.Sfx;
-            string subWeaponSfx = GetSubWeapon()?.Sfx;
+            WeaponPart subWeapon = GetSubWeapon();
+            string subWeaponSfx = IsClientWeaponTypedSubWeapon(subWeapon)
+                ? subWeapon?.Sfx
+                : null;
 
             return !string.IsNullOrWhiteSpace(subWeaponSfx)
                 ? subWeaponSfx

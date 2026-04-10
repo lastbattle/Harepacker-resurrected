@@ -97,6 +97,41 @@ namespace HaCreator.MapSimulator.Character
             return ResolveActionSpeedDelay(delay, actionSpeed);
         }
 
+        internal static int ResolvePreparedAnimationDuration(
+            CharacterAnimation animation,
+            string actionName,
+            int actionSpeed,
+            int walkSpeed,
+            bool heldShootAction,
+            bool isMorphAvatar = false,
+            bool isSuperManMorph = false)
+        {
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return 0;
+            }
+
+            long duration = 0;
+            for (int i = 0; i < animation.Frames.Count; i++)
+            {
+                duration += ResolvePreparedFrameDelay(
+                    actionName,
+                    animation.Frames[i]?.Delay ?? 0,
+                    actionSpeed,
+                    walkSpeed,
+                    heldShootAction,
+                    i,
+                    isMorphAvatar,
+                    isSuperManMorph);
+                if (duration >= int.MaxValue)
+                {
+                    return int.MaxValue;
+                }
+            }
+
+            return (int)duration;
+        }
+
         private static int ResolveActionSpeedDelay(int delay, int actionSpeed)
         {
             int clampedActionSpeed = Math.Clamp(actionSpeed, 2, 10);

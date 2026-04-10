@@ -13,6 +13,7 @@ namespace HaCreator.MapSimulator
     {
         public LoginPacketDialogOwner Owner { get; init; } = LoginPacketDialogOwner.LoginUtilityDialog;
         public bool TrackDirectionModeOwner { get; init; }
+        public bool HasExplicitTrackDirectionModeOwner { get; init; }
         public bool HasExplicitOwner { get; init; }
         public string Title { get; init; }
         public string Body { get; init; }

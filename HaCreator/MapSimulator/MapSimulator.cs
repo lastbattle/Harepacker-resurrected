@@ -6675,7 +6675,8 @@ namespace HaCreator.MapSimulator
             return RepairDurabilityClientParity.ResolvePreferredNpcAction(
                 shopActionId,
                 npcPreview.GetAvailableActions(),
-                RepairDurabilityClientParity.EnumerateNpcSpeakFallbackActions(source));
+                RepairDurabilityClientParity.EnumerateNpcSpeakFallbackActions(source),
+                source);
         }
 
         private void ProcessPendingRepairDurabilityRequest()
@@ -15264,7 +15265,7 @@ namespace HaCreator.MapSimulator
         }
 
 
-        private static LoginPacketDialogPromptConfiguration MergeLoginPacketDialogPrompt(
+        internal static LoginPacketDialogPromptConfiguration MergeLoginPacketDialogPrompt(
             LoginPacketDialogPromptConfiguration basePrompt,
             LoginPacketDialogPromptConfiguration overridePrompt)
         {
@@ -15283,7 +15284,11 @@ namespace HaCreator.MapSimulator
             return new LoginPacketDialogPromptConfiguration
             {
                 Owner = overridePrompt.HasExplicitOwner ? overridePrompt.Owner : basePrompt.Owner,
-                TrackDirectionModeOwner = overridePrompt.TrackDirectionModeOwner || basePrompt.TrackDirectionModeOwner,
+                TrackDirectionModeOwner = overridePrompt.HasExplicitTrackDirectionModeOwner
+                    ? overridePrompt.TrackDirectionModeOwner
+                    : basePrompt.TrackDirectionModeOwner,
+                HasExplicitTrackDirectionModeOwner =
+                    overridePrompt.HasExplicitTrackDirectionModeOwner || basePrompt.HasExplicitTrackDirectionModeOwner,
                 HasExplicitOwner = overridePrompt.HasExplicitOwner || basePrompt.HasExplicitOwner,
                 Title = string.IsNullOrWhiteSpace(overridePrompt.Title) ? basePrompt.Title : overridePrompt.Title,
                 Body = string.IsNullOrWhiteSpace(overridePrompt.Body) ? basePrompt.Body : overridePrompt.Body,
@@ -16698,6 +16703,7 @@ namespace HaCreator.MapSimulator
             _remoteUserPool.GenericUserStateRegistered += HandleRemoteGenericUserStateEffect;
             _remoteUserPool.ItemMakeRegistered += HandleRemoteItemMakeEffect;
             _remoteUserPool.HitFeedbackRegistered += HandleRemoteHitFeedback;
+            _remoteUserPool.StringEffectRegistered += HandleRemoteStringEffect;
             _mapTransferDestinations = new MapTransferDestinationStore();
             _mapTransferRuntime = new MapTransferRuntimeManager(_mapTransferDestinations);
 
@@ -20641,7 +20647,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (TryApplyQuestBuffItemReward(itemId))
+            if (TryApplyPickedUpConsumableRuntime(itemId))
             {
                 return true;
             }
@@ -20676,6 +20682,13 @@ namespace HaCreator.MapSimulator
                 ShouldTrackFieldConsumeItemCooldown(inventoryType, default, default),
                 currentTime);
             return true;
+        }
+
+        private bool TryApplyPickedUpConsumableRuntime(int itemId)
+        {
+            return itemId > 0
+                   && InventoryItemMetadataResolver.IsConsumedOnPickup(itemId)
+                   && TryApplyQuestBuffItemReward(itemId);
         }
 
 
@@ -21306,7 +21319,11 @@ namespace HaCreator.MapSimulator
             {
                 int itemId = int.TryParse(drop.ItemId, out int parsedItemId) ? parsedItemId : 0;
                 bool consumeOnPickupMonsterCard = _monsterBookManager.IsConsumeOnPickupCardItem(itemId);
-                bool autoHandlePickedUpItem = !consumeOnPickupMonsterCard && ShouldAutoHandlePickedUpItem(itemId);
+                bool autoConsumePickedUpItem = !consumeOnPickupMonsterCard && ShouldAutoConsumePickedUpItem(itemId);
+                bool autoRunPickedUpItem = !consumeOnPickupMonsterCard
+                                           && !autoConsumePickedUpItem
+                                           && InventoryItemMetadataResolver.ShouldAutoRunOnPickupInteraction(itemId);
+                bool autoHandlePickedUpItem = autoConsumePickedUpItem || autoRunPickedUpItem;
                 // Monster Book card entries in Item/Consume/0238.img are authored as only=1 plus
                 // consumeOnPickup=1, so a consumed card pickup advances one card copy even if a
                 // simulator or packet-injected drop carried a larger stack quantity.
@@ -21331,6 +21348,19 @@ namespace HaCreator.MapSimulator
                 if (consumeOnPickupMonsterCard)
                 {
                     _monsterBookManager.RecordCardPickup(_playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build, itemId, 1);
+                }
+                else if (autoConsumePickedUpItem)
+                {
+                    int remainingQuantity = Math.Max(1, drop.Quantity);
+                    while (remainingQuantity > 0 && TryApplyPickedUpConsumableRuntime(itemId))
+                    {
+                        remainingQuantity--;
+                    }
+
+                    if (remainingQuantity > 0)
+                    {
+                        AddItemToInventoryWindow(drop.ItemId, remainingQuantity);
+                    }
                 }
                 else if (!autoHandlePickedUpItem || !TryApplyPickedUpItemRuntime(itemId, currentTime))
                 {
@@ -26462,7 +26492,42 @@ namespace HaCreator.MapSimulator
 
         private bool ShouldQueuePassiveTransferFieldRequest()
         {
-            return _playerManager?.Player?.IsPlayingClientOwnedOneTimeAction == true;
+            return PassiveTransferFieldReadinessEvaluator.CanQueuePassiveTransferFieldRequest(
+                _playerManager?.Player?.IsPlayingClientOwnedOneTimeAction == true,
+                HasPassiveTransferFieldPortalCollision());
+        }
+
+        private bool HasPassiveTransferFieldPortalCollision()
+        {
+            PortalCollisionResult? collision = ResolvePortalCollisionAtLocalUserPosition();
+            PortalInstance portal = collision?.Portal?.PortalInstance;
+            if (portal == null)
+            {
+                return false;
+            }
+
+            if (!IsPassiveTransferFieldPortalType(portal.pt))
+            {
+                return false;
+            }
+
+            int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
+            return portal.tm > 0
+                   && portal.tm != MapConstants.MaxMap
+                   && (portal.tm != currentMapId || IsChangeablePortalType(portal.pt));
+        }
+
+        private static bool IsPassiveTransferFieldPortalType(PortalType portalType)
+        {
+            return portalType != PortalType.CollisionScript
+                   && portalType != PortalType.CollisionVerticalJump
+                   && portalType != PortalType.CollisionCustomImpact;
+        }
+
+        private static bool IsChangeablePortalType(PortalType portalType)
+        {
+            return portalType == PortalType.Changeable
+                   || portalType == PortalType.ChangeableInvisible;
         }
 
 
@@ -27036,9 +27101,14 @@ namespace HaCreator.MapSimulator
             }
 
             string sessionValue = string.IsNullOrWhiteSpace(portal.sessionValue) ? "0" : portal.sessionValue;
-            if (HasStructuredPortalSessionValueImpactOwner(portal.sessionValueKey, sessionValue))
+            if (TryResolveStructuredPortalSessionValueImpactOwner(
+                    portal.sessionValueKey,
+                    sessionValue,
+                    out PortalSessionValueImpactOwnerKind ownerKind))
             {
                 QueuePendingPortalSessionValueImpact(new PendingPortalSessionValueImpact(
+                    _mapBoard?.MapInfo?.id ?? -1,
+                    ownerKind,
                     portal.sessionValueKey,
                     sessionValue,
                     portal.horizontalImpact ?? 0,
@@ -27050,8 +27120,12 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
-        private bool HasStructuredPortalSessionValueImpactOwner(string key, string value)
+        private bool TryResolveStructuredPortalSessionValueImpactOwner(
+            string key,
+            string value,
+            out PortalSessionValueImpactOwnerKind ownerKind)
         {
+            ownerKind = PortalSessionValueImpactOwnerKind.None;
             if (string.IsNullOrWhiteSpace(key))
             {
                 return false;
@@ -27059,12 +27133,14 @@ namespace HaCreator.MapSimulator
 
             if (_specialFieldRuntime?.PartyRaid.IsActive == true)
             {
+                ownerKind = PortalSessionValueImpactOwnerKind.PartyRaid;
                 return true;
             }
 
             if (IsChaosZakumPortalSessionWrapperMap(_mapBoard?.MapInfo)
                 && IsChaosZakumPortalSessionKey(key))
             {
+                ownerKind = PortalSessionValueImpactOwnerKind.ChaosZakum;
                 return true;
             }
 
@@ -27073,6 +27149,7 @@ namespace HaCreator.MapSimulator
                 && (string.Equals(value, "redTeam", StringComparison.Ordinal)
                     || string.Equals(value, "blueTeam", StringComparison.Ordinal)))
             {
+                ownerKind = PortalSessionValueImpactOwnerKind.HuntingAdBalloon;
                 return true;
             }
 
@@ -29752,6 +29829,7 @@ namespace HaCreator.MapSimulator
                 QuestWindowActionKind.Track => TrackQuestInAlarmWindow(_activeQuestDetailQuestId),
                 QuestWindowActionKind.LocateNpc => LocateQuestNpcFromDetailWindow(_activeQuestDetailQuestId),
                 QuestWindowActionKind.LocateMob => LocateQuestMobFromDetailWindow(_activeQuestDetailQuestId),
+                QuestWindowActionKind.QuestGuide => LocateQuestMobFromDetailWindow(_activeQuestDetailQuestId),
                 QuestWindowActionKind.QuestDeliveryAccept => HandleQuestDetailDeliveryAction(_activeQuestDetailQuestId, false),
                 QuestWindowActionKind.QuestDeliveryComplete => HandleQuestDetailDeliveryAction(_activeQuestDetailQuestId, true),
                 _ => null
@@ -31691,6 +31769,8 @@ namespace HaCreator.MapSimulator
                 renderData.IconKey = buffEntry.IconKey;
                 renderData.IconTexture = buffEntry.IconTexture;
                 renderData.RemainingMs = buffEntry.RemainingMs;
+                renderData.CounterText = buffEntry.CounterText;
+                renderData.TooltipStateText = buffEntry.TooltipStateText;
                 renderData.DurationMs = buffEntry.DurationMs;
                 renderData.SortOrder = buffEntry.SortOrder;
                 renderData.FamilyDisplayName = buffEntry.FamilyDisplayName;
@@ -35492,7 +35572,11 @@ namespace HaCreator.MapSimulator
                 {
                     if (message.Scope == PartyRaidPacketScope.Session)
                     {
-                        TryApplyPendingPortalSessionValueImpact(message.Key, message.Value);
+                        TryApplyPendingPortalSessionValueImpact(
+                            message.Key,
+                            message.Value,
+                            PartyRaidField.ClientSessionValuePacketType,
+                            PacketFieldSpecificDataOwnerHint.Session);
                     }
                     else if (message.Scope == PartyRaidPacketScope.Packet)
                     {

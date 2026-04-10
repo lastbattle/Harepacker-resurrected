@@ -820,6 +820,15 @@ namespace HaCreator.MapSimulator.Pools
                     ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 100)));
             }
 
+            if (ContainsToken(hostileSearchText, "amplifyDamage"))
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.PainMark,
+                    durationMs,
+                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 10),
+                    TickIntervalMs: 1000));
+            }
+
             return statuses;
         }
 

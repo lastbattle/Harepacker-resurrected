@@ -64,8 +64,8 @@ namespace HaCreator.MapSimulator.Interaction
                     5 => CreateDecodedResult(DecodeAskMenu(reader, speaker, param)),
                     6 => DecodeAskQuiz(reader, speaker, param),
                     7 => DecodeAskSpeedQuiz(reader, speaker, param),
-                    8 => CreateDecodedResult(DecodeAskAvatar(reader, speaker, param, false)),
-                    9 => CreateDecodedResult(DecodeAskAvatar(reader, speaker, param, true)),
+                    8 => DecodeAskAvatar(reader, speaker, param, false),
+                    9 => DecodeAskAvatar(reader, speaker, param, true),
                     10 => DecodeAskPet(reader, speaker, param, false, resolveSelectablePet),
                     11 => DecodeAskPet(reader, speaker, param, true, resolveSelectablePet),
                     12 => DecodeIgnoredUnsupportedMessage(reader, speaker, messageType, param),
@@ -290,7 +290,7 @@ namespace HaCreator.MapSimulator.Interaction
                 choices);
         }
 
-        private static NpcInteractionEntry DecodeAskAvatar(BinaryReader reader, PacketScriptSpeaker speaker, byte param, bool isMembershopAvatar)
+        private static PacketScriptDecodeResult DecodeAskAvatar(BinaryReader reader, PacketScriptSpeaker speaker, byte param, bool isMembershopAvatar)
         {
             string rawText = ReadMapleString(reader);
             int count = reader.ReadByte();
@@ -310,15 +310,24 @@ namespace HaCreator.MapSimulator.Interaction
                 ? "No avatar options were decoded from the packet payload."
                 : string.Join("\n", optionItemIds.Select((itemId, index) => $"{index + 1}. {DescribeAvatarOption(itemId)}"));
 
-            return CreateEntry(
+            NpcInteractionEntry entry = CreateEntry(
                 isMembershopAvatar ? "Member Shop Avatar" : "Avatar Selection",
                 BuildSpeakerSubtitle(speaker, isMembershopAvatar ? "AskMembershopAvatar" : "AskAvatar", param),
                 rawText,
                 AppendMetadata(
                     NpcDialogueTextFormatter.Format(rawText),
                     optionDetails,
-                    $"Client `CUtilDlgEx::SetUtilDlgEx_AVATAR` opened {optionItemIds.Count} indexed avatar option(s)."),
+                    $"Client `CUtilDlgEx::SetUtilDlgEx_AVATAR` opened {optionItemIds.Count} indexed avatar option(s).",
+                    "WZ data exposes the packet-owned avatar utility surface under `UIWindow(.img|2.img)/UtilDlgEx_Avatar`."),
                 choices);
+            return CreateDecodedResult(
+                entry,
+                dedicatedOwner: CreateDedicatedOwner(
+                    isMembershopAvatar ? PacketScriptDedicatedOwnerKind.MembershopAvatarSelection : PacketScriptDedicatedOwnerKind.AvatarSelection,
+                    isMembershopAvatar ? "Member Shop Avatar" : "Avatar Selection",
+                    rawText,
+                    entry.Pages.Count > 0 ? entry.Pages[0].Text : string.Empty,
+                    choices));
         }
 
         private static PacketScriptDecodeResult DecodeAskQuiz(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
@@ -1736,6 +1745,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal enum PacketScriptDedicatedOwnerKind
         {
+            AvatarSelection,
+            MembershopAvatarSelection,
             SlideMenu,
             PetSelection,
             MultiPetSelection

@@ -467,7 +467,9 @@ namespace HaCreator.MapSimulator.Effects
                     color);
             }
             else if (visual.MissSprite is PreparedSpriteDrawInfo missSprite
-                && smallDigitSet.SpecialTextures.TryGetValue(missSprite.SpriteName, out var missTexture))
+                && ResolveSpecialTextDigitSet(smallDigitSet)?.SpecialTextures.TryGetValue(
+                    missSprite.SpriteName,
+                    out var missTexture) == true)
             {
                 spriteBatch.Draw(
                     missTexture,
@@ -1086,13 +1088,6 @@ namespace HaCreator.MapSimulator.Effects
             int canvasWidth = visual.CanvasWidth;
             int canvasHeight = visual.CanvasHeight;
 
-            if (visual.MissSprite is PreparedSpriteDrawInfo missSprite
-                && specialTextDigitSet?.SpecialTextures.TryGetValue(missSprite.SpriteName, out Texture2D missTexture) == true)
-            {
-                canvasWidth = Math.Max(canvasWidth, missTexture.Width);
-                canvasHeight = Math.Max(canvasHeight, missTexture.Height);
-            }
-
             if (canvasWidth <= 0 || canvasHeight <= 0)
                 return null;
 
@@ -1117,7 +1112,7 @@ namespace HaCreator.MapSimulator.Effects
                 RasterizerState.CullNone);
 
                 if (visual.MissSprite is PreparedSpriteDrawInfo preparedMiss
-                    && specialTextDigitSet?.SpecialTextures.TryGetValue(preparedMiss.SpriteName, out missTexture) == true)
+                    && specialTextDigitSet?.SpecialTextures.TryGetValue(preparedMiss.SpriteName, out Texture2D missTexture) == true)
                 {
                     compositeBatch.Draw(
                         missTexture,

@@ -5,6 +5,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal static class AdminShopDialogClientParityText
     {
         internal const int OpenRejectedStringPoolId = 0x1238;
+        internal const int WishlistClosePromptStringPoolId = 0x1237;
         internal const int SharedRetryStringPoolId = 0x1239;
         internal const int RequestRejectedStringPoolId = 0x123A;
         internal const int ListingUnavailableStringPoolId = 0x123B;
@@ -20,6 +21,14 @@ namespace HaCreator.MapSimulator.Interaction
             return MapleStoryStringPool.GetOrFallback(
                 OpenRejectedStringPoolId,
                 "Admin-shop open was rejected (StringPool 0x1238).",
+                appendFallbackSuffix: true);
+        }
+
+        internal static string GetWishlistClosePrompt()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                WishlistClosePromptStringPoolId,
+                "Would you like to open the admin-shop wish list before closing? (StringPool 0x1237).",
                 appendFallbackSuffix: true);
         }
 

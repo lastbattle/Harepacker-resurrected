@@ -110,8 +110,10 @@ namespace HaCreator.MapSimulator.Managers
 
         internal void Open(bool firstEntry)
         {
+            ResetDraftToClientDefaults();
             _isOpen = true;
             _isFirstEntry = firstEntry;
+            _hasLoadedProfile = false;
             _loadPending = true;
             _savePending = false;
             _statusText = firstEntry
@@ -196,11 +198,17 @@ namespace HaCreator.MapSimulator.Managers
             _playStyleMask = BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(9, 4));
             _activityMask = BinaryPrimitives.ReadUInt32LittleEndian(payload.AsSpan(13, 4));
 
-            _areaGroup = (int)(area & 0xFF);
-            _areaDetail = (int)((area >> 8) & 0xFF);
-            _birthYear = ClampBirthYear((int)(birthday / 10000));
-            _birthMonth = Math.Clamp((int)((birthday / 100) % 100), 1, 12);
-            _birthDay = Math.Clamp((int)(birthday % 100), 1, DateTime.DaysInMonth(_birthYear, _birthMonth));
+            int requestedAreaGroup = (int)(area & 0xFF);
+            int requestedAreaDetail = (int)((area >> 8) & 0xFF);
+            int requestedBirthYear = (int)(birthday / 10000);
+            int requestedBirthMonth = (int)((birthday / 100) % 100);
+            int requestedBirthDay = (int)(birthday % 100);
+
+            _areaGroup = ResolveLoadedAreaGroup(requestedAreaGroup);
+            _areaDetail = ResolveLoadedAreaDetail(_areaGroup, requestedAreaDetail);
+            _birthYear = ResolveLoadedBirthYear(requestedBirthYear);
+            _birthMonth = ResolveLoadedBirthMonth(requestedBirthMonth);
+            _birthDay = ResolveLoadedBirthDay(_birthYear, _birthMonth, requestedBirthDay);
             _hasLoadedProfile = true;
             _loadPending = false;
             _savePending = false;
@@ -424,6 +432,48 @@ namespace HaCreator.MapSimulator.Managers
                 .ToArray();
         }
 
+        internal static int SelectClientComboItemParamForLoad(int requestedValue, IReadOnlyList<int> itemParams, int fallbackValue = 0)
+        {
+            if (itemParams == null || itemParams.Count == 0)
+            {
+                return fallbackValue;
+            }
+
+            foreach (int itemParam in itemParams)
+            {
+                if (itemParam == requestedValue)
+                {
+                    return itemParam;
+                }
+            }
+
+            return fallbackValue;
+        }
+
+        internal static int ResolveLoadedBirthYear(int requestedYear)
+        {
+            return requestedYear >= GetMinimumBirthYear() && requestedYear <= DateTime.Now.Year
+                ? requestedYear
+                : GetDefaultBirthYear();
+        }
+
+        internal static int ResolveLoadedBirthMonth(int requestedMonth)
+        {
+            return requestedMonth >= 1 && requestedMonth <= 12
+                ? requestedMonth
+                : 1;
+        }
+
+        internal static int ResolveLoadedBirthDay(int resolvedYear, int resolvedMonth, int requestedDay)
+        {
+            int safeYear = ResolveLoadedBirthYear(resolvedYear);
+            int safeMonth = ResolveLoadedBirthMonth(resolvedMonth);
+            int maxDay = DateTime.DaysInMonth(safeYear, safeMonth);
+            return requestedDay >= 1 && requestedDay <= maxDay
+                ? requestedDay
+                : 1;
+        }
+
         private static int Wrap(int value, int minInclusive, int maxInclusive)
         {
             if (minInclusive >= maxInclusive)
@@ -455,6 +505,17 @@ namespace HaCreator.MapSimulator.Managers
         private static int ClampBirthYear(int year)
         {
             return Math.Clamp(year, GetMinimumBirthYear(), DateTime.Now.Year);
+        }
+
+        private void ResetDraftToClientDefaults()
+        {
+            _areaGroup = 0;
+            _areaDetail = 0;
+            _birthYear = GetDefaultBirthYear();
+            _birthMonth = 1;
+            _birthDay = 1;
+            _playStyleMask = 0;
+            _activityMask = 0;
         }
 
         private static void EnsureCountryNameCatalogLoaded()
@@ -652,6 +713,27 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return itemParams[Wrap(currentIndex + delta, 0, itemParams.Count - 1)];
+        }
+
+        private static int ResolveLoadedAreaGroup(int requestedAreaGroup)
+        {
+            EnsureCountryNameCatalogLoaded();
+            return _hasCountryNameCatalogData
+                ? SelectClientComboItemParamForLoad(requestedAreaGroup, _areaGroupItemParams)
+                : requestedAreaGroup;
+        }
+
+        private static int ResolveLoadedAreaDetail(int selectedAreaGroup, int requestedAreaDetail)
+        {
+            EnsureCountryNameCatalogLoaded();
+            if (!_hasCountryNameCatalogData)
+            {
+                return requestedAreaDetail;
+            }
+
+            return _areaDetailItemParams.TryGetValue(selectedAreaGroup, out IReadOnlyList<int> itemParams)
+                ? SelectClientComboItemParamForLoad(requestedAreaDetail, itemParams)
+                : 0;
         }
 
         private static bool TryGetCountryNameEntry(WzImageProperty child, out int id, out string name)

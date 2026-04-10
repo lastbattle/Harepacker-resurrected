@@ -64,13 +64,18 @@ namespace HaCreator.MapSimulator
 
         internal static IEnumerable<string> EnumerateNpcActionCandidates(int? shopActionId)
         {
+            return EnumerateNpcActionCandidates(shopActionId, source: null);
+        }
+
+        internal static IEnumerable<string> EnumerateNpcActionCandidates(int? shopActionId, WzImage source)
+        {
             int clientShopAction = shopActionId.GetValueOrDefault();
             if (clientShopAction <= 0)
             {
                 clientShopAction = 1;
             }
 
-            foreach (string candidate in NpcClientActionSetLoader.EnumerateClientActionNameCandidates(clientShopAction))
+            foreach (string candidate in NpcClientActionSetLoader.EnumerateClientActionNameCandidates(clientShopAction, source))
             {
                 yield return candidate;
             }
@@ -89,7 +94,8 @@ namespace HaCreator.MapSimulator
         internal static string ResolvePreferredNpcAction(
             int? shopActionId,
             IEnumerable<string> availableActions,
-            IEnumerable<string> speakFallbackActions)
+            IEnumerable<string> speakFallbackActions,
+            WzImage source = null)
         {
             List<string> availableActionOrder = availableActions?
                 .Where(static action => !string.IsNullOrWhiteSpace(action))
@@ -103,9 +109,16 @@ namespace HaCreator.MapSimulator
 
             if (shopActionId.GetValueOrDefault() > 0)
             {
+                IReadOnlyList<string> clientTemplateActionOrder =
+                    NpcClientActionSetLoader.BuildClientTemplateActionOrder(source);
+                if (clientTemplateActionOrder.Count == 0)
+                {
+                    clientTemplateActionOrder = availableActionOrder;
+                }
+
                 foreach (string candidate in NpcClientActionSetLoader.EnumerateClientActionNameCandidates(
                              shopActionId.Value,
-                             availableActionOrder))
+                             clientTemplateActionOrder))
                 {
                     if (!string.IsNullOrWhiteSpace(candidate)
                         && availableActionMap.TryGetValue(candidate, out string resolvedCandidate))
@@ -208,25 +221,36 @@ namespace HaCreator.MapSimulator
             int renderWidth,
             int renderHeight,
             int viewportPadding,
-            int cursorGap)
+            int cursorGap,
+            IReadOnlyList<Point> tooltipFrameOrigins = null,
+            IReadOnlyList<Point> tooltipFrameSizes = null)
         {
-            Rectangle[] candidates =
-            {
-                new(anchorPoint.X, anchorPoint.Y, tooltipWidth, tooltipHeight),
-                new(anchorPoint.X - tooltipWidth, anchorPoint.Y, tooltipWidth, tooltipHeight),
-                new(anchorPoint.X, anchorPoint.Y - tooltipHeight - cursorGap, tooltipWidth, tooltipHeight),
-                new(anchorPoint.X - tooltipWidth, anchorPoint.Y - tooltipHeight - cursorGap, tooltipWidth, tooltipHeight)
-            };
+            (Rectangle Rect, int FrameIndex)[] candidates = TryBuildOriginAwareHoverCandidates(
+                anchorPoint,
+                tooltipWidth,
+                tooltipHeight,
+                cursorGap,
+                tooltipFrameOrigins,
+                tooltipFrameSizes,
+                out (Rectangle Rect, int FrameIndex)[] originAwareCandidates)
+                ? originAwareCandidates
+                : new[]
+                {
+                    (new Rectangle(anchorPoint.X, anchorPoint.Y, tooltipWidth, tooltipHeight), 1),
+                    (new Rectangle(anchorPoint.X - tooltipWidth, anchorPoint.Y, tooltipWidth, tooltipHeight), 2),
+                    (new Rectangle(anchorPoint.X, anchorPoint.Y - tooltipHeight - cursorGap, tooltipWidth, tooltipHeight), 1),
+                    (new Rectangle(anchorPoint.X - tooltipWidth, anchorPoint.Y - tooltipHeight - cursorGap, tooltipWidth, tooltipHeight), 0)
+                };
 
-            Rectangle bestRect = candidates[0];
-            int bestFrame = ResolveHoverTooltipFrameIndex(anchorPoint, bestRect);
+            Rectangle bestRect = candidates[0].Rect;
+            int bestFrame = candidates[0].FrameIndex;
             int bestOverflow = int.MaxValue;
 
             for (int i = 0; i < candidates.Length; i++)
             {
-                Rectangle candidate = candidates[i];
+                Rectangle candidate = candidates[i].Rect;
                 int overflow = ComputeTooltipOverflow(candidate, renderWidth, renderHeight, viewportPadding);
-                int frameIndex = ResolveHoverTooltipFrameIndex(anchorPoint, candidate);
+                int frameIndex = candidates[i].FrameIndex;
                 if (overflow == 0)
                 {
                     return new HoverTooltipPlacement(candidate, frameIndex);
@@ -443,17 +467,70 @@ namespace HaCreator.MapSimulator
             return zeroCount >= payload.Length / 4;
         }
 
-        private static int ResolveHoverTooltipFrameIndex(Point anchorPoint, Rectangle rect)
+        private static bool TryBuildOriginAwareHoverCandidates(
+            Point anchorPoint,
+            int tooltipWidth,
+            int tooltipHeight,
+            int cursorGap,
+            IReadOnlyList<Point> tooltipFrameOrigins,
+            IReadOnlyList<Point> tooltipFrameSizes,
+            out (Rectangle Rect, int FrameIndex)[] candidates)
         {
-            bool drawsLeftOfAnchor = rect.X < anchorPoint.X;
-            bool drawsBelowAnchor = rect.Y >= anchorPoint.Y;
-
-            if (drawsLeftOfAnchor)
+            candidates = null;
+            if (!TryGetTooltipFrameLayout(tooltipFrameOrigins, tooltipFrameSizes, 0, out Point leftOrigin, out Point leftSize)
+                || !TryGetTooltipFrameLayout(tooltipFrameOrigins, tooltipFrameSizes, 1, out Point rightOrigin, out Point rightSize))
             {
-                return drawsBelowAnchor ? 2 : 0;
+                return false;
             }
 
-            return 1;
+            Point aboveAnchorPoint = new(anchorPoint.X, anchorPoint.Y - tooltipHeight - cursorGap);
+            candidates = new (Rectangle Rect, int FrameIndex)[]
+            {
+                (CreateTooltipRectFromFrameOrigin(anchorPoint, tooltipWidth, tooltipHeight, rightOrigin, rightSize), 1),
+                (CreateTooltipRectFromFrameOrigin(anchorPoint, tooltipWidth, tooltipHeight, leftOrigin, leftSize), 0),
+                (CreateTooltipRectFromFrameOrigin(aboveAnchorPoint, tooltipWidth, tooltipHeight, rightOrigin, rightSize), 1),
+                (CreateTooltipRectFromFrameOrigin(aboveAnchorPoint, tooltipWidth, tooltipHeight, leftOrigin, leftSize), 0)
+            };
+            return true;
+        }
+
+        private static bool TryGetTooltipFrameLayout(
+            IReadOnlyList<Point> tooltipFrameOrigins,
+            IReadOnlyList<Point> tooltipFrameSizes,
+            int frameIndex,
+            out Point origin,
+            out Point size)
+        {
+            origin = Point.Zero;
+            size = Point.Zero;
+            if (tooltipFrameOrigins == null
+                || tooltipFrameSizes == null
+                || frameIndex < 0
+                || frameIndex >= tooltipFrameOrigins.Count
+                || frameIndex >= tooltipFrameSizes.Count)
+            {
+                return false;
+            }
+
+            origin = tooltipFrameOrigins[frameIndex];
+            size = tooltipFrameSizes[frameIndex];
+            return origin != Point.Zero && size.X > 0 && size.Y > 0;
+        }
+
+        private static Rectangle CreateTooltipRectFromFrameOrigin(
+            Point anchorPoint,
+            int tooltipWidth,
+            int tooltipHeight,
+            Point origin,
+            Point frameSize)
+        {
+            float scaleX = frameSize.X > 0 ? tooltipWidth / (float)frameSize.X : 1f;
+            float scaleY = frameSize.Y > 0 ? tooltipHeight / (float)frameSize.Y : 1f;
+            return new Rectangle(
+                anchorPoint.X - (int)Math.Round(origin.X * scaleX),
+                anchorPoint.Y - (int)Math.Round(origin.Y * scaleY),
+                tooltipWidth,
+                tooltipHeight);
         }
 
         private static int ComputeTooltipOverflow(Rectangle rect, int renderWidth, int renderHeight, int viewportPadding)

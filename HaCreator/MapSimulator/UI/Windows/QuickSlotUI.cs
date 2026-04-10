@@ -768,8 +768,10 @@ namespace HaCreator.MapSimulator.UI
             string itemName = metadata.ItemName;
             string typeLine = metadata.TypeName;
             string countLine = itemCount > 0 ? $"Quantity: {itemCount}" : string.Empty;
-            string stackLine = InventoryItemMetadataResolver.TryResolveMaxStackForItem(itemId, out int maxStackSize) && maxStackSize > 1
-                ? $"Stack Max: {maxStackSize}"
+            string stackLine = !InventoryItemMetadataResolver.HasStackLimitMetadataLine(metadata.MetadataLines)
+                               && InventoryItemMetadataResolver.TryResolveMaxStackForItem(itemId, out int maxStackSize)
+                               && maxStackSize > 1
+                ? InventoryItemMetadataResolver.FormatStackLimitMetadataLine(maxStackSize)
                 : string.Empty;
             string description = metadata.Description;
             Texture2D itemTexture = ResolveQuickSlotItemTexture(itemId, inventoryType);

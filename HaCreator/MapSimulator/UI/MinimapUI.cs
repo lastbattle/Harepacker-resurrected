@@ -92,7 +92,7 @@ namespace HaCreator.MapSimulator.UI
         private bool _showNpcMarkers;
         private SpriteFont _tooltipFont;
         private Texture2D _tooltipPixelTexture;
-        private Rectangle _hoverTooltipAnchor = Rectangle.Empty;
+        private Point? _hoverTooltipAnchorPoint;
         private string _hoverTooltipText;
         private readonly List<string> _hoverTooltipLines = new();
         private float _hoverTooltipMaxWidth;
@@ -103,6 +103,11 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_PADDING = 8;
         private const int TOOLTIP_MARGIN = 10;
         private const int TOOLTIP_LINE_GAP = 2;
+        private const int ClientTooltipMouseOffset = 20;
+        private const int ClientMarkerHoverBoundsWidth = 5;
+        private const int ClientMarkerHoverBoundsHeight = 7;
+        private const int ClientMarkerHoverBoundsXOffset = -5;
+        private const int ClientMarkerHoverBoundsYOffset = -2;
         private const int ClientButtonIdMinimapState = 1000;
         private const int ClientButtonIdMinimapRestore = 1001;
         private const int ClientButtonIdMap = 1002;
@@ -317,7 +322,7 @@ namespace HaCreator.MapSimulator.UI
 
         public void ResetTransientHoverState()
         {
-            _hoverTooltipAnchor = Rectangle.Empty;
+            _hoverTooltipAnchorPoint = null;
             _hoverTooltipText = null;
             _hoverTooltipLines.Clear();
             _hoverTooltipMaxWidth = 0f;
@@ -1137,7 +1142,12 @@ namespace HaCreator.MapSimulator.UI
                     continue;
 
                 Rectangle hoverBounds = DrawMarkerWithDirectionOverlay(marker, minimapPoint, true, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
-                if (!hoverBounds.IsEmpty)
+                Rectangle clientHoverBounds = GetClientMarkerHoverBounds(marker, minimapPoint);
+                if (!clientHoverBounds.IsEmpty)
+                {
+                    AddHoverTarget(npc, clientHoverBounds);
+                }
+                else if (!hoverBounds.IsEmpty)
                 {
                     AddHoverTarget(npc, hoverBounds);
                 }
@@ -1162,7 +1172,12 @@ namespace HaCreator.MapSimulator.UI
 
                 Point minimapPoint = WorldToMinimap(portal.PortalInstance.X, portal.PortalInstance.Y);
                 Rectangle hoverBounds = DrawMarkerWithDirectionOverlay(_portalMarker, minimapPoint, true, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
-                if (!hoverBounds.IsEmpty)
+                Rectangle clientHoverBounds = GetClientMarkerHoverBounds(_portalMarker, minimapPoint);
+                if (!clientHoverBounds.IsEmpty)
+                {
+                    AddHoverTarget(portal, clientHoverBounds);
+                }
+                else if (!hoverBounds.IsEmpty)
                 {
                     AddHoverTarget(portal, hoverBounds);
                 }
@@ -1324,7 +1339,12 @@ namespace HaCreator.MapSimulator.UI
 
                 Point minimapPoint = WorldToMinimap((int)employee.WorldX, (int)employee.WorldY);
                 Rectangle hoverBounds = DrawMarkerWithDirectionOverlay(marker, minimapPoint, employee.ShowDirectionOverlay, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
-                if (!hoverBounds.IsEmpty && !string.IsNullOrWhiteSpace(employee.TooltipText))
+                Rectangle clientHoverBounds = GetClientMarkerHoverBounds(marker, minimapPoint);
+                if (!clientHoverBounds.IsEmpty && !string.IsNullOrWhiteSpace(employee.TooltipText))
+                {
+                    AddHoverTarget(employee.TooltipText, clientHoverBounds);
+                }
+                else if (!hoverBounds.IsEmpty && !string.IsNullOrWhiteSpace(employee.TooltipText))
                 {
                     AddHoverTarget(employee.TooltipText, hoverBounds);
                 }
@@ -1458,7 +1478,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                SetHoveredTooltip(tooltipText, hoverTarget.Bounds);
+                SetHoveredTooltip(tooltipText, ResolveTooltipAnchorPointForTesting(mouseState.X, mouseState.Y));
                 return true;
             }
 
@@ -1492,6 +1512,18 @@ namespace HaCreator.MapSimulator.UI
                 frame.Height);
 
             return ResolveCollapsedHoverBoundsForTesting(rect, _bIsCollapsedState);
+        }
+
+        private Rectangle GetClientMarkerHoverBounds(BaseDXDrawableItem marker, Point minimapPoint)
+        {
+            if (marker == null || !IsWithinMinimapImage(minimapPoint))
+            {
+                return Rectangle.Empty;
+            }
+
+            return ResolveClientMarkerHoverBoundsForTesting(
+                Position.X + marker.Position.X + minimapPoint.X,
+                Position.Y + marker.Position.Y + minimapPoint.Y);
         }
 
         private void ResetHoverTargets()
@@ -1571,7 +1603,23 @@ namespace HaCreator.MapSimulator.UI
             return null;
         }
 
-        private void SetHoveredTooltip(string tooltipText, Rectangle anchor)
+        internal static Rectangle ResolveClientMarkerHoverBoundsForTesting(int markerScreenX, int markerScreenY)
+        {
+            return new Rectangle(
+                markerScreenX + ClientMarkerHoverBoundsXOffset,
+                markerScreenY + ClientMarkerHoverBoundsYOffset,
+                ClientMarkerHoverBoundsWidth,
+                ClientMarkerHoverBoundsHeight);
+        }
+
+        internal static Point ResolveTooltipAnchorPointForTesting(int mouseX, int mouseY)
+        {
+            return new Point(
+                mouseX + ClientTooltipMouseOffset,
+                mouseY + ClientTooltipMouseOffset);
+        }
+
+        private void SetHoveredTooltip(string tooltipText, Point anchorPoint)
         {
             if (string.IsNullOrWhiteSpace(tooltipText))
             {
@@ -1585,7 +1633,7 @@ namespace HaCreator.MapSimulator.UI
                 RefreshHoveredTooltipLayout();
             }
 
-            _hoverTooltipAnchor = anchor;
+            _hoverTooltipAnchorPoint = anchorPoint;
         }
 
         private void RefreshHoveredTooltipLayout()
@@ -1622,27 +1670,27 @@ namespace HaCreator.MapSimulator.UI
             if (_tooltipFont == null
                 || _tooltipPixelTexture == null
                 || string.IsNullOrWhiteSpace(_hoverTooltipText)
-                || _hoverTooltipAnchor.IsEmpty
+                || !_hoverTooltipAnchorPoint.HasValue
                 || _hoverTooltipVisibleLineCount == 0)
             {
                 return;
             }
 
+            Point tooltipAnchorPoint = _hoverTooltipAnchorPoint.Value;
             int lineHeight = _tooltipFont.LineSpacing;
             int tooltipWidth = (int)Math.Ceiling(_hoverTooltipMaxWidth) + (TOOLTIP_PADDING * 2);
             int tooltipHeight = (_hoverTooltipVisibleLineCount * lineHeight) + ((_hoverTooltipVisibleLineCount - 1) * TOOLTIP_LINE_GAP) + (TOOLTIP_PADDING * 2);
-            int tooltipX = _hoverTooltipAnchor.Right + TOOLTIP_MARGIN;
-            int tooltipY = _hoverTooltipAnchor.Top - 4;
+            int tooltipX = tooltipAnchorPoint.X;
+            int tooltipY = tooltipAnchorPoint.Y;
 
             if (tooltipX + tooltipWidth > renderWidth - TOOLTIP_MARGIN)
             {
-                tooltipX = _hoverTooltipAnchor.Left - tooltipWidth - TOOLTIP_MARGIN;
+                tooltipX = Math.Max(TOOLTIP_MARGIN, renderWidth - tooltipWidth - TOOLTIP_MARGIN);
             }
 
             if (tooltipX < TOOLTIP_MARGIN)
             {
-                tooltipX = Math.Max(TOOLTIP_MARGIN, Math.Min(_hoverTooltipAnchor.Left, renderWidth - tooltipWidth - TOOLTIP_MARGIN));
-                tooltipY = _hoverTooltipAnchor.Bottom + TOOLTIP_MARGIN;
+                tooltipX = TOOLTIP_MARGIN;
             }
 
             tooltipY = Math.Clamp(tooltipY, TOOLTIP_MARGIN, Math.Max(TOOLTIP_MARGIN, renderHeight - tooltipHeight - TOOLTIP_MARGIN));

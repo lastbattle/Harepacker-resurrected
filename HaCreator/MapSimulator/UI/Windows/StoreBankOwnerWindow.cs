@@ -343,15 +343,6 @@ namespace HaCreator.MapSimulator.UI
                 DrawClientStock(sprite, row, drawX, drawY);
                 DrawCashIcon(sprite, row, drawX, drawY);
 
-                string secondary = TrimToWidth(row.SecondaryText, RowWidth - RowPrimaryTextX - 8f, 0.52f);
-                InventoryRenderUtil.DrawOutlinedText(
-                    sprite,
-                    _font,
-                    secondary,
-                    new Vector2(drawX + RowPrimaryTextX, drawY + RowSecondaryTextY),
-                    new Color(198, 214, 233),
-                    0.52f);
-
                 DrawRowSeparator(sprite, drawX, drawY);
             }
         }

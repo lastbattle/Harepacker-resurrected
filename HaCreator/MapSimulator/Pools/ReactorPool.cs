@@ -2646,8 +2646,7 @@ namespace HaCreator.MapSimulator.Pools
                 ReactorRuntimeData data = GetReactorData(i);
                 if (reactor?.ReactorInstance == null
                     || data == null
-                    || data.PacketObjectId.HasValue
-                    || data.IsPacketOwned)
+                    || !CanAdoptPacketEnterOntoAuthoredReactor(data))
                 {
                     continue;
                 }
@@ -2682,6 +2681,16 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return TrySelectAuthoredReactorCandidateForPacketEnter(candidates, initialState, out index, out selectionReason);
+        }
+
+        internal static bool CanAdoptPacketEnterOntoAuthoredReactor(ReactorRuntimeData data)
+        {
+            return data != null
+                && !data.PacketObjectId.HasValue
+                && !data.IsPacketOwned
+                && data.State != ReactorState.Destroyed
+                && data.State != ReactorState.Respawning
+                && !data.PacketLeavePending;
         }
 
         internal static bool TrySelectAuthoredReactorCandidateForPacketEnter(

@@ -2952,6 +2952,39 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = "CBattleRecordMan owner closed locally.";
         }
 
+        internal string ClearInfo(int option)
+        {
+            switch (option)
+            {
+                case 0:
+                    TotalDamage = 0;
+                    TotalHits = 0;
+                    MaxDamage = 0;
+                    MinDamage = 0;
+                    LastDotDamage = 0;
+                    LastDotHitCount = 0;
+                    LastAttrRate = null;
+                    StatusMessage = "CBattleRecordMan cleared damage and DOT summary counters.";
+                    break;
+                case 1:
+                    LastDotDamage = 0;
+                    LastDotHitCount = 0;
+                    LastAttrRate = null;
+                    StatusMessage = "CBattleRecordMan cleared recovery and DOT-only summary counters.";
+                    break;
+                case 2:
+                    ResetSession(clearNotes: false);
+                    StatusMessage = "CBattleRecordMan cleared all battle-record counters.";
+                    break;
+                default:
+                    StatusMessage = $"CBattleRecordMan ignored unsupported clear option {option.ToString(CultureInfo.InvariantCulture)}.";
+                    break;
+            }
+
+            AppendNote(StatusMessage);
+            return StatusMessage;
+        }
+
         internal bool TryBuildRequestOnCalcOutboundRequest(bool enabled, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
         {
             request = new PacketOwnedNpcUtilityOutboundRequest(
@@ -3192,6 +3225,7 @@ namespace HaCreator.MapSimulator.Interaction
             LastDotDamage = 0;
             LastDotHitCount = 0;
             LastAttrRate = null;
+            _pageIndex = 0;
             _lastDecodedDotDamage = 0;
             _lastDecodedDotHitCount = 0;
             _lastDecodedAttrRate = null;

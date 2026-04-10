@@ -1888,7 +1888,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             window.RegisterActionButton(QuestWindowActionKind.Track, trackButton, !hasTrackArt);
             window.RegisterActionButton(QuestWindowActionKind.GiveUp, giveUpButton, !hasGiveUpArt);
-            window.RegisterActionButton(QuestWindowActionKind.LocateMob, markMobButton, legacyButtonSource?["BtMarkMob"] is not WzSubProperty);
+            window.RegisterActionButton(QuestWindowActionKind.QuestGuide, markMobButton, legacyButtonSource?["BtMarkMob"] is not WzSubProperty);
             window.RegisterActionButton(QuestWindowActionKind.QuestDeliveryAccept, deliveryAcceptButton, !hasDeliveryAcceptArt);
             window.RegisterActionButton(QuestWindowActionKind.QuestDeliveryComplete, deliveryCompleteButton, !hasDeliveryCompleteArt);
             window.RegisterNpcButton(QuestDetailNpcButtonStyle.GenericNpc, genericNpcButton, buttonSource?["BtNPC"] is not WzSubProperty);
