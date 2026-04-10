@@ -5,6 +5,7 @@ namespace HaCreator.MapSimulator.Fields
         bool AllowsTransferField,
         bool HasPendingSpecialTransfer,
         bool HasPendingPacketOwnedTransfer,
+        bool HasPendingSameMapTransfer,
         bool HasBlockingScriptedSequence);
 
     public readonly record struct PassiveTransferFieldReplayState(
@@ -21,6 +22,7 @@ namespace HaCreator.MapSimulator.Fields
                    && state.AllowsTransferField
                    && !state.HasPendingSpecialTransfer
                    && !state.HasPendingPacketOwnedTransfer
+                   && !state.HasPendingSameMapTransfer
                    && !state.HasBlockingScriptedSequence;
         }
 

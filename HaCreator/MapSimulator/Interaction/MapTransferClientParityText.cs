@@ -15,11 +15,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private const string RegisterListFullFallback = "Your teleport list is full.\r\nPlease delete an entry before trying again.";
         private const string CurrentMapAlreadyRegisteredFallback = "You have already entered this map.";
-        private const string NoEmptySlotFallback = "All saved teleport slots are already filled.";
+        private const string NoEmptySlotFallback = "You cannot go to that place.";
         private const string TargetUserFailureFallback = "That transfer target is unavailable.";
-        private const string AlreadyRegisteredFallback = "That map is already registered in this destination book.";
-        private const string CannotSaveDestinationFallback = "This destination cannot be saved in a teleport slot.";
-        private const string RequestRejectedFallback = "Map transfer request failed.";
+        private const string AlreadyRegisteredFallback = "It's the map you're currently on.";
+        private const string CannotSaveDestinationFallback = "This map is not available to enter for the list.";
+        private const string RequestRejectedFallback = "Users below level 7 are not allowed \r\nto go out from Maple Island.";
         private const string RegisterPromptFallback = "Will you enter this map\r\nin your teleport list?\r\n[{0}]";
         private const string DeletePromptFallback = "Will you delete this map from the\r\nteleport list?\r\n[{0}]";
         private const string MovePromptFallback = "Will you teleport to this map?\r\n[{0}]";

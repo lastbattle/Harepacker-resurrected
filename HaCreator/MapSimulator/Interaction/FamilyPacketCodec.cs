@@ -90,6 +90,64 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        internal static bool TryParsePayloadToken(string token, out byte[] payload, out string error)
+        {
+            payload = Array.Empty<byte>();
+            error = string.Empty;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                error = "Family packet payload is missing.";
+                return false;
+            }
+
+            const string payloadHexPrefix = "payloadhex=";
+            const string payloadBase64Prefix = "payloadb64=";
+            if (token.StartsWith(payloadHexPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                string hex = token[payloadHexPrefix.Length..].Trim();
+                if (hex.Length == 0 || (hex.Length % 2) != 0)
+                {
+                    error = "payloadhex= must contain an even-length hexadecimal byte string.";
+                    return false;
+                }
+
+                try
+                {
+                    payload = Convert.FromHexString(hex);
+                    return true;
+                }
+                catch (FormatException)
+                {
+                    error = "payloadhex= must contain only hexadecimal characters.";
+                    return false;
+                }
+            }
+
+            if (token.StartsWith(payloadBase64Prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                string base64 = token[payloadBase64Prefix.Length..].Trim();
+                if (base64.Length == 0)
+                {
+                    error = "payloadb64= must not be empty.";
+                    return false;
+                }
+
+                try
+                {
+                    payload = Convert.FromBase64String(base64);
+                    return true;
+                }
+                catch (FormatException)
+                {
+                    error = "payloadb64= must contain a valid base64 payload.";
+                    return false;
+                }
+            }
+
+            error = "Family packet payload must use payloadhex=.. or payloadb64=..";
+            return false;
+        }
+
         private ref struct PacketReader
         {
             private readonly ReadOnlySpan<byte> _payload;

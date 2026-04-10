@@ -764,7 +764,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             SkillData skill,
             SummonAssistType assistType,
             bool? preferHealFirstOverride = null,
-            string explicitBranchName = null)
+            string explicitBranchName = null,
+            int fallbackDurationMs = 0)
         {
             if (assistType != SummonAssistType.Support || skill == null)
             {
@@ -782,7 +783,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             return ResolveSupportSuspendDurationMs(
                        skill,
                        preferHealFirst,
-                       explicitBranchName) > 0;
+                       explicitBranchName) > 0
+                   || fallbackDurationMs > 0;
         }
 
         internal static bool ShouldClearSupportSuspend(ActiveSummon summon, int currentTime)
@@ -800,6 +802,36 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return summon?.SkillId == healingRobotSkillId
                    && ShouldClearSupportSuspend(summon, currentTime);
+        }
+
+        internal static bool HasActiveOneTimeActionPlayback(ActiveSummon summon, int currentTime)
+        {
+            if (summon?.OneTimeActionFallbackAnimation?.Frames.Count <= 0
+                || summon.OneTimeActionFallbackAnimationTime == int.MinValue)
+            {
+                return false;
+            }
+
+            int totalDuration = GetAnimationDuration(summon.OneTimeActionFallbackAnimation);
+            if (totalDuration <= 0)
+            {
+                return summon.OneTimeActionFallbackEndTime > currentTime;
+            }
+
+            int baseAnimationTime = Math.Max(0, summon.OneTimeActionFallbackAnimationTime);
+            int remainingDuration = Math.Max(0, totalDuration - Math.Min(baseAnimationTime, totalDuration));
+            if (remainingDuration <= 0)
+            {
+                return false;
+            }
+
+            int fallbackStartTime = summon.OneTimeActionFallbackStartTime == int.MinValue
+                ? currentTime
+                : summon.OneTimeActionFallbackStartTime;
+            int elapsed = Math.Max(0, currentTime - fallbackStartTime);
+            return elapsed < remainingDuration
+                   && (summon.OneTimeActionFallbackEndTime == int.MinValue
+                       || currentTime < summon.OneTimeActionFallbackEndTime);
         }
 
         internal static int? ResolveBeholderBuffBranchIndex(

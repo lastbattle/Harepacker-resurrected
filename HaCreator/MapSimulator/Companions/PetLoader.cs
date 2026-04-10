@@ -972,6 +972,31 @@ namespace HaCreator.MapSimulator.Companions
                 }
             }
 
+            string normalizedRequestedStem = PetActionAliases.NormalizeActionStem(requestedAction);
+            if (string.IsNullOrWhiteSpace(normalizedRequestedStem))
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty candidateProperty in candidateProperties)
+            {
+                if (candidateProperty == null ||
+                    string.IsNullOrWhiteSpace(candidateProperty.Name) ||
+                    !string.Equals(
+                        PetActionAliases.NormalizeActionStem(candidateProperty.Name),
+                        normalizedRequestedStem,
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                WzImageProperty resolvedProperty = ResolveActionProperty(candidateProperty);
+                if (resolvedProperty != null)
+                {
+                    return resolvedProperty;
+                }
+            }
+
             return null;
         }
 

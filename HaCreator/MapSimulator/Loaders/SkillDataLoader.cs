@@ -1054,6 +1054,12 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 label = "Magic ATT";
             }
+            else if (normalizedClause.Equals("att", StringComparison.Ordinal)
+                     || normalizedClause.StartsWith("att ", StringComparison.Ordinal)
+                     || normalizedClause.Contains(" att ", StringComparison.Ordinal))
+            {
+                label = "Weapon ATT";
+            }
             else if (normalizedClause.Contains("weapon def", StringComparison.Ordinal)
                      || normalizedClause.Contains("weapon defense", StringComparison.Ordinal))
             {

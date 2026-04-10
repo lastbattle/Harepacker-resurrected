@@ -101,7 +101,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 frame != null
                     ? ResolveFrameAlpha(frame, frameElapsedMs)
                     : 0f);
-            return frame != null;
+            return true;
         }
 
         public static SkillFrame ResolveFrame(

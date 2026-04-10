@@ -505,8 +505,13 @@ namespace HaCreator.MapSimulator
             int minutes = (remainingSeconds / 60) % 60;
             int seconds = remainingSeconds % 60;
             return showHours
-                ? string.Format(CultureInfo.InvariantCulture, "{0}:{1:00}:{2:00}", hours, minutes, seconds)
+                ? string.Format(CultureInfo.InvariantCulture, "{0:00}:{1:00}", hours, minutes)
                 : string.Format(CultureInfo.InvariantCulture, "{0:00}:{1:00}", minutes, seconds);
+        }
+
+        internal static string FormatPacketOwnedBossTimerTextForTest(int remainingSeconds, bool showHours)
+        {
+            return FormatPacketOwnedBossTimerText(remainingSeconds, showHours);
         }
 
         private void UpdatePacketOwnedFieldFeedbackUiAnimations(int currentTickCount)
@@ -2016,11 +2021,6 @@ namespace HaCreator.MapSimulator
             return TryApplyPacketOwnedFieldFeedbackPacket(kind, payload, out string message)
                 ? ChatCommandHandler.CommandResult.Ok(message)
                 : ChatCommandHandler.CommandResult.Error(message);
-        }
-
-        internal static string FormatPacketOwnedBossTimerTextForTest(int remainingSeconds, bool showHours)
-        {
-            return FormatPacketOwnedBossTimerText(remainingSeconds, showHours);
         }
 
         private static bool TryParsePacketFieldFeedbackKind(string value, out PacketFieldFeedbackPacketKind kind)

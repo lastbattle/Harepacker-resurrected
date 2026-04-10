@@ -172,6 +172,9 @@ namespace HaCreator.MapSimulator.Pools
         private const int RemoteShadowPartnerTransitionDurationMs = 200;
         private const int RemoteShadowPartnerAttackDelayMs = 90;
         private const int RemoteMovingShootNoPrepareAnimationSkillId = 33121009;
+        private const int RemoteReceiveHpGaugeWidth = 46;
+        private const int RemoteReceiveHpGaugeHeight = 5;
+        private const int RemoteReceiveHpGaugeVerticalPadding = 4;
         private static readonly int[] RemoteShadowPartnerSkillIds =
         {
             4111002,
@@ -286,6 +289,8 @@ namespace HaCreator.MapSimulator.Pools
         private int _helperMarkerCount;
         private CharacterLoader _loader;
         private SkillLoader _skillLoader;
+        private Texture2D _pixelTexture;
+        private GraphicsDevice _pixelTextureDevice;
 
         public int Count => _actorsById.Count;
         public IEnumerable<RemoteUserActor> Actors => _actorsById.Values;
@@ -912,6 +917,7 @@ namespace HaCreator.MapSimulator.Pools
             int registrationKey,
             SkillAnimation overlayAnimation,
             SkillAnimation underFaceAnimation,
+            int currentTime,
             out string message)
         {
             message = null;
@@ -929,7 +935,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
             {
-                ApplyTransientSkillUseAvatarEffect(actor, registrationKey, overlayAnimation, underFaceAnimation, Environment.TickCount);
+                ApplyTransientSkillUseAvatarEffect(actor, registrationKey, overlayAnimation, underFaceAnimation, currentTime);
                 return true;
             }
 
@@ -948,6 +954,22 @@ namespace HaCreator.MapSimulator.Pools
             });
             message = $"Queued transient skill-use avatar effect for remote character {characterId}.";
             return true;
+        }
+
+        public bool TryQueueTransientSkillUseAvatarEffect(
+            int characterId,
+            int registrationKey,
+            SkillAnimation overlayAnimation,
+            SkillAnimation underFaceAnimation,
+            out string message)
+        {
+            return TryQueueTransientSkillUseAvatarEffect(
+                characterId,
+                registrationKey,
+                overlayAnimation,
+                underFaceAnimation,
+                Environment.TickCount,
+                out message);
         }
 
         private static void ApplyTransientSkillUseAvatarEffect(
@@ -1876,6 +1898,48 @@ namespace HaCreator.MapSimulator.Pools
                 new Vector2(packet.PositionX, packet.PositionY),
                 currentTime));
             message = $"Remote user {packet.CharacterId} upgrade tomb effect registered at ({packet.PositionX}, {packet.PositionY}).";
+            return true;
+        }
+
+        public bool TryApplyReceiveHp(RemoteUserReceiveHpPacket packet, out string message)
+        {
+            message = null;
+            if (!_actorsById.TryGetValue(packet.CharacterId, out RemoteUserActor actor))
+            {
+                message = $"Remote user {packet.CharacterId} is not active.";
+                return false;
+            }
+
+            if (packet.MaxHp <= 0)
+            {
+                message = $"Remote user {packet.CharacterId} receive-HP max HP {packet.MaxHp} is invalid.";
+                return false;
+            }
+
+            int currentHp = Math.Clamp(packet.CurrentHp, 0, packet.MaxHp);
+            actor.PartyCurrentHp = currentHp;
+            actor.PartyMaxHp = packet.MaxHp;
+            actor.PartyHpPercent = Math.Clamp((currentHp * 100) / packet.MaxHp, 0, 100);
+            actor.PartyHpGaugePos = Math.Clamp((RemoteReceiveHpGaugeWidth * currentHp) / packet.MaxHp, 0, RemoteReceiveHpGaugeWidth);
+            message = $"Remote user {packet.CharacterId} receive-HP gauge updated to {currentHp}/{packet.MaxHp}.";
+            return true;
+        }
+
+        public bool TryApplyThrowGrenade(RemoteUserThrowGrenadePacket packet, int currentTime, out string message)
+        {
+            message = null;
+            if (!_actorsById.TryGetValue(packet.CharacterId, out RemoteUserActor actor))
+            {
+                message = $"Remote user {packet.CharacterId} is not active.";
+                return false;
+            }
+
+            actor.LastThrowGrenadeSkillId = packet.SkillId;
+            actor.LastThrowGrenadeId = packet.GrenadeId;
+            actor.LastThrowGrenadeTarget = new Point(packet.X, packet.Y);
+            actor.LastThrowGrenadeKeyDownTime = packet.KeyDownTime;
+            actor.LastThrowGrenadePacketTime = currentTime;
+            message = $"Remote user {packet.CharacterId} throw-grenade packet stored for skill {packet.SkillId} at ({packet.X}, {packet.Y}).";
             return true;
         }
 
@@ -2851,6 +2915,9 @@ namespace HaCreator.MapSimulator.Pools
                     screenY,
                     tickCount);
 
+                float topY = screenY - frame.FeetOffset + frame.Bounds.Top;
+                DrawReceiveHpGauge(spriteBatch, actor, screenX, topY);
+
                 if (font == null)
                 {
                     continue;
@@ -2862,8 +2929,11 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                float topY = screenY - frame.FeetOffset + frame.Bounds.Top;
                 float labelTopY = topY - ((labelLines.Count * font.LineSpacing) + ((labelLines.Count - 1) * 2f)) - 10f;
+                if (actor.PartyHpGaugePos.HasValue)
+                {
+                    labelTopY -= RemoteReceiveHpGaugeHeight + RemoteReceiveHpGaugeVerticalPadding;
+                }
                 for (int lineIndex = 0; lineIndex < labelLines.Count; lineIndex++)
                 {
                     string line = labelLines[lineIndex];
@@ -2901,6 +2971,57 @@ namespace HaCreator.MapSimulator.Pools
                     DrawOutlinedText(spriteBatch, font, line, textPosition, Color.Black, textColor);
                 }
             }
+        }
+
+        private void DrawReceiveHpGauge(SpriteBatch spriteBatch, RemoteUserActor actor, int screenX, float topY)
+        {
+            if (spriteBatch?.GraphicsDevice == null
+                || actor?.PartyHpGaugePos is not int gaugePos)
+            {
+                return;
+            }
+
+            Texture2D pixelTexture = GetPixelTexture(spriteBatch.GraphicsDevice);
+            if (pixelTexture == null)
+            {
+                return;
+            }
+
+            int left = screenX - (RemoteReceiveHpGaugeWidth / 2);
+            int top = (int)Math.Round(topY) - RemoteReceiveHpGaugeHeight - RemoteReceiveHpGaugeVerticalPadding;
+            spriteBatch.Draw(
+                pixelTexture,
+                new Rectangle(left - 1, top - 1, RemoteReceiveHpGaugeWidth + 2, RemoteReceiveHpGaugeHeight + 2),
+                new Color(20, 20, 20, 210));
+            spriteBatch.Draw(
+                pixelTexture,
+                new Rectangle(left, top, RemoteReceiveHpGaugeWidth, RemoteReceiveHpGaugeHeight),
+                new Color(72, 32, 36, 220));
+
+            if (gaugePos > 0)
+            {
+                spriteBatch.Draw(
+                    pixelTexture,
+                    new Rectangle(left, top, gaugePos, RemoteReceiveHpGaugeHeight),
+                    new Color(208, 60, 70, 235));
+            }
+        }
+
+        private Texture2D GetPixelTexture(GraphicsDevice device)
+        {
+            if (device == null)
+            {
+                return null;
+            }
+
+            if (_pixelTexture == null || _pixelTexture.IsDisposed || !ReferenceEquals(_pixelTextureDevice, device))
+            {
+                _pixelTexture = new Texture2D(device, 1, 1);
+                _pixelTexture.SetData(new[] { Color.White });
+                _pixelTextureDevice = device;
+            }
+
+            return _pixelTexture;
         }
 
         private List<RemoteUserActor> BuildVisibleWorldActorBuffer()
@@ -7722,6 +7843,15 @@ namespace HaCreator.MapSimulator.Pools
         public RemoteUserActorPool.RemotePacketOwnedEmotionState PacketOwnedEmotion { get; set; }
         public List<RemoteUserActorPool.RemoteTransientSkillUseAvatarEffectState> TransientSkillUseAvatarEffects { get; } = new();
         public int MovingShootPreparedSkillId { get; set; }
+        public int? PartyCurrentHp { get; set; }
+        public int? PartyMaxHp { get; set; }
+        public int? PartyHpPercent { get; set; }
+        public int? PartyHpGaugePos { get; set; }
+        public int? LastThrowGrenadeSkillId { get; set; }
+        public int? LastThrowGrenadeId { get; set; }
+        public Point? LastThrowGrenadeTarget { get; set; }
+        public int LastThrowGrenadeKeyDownTime { get; set; }
+        public int LastThrowGrenadePacketTime { get; set; } = int.MinValue;
         public int? CarryItemEffectId { get; set; }
         public int CompletedSetItemId { get; set; }
         public Dictionary<EquipSlot, CharacterPart> BattlefieldOriginalEquipment { get; set; }

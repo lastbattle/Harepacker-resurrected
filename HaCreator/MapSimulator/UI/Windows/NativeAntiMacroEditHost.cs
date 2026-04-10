@@ -34,6 +34,7 @@ namespace HaCreator.MapSimulator.UI
         private const int WmChar = 0x0102;
         private const int WmKeyDown = 0x0100;
         private const int WmKeyUp = 0x0101;
+        private const int WmContextMenu = 0x007B;
         private const int WmCut = 0x0300;
         private const int WmClear = 0x0303;
         private const int WmUndo = 0x0304;
@@ -50,6 +51,10 @@ namespace HaCreator.MapSimulator.UI
         private const int VkReturn = 0x0D;
         private const int VkF1 = 0x70;
         private const int VkF12 = 0x7B;
+        private const int VkA = 0x41;
+        private const int VkY = 0x59;
+        private const int VkZ = 0x5A;
+        private const int VkControl = 0x11;
         private const int WmLButtonDown = 0x0201;
         private const int WmLButtonUp = 0x0202;
         private const int WmMouseMove = 0x0200;
@@ -597,6 +602,16 @@ namespace HaCreator.MapSimulator.UI
                 return IntPtr.Zero;
             }
 
+            if (ShouldSuppressClientUnsupportedEditShortcut(msg, wParam.ToInt32(), IsControlKeyDown()))
+            {
+                return IntPtr.Zero;
+            }
+
+            if (msg == WmUndo || msg == WmContextMenu)
+            {
+                return IntPtr.Zero;
+            }
+
             if ((msg == WmKeyDown || msg == WmKeyUp) && IsStagePassthroughVirtualKey(wParam.ToInt32()))
             {
                 ForwardKeyToParent(msg, wParam, lParam);
@@ -643,6 +658,24 @@ namespace HaCreator.MapSimulator.UI
         private static bool IsStagePassthroughVirtualKey(int virtualKey)
         {
             return virtualKey >= VkF1 && virtualKey <= VkF12;
+        }
+
+        internal static bool ShouldSuppressClientUnsupportedEditShortcut(uint msg, int virtualKey, bool controlHeld)
+        {
+            if (!controlHeld || msg != WmKeyDown)
+            {
+                return false;
+            }
+
+            // `CCtrlEdit::OnKey` handles Ctrl+C/V/X, but not the Win32 EDIT affordances
+            // for select-all or undo/redo. Keep those hosted-control extras out of the
+            // anti-macro seam so it stays closer to the recovered client widget path.
+            return virtualKey is VkA or VkY or VkZ;
+        }
+
+        private static bool IsControlKeyDown()
+        {
+            return (GetKeyState(VkControl) & 0x8000) != 0;
         }
 
         [DllImport("gdi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -694,6 +727,9 @@ namespace HaCreator.MapSimulator.UI
 
         [DllImport("user32.dll")]
         private static extern IntPtr GetFocus();
+
+        [DllImport("user32.dll")]
+        private static extern short GetKeyState(int nVirtKey);
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);

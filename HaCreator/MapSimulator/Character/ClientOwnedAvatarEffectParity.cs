@@ -60,9 +60,22 @@ namespace HaCreator.MapSimulator.Character
                    && PrefersUnderFaceAvatarEffectPlane(animation.PositionCode, animation.ZOrder);
         }
 
+        internal static bool PrefersUnderFaceAvatarEffectPlane(Skills.SkillAnimation animation, bool isClientMovementOwner)
+        {
+            return animation != null
+                   && PrefersUnderFaceAvatarEffectPlane(animation.PositionCode, animation.ZOrder, isClientMovementOwner);
+        }
+
         internal static bool PrefersUnderFaceAvatarEffectPlane(int? positionCode, int zOrder)
         {
-            return positionCode == FaceOwnedPlanePositionCode || zOrder < 0;
+            return PrefersUnderFaceAvatarEffectPlane(positionCode, zOrder, isClientMovementOwner: false);
+        }
+
+        internal static bool PrefersUnderFaceAvatarEffectPlane(int? positionCode, int zOrder, bool isClientMovementOwner)
+        {
+            return positionCode == FaceOwnedPlanePositionCode
+                   || zOrder < 0
+                   || (isClientMovementOwner && !positionCode.HasValue && zOrder == 0);
         }
 
         private static HashSet<string> BuildRotateSensitiveActionNames()

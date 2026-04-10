@@ -1223,7 +1223,7 @@ namespace HaCreator.MapSimulator.Interaction
                 BuildDecodedInventorySummary(),
                 BuildRetainedInventorySummary(),
                 HasPendingFeeCalculationRequest
-                    ? $"Pending BtGet fee request: owner row {_pendingFeeCalculationOwnerRowIndex.ToString(CultureInfo.InvariantCulture)}, packet row {_pendingFeeCalculationPacketRowIndex.ToString(CultureInfo.InvariantCulture)} (opcode 69, mode 26; selected row stays owner-local state)."
+                    ? $"Pending BtGet fee request: owner row {_pendingFeeCalculationOwnerRowIndex.ToString(CultureInfo.InvariantCulture)}, packet row {_pendingFeeCalculationPacketRowIndex.ToString(CultureInfo.InvariantCulture)} (client-confirmed immediate payload 69 [26]; selected row stays owner-local until the subtype-36 fee result)."
                     : "No BtGet fee request is currently staged.",
                 _hasAcceptedGetAllRequestInFlight
                     ? "Accepted get-all request is still in flight (opcode 69, mode 27), so BtGet remains disabled until the next packet-owned dialog update."
@@ -1423,12 +1423,12 @@ namespace HaCreator.MapSimulator.Interaction
             HasPendingFeeCalculationRequest = true;
             _pendingFeeCalculationOwnerRowIndex = ownerRowIndex + 1;
             _pendingFeeCalculationPacketRowIndex = selectedItem.PacketGroupRowIndex;
-            StatusMessage = $"CStoreBankDlg BtGet mirrored SendCalculateFeeRequest for selected row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}); the outbound payload stays opcode 69, mode 26 while the selected row remains owner-local state.";
+            StatusMessage = $"CStoreBankDlg BtGet mirrored SendCalculateFeeRequest for selected row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}); IDA confirms the immediate outbound body is only 69 [26], with the selected row retained in owner-local state until the subtype-36 fee result.";
             AppendNote(StatusMessage);
             request = new PacketOwnedNpcUtilityOutboundRequest(
                 69,
                 new byte[] { 26 },
-                $"Mirrored CStoreBankDlg::SendCalculateFeeRequest for owner row {_pendingFeeCalculationOwnerRowIndex.ToString(CultureInfo.InvariantCulture)} / packet row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}); the request body remains opcode 69, mode 26 with selection retained only in the owner state.");
+                $"Mirrored CStoreBankDlg::SendCalculateFeeRequest for owner row {_pendingFeeCalculationOwnerRowIndex.ToString(CultureInfo.InvariantCulture)} / packet row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}); client decompile 0x743f70 encodes only 69 [26], with selection retained in owner state until subtype 36.");
             message = StatusMessage;
             return true;
         }
@@ -1476,7 +1476,7 @@ namespace HaCreator.MapSimulator.Interaction
             else if (ownerRowIndex >= 0 && ownerRowIndex < _decodedItems.Count)
             {
                 StoreBankItemEntry selectedItem = _decodedItems[ownerRowIndex];
-                StatusMessage = $"CStoreBankDlg BtGet acknowledged selected row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}), but the native fee-result and retrieval follow-up after SendCalculateFeeRequest is still not modeled.";
+                StatusMessage = $"CStoreBankDlg BtGet acknowledged selected row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}); SendCalculateFeeRequest itself is the byte-accurate 69 [26] request, but the native fee-result retrieval follow-up is still not modeled.";
             }
             else if (HasDecodedItems)
             {

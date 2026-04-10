@@ -64,12 +64,14 @@ namespace HaCreator.MapSimulator.UI
             public int DiscountRate { get; init; }
         }
 
-        private sealed class GiftListPacketSnapshot
+        internal sealed class GiftListPacketSnapshot
         {
             public long SerialNumber { get; init; }
             public int ItemId { get; init; }
             public string Sender { get; init; } = string.Empty;
             public string Message { get; init; } = string.Empty;
+            public int RowIndex { get; init; }
+            public int AcceptRequestOpcode { get; init; } = 154;
         }
 
         private sealed class CashStatusSnapshot
@@ -957,7 +959,7 @@ namespace HaCreator.MapSimulator.UI
         private string ApplyCashItemResultPacket(byte[] payload)
         {
             byte[] packetPayload = payload ?? Array.Empty<byte>();
-            _cashItemResultSubtype = packetPayload.Length > 0 ? packetPayload[0] : -1;
+            _cashItemResultSubtype = packetPayload.Length > 0 ? unchecked((sbyte)packetPayload[0]) : -1;
             _cashItemMutationCount++;
             string subtypeLabel = GetCashItemResultSubtypeLabel(_cashItemResultSubtype);
             string summary = _cashItemResultSubtype switch

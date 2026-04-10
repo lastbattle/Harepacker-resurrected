@@ -14,6 +14,7 @@ namespace HaCreator.MapSimulator.Fields
     public static class FieldSkillRestrictionEvaluator
     {
         private const int RocketBoosterSkillId = 35101004;
+        private const int WildHunterSwallowAbsorbSkillId = 33101005;
 
         public sealed class RuntimeState
         {
@@ -170,6 +171,11 @@ namespace HaCreator.MapSimulator.Fields
                 if (IsClientForbiddenInUnableToUseSkillField(skill))
                 {
                     return "This skill is forbidden in this field.";
+                }
+
+                if (IsSwallowAbsorbSkill(skill))
+                {
+                    return "Swallow absorb cannot be used in this field.";
                 }
             }
 
@@ -467,6 +473,13 @@ namespace HaCreator.MapSimulator.Fields
         {
             return skill?.SkillId == RocketBoosterSkillId
                    || string.Equals(skill?.Name, "Rocket Booster", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsSwallowAbsorbSkill(SkillData skill)
+        {
+            // Client evidence: CUserLocal::TryDoingSwallowAbsorb checks
+            // CField::IsUnableToUseSkill directly before sending the absorb packet.
+            return skill?.SkillId == WildHunterSwallowAbsorbSkillId;
         }
 
         private static bool UsesTamingMobRestrictedSkill(SkillData skill)

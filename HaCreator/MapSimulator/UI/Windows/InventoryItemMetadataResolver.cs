@@ -1643,6 +1643,7 @@ namespace HaCreator.MapSimulator.UI
             AppendRandomChairEffectMetadataLines(metadataLines, infoProperty);
             AppendAdditionalExperienceMetadataLines(metadataLines, infoProperty);
             AppendLevelBandMetadataLines(metadataLines, infoProperty);
+            AppendBundleLimitMetadataLines(metadataLines, infoProperty);
             AppendLevelUpWarningMetadataLines(metadataLines, infoProperty);
             AppendRecipeMetadataLines(metadataLines, specProperty);
             AppendConditionalMapMetadataLines(metadataLines, specProperty);
@@ -2058,6 +2059,26 @@ namespace HaCreator.MapSimulator.UI
             if (levelRange > 0)
             {
                 metadataLines.Add($"Effective for {levelRange.ToString(CultureInfo.InvariantCulture)} level{(levelRange == 1 ? string.Empty : "s")}");
+            }
+        }
+
+        private static void AppendBundleLimitMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            int slotMax = GetIntOrStringValue(infoProperty["slotMax"]);
+            if (slotMax > 0)
+            {
+                metadataLines.Add($"Max per Slot: {slotMax.ToString("N0", CultureInfo.InvariantCulture)}");
+            }
+
+            int maxOwned = GetIntOrStringValue(infoProperty["max"]);
+            if (maxOwned > 0)
+            {
+                metadataLines.Add($"Max Owned: {maxOwned.ToString("N0", CultureInfo.InvariantCulture)}");
             }
         }
 

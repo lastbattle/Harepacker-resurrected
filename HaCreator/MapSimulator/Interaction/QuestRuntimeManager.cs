@@ -920,6 +920,19 @@ namespace HaCreator.MapSimulator.Interaction
             _questRecordValues[questId] = normalizedValue;
         }
 
+        public void ApplyPacketOwnedQuestRecordSnapshot(IReadOnlyDictionary<int, string> questRecordValues)
+        {
+            if (questRecordValues == null)
+            {
+                return;
+            }
+
+            foreach ((int questId, string value) in questRecordValues)
+            {
+                SetPacketOwnedQuestRecordValue(questId, value);
+            }
+        }
+
         public bool TryGetQuestRecordValue(int questId, out string value)
         {
             if (questId > 0 &&
@@ -1868,9 +1881,6 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         QuestId = item.Definition.QuestId,
                         Title = item.Definition.Name,
-                        TooltipText = QuestAlarmTextLayout.BuildTitleTooltipText(
-                            NpcDialogueTextFormatter.Format(item.Definition.DemandSummary, CreateDialogueFormattingContext(questId: item.Definition.QuestId)),
-                            issues),
                         StatusText = issues.Count == 0 ? "Ready" : "In progress",
                         CurrentProgress = currentProgress,
                         TotalProgress = totalProgress,
@@ -6114,7 +6124,7 @@ namespace HaCreator.MapSimulator.Interaction
                 TimeLimitSeconds = ParsePositiveInt(questInfo["timeLimit"]).GetValueOrDefault()
                                    + ParsePositiveInt(questInfo["timeLimit2"]).GetValueOrDefault(),
                 TimerUiKey = (questInfo["timerUI"] as WzStringProperty)?.Value ?? string.Empty,
-                ShowLayerTags = ParseLayerTags((questInfo["showLayerTag"] as WzStringProperty)?.Value),
+                ShowLayerTags = ParseLayerTags(questInfo["showLayerTag"]),
                 StartScriptNames = ParseScriptNames(startCheck?["startscript"]),
                 EndScriptNames = ParseScriptNames(endCheck?["endscript"]),
                 HasNormalAutoStart = ParseTruthyFlag(startCheck?["normalAutoStart"]),
@@ -6427,6 +6437,31 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        internal static IReadOnlyList<string> ParseLayerTags(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            var tags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            AddLayerTags(tags, ReadLayerTagText(property));
+
+            if (property.WzProperties != null)
+            {
+                for (int i = 0; i < property.WzProperties.Count; i++)
+                {
+                    IReadOnlyList<string> childTags = ParseLayerTags(property.WzProperties[i]);
+                    for (int childIndex = 0; childIndex < childTags.Count; childIndex++)
+                    {
+                        tags.Add(childTags[childIndex]);
+                    }
+                }
+            }
+
+            return tags.Count == 0 ? Array.Empty<string>() : tags.ToArray();
+        }
+
         private static IReadOnlyList<string> ParseLayerTags(string tags)
         {
             if (string.IsNullOrWhiteSpace(tags))
@@ -6436,6 +6471,32 @@ namespace HaCreator.MapSimulator.Interaction
 
             return tags
                 .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        }
+
+        private static void AddLayerTags(ISet<string> tags, string rawTags)
+        {
+            if (tags == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<string> parsedTags = ParseLayerTags(rawTags);
+            for (int i = 0; i < parsedTags.Count; i++)
+            {
+                tags.Add(parsedTags[i]);
+            }
+        }
+
+        private static string ReadLayerTagText(WzImageProperty property)
+        {
+            return property switch
+            {
+                WzStringProperty stringProperty => stringProperty.Value,
+                WzIntProperty intProperty => intProperty.Value.ToString(CultureInfo.InvariantCulture),
+                WzShortProperty shortProperty => shortProperty.Value.ToString(CultureInfo.InvariantCulture),
+                WzLongProperty longProperty => longProperty.Value.ToString(CultureInfo.InvariantCulture),
+                _ => property.GetString()
+            };
         }
 
         internal static IReadOnlyList<string> ParseScriptNames(WzImageProperty property)
@@ -7251,7 +7312,9 @@ namespace HaCreator.MapSimulator.Interaction
                 if (!string.IsNullOrWhiteSpace(text) || choices.Count > 0)
                 {
                     bool flipSpeaker = ResolveConversationFlipSpeaker(pageProperty) ||
-                        ResolveConversationFlipSpeaker(rootChoiceProperty);
+                        ResolveConversationFlipSpeaker(rootChoiceProperty) ||
+                        ResolveConversationFlipSpeaker(fallbackRootChoiceProperty) ||
+                        ShouldFlipStopSelectionPages(pageStopProperties);
                     pages[i] = new NpcInteractionPage
                     {
                         RawText = rawText ?? string.Empty,
@@ -10054,7 +10117,7 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestStateType.Not_Started => (QuestWindowActionKind.Accept, startIssues == null || startIssues.Count == 0, "Accept"),
                 QuestStateType.Started when completionIssues == null || completionIssues.Count == 0 =>
                     (QuestWindowActionKind.Complete, true, "Complete"),
-                QuestStateType.Started => (QuestWindowActionKind.Track, true, "Track"),
+                QuestStateType.Started => (QuestWindowActionKind.Track, IsClientQuestAlarmRegistrationCandidate(definition), "Track"),
                 _ => (QuestWindowActionKind.None, false, string.Empty)
             };
         }
@@ -10114,6 +10177,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (definition == null ||
                 state != QuestStateType.Started ||
+                IsClientQuestGuideSuppressedQuestId(definition.QuestId) ||
                 !TryGetQuestWorldMapTarget(definition.QuestId, build, out QuestWorldMapTarget target) ||
                 target == null)
             {
@@ -10317,6 +10381,59 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestDetailDeliveryType.Complete => QuestWindowActionKind.QuestDeliveryComplete,
                 _ => QuestWindowActionKind.None
             };
+        }
+
+        internal static bool IsClientQuestGuideSuppressedQuestId(int questId)
+        {
+            return questId >= 1200 && questId <= 1399;
+        }
+
+        private static bool IsClientQuestAlarmRegistrationCandidate(QuestDefinition definition)
+        {
+            return definition != null &&
+                   !IsClientQuestGuideSuppressedQuestId(definition.QuestId) &&
+                   HasClientQuestAlarmCompletionDemand(definition);
+        }
+
+        internal static bool HasClientQuestAlarmCompletionDemandForTesting(
+            int questId,
+            int endMobDemandCount,
+            int endItemDemandCount,
+            int endMesoDemand,
+            int endQuestDemandCount)
+        {
+            return !IsClientQuestGuideSuppressedQuestId(questId) &&
+                   HasClientQuestAlarmCompletionDemand(
+                       Math.Max(0, endMobDemandCount),
+                       Math.Max(0, endItemDemandCount),
+                       Math.Max(0, endMesoDemand),
+                       Math.Max(0, endQuestDemandCount));
+        }
+
+        private static bool HasClientQuestAlarmCompletionDemand(QuestDefinition definition)
+        {
+            if (definition == null)
+            {
+                return false;
+            }
+
+            return HasClientQuestAlarmCompletionDemand(
+                definition.EndMobRequirements?.Count ?? 0,
+                definition.EndItemRequirements?.Count ?? 0,
+                definition.EndMesoRequirement,
+                definition.EndQuestRequirements?.Count ?? 0);
+        }
+
+        private static bool HasClientQuestAlarmCompletionDemand(
+            int endMobDemandCount,
+            int endItemDemandCount,
+            int endMesoDemand,
+            int endQuestDemandCount)
+        {
+            return endMobDemandCount > 0 ||
+                   endItemDemandCount > 0 ||
+                   endMesoDemand > 0 ||
+                   endQuestDemandCount > 0;
         }
 
         private static string ResolveNpcName(int npcId)

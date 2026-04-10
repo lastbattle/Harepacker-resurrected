@@ -21,6 +21,8 @@ namespace HaCreator.MapSimulator
     {
         private const int ReviveOwnerSoulStoneSkillId = 22181003;
         private const int ReviveOwnerTransferFieldRequestOpcode = 41;
+        private const int ReviveOwnerUpgradeTombEffectOpcode = 58;
+        private const int ReviveOwnerUpgradeTombItemId = 5510000;
         private const byte ReviveOwnerSyntheticFieldKey = 0;
 
         private readonly ReviveOwnerRuntime _reviveOwnerRuntime = new();
@@ -71,6 +73,10 @@ namespace HaCreator.MapSimulator
             bool hasPremiumChoice = ReviveOwnerRuntime.HasPremiumChoiceForVariant(variant);
             string ownerLabel = ReviveOwnerRuntime.GetOwnerLabel(variant);
             Vector2 premiumRespawnPoint = ResolveCurrentFieldReviveRespawnPoint(variant, deathPoint);
+            if (variant == ReviveOwnerVariant.UpgradeTombChoice)
+            {
+                Debug.WriteLine(DispatchReviveOwnerUpgradeTombEffectRequest(premiumRespawnPoint, currentTick));
+            }
 
             string normalDetail = BuildDefaultReviveDetail(variant, ownerLabel, spawnPoint);
             string premiumDetail = hasPremiumChoice
@@ -611,6 +617,69 @@ namespace HaCreator.MapSimulator
             return $"{summary} The request remained simulator-owned because neither the live bridge nor the packet outbox accepted opcode {ReviveOwnerTransferFieldRequestOpcode}. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
         }
 
+        private string DispatchReviveOwnerUpgradeTombEffectRequest(Vector2 revivePoint, int currentTick)
+        {
+            RegisterReviveOwnerUpgradeTombEffect(revivePoint, currentTick);
+
+            if (!TryBuildReviveOwnerUpgradeTombEffectPayload(revivePoint, out byte[] payload))
+            {
+                return "Revive owner could not build the synthetic upgrade-tomb effect request payload.";
+            }
+
+            string payloadHex = Convert.ToHexString(payload);
+            string summary = $"Mirrored CUserLocal::RequestUpgradeTombEffect as opcode {ReviveOwnerUpgradeTombEffectOpcode} [{payloadHex}] with item {ReviveOwnerUpgradeTombItemId} at ({revivePoint.X:0}, {revivePoint.Y:0}).";
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                ReviveOwnerUpgradeTombEffectOpcode,
+                payload,
+                out string bridgeStatus))
+            {
+                return $"{summary} Dispatched it through the live official-session bridge. {bridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
+                ReviveOwnerUpgradeTombEffectOpcode,
+                payload,
+                out string outboxStatus))
+            {
+                return $"{summary} Dispatched it through the generic packet outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+            }
+
+            if (_localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    ReviveOwnerUpgradeTombEffectOpcode,
+                    payload,
+                    out string queuedBridgeStatus))
+            {
+                return $"{summary} Queued it for deferred official-session injection after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(
+                ReviveOwnerUpgradeTombEffectOpcode,
+                payload,
+                out string queuedOutboxStatus))
+            {
+                return $"{summary} Queued it for deferred generic packet outbox delivery after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
+            }
+
+            return $"{summary} The request remained simulator-owned because neither the live bridge nor the packet outbox accepted opcode {ReviveOwnerUpgradeTombEffectOpcode}. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+        }
+
+        private void RegisterReviveOwnerUpgradeTombEffect(Vector2 revivePoint, int currentTick)
+        {
+            if (_animationEffects == null || _tombFallFrames == null || _tombFallFrames.Count == 0)
+            {
+                return;
+            }
+
+            _animationEffects.AddOneTime(
+                _tombFallFrames,
+                revivePoint.X,
+                revivePoint.Y,
+                flip: false,
+                currentTick,
+                zOrder: 1);
+        }
+
         internal static bool TryBuildReviveOwnerTransferFieldPayload(bool premium, out byte[] payload)
         {
             try
@@ -623,6 +692,26 @@ namespace HaCreator.MapSimulator
                 writer.Write((byte)0);
                 writer.Write((byte)(premium ? 1 : 0));
                 writer.Write((byte)0);
+                writer.Flush();
+                payload = stream.ToArray();
+                return true;
+            }
+            catch
+            {
+                payload = Array.Empty<byte>();
+                return false;
+            }
+        }
+
+        internal static bool TryBuildReviveOwnerUpgradeTombEffectPayload(Vector2 revivePoint, out byte[] payload)
+        {
+            try
+            {
+                using var stream = new MemoryStream();
+                using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+                writer.Write(ReviveOwnerUpgradeTombItemId);
+                writer.Write((int)Math.Round(revivePoint.X));
+                writer.Write((int)Math.Round(revivePoint.Y));
                 writer.Flush();
                 payload = stream.ToArray();
                 return true;

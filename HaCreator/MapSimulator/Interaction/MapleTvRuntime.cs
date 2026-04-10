@@ -40,6 +40,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _itemId;
         private int _defaultItemId;
         private int _defaultMediaIndex = DefaultMediaIndex;
+        private int _mediaBranchCount;
         private int _resolvedMediaIndex = DefaultMediaIndex;
         private int _messageType;
         private int _draftDurationMs = DefaultDurationMs;
@@ -84,12 +85,17 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        internal void ConfigureDefaultMedia(int itemId, string itemName, int defaultMediaIndex = DefaultMediaIndex)
+        internal void ConfigureDefaultMedia(
+            int itemId,
+            string itemName,
+            int defaultMediaIndex = DefaultMediaIndex,
+            int mediaBranchCount = 0)
         {
             _defaultItemId = Math.Max(0, itemId);
             _defaultItemName = string.IsNullOrWhiteSpace(itemName) ? "Maple TV" : itemName.Trim();
             _defaultMediaIndex = Math.Max(0, defaultMediaIndex);
-            _itemProfile = MapleTvItemProfile.CreateDefault(_defaultItemId, _defaultItemName, _defaultMediaIndex, DefaultDurationMs);
+            _mediaBranchCount = Math.Max(0, mediaBranchCount);
+            _itemProfile = MapleTvItemProfile.CreateDefault(_defaultItemId, _defaultItemName, _defaultMediaIndex, DefaultDurationMs, _mediaBranchCount);
             if (_itemId == 0)
             {
                 ApplyItemProfile(_itemProfile, preserveReceiverSelection: true);
@@ -138,6 +144,7 @@ namespace HaCreator.MapSimulator.Interaction
                 DefaultItemId = _defaultItemId,
                 DefaultItemName = _defaultItemName,
                 DefaultMediaIndex = _defaultMediaIndex,
+                MediaBranchCount = _mediaBranchCount,
                 ResolvedMediaIndex = _resolvedMediaIndex,
                 DraftLines = Array.AsReadOnly((string[])_draftLines.Clone()),
                 DisplayLines = Array.AsReadOnly((string[])_displayLines.Clone()),
@@ -300,7 +307,7 @@ namespace HaCreator.MapSimulator.Interaction
             _itemName = string.IsNullOrWhiteSpace(itemName)
                 ? (itemId > 0 ? $"Item #{itemId}" : _defaultItemName)
                 : itemName.Trim();
-            MapleTvItemProfile profile = MapleTvItemProfile.Resolve(itemId, _itemName, itemDescription, _defaultItemId, _defaultItemName, _defaultMediaIndex);
+            MapleTvItemProfile profile = MapleTvItemProfile.Resolve(itemId, _itemName, itemDescription, _defaultItemId, _defaultItemName, _defaultMediaIndex, _mediaBranchCount);
             ApplyItemProfile(profile, preserveReceiverSelection: false);
             _statusMessage = itemId > 0
                 ? $"MapleTV item {_itemName} ({itemId}) applied: media {_resolvedMediaIndex}, duration {_draftDurationMs} ms."
@@ -678,12 +685,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         private MapleTvAudienceMode GetCurrentAudienceMode()
         {
-            return (_itemProfile ?? MapleTvItemProfile.CreateDefault(_defaultItemId, _defaultItemName, _defaultMediaIndex, DefaultDurationMs)).AudienceMode;
+            return (_itemProfile ?? MapleTvItemProfile.CreateDefault(_defaultItemId, _defaultItemName, _defaultMediaIndex, DefaultDurationMs, _mediaBranchCount)).AudienceMode;
         }
 
         private void ApplyItemProfile(MapleTvItemProfile profile, bool preserveReceiverSelection)
         {
-            _itemProfile = profile ?? MapleTvItemProfile.CreateDefault(_defaultItemId, _defaultItemName, _defaultMediaIndex, DefaultDurationMs);
+            _itemProfile = profile ?? MapleTvItemProfile.CreateDefault(_defaultItemId, _defaultItemName, _defaultMediaIndex, DefaultDurationMs, _mediaBranchCount);
             _resolvedMediaIndex = _itemProfile.MediaIndex;
             _draftDurationMs = _itemProfile.DurationMs;
 
@@ -818,6 +825,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string DefaultItemName { get; init; } = string.Empty;
         public int DefaultItemId { get; init; }
         public int DefaultMediaIndex { get; init; }
+        public int MediaBranchCount { get; init; }
         public int ResolvedMediaIndex { get; init; }
         public IReadOnlyList<string> DraftLines { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> DisplayLines { get; init; } = Array.Empty<string>();
@@ -851,21 +859,22 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private const int DefaultItemDurationMs = 15000;
 
-        internal static MapleTvItemProfile CreateDefault(int itemId, string itemName, int defaultMediaIndex, int defaultDurationMs)
+        internal static MapleTvItemProfile CreateDefault(int itemId, string itemName, int defaultMediaIndex, int defaultDurationMs, int mediaBranchCount = 0)
         {
             string name = string.IsNullOrWhiteSpace(itemName) ? "Maple TV" : itemName.Trim();
-            return new MapleTvItemProfile(Math.Max(0, itemId), name, Math.Max(0, defaultMediaIndex), defaultDurationMs, MapleTvAudienceMode.Flexible, false);
+            return new MapleTvItemProfile(Math.Max(0, itemId), name, ClampMediaIndex(defaultMediaIndex, mediaBranchCount), defaultDurationMs, MapleTvAudienceMode.Flexible, false);
         }
 
-        internal static MapleTvItemProfile Resolve(int itemId, string itemName, string itemDescription, int defaultItemId, string defaultItemName, int defaultMediaIndex)
+        internal static MapleTvItemProfile Resolve(int itemId, string itemName, string itemDescription, int defaultItemId, string defaultItemName, int defaultMediaIndex, int mediaBranchCount = 0)
         {
             if (itemId <= 0)
             {
-                return CreateDefault(defaultItemId, defaultItemName, defaultMediaIndex, DefaultItemDurationMs);
+                return CreateDefault(defaultItemId, defaultItemName, defaultMediaIndex, DefaultItemDurationMs, mediaBranchCount);
             }
 
-            int alternateMediaA = defaultMediaIndex == 0 ? 1 : 0;
-            int alternateMediaB = defaultMediaIndex <= 1 ? 2 : 1;
+            int normalizedDefaultMediaIndex = ClampMediaIndex(defaultMediaIndex, mediaBranchCount);
+            int alternateMediaA = ResolveAlternateMediaIndex(normalizedDefaultMediaIndex, mediaBranchCount, 1);
+            int alternateMediaB = ResolveAlternateMediaIndex(normalizedDefaultMediaIndex, mediaBranchCount, 2);
             string resolvedName = string.IsNullOrWhiteSpace(itemName) ? $"Item #{itemId}" : itemName.Trim();
             string normalizedDescription = itemDescription ?? string.Empty;
             bool isMegassenger =
@@ -889,19 +898,37 @@ namespace HaCreator.MapSimulator.Interaction
             int mediaIndex =
                 normalizedDescription.IndexOf("star effect", StringComparison.OrdinalIgnoreCase) >= 0 ? alternateMediaA
                 : normalizedDescription.IndexOf("heart effect", StringComparison.OrdinalIgnoreCase) >= 0 ? alternateMediaB
-                : defaultMediaIndex;
+                : normalizedDefaultMediaIndex;
 
             MapleTvItemProfile inferredProfile = new(itemId, resolvedName, mediaIndex, durationMs, audienceMode, isMegassenger);
             return itemId switch
             {
-                5075000 => inferredProfile with { MediaIndex = defaultMediaIndex, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = false },
+                5075000 => inferredProfile with { MediaIndex = normalizedDefaultMediaIndex, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = false },
                 5075001 => inferredProfile with { MediaIndex = alternateMediaA, DurationMs = 30000, AudienceMode = MapleTvAudienceMode.SenderOnly, MirrorsToChat = false },
                 5075002 => inferredProfile with { MediaIndex = alternateMediaB, DurationMs = 60000, AudienceMode = MapleTvAudienceMode.ReceiverRequired, MirrorsToChat = false },
-                5075003 => inferredProfile with { MediaIndex = defaultMediaIndex, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = true },
+                5075003 => inferredProfile with { MediaIndex = normalizedDefaultMediaIndex, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = true },
                 5075004 => inferredProfile with { MediaIndex = alternateMediaA, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = true },
                 5075005 => inferredProfile with { MediaIndex = alternateMediaB, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = true },
-                _ => CreateDefault(itemId, resolvedName, defaultMediaIndex, DefaultItemDurationMs)
+                _ => CreateDefault(itemId, resolvedName, normalizedDefaultMediaIndex, DefaultItemDurationMs, mediaBranchCount)
             };
+        }
+
+        private static int ClampMediaIndex(int mediaIndex, int mediaBranchCount)
+        {
+            int normalizedMediaIndex = Math.Max(0, mediaIndex);
+            return mediaBranchCount > 0 ? Math.Min(normalizedMediaIndex, mediaBranchCount - 1) : normalizedMediaIndex;
+        }
+
+        private static int ResolveAlternateMediaIndex(int defaultMediaIndex, int mediaBranchCount, int oneBasedAlternateOrdinal)
+        {
+            int branchCount = Math.Max(1, mediaBranchCount);
+            if (branchCount == 1)
+            {
+                return 0;
+            }
+
+            int steps = Math.Max(1, oneBasedAlternateOrdinal);
+            return (ClampMediaIndex(defaultMediaIndex, branchCount) + steps) % branchCount;
         }
     }
 }

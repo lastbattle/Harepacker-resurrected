@@ -1003,22 +1003,12 @@ namespace HaCreator.MapSimulator
                 _pendingVegaCastState.ScrollInventoryType,
                 _pendingVegaCastState.ScrollSlotIndex,
                 _pendingVegaCastState.ModifierInventoryType,
-                _pendingVegaCastState.ModifierSlotIndex);
+                _pendingVegaCastState.ModifierSlotIndex,
+                forcedSuccess: success);
             if (!result.Success.HasValue)
             {
                 message = VegaOwnerStringPoolText.GetUnexpectedResultNotice();
                 return false;
-            }
-
-            if (result.Success.Value != success)
-            {
-                result = new ItemUpgradeUI.ItemUpgradeAttemptResult(
-                    success,
-                    success
-                        ? "Packet-owned Vega result promoted a success outcome."
-                        : "Packet-owned Vega result promoted a failure outcome.",
-                    result.ConsumableItemId,
-                    result.ModifierItemId);
             }
 
             return true;

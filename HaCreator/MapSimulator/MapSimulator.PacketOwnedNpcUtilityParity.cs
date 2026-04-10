@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using System;
 using System.Collections.Generic;
@@ -82,10 +83,6 @@ namespace HaCreator.MapSimulator
 
                     return true;
                 }
-
-                case 366:
-                case 367:
-                    return TryApplyPacketOwnedAdminShopPacket(packetType, payload, out message);
 
                 default:
                     return false;
@@ -175,7 +172,7 @@ namespace HaCreator.MapSimulator
                     return HandlePacketOwnedBattleRecordCommand(args.Skip(1).ToArray());
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|page <summary|dot|packets>|close]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|page <summary|dot|packets>|close]]");
             }
         }
 
@@ -187,7 +184,6 @@ namespace HaCreator.MapSimulator
                 {
                     "Packet-owned NPC utility owner family:",
                     $"Shop: {BuildPacketOwnedNpcShopFooter()}",
-                    $"AdminShop: {BuildPacketOwnedAdminShopFooter()}",
                     $"StoreBank: {BuildPacketOwnedStoreBankFooter()}",
                     $"BattleRecord: {_packetOwnedBattleRecordRuntime.BuildFooter()}"
                 });
@@ -198,11 +194,11 @@ namespace HaCreator.MapSimulator
             bool rawHex = string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase);
             if (args.Length < 2
                 || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int packetType)
-                || packetType is not (364 or 365 or 366 or 367 or 369 or 370 or 420 or 421 or 422 or 423))
+                || packetType is not (364 or 365 or 369 or 370 or 420 or 421 or 422 or 423))
             {
                 return ChatCommandHandler.CommandResult.Error(rawHex
-                    ? "Usage: /npcutility packetraw <364|365|366|367|369|370|420|421|422|423> <hex>"
-                    : "Usage: /npcutility packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]");
+                    ? "Usage: /npcutility packetraw <364|365|369|370|420|421|422|423> <hex>"
+                    : "Usage: /npcutility packet <364|365|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]");
             }
 
             byte[] payload = Array.Empty<byte>();
@@ -210,16 +206,137 @@ namespace HaCreator.MapSimulator
             {
                 if (args.Length < 3 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(2)), out payload))
                 {
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility packetraw <364|365|366|367|369|370|420|421|422|423> <hex>");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility packetraw <364|365|369|370|420|421|422|423> <hex>");
                 }
             }
             else if (args.Length >= 3 && !TryParseBinaryPayloadArgument(args[2], out payload, out string payloadError))
             {
-                return ChatCommandHandler.CommandResult.Error(payloadError ?? "Usage: /npcutility packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]");
+                return ChatCommandHandler.CommandResult.Error(payloadError ?? "Usage: /npcutility packet <364|365|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]");
             }
 
             return TryApplyPacketOwnedNpcUtilityPacket(packetType, payload, out string message)
                 ? ChatCommandHandler.CommandResult.Ok(message)
+                : ChatCommandHandler.CommandResult.Error(message);
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedAdminShopCommand(string[] args)
+        {
+            if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info($"{DescribeAdminShopPacketInboxStatus()} {BuildPacketOwnedAdminShopFooter()} {_adminShopPacketInbox.LastStatus}");
+            }
+
+            switch (args[0].ToLowerInvariant())
+            {
+                case "inbox":
+                    return HandlePacketOwnedAdminShopInboxCommand(args.Skip(1).ToArray());
+
+                case "packet":
+                case "packetraw":
+                    return HandlePacketOwnedAdminShopPacketCommand(args);
+
+                case "packetclientraw":
+                    return HandlePacketOwnedAdminShopClientPacketRawCommand(args);
+
+                case "show":
+                case "open":
+                    if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI adminShopWindow)
+                    {
+                        return ChatCommandHandler.CommandResult.Ok(
+                            ShowPacketOwnedAdminShopOwnerWindow(adminShopWindow, BuildPacketOwnedAdminShopFooter()));
+                    }
+
+                    return ChatCommandHandler.CommandResult.Error("Packet-owned admin-shop owner is unavailable.");
+
+                default:
+                    return ChatCommandHandler.CommandResult.Error("Usage: /adminshop [status|show|inbox [status|start [port]|stop|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]");
+            }
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedAdminShopInboxCommand(string[] args)
+        {
+            if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info($"{DescribeAdminShopPacketInboxStatus()} {BuildPacketOwnedAdminShopFooter()} {_adminShopPacketInbox.LastStatus}");
+            }
+
+            if (string.Equals(args[0], "start", StringComparison.OrdinalIgnoreCase))
+            {
+                int port = AdminShopPacketInboxManager.DefaultPort;
+                if (args.Length > 1 && (!int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out port) || port <= 0 || port > ushort.MaxValue))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /adminshop inbox start [port]");
+                }
+
+                _adminShopPacketInboxConfiguredPort = port;
+                _adminShopPacketInboxEnabled = true;
+                EnsureAdminShopPacketInboxState(shouldRun: true);
+                return ChatCommandHandler.CommandResult.Ok($"{DescribeAdminShopPacketInboxStatus()} {_adminShopPacketInbox.LastStatus}");
+            }
+
+            if (string.Equals(args[0], "stop", StringComparison.OrdinalIgnoreCase))
+            {
+                _adminShopPacketInboxEnabled = false;
+                EnsureAdminShopPacketInboxState(shouldRun: false);
+                return ChatCommandHandler.CommandResult.Ok($"{DescribeAdminShopPacketInboxStatus()} {_adminShopPacketInbox.LastStatus}");
+            }
+
+            if (string.Equals(args[0], "packet", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase))
+            {
+                return HandlePacketOwnedAdminShopPacketCommand(args);
+            }
+
+            if (string.Equals(args[0], "packetclientraw", StringComparison.OrdinalIgnoreCase))
+            {
+                return HandlePacketOwnedAdminShopClientPacketRawCommand(args);
+            }
+
+            return ChatCommandHandler.CommandResult.Error("Usage: /adminshop inbox [status|start [port]|stop|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]");
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedAdminShopPacketCommand(string[] args)
+        {
+            bool rawHex = string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase);
+            if (args.Length < 2 || !AdminShopPacketInboxManager.TryParsePacketType(args[1], out int packetType))
+            {
+                return ChatCommandHandler.CommandResult.Error(rawHex
+                    ? "Usage: /adminshop packetraw <366|367|result|open> <hex>"
+                    : "Usage: /adminshop packet <366|367|result|open> [payloadhex=..|payloadb64=..]");
+            }
+
+            byte[] payload = Array.Empty<byte>();
+            if (rawHex)
+            {
+                if (args.Length < 3 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(2)), out payload))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /adminshop packetraw <366|367|result|open> <hex>");
+                }
+            }
+            else if (args.Length >= 3 && !TryParseBinaryPayloadArgument(args[2], out payload, out string payloadError))
+            {
+                return ChatCommandHandler.CommandResult.Error(payloadError ?? "Usage: /adminshop packet <366|367|result|open> [payloadhex=..|payloadb64=..]");
+            }
+
+            return TryApplyPacketOwnedAdminShopPacket(packetType, payload, out string message)
+                ? ChatCommandHandler.CommandResult.Ok(message)
+                : ChatCommandHandler.CommandResult.Error(message);
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedAdminShopClientPacketRawCommand(string[] args)
+        {
+            if (args.Length < 2 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(1)), out byte[] rawPacket))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /adminshop packetclientraw <hex>");
+            }
+
+            if (!AdminShopPacketInboxManager.TryDecodeOpcodeFramedPacket(rawPacket, out int packetType, out byte[] payload, out string decodeError))
+            {
+                return ChatCommandHandler.CommandResult.Error(decodeError ?? "Usage: /adminshop packetclientraw <hex>");
+            }
+
+            return TryApplyPacketOwnedAdminShopPacket(packetType, payload, out string message)
+                ? ChatCommandHandler.CommandResult.Ok($"Applied admin-shop client opcode {packetType}. {message}")
                 : ChatCommandHandler.CommandResult.Error(message);
         }
 

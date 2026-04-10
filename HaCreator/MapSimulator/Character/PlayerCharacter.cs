@@ -542,6 +542,7 @@ namespace HaCreator.MapSimulator.Character
 
         // Sound callbacks
         private Action _onJumpSound;
+        private Action<string> _onWeaponSfxSound;
         private Func<string> _jumpRestrictionMessageProvider;
         private Func<string> _jumpDownRestrictionMessageProvider;
         private Action<string> _onJumpRestricted;
@@ -740,6 +741,11 @@ namespace HaCreator.MapSimulator.Character
         public void SetJumpSoundCallback(Action onJump)
         {
             _onJumpSound = onJump;
+        }
+
+        public void SetWeaponSfxSoundCallback(Action<string> onWeaponSfx)
+        {
+            _onWeaponSfxSound = onWeaponSfx;
         }
 
         public void SetLandingHandler(Action<PlayerCharacter, PlayerLandingInfo> onLanded)
@@ -2378,6 +2384,7 @@ namespace HaCreator.MapSimulator.Character
             CurrentAction = GetAttackAction();
             CurrentActionName = CharacterPart.GetActionString(CurrentAction);
             _forcedActionName = null;
+            PlayEffectiveWeaponSfx();
 
             // Trigger hitbox callback on attack frame
             var hitbox = GetAttackHitbox();
@@ -2512,6 +2519,17 @@ namespace HaCreator.MapSimulator.Character
                 ActionDuration = GetMeleeAfterImageActionDuration(actionName),
                 FadeDuration = GetMeleeAfterImageFadeDuration(actionName)
             };
+
+            PlayEffectiveWeaponSfx();
+        }
+
+        public void PlayEffectiveWeaponSfx()
+        {
+            string sfx = Build?.GetEffectiveWeaponSfx();
+            if (!string.IsNullOrWhiteSpace(sfx))
+            {
+                _onWeaponSfxSound?.Invoke(sfx);
+            }
         }
 
         public void ClearMeleeAfterImage()
@@ -2793,7 +2811,8 @@ namespace HaCreator.MapSimulator.Character
             SkillAnimation secondaryAnimation,
             int currentTime,
             SkillAnimation finishAnimation = null,
-            SkillAnimation finishSecondaryAnimation = null)
+            SkillAnimation finishSecondaryAnimation = null,
+            bool isClientMovementOwner = false)
         {
             bool hasPrimaryAnimation = animation?.Frames != null && animation.Frames.Count > 0;
             bool hasSecondaryAnimation = secondaryAnimation?.Frames != null && secondaryAnimation.Frames.Count > 0;
@@ -2811,10 +2830,10 @@ namespace HaCreator.MapSimulator.Character
                 FinishAnimation = finishAnimation,
                 FinishSecondaryAnimation = finishSecondaryAnimation,
                 AnimationStartTime = currentTime,
-                Plane = ResolveTransientSkillAvatarEffectPlane(animation),
-                SecondaryPlane = ResolveTransientSkillAvatarEffectPlane(secondaryAnimation),
-                FinishPlane = ResolveTransientSkillAvatarEffectPlane(finishAnimation),
-                FinishSecondaryPlane = ResolveTransientSkillAvatarEffectPlane(finishSecondaryAnimation)
+                Plane = ResolveTransientSkillAvatarEffectPlane(animation, isClientMovementOwner),
+                SecondaryPlane = ResolveTransientSkillAvatarEffectPlane(secondaryAnimation, isClientMovementOwner),
+                FinishPlane = ResolveTransientSkillAvatarEffectPlane(finishAnimation, isClientMovementOwner),
+                FinishSecondaryPlane = ResolveTransientSkillAvatarEffectPlane(finishSecondaryAnimation, isClientMovementOwner)
             });
             return true;
         }
@@ -4645,6 +4664,10 @@ namespace HaCreator.MapSimulator.Character
                 sourceSignature,
                 facingRight))
             {
+                int refreshedSourceLayerCurrentTime = ResolveMirrorImagePreparedSourceLayerCurrentTime(
+                    preparedLayer.PreparedSourceLayerCurrentTime,
+                    reusesExistingSourceCanvas: true,
+                    sourceLayerCurrentTime);
                 preparedLayer.RenderLayer = renderLayer;
                 preparedLayer.SourceSignature = sourceSignature;
                 preparedLayer.PreparedCurrentTime = ResolveMirrorImagePreparedSourceLayerUpdateTime(
@@ -4652,7 +4675,7 @@ namespace HaCreator.MapSimulator.Character
                     reusesExistingLayer: true,
                     preservesExistingLayerObject: true,
                     currentTime);
-                preparedLayer.PreparedSourceLayerCurrentTime = sourceLayerCurrentTime;
+                preparedLayer.PreparedSourceLayerCurrentTime = refreshedSourceLayerCurrentTime;
                 preparedLayer.PreparedFacingRight = facingRight;
                 preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
                 return preparedLayer;
@@ -4760,6 +4783,19 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return currentTime;
+        }
+
+        internal static int ResolveMirrorImagePreparedSourceLayerCurrentTime(
+            int existingSourceLayerCurrentTime,
+            bool reusesExistingSourceCanvas,
+            int sourceLayerCurrentTime)
+        {
+            if (reusesExistingSourceCanvas && existingSourceLayerCurrentTime != int.MinValue)
+            {
+                return existingSourceLayerCurrentTime;
+            }
+
+            return sourceLayerCurrentTime;
         }
 
         internal static bool CanUseLiveMirrorImageSourceLayer(
@@ -6817,9 +6853,9 @@ namespace HaCreator.MapSimulator.Character
             };
         }
 
-        private static SkillAvatarEffectPlane ResolveTransientSkillAvatarEffectPlane(SkillAnimation animation)
+        private static SkillAvatarEffectPlane ResolveTransientSkillAvatarEffectPlane(SkillAnimation animation, bool isClientMovementOwner = false)
         {
-            return ClientOwnedAvatarEffectParity.PrefersUnderFaceAvatarEffectPlane(animation)
+            return ClientOwnedAvatarEffectParity.PrefersUnderFaceAvatarEffectPlane(animation, isClientMovementOwner)
                 ? SkillAvatarEffectPlane.UnderFace
                 : SkillAvatarEffectPlane.OverCharacter;
         }
@@ -6971,6 +7007,14 @@ namespace HaCreator.MapSimulator.Character
             return frame == null
                 ? null
                 : new Point((int)X, (int)Y - frame.FeetOffset);
+        }
+
+        internal int TryGetCurrentBodyRelMoveY(int currentTime)
+        {
+            AssembledFrame frame = TryGetCurrentFrame(currentTime);
+            return frame?.FeetOffset is int feetOffset
+                ? -feetOffset
+                : 0;
         }
 
         public AssembledFrame TryGetCurrentFrame(int currentTime)

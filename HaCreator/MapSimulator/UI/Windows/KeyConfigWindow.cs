@@ -185,8 +185,8 @@ namespace HaCreator.MapSimulator.UI
         private SpriteFont _font;
         private Func<PlayerInput> _bindingSource;
         private Action<PlayerInput> _commitHandler;
-        private Func<InputAction, ClientOwnerState> _clientOwnerStateProvider;
-        private Func<InputAction, ShortcutVisualState> _shortcutVisualStateProvider;
+        private Func<InputAction, KeyBinding, ClientOwnerState> _clientOwnerStateProvider;
+        private Func<InputAction, KeyBinding, ShortcutVisualState> _shortcutVisualStateProvider;
         private IDXObject _quickSlotFrame;
         private UIObject _mainOkButton;
         private UIObject _mainCancelButton;
@@ -286,10 +286,24 @@ namespace HaCreator.MapSimulator.UI
 
         public void SetClientOwnerStateProvider(Func<InputAction, ClientOwnerState> clientOwnerStateProvider)
         {
+            _clientOwnerStateProvider = clientOwnerStateProvider == null
+                ? null
+                : (action, _) => clientOwnerStateProvider(action);
+        }
+
+        public void SetClientOwnerStateProvider(Func<InputAction, KeyBinding, ClientOwnerState> clientOwnerStateProvider)
+        {
             _clientOwnerStateProvider = clientOwnerStateProvider;
         }
 
         public void SetShortcutVisualStateProvider(Func<InputAction, ShortcutVisualState> shortcutVisualStateProvider)
+        {
+            _shortcutVisualStateProvider = shortcutVisualStateProvider == null
+                ? null
+                : (action, _) => shortcutVisualStateProvider(action);
+        }
+
+        public void SetShortcutVisualStateProvider(Func<InputAction, KeyBinding, ShortcutVisualState> shortcutVisualStateProvider)
         {
             _shortcutVisualStateProvider = shortcutVisualStateProvider;
         }
@@ -590,7 +604,7 @@ namespace HaCreator.MapSimulator.UI
             KeyBinding binding = GetBinding(row.Action);
             Texture2D paletteTexture = row.PaletteSlotId >= 0 ? GetSelectedPaletteTexture(row.PaletteSlotId) : null;
             ShortcutVisualState shortcutVisualState = _page == KeyConfigPage.Main
-                ? (_shortcutVisualStateProvider?.Invoke(row.Action) ?? default)
+                ? ResolveShortcutVisualState(row.Action)
                 : default;
             int labelX = bounds.X + 8;
             if (_page == KeyConfigPage.Main && (paletteTexture != null || shortcutVisualState.HasVisual))
@@ -710,7 +724,7 @@ namespace HaCreator.MapSimulator.UI
             int selectedPaletteSlotId = GetSelectedPaletteSlotId();
             Texture2D selectedPaletteTexture = GetSelectedPaletteTexture(selectedPaletteSlotId);
             ShortcutVisualState selectedShortcutVisual = _selectedAction.HasValue
-                ? (_shortcutVisualStateProvider?.Invoke(_selectedAction.Value) ?? default)
+                ? ResolveShortcutVisualState(_selectedAction.Value)
                 : default;
 
             sprite.Draw(_highlightTexture, footerBounds, new Color(20, 25, 37, 225));
@@ -931,7 +945,7 @@ namespace HaCreator.MapSimulator.UI
                 return "Select a staged row to inspect its client owner state.";
             }
 
-            ClientOwnerState ownerState = _clientOwnerStateProvider?.Invoke(_selectedAction.Value) ?? default;
+            ClientOwnerState ownerState = ResolveClientOwnerState(_selectedAction.Value);
             if (ownerState.HasClientOwner)
             {
                 return $"Packet-owned function {ownerState.ClientFunctionId} currently resolves to {FormatKey(ownerState.ClientKey)}.";
@@ -958,7 +972,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             BindingRow? selectedRow = TryGetSelectedRow();
-            ClientOwnerState ownerState = _clientOwnerStateProvider?.Invoke(_selectedAction.Value) ?? default;
+            ClientOwnerState ownerState = ResolveClientOwnerState(_selectedAction.Value);
             if (ownerState.HasClientOwner)
             {
                 return $"Client owner: id {ownerState.ClientFunctionId} on {FormatKey(ownerState.ClientKey)}.";
@@ -981,6 +995,16 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return "No recovered packet-owned function id for this staged row.";
+        }
+
+        private ClientOwnerState ResolveClientOwnerState(InputAction action)
+        {
+            return _clientOwnerStateProvider?.Invoke(action, GetBinding(action)) ?? default;
+        }
+
+        private ShortcutVisualState ResolveShortcutVisualState(InputAction action)
+        {
+            return _shortcutVisualStateProvider?.Invoke(action, GetBinding(action)) ?? default;
         }
 
         private Texture2D GetStatusNoticeTexture()

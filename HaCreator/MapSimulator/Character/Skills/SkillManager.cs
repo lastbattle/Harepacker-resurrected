@@ -695,8 +695,19 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 ["mhpR"] = "Max HP",
                 ["mhpX"] = "Max HP",
+                ["indieMhp"] = "Max HP",
+                ["indieMhpR"] = "Max HP",
                 ["mmpR"] = "Max MP",
                 ["mmpX"] = "Max MP",
+                ["indieMmp"] = "Max MP",
+                ["indieMmpR"] = "Max MP",
+                ["indiePad"] = "Physical Attack",
+                ["indieMad"] = "Magic Attack",
+                ["indieAcc"] = "Accuracy",
+                ["indieEva"] = "Avoidability",
+                ["indieSpeed"] = "Speed",
+                ["indieJump"] = "Jump",
+                ["indieAllStat"] = "All Stats",
                 ["pddR"] = "Physical Defense",
                 ["mddR"] = "Magic Defense",
                 ["accR"] = "Accuracy",
@@ -818,6 +829,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Action<int, string> OnClientSkillTimerExpired;
         public Action<IReadOnlyList<ClientSkillTimerExpiration>> OnClientSkillTimersExpiredBatch;
         public Action<int, int, int> OnClientSkillCancelRequested;
+        public Func<int, int, bool> OnClientSkillCancelDragonCleanupRequested;
         public Action<SkillUseEffectRequest> OnClientSkillEffectRequested;
         public Action<int, int, int> OnRepeatSkillModeEndRequested;
         public Action<SwallowAbsorbRequest> OnSwallowAbsorbRequested;
@@ -4321,6 +4333,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             bool vehicleCancelRecorded = false;
             bool keydownCleanupApplied = false;
+            bool dragonCleanupApplied = false;
 
             foreach (int skillId in skillIds)
             {
@@ -4334,18 +4347,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                     vehicleCancelRecorded = RecordVehicleValidCancel(skillId, currentTime);
                 }
 
-                if (!keydownCleanupApplied)
+                if (!keydownCleanupApplied && !dragonCleanupApplied)
                 {
-                    keydownCleanupApplied = CleanupKeydownPrepareAnimationOnCancel(skillId);
+                    keydownCleanupApplied = CleanupKeydownPrepareAnimationOnCancel(skillId, currentTime, out bool cleanedDragon);
+                    dragonCleanupApplied |= cleanedDragon;
                 }
 
-                if (vehicleCancelRecorded && keydownCleanupApplied)
+                if (vehicleCancelRecorded && (keydownCleanupApplied || dragonCleanupApplied))
                 {
                     break;
                 }
             }
 
-            return vehicleCancelRecorded || keydownCleanupApplied;
+            return vehicleCancelRecorded || keydownCleanupApplied || dragonCleanupApplied;
         }
 
         private bool RecordVehicleValidCancel(int skillId, int currentTime)
@@ -4424,16 +4438,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
-        private bool CleanupKeydownPrepareAnimationOnCancel(int skillId)
+        private bool CleanupKeydownPrepareAnimationOnCancel(int skillId, int currentTime, out bool cleanedDragon)
         {
+            cleanedDragon = false;
             SkillData skill = GetSkillData(skillId);
-            if (skill?.IsKeydownSkill != true || PreservesPrepareAnimationOnClientCancel(skillId))
+            if (!ShouldCleanupDragonOneTimeActionOnClientCancel(skill, skillId))
             {
                 return false;
             }
 
             bool clearedCurrentCast = false;
             _player.EndSustainedSkillAnimation();
+            cleanedDragon = OnClientSkillCancelDragonCleanupRequested?.Invoke(skillId, currentTime) == true;
 
             if (_currentCast != null
                 && DoesClientCancelMatchSkillId(_currentCast.SkillId, skillId))
@@ -4443,6 +4459,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return clearedCurrentCast || DoesPreparedSkillMatchClientCancelRequest(_preparedSkill, skillId);
+        }
+
+        internal static bool ShouldCleanupDragonOneTimeActionOnClientCancel(SkillData skill, int skillId)
+        {
+            return skill?.IsKeydownSkill == true
+                   && !PreservesPrepareAnimationOnClientCancel(skillId);
         }
 
         private bool CancelClientOwnedSkillState(int requestedSkillId, int currentTime)
@@ -5843,12 +5865,21 @@ namespace HaCreator.MapSimulator.Character.Skills
                 : attackOriginY + fallbackShootPointYOffset;
         }
 
-        private float ResolveClientFallbackShootAttackPointYOffset(SkillData skill)
+        private float ResolveClientFallbackShootAttackPointYOffset(SkillData skill, int currentTime = 0)
         {
+            int mountedVehicleId = ResolveCurrentClientShootAttackVehicleId();
             return ClientShootAttackFamilyResolver.ResolveFallbackShootAttackPointYOffset(
                 skill?.SkillId ?? 0,
                 _player?.Build?.Job ?? skill?.Job ?? 0,
-                ResolveCurrentClientShootAttackVehicleId());
+                mountedVehicleId,
+                ResolveCurrentClientShootAttackBodyRelMoveY(mountedVehicleId, currentTime));
+        }
+
+        private int ResolveCurrentClientShootAttackBodyRelMoveY(int mountedVehicleId, int currentTime)
+        {
+            return ClientShootAttackFamilyResolver.IsMountedBodyRelMoveVehicle(mountedVehicleId)
+                ? _player?.TryGetCurrentBodyRelMoveY(currentTime) ?? 0
+                : 0;
         }
 
         private int ResolveCurrentClientShootAttackVehicleId()
@@ -7550,7 +7581,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     skill.EffectSecondary,
                     currentTime,
                     skill.StopEffect,
-                    skill.StopSecondaryEffect);
+                    skill.StopSecondaryEffect,
+                    isClientMovementOwner: true);
             }
 
             return UsesEffectToAvatarLayerBuffFallback(skill);
@@ -8632,7 +8664,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 projectile,
                 refreshedOrigin,
                 usesAuthoredShootPoint,
-                ResolveClientFallbackShootAttackPointYOffset(skill));
+                ResolveClientFallbackShootAttackPointYOffset(skill, currentTime));
 
             float speed = GetProjectileSpeed(projectile.Data, projectile.LevelData);
             TryAimProjectileAtTarget(projectile, currentTime, speed);
@@ -9265,9 +9297,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && ShouldUseSmoothingMovingShoot(skill);
         }
 
-        private static bool ShouldUseSmoothingMovingShoot(SkillData skill)
+        internal static bool ShouldUseSmoothingMovingShoot(SkillData skill)
         {
-            return skill?.CasterMove == true
+            return skill != null
+                   && (skill.CasterMove || skill.IsMovingAttack)
                    && skill.IsAttack
                    && !skill.IsMovement
                    && !IsRocketBoosterSkill(skill)
@@ -10941,7 +10974,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 facingRight,
                 attackOriginOverride,
                 out bool usesAuthoredShootPoint);
-            float fallbackShootPointYOffset = ResolveClientFallbackShootAttackPointYOffset(skill);
+            float fallbackShootPointYOffset = ResolveClientFallbackShootAttackPointYOffset(skill, currentTime);
             float projectileSpawnY = ResolveProjectileSpawnY(
                 attackOrigin.Y,
                 usesAuthoredShootPoint,
@@ -12240,6 +12273,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     || summon.IsExpired(currentTime)
                     || summon.IsPendingRemoval
                     || summon.AssistType != SummonAssistType.TargetedAttack
+                    || SummonRuntimeRules.HasActiveOneTimeActionPlayback(summon, currentTime)
                     || currentTime - summon.LastAttackTime < GetSummonAttackInterval(summon.SkillData, summon.Level)
                     || IsSummonAttackBlockedByOwnerState(summon))
                 {
@@ -12262,6 +12296,75 @@ namespace HaCreator.MapSimulator.Character.Skills
                     break;
                 }
             }
+        }
+
+        public void NotifyLocalPlayerDamaged(int currentTime)
+        {
+            TryRequestStanceSpecialEffectOnDamage(currentTime);
+        }
+
+        private bool TryRequestStanceSpecialEffectOnDamage(int currentTime)
+        {
+            for (int i = _buffs.Count - 1; i >= 0; i--)
+            {
+                ActiveBuff buff = _buffs[i];
+                if (buff == null
+                    || buff.IsExpired(currentTime)
+                    || !IsStanceSpecialEffectBuff(buff)
+                    || !ShouldTriggerStanceSpecialEffect(buff.LevelData))
+                {
+                    continue;
+                }
+
+                OnClientSkillEffectRequested?.Invoke(new SkillUseEffectRequest
+                {
+                    EffectSkillId = buff.SkillId,
+                    SourceSkillId = buff.SkillId,
+                    RequestTime = currentTime,
+                    BranchNames = new[] { "special" },
+                    FollowOwnerPosition = true,
+                    FollowOwnerFacing = false,
+                    DelayRateOverride = 1000
+                });
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsStanceSpecialEffectBuff(ActiveBuff buff)
+        {
+            if (buff?.SkillData == null)
+            {
+                return false;
+            }
+
+            IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats = GetBuffTemporaryStatPresentation(buff);
+            for (int i = 0; i < temporaryStats.Count; i++)
+            {
+                if (string.Equals(temporaryStats[i]?.Label, StanceBuffLabel, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool ShouldTriggerStanceSpecialEffect(SkillLevelData levelData)
+        {
+            int prop = levelData?.Prop ?? 0;
+            if (prop <= 0)
+            {
+                return false;
+            }
+
+            if (prop >= 100)
+            {
+                return true;
+            }
+
+            return Random.Next(100) < prop;
         }
 
         private void UpdateSummons(int currentTime, float deltaTime)
@@ -12308,6 +12411,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 if (IsSummonActionLockedByDamageHitPeriod(summon))
                 {
+                    continue;
+                }
+
+                if (SummonRuntimeRules.HasActiveOneTimeActionPlayback(summon, currentTime))
+                {
+                    SetSummonActorState(summon, SummonActorState.Attack, currentTime);
                     continue;
                 }
 
@@ -12366,6 +12475,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
+                if (SummonRuntimeRules.HasActiveOneTimeActionPlayback(summon, currentTime))
+                {
+                    continue;
+                }
+
                 if (!HasSummonActionIntervalElapsed(summon, currentTime))
                 {
                     continue;
@@ -12384,6 +12498,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             if (summon?.SkillData?.SelfDestructMinion != true
                 || summon.ExpiryActionTriggered
+                || SummonRuntimeRules.HasActiveOneTimeActionPlayback(summon, currentTime)
                 || !summon.HasReachedNaturalExpiry(currentTime))
             {
                 return false;
@@ -14420,16 +14535,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool preferHealFirst = SummonRuntimeRules.HasMinionAbilityToken(
                 summon.SkillData.MinionAbility,
                 "heal");
+            int suspendDurationMs = ResolveSupportSummonSuspendDurationMs(summon);
             if (!SummonRuntimeRules.ShouldTrackSupportSuspendWindow(
                     summon.SkillData,
                     summon.AssistType,
                     preferHealFirst,
-                    summon.CurrentAnimationBranchName))
+                    summon.CurrentAnimationBranchName,
+                    suspendDurationMs))
             {
                 return;
             }
 
-            int suspendDurationMs = ResolveSupportSummonSuspendDurationMs(summon);
             summon.SupportSuspendUntilTime = suspendDurationMs > 0
                 ? currentTime + suspendDurationMs
                 : int.MinValue;
@@ -19604,12 +19720,27 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            if (_player?.Build?.Equipment == null
-                || !_player.Build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart))
+            CharacterBuild build = _player?.Build;
+            if (build == null)
             {
                 return false;
             }
 
+            return IsMechanicTamingMobPart(GetEquipmentPart(build.Equipment, EquipSlot.TamingMob))
+                   || IsMechanicTamingMobPart(GetEquipmentPart(build.HiddenEquipment, EquipSlot.TamingMob));
+        }
+
+        private static CharacterPart GetEquipmentPart(
+            IReadOnlyDictionary<EquipSlot, CharacterPart> equipment,
+            EquipSlot slot)
+        {
+            return equipment != null && equipment.TryGetValue(slot, out CharacterPart part)
+                ? part
+                : null;
+        }
+
+        private static bool IsMechanicTamingMobPart(CharacterPart mountPart)
+        {
             return mountPart?.Slot == EquipSlot.TamingMob
                    && mountPart.ItemId == MECHANIC_TAMING_MOB_ID;
         }

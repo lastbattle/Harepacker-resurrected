@@ -2576,9 +2576,6 @@ namespace HaCreator.MapSimulator.Loaders
             fullMiniMapStackPanel.AddRenderable(mapNameMarkStackPanel);
 
             WzSubProperty collapsedMapButtonProperty = minimapFrameProperty["BtMap"] as WzSubProperty;
-            WzSubProperty collapsedMinimizeButtonProperty = bBigBang
-                ? minimapFrameProperty["BtMin"] as WzSubProperty
-                : uiBasicImage["BtMin"] as WzSubProperty;
             WzSubProperty collapsedMaximizeButtonProperty = bBigBang
                 ? minimapFrameProperty["BtMax"] as WzSubProperty
                 : uiBasicImage["BtMax"] as WzSubProperty;
@@ -2591,12 +2588,6 @@ namespace HaCreator.MapSimulator.Loaders
                 collapsedBarCenter?.Height ?? 0,
                 collapsedBarRight?.Height ?? 0,
                 fallbackHeight: 20);
-            int collapsedTitleLaneHeight = ResolveCollapsedMinimapTitleLaneHeightForTesting(
-                collapsedBarHeight,
-                laneTop: 4,
-                buttonHeight: Math.Max(
-                    ResolveUiButtonSnapshotHeight(collapsedMaximizeButtonProperty),
-                    ResolveUiButtonSnapshotHeight(collapsedMapButtonProperty)));
             CollapsedMinimapTitleChromeMetrics collapsedTitleChromeMetrics = ResolveCollapsedMinimapTitleChromeMetricsForTesting(
                 collapsedBarLeft,
                 collapsedBarRight,
@@ -2778,6 +2769,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             var helperCanvasMap = new Dictionary<MinimapUI.HelperMarkerType, string>
             {
+                { MinimapUI.HelperMarkerType.User, "user" },
                 { MinimapUI.HelperMarkerType.Another, "another" },
                 { MinimapUI.HelperMarkerType.Friend, "friend" },
                 { MinimapUI.HelperMarkerType.Guild, "guild" },

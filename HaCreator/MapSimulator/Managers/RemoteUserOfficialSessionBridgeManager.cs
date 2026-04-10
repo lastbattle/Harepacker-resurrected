@@ -47,15 +47,21 @@ namespace HaCreator.MapSimulator.Managers
             [213] = (int)Pools.RemoteUserPacketType.UserAttackOfficial3,
             [214] = (int)Pools.RemoteUserPacketType.UserAttackOfficial4,
             [215] = (int)Pools.RemoteUserPacketType.UserPreparedSkillOfficial,
+            [216] = (int)Pools.RemoteUserPacketType.UserMovingShootAttackPrepareOfficial,
             [217] = (int)Pools.RemoteUserPacketType.UserPreparedSkillClearOfficial,
+            [218] = (int)Pools.RemoteUserPacketType.UserHitOfficial,
             [219] = (int)Pools.RemoteUserPacketType.UserEmotionOfficial,
             [220] = (int)Pools.RemoteUserPacketType.UserActiveEffectItemOfficial,
             [221] = (int)Pools.RemoteUserPacketType.UserUpgradeTombOfficial,
             [222] = (int)Pools.RemoteUserPacketType.UserPortableChairOfficial,
             [223] = (int)Pools.RemoteUserPacketType.UserAvatarModified,
+            [224] = (int)Pools.RemoteUserPacketType.UserEffectOfficial,
             [225] = (int)Pools.RemoteUserPacketType.UserTemporaryStatSet,
             [226] = (int)Pools.RemoteUserPacketType.UserTemporaryStatReset,
-            [228] = (int)Pools.RemoteUserPacketType.UserGuildNameChangedOfficial
+            [227] = (int)Pools.RemoteUserPacketType.UserReceiveHpOfficial,
+            [228] = (int)Pools.RemoteUserPacketType.UserGuildNameChangedOfficial,
+            [229] = (int)Pools.RemoteUserPacketType.UserGuildMarkChangedOfficial,
+            [230] = (int)Pools.RemoteUserPacketType.UserThrowGrenadeOfficial
         };
 
         private readonly ConcurrentQueue<RemoteUserOfficialSessionBridgeMessage> _pendingMessages = new();

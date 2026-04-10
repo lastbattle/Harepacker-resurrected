@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace HaCreator.MapSimulator.Character.Skills;
 
 internal static class ClientShootAttackFamilyResolver
@@ -5,6 +7,15 @@ internal static class ClientShootAttackFamilyResolver
     public const int QueuedFinalAttackShootRange0 = 65;
     private const int DefaultShootAttackPointYOffset = -28;
     private const int MechanicTamingMobItemId = 1932016;
+    private static readonly HashSet<int> MountedBodyRelMoveVehicleIds = new()
+    {
+        1932015,
+        1932030,
+        1932031,
+        1932032,
+        1932033,
+        1932036
+    };
 
     public static bool UsesClientShootAttackLane(int skillId)
     {
@@ -51,7 +62,7 @@ internal static class ClientShootAttackFamilyResolver
 
         if (IsPositionUpSkillOnRiding(skillId, jobId))
         {
-            if (mountedBodyRelMoveVehicle)
+            if (mountedBodyRelMoveVehicle || IsMountedBodyRelMoveVehicle(mountedTamingMobItemId))
             {
                 offsetY += bodyRelMoveY;
             }
@@ -69,6 +80,11 @@ internal static class ClientShootAttackFamilyResolver
             35001004 or 33101001 or 35101010 => offsetY + 5,
             _ => offsetY
         };
+    }
+
+    internal static bool IsMountedBodyRelMoveVehicle(int mountedTamingMobItemId)
+    {
+        return MountedBodyRelMoveVehicleIds.Contains(mountedTamingMobItemId);
     }
 
     private static bool IsPositionUpSkillOnRiding(int skillId, int jobId)

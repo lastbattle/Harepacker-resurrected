@@ -300,7 +300,7 @@ namespace HaCreator.MapSimulator.AI
     /// </summary>
     public class MobAI
     {
-        // mob/0100101.img info/speed = -50 in v95-v115 data.
+        // mob/0100101.img info/speed = -50
         private const int DoomReservedSpeedPercent = -50;
         #region Constants
         private const int DEFAULT_AGGRO_RANGE = 200;        // Pixels to detect player

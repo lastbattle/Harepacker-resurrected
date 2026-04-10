@@ -40,8 +40,14 @@ namespace HaCreator.MapSimulator.UI
     public enum CharacterEquipmentAuthorityResultKind : byte
     {
         Reject = 0,
-        LocalRequestAccept = 1
+        LocalRequestAccept = 1,
+        AuthoritativeStateAccept = 2
     }
+
+    public readonly record struct CharacterEquipmentAuthoritySlotState(
+        HaCreator.MapSimulator.Character.EquipSlot Slot,
+        int VisibleItemId,
+        int HiddenItemId);
 
     public readonly record struct CharacterEquipmentAuthorityPayload(
         CharacterEquipmentAuthorityPayloadMode Mode,
@@ -59,6 +65,7 @@ namespace HaCreator.MapSimulator.UI
         int ItemId = 0,
         CharacterEquipmentAuthorityResultKind ResultKind = default,
         int ResolvedBuildStateToken = 0,
+        IReadOnlyList<CharacterEquipmentAuthoritySlotState> AuthoritySlotStates = null,
         string RejectReason = null);
 
     public sealed class EquipmentChangeRequest

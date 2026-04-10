@@ -12,6 +12,9 @@ namespace HaCreator.MapSimulator
     {
         private PendingPortalSessionValueImpact _pendingPortalSessionValueImpact;
         private int _pendingPortalSessionValueImpactMapId = -1;
+        private int _lastPortalSessionValueRequestOpcode = -1;
+        private byte[] _lastPortalSessionValueRequestPayload = Array.Empty<byte>();
+        private string _lastPortalSessionValueRequestSummary;
 
         private bool TryApplyPacketOwnedFieldScopedPacket(int packetType, byte[] payload, out string message)
         {
@@ -238,6 +241,63 @@ namespace HaCreator.MapSimulator
 
             _pendingPortalSessionValueImpact = pendingImpact;
             _pendingPortalSessionValueImpactMapId = _mapBoard?.MapInfo?.id ?? -1;
+        }
+
+        private bool TryDispatchPortalSessionValueRequest(string key)
+        {
+            if (!PortalSessionValueRequestCodec.TryBuildPayload(key, out byte[] payload))
+            {
+                _lastPortalSessionValueRequestOpcode = -1;
+                _lastPortalSessionValueRequestPayload = Array.Empty<byte>();
+                _lastPortalSessionValueRequestSummary = "Portal session-value request was not dispatched because the key was empty.";
+                return false;
+            }
+
+            _lastPortalSessionValueRequestOpcode = PortalSessionValueRequestCodec.Opcode;
+            _lastPortalSessionValueRequestPayload = payload;
+            _lastPortalSessionValueRequestSummary = DispatchPortalSessionValueRequest(payload, key?.Trim());
+            return true;
+        }
+
+        private string DispatchPortalSessionValueRequest(byte[] payload, string key)
+        {
+            payload ??= Array.Empty<byte>();
+            string source = $"Recorded CWvsContext::SendRequestSessionValue opcode {PortalSessionValueRequestCodec.Opcode} for key '{key}' with reset={PortalSessionValueRequestCodec.RequestResetFlag}.";
+
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                PortalSessionValueRequestCodec.Opcode,
+                payload,
+                out string bridgeStatus))
+            {
+                return $"{source} Dispatched it through the live official-session bridge. {bridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
+                PortalSessionValueRequestCodec.Opcode,
+                payload,
+                out string outboxStatus))
+            {
+                return $"{source} Dispatched it through the generic packet outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+            }
+
+            if (_localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    PortalSessionValueRequestCodec.Opcode,
+                    payload,
+                    out string queuedBridgeStatus))
+            {
+                return $"{source} Queued it for deferred official-session injection after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(
+                PortalSessionValueRequestCodec.Opcode,
+                payload,
+                out string queuedOutboxStatus))
+            {
+                return $"{source} Queued it for deferred generic packet outbox delivery after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
+            }
+
+            return $"{source} The request remained simulator-owned because neither the live bridge nor the packet outbox accepted opcode {PortalSessionValueRequestCodec.Opcode}. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
         }
 
         private void TryApplyPendingPortalSessionValueImpact(string key, string value)

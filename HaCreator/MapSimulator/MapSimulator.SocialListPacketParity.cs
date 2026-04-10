@@ -18,6 +18,7 @@ namespace HaCreator.MapSimulator
         private string _socialListOfficialSessionBridgeConfiguredProcessSelector;
         private int? _socialListOfficialSessionBridgeConfiguredLocalPort;
         private ushort _socialListOfficialSessionBridgeConfiguredGuildResultOpcode;
+        private ushort _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode;
         private const int SocialListOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
         private int _nextSocialListOfficialSessionBridgeDiscoveryRefreshAt;
 
@@ -83,7 +84,7 @@ namespace HaCreator.MapSimulator
                 && TryParseSocialListPacketPayloadArgument(args, 1, out byte[] guildResultPayload, out _))
             {
                 return ChatCommandHandler.CommandResult.Ok(
-                    $"CWvsContext::OnGuildResult: {_socialListRuntime.ApplyClientGuildResultPayload(guildResultPayload)}");
+                    $"CWvsContext::OnGuildResult: {ApplyClientGuildResultPayload(guildResultPayload)}");
             }
 
             if (string.Equals(packetAction, "guildskillresult", StringComparison.OrdinalIgnoreCase)
@@ -133,7 +134,7 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(target, "guildresult", StringComparison.OrdinalIgnoreCase))
             {
-                return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.ApplyClientGuildResultPayload(payload));
+                return ChatCommandHandler.CommandResult.Ok(ApplyClientGuildResultPayload(payload));
             }
 
             if (string.Equals(target, "guildskillresult", StringComparison.OrdinalIgnoreCase))
@@ -246,6 +247,7 @@ namespace HaCreator.MapSimulator
                     _socialListOfficialSessionBridgeConfiguredListenPort,
                     _socialListOfficialSessionBridgeConfiguredRemotePort,
                     _socialListOfficialSessionBridgeConfiguredGuildResultOpcode,
+                    _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode,
                     _socialListOfficialSessionBridgeConfiguredProcessSelector,
                     _socialListOfficialSessionBridgeConfiguredLocalPort,
                     out _);
@@ -282,7 +284,8 @@ namespace HaCreator.MapSimulator
                 _socialListOfficialSessionBridgeConfiguredListenPort,
                 _socialListOfficialSessionBridgeConfiguredRemoteHost,
                 _socialListOfficialSessionBridgeConfiguredRemotePort,
-                _socialListOfficialSessionBridgeConfiguredGuildResultOpcode);
+                _socialListOfficialSessionBridgeConfiguredGuildResultOpcode,
+                _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode);
         }
 
         private void RefreshSocialListOfficialSessionBridgeDiscovery(int currentTickCount)
@@ -303,6 +306,7 @@ namespace HaCreator.MapSimulator
                 _socialListOfficialSessionBridgeConfiguredListenPort,
                 _socialListOfficialSessionBridgeConfiguredRemotePort,
                 _socialListOfficialSessionBridgeConfiguredGuildResultOpcode,
+                _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode,
                 _socialListOfficialSessionBridgeConfiguredProcessSelector,
                 _socialListOfficialSessionBridgeConfiguredLocalPort,
                 out _);
@@ -317,7 +321,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                string detail = _socialListRuntime.ApplyClientGuildResultPayload(message.Payload);
+                string detail = ApplyClientGuildResultPayload(message.Payload);
                 bool applied = !detail.StartsWith("Unsupported", StringComparison.OrdinalIgnoreCase)
                     && !detail.Contains("could not be decoded", StringComparison.OrdinalIgnoreCase)
                     && !detail.Contains("missing", StringComparison.OrdinalIgnoreCase);
@@ -338,6 +342,32 @@ namespace HaCreator.MapSimulator
                     }
                 }
             }
+        }
+
+        private string ApplyClientGuildResultPayload(byte[] payload)
+        {
+            string detail = _socialListRuntime.ApplyClientGuildResultPayload(payload);
+            if (payload == null ||
+                !SocialListPacketCodec.TryParseClientGuildResult(payload, out SocialListClientGuildResultPacket packet, out _) ||
+                packet.Kind != SocialListClientGuildResultKind.SkillRecord ||
+                !packet.GuildSkillRecord.HasValue)
+            {
+                RefreshGuildSkillUiContext();
+                WireGuildSkillWindowData();
+                return detail;
+            }
+
+            if (_guildSkillRuntime.BuildSnapshot().Entries.Count == 0)
+            {
+                _guildSkillRuntime.SetSkills(SkillDataLoader.LoadGuildSkills(_DxDeviceManager.GraphicsDevice));
+            }
+
+            string skillRecordDetail = _guildSkillRuntime.ApplyPacketOwnedSkillRecord(packet.GuildSkillRecord.Value, packet.GuildId);
+            RefreshGuildSkillUiContext();
+            WireGuildSkillWindowData();
+            return string.IsNullOrWhiteSpace(detail)
+                ? skillRecordDetail
+                : $"{detail} {skillRecordDetail}";
         }
 
         private string ApplyPacketOwnedGuildSkillResultPayload(byte[] payload)
@@ -410,10 +440,12 @@ namespace HaCreator.MapSimulator
                     _socialListOfficialSessionBridgeConfiguredProcessSelector = discoverProcessSelector;
                     _socialListOfficialSessionBridgeConfiguredLocalPort = discoverLocalPort;
                     _socialListOfficialSessionBridgeConfiguredGuildResultOpcode = discoverOpcode;
+                    _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode = discoverOpcode;
                     _nextSocialListOfficialSessionBridgeDiscoveryRefreshAt = 0;
                     return _socialListOfficialSessionBridge.TryRefreshFromDiscovery(
                         discoverListenPort,
                         discoverRemotePort,
+                        discoverOpcode,
                         discoverOpcode,
                         discoverProcessSelector,
                         discoverLocalPort,
@@ -440,6 +472,7 @@ namespace HaCreator.MapSimulator
                     _socialListOfficialSessionBridgeConfiguredProcessSelector = null;
                     _socialListOfficialSessionBridgeConfiguredLocalPort = null;
                     _socialListOfficialSessionBridgeConfiguredGuildResultOpcode = startOpcode;
+                    _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode = startOpcode;
                     EnsureSocialListOfficialSessionBridgeState(shouldRun: true);
                     return ChatCommandHandler.CommandResult.Ok(DescribeSocialListOfficialSessionBridgeStatus());
 
@@ -450,6 +483,7 @@ namespace HaCreator.MapSimulator
                     _socialListOfficialSessionBridgeConfiguredProcessSelector = null;
                     _socialListOfficialSessionBridgeConfiguredLocalPort = null;
                     _socialListOfficialSessionBridgeConfiguredGuildResultOpcode = 0;
+                    _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode = 0;
                     _socialListOfficialSessionBridge.Stop();
                     return ChatCommandHandler.CommandResult.Ok(DescribeSocialListOfficialSessionBridgeStatus());
 

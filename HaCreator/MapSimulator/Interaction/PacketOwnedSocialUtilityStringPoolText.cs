@@ -2,6 +2,9 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal static class PacketOwnedSocialUtilityStringPoolText
     {
+        internal const int ParcelArrivalSenderStringPoolId = 0x0F50;
+        internal const int ParcelArrivalMesoStringPoolId = 0x0F51;
+        internal const int ParcelArrivalItemStringPoolId = 0x0F52;
         internal const int ParcelClaimSuccessStringPoolId = 0x0F64;
         internal const int ParcelDiscardResultStringPoolId = 0x0F65;
         internal const int ParcelDeliveryNoticeStringPoolId = 0x0F67;
@@ -26,6 +29,30 @@ namespace HaCreator.MapSimulator.Interaction
                 ParcelDeliveryNoticeStringPoolId,
                 "A new parcel has arrived.",
                 appendFallbackSuffix: true);
+        }
+
+        internal static string ResolveParcelArrivalSenderNotice(string sender)
+        {
+            return FormatClientTemplate(
+                ParcelArrivalSenderStringPoolId,
+                "[%s]",
+                string.IsNullOrWhiteSpace(sender) ? "Maple Delivery Service" : sender.Trim());
+        }
+
+        internal static string ResolveParcelArrivalMesoNotice(int meso)
+        {
+            return FormatClientTemplate(
+                ParcelArrivalMesoStringPoolId,
+                "\r\nmeso : %d",
+                meso);
+        }
+
+        internal static string ResolveParcelArrivalItemNotice(string itemName)
+        {
+            return FormatClientTemplate(
+                ParcelArrivalItemStringPoolId,
+                "\r\nitem : %s",
+                string.IsNullOrWhiteSpace(itemName) ? "item" : itemName.Trim());
         }
 
         internal static bool TryResolveTrunkNoticeStringPoolId(int packetSubtype, out int stringPoolId)
@@ -58,6 +85,15 @@ namespace HaCreator.MapSimulator.Interaction
             };
 
             return MapleStoryStringPool.GetOrFallback(stringPoolId, fallback, appendFallbackSuffix: true);
+        }
+
+        private static string FormatClientTemplate(int stringPoolId, string fallbackFormat, object value)
+        {
+            string template = MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackFormat, appendFallbackSuffix: true);
+            string formattedValue = value?.ToString() ?? string.Empty;
+            return template
+                .Replace("%s", formattedValue, System.StringComparison.Ordinal)
+                .Replace("%d", formattedValue, System.StringComparison.Ordinal);
         }
     }
 }

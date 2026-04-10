@@ -1217,12 +1217,12 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawMarriageBadge(SpriteBatch sprite)
         {
-            if (!_isBigBang || !_isMarriedProfile || _marriedIcon == null)
+            if (!_isMarriedProfile || _marriedIcon == null)
             {
                 return;
             }
 
-            // CUIUserInfo::Draw copies UI/UIWindow2.img/UserInfo/character/married at (15, 32).
+            // CUIUserInfo::Draw copies the resolved married-status canvas at (15, 32).
             _marriedIcon.DrawBackground(sprite, null, null, Position.X + 15, Position.Y + 32, Color.White, false, null);
         }
 

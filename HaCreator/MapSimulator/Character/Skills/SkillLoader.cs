@@ -84,6 +84,15 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int ClientSummonReversePlaybackStringPoolId = 0x049F;
         private const string ClientSummonReversePlaybackFallbackName = "zigzag";
 
+        private static readonly string[] ClientSummonedUolPropertyNames =
+        {
+            "sSummonedUOL",
+            "summonedUOL",
+            "summonedUol",
+            "summonUOL",
+            "summonUol"
+        };
+
         private static readonly string[] PersistentAvatarEffectBranches =
         {
             "special",
@@ -134,6 +143,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly Dictionary<int, JobSkillBook> _jobCache = new();
         private readonly HashSet<int> _skillsWithoutCastSound = new();
         private readonly HashSet<int> _skillsWithoutRepeatSound = new();
+        private readonly Dictionary<int, int[]> _affectedSkillParentCache = new();
         private readonly Dictionary<string, MeleeAfterImageCatalog> _characterAfterImageCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, MeleeAfterImageCatalog> _characterChargeAfterImageCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _missingCharacterAfterImageKeys = new(StringComparer.OrdinalIgnoreCase);
@@ -464,6 +474,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.MasterOnly = GetInt(infoNode, "masterOnly") == 1;
                 skill.IsRapidAttack = GetInt(infoNode, "rapidAttack") == 1;
                 skill.IsMesoExplosion = GetInt(infoNode, "mesoExplosion") == 1;
+                skill.IsMovingAttack = GetInt(infoNode, "movingAttack") == 1;
                 skill.CasterMove = GetInt(infoNode, "casterMove") == 1;
                 skill.AreaAttack = GetInt(infoNode, "areaAttack") == 1;
                 skill.RectBasedOnTarget = GetInt(infoNode, "rectBasedOnTarget") == 1;
@@ -489,6 +500,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.AffectedSkillId = skill.AffectedSkillIds.FirstOrDefault();
                 skill.PassiveLinkedSkillIds = ParseLinkedSkillIds(skillNode["psdSkill"]);
                 skill.AffectedSkillEffect = GetString(infoNode, "affectedSkillEffect");
+                skill.ClientSummonedUolPath = ResolveClientSummonedUolPath(skillNode, infoNode);
                 skill.DotType = GetString(infoNode, "dotType");
                 skill.IsMagicDamageSkill = GetInt(infoNode, "magicDamage") == 1;
                 skill.RequireHighestJump = GetInt(infoNode, "requireHighestJump") == 1;
@@ -508,6 +520,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.ReflectsIncomingDamage = GetInt(infoNode, "PADReflect") == 1
                                                || GetInt(infoNode, "MADReflect") == 1;
             }
+            skill.ClientSummonedUolPath ??= ResolveClientSummonedUolPath(skillNode, infoNode);
 
             // Check common nodes
             var commonNode = skillNode["common"];
@@ -2015,6 +2028,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             SynthesizeClientOwnedShadowPartnerActionAnimations(skill.ShadowPartnerActionAnimations);
+            ApplyClientReplayTailsToShadowPartnerActionAnimations(skill.ShadowPartnerActionAnimations);
             skill.ShadowPartnerHorizontalOffsetPx = ResolveShadowPartnerHorizontalOffsetPx(skill.ShadowPartnerActionAnimations);
         }
 
@@ -2031,10 +2045,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             animation.Loop = ShouldLoopShadowPartnerAction(actionKey);
-            if (ShouldAppendReversedShadowPartnerFrames(actionKey))
-            {
-                AppendReversedInteriorShadowPartnerFrames(animation);
-            }
 
             return animation;
         }
@@ -2191,6 +2201,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (remappedAnimation?.Frames.Count > 0)
                 {
                     actionAnimations[actionName] = remappedAnimation;
+                }
+            }
+        }
+
+        internal static void ApplyClientReplayTailsToShadowPartnerActionAnimations(
+            IDictionary<string, SkillAnimation> actionAnimations)
+        {
+            if (actionAnimations == null || actionAnimations.Count == 0)
+            {
+                return;
+            }
+
+            foreach ((string actionName, SkillAnimation animation) in actionAnimations.ToArray())
+            {
+                if (ShouldAppendReversedShadowPartnerFrames(actionName))
+                {
+                    AppendReversedInteriorShadowPartnerFrames(animation);
                 }
             }
         }
@@ -2826,6 +2853,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             WzImageProperty skillNode,
             out WzImageProperty summonNode)
         {
+            if (TryResolveClientSummonedUolProperty(skill?.ClientSummonedUolPath, out summonNode))
+            {
+                return true;
+            }
+
             summonNode = null;
             foreach (WzImageProperty candidateSkillNode in EnumerateSummonSourceSkillNodes(skill, skillNode))
             {
@@ -2966,17 +2998,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                     }
                 }
             }
-
-            if (skill.RequiredSkillIds != null)
-            {
-                foreach (int linkedSkillId in skill.RequiredSkillIds)
-                {
-                    if (linkedSkillId > 0)
-                    {
-                        yield return linkedSkillId;
-                    }
-                }
-            }
         }
 
         private bool TryGetSkillNode(int skillId, out WzImageProperty skillNode)
@@ -2997,6 +3018,93 @@ namespace HaCreator.MapSimulator.Character.Skills
             jobImage.ParseImage();
             skillNode = jobImage["skill"]?[skillId.ToString(CultureInfo.InvariantCulture)];
             return skillNode != null;
+        }
+
+        internal IReadOnlyList<int> FindAffectedSkillParentIds(int affectedSkillId)
+        {
+            if (affectedSkillId <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            if (_affectedSkillParentCache.TryGetValue(affectedSkillId, out int[] cachedParentIds))
+            {
+                return cachedParentIds;
+            }
+
+            var parentSkillIds = new SortedSet<int>();
+            foreach (int jobId in EnumerateAffectedSkillParentCandidateJobIds(affectedSkillId))
+            {
+                WzImage jobImage = GetSkillImage($"{jobId}.img");
+                if (jobImage == null)
+                {
+                    continue;
+                }
+
+                jobImage.ParseImage();
+                WzImageProperty skillRoot = jobImage["skill"];
+                if (skillRoot?.WzProperties == null)
+                {
+                    continue;
+                }
+
+                foreach (WzImageProperty candidateSkillNode in skillRoot.WzProperties)
+                {
+                    if (candidateSkillNode == null
+                        || !int.TryParse(candidateSkillNode.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parentSkillId)
+                        || parentSkillId <= 0
+                        || parentSkillId == affectedSkillId)
+                    {
+                        continue;
+                    }
+
+                    int[] affectedSkillIds = ParseLinkedSkillIds(GetString(candidateSkillNode["info"], "affectedSkill"));
+                    if (Array.IndexOf(affectedSkillIds, affectedSkillId) >= 0)
+                    {
+                        parentSkillIds.Add(parentSkillId);
+                    }
+                }
+            }
+
+            int[] resolvedParentIds = parentSkillIds.ToArray();
+            _affectedSkillParentCache[affectedSkillId] = resolvedParentIds;
+            return resolvedParentIds;
+        }
+
+        private IEnumerable<int> EnumerateAffectedSkillParentCandidateJobIds(int affectedSkillId)
+        {
+            int affectedJobId = affectedSkillId / 10000;
+            IReadOnlyList<int> availableJobIds = EnumerateAvailableSkillBookJobIds();
+            if (availableJobIds.Count == 0)
+            {
+                yield return affectedJobId;
+                yield return affectedJobId + 1;
+                yield break;
+            }
+
+            foreach (int jobId in availableJobIds)
+            {
+                if (IsAffectedSkillParentJobCandidate(affectedJobId, jobId))
+                {
+                    yield return jobId;
+                }
+            }
+        }
+
+        internal static bool IsAffectedSkillParentJobCandidate(int affectedJobId, int candidateJobId)
+        {
+            if (affectedJobId <= 0 || candidateJobId <= 0)
+            {
+                return false;
+            }
+
+            if (candidateJobId == affectedJobId)
+            {
+                return true;
+            }
+
+            return candidateJobId >= affectedJobId
+                   && candidateJobId / 10 == affectedJobId / 10;
         }
 
         private void LoadSupplementalSummonAnimations(
@@ -3999,6 +4107,123 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             summonNode = null;
             return false;
+        }
+
+        private bool TryResolveClientSummonedUolProperty(string summonedUolPath, out WzImageProperty summonNode)
+        {
+            summonNode = null;
+            string normalizedPath = NormalizeClientSummonedUolPath(summonedUolPath);
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                return false;
+            }
+
+            if (!TryResolveSkillPropertyPath(normalizedPath, out WzImageProperty candidateNode)
+                || !LooksLikeSummonSourceProperty(candidateNode))
+            {
+                return false;
+            }
+
+            summonNode = candidateNode;
+            return true;
+        }
+
+        private bool TryResolveSkillPropertyPath(string normalizedPath, out WzImageProperty property)
+        {
+            property = null;
+            if (string.IsNullOrWhiteSpace(normalizedPath)
+                || !normalizedPath.StartsWith("Skill/", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            string[] parts = normalizedPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 3 || !parts[1].EndsWith(".img", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            WzImage image = GetSkillImage(parts[1]);
+            if (image == null)
+            {
+                return false;
+            }
+
+            image.ParseImage();
+            WzImageProperty current = image[parts[2]];
+            for (int i = 3; current != null && i < parts.Length; i++)
+            {
+                current = current[parts[i]];
+            }
+
+            property = ResolveLinkedProperty(current);
+            return property != null;
+        }
+
+        private static string ResolveClientSummonedUolPath(WzImageProperty skillNode, WzImageProperty infoNode)
+        {
+            foreach (string value in EnumerateClientSummonedUolCandidateValues(skillNode, infoNode))
+            {
+                string normalizedPath = NormalizeClientSummonedUolPath(value);
+                if (!string.IsNullOrWhiteSpace(normalizedPath))
+                {
+                    return normalizedPath;
+                }
+            }
+
+            return null;
+        }
+
+        private static IEnumerable<string> EnumerateClientSummonedUolCandidateValues(
+            WzImageProperty skillNode,
+            WzImageProperty infoNode)
+        {
+            foreach (WzImageProperty node in new[] { infoNode, skillNode })
+            {
+                if (node == null)
+                {
+                    continue;
+                }
+
+                foreach (string propertyName in ClientSummonedUolPropertyNames)
+                {
+                    string value = GetString(node, propertyName);
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        yield return value;
+                    }
+                }
+            }
+        }
+
+        internal static string NormalizeClientSummonedUolPathForTest(string summonedUolPath)
+        {
+            return NormalizeClientSummonedUolPath(summonedUolPath);
+        }
+
+        private static string NormalizeClientSummonedUolPath(string summonedUolPath)
+        {
+            if (string.IsNullOrWhiteSpace(summonedUolPath))
+            {
+                return null;
+            }
+
+            string normalizedPath = summonedUolPath
+                .Replace('\\', '/')
+                .Trim();
+
+            const string wzRootPrefix = "wz/";
+            if (normalizedPath.StartsWith(wzRootPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedPath = normalizedPath[wzRootPrefix.Length..];
+            }
+
+            if (!normalizedPath.StartsWith("Skill/", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedPath = $"Skill/{normalizedPath.TrimStart('/')}";
+            }
+
+            return normalizedPath;
         }
 
         internal static bool LooksLikeStandaloneSummonSourceProperty(WzImageProperty skillNode)

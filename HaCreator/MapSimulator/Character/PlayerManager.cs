@@ -17,6 +17,7 @@ using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator;
 using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzProperties;
 
 namespace HaCreator.MapSimulator.Character
 {
@@ -26,6 +27,7 @@ namespace HaCreator.MapSimulator.Character
     public class PlayerManager
     {
         private const int AffectedAreaAvatarEffectIdBase = int.MinValue;
+        private const string WeaponSfxAttackSoundName = "Attack";
 
         private sealed class AffectedAreaAvatarEffectCacheEntry
         {
@@ -82,6 +84,7 @@ namespace HaCreator.MapSimulator.Character
         private Func<int, bool> _affectedAreaOwnerTeamMembershipEvaluator;
         private Func<int, int, MobSkillRuntimeData> _mobSkillRuntimeResolver;
         private SoundManager _soundManager;
+        private WzImage _weaponSoundImage;
         private Action<Rectangle, int, int, int> _reactorAttackAreaHandler;
         private PlayerMobStatusController _mobStatusController;
         private PlayerMobStatusFrameState _currentMobStatusState = PlayerMobStatusFrameState.Default;
@@ -357,6 +360,39 @@ namespace HaCreator.MapSimulator.Character
             Skills?.SetSoundManager(soundManager);
         }
 
+        private void PlayClientOwnedWeaponSfx(string sfx)
+        {
+            if (_soundManager == null || string.IsNullOrWhiteSpace(sfx))
+            {
+                return;
+            }
+
+            WzBinaryProperty sound = ResolveClientOwnedWeaponSfx(sfx);
+            if (sound == null)
+            {
+                return;
+            }
+
+            string soundKey = $"WeaponSfx:{sfx.Trim()}:{WeaponSfxAttackSoundName}";
+            _soundManager.RegisterSound(soundKey, sound);
+            _soundManager.PlaySound(soundKey);
+        }
+
+        internal WzBinaryProperty ResolveClientOwnedWeaponSfx(string sfx)
+        {
+            if (string.IsNullOrWhiteSpace(sfx))
+            {
+                return null;
+            }
+
+            _weaponSoundImage ??= Program.FindImage("Sound", "Weapon.img");
+            _weaponSoundImage?.ParseImage();
+
+            WzImageProperty soundNode = _weaponSoundImage?[sfx.Trim()]?[WeaponSfxAttackSoundName];
+            return soundNode as WzBinaryProperty
+                   ?? (soundNode as WzUOLProperty)?.LinkValue as WzBinaryProperty;
+        }
+
         public void SetCurrentMapIdProvider(Func<int> currentMapIdProvider)
         {
             Pets.SetCurrentMapIdProvider(currentMapIdProvider);
@@ -426,6 +462,8 @@ namespace HaCreator.MapSimulator.Character
                 Skills.OnAttackAreaResolved = _reactorAttackAreaHandler;
                 Skills.OnRepeatSkillModeEndRequested = HandleRepeatSkillModeEndRequested;
                 Skills.OnExternalAreaDamageSharingApplied = _remoteAffectedAreaDamageShareHandler;
+                Skills.OnClientSkillCancelDragonCleanupRequested = (_, currentTime) =>
+                    Dragon.ClearClientOwnedOneTimeActionOnSkillCancel(Player, currentTime);
                 build.SkillStatBonusProvider = stat => Skills.GetPassiveBonus(stat) + Skills.GetBuffStat(stat);
                 build.SkillMasteryProvider = () => Skills.GetMastery(build.GetWeapon());
 
@@ -454,6 +492,7 @@ namespace HaCreator.MapSimulator.Character
             Player.SetPortableChairTamingMobLoader(tamingMobLoader);
             Player.SetSkillMorphLoader(Loader.LoadMorph);
             Player.SetJumpSoundCallback(_onJumpSound);
+            Player.SetWeaponSfxSoundCallback(PlayClientOwnedWeaponSfx);
             Player.SetJumpRestrictionHandler(_jumpRestrictionMessageProvider, _jumpDownRestrictionMessageProvider, _onJumpRestricted);
             Player.SetMoveSpeedCapResolver(_moveSpeedCapResolver);
             Player.SetLandingHandler(_onLanded);
@@ -512,9 +551,10 @@ namespace HaCreator.MapSimulator.Character
             // Set up damage received callback - show violet damage number above player
             Player.OnDamaged = (player, damage) =>
             {
+                int currentTime = Environment.TickCount;
+                Skills?.NotifyLocalPlayerDamaged(currentTime);
                 if (_combatEffects != null && damage > 0)
                 {
-                    int currentTime = Environment.TickCount;
                     // Show violet damage number above player's head (NoViolet)
                     _combatEffects.AddReceivedDamage(
                         damage,
@@ -578,6 +618,7 @@ namespace HaCreator.MapSimulator.Character
                 : null;
             Player.SetPortableChairTamingMobLoader(portableChairTamingMobLoader);
             Player.SetJumpSoundCallback(_onJumpSound);
+            Player.SetWeaponSfxSoundCallback(PlayClientOwnedWeaponSfx);
             Player.SetJumpRestrictionHandler(_jumpRestrictionMessageProvider, _jumpDownRestrictionMessageProvider, _onJumpRestricted);
             Player.SetMoveSpeedCapResolver(_moveSpeedCapResolver);
             Player.Physics.IsFlyingMap = _isFlyingMap;
@@ -630,9 +671,10 @@ namespace HaCreator.MapSimulator.Character
 
             Player.OnDamaged = (combatPlayer, damage) =>
             {
+                int currentTime = Environment.TickCount;
+                Skills?.NotifyLocalPlayerDamaged(currentTime);
                 if (_combatEffects != null && damage > 0)
                 {
-                    int currentTime = Environment.TickCount;
                     _combatEffects.AddReceivedDamage(
                         damage,
                         combatPlayer.X,
@@ -1793,6 +1835,7 @@ namespace HaCreator.MapSimulator.Character
         {
             string actionName = ResolveClientBasicAttackActionName(AttackType.Swing);
             Player.TriggerSkillAnimation(actionName);
+            Player.PlayEffectiveWeaponSfx();
             Skills?.UpdateBasicMeleeAfterImageState(actionName, currentTime);
             System.Diagnostics.Debug.WriteLine($"[Attack] TryDoingBasicMeleeAttack - {actionName} triggered");
 
@@ -1852,6 +1895,7 @@ namespace HaCreator.MapSimulator.Character
         {
             string actionName = ResolveClientBasicAttackActionName(AttackType.Shoot);
             Player.TriggerSkillAnimation(actionName);
+            Player.PlayEffectiveWeaponSfx();
             System.Diagnostics.Debug.WriteLine($"[Attack] TryDoingBasicShoot - {actionName} triggered");
             // Note: Projectile spawning requires SkillManager
             return true;
@@ -1864,6 +1908,7 @@ namespace HaCreator.MapSimulator.Character
         {
             string actionName = ResolveClientBasicAttackActionName(AttackType.Swing);
             Player.TriggerSkillAnimation(actionName);
+            Player.PlayEffectiveWeaponSfx();
             System.Diagnostics.Debug.WriteLine($"[Attack] TryDoingBasicMagicAttack - {actionName} triggered");
 
             // Apply damage to closest mob if mob pool is available

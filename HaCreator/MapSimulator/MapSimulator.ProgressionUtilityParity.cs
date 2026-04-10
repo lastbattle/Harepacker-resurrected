@@ -113,7 +113,7 @@ namespace HaCreator.MapSimulator
                     "Game Menu",
                     body,
                     footer,
-                    onConfirm: Exit,
+                    onConfirm: ContinueConfirmedUtilityQuitThroughLogoutGift,
                     onCancel: null);
                 ShowWindow(
                     MapSimulatorWindowNames.InGameConfirmDialog,

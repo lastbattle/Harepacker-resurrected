@@ -144,6 +144,7 @@ namespace HaCreator.MapSimulator.Pools
             public bool MirrorOffsetWithSummonFacing { get; init; }
             public Vector2 AttachedOffset { get; init; }
             public MobAnimationSet.AttackInfoMetadata AttackInfo { get; init; }
+            public int HitAnimationSourceFrameIndex { get; init; }
             public List<IDXObject> Frames { get; init; }
             public int CurrentFrame { get; set; }
             public int LastFrameTime { get; set; }
@@ -732,19 +733,20 @@ namespace HaCreator.MapSimulator.Pools
             bool preferHealFirst = SummonRuntimeRules.HasMinionAbilityToken(
                 state.Summon.SkillData.MinionAbility,
                 "heal");
-            if (!SummonRuntimeRules.ShouldTrackSupportSuspendWindow(
-                    state.Summon.SkillData,
-                    state.Summon.AssistType,
-                    preferHealFirst,
-                    state.Summon.CurrentAnimationBranchName))
-            {
-                return;
-            }
-
             int suspendDurationMs = ResolvePacketOwnedSupportSuspendDurationMs(
                 state.Summon,
                 preferHealFirst,
                 HealingRobotSkillId);
+            if (!SummonRuntimeRules.ShouldTrackSupportSuspendWindow(
+                    state.Summon.SkillData,
+                    state.Summon.AssistType,
+                    preferHealFirst,
+                    state.Summon.CurrentAnimationBranchName,
+                    suspendDurationMs))
+            {
+                return;
+            }
+
             state.Summon.SupportSuspendUntilTime = suspendDurationMs > 0
                 ? currentTime + suspendDurationMs
                 : int.MinValue;
@@ -4165,16 +4167,33 @@ namespace HaCreator.MapSimulator.Pools
             SummonedHitPacket packet,
             int currentTime)
         {
-            List<IDXObject> frames = mob?.GetAttackHitFrames(attackAction);
+            int? currentMobAttackFrameIndex = ResolvePacketHitMobAttackFrameIndex(mob, attackAction);
+            MobAnimationSet.AttackHitEffectEntry hitEffectEntry = mob?.GetAttackHitEffectEntry(
+                attackAction,
+                currentMobAttackFrameIndex);
+            List<IDXObject> frames = hitEffectEntry?.Frames;
             if (summon == null || frames == null || frames.Count == 0)
             {
                 return;
             }
 
             MobAnimationSet.AttackInfoMetadata attackInfo = mob?.GetAttackInfo(attackAction);
-            Vector2 hitPosition = ResolvePacketHitEffectPosition(summon, attackInfo, currentTime, hitFrameIndex: 0);
-            bool followSummon = attackInfo?.ResolveHitAttachForHitAnimationFrame(0) == true;
-            bool followSummonFacing = followSummon || attackInfo?.ResolveFacingAttachForHitAnimationFrame(0) == true;
+            int hitAnimationSourceFrameIndex = hitEffectEntry?.SourceFrameIndex ?? attackInfo?.HitAnimationSourceFrameIndex ?? 0;
+            Vector2 hitPosition = ResolvePacketHitEffectPosition(
+                summon,
+                attackInfo,
+                currentTime,
+                hitFrameIndex: 0,
+                hitAnimationSourceFrameIndex: hitAnimationSourceFrameIndex);
+            bool followSummon = ResolveHitAttachForDisplayFrame(
+                attackInfo,
+                hitFrameIndex: 0,
+                hitAnimationSourceFrameIndex: hitAnimationSourceFrameIndex);
+            bool facingAttach = ResolveFacingAttachForDisplayFrame(
+                attackInfo,
+                hitFrameIndex: 0,
+                hitAnimationSourceFrameIndex: hitAnimationSourceFrameIndex);
+            bool followSummonFacing = followSummon || facingAttach;
             Vector2 detachedFallbackPosition = followSummon
                 ? PacketOwnedSummonUpdateRules.ResolvePacketOwnedDetachedMobAttackHitAnchor(
                     GetSummonHitbox(summon, currentTime),
@@ -4189,9 +4208,10 @@ namespace HaCreator.MapSimulator.Pools
                 AttachedSummonObjectId = summon.ObjectId,
                 FollowSummon = followSummon,
                 FollowSummonFacing = followSummonFacing,
-                MirrorOffsetWithSummonFacing = attackInfo?.ResolveFacingAttachForHitAnimationFrame(0) == true,
+                MirrorOffsetWithSummonFacing = facingAttach,
                 AttachedOffset = PacketOwnedSummonUpdateRules.ResolvePacketOwnedAuthoredHitOffset(attackInfo),
                 AttackInfo = attackInfo,
+                HitAnimationSourceFrameIndex = hitAnimationSourceFrameIndex,
                 Frames = frames,
                 CurrentFrame = 0,
                 LastFrameTime = currentTime,
@@ -4199,11 +4219,16 @@ namespace HaCreator.MapSimulator.Pools
             });
         }
 
-        private Vector2 ResolvePacketHitEffectPosition(ActiveSummon summon, MobAnimationSet.AttackInfoMetadata attackInfo, int currentTime, int hitFrameIndex = 0)
+        private Vector2 ResolvePacketHitEffectPosition(
+            ActiveSummon summon,
+            MobAnimationSet.AttackInfoMetadata attackInfo,
+            int currentTime,
+            int hitFrameIndex = 0,
+            int? hitAnimationSourceFrameIndex = null)
         {
             Rectangle hitbox = GetSummonHitbox(summon, currentTime);
             Vector2 summonPosition = new(summon.PositionX, summon.PositionY);
-            return ResolvePacketHitEffectPosition(hitbox, summonPosition, attackInfo, summon.FacingRight, _random, hitFrameIndex);
+            return ResolvePacketHitEffectPosition(hitbox, summonPosition, attackInfo, summon.FacingRight, _random, hitFrameIndex, hitAnimationSourceFrameIndex);
         }
 
         private static Vector2 ResolvePacketHitEffectPosition(
@@ -4212,7 +4237,8 @@ namespace HaCreator.MapSimulator.Pools
             MobAnimationSet.AttackInfoMetadata attackInfo,
             bool facingRight,
             Random random,
-            int hitFrameIndex = 0)
+            int hitFrameIndex = 0,
+            int? hitAnimationSourceFrameIndex = null)
         {
             return PacketOwnedSummonUpdateRules.ResolvePacketOwnedMobAttackHitAnchor(
                 hitbox,
@@ -4220,7 +4246,8 @@ namespace HaCreator.MapSimulator.Pools
                 attackInfo,
                 facingRight,
                 random,
-                hitFrameIndex);
+                hitFrameIndex,
+                hitAnimationSourceFrameIndex);
         }
 
         private static void PlayPacketMobAttackSound(MobItem mob, sbyte attackIndex)
@@ -4408,7 +4435,12 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            return hitEffect.AttackInfo?.ResolveHitAttachForHitAnimationFrame(hitEffect.CurrentFrame) ?? hitEffect.FollowSummon;
+            return hitEffect.AttackInfo != null
+                ? ResolveHitAttachForDisplayFrame(
+                    hitEffect.AttackInfo,
+                    hitEffect.CurrentFrame,
+                    hitEffect.HitAnimationSourceFrameIndex)
+                : hitEffect.FollowSummon;
         }
 
         private static bool ShouldHitEffectFollowSummonFacing(PacketOwnedMobAttackHitEffectDisplay hitEffect)
@@ -4420,8 +4452,14 @@ namespace HaCreator.MapSimulator.Pools
 
             if (hitEffect.AttackInfo != null)
             {
-                return hitEffect.AttackInfo.ResolveHitAttachForHitAnimationFrame(hitEffect.CurrentFrame)
-                       || hitEffect.AttackInfo.ResolveFacingAttachForHitAnimationFrame(hitEffect.CurrentFrame);
+                return ResolveHitAttachForDisplayFrame(
+                           hitEffect.AttackInfo,
+                           hitEffect.CurrentFrame,
+                           hitEffect.HitAnimationSourceFrameIndex)
+                       || ResolveFacingAttachForDisplayFrame(
+                           hitEffect.AttackInfo,
+                           hitEffect.CurrentFrame,
+                           hitEffect.HitAnimationSourceFrameIndex);
             }
 
             return hitEffect.FollowSummonFacing;
@@ -4434,8 +4472,40 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            return hitEffect.AttackInfo?.ResolveFacingAttachForHitAnimationFrame(hitEffect.CurrentFrame)
-                   ?? hitEffect.MirrorOffsetWithSummonFacing;
+            return hitEffect.AttackInfo != null
+                ? ResolveFacingAttachForDisplayFrame(
+                    hitEffect.AttackInfo,
+                    hitEffect.CurrentFrame,
+                    hitEffect.HitAnimationSourceFrameIndex)
+                : hitEffect.MirrorOffsetWithSummonFacing;
+        }
+
+        private static int? ResolvePacketHitMobAttackFrameIndex(MobItem mob, string attackAction)
+        {
+            if (mob == null || string.IsNullOrWhiteSpace(attackAction))
+            {
+                return null;
+            }
+
+            return string.Equals(mob.CurrentAction, attackAction, StringComparison.OrdinalIgnoreCase)
+                ? mob.CurrentFrameIndex
+                : null;
+        }
+
+        private static bool ResolveHitAttachForDisplayFrame(
+            MobAnimationSet.AttackInfoMetadata attackInfo,
+            int hitFrameIndex,
+            int hitAnimationSourceFrameIndex)
+        {
+            return attackInfo?.ResolveHitAttach(hitAnimationSourceFrameIndex + Math.Max(0, hitFrameIndex)) == true;
+        }
+
+        private static bool ResolveFacingAttachForDisplayFrame(
+            MobAnimationSet.AttackInfoMetadata attackInfo,
+            int hitFrameIndex,
+            int hitAnimationSourceFrameIndex)
+        {
+            return attackInfo?.ResolveFacingAttach(hitAnimationSourceFrameIndex + Math.Max(0, hitFrameIndex)) == true;
         }
 
         internal static Point ResolvePacketOverlayFrameTopLeft(IDXObject frame, int anchorX, int anchorY, bool shouldFlip)

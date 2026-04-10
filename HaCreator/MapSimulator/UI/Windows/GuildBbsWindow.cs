@@ -699,8 +699,8 @@ namespace HaCreator.MapSimulator.UI
 
                 int globalSlotIndex = visibleCashSlots[i];
                 ShowFeedback(composing
-                    ? _selectComposeEmoticonHandler?.Invoke(GuildBbsEmoticonKind.Cash, globalSlotIndex, 0)
-                    : _selectReplyEmoticonHandler?.Invoke(GuildBbsEmoticonKind.Cash, globalSlotIndex, 0));
+                    ? _selectComposeEmoticonHandler?.Invoke(GuildBbsEmoticonKind.Cash, i, compose.CashEmoticonPageIndex)
+                    : _selectReplyEmoticonHandler?.Invoke(GuildBbsEmoticonKind.Cash, i, compose.CashEmoticonPageIndex));
                 return true;
             }
 
@@ -745,8 +745,8 @@ namespace HaCreator.MapSimulator.UI
 
                 int globalSlotIndex = visibleCashSlots[i];
                 ShowFeedback(composing
-                    ? _selectComposeEmoticonHandler?.Invoke(GuildBbsEmoticonKind.Cash, globalSlotIndex, 0)
-                    : _selectReplyEmoticonHandler?.Invoke(GuildBbsEmoticonKind.Cash, globalSlotIndex, 0));
+                    ? _selectComposeEmoticonHandler?.Invoke(GuildBbsEmoticonKind.Cash, i, replyDraft.CashEmoticonPageIndex)
+                    : _selectReplyEmoticonHandler?.Invoke(GuildBbsEmoticonKind.Cash, i, replyDraft.CashEmoticonPageIndex));
                 return true;
             }
 

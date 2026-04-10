@@ -295,6 +295,142 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private ChatCommandHandler.CommandResult HandleSocialRoomMerchantInboxCommand(
+            SocialRoomKind kind,
+            string[] args,
+            int actionIndex)
+        {
+            string inboxUsage = kind == SocialRoomKind.EntrustedShop
+                ? "Usage: /socialroom entrustedshop [packet] inbox [status|start [port]|stop]"
+                : "Usage: /socialroom personalshop [packet] inbox [status|start [port]|stop]";
+            string inboxAction = args.Length > actionIndex + 1 ? args[actionIndex + 1] : "status";
+            switch (inboxAction.ToLowerInvariant())
+            {
+                case "status":
+                    return ChatCommandHandler.CommandResult.Info(DescribeSocialRoomMerchantPacketInboxStatus(kind));
+
+                case "start":
+                {
+                    int configuredPort = SocialRoomMerchantPacketInboxManager.DefaultPort;
+                    if (args.Length > actionIndex + 2
+                        && (!int.TryParse(args[actionIndex + 2], out configuredPort)
+                            || configuredPort <= 0
+                            || configuredPort > ushort.MaxValue))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(inboxUsage);
+                    }
+
+                    _socialRoomMerchantPacketInbox.Start(kind, configuredPort);
+                    return ChatCommandHandler.CommandResult.Ok(DescribeSocialRoomMerchantPacketInboxStatus(kind));
+                }
+
+                case "stop":
+                    _socialRoomMerchantPacketInbox.Stop();
+                    return ChatCommandHandler.CommandResult.Ok(DescribeSocialRoomMerchantPacketInboxStatus(kind));
+
+                default:
+                    return ChatCommandHandler.CommandResult.Error(inboxUsage);
+            }
+        }
+
+        private ChatCommandHandler.CommandResult HandleSocialRoomMerchantSessionCommand(
+            SocialRoomKind kind,
+            string[] args,
+            int actionIndex)
+        {
+            string sessionUsage = kind == SocialRoomKind.EntrustedShop
+                ? "Usage: /socialroom entrustedshop [packet] session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]"
+                : "Usage: /socialroom personalshop [packet] session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]";
+            string sessionAction = args.Length > actionIndex + 1 ? args[actionIndex + 1] : "status";
+            switch (sessionAction.ToLowerInvariant())
+            {
+                case "status":
+                    return ChatCommandHandler.CommandResult.Info(DescribeSocialRoomMerchantOfficialSessionBridgeStatus(kind));
+
+                case "discover":
+                    if (args.Length <= actionIndex + 2
+                        || !int.TryParse(args[actionIndex + 2], out int discoverRemotePort)
+                        || discoverRemotePort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                    }
+
+                    string processSelector = args.Length > actionIndex + 3 ? args[actionIndex + 3] : null;
+                    int? localPortFilter = null;
+                    if (args.Length > actionIndex + 4)
+                    {
+                        if (!int.TryParse(args[actionIndex + 4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                        {
+                            return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                        }
+
+                        localPortFilter = parsedLocalPort;
+                    }
+
+                    return ChatCommandHandler.CommandResult.Info(
+                        _socialRoomMerchantOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
+
+                case "start":
+                    if (args.Length <= actionIndex + 5
+                        || !int.TryParse(args[actionIndex + 2], out int listenPort)
+                        || listenPort <= 0
+                        || !int.TryParse(args[actionIndex + 4], out int remotePort)
+                        || remotePort <= 0
+                        || !int.TryParse(args[actionIndex + 5], out int inboundOpcodeValue)
+                        || inboundOpcodeValue < 0
+                        || inboundOpcodeValue > ushort.MaxValue)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                    }
+
+                    _socialRoomMerchantOfficialSessionBridge.Start(kind, listenPort, args[actionIndex + 3], remotePort, (ushort)inboundOpcodeValue);
+                    return ChatCommandHandler.CommandResult.Ok(DescribeSocialRoomMerchantOfficialSessionBridgeStatus(kind));
+
+                case "startauto":
+                    if (args.Length <= actionIndex + 4
+                        || !int.TryParse(args[actionIndex + 2], out int autoListenPort)
+                        || autoListenPort <= 0
+                        || !int.TryParse(args[actionIndex + 3], out int autoRemotePort)
+                        || autoRemotePort <= 0
+                        || !int.TryParse(args[actionIndex + 4], out int autoInboundOpcodeValue)
+                        || autoInboundOpcodeValue < 0
+                        || autoInboundOpcodeValue > ushort.MaxValue)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                    }
+
+                    string autoProcessSelector = args.Length > actionIndex + 5 ? args[actionIndex + 5] : null;
+                    int? autoLocalPortFilter = null;
+                    if (args.Length > actionIndex + 6)
+                    {
+                        if (!int.TryParse(args[actionIndex + 6], out int parsedAutoLocalPort) || parsedAutoLocalPort <= 0)
+                        {
+                            return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                        }
+
+                        autoLocalPortFilter = parsedAutoLocalPort;
+                    }
+
+                    return _socialRoomMerchantOfficialSessionBridge.TryStartFromDiscovery(
+                            kind,
+                            autoListenPort,
+                            autoRemotePort,
+                            (ushort)autoInboundOpcodeValue,
+                            autoProcessSelector,
+                            autoLocalPortFilter,
+                            out string startStatus)
+                        ? ChatCommandHandler.CommandResult.Ok($"{startStatus}{Environment.NewLine}{DescribeSocialRoomMerchantOfficialSessionBridgeStatus(kind)}")
+                        : ChatCommandHandler.CommandResult.Error(startStatus);
+
+                case "stop":
+                    _socialRoomMerchantOfficialSessionBridge.Stop();
+                    return ChatCommandHandler.CommandResult.Ok(DescribeSocialRoomMerchantOfficialSessionBridgeStatus(kind));
+
+                default:
+                    return ChatCommandHandler.CommandResult.Error(sessionUsage);
+            }
+        }
+
         private ChatCommandHandler.CommandResult HandleTradingRoomInboxCommand(string[] args, int actionIndex)
         {
             const string inboxUsage = "Usage: /socialroom tradingroom [packet] inbox [status|start [port]|stop]";
@@ -710,6 +846,36 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(sessionUsage);
+            }
+        }
+
+        private ChatCommandHandler.CommandResult HandleTransportVoyageBalrogCommand(string[] args)
+        {
+            const string usage = "Usage: /transport voyagebalrog [status|start [durationMs]|reset]";
+            string action = args.Length > 1 ? args[1] : "status";
+            switch (action.ToLowerInvariant())
+            {
+                case "status":
+                    return ChatCommandHandler.CommandResult.Info(_transportField.DescribeStatus());
+
+                case "start":
+                    int durationMs = 5000;
+                    if (args.Length >= 3 && (!int.TryParse(args[2], out durationMs) || durationMs <= 0))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(usage);
+                    }
+
+                    return _transportField.TryStartVoyageBalrogAttack(durationMs, out string startMessage)
+                        ? ChatCommandHandler.CommandResult.Ok($"{startMessage}{Environment.NewLine}{_transportField.DescribeStatus()}")
+                        : ChatCommandHandler.CommandResult.Error(startMessage);
+
+                case "reset":
+                    return _transportField.TryResetVoyageBalrogAttack(out string resetMessage)
+                        ? ChatCommandHandler.CommandResult.Ok($"{resetMessage}{Environment.NewLine}{_transportField.DescribeStatus()}")
+                        : ChatCommandHandler.CommandResult.Error(resetMessage);
+
+                default:
+                    return ChatCommandHandler.CommandResult.Error(usage);
             }
         }
 
@@ -8865,6 +9031,11 @@ namespace HaCreator.MapSimulator
                 "Inspect or drive packet-owned NPC shop, store-bank, and battle-record owners",
                 "/npcutility [status|packet <364|365|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|page <summary|dot|packets>|close]]",
                 HandlePacketOwnedNpcUtilityCommand);
+            _chat.CommandHandler.RegisterCommand(
+                "adminshop",
+                "Inspect or drive the packet-owned CAdminShopDlg owner and inbox",
+                "/adminshop [status|show|inbox [status|start [port]|stop|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]|packet <366|367|result|open> [payloadhex=..|payloadb64=..]|packetraw <366|367|result|open> <hex>|packetclientraw <hex>]",
+                HandlePacketOwnedAdminShopCommand);
 
 
             _chat.CommandHandler.RegisterCommand(
@@ -10227,7 +10398,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "scriptmsg",
                 "Inspect or drive packet-authored CScriptMan script-message dialogs",
-                "/scriptmsg [status|clear|transport <status|start [port]|stop>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|menu <npcId> <text>|quiz <npcId> <default> <min> <max> <prompt>|speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|pet <npcId> <prompt> <itemId[,itemId...]>|petall <npcId> <prompt> <itemId[,itemId...]>|slidemenu <npcId> <skin> <prompt> <option1,option2,...>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]",
+                "/scriptmsg [status|clear|transport <status|start [port]|stop>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|menu <npcId> <text>|quiz <npcId> <default> <min> <max> <prompt>|speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|pet <npcId> <prompt> <itemId[,itemId...]>|petall <npcId> <prompt> <itemId[,itemId...]>|slidemenu <npcId> <skin> <prompt> <option1,option2,...>|slidemenuclient <npcId> <type> <initialSelectionId> <buttonInfo>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -10533,6 +10704,25 @@ namespace HaCreator.MapSimulator
                                 ? ChatCommandHandler.CommandResult.Ok(slideMenuMessage)
                                 : ChatCommandHandler.CommandResult.Error(slideMenuMessage);
 
+                        case "slidemenuclient":
+                            if (args.Length < 5 ||
+                                !int.TryParse(args[1], out int slideMenuClientNpcId) ||
+                                !int.TryParse(args[2], out int slideMenuClientType) ||
+                                !int.TryParse(args[3], out int slideMenuClientInitialSelectionId))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg slidemenuclient <npcId> <type> <initialSelectionId> <buttonInfo>");
+                            }
+
+                            return TryApplyPacketOwnedScriptMessagePacket(
+                                PacketScriptClientMessageBuilder.BuildSlideMenuClientPacket(
+                                    slideMenuClientNpcId,
+                                    slideMenuClientType,
+                                    slideMenuClientInitialSelectionId,
+                                    string.Join(" ", args.Skip(4))),
+                                out string slideMenuClientMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(slideMenuClientMessage)
+                                : ChatCommandHandler.CommandResult.Error(slideMenuClientMessage);
+
                         case "text":
 
                             if (args.Length < 6 ||
@@ -10625,7 +10815,7 @@ namespace HaCreator.MapSimulator
 
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg [status|clear|transport <status|start [port]|stop>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|menu <npcId> <text>|quiz <npcId> <default> <min> <max> <prompt>|speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|pet <npcId> <prompt> <itemId[,itemId...]>|petall <npcId> <prompt> <itemId[,itemId...]>|slidemenu <npcId> <skin> <prompt> <option1,option2,...>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg [status|clear|transport <status|start [port]|stop>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|menu <npcId> <text>|quiz <npcId> <default> <min> <max> <prompt>|speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|pet <npcId> <prompt> <itemId[,itemId...]>|petall <npcId> <prompt> <itemId[,itemId...]>|slidemenu <npcId> <skin> <prompt> <option1,option2,...>|slidemenuclient <npcId> <type> <initialSelectionId> <buttonInfo>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]");
                     }
                 });
 
@@ -10773,7 +10963,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "droppacket",
                 "Drive packet-owned drop enter/leave flow",
-                "/droppacket <status|clear|packet <322|324> <payloadhex>|create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup] [elevateLayer]|leave <dropId> <remove|playerpickup|petpickup|mobpickup|explode> [actorId|delayMs] [petIndex]>",
+                "/droppacket <status|clear|clock <status|clear|utc <value>|filetime <raw>>|packet <322|324> <payloadhex>|create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup] [elevateLayer] [expireRaw]|leave <dropId> <remove|playerpickup|petpickup|mobpickup|explode> [actorId|delayMs] [petIndex]>",
                 args =>
                 {
                     if (_dropPool == null || _mapBoard?.MapInfo == null)
@@ -10783,7 +10973,7 @@ namespace HaCreator.MapSimulator
 
                     if (args.Length == 0)
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /droppacket <status|clear|packet <322|324> <payloadhex>|create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup] [elevateLayer]|leave <dropId> <remove|playerpickup|petpickup|mobpickup|explode> [actorId|delayMs] [petIndex]>");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /droppacket <status|clear|clock <status|clear|utc <value>|filetime <raw>>|packet <322|324> <payloadhex>|create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup] [elevateLayer] [expireRaw]|leave <dropId> <remove|playerpickup|petpickup|mobpickup|explode> [actorId|delayMs] [petIndex]>");
                     }
 
                     string action = args[0];
@@ -10796,6 +10986,63 @@ namespace HaCreator.MapSimulator
                     {
                         _dropPool.ClearPacketDrops();
                         return ChatCommandHandler.CommandResult.Ok($"Cleared packet-authored drops. {DescribeRemoteDropStatus()}");
+                    }
+
+                    if (string.Equals(action, "clock", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 2)
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /droppacket clock <status|clear|utc <value>|filetime <raw>>");
+                        }
+
+                        string clockAction = args[1];
+                        if (string.Equals(clockAction, "status", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Info(DescribeRemoteDropStatus());
+                        }
+
+                        if (string.Equals(clockAction, "clear", StringComparison.OrdinalIgnoreCase))
+                        {
+                            ClearRemoteDropPacketServerClock();
+                            return ChatCommandHandler.CommandResult.Ok($"Cleared packet drop server clock. {DescribeRemoteDropStatus()}");
+                        }
+
+                        if (string.Equals(clockAction, "utc", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 3
+                                || !DateTimeOffset.TryParse(
+                                    string.Join(" ", args.Skip(2)),
+                                    CultureInfo.InvariantCulture,
+                                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                                    out DateTimeOffset parsedUtc))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /droppacket clock utc <ISO-8601 UTC value>");
+                            }
+
+                            SetRemoteDropPacketServerClock(parsedUtc.UtcDateTime, currTickCount);
+                            return ChatCommandHandler.CommandResult.Ok($"Set packet drop server clock. {DescribeRemoteDropStatus()}");
+                        }
+
+                        if (string.Equals(clockAction, "filetime", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 3 || !long.TryParse(args[2], out long fileTime))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /droppacket clock filetime <raw>");
+                            }
+
+                            try
+                            {
+                                SetRemoteDropPacketServerClock(DateTime.FromFileTimeUtc(fileTime), currTickCount);
+                            }
+                            catch (ArgumentOutOfRangeException)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Invalid FILETIME value.");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok($"Set packet drop server clock. {DescribeRemoteDropStatus()}");
+                        }
+
+                        return ChatCommandHandler.CommandResult.Error("Usage: /droppacket clock <status|clear|utc <value>|filetime <raw>>");
                     }
 
                     if (string.Equals(action, "packet", StringComparison.OrdinalIgnoreCase))
@@ -10829,7 +11076,7 @@ namespace HaCreator.MapSimulator
                             || !short.TryParse(args[7], out short x)
                             || !short.TryParse(args[8], out short y))
                         {
-                            return ChatCommandHandler.CommandResult.Error("Usage: /droppacket create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup] [elevateLayer]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /droppacket create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup] [elevateLayer] [expireRaw]");
                         }
 
                         bool isMoney = string.Equals(args[3], "meso", StringComparison.OrdinalIgnoreCase);
@@ -10872,6 +11119,12 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Error("elevateLayer must be true or false");
                         }
 
+                        long expireRaw = 0;
+                        if (args.Length >= 16 && !long.TryParse(args[15], out expireRaw))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("expireRaw must be a FILETIME integer");
+                        }
+
                         byte[] payload = RemoteDropPacketCodec.BuildEnterPayload(
                             enterType,
                             dropId,
@@ -10885,7 +11138,7 @@ namespace HaCreator.MapSimulator
                             startX,
                             startY,
                             delayMs,
-                            expireRaw: 0,
+                            expireRaw: expireRaw,
                             allowPetPickup: petPickup,
                             elevateLayer: elevateLayer);
                         return ApplyRemoteDropPacketCommand((int)RemoteDropPacketType.Enter, payload);
@@ -10936,7 +11189,7 @@ namespace HaCreator.MapSimulator
                         return ApplyRemoteDropPacketCommand((int)RemoteDropPacketType.Leave, payload);
                     }
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /droppacket <status|clear|packet <322|324> <payloadhex>|create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup] [elevateLayer]|leave <dropId> <remove|playerpickup|petpickup|mobpickup|explode> [actorId|delayMs] [petIndex]>");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /droppacket <status|clear|clock <status|clear|utc <value>|filetime <raw>>|packet <322|324> <payloadhex>|create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup] [elevateLayer] [expireRaw]|leave <dropId> <remove|playerpickup|petpickup|mobpickup|explode> [actorId|delayMs] [petIndex]>");
                 });
 
 

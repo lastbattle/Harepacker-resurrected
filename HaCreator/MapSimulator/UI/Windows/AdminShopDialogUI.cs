@@ -811,12 +811,6 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            string stateLabel = AdminShopDialogClientParityText.BuildResultStateLabel(resultCode);
-            FinishRejectedRequest(
-                entry,
-                stateLabel,
-                $"CAdminShopDlg result {resultCode} rejected the request for {entry.Title}.",
-                refundAmount: 0L);
             if (AdminShopDialogClientParityText.TryGetResultNotice(resultCode, out string resolvedNotice, out reopenRequested))
             {
                 noticeText = resolvedNotice;
@@ -829,19 +823,31 @@ namespace HaCreator.MapSimulator.UI
 
             if (reopenRequested)
             {
+                RestorePendingRequestState(entry);
+                ResetPendingRequestState();
+                ClearPendingPacketOwnedUserSellSnapshot();
                 string outboundSummary = DispatchPacketOwnedAdminShopOutbound(
                     PacketOwnedAdminShopResultMode,
                     _packetOwnedAdminShopSession.NpcTemplateId);
                 _packetOwnedAdminShopSession.SetLastOutboundSummary(outboundSummary);
                 _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 requested the admin-shop owner to reopen through opcode 74 mode 0.");
                 _footerMessage = string.IsNullOrWhiteSpace(noticeText)
-                    ? $"{_footerMessage} {outboundSummary}"
-                    : $"{_footerMessage} {noticeText} {outboundSummary}";
+                    ? $"CAdminShopDlg result {resultCode} requested an authoritative packet 367 refresh. {outboundSummary}"
+                    : $"CAdminShopDlg result {resultCode} requested an authoritative packet 367 refresh. {noticeText} {outboundSummary}";
             }
-            else if (!string.IsNullOrWhiteSpace(noticeText))
+            else
             {
-                _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 left the admin-shop owner open without a reopen acknowledgement.");
-                _footerMessage = $"{_footerMessage} {noticeText}";
+                string stateLabel = AdminShopDialogClientParityText.BuildResultStateLabel(resultCode);
+                FinishRejectedRequest(
+                    entry,
+                    stateLabel,
+                    $"CAdminShopDlg result {resultCode} rejected the request for {entry.Title}.",
+                    refundAmount: 0L);
+                if (!string.IsNullOrWhiteSpace(noticeText))
+                {
+                    _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 left the admin-shop owner open without a reopen acknowledgement.");
+                    _footerMessage = $"{_footerMessage} {noticeText}";
+                }
             }
 
             message = _footerMessage;
@@ -1242,6 +1248,15 @@ namespace HaCreator.MapSimulator.UI
                 return Array.Empty<WishlistSearchResult>();
             }
 
+            string clientSearchQuery = BuildClientWishlistSearchQuery(trimmedQuery);
+            if (string.IsNullOrWhiteSpace(clientSearchQuery))
+            {
+                message = "Enter an item name before searching the wish list.";
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return Array.Empty<WishlistSearchResult>();
+            }
+
             AdminShopCategory requestedCategory = ResolveWishlistCategory(categoryKey);
             string requestedCategoryLabel = GetWishlistCategoryLabel(categoryKey);
             List<(AdminShopEntry Entry, int Score)> matches = _paneStates[AdminShopPane.Npc]
@@ -1249,7 +1264,7 @@ namespace HaCreator.MapSimulator.UI
                 .Where(entry => entry.SupportsWishlist
                                 && MatchesWishlistCategory(entry, categoryKey)
                                 && MatchesWishlistPriceRange(entry, priceRangeIndex))
-                .Select(entry => (Entry: entry, Score: ScoreWishlistEntry(entry, trimmedQuery)))
+                .Select(entry => (Entry: entry, Score: ScoreWishlistEntry(entry, clientSearchQuery)))
                 .Where(match => match.Score > 0)
                 .OrderByDescending(match => match.Score)
                 .ThenBy(match => match.Entry.Price)
@@ -3306,7 +3321,7 @@ namespace HaCreator.MapSimulator.UI
             if (!alreadyWishlisted)
             {
                 wishlistRegisterSummary = DispatchPacketOwnedAdminShopWishlistRegister(matchedEntry);
-                _packetOwnedAdminShopSession.SetLastOwnerState("CUIAdminShopWishList::SendRegisterPacket mirrored opcode 74 mode 3 for the selected item id.");
+                _packetOwnedAdminShopSession.SetLastOwnerState("CUIAdminShopWishListSearchResult::BtRegist confirmed the selected result, sent CUIAdminShopWishList::SendRegisterPacket opcode 74 mode 3, and closed the wishlist owner.");
             }
 
             matchedEntry.Wishlisted = true;
@@ -3447,6 +3462,13 @@ namespace HaCreator.MapSimulator.UI
             score += ScoreWishlistTokenCoverage(aggregateSearchText, normalizedQuery);
             score += ScoreWishlistIndexTermCoverage(indexTerms, normalizedQuery);
             return score;
+        }
+
+        private static string BuildClientWishlistSearchQuery(string query)
+        {
+            return string.IsNullOrEmpty(query)
+                ? string.Empty
+                : query.Replace(" ", string.Empty);
         }
 
         private static int ScoreWishlistField(string fieldValue, string rawQuery, string normalizedQuery, int exactScore, int startsWithScore, int containsScore)

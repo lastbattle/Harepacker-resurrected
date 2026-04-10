@@ -98,6 +98,17 @@ namespace HaCreator.MapSimulator.UI
 
         private const int JoypadSummaryTop = 72;
         private const int JoypadSummaryHeight = 58;
+        private const int JoypadClientNameLeft = 88;
+        private const int JoypadClientNameTop = 34;
+        private const int JoypadClientNameClipWidth = 80;
+        private const int JoypadClientComboLeft = 72;
+        private const int JoypadClientComboFirstId = 1000;
+        private const int JoypadClientDefaultButtonId = 1009;
+        private const int JoypadClientDefaultButtonLeft = 8;
+        private const int JoypadClientOkButtonLeft = 74;
+        private const int JoypadClientCancelButtonLeft = 120;
+        private const int JoypadClientButtonTop = 302;
+        private const int JoypadClientSelectableButtonCount = 12;
         private const int JoypadRowsTop = 136;
         private const int JoypadRowPitch = 20;
         private const int JoypadFooterReserve = 52;
@@ -146,7 +157,9 @@ namespace HaCreator.MapSimulator.UI
                 Func<JoypadSessionSnapshot, string> getValue,
                 Action<JoypadSessionSnapshot, int> adjustValue,
                 JoypadRowKind kind = JoypadRowKind.Command,
-                int sliderStepCount = 0)
+                int sliderStepCount = 0,
+                int clientControlId = 0,
+                int clientY = 0)
             {
                 Action = action;
                 Label = label;
@@ -155,6 +168,8 @@ namespace HaCreator.MapSimulator.UI
                 AdjustValue = adjustValue;
                 Kind = kind;
                 SliderStepCount = sliderStepCount;
+                ClientControlId = clientControlId;
+                ClientY = clientY;
             }
 
             public InputAction? Action { get; }
@@ -164,6 +179,9 @@ namespace HaCreator.MapSimulator.UI
             public Action<JoypadSessionSnapshot, int> AdjustValue { get; }
             public JoypadRowKind Kind { get; }
             public int SliderStepCount { get; }
+            public int ClientControlId { get; }
+            public int ClientY { get; }
+            public bool IsClientCombo => ClientControlId >= JoypadClientComboFirstId;
         }
 
         private enum JoypadRowKind

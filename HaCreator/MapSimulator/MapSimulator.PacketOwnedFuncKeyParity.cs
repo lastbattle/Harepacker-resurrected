@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator
         private const byte PacketOwnedFuncKeyItemType = 2;
         private const byte PacketOwnedFuncKeyItemTypeAlt = 3;
         private const byte PacketOwnedFuncKeyFunctionType = 4;
+        private const byte PacketOwnedFuncKeyClientControlType = 5;
         private const byte PacketOwnedFuncKeyItemTypeCash = 7;
         private const byte PacketOwnedFuncKeyMacroType = 8;
         private const int PacketOwnedPetConsumeMpAttemptThrottleMs = 200;
@@ -513,7 +514,7 @@ namespace HaCreator.MapSimulator
             for (int scanCode = 0; scanCode < PacketOwnedFuncKeyEntryCount; scanCode++)
             {
                 PacketOwnedFuncKeyMappedEntry entry = _packetOwnedFuncKeyMapped[scanCode];
-                if (entry.Type != PacketOwnedFuncKeyFunctionType || entry.Id != clientFunctionId)
+                if (!IsPacketOwnedLiveInputBindingEntry(entry.Type, entry.Id, clientFunctionId))
                 {
                     continue;
                 }
@@ -601,7 +602,7 @@ namespace HaCreator.MapSimulator
             for (int scanCode = 0; scanCode < _packetOwnedFuncKeyMapped.Length; scanCode++)
             {
                 PacketOwnedFuncKeyMappedEntry entry = ResolvePacketOwnedFuncKeyMappedEntry(scanCode);
-                if (entry.Type != PacketOwnedFuncKeyFunctionType || entry.Id != clientFunctionId)
+                if (!IsPacketOwnedLiveInputBindingEntry(entry.Type, entry.Id, clientFunctionId))
                 {
                     continue;
                 }
@@ -1388,6 +1389,23 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        internal static bool IsPacketOwnedLiveInputBindingEntry(byte entryType, int entryId, int clientFunctionId)
+        {
+            if (entryId != clientFunctionId)
+            {
+                return false;
+            }
+
+            return entryType == PacketOwnedFuncKeyFunctionType
+                || entryType == PacketOwnedFuncKeyClientControlType && IsPacketOwnedClientControlFunctionId(clientFunctionId);
+        }
+
+        internal static bool IsPacketOwnedClientControlFunctionId(int clientFunctionId)
+        {
+            // CUIKeyConfig::ResetPaletteItems seeds palette slots 30-34 as type 5 ids 50-54.
+            return clientFunctionId >= 50 && clientFunctionId <= 54;
         }
 
         internal static PacketOwnedRawFunctionOwner ResolvePacketOwnedRawFunctionOwner(int clientFunctionId)

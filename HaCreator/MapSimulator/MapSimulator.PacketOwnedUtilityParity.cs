@@ -173,8 +173,11 @@ namespace HaCreator.MapSimulator
         private readonly TutorRuntime _packetOwnedTutorRuntime = new();
         private bool _packetOwnedMiniMapOnOffVisible = true;
         private readonly LocalUtilityPacketInboxManager _localUtilityPacketInbox = new();
+        private readonly AdminShopPacketInboxManager _adminShopPacketInbox = new();
         private readonly LocalUtilityOfficialSessionBridgeManager _localUtilityOfficialSessionBridge = new();
+        private readonly MessengerOfficialSessionBridgeManager _messengerOfficialSessionBridge = new();
         private readonly LocalUtilityPacketTransportManager _localUtilityPacketOutbox = new();
+        private readonly List<PacketOwnedItemMakerHiddenRecipeUnlockEntry> _pendingPacketOwnedItemMakerHiddenUnlocks = new();
         private static readonly Lazy<HashSet<int>> PacketOwnedTimeBombSkillIdCatalog = new(CreatePacketOwnedTimeBombSkillIdCatalog);
         private static readonly Lazy<HashSet<int>> PacketOwnedVengeanceSkillIdCatalog = new(CreatePacketOwnedVengeanceSkillIdCatalog);
         private static readonly Lazy<HashSet<int>> PacketOwnedExJablinSkillIdCatalog = new(CreatePacketOwnedExJablinSkillIdCatalog);
@@ -281,6 +284,8 @@ namespace HaCreator.MapSimulator
         private string _packetOwnedRadioSessionCreateLayerSource = "uninitialized";
         private bool _localUtilityPacketInboxEnabled = EnablePacketConnectionsByDefault;
         private int _localUtilityPacketInboxConfiguredPort = LocalUtilityPacketInboxManager.DefaultPort;
+        private bool _adminShopPacketInboxEnabled = EnablePacketConnectionsByDefault;
+        private int _adminShopPacketInboxConfiguredPort = AdminShopPacketInboxManager.DefaultPort;
         private bool _localUtilityOfficialSessionBridgeEnabled;
         private bool _localUtilityOfficialSessionBridgeUseDiscovery;
         private int _localUtilityOfficialSessionBridgeConfiguredListenPort = LocalUtilityOfficialSessionBridgeManager.DefaultListenPort;
@@ -290,6 +295,16 @@ namespace HaCreator.MapSimulator
         private int? _localUtilityOfficialSessionBridgeConfiguredLocalPort;
         private const int LocalUtilityOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
         private int _nextLocalUtilityOfficialSessionBridgeDiscoveryRefreshAt;
+        private bool _messengerOfficialSessionBridgeEnabled;
+        private bool _messengerOfficialSessionBridgeUseDiscovery;
+        private int _messengerOfficialSessionBridgeConfiguredListenPort = MessengerOfficialSessionBridgeManager.DefaultListenPort;
+        private string _messengerOfficialSessionBridgeConfiguredRemoteHost = "127.0.0.1";
+        private int _messengerOfficialSessionBridgeConfiguredRemotePort;
+        private ushort _messengerOfficialSessionBridgeConfiguredInboundOpcode = MessengerOfficialSessionBridgeManager.DefaultInboundResultOpcode;
+        private string _messengerOfficialSessionBridgeConfiguredProcessSelector;
+        private int? _messengerOfficialSessionBridgeConfiguredLocalPort;
+        private const int MessengerOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
+        private int _nextMessengerOfficialSessionBridgeDiscoveryRefreshAt;
         private bool _localUtilityPacketOutboxEnabled;
         private int _localUtilityPacketOutboxConfiguredPort = LocalUtilityPacketTransportManager.DefaultPort;
 
@@ -1444,14 +1459,24 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyPacketOwnedClassCompetitionPagePayload(byte[] payload, out string message)
         {
-            message = null;
+            if (!TryDecodePacketOwnedClassCompetitionLaunchPayloadForTests(payload, out message))
+            {
+                return false;
+            }
+
+            message = ApplyClassCompetitionPageLaunch();
+            return true;
+        }
+
+        internal static bool TryDecodePacketOwnedClassCompetitionLaunchPayloadForTests(byte[] payload, out string message)
+        {
             if (payload != null && payload.Length > 0)
             {
                 message = $"Class-competition launch packet should be empty, but received {payload.Length} trailing byte(s).";
                 return false;
             }
 
-            message = ApplyClassCompetitionPageLaunch();
+            message = "Decoded packet-owned Class Competition launch payload.";
             return true;
         }
 
@@ -1712,6 +1737,39 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void EnsureAdminShopPacketInboxState(bool shouldRun)
+        {
+            if (!shouldRun || !_adminShopPacketInboxEnabled)
+            {
+                if (_adminShopPacketInbox.IsRunning)
+                {
+                    _adminShopPacketInbox.Stop();
+                }
+
+                return;
+            }
+
+            if (_adminShopPacketInbox.IsRunning && _adminShopPacketInbox.Port == _adminShopPacketInboxConfiguredPort)
+            {
+                return;
+            }
+
+            if (_adminShopPacketInbox.IsRunning)
+            {
+                _adminShopPacketInbox.Stop();
+            }
+
+            try
+            {
+                _adminShopPacketInbox.Start(_adminShopPacketInboxConfiguredPort);
+            }
+            catch (Exception ex)
+            {
+                _adminShopPacketInbox.Stop();
+                _chat?.AddErrorMessage($"Admin-shop packet inbox failed to start: {ex.Message}", currTickCount);
+            }
+        }
+
         private void DrainLocalUtilityPacketInbox()
         {
             while (_localUtilityPacketInbox.TryDequeue(out LocalUtilityPacketInboxMessage message))
@@ -1723,6 +1781,31 @@ namespace HaCreator.MapSimulator
 
                 bool applied = TryApplyPacketOwnedUtilityPacket(message.PacketType, message.Payload, out string detail);
                 _localUtilityPacketInbox.RecordDispatchResult(message, applied, detail);
+                if (!string.IsNullOrWhiteSpace(detail))
+                {
+                    if (applied)
+                    {
+                        _chat?.AddSystemMessage(detail, currTickCount);
+                    }
+                    else
+                    {
+                        _chat?.AddErrorMessage(detail, currTickCount);
+                    }
+                }
+            }
+        }
+
+        private void DrainAdminShopPacketInbox()
+        {
+            while (_adminShopPacketInbox.TryDequeue(out AdminShopPacketInboxMessage message))
+            {
+                if (message == null)
+                {
+                    continue;
+                }
+
+                bool applied = TryApplyPacketOwnedAdminShopPacket(message.PacketType, message.Payload, out string detail);
+                _adminShopPacketInbox.RecordDispatchResult(message, applied, detail);
                 if (!string.IsNullOrWhiteSpace(detail))
                 {
                     if (applied)
@@ -1769,6 +1852,15 @@ namespace HaCreator.MapSimulator
                 ? $"listening on 127.0.0.1:{_localUtilityPacketInbox.Port}"
                 : $"configured for 127.0.0.1:{_localUtilityPacketInboxConfiguredPort}";
             return $"Local utility packet inbox {enabledText}, {listeningText}, received {_localUtilityPacketInbox.ReceivedCount} packet(s).";
+        }
+
+        private string DescribeAdminShopPacketInboxStatus()
+        {
+            string enabledText = _adminShopPacketInboxEnabled ? "enabled" : "disabled";
+            string listeningText = _adminShopPacketInbox.IsRunning
+                ? $"listening on 127.0.0.1:{_adminShopPacketInbox.Port}"
+                : $"configured for 127.0.0.1:{_adminShopPacketInboxConfiguredPort}";
+            return $"Admin-shop packet inbox {enabledText}, {listeningText}, received {_adminShopPacketInbox.ReceivedCount} packet(s).";
         }
 
         private string DescribeLocalUtilityOfficialSessionBridgeStatus()
@@ -2813,8 +2905,12 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemMaker) is not ItemMakerUI itemMakerWindow)
             {
-                message = "Maker-hidden-unlock packet arrived, but the Item Maker window is unavailable.";
-                return false;
+                int pendingCount = StorePendingPacketOwnedItemMakerHiddenUnlocks(packetUnlock);
+                message = pendingCount > 0
+                    ? $"Stored {pendingCount} packet-owned maker hidden unlock row(s) for the next Item Maker launch."
+                    : "Maker-hidden-unlock packet arrived without any hidden unlock rows to store.";
+                StampPacketOwnedUtilityRequestState();
+                return true;
             }
 
             if (!itemMakerWindow.TryResolvePacketOwnedHiddenUnlockEntries(packetUnlock, out IReadOnlyCollection<ItemMakerRecipeProgressionEntry> unlockedEntries, out message))
@@ -2824,9 +2920,7 @@ namespace HaCreator.MapSimulator
 
             if (unlockedEntries.Count > 0)
             {
-                CharacterBuild build = GetActiveItemMakerCharacterBuild();
-                ItemMakerProgressionSnapshot updated = _itemMakerProgressionStore.RecordUnlockedHiddenRecipes(build, unlockedEntries);
-                itemMakerWindow.UpdateProgression(updated, message);
+                ApplyResolvedItemMakerHiddenUnlockEntries(itemMakerWindow, unlockedEntries, message);
             }
             else
             {
@@ -2918,6 +3012,83 @@ namespace HaCreator.MapSimulator
             }
 
             return $"Stored maker session for the next Item Maker launch: {string.Join("; ", parts)}.";
+        }
+
+        private int StorePendingPacketOwnedItemMakerHiddenUnlocks(PacketOwnedItemMakerHiddenRecipeUnlock packetUnlock)
+        {
+            if (packetUnlock?.Entries == null || packetUnlock.Entries.Count == 0)
+            {
+                return _pendingPacketOwnedItemMakerHiddenUnlocks.Count;
+            }
+
+            HashSet<(int BucketKey, int OutputItemId)> seen = new();
+            for (int i = 0; i < _pendingPacketOwnedItemMakerHiddenUnlocks.Count; i++)
+            {
+                PacketOwnedItemMakerHiddenRecipeUnlockEntry existing = _pendingPacketOwnedItemMakerHiddenUnlocks[i];
+                seen.Add((existing.BucketKey, existing.OutputItemId));
+            }
+
+            for (int i = 0; i < packetUnlock.Entries.Count; i++)
+            {
+                PacketOwnedItemMakerHiddenRecipeUnlockEntry entry = packetUnlock.Entries[i];
+                if (entry.OutputItemId <= 0 || !seen.Add((entry.BucketKey, entry.OutputItemId)))
+                {
+                    continue;
+                }
+
+                _pendingPacketOwnedItemMakerHiddenUnlocks.Add(entry);
+            }
+
+            return _pendingPacketOwnedItemMakerHiddenUnlocks.Count;
+        }
+
+        private bool TryApplyStoredPacketOwnedItemMakerHiddenUnlocks(ItemMakerUI itemMakerWindow, out string message)
+        {
+            message = null;
+            if (itemMakerWindow == null || _pendingPacketOwnedItemMakerHiddenUnlocks.Count == 0)
+            {
+                return false;
+            }
+
+            PacketOwnedItemMakerHiddenRecipeUnlock pendingUnlock = new()
+            {
+                Entries = _pendingPacketOwnedItemMakerHiddenUnlocks.ToArray()
+            };
+
+            if (!itemMakerWindow.TryResolvePacketOwnedHiddenUnlockEntries(
+                    pendingUnlock,
+                    out IReadOnlyCollection<ItemMakerRecipeProgressionEntry> unlockedEntries,
+                    out message))
+            {
+                return false;
+            }
+
+            _pendingPacketOwnedItemMakerHiddenUnlocks.Clear();
+            if (unlockedEntries.Count > 0)
+            {
+                ApplyResolvedItemMakerHiddenUnlockEntries(itemMakerWindow, unlockedEntries, message);
+            }
+            else
+            {
+                itemMakerWindow.ApplyPacketOwnedResult(message, refreshSlotState: false);
+            }
+
+            return true;
+        }
+
+        private void ApplyResolvedItemMakerHiddenUnlockEntries(
+            ItemMakerUI itemMakerWindow,
+            IReadOnlyCollection<ItemMakerRecipeProgressionEntry> unlockedEntries,
+            string message)
+        {
+            if (itemMakerWindow == null || unlockedEntries == null || unlockedEntries.Count == 0)
+            {
+                return;
+            }
+
+            CharacterBuild build = GetActiveItemMakerCharacterBuild();
+            ItemMakerProgressionSnapshot updated = _itemMakerProgressionStore.RecordUnlockedHiddenRecipes(build, unlockedEntries);
+            itemMakerWindow.UpdateProgression(updated, message);
         }
 
         private static bool TryDecodePacketOwnedSkillLearnItemResult(
@@ -4018,7 +4189,7 @@ namespace HaCreator.MapSimulator
 
                 _packetOwnedRadioAudio = new MonoGameBgmPlayer(trackResolution.AudioProperty, looped: false, startOffsetMs);
                 int trackDurationMs = (int)Math.Clamp(
-                    Math.Round(_packetOwnedRadioAudio.Duration.TotalMilliseconds),
+                    Math.Round(_packetOwnedRadioAudio.TotalDuration.TotalMilliseconds),
                     0d,
                     int.MaxValue);
                 if (!IsPacketOwnedRadioPlaybackOffsetUsable(startOffsetMs, trackDurationMs))
@@ -5017,7 +5188,8 @@ namespace HaCreator.MapSimulator
                 BranchNames = new[] { "special" },
                 WorldOrigin = timeBombPosition,
                 FollowOwnerPosition = false,
-                FollowOwnerFacing = false
+                FollowOwnerFacing = false,
+                DelayRateOverride = 1000
             });
 
             int appliedHitPeriodMs = 0;
@@ -5253,7 +5425,7 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private static int ResolvePacketOwnedBattleshipMaxDurability(int skillLevel, int characterLevel)
+        internal static int ResolvePacketOwnedBattleshipMaxDurability(int skillLevel, int characterLevel)
         {
             if (skillLevel <= 0 || characterLevel <= 0)
             {
@@ -5325,12 +5497,12 @@ namespace HaCreator.MapSimulator
 
             if (!enabled)
             {
+                RemovePacketOwnedTutorSummonForRuntimeOwner();
                 int requestedSkillId = ResolvePacketOwnedTutorSkillId();
                 _packetOwnedTutorRuntime.ApplyRemovalRequest(
                     requestedSkillId,
                     currTickCount,
                     "packet-owned tutor branch requested removal.");
-                RemovePacketOwnedTutorSummon();
                 NotifyEventAlarmOwnerActivity("packet-owned tutor alarm");
                 ShowUtilityFeedbackMessage(_packetOwnedTutorRuntime.StatusMessage);
                 return _packetOwnedTutorRuntime.StatusMessage;
@@ -5338,7 +5510,7 @@ namespace HaCreator.MapSimulator
 
             // Client evidence: CUserLocal::OnHireTutor removes the prior tutor owner
             // before allocating and initializing the next one.
-            RemovePacketOwnedTutorSummon();
+            RemovePacketOwnedTutorSummonForRuntimeOwner();
             int tutorSkillId = ResolvePacketOwnedTutorSkillId();
             int tutorActorHeight = ResolvePacketOwnedTutorActorHeight(tutorSkillId);
             _packetOwnedTutorRuntime.ApplyHireRequest(tutorSkillId, tutorActorHeight, currTickCount, ResolvePacketOwnedTutorRuntimeCharacterId());
@@ -5743,8 +5915,8 @@ namespace HaCreator.MapSimulator
 
             if (_packetOwnedTutorRuntime.RequiresCharacterRebind(runtimeCharacterId))
             {
+                RemovePacketOwnedTutorSummonForRuntimeOwner();
                 _packetOwnedTutorRuntime.ResetActiveTutorForRuntimeCharacter(runtimeCharacterId, currentTickCount);
-                RemovePacketOwnedTutorSummon();
                 return;
             }
 
@@ -6269,6 +6441,27 @@ namespace HaCreator.MapSimulator
             _summonedPool.TryConsumeSummonByObjectId(_packetOwnedTutorRuntime.ActiveSummonObjectId);
             _summonedPool.TryConsumeSummonByObjectId(TutorRuntime.CygnusTutorObjectId);
             _summonedPool.TryConsumeSummonByObjectId(TutorRuntime.AranTutorObjectId);
+        }
+
+        private void RemovePacketOwnedTutorSummonForRuntimeOwner()
+        {
+            int runtimeCharacterId = Math.Max(0, _packetOwnedTutorRuntime.BoundCharacterId);
+            int summonObjectId = Math.Max(0, _packetOwnedTutorRuntime.ActiveSummonObjectId);
+            if (summonObjectId <= 0 && _packetOwnedTutorRuntime.ActiveSkillId > 0)
+            {
+                summonObjectId = _packetOwnedTutorRuntime.ResolveSummonObjectId(
+                    _packetOwnedTutorRuntime.ActiveSkillId,
+                    runtimeCharacterId);
+            }
+
+            if (summonObjectId <= 0)
+            {
+                return;
+            }
+
+            _summonedPool.TryConsumeSummonByObjectId(summonObjectId);
+            _packetOwnedTutorTrackedSummonObjectIds.Remove(summonObjectId);
+            _packetOwnedTutorSummonMessageSequenceIdsByObjectId.Remove(summonObjectId);
         }
 
         private bool TryGetPacketOwnedTutorSummon(out ActiveSummon summon)
@@ -9197,6 +9390,13 @@ namespace HaCreator.MapSimulator
             if (decodedPayload.Mode == MechanicEquipPacketPayloadMode.AuthorityResult)
             {
                 return TryQueuePacketOwnedMechanicAuthorityResult(decodedPayload, out message);
+            }
+
+            string tamingMobRestrictionMessage = FieldInteractionRestrictionEvaluator.GetTamingMobRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+            if (!string.IsNullOrWhiteSpace(tamingMobRestrictionMessage))
+            {
+                message = tamingMobRestrictionMessage;
+                return false;
             }
 
             CharacterBuild build = _playerManager?.Player?.Build;

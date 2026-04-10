@@ -194,16 +194,38 @@ namespace HaCreator.MapSimulator
 
         private bool TryHandleConfirmedUtilityQuit(out string message)
         {
+            RegisterPacketOwnedLogoutGiftWindow();
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LogoutGift) is LogoutGiftWindow existingWindow
+                && IsPacketOwnedLogoutGiftOwnerSingletonPresent(_packetOwnedLogoutGiftOwnerInstantiated, existingWindow.IsVisible))
+            {
+                message = "CUILogoutGift::TryShowLogoutGiftDialog returned 0 because the logout-gift singleton is already instantiated; matching `CWvsContext::UI_Menu`, the simulator suppresses the quit continuation until the existing owner completes.";
+                _lastPacketOwnedLogoutGiftSummary = message;
+                NotifyEventAlarmOwnerActivity("packet-owned logout gift");
+                return true;
+            }
+
             if (TryLaunchPacketOwnedLogoutGiftForUtilityQuit(out message))
             {
                 return true;
             }
 
             message = string.IsNullOrWhiteSpace(message)
-                ? "CWvsContext::UI_Menu quit flow continued directly because CUILogoutGift::TryShowLogoutGiftDialog did not surface a modal owner."
-                : $"{message} CWvsContext::UI_Menu therefore continues the quit flow without surfacing CUILogoutGift.";
+                ? "CWvsContext::UI_Menu quit flow continued directly because CUILogoutGift::TryShowLogoutGiftDialog returned 1 without surfacing a modal owner."
+                : $"{message} CWvsContext::UI_Menu therefore continues the quit flow because the client TryShowLogoutGiftDialog branch returns 1 when no singleton blocks the continuation.";
             _lastPacketOwnedLogoutGiftSummary = message;
             return false;
+        }
+
+        private void ContinueConfirmedUtilityQuitThroughLogoutGift()
+        {
+            if (TryHandleConfirmedUtilityQuit(out string message))
+            {
+                ShowUtilityFeedbackMessage(message);
+                return;
+            }
+
+            ShowUtilityFeedbackMessage(message);
+            Exit();
         }
 
         private bool TryApplyPacketOwnedLogoutGiftPayload(byte[] payload, out string message)

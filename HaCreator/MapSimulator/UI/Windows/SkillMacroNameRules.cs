@@ -305,8 +305,8 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            int removeStart = GetPreviousCaretStop(value, safeCaretIndex);
-            int removeLength = safeCaretIndex - removeStart;
+            (int removeStart, int removeEnd) = GetTextElementBeforeOrContainingCaret(value, safeCaretIndex);
+            int removeLength = removeEnd - removeStart;
             updatedText = value.Remove(removeStart, removeLength);
             updatedCaretIndex = removeStart;
             return true;
@@ -323,10 +323,54 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            int removeEnd = GetNextCaretStop(value, safeCaretIndex);
-            updatedText = value.Remove(safeCaretIndex, removeEnd - safeCaretIndex);
-            updatedCaretIndex = safeCaretIndex;
+            (int removeStart, int removeEnd) = GetTextElementAtOrContainingCaret(value, safeCaretIndex);
+            updatedText = value.Remove(removeStart, removeEnd - removeStart);
+            updatedCaretIndex = removeStart;
             return true;
+        }
+
+        private static (int Start, int End) GetTextElementBeforeOrContainingCaret(string value, int caretIndex)
+        {
+            int previousStart = 0;
+            int previousEnd = 0;
+            TextElementEnumerator enumerator = StringInfo.GetTextElementEnumerator(value);
+            while (enumerator.MoveNext())
+            {
+                int start = enumerator.ElementIndex;
+                int end = start + enumerator.GetTextElement().Length;
+                if (caretIndex <= start)
+                {
+                    break;
+                }
+
+                if (caretIndex <= end)
+                {
+                    return (start, end);
+                }
+
+                previousStart = start;
+                previousEnd = end;
+            }
+
+            return previousEnd > previousStart
+                ? (previousStart, previousEnd)
+                : (0, Math.Min(value.Length, Math.Max(1, caretIndex)));
+        }
+
+        private static (int Start, int End) GetTextElementAtOrContainingCaret(string value, int caretIndex)
+        {
+            TextElementEnumerator enumerator = StringInfo.GetTextElementEnumerator(value);
+            while (enumerator.MoveNext())
+            {
+                int start = enumerator.ElementIndex;
+                int end = start + enumerator.GetTextElement().Length;
+                if (caretIndex >= start && caretIndex < end)
+                {
+                    return (start, end);
+                }
+            }
+
+            return (caretIndex, Math.Min(value.Length, caretIndex + 1));
         }
 
         internal static bool TryNormalizeForEdit(string text, out string normalized, out string error, Encoding encoding = null)

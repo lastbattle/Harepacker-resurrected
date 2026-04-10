@@ -382,6 +382,7 @@ namespace HaCreator.MapSimulator.Loaders
                 // Clear any previously loaded skills.
                 skillWindow.ClearSkills();
                 skillWindow.SetUseDualTabStrip(IsDualBladeJob(jobId));
+                skillWindow.SetCharacterJob(jobId, subJob);
 
 
                 var pathJobIds = GetVisibleSkillRootIdsForJob(jobId, subJob, learnedSkillIds);
@@ -464,6 +465,7 @@ namespace HaCreator.MapSimulator.Loaders
                 }
 
 
+                skillWindow.RefreshVisibleTabsFromLoadedSkillRoots();
 
                 // Show the populated tab by default.
                 skillWindow.CurrentTab = GetSkillTabFromJobId(jobId);

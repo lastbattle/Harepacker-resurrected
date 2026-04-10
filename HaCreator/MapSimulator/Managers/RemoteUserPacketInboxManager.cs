@@ -164,6 +164,8 @@ namespace HaCreator.MapSimulator.Managers
                 "newyearremove" => (int)RemoteUserPacketType.UserNewYearCardRecordRemove,
                 "couplechairadd" => (int)RemoteUserPacketType.UserCoupleChairRecordAdd,
                 "couplechairremove" => (int)RemoteUserPacketType.UserCoupleChairRecordRemove,
+                "chat" or "onchat" => (int)RemoteUserPacketType.UserChat,
+                "outsidechat" or "chatoutside" or "onchatoutside" => (int)RemoteUserPacketType.UserChatFromOutsideMap,
                 "enter" => (int)RemoteUserPacketType.UserEnterField,
                 "leave" => (int)RemoteUserPacketType.UserLeaveField,
                 "move" => (int)RemoteUserPacketType.UserMove,
@@ -184,13 +186,18 @@ namespace HaCreator.MapSimulator.Managers
                 "chair" => (int)RemoteUserPacketType.UserPortableChair,
                 "mount" => (int)RemoteUserPacketType.UserMount,
                 "prepare" => (int)RemoteUserPacketType.UserPreparedSkill,
+                "movingshootprepare" or "movingshoot" or "movingprepare" => (int)RemoteUserPacketType.UserMovingShootAttackPrepareOfficial,
                 "preparedclear" => (int)RemoteUserPacketType.UserPreparedSkillClear,
+                "hit" => (int)RemoteUserPacketType.UserHitOfficial,
                 "emotion" => (int)RemoteUserPacketType.UserEmotionOfficial,
                 "activeeffect" or "activeeffectitem" or "setactiveeffectitem" => (int)RemoteUserPacketType.UserActiveEffectItemOfficial,
                 "upgradetomb" or "showupgradetomb" => (int)RemoteUserPacketType.UserUpgradeTombOfficial,
                 "officialchair" or "setactiveportablechair" => (int)RemoteUserPacketType.UserPortableChairOfficial,
+                "usereffect" or "officialeffect" => (int)RemoteUserPacketType.UserEffectOfficial,
+                "receivehp" or "partyhp" => (int)RemoteUserPacketType.UserReceiveHpOfficial,
                 "guildname" or "guildnamechanged" => (int)RemoteUserPacketType.UserGuildNameChangedOfficial,
                 "guildmark" or "guildmarkchanged" => (int)RemoteUserPacketType.UserGuildMarkChangedOfficial,
+                "throwgrenade" or "grenade" => (int)RemoteUserPacketType.UserThrowGrenadeOfficial,
                 "pickup" or "droppickup" => (int)RemoteUserPacketType.UserDropPickup,
                 "melee" or "attack" or "meleeattack" => (int)RemoteUserPacketType.UserMeleeAttack,
                 "effect" or "itemeffect" or "ringeffect" => (int)RemoteUserPacketType.UserItemEffect,
@@ -207,12 +214,18 @@ namespace HaCreator.MapSimulator.Managers
         {
             return packetType switch
             {
+                (int)RemoteUserPacketType.UserHitOfficial => $"UserHitOfficial (0x{packetType:X})",
                 (int)RemoteUserPacketType.UserEmotionOfficial => $"UserEmotionOfficial (0x{packetType:X})",
                 (int)RemoteUserPacketType.UserActiveEffectItemOfficial => $"UserActiveEffectItemOfficial (0x{packetType:X})",
                 (int)RemoteUserPacketType.UserUpgradeTombOfficial => $"UserUpgradeTombOfficial (0x{packetType:X})",
                 (int)RemoteUserPacketType.UserPortableChairOfficial => $"UserPortableChairOfficial (0x{packetType:X})",
+                (int)RemoteUserPacketType.UserEffectOfficial => $"UserEffectOfficial (0x{packetType:X})",
+                (int)RemoteUserPacketType.UserReceiveHpOfficial => $"UserReceiveHpOfficial (0x{packetType:X})",
                 (int)RemoteUserPacketType.UserGuildNameChangedOfficial => $"UserGuildNameChangedOfficial (0x{packetType:X})",
                 (int)RemoteUserPacketType.UserGuildMarkChangedOfficial => $"UserGuildMarkChangedOfficial (0x{packetType:X})",
+                (int)RemoteUserPacketType.UserThrowGrenadeOfficial => $"UserThrowGrenadeOfficial (0x{packetType:X})",
+                (int)RemoteUserPacketType.UserChat => "UserChat (CUser::OnChat)",
+                (int)RemoteUserPacketType.UserChatFromOutsideMap => "UserChatFromOutsideMap (CUser::OnChat)",
                 _ => Enum.IsDefined(typeof(RemoteUserPacketType), packetType)
                     ? $"{(RemoteUserPacketType)packetType} (0x{packetType:X})"
                     : $"packet {packetType}"

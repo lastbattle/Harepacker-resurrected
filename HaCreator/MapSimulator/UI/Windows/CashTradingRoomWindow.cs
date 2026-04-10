@@ -56,6 +56,10 @@ namespace HaCreator.MapSimulator.UI
         private const int ChatEditY = 158;
         private const int ChatEditWidth = 165;
         private const int ChatEditHeight = 16;
+        private const int ChatLogX = 409;
+        private const int ChatLogY = 18;
+        private const int ChatLogWidth = 216;
+        private const int ChatLogHeight = 128;
         private const int ChatScrollX = 630;
         private const int ChatScrollY = 12;
         private const int ChatScrollHeight = 135;
@@ -63,7 +67,7 @@ namespace HaCreator.MapSimulator.UI
         private const int OfferStep = 50000;
         private const int MaxVisibleChatLines = 6;
         private const int MaxChatHistory = 24;
-        private const int ChatMaxLength = 34;
+        private const int ChatMaxLength = 256;
         private static readonly TradeOwnerFocusTarget[] FocusCycleOrder =
         {
             TradeOwnerFocusTarget.ChatEdit,
@@ -534,7 +538,7 @@ namespace HaCreator.MapSimulator.UI
 
             float stateY = Position.Y + 188;
             sprite.DrawString(_font, $"Stage: {_sessionStage}  Lock: {(_localLocked ? "Locked" : "Open")}  Accept: {(_localAccepted ? "Accepted" : "Pending")}", new Vector2(Position.X + 22, stateY), labelColor);
-            sprite.DrawString(_font, $"Edit [{ChatEditX},{ChatEditY} {ChatEditWidth}x{ChatEditHeight}]  Focus {(_chatEditControl.HasFocus ? "on" : "off")}  Owner focus {DescribeFocusedControl()}  Scroll [{ChatScrollX},{ChatScrollY} h{ChatScrollHeight} wheel {ChatWheelRange}]  Offset {_chatScrollOffset}", new Vector2(Position.X + 22, stateY + 18), mutedColor);
+            sprite.DrawString(_font, $"Edit [{ChatEditX},{ChatEditY} {ChatEditWidth}x{ChatEditHeight} max {ChatMaxLength}]  Focus {(_chatEditControl.HasFocus ? "on" : "off")}  Owner focus {DescribeFocusedControl()}  Scroll [{ChatScrollX},{ChatScrollY} h{ChatScrollHeight} wheel {ChatWheelRange}]  Offset {_chatScrollOffset}", new Vector2(Position.X + 22, stateY + 18), mutedColor);
             sprite.DrawString(_font, $"Draft fallback: {_chatDrafts[_chatDraftIndex]}", new Vector2(Position.X + 22, stateY + 36), accentColor);
             sprite.DrawString(_font, $"Remote: {_remoteProgressState}  Buttons: Trade / Reset / Coin / Clame / Enter  Tab cycles owner focus; Space activates.", new Vector2(Position.X + 22, stateY + 54), mutedColor);
 
@@ -643,7 +647,7 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetChatLogBounds(Rectangle ownerBounds)
         {
-            return new Rectangle(ownerBounds.X + 402, ownerBounds.Y + 22, 212, 128);
+            return new Rectangle(ownerBounds.X + ChatLogX, ownerBounds.Y + ChatLogY, ChatLogWidth, ChatLogHeight);
         }
 
         private Rectangle GetChatScrollBounds(Rectangle ownerBounds)

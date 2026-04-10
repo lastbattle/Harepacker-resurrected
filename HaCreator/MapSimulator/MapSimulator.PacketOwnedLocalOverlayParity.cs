@@ -2317,7 +2317,12 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            int hpThresholdPercent = Math.Clamp(thresholdPercent, 1, 99);
+            if (thresholdPercent <= 0 || maxHp <= 0)
+            {
+                return false;
+            }
+
+            int hpThresholdPercent = Math.Clamp(thresholdPercent, 1, 100);
             int hpThreshold = Math.Max(1, (int)Math.Ceiling(Math.Max(0, maxHp) * (hpThresholdPercent / 100f)));
             return predictedRemainingHp < hpThreshold;
         }

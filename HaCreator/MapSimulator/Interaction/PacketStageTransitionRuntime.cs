@@ -219,7 +219,8 @@ namespace HaCreator.MapSimulator.Interaction
                     characterDataFlags |= 0x4UL;
                 }
 
-                writer.Write(characterDataFlags | additionalCharacterDataFlags);
+                ulong effectiveCharacterDataFlags = characterDataFlags | additionalCharacterDataFlags;
+                writer.Write(effectiveCharacterDataFlags);
                 writer.Write(combatOrders);
                 writer.Write(useBackwardUpdatePrelude ? (byte)1 : (byte)0);
                 if (useBackwardUpdatePrelude)
@@ -271,13 +272,13 @@ namespace HaCreator.MapSimulator.Interaction
                     WriteCharacterDataInventorySlotLimits(writer, inventorySlotLimits);
                 }
 
-                if ((characterDataFlags & 0x100000UL) != 0)
+                if ((effectiveCharacterDataFlags & 0x100000UL) != 0)
                 {
                     writer.Write(preInventoryHeaderValue1 ?? 0);
                     writer.Write(preInventoryHeaderValue2 ?? 0);
                 }
 
-                if ((characterDataFlags & 0x4UL) != 0)
+                if ((effectiveCharacterDataFlags & 0x4UL) != 0)
                 {
                     WriteCharacterDataEquipInventorySection(
                         writer,
@@ -1923,34 +1924,32 @@ namespace HaCreator.MapSimulator.Interaction
             ulong characterDataFlags,
             PacketCharacterDataSnapshot snapshot)
         {
-            int miniGameRecordCount = 0;
-            int coupleRecordCount = 0;
-            int friendRecordCount = 0;
-            int marriageRecordCount = 0;
+            IReadOnlyList<byte[]> miniGameRecords = Array.Empty<byte[]>();
+            IReadOnlyList<byte[]> coupleRecords = Array.Empty<byte[]>();
+            IReadOnlyList<byte[]> friendRecords = Array.Empty<byte[]>();
+            IReadOnlyList<byte[]> marriageRecords = Array.Empty<byte[]>();
             if ((characterDataFlags & CharacterDataMiniGameRecordFlag) != 0)
             {
-                miniGameRecordCount = reader.ReadUInt16();
-                SkipCharacterDataFixedRecordGroup(reader, miniGameRecordCount, CharacterDataMiniGameRecordByteLength);
+                miniGameRecords = ReadCharacterDataFixedRecordGroup(reader, CharacterDataMiniGameRecordByteLength);
             }
 
             if ((characterDataFlags & CharacterDataRelationshipRecordFlag) != 0)
             {
-                coupleRecordCount = reader.ReadUInt16();
-                SkipCharacterDataFixedRecordGroup(reader, coupleRecordCount, CharacterDataCoupleRecordByteLength);
-
-                friendRecordCount = reader.ReadUInt16();
-                SkipCharacterDataFixedRecordGroup(reader, friendRecordCount, CharacterDataFriendRecordByteLength);
-
-                marriageRecordCount = reader.ReadUInt16();
-                SkipCharacterDataFixedRecordGroup(reader, marriageRecordCount, CharacterDataMarriageRecordByteLength);
+                coupleRecords = ReadCharacterDataFixedRecordGroup(reader, CharacterDataCoupleRecordByteLength);
+                friendRecords = ReadCharacterDataFixedRecordGroup(reader, CharacterDataFriendRecordByteLength);
+                marriageRecords = ReadCharacterDataFixedRecordGroup(reader, CharacterDataMarriageRecordByteLength);
             }
 
             return snapshot with
             {
-                MiniGameRecordCount = miniGameRecordCount,
-                CoupleRecordCount = coupleRecordCount,
-                FriendRecordCount = friendRecordCount,
-                MarriageRecordCount = marriageRecordCount
+                MiniGameRecordCount = miniGameRecords.Count,
+                MiniGameRecords = miniGameRecords,
+                CoupleRecordCount = coupleRecords.Count,
+                CoupleRecords = coupleRecords,
+                FriendRecordCount = friendRecords.Count,
+                FriendRecords = friendRecords,
+                MarriageRecordCount = marriageRecords.Count,
+                MarriageRecords = marriageRecords
             };
         }
 
@@ -1980,19 +1979,27 @@ namespace HaCreator.MapSimulator.Interaction
             return bytes;
         }
 
-        private static void SkipCharacterDataFixedRecordGroup(BinaryReader reader, int count, int recordByteLength)
+        private static IReadOnlyList<byte[]> ReadCharacterDataFixedRecordGroup(BinaryReader reader, int recordByteLength)
         {
+            ushort count = reader.ReadUInt16();
             if (count <= 0)
             {
-                return;
+                return Array.Empty<byte[]>();
             }
 
-            int totalByteLength = checked(count * recordByteLength);
-            byte[] skippedBytes = reader.ReadBytes(totalByteLength);
-            if (skippedBytes.Length != totalByteLength)
+            byte[][] records = new byte[count][];
+            for (int i = 0; i < count; i++)
             {
-                throw new EndOfStreamException("Character-data record group ended before all fixed-size records could be consumed.");
+                byte[] bytes = reader.ReadBytes(recordByteLength);
+                if (bytes.Length != recordByteLength)
+                {
+                    throw new EndOfStreamException("Character-data fixed record ended before all bytes could be consumed.");
+                }
+
+                records[i] = bytes;
             }
+
+            return records;
         }
 
         private static IReadOnlyList<PacketCharacterDataNewYearCardRecord> ReadCharacterDataNewYearCardRecords(BinaryReader reader)
@@ -2406,9 +2413,13 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyList<int> RegularMapTransferFields = null,
         IReadOnlyList<int> ContinentMapTransferFields = null,
         int MiniGameRecordCount = 0,
+        IReadOnlyList<byte[]> MiniGameRecords = null,
         int CoupleRecordCount = 0,
+        IReadOnlyList<byte[]> CoupleRecords = null,
         int FriendRecordCount = 0,
+        IReadOnlyList<byte[]> FriendRecords = null,
         int MarriageRecordCount = 0,
+        IReadOnlyList<byte[]> MarriageRecords = null,
         int NewYearCardRecordCount = 0,
         IReadOnlyList<PacketCharacterDataNewYearCardRecord> NewYearCardRecords = null,
         int QuestExRecordCount = 0,

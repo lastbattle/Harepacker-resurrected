@@ -30,6 +30,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int PacketTypeResult = 174;
 
         private readonly ConcurrentQueue<MassacrePacketInboxMessage> _pendingMessages = new();
+        private readonly Dictionary<int, MassacrePacketInboxMessageKind> _mappedInboundOpcodes = new();
         private readonly object _sync = new();
 
         private TcpListener _listener;
@@ -100,7 +101,7 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Massacre official-session bridge {lifecycle}; {session}; received={ReceivedCount}. {LastStatus}";
+            return $"Massacre official-session bridge {lifecycle}; {session}; received={ReceivedCount}; mapped inbound opcodes={DescribeMappedInboundOpcodes()}. {LastStatus}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -169,16 +170,21 @@ namespace HaCreator.MapSimulator.Managers
         {
             lock (_sync)
             {
+                bool autoSelectListenPort = listenPort <= 0;
+                int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
+                string resolvedRemoteHost = string.IsNullOrWhiteSpace(remoteHost) ? IPAddress.Loopback.ToString() : remoteHost.Trim();
+
                 StopInternal(clearPending: true);
 
                 try
                 {
-                    ListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
-                    RemoteHost = string.IsNullOrWhiteSpace(remoteHost) ? IPAddress.Loopback.ToString() : remoteHost.Trim();
+                    ListenPort = requestedListenPort;
+                    RemoteHost = resolvedRemoteHost;
                     RemotePort = remotePort;
                     _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, ListenPort);
+                    _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
                     _listener.Start();
+                    ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
                     LastStatus = $"Massacre official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
                     status = LastStatus;
@@ -256,6 +262,55 @@ namespace HaCreator.MapSimulator.Managers
             return _pendingMessages.TryDequeue(out message);
         }
 
+        public bool TryMapInboundOpcode(int opcode, MassacrePacketInboxMessageKind kind, out string status)
+        {
+            if (opcode < 0 || opcode > ushort.MaxValue)
+            {
+                status = "Massacre inbound opcode must fit in an unsigned 16-bit packet id.";
+                return false;
+            }
+
+            if (!IsSupportedMappedKind(kind))
+            {
+                status = $"Massacre official-session bridge cannot map inbound opcode {opcode} to {kind}.";
+                return false;
+            }
+
+            lock (_sync)
+            {
+                _mappedInboundOpcodes[opcode] = kind;
+                status = $"Massacre official-session bridge maps inbound opcode 0x{opcode:X4} to {DescribeMappedKind(kind)}.";
+                LastStatus = status;
+                return true;
+            }
+        }
+
+        public void ClearMappedInboundOpcodes()
+        {
+            lock (_sync)
+            {
+                _mappedInboundOpcodes.Clear();
+                LastStatus = "Massacre official-session bridge cleared mapped inbound opcodes.";
+            }
+        }
+
+        public string DescribeMappedInboundOpcodes()
+        {
+            lock (_sync)
+            {
+                if (_mappedInboundOpcodes.Count == 0)
+                {
+                    return "none";
+                }
+
+                return string.Join(
+                    ", ",
+                    _mappedInboundOpcodes
+                        .OrderBy(pair => pair.Key)
+                        .Select(pair => $"0x{pair.Key:X4}->{DescribeMappedKind(pair.Value)}"));
+            }
+        }
+
         public void RecordDispatchResult(string source, int packetType, bool success, string message)
         {
             string packetLabel = packetType switch
@@ -266,6 +321,27 @@ namespace HaCreator.MapSimulator.Managers
                 _ => $"Massacre packet {packetType}"
             };
             string summary = string.IsNullOrWhiteSpace(message) ? packetLabel : $"{packetLabel}: {message}";
+            LastStatus = success
+                ? $"Applied {summary} from {source}."
+                : $"Ignored {summary} from {source}.";
+        }
+
+        public void RecordDispatchResult(string source, MassacrePacketInboxMessage message, bool success, string result)
+        {
+            string packetLabel = message?.Kind switch
+            {
+                MassacrePacketInboxMessageKind.ClockPayload => "Massacre clock payload",
+                MassacrePacketInboxMessageKind.InfoPayload => "Massacre context payload",
+                MassacrePacketInboxMessageKind.Packet => message.PacketType switch
+                {
+                    CurrentWrapperRelayOpcode => $"CField::OnPacket relay {CurrentWrapperRelayOpcode}",
+                    PacketTypeIncGauge => "Massacre inc gauge",
+                    PacketTypeResult => "Massacre result",
+                    _ => $"Massacre packet {message.PacketType}"
+                },
+                _ => "Massacre official-session payload"
+            };
+            string summary = string.IsNullOrWhiteSpace(result) ? packetLabel : $"{packetLabel}: {result}";
             LastStatus = success
                 ? $"Applied {summary} from {source}."
                 : $"Ignored {summary} from {source}.";
@@ -370,14 +446,14 @@ namespace HaCreator.MapSimulator.Managers
 
                 pair.ClientSession.SendPacket((byte[])raw.Clone());
 
-                if (!TryDecodeInboundMassacrePacket(raw, $"official-session:{pair.RemoteEndpoint}", out MassacrePacketInboxMessage message))
+                if (!TryDecodeInboundMassacrePacket(raw, $"official-session:{pair.RemoteEndpoint}", GetMappedInboundOpcodesSnapshot(), out MassacrePacketInboxMessage message))
                 {
                     return;
                 }
 
                 _pendingMessages.Enqueue(message);
                 ReceivedCount++;
-                LastStatus = $"Queued Massacre opcode {message.PacketType} from live session {pair.RemoteEndpoint}.";
+                LastStatus = $"Queued {DescribeMessage(message)} from live session {pair.RemoteEndpoint}.";
             }
             catch (Exception ex)
             {
@@ -461,6 +537,15 @@ namespace HaCreator.MapSimulator.Managers
 
         internal static bool TryDecodeInboundMassacrePacket(byte[] rawPacket, string source, out MassacrePacketInboxMessage message)
         {
+            return TryDecodeInboundMassacrePacket(rawPacket, source, null, out message);
+        }
+
+        internal static bool TryDecodeInboundMassacrePacket(
+            byte[] rawPacket,
+            string source,
+            IReadOnlyDictionary<int, MassacrePacketInboxMessageKind> mappedInboundOpcodes,
+            out MassacrePacketInboxMessage message)
+        {
             message = null;
             if (rawPacket == null || rawPacket.Length < sizeof(short))
             {
@@ -470,12 +555,19 @@ namespace HaCreator.MapSimulator.Managers
             int opcode = BitConverter.ToUInt16(rawPacket, 0);
             if (opcode != CurrentWrapperRelayOpcode
                 && opcode != PacketTypeIncGauge
-                && opcode != PacketTypeResult)
+                && opcode != PacketTypeResult
+                && (mappedInboundOpcodes == null || !mappedInboundOpcodes.TryGetValue(opcode, out _)))
             {
                 return false;
             }
 
             byte[] payload = rawPacket.Skip(sizeof(short)).ToArray();
+            if (mappedInboundOpcodes != null
+                && mappedInboundOpcodes.TryGetValue(opcode, out MassacrePacketInboxMessageKind mappedKind))
+            {
+                return TryBuildMappedInboundMessage(opcode, mappedKind, payload, source, rawPacket, out message);
+            }
+
             SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref opcode, ref payload);
             message = new MassacrePacketInboxMessage(
                 MassacrePacketInboxMessageKind.Packet,
@@ -484,6 +576,100 @@ namespace HaCreator.MapSimulator.Managers
                 packetType: opcode,
                 payload: payload);
             return true;
+        }
+
+        private IReadOnlyDictionary<int, MassacrePacketInboxMessageKind> GetMappedInboundOpcodesSnapshot()
+        {
+            lock (_sync)
+            {
+                return _mappedInboundOpcodes.Count == 0
+                    ? null
+                    : new Dictionary<int, MassacrePacketInboxMessageKind>(_mappedInboundOpcodes);
+            }
+        }
+
+        private static bool TryBuildMappedInboundMessage(
+            int mappedOpcode,
+            MassacrePacketInboxMessageKind mappedKind,
+            byte[] payload,
+            string source,
+            byte[] rawPacket,
+            out MassacrePacketInboxMessage message)
+        {
+            message = null;
+            if (!IsSupportedMappedKind(mappedKind) || !HasExpectedMappedPayloadLength(mappedKind, payload))
+            {
+                return false;
+            }
+
+            int packetType = mappedKind switch
+            {
+                MassacrePacketInboxMessageKind.IncGauge => PacketTypeIncGauge,
+                MassacrePacketInboxMessageKind.Result => PacketTypeResult,
+                _ => -1
+            };
+            MassacrePacketInboxMessageKind messageKind = mappedKind switch
+            {
+                MassacrePacketInboxMessageKind.IncGauge or MassacrePacketInboxMessageKind.Result => MassacrePacketInboxMessageKind.Packet,
+                _ => mappedKind
+            };
+
+            message = new MassacrePacketInboxMessage(
+                messageKind,
+                source,
+                $"packetraw {Convert.ToHexString(rawPacket)}",
+                packetType: packetType,
+                payload: payload);
+            return true;
+        }
+
+        private static bool HasExpectedMappedPayloadLength(MassacrePacketInboxMessageKind kind, byte[] payload)
+        {
+            int length = payload?.Length ?? 0;
+            return kind switch
+            {
+                MassacrePacketInboxMessageKind.ClockPayload => length >= sizeof(byte) + sizeof(int),
+                MassacrePacketInboxMessageKind.InfoPayload => length >= sizeof(int) * 4,
+                MassacrePacketInboxMessageKind.IncGauge => length >= sizeof(int),
+                MassacrePacketInboxMessageKind.Result => length >= sizeof(byte) + sizeof(int),
+                _ => false
+            };
+        }
+
+        private static bool IsSupportedMappedKind(MassacrePacketInboxMessageKind kind)
+        {
+            return kind is MassacrePacketInboxMessageKind.ClockPayload
+                or MassacrePacketInboxMessageKind.InfoPayload
+                or MassacrePacketInboxMessageKind.IncGauge
+                or MassacrePacketInboxMessageKind.Result;
+        }
+
+        private static string DescribeMappedKind(MassacrePacketInboxMessageKind kind)
+        {
+            return kind switch
+            {
+                MassacrePacketInboxMessageKind.ClockPayload => "clock",
+                MassacrePacketInboxMessageKind.InfoPayload => "context",
+                MassacrePacketInboxMessageKind.IncGauge => "inc-gauge",
+                MassacrePacketInboxMessageKind.Result => "result",
+                _ => kind.ToString()
+            };
+        }
+
+        private static string DescribeMessage(MassacrePacketInboxMessage message)
+        {
+            if (message == null)
+            {
+                return "Massacre official-session payload";
+            }
+
+            return message.Kind switch
+            {
+                MassacrePacketInboxMessageKind.ClockPayload => "Massacre clock payload",
+                MassacrePacketInboxMessageKind.InfoPayload => "Massacre context payload",
+                MassacrePacketInboxMessageKind.Packet => $"Massacre opcode {message.PacketType}",
+                _ => $"Massacre {message.Kind}"
+            };
         }
 
         private static IEnumerable<TcpRowOwnerPid> EnumerateTcpRows()

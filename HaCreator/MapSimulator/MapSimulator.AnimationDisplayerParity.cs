@@ -93,8 +93,10 @@ namespace HaCreator.MapSimulator
             public Rectangle EmissionArea { get; init; }
             public int UpdateIntervalMs { get; init; }
             public int SpawnDurationMs { get; init; }
-            public int OffsetDistancePx { get; init; }
+            public Point SpawnOffsetMin { get; init; }
+            public Point SpawnOffsetMax { get; init; }
             public bool UsesRelativeEmission { get; init; }
+            public int ThetaDegrees { get; init; }
             public float Radius { get; init; }
         }
 
@@ -558,9 +560,8 @@ namespace HaCreator.MapSimulator
             float resolvedRadius = followDefinition?.Radius > 0f
                 ? followDefinition.Radius
                 : AnimationDisplayerFollowRadius;
-            Point spawnOffset = BuildAnimationDisplayerFollowSpawnOffset(
-                relativeEmission,
-                followDefinition?.OffsetDistancePx ?? 0);
+            Point spawnOffsetMin = BuildAnimationDisplayerFollowSpawnOffsetMin(relativeEmission, followDefinition);
+            Point spawnOffsetMax = BuildAnimationDisplayerFollowSpawnOffsetMax(relativeEmission, followDefinition);
 
             ClearAnimationDisplayerFollowRegistration(registrationKey);
             int followId = _animationEffects.AddFollow(
@@ -575,7 +576,7 @@ namespace HaCreator.MapSimulator
                     GenerationPoints = generationPoints ?? BuildAnimationDisplayerFollowGenerationPoints(
                         AnimationDisplayerFollowRadius,
                         AnimationDisplayerFollowPointCount),
-                    ThetaDegrees = AnimationDisplayerFollowThetaDegrees,
+                    ThetaDegrees = followDefinition?.ThetaDegrees ?? AnimationDisplayerFollowThetaDegrees,
                     Radius = resolvedRadius,
                     RandomizeStartupAngle = true,
                     UpdateIntervalMs = followDefinition?.UpdateIntervalMs > 0
@@ -588,8 +589,8 @@ namespace HaCreator.MapSimulator
                     SpawnAppliesEmissionBias = relativeEmission && (followDefinition?.UsesRelativeEmission ?? true),
                     SpawnVerticalEmissionBias = AnimationDisplayerFollowEmissionVerticalBias,
                     SpawnDurationMs = followDefinition?.SpawnDurationMs ?? 0,
-                    SpawnOffsetMin = spawnOffset,
-                    SpawnOffsetMax = spawnOffset
+                    SpawnOffsetMin = spawnOffsetMin,
+                    SpawnOffsetMax = spawnOffsetMax
                 });
             if (followId < 0)
             {
@@ -950,6 +951,7 @@ namespace HaCreator.MapSimulator
                 request.FollowOwnerFacing);
             castInfo.CasterId = localCharacterId;
             castInfo.FacingRight = facingRight;
+            castInfo.DelayRateOverride = request.DelayRateOverride;
             return TryRegisterAnimationDisplayerSkillUse(castInfo);
         }
 
@@ -1778,6 +1780,11 @@ namespace HaCreator.MapSimulator
 
         private int ResolveAnimationDisplayerSkillUseDelayRate(SkillCastInfo castInfo)
         {
+            if (castInfo?.DelayRateOverride is > 0)
+            {
+                return castInfo.DelayRateOverride.Value;
+            }
+
             int delayRate = _playerManager?.Skills?.ResolveSharedSkillUseDelayRate(castInfo?.SkillId ?? 0) ?? 1000;
             return delayRate > 0 ? delayRate : 1000;
         }
@@ -2015,14 +2022,14 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            foreach (int ringItemId in EnumerateAnimationDisplayerFollowEquipmentItemIds(build))
+            foreach (int itemId in EnumerateAnimationDisplayerFollowEquipmentItemIds(build))
             {
-                if (ringItemId <= 0)
+                if (itemId <= 0)
                 {
                     continue;
                 }
 
-                if (_animationDisplayerFollowEquipmentCache.TryGetValue(ringItemId, out AnimationDisplayerFollowEquipmentDefinition cachedDefinition))
+                if (_animationDisplayerFollowEquipmentCache.TryGetValue(itemId, out AnimationDisplayerFollowEquipmentDefinition cachedDefinition))
                 {
                     if (cachedDefinition != null)
                     {
@@ -2032,8 +2039,8 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                AnimationDisplayerFollowEquipmentDefinition loadedDefinition = LoadAnimationDisplayerFollowEquipmentDefinition(ringItemId);
-                _animationDisplayerFollowEquipmentCache[ringItemId] = loadedDefinition;
+                AnimationDisplayerFollowEquipmentDefinition loadedDefinition = LoadAnimationDisplayerFollowEquipmentDefinition(itemId);
+                _animationDisplayerFollowEquipmentCache[itemId] = loadedDefinition;
                 if (loadedDefinition != null)
                 {
                     return loadedDefinition;
@@ -2050,23 +2057,48 @@ namespace HaCreator.MapSimulator
                 yield break;
             }
 
-            EquipSlot[] ringSlots =
+            EquipSlot[] slots =
             {
+                EquipSlot.Cap,
+                EquipSlot.FaceAccessory,
+                EquipSlot.EyeAccessory,
+                EquipSlot.Earrings,
+                EquipSlot.Coat,
+                EquipSlot.Longcoat,
+                EquipSlot.Pants,
+                EquipSlot.Shoes,
+                EquipSlot.Glove,
+                EquipSlot.Shield,
+                EquipSlot.Weapon,
                 EquipSlot.Ring1,
                 EquipSlot.Ring2,
                 EquipSlot.Ring3,
-                EquipSlot.Ring4
+                EquipSlot.Ring4,
+                EquipSlot.Pendant,
+                EquipSlot.Saddle,
+                EquipSlot.Cape,
+                EquipSlot.Medal,
+                EquipSlot.Belt,
+                EquipSlot.Shoulder,
+                EquipSlot.Pocket,
+                EquipSlot.Badge,
+                EquipSlot.Pendant2,
+                EquipSlot.TamingMobAccessory,
+                EquipSlot.Android,
+                EquipSlot.AndroidHeart,
+                EquipSlot.TamingMob
             };
+            var seenItemIds = new HashSet<int>();
 
-            for (int i = 0; i < ringSlots.Length; i++)
+            for (int i = 0; i < slots.Length; i++)
             {
-                EquipSlot ringSlot = ringSlots[i];
-                if (build.Equipment.TryGetValue(ringSlot, out CharacterPart visiblePart) && visiblePart?.ItemId > 0)
+                EquipSlot slot = slots[i];
+                if (build.Equipment.TryGetValue(slot, out CharacterPart visiblePart) && visiblePart?.ItemId > 0 && seenItemIds.Add(visiblePart.ItemId))
                 {
                     yield return visiblePart.ItemId;
                 }
 
-                if (build.HiddenEquipment.TryGetValue(ringSlot, out CharacterPart hiddenPart) && hiddenPart?.ItemId > 0)
+                if (build.HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart) && hiddenPart?.ItemId > 0 && seenItemIds.Add(hiddenPart.ItemId))
                 {
                     yield return hiddenPart.ItemId;
                 }
@@ -2092,9 +2124,10 @@ namespace HaCreator.MapSimulator
             Rectangle emissionArea = BuildAnimationDisplayerFollowEquipmentEmissionArea(effectProperty);
             int updateIntervalMs = effectProperty["interval"]?.GetInt() ?? AnimationDisplayerFollowUpdateIntervalMs;
             int spawnDurationMs = effectProperty["delay"]?.GetInt() ?? 0;
-            int offsetDistancePx = Math.Max(0, effectProperty["dx"]?.GetInt() ?? 0);
+            Point spawnOffsetMin = BuildAnimationDisplayerFollowEquipmentSpawnOffsetMin(effectProperty);
+            Point spawnOffsetMax = BuildAnimationDisplayerFollowEquipmentSpawnOffsetMax(effectProperty, spawnOffsetMin);
             IReadOnlyList<Vector2> generationPoints = LoadAnimationDisplayerFollowEquipmentGenerationPoints(effectProperty["genPoint"]);
-            float radius = BuildAnimationDisplayerFollowEquipmentRadius(generationPoints, offsetDistancePx);
+            float radius = BuildAnimationDisplayerFollowEquipmentRadius(generationPoints, spawnOffsetMax);
 
             return new AnimationDisplayerFollowEquipmentDefinition
             {
@@ -2104,22 +2137,67 @@ namespace HaCreator.MapSimulator
                 EmissionArea = emissionArea,
                 UpdateIntervalMs = updateIntervalMs,
                 SpawnDurationMs = spawnDurationMs,
-                OffsetDistancePx = offsetDistancePx,
+                SpawnOffsetMin = spawnOffsetMin,
+                SpawnOffsetMax = spawnOffsetMax,
                 UsesRelativeEmission = effectProperty["emission"]?.GetInt() != 0,
+                ThetaDegrees = effectProperty["nTheta"]?.GetInt()
+                    ?? effectProperty["theta"]?.GetInt()
+                    ?? AnimationDisplayerFollowThetaDegrees,
                 Radius = radius
             };
         }
 
         private static WzSubProperty ResolveAnimationDisplayerFollowEquipmentProperty(int itemId)
         {
-            if (itemId <= 0 || itemId / 10000 != 111)
+            if (itemId <= 0)
             {
                 return null;
             }
 
-            WzImage itemImage = Program.FindImage("Character", $"Ring/{itemId:D8}.img");
+            string equipDataPath = ResolveAnimationDisplayerFollowEquipmentDataPath(itemId);
+            if (string.IsNullOrWhiteSpace(equipDataPath))
+            {
+                return null;
+            }
+
+            WzImage itemImage = Program.FindImage("Character", equipDataPath);
             itemImage?.ParseImage();
             return itemImage?["info"]?["effect"] as WzSubProperty;
+        }
+
+        internal static string ResolveAnimationDisplayerFollowEquipmentDataPath(int itemId)
+        {
+            string folder = ResolveAnimationDisplayerFollowEquipmentFolder(itemId);
+            return string.IsNullOrWhiteSpace(folder)
+                ? null
+                : $"{folder}/{itemId:D8}.img";
+        }
+
+        internal static string ResolveAnimationDisplayerFollowEquipmentFolder(int itemId)
+        {
+            int category = itemId / 10000;
+            return category switch
+            {
+                100 => "Cap",
+                101 or 102 => "Accessory",
+                103 => "Earrings",
+                104 => "Coat",
+                105 => "Longcoat",
+                106 => "Pants",
+                107 => "Shoes",
+                108 => "Glove",
+                109 => "Shield",
+                110 => "Cape",
+                111 => "Ring",
+                112 or 113 or 114 or 115 or 116 or 118 => "Accessory",
+                166 or 167 => "Android",
+                170 => "Weapon",
+                119 or 134 => "Weapon",
+                >= 130 and < 170 => "Weapon",
+                180 or 198 or 199 => "TamingMob",
+                >= 190 and < 200 => "TamingMob",
+                _ => null
+            };
         }
 
         private static string BuildAnimationDisplayerFollowEquipmentEffectUol(string effectPath)
@@ -2176,7 +2254,32 @@ namespace HaCreator.MapSimulator
             return points.Count > 0 ? points : null;
         }
 
-        private static float BuildAnimationDisplayerFollowEquipmentRadius(IReadOnlyList<Vector2> generationPoints, int offsetDistancePx)
+        private static Point BuildAnimationDisplayerFollowEquipmentSpawnOffsetMin(WzImageProperty effectProperty)
+        {
+            return new Point(
+                effectProperty?["x0"]?.GetInt()
+                    ?? effectProperty?["rx0"]?.GetInt()
+                    ?? 0,
+                effectProperty?["y0"]?.GetInt()
+                    ?? effectProperty?["ry0"]?.GetInt()
+                    ?? 0);
+        }
+
+        private static Point BuildAnimationDisplayerFollowEquipmentSpawnOffsetMax(WzImageProperty effectProperty, Point spawnOffsetMin)
+        {
+            return new Point(
+                effectProperty?["x1"]?.GetInt()
+                    ?? effectProperty?["rx1"]?.GetInt()
+                    ?? effectProperty?["dx"]?.GetInt()
+                    ?? spawnOffsetMin.X,
+                effectProperty?["y1"]?.GetInt()
+                    ?? effectProperty?["ry1"]?.GetInt()
+                    ?? effectProperty?["dy"]?.GetInt()
+                    ?? effectProperty?["dx"]?.GetInt()
+                    ?? spawnOffsetMin.Y);
+        }
+
+        private static float BuildAnimationDisplayerFollowEquipmentRadius(IReadOnlyList<Vector2> generationPoints, Point spawnOffsetMax)
         {
             if (generationPoints != null && generationPoints.Count > 0)
             {
@@ -2192,7 +2295,8 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            return Math.Max(AnimationDisplayerFollowRadius, offsetDistancePx);
+            float offsetLength = new Vector2(spawnOffsetMax.X, spawnOffsetMax.Y).Length();
+            return Math.Max(AnimationDisplayerFollowRadius, offsetLength);
         }
 
         internal static string[] EnumerateAnimationDisplayerFollowEffectUols()
@@ -2216,22 +2320,29 @@ namespace HaCreator.MapSimulator
                 : new Point(0, AnimationDisplayerFollowAbsoluteTravelOffsetY);
         }
 
+        private static Point BuildAnimationDisplayerFollowSpawnOffsetMin(bool relativeEmission, AnimationDisplayerFollowEquipmentDefinition followDefinition)
+        {
+            if (!relativeEmission || followDefinition == null)
+            {
+                return BuildAnimationDisplayerFollowSpawnOffsetMin(relativeEmission);
+            }
+
+            return followDefinition.SpawnOffsetMin;
+        }
+
         internal static Point BuildAnimationDisplayerFollowSpawnOffsetMax(bool relativeEmission)
         {
             return BuildAnimationDisplayerFollowSpawnOffsetMin(relativeEmission);
         }
 
-        internal static Point BuildAnimationDisplayerFollowSpawnOffset(bool relativeEmission, int offsetDistancePx)
+        private static Point BuildAnimationDisplayerFollowSpawnOffsetMax(bool relativeEmission, AnimationDisplayerFollowEquipmentDefinition followDefinition)
         {
-            if (!relativeEmission)
+            if (!relativeEmission || followDefinition == null)
             {
-                return BuildAnimationDisplayerFollowSpawnOffsetMin(relativeEmission);
+                return BuildAnimationDisplayerFollowSpawnOffsetMax(relativeEmission);
             }
 
-            int resolvedDistance = Math.Max(0, offsetDistancePx);
-            return resolvedDistance > 0
-                ? new Point(resolvedDistance, resolvedDistance)
-                : Point.Zero;
+            return followDefinition.SpawnOffsetMax;
         }
 
         private IReadOnlyList<List<IDXObject>> LoadAnimationDisplayerFollowFrameVariants()

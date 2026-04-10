@@ -1288,10 +1288,6 @@ namespace HaCreator.MapSimulator
                 sourceY,
                 out string[] coordinateSourcePortalNames,
                 out _);
-            if (TryResolvePacketOwnedTeleportUniqueCandidatePortalName(coordinateSourcePortalNames, out sourcePortalName))
-            {
-                return true;
-            }
 
             if (!string.IsNullOrWhiteSpace(targetPortalName)
                 && TryCollectPacketOwnedSourcePortalNamesByTargetPortalName(
@@ -1320,14 +1316,24 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (TryCollectPacketOwnedSourcePortalNamesByTargetMapOnly(
-                currentFieldPortals,
-                targetMapId,
-                out string[] mapOnlySourcePortalNames)
+            bool hasTargetPortalMetadata =
+                !string.IsNullOrWhiteSpace(targetPortalName)
+                || targetPortalNameCandidates?.Any(candidate => !string.IsNullOrWhiteSpace(candidate)) == true;
+            if (!hasTargetPortalMetadata
+                && TryCollectPacketOwnedSourcePortalNamesByTargetMapOnly(
+                    currentFieldPortals,
+                    targetMapId,
+                    out string[] mapOnlySourcePortalNames)
                 && TryResolvePacketOwnedUniqueCandidateIntersection(
                     coordinateSourcePortalNames,
                     mapOnlySourcePortalNames,
                     out sourcePortalName))
+            {
+                return true;
+            }
+
+            if (!hasTargetPortalMetadata
+                && TryResolvePacketOwnedTeleportUniqueCandidatePortalName(coordinateSourcePortalNames, out sourcePortalName))
             {
                 return true;
             }
@@ -2295,19 +2301,6 @@ namespace HaCreator.MapSimulator
                 ?? Array.Empty<string>();
             IEnumerable<PortalInstance> currentFieldPortals = _mapBoard?.BoardItems?.Portals;
 
-            if (string.IsNullOrWhiteSpace(sourcePortalName)
-                && TryResolvePacketOwnedSourcePortalNameByPositionAndTargetMetadata(
-                    currentFieldPortals,
-                    targetMapId,
-                    sourceX,
-                    sourceY,
-                    targetPortalName,
-                    resolvedTargetPortalNameCandidates,
-                    out string resolvedSourcePortalName))
-            {
-                sourcePortalName = resolvedSourcePortalName;
-            }
-
             int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
             if (string.IsNullOrWhiteSpace(targetPortalName)
                 && targetMapId == currentMapId
@@ -2351,6 +2344,19 @@ namespace HaCreator.MapSimulator
                 targetPortalName ??= resolvedTargetPortalName;
                 targetResolutionSummary = resolvedTargetResolutionSummary;
                 resolvedTargetPortalNameCandidates = resolvedTargetCandidates ?? Array.Empty<string>();
+            }
+
+            if (string.IsNullOrWhiteSpace(sourcePortalName)
+                && TryResolvePacketOwnedSourcePortalNameByPositionAndTargetMetadata(
+                    currentFieldPortals,
+                    targetMapId,
+                    sourceX,
+                    sourceY,
+                    targetPortalName,
+                    resolvedTargetPortalNameCandidates,
+                    out string resolvedSourcePortalName))
+            {
+                sourcePortalName = resolvedSourcePortalName;
             }
 
             if (string.IsNullOrWhiteSpace(sourcePortalName)

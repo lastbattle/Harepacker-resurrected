@@ -122,7 +122,15 @@ namespace HaCreator.MapSimulator.Character
                 ["superCannon"] = new[] { "doublefire" },
                 ["magneticCannon"] = new[] { "doublefire" },
                 ["bombExplosion"] = new[] { "doublefire" },
-                ["monkeyBoomboom"] = new[] { "doublefire" }
+                ["monkeyBoomboom"] = new[] { "doublefire" },
+                // The same cannon-family client block also publishes buff/voice action
+                // requests that current Morph/*.img does not author as separate roots.
+                ["piratebless"] = new[] { "doublefire" },
+                ["pirateSpirit"] = new[] { "doublefire" },
+                ["cannonBooster"] = new[] { "doublefire" },
+                ["noiseWave"] = new[] { "doublefire" },
+                ["noiseWave_pre"] = new[] { "doublefire" },
+                ["noiseWave_ing"] = new[] { "doublefire" }
             };
 
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedGenericMorphFallbackAliases =
@@ -158,6 +166,15 @@ namespace HaCreator.MapSimulator.Character
                 ["cannonJump"] = new[] { "jump" }
             };
 
+        private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedMovementMorphFallbackAliases =
+            new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                // Skill/2002.img/skill/20020111 still publishes the raw action `fastest`
+                // with flag-only morph metadata; the suffix-resolved Morph/0111.img
+                // movement surface publishes no verbatim `fastest` branch.
+                ["fastest"] = new[] { "fly", "jump", "stand" }
+            };
+
         public static IEnumerable<string> EnumerateClientActionAliases(CharacterPart morphPart, string actionName)
         {
             if (string.IsNullOrWhiteSpace(actionName))
@@ -191,6 +208,14 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
+            foreach (string movementAlias in EnumerateClientPublishedMovementAliases(morphPart, actionName))
+            {
+                if (yielded.Add(movementAlias))
+                {
+                    yield return movementAlias;
+                }
+            }
+
             if (ShouldEnumerateDoubleJumpAliases(actionName))
             {
                 foreach (string doubleJumpAlias in EnumerateDoubleJumpAliases(morphPart))
@@ -218,6 +243,28 @@ namespace HaCreator.MapSimulator.Character
                 if (yielded.Add(candidate))
                 {
                     yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientPublishedMovementAliases(CharacterPart morphPart, string actionName)
+        {
+            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                yield break;
+            }
+
+            if (!ClientPublishedMovementMorphFallbackAliases.TryGetValue(actionName, out string[] aliases)
+                || aliases == null)
+            {
+                yield break;
+            }
+
+            foreach (string alias in aliases)
+            {
+                if (!string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
+                {
+                    yield return alias;
                 }
             }
         }
@@ -302,12 +349,22 @@ namespace HaCreator.MapSimulator.Character
 
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+            bool hasExplicitClientPublishedAliasMap = HasClientPublishedAuthoredMorphFallbackAliases(actionName);
+            bool yieldedClientPublishedAlias = false;
             foreach (string clientPublishedAlias in EnumerateClientPublishedAuthoredAttackAliases(morphPart, actionName))
             {
                 if (yielded.Add(clientPublishedAlias))
                 {
+                    yieldedClientPublishedAlias = true;
                     yield return clientPublishedAlias;
                 }
+            }
+
+            if (hasExplicitClientPublishedAliasMap
+                && !yieldedClientPublishedAlias
+                && KeepsClientPublishedMorphAliasInsideMappedFamily(actionName))
+            {
+                yield break;
             }
 
             foreach (string genericMeleeAlias in EnumerateGenericMeleeAttackAliases(morphPart, actionName))
@@ -1062,8 +1119,20 @@ namespace HaCreator.MapSimulator.Character
 
         private static bool IsClientPublishedAuthoredMorphFallbackAction(string actionName)
         {
+            return HasClientPublishedAuthoredMorphFallbackAliases(actionName);
+        }
+
+        private static bool HasClientPublishedAuthoredMorphFallbackAliases(string actionName)
+        {
             return !string.IsNullOrWhiteSpace(actionName)
                    && ClientPublishedAuthoredMorphFallbackAliases.ContainsKey(actionName);
+        }
+
+        private static bool KeepsClientPublishedMorphAliasInsideMappedFamily(string actionName)
+        {
+            // `shot` is the one currently evidenced cross-family request: pirate morphs
+            // publish `doublefire`, while archer morphs publish `windshot`.
+            return !string.Equals(actionName, "shot", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsGenericMeleeAttackAction(string actionName)

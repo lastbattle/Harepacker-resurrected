@@ -170,6 +170,19 @@ namespace HaCreator.MapSimulator.Effects
         internal readonly record struct DigitLayoutEntry(int Digit, bool UseLargeDigitSet, int RelativeX);
         internal readonly record struct PreparedDigitDrawInfo(int Digit, bool UseLargeDigitSet, int DrawOffsetX, int DrawOffsetY);
         internal readonly record struct PreparedSpriteDrawInfo(string SpriteName, int DrawOffsetX, int DrawOffsetY);
+        internal readonly record struct PreparedDamageNumberCompositionInsertCommand(
+            string SourceSetName,
+            string SpriteName,
+            bool UseLargeDigitSet,
+            Point SourceOrigin,
+            int SourceWidth,
+            int SourceHeight,
+            Point CanvasOffset);
+        internal readonly record struct PreparedDamageNumberCompositionTrace(
+            CanvasLayerRecoveredCanvasSettings CanvasSettings,
+            PreparedDamageNumberCompositionInsertCommand[] InsertCanvasCommands,
+            bool KeepsCriticalBannerOnSeparateLayer,
+            PreparedSpriteDrawInfo? CriticalBannerLayerSprite);
         internal readonly record struct CompositeCanvasPlacement(int Left, int Top, int Width, int Height);
         internal readonly record struct DamageNumberAnimationTimeline(
             int HoldDurationMs,
@@ -182,6 +195,7 @@ namespace HaCreator.MapSimulator.Effects
             DamageNumberAnimationTimeline Timeline,
             Point CriticalBannerOffset,
             bool HasCriticalBanner,
+            PreparedDamageNumberCompositionTrace CompositionTrace,
             CanvasLayerRecoveredLayerSettings RecoveredLayerSettings,
             CanvasLayerRecoveredRegistrationTrace RecoveredRegistrationTrace);
         internal sealed record PreparedDamageNumberLayer(
@@ -194,7 +208,8 @@ namespace HaCreator.MapSimulator.Effects
             int CanvasHeight,
             PreparedDigitDrawInfo[] Digits,
             PreparedSpriteDrawInfo? MissSprite,
-            PreparedSpriteDrawInfo? CriticalBannerSprite);
+            PreparedSpriteDrawInfo? CriticalBannerSprite,
+            PreparedDamageNumberCompositionTrace CompositionTrace);
 
         #region State
         private readonly List<WzDamageNumber> _activeNumbers = new List<WzDamageNumber>();
@@ -479,7 +494,8 @@ namespace HaCreator.MapSimulator.Effects
                     DamageNumberConstants.COMPOSITE_CANVAS_HEIGHT_PX,
                     Array.Empty<PreparedDigitDrawInfo>(),
                     null,
-                    null);
+                    null,
+                    CreateEmptyCompositionTrace());
             }
 
             return PrepareVisual(
@@ -575,7 +591,8 @@ namespace HaCreator.MapSimulator.Effects
                     DamageNumberConstants.COMPOSITE_CANVAS_HEIGHT_PX,
                     Array.Empty<PreparedDigitDrawInfo>(),
                     missSprite,
-                    null);
+                    null,
+                    CreateEmptyCompositionTrace());
             }
 
             (DigitLayoutEntry[] layoutEntries, int totalWidth) = BuildDigitLayout(
@@ -617,6 +634,62 @@ namespace HaCreator.MapSimulator.Effects
                 ResolveCompositeCanvasHeight(),
                 digits,
                 null,
+                criticalBanner,
+                BuildRecoveredCompositionTrace(
+                    Math.Max(0, totalWidth),
+                    ResolveCompositeCanvasHeight(),
+                    digits,
+                    largeDigitSet,
+                    smallDigitSet,
+                    criticalBanner));
+        }
+
+        private static PreparedDamageNumberCompositionTrace CreateEmptyCompositionTrace()
+        {
+            return new PreparedDamageNumberCompositionTrace(
+                new CanvasLayerRecoveredCanvasSettings(0, ResolveCompositeCanvasHeight()),
+                Array.Empty<PreparedDamageNumberCompositionInsertCommand>(),
+                KeepsCriticalBannerOnSeparateLayer: false,
+                CriticalBannerLayerSprite: null);
+        }
+
+        private static PreparedDamageNumberCompositionTrace BuildRecoveredCompositionTrace(
+            int canvasWidth,
+            int canvasHeight,
+            IReadOnlyList<PreparedDigitDrawInfo> digits,
+            DamageNumberDigitSet largeDigitSet,
+            DamageNumberDigitSet smallDigitSet,
+            PreparedSpriteDrawInfo? criticalBanner)
+        {
+            if (digits == null || digits.Count == 0)
+            {
+                return new PreparedDamageNumberCompositionTrace(
+                    new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
+                    Array.Empty<PreparedDamageNumberCompositionInsertCommand>(),
+                    criticalBanner.HasValue,
+                    criticalBanner);
+            }
+
+            PreparedDamageNumberCompositionInsertCommand[] insertCommands =
+                new PreparedDamageNumberCompositionInsertCommand[digits.Count];
+            for (int i = 0; i < digits.Count; i++)
+            {
+                PreparedDigitDrawInfo digit = digits[i];
+                DamageNumberDigitSet digitSet = digit.UseLargeDigitSet ? largeDigitSet : smallDigitSet;
+                insertCommands[i] = new PreparedDamageNumberCompositionInsertCommand(
+                    digitSet?.Name ?? string.Empty,
+                    digit.Digit.ToString(CultureInfo.InvariantCulture),
+                    digit.UseLargeDigitSet,
+                    digitSet?.Origins[digit.Digit] ?? Point.Zero,
+                    digitSet?.Widths[digit.Digit] ?? 0,
+                    digitSet?.Heights[digit.Digit] ?? 0,
+                    new Point(digit.DrawOffsetX, digit.DrawOffsetY));
+            }
+
+            return new PreparedDamageNumberCompositionTrace(
+                new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
+                insertCommands,
+                criticalBanner.HasValue,
                 criticalBanner);
         }
 
@@ -665,6 +738,7 @@ namespace HaCreator.MapSimulator.Effects
                 timeline,
                 criticalBannerOffset,
                 hasCriticalBanner,
+                visual?.CompositionTrace ?? CreateEmptyCompositionTrace(),
                 recoveredLayerSettings,
                 BuildRecoveredRegistrationTrace(
                     placement,

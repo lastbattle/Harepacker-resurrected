@@ -50,8 +50,13 @@ namespace HaCreator.MapSimulator.Fields
         public static string GetTamingMobRestrictionMessage(long fieldLimit)
         {
             return FieldLimitType.Unable_To_Use_Taming_Mob.Check(fieldLimit)
-                ? "Taming-mob and dragon companion presentation are disabled in this map."
+                ? "Taming-mob and mechanic vehicle interactions are disabled in this map."
                 : null;
+        }
+
+        public static bool CanUseTamingMob(long fieldLimit)
+        {
+            return GetTamingMobRestrictionMessage(fieldLimit) == null;
         }
 
         public static string GetTransferRestrictionMessage(long fieldLimit)
@@ -135,6 +140,27 @@ namespace HaCreator.MapSimulator.Fields
         {
             return FieldLimitType.Drop_Limit.Check(fieldLimit)
                 ? "Field drops cannot spawn in this map."
+                : null;
+        }
+
+        public static string GetMonsterCapacityLimitMessage(long fieldLimit)
+        {
+            return FieldLimitType.No_Monster_Capacity_Limit.Check(fieldLimit)
+                ? "Monster capacity limits are disabled in this map."
+                : null;
+        }
+
+        public static string GetExpDecreaseRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.No_EXP_Decrease.Check(fieldLimit)
+                ? "EXP loss on death is disabled in this map."
+                : null;
+        }
+
+        public static string GetItemOptionLimitMessage(long fieldLimit)
+        {
+            return FieldLimitType.No_Item_Option_Limit.Check(fieldLimit)
+                ? "Item option limits are disabled in this map."
                 : null;
         }
 
@@ -367,8 +393,12 @@ namespace HaCreator.MapSimulator.Fields
             AddFieldEntryMessage(messages, GetParcelOpenRestrictionMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetQuestAlertRestrictionMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetAndroidRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetTamingMobRestrictionMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetPartyBossRestrictionMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetDropRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetMonsterCapacityLimitMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetExpDecreaseRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetItemOptionLimitMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetJumpDownRestrictionMessage(fieldLimit));
             AddFieldEntryMessage(messages, GetFallingDamageRestrictionMessage(fieldLimit));
             return messages;

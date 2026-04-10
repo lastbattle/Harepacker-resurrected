@@ -7668,7 +7668,7 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadGuildBbsEmoticonSet(basicEmoticonProperty, GetPropertyChildCount(basicEmoticonProperty, 3), device),
                 LoadGuildBbsEmoticonSet(
                     cashEmoticonProperty,
-                    Math.Min(GetPropertyChildCount(cashEmoticonProperty, GuildBbsRuntime.ClientCashEmoticonCount), GuildBbsRuntime.ClientCashEmoticonCount),
+                    GetPropertyChildCount(cashEmoticonProperty, 8),
                     device),
                 LoadVerticalScrollbarSkin(basicImage?["VScr9"] as WzSubProperty, device),
                 device)
@@ -8595,13 +8595,26 @@ namespace HaCreator.MapSimulator.Loaders
         {
             const int clientOwnerWidth = 398;
             const int clientOwnerHeight = 364;
-            Texture2D frameTexture = CreateFilledTexture(
+            IDXObject frame = LoadWindowCanvasLayerFromClientUiPath(
+                AccountMoreInfoOwnerStringPoolText.ResolveBackgroundResourcePath(),
+                uiWindow1Image,
+                uiWindow2Image,
                 device,
-                clientOwnerWidth,
-                clientOwnerHeight,
-                new Color(28, 34, 45, 230),
-                new Color(86, 100, 130, 255));
-            if (frameTexture == null)
+                out _);
+            if (frame == null)
+            {
+                Texture2D frameTexture = CreateFilledTexture(
+                    device,
+                    clientOwnerWidth,
+                    clientOwnerHeight,
+                    new Color(28, 34, 45, 230),
+                    new Color(86, 100, 130, 255));
+                if (frameTexture != null)
+                {
+                    frame = new DXObject(0, 0, frameTexture, 0);
+                }
+            }
+            if (frame == null)
             {
                 return CreatePlaceholderUtilityWindow(
                     basicImage,
@@ -8614,7 +8627,7 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             AccountMoreInfoWindow window = new AccountMoreInfoWindow(
-                new DXObject(0, 0, frameTexture, 0),
+                frame,
                 MapSimulatorWindowNames.AccountMoreInfo)
             {
                 Position = position

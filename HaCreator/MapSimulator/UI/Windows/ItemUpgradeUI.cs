@@ -106,7 +106,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Regex PercentChanceRegex = new Regex(@"(\d+)\s*%\s+chance", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex DestroyChanceRegex = new Regex(@"(?:chance\s+(?:of\s+being|to\s+be)\s+(?:completely\s+)?destroyed|destroyed\s+(?:in|at)\s+(?:a\s+)?)\s*(\d+)\s*%\s*(?:[-\s]*chance|rate)?|(\d+)\s*%\s*(?:[-\s]*chance\s+(?:of\s+being|to\s+be)\s+(?:completely\s+)?destroyed|chance\s+(?:of\s+being|to\s+be)\s+(?:completely\s+)?destroyed)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex CompleteDestroyRegex = new Regex(@"(?:if\s+(?:it\s+)?fails?|upon\s+failure).*?(?:completely\s+destroyed|destroyed\s+completely)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex WeaponAttackBonusRegex = new Regex(@"(?:Weapon\s+Attack|Physical\s+Attack(?:\s+Power)?|Weapon\s+ATT|Physical\s+ATT|Attack\s+Power|(?<!Magic\s)(?<!Magical\s)(?<!M\.)(?<!M\.\s)(?<!M\s)(?<![A-Za-z.])ATT(?![A-Za-z]))(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex WeaponAttackBonusRegex = new Regex(@"(?:Weapon\s+Attack|Physical\s+Attack(?:\s+Power)?|Weapon\s+ATT|Physical\s+ATT|W\.?\s*(?:Attack|ATT)|Attack\s+Power|(?<!Magic\s)(?<!Magical\s)(?<!M\.)(?<!M\.\s)(?<!M\s)(?<![A-Za-z.])ATT(?![A-Za-z]))(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex MagicAttackBonusRegex = new Regex(@"(?:Magic(?:al)?\s+Attack(?:\s+Power)?|Magical\s+Power|Magic\s+Power|Magic\s+ATT|Magical\s+ATT|M\.?\s*ATT)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex WeaponDefenseBonusRegex = new Regex(@"(?:Weapon\s+Defense|Physical\s+Defense|Weapon\s+Def(?:ense)?|Weapon\s+DEF|Physical\s+DEF|PDD|(?<!Magic\s)(?<!Magical\s)(?<!M\.)(?<!M\.\s)(?<!M\s)(?<![A-Za-z.])DEF(?![A-Za-z]))(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex MagicDefenseBonusRegex = new Regex(@"(?:Magic(?:al)?\s+Defense|Magic\s+Def(?:ense)?|Magic\s+DEF|Magical\s+DEF|M\.?\s*DEF|MDD)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -627,27 +627,31 @@ namespace HaCreator.MapSimulator.UI
                 forcedConsumableInventoryType: null,
                 forcedConsumableSlotIndex: null,
                 forcedModifierInventoryType: null,
-                forcedModifierSlotIndex: null);
+                forcedModifierSlotIndex: null,
+                forcedSuccess: null);
         }
 
         public ItemUpgradeAttemptResult TryApplyPreparedUpgradeAtSlots(
             InventoryType consumableInventoryType,
             int consumableSlotIndex,
             InventoryType? modifierInventoryType = null,
-            int? modifierSlotIndex = null)
+            int? modifierSlotIndex = null,
+            bool? forcedSuccess = null)
         {
             return TryApplyPreparedUpgradeCore(
                 consumableInventoryType,
                 consumableSlotIndex,
                 modifierInventoryType,
-                modifierSlotIndex);
+                modifierSlotIndex,
+                forcedSuccess);
         }
 
         private ItemUpgradeAttemptResult TryApplyPreparedUpgradeCore(
             InventoryType? forcedConsumableInventoryType,
             int? forcedConsumableSlotIndex,
             InventoryType? forcedModifierInventoryType,
-            int? forcedModifierSlotIndex)
+            int? forcedModifierSlotIndex,
+            bool? forcedSuccess)
         {
             IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> candidates = GetCandidates();
             if (candidates.Count == 0)
@@ -816,7 +820,7 @@ namespace HaCreator.MapSimulator.UI
                 return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId, modifier.ItemId);
             }
 
-            bool success = _random.NextDouble() < ResolveSuccessRate(consumable, state, modifier);
+            bool success = forcedSuccess ?? _random.NextDouble() < ResolveSuccessRate(consumable, state, modifier);
             state.Attempts++;
 
             switch (consumable.EffectType)

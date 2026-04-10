@@ -169,7 +169,11 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager?.EquipWindow is EquipUIBigBang equipBigBang)
             {
-                equipBigBang.SetAndroidPaneAvailable(FieldInteractionRestrictionEvaluator.CanUseAndroid(_mapBoard?.MapInfo?.fieldLimit ?? 0));
+                long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
+                equipBigBang.SetMechanicPaneAvailable(
+                    CompanionEquipmentController.HasMechanicOwnerState(_playerManager?.Player?.Build)
+                    && FieldInteractionRestrictionEvaluator.CanUseTamingMob(fieldLimit));
+                equipBigBang.SetAndroidPaneAvailable(FieldInteractionRestrictionEvaluator.CanUseAndroid(fieldLimit));
             }
         }
 

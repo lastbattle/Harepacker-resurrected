@@ -174,6 +174,7 @@ namespace HaCreator.MapSimulator.UI
         private const float ClientCollectionTextLaneWidth = 190f;
         private const int ClientCollectionEntryRuleGap = 6;
         private const int ClientCollectionDetailLineStep = 9;
+        private const int ClientCollectionAnalyzedTextLineHeight = 9;
         private const int ClientCollectionStandardEntryFirstTop = 66;
         private const int ClientCollectionFooterRuleTop = 221;
         private const int ClientCollectionTextLaneLeft = 0;
@@ -791,7 +792,9 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int lineCount = WrapCollectionText(text, width, styleIndex, measureTextWidth).Count;
-            return top + (Math.Max(1, lineCount) - 1) * ClientCollectionDetailLineStep;
+            return top
+                + (Math.Max(1, lineCount) - 1) * ClientCollectionDetailLineStep
+                + ClientCollectionAnalyzedTextLineHeight;
         }
 
         private static IReadOnlyList<string> WrapCollectionText(string text, int width, int styleIndex, Func<string, int, float> measureTextWidth = null)
@@ -845,6 +848,7 @@ namespace HaCreator.MapSimulator.UI
                 Left = left,
                 Top = top,
                 Width = width,
+                Height = ClientCollectionAnalyzedTextLineHeight,
                 StyleIndex = styleIndex,
                 Alignment = alignment
             };

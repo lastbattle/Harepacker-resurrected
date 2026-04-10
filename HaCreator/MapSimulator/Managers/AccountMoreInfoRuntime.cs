@@ -2,6 +2,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using HaCreator.MapSimulator.Interaction;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -23,6 +24,8 @@ namespace HaCreator.MapSimulator.Managers
         public bool SavePending { get; init; }
         public int AreaGroup { get; init; }
         public int AreaDetail { get; init; }
+        public string AreaGroupText { get; init; } = string.Empty;
+        public string AreaDetailText { get; init; } = string.Empty;
         public int BirthYear { get; init; }
         public int BirthMonth { get; init; }
         public int BirthDay { get; init; }
@@ -35,9 +38,10 @@ namespace HaCreator.MapSimulator.Managers
         public string LastDispatchText { get; init; } = string.Empty;
     }
 
-    internal sealed class AccountMoreInfoRuntime
+        internal sealed class AccountMoreInfoRuntime
     {
         internal const int ClientOpcode = 193;
+        internal const string CountryNameRootPath = "Etc/CountryName.img";
         private const int LoadResultPayloadLength = 17;
         private const int SaveResultPayloadLength = 2;
         private static readonly string[] PlayStyleLabels =
@@ -279,6 +283,8 @@ namespace HaCreator.MapSimulator.Managers
                 SavePending = _savePending,
                 AreaGroup = _areaGroup,
                 AreaDetail = _areaDetail,
+                AreaGroupText = ResolveRegionComboText(_areaGroup),
+                AreaDetailText = ResolveRegionComboText(_areaDetail),
                 BirthYear = _birthYear,
                 BirthMonth = _birthMonth,
                 BirthDay = _birthDay,
@@ -307,6 +313,18 @@ namespace HaCreator.MapSimulator.Managers
 
             subtype = payload[0];
             return true;
+        }
+
+        internal static string ResolveRegionComboText(int areaCode)
+        {
+            return areaCode == 0
+                ? AccountMoreInfoOwnerStringPoolText.ResolveDefaultRegionItem()
+                : areaCode.ToString("D3");
+        }
+
+        internal static string ResolveAreaDetailCountryNamePath(int areaGroup)
+        {
+            return $"{CountryNameRootPath}/{Math.Clamp(areaGroup, 0, 255)}";
         }
 
         private static int Wrap(int value, int minInclusive, int maxInclusive)

@@ -90,6 +90,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, string[]> _barKeyLabelOverrides = new();
         private readonly QuickSlotPresentationState[] _primaryQuickSlotPresentationStates = new QuickSlotPresentationState[SkillManager.PRIMARY_SLOT_COUNT];
         private bool _hasPrimaryQuickSlotPresentationSnapshot;
+        private bool _lastPrimaryQuickSlotCompareResult = true;
 
         private enum DragBindingType
         {
@@ -152,6 +153,7 @@ namespace HaCreator.MapSimulator.UI
         #region Properties
         public override string WindowName => "QuickSlot";
         public bool IsDraggingSlot => _isDragging;
+        internal bool LastPrimaryQuickSlotCompareResult => _lastPrimaryQuickSlotCompareResult;
 
         public int CurrentBar
         {
@@ -1572,7 +1574,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (_currentBar == BAR_PRIMARY)
             {
-                CompareValidatePrimaryQuickSlotPresentation();
+                _lastPrimaryQuickSlotCompareResult = CompareValidatePrimaryQuickSlotPresentation();
                 return;
             }
 
@@ -1600,6 +1602,13 @@ namespace HaCreator.MapSimulator.UI
                 {
                     same = false;
                     _primaryQuickSlotPresentationStates[slotIndex] = currentState;
+                }
+
+                // The client count scan marks the quick-slot cache dirty whenever a live
+                // item stack is found, even if the resulting item id/count snapshot matches.
+                if (currentState.BindingType == QuickSlotPresentationBindingType.Item && currentState.Quantity > 0)
+                {
+                    same = false;
                 }
             }
 

@@ -314,10 +314,14 @@ namespace HaCreator.MapSimulator.Pools
             MobAnimationSet.AttackInfoMetadata attackInfo,
             bool facingRight,
             Random random,
-            int hitFrameIndex = 0)
+            int hitFrameIndex = 0,
+            int? hitAnimationSourceFrameIndex = null)
         {
-            bool hitAttach = attackInfo?.ResolveHitAttachForHitAnimationFrame(hitFrameIndex) == true;
-            bool facingAttach = attackInfo?.ResolveFacingAttachForHitAnimationFrame(hitFrameIndex) == true;
+            int metadataFrameIndex = hitAnimationSourceFrameIndex.HasValue
+                ? hitAnimationSourceFrameIndex.Value + Math.Max(0, hitFrameIndex)
+                : attackInfo?.ResolveHitAnimationMetadataFrameIndex(hitFrameIndex) ?? hitFrameIndex;
+            bool hitAttach = attackInfo?.ResolveHitAttach(metadataFrameIndex) == true;
+            bool facingAttach = attackInfo?.ResolveFacingAttach(metadataFrameIndex) == true;
             if (hitAttach)
             {
                 return ResolvePacketOwnedAttachedHitPosition(

@@ -919,7 +919,8 @@ namespace HaCreator.MapSimulator
 
                     equipBigBang.SetMechanicEquipmentController(_playerManager.CompanionEquipment?.Mechanic);
                     equipBigBang.SetMechanicPaneAvailable(
-                        CompanionEquipmentController.HasMechanicOwnerState(_playerManager?.Player?.Build));
+                        CompanionEquipmentController.HasMechanicOwnerState(_playerManager?.Player?.Build)
+                        && FieldInteractionRestrictionEvaluator.CanUseTamingMob(_mapBoard?.MapInfo?.fieldLimit ?? 0));
                     equipBigBang.SetAndroidEquipmentController(_playerManager.CompanionEquipment?.Android);
                     equipBigBang.SetAndroidPaneAvailable(FieldInteractionRestrictionEvaluator.CanUseAndroid(_mapBoard?.MapInfo?.fieldLimit ?? 0));
                 }
@@ -1742,7 +1743,8 @@ namespace HaCreator.MapSimulator
 
                     equipBigBang.SetMechanicEquipmentController(_playerManager.CompanionEquipment?.Mechanic);
                     equipBigBang.SetMechanicPaneAvailable(
-                        CompanionEquipmentController.HasMechanicOwnerState(_playerManager?.Player?.Build));
+                        CompanionEquipmentController.HasMechanicOwnerState(_playerManager?.Player?.Build)
+                        && FieldInteractionRestrictionEvaluator.CanUseTamingMob(_mapBoard?.MapInfo?.fieldLimit ?? 0));
                     equipBigBang.SetAndroidEquipmentController(_playerManager.CompanionEquipment?.Android);
                     equipBigBang.SetAndroidPaneAvailable(FieldInteractionRestrictionEvaluator.CanUseAndroid(_mapBoard?.MapInfo?.fieldLimit ?? 0));
                 }

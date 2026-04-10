@@ -390,6 +390,50 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"{packet.Summary.Trim()} {result}";
         }
 
+        internal string ApplyPacketOwnedSkillRecord(SocialListGuildSkillRecordPacket packet, int guildId)
+        {
+            if (!_isInGuild)
+            {
+                return "Ignored client guild-skill record because no guild is currently active.";
+            }
+
+            SkillDisplayData selectedSkill = _skills.FirstOrDefault(skill => skill?.SkillId == packet.SkillId);
+            if (selectedSkill == null)
+            {
+                return $"Client guild-skill record for skill {packet.SkillId} could not be applied because that skill is not loaded.";
+            }
+
+            int previousLevel = selectedSkill.CurrentLevel;
+            int resolvedLevel = Math.Clamp(packet.SkillLevel, 0, Math.Max(0, selectedSkill.MaxLevel));
+            selectedSkill.CurrentLevel = resolvedLevel;
+
+            if (resolvedLevel <= 0 || !packet.Expiration.HasValue || packet.Expiration.Value <= DateTimeOffset.UtcNow)
+            {
+                _activeGuildSkillExpirations.Remove(selectedSkill.SkillId);
+            }
+            else
+            {
+                _activeGuildSkillExpirations[selectedSkill.SkillId] = packet.Expiration.Value;
+            }
+
+            if (resolvedLevel > previousLevel)
+            {
+                _availablePoints = Math.Max(0, _availablePoints - (resolvedLevel - previousLevel));
+            }
+
+            SaveCurrentGuildState(_activeGuildStateKey);
+            EnsureRecommendation();
+
+            string buyerText = string.IsNullOrWhiteSpace(packet.BuyCharacterName)
+                ? string.Empty
+                : $" bought by {packet.BuyCharacterName.Trim()}";
+            int remainingMinutes = GetRemainingDurationMinutes(selectedSkill);
+            string expirationText = remainingMinutes > 0
+                ? $" with {FormatDuration(remainingMinutes)} remaining"
+                : string.Empty;
+            return $"Client OnGuildResult(81) synced {selectedSkill.SkillName} to Lv. {selectedSkill.CurrentLevel}{expirationText}{buyerText} for guild {guildId}.";
+        }
+
         internal string TryLevelSelectedSkill(bool packetOwned)
         {
             if (!_isInGuild)

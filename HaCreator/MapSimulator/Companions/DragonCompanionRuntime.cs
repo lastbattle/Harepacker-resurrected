@@ -118,6 +118,7 @@ namespace HaCreator.MapSimulator.Companions
         private Vector2 _followVelocity;
         private float _alpha;
         private float _ownerPhaseActionAlpha = 1f;
+        private Color _actionLayerColor = Color.White;
         private float _dragonFuryAlpha;
         private float _questInfoAlpha;
         private int _lastUpdateTime = int.MinValue;
@@ -294,7 +295,8 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             _alpha = ResolveClientLayerAlpha(!_isSuppressed);
-            _ownerPhaseActionAlpha = ResolveOwnerPhaseClampedActionLayerAlpha(_alpha, _ownerPhaseActionAlphaProvider?.Invoke());
+            _actionLayerColor = ResolveClientActionLayerColor(Color.White, _alpha, _ownerPhaseActionAlphaProvider?.Invoke());
+            _ownerPhaseActionAlpha = _actionLayerColor.A / 255f;
             _hasActiveOneTimeAction = HasClientOwnedOneTimeAction(explicitActionName, currentTime);
             UpdateAuxiliaryLayers(owner, currentTime);
         }
@@ -319,7 +321,7 @@ namespace HaCreator.MapSimulator.Companions
 
             int screenX = (int)_visualAnchor.X - mapShiftX + centerX;
             int screenY = (int)_visualAnchor.Y - mapShiftY + centerY;
-            frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, screenX, screenY, Color.White * frameAlpha, !_facingRight, null);
+            frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, screenX, screenY, _actionLayerColor * frameAlpha, !_facingRight, null);
         }
 
         public bool TryGetCurrentFrameTop(int currentTime, out Vector2 top)
@@ -367,6 +369,7 @@ namespace HaCreator.MapSimulator.Companions
             _followVelocity = Vector2.Zero;
             _alpha = 0f;
             _ownerPhaseActionAlpha = 1f;
+            _actionLayerColor = Color.White;
             _dragonFuryAlpha = 0f;
             _questInfoAlpha = 0f;
             _lastUpdateTime = int.MinValue;
@@ -378,6 +381,27 @@ namespace HaCreator.MapSimulator.Companions
             _activeFollowReleaseStableFrames = 0;
             _activeVerticalFollowState = 0;
             _activeVerticalCheckCount = 0;
+        }
+
+        internal bool ClearClientOwnedOneTimeActionOnSkillCancel(PlayerCharacter owner, int currentTime)
+        {
+            if (owner == null || _currentSet == null)
+            {
+                return false;
+            }
+
+            _facingRight = owner.FacingRight;
+            _hasActiveOneTimeAction = false;
+            _observedOwnerActionName = owner.CurrentActionName;
+
+            if (!IsExplicitDragonAction(_currentActionName))
+            {
+                return false;
+            }
+
+            string baseActionName = ResolveBaseActionName(owner, _currentSet);
+            SetCurrentAction(baseActionName, currentTime, preserveStartTimeWhenUnchanged: true);
+            return true;
         }
 
         public void SetQuestInfoPreviewState(int? state)
@@ -1052,7 +1076,7 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            frameAlpha = _ownerPhaseActionAlpha * ResolveFrameAlpha(frame, frameElapsedMs);
+            frameAlpha = ResolveFrameAlpha(frame, frameElapsedMs);
             return frameAlpha > 0.01f;
         }
 
@@ -1076,14 +1100,26 @@ namespace HaCreator.MapSimulator.Companions
 
         internal static float ResolveOwnerPhaseClampedActionLayerAlpha(float actionLayerAlpha, int? ownerPhaseAlpha)
         {
-            float clampedActionAlpha = MathHelper.Clamp(actionLayerAlpha, 0f, 1f);
+            return ResolveClientActionLayerColor(Color.White, actionLayerAlpha, ownerPhaseAlpha).A / 255f;
+        }
+
+        internal static Color ResolveClientActionLayerColor(Color baseColor, float actionLayerAlpha, int? ownerPhaseAlpha)
+        {
+            byte actionAlpha = (byte)Math.Round(MathHelper.Clamp(actionLayerAlpha, 0f, 1f) * 255f);
+            return ResolveClientActionLayerColorCap(new Color(baseColor.R, baseColor.G, baseColor.B, actionAlpha), ownerPhaseAlpha);
+        }
+
+        internal static Color ResolveClientActionLayerColorCap(Color currentColor, int? ownerPhaseAlpha)
+        {
             if (!ownerPhaseAlpha.HasValue)
             {
-                return clampedActionAlpha;
+                return currentColor;
             }
 
-            float clampedOwnerPhaseAlpha = Math.Clamp(ownerPhaseAlpha.Value, 0, 255) / 255f;
-            return Math.Min(clampedActionAlpha, clampedOwnerPhaseAlpha);
+            byte cappedAlpha = (byte)Math.Clamp(ownerPhaseAlpha.Value, 0, 255);
+            return currentColor.A > cappedAlpha
+                ? new Color(currentColor.R, currentColor.G, currentColor.B, cappedAlpha)
+                : currentColor;
         }
 
         private void UpdateAuxiliaryLayers(PlayerCharacter owner, int currentTime)

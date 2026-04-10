@@ -54,6 +54,8 @@ namespace HaCreator.MapSimulator.Fields
         private Vector2 _clientOwnedFocusWorldPosition;
         private readonly List<Vector2> _clientOwnedRemoteFocusWorldPositions = new();
         private readonly List<Vector2> _clientOwnedScreenMaskCentersBuffer = new();
+        private readonly List<Vector2> _clientOwnedMaskTopLeftsBuffer = new();
+        private readonly List<Vector2> _clientOwnedPreviousMaskTopLefts = new();
         #endregion
 
         #region Runtime State
@@ -305,6 +307,8 @@ namespace HaCreator.MapSimulator.Fields
             _clientOwnedFocusWorldPositionValid = false;
             _clientOwnedRemoteFocusWorldPositions.Clear();
             _clientOwnedScreenMaskCentersBuffer.Clear();
+            _clientOwnedMaskTopLeftsBuffer.Clear();
+            _clientOwnedPreviousMaskTopLefts.Clear();
         }
         #endregion
 
@@ -407,6 +411,25 @@ namespace HaCreator.MapSimulator.Fields
             {
                 case ViewMode.Circle:
                 case ViewMode.Spotlight:
+                    if (_clientOwnedUpdateParityMode && _clientOwnedViewrangeTexture != null)
+                    {
+                        IReadOnlyList<Vector2> maskTopLefts = GetClientOwnedUpdateParityMaskTopLefts(mapShiftX, mapShiftY, centerX, centerY);
+                        for (int i = 0; i < maskTopLefts.Count; i++)
+                        {
+                            Vector2 topLeft = maskTopLefts[i];
+                            DrawClientOwnedViewrangeFogAtTopLeft(
+                                spriteBatch,
+                                (int)MathF.Round(topLeft.X),
+                                (int)MathF.Round(topLeft.Y),
+                                fogColorWithAlpha,
+                                drawClientOwnedDarkLayer: i == 0,
+                                restorePreviousClientOwnedViewranges: i == 0);
+                        }
+
+                        CommitClientOwnedUpdateParityMaskTopLefts(maskTopLefts);
+                        break;
+                    }
+
                     if (_clientOwnedUpdateParityMode)
                     {
                         IReadOnlyList<Vector2> maskCenters = GetClientOwnedUpdateParityScreenMaskCenters(mapShiftX, mapShiftY, centerX, centerY);
@@ -522,16 +545,47 @@ namespace HaCreator.MapSimulator.Fields
             int right = left + width;
             int bottom = top + height;
 
-            // CField_LimitedView::DrawViewrange first reapplies the cached
-            // 316x316 small-dark canvas, then copies Viewrange/0 over it.
-            spriteBatch.Draw(_pixelTexture, new Rectangle(left, top, width, height), fogColor);
-            spriteBatch.Draw(_clientOwnedViewrangeTexture, new Vector2(left, top), fogColor);
+            DrawClientOwnedViewrangeFogAtTopLeft(
+                spriteBatch,
+                left,
+                top,
+                fogColor,
+                drawDarkLayer,
+                restorePreviousClientOwnedViewranges: false);
+        }
 
-            if (!drawDarkLayer)
+        private void DrawClientOwnedViewrangeFogAtTopLeft(
+            SpriteBatch spriteBatch,
+            int left,
+            int top,
+            Color fogColor,
+            bool drawClientOwnedDarkLayer,
+            bool restorePreviousClientOwnedViewranges)
+        {
+            int width = _clientOwnedViewrangeTexture.Width;
+            int height = _clientOwnedViewrangeTexture.Height;
+            int right = left + width;
+            int bottom = top + height;
+
+            if (drawClientOwnedDarkLayer)
             {
-                return;
+                DrawClientOwnedDarkLayerAroundCurrentViewrange(spriteBatch, left, top, right, bottom, fogColor);
             }
 
+            if (restorePreviousClientOwnedViewranges)
+            {
+                RestorePreviousClientOwnedViewrangePatches(spriteBatch, fogColor);
+            }
+
+            // CField_LimitedView::DrawViewrange restores prior m_lpPrev entries
+            // with the 316x316 small-dark canvas, then copies Viewrange/0 over
+            // the current user positions. The current position is not restored
+            // with small-dark before the WZ canvas copy.
+            spriteBatch.Draw(_clientOwnedViewrangeTexture, new Vector2(left, top), new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, fogColor.A));
+        }
+
+        private void DrawClientOwnedDarkLayerAroundCurrentViewrange(SpriteBatch spriteBatch, int left, int top, int right, int bottom, Color fogColor)
+        {
             Rectangle darkBounds = GetClientOwnedDarkLayerBounds();
             int darkLeft = darkBounds.Left;
             int darkTop = darkBounds.Top;
@@ -566,6 +620,30 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     spriteBatch.Draw(_pixelTexture, new Rectangle(right, stripTop, darkRight - right, stripBottom - stripTop), fogColor);
                 }
+            }
+        }
+
+        private void RestorePreviousClientOwnedViewrangePatches(SpriteBatch spriteBatch, Color fogColor)
+        {
+            if (_clientOwnedPreviousMaskTopLefts.Count == 0)
+            {
+                return;
+            }
+
+            int width = _clientOwnedViewrangeTexture.Width;
+            int height = _clientOwnedViewrangeTexture.Height;
+            Color smallDarkColor = new((byte)0, (byte)0, (byte)0, fogColor.A);
+            for (int i = 0; i < _clientOwnedPreviousMaskTopLefts.Count; i++)
+            {
+                Vector2 topLeft = _clientOwnedPreviousMaskTopLefts[i];
+                spriteBatch.Draw(
+                    _pixelTexture,
+                    new Rectangle(
+                        (int)MathF.Round(topLeft.X),
+                        (int)MathF.Round(topLeft.Y),
+                        width,
+                        height),
+                    smallDarkColor);
             }
         }
 
@@ -705,6 +783,62 @@ namespace HaCreator.MapSimulator.Fields
 
             return _clientOwnedScreenMaskCentersBuffer;
         }
+
+        internal IReadOnlyList<Vector2> GetClientOwnedUpdateParityMaskTopLefts(int mapShiftX, int mapShiftY, int centerX, int centerY)
+        {
+            _clientOwnedMaskTopLeftsBuffer.Clear();
+
+            if (_clientOwnedFocusWorldPositionValid)
+            {
+                _clientOwnedMaskTopLeftsBuffer.Add(ResolveClientOwnedMaskTopLeft(
+                    _clientOwnedFocusWorldPosition.X,
+                    _clientOwnedFocusWorldPosition.Y,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    _clientOwnedMaskOriginX,
+                    _clientOwnedMaskOriginY));
+            }
+            else
+            {
+                Vector2 screenCenter = _clientOwnedScreenMaskCenter;
+                _clientOwnedMaskTopLeftsBuffer.Add(new Vector2(
+                    screenCenter.X - (_clientOwnedMaskWidth * 0.5f),
+                    screenCenter.Y - (_clientOwnedMaskHeight * 0.5f)));
+            }
+
+            foreach (Vector2 worldPosition in _clientOwnedRemoteFocusWorldPositions)
+            {
+                _clientOwnedMaskTopLeftsBuffer.Add(ResolveClientOwnedMaskTopLeft(
+                    worldPosition.X,
+                    worldPosition.Y,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    _clientOwnedMaskOriginX,
+                    _clientOwnedMaskOriginY));
+            }
+
+            return _clientOwnedMaskTopLeftsBuffer;
+        }
+
+        internal void CommitClientOwnedUpdateParityMaskTopLefts(IReadOnlyList<Vector2> maskTopLefts)
+        {
+            _clientOwnedPreviousMaskTopLefts.Clear();
+            if (maskTopLefts == null)
+            {
+                return;
+            }
+
+            foreach (Vector2 topLeft in maskTopLefts)
+            {
+                _clientOwnedPreviousMaskTopLefts.Add(topLeft);
+            }
+        }
+
+        internal IReadOnlyList<Vector2> ClientOwnedPreviousMaskTopLefts => _clientOwnedPreviousMaskTopLefts;
 
         private Vector2 GetClientOwnedUpdateParityScreenPosition(Vector2 worldPosition, int mapShiftX, int mapShiftY, int centerX, int centerY)
         {

@@ -36,8 +36,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int VisibleCommentCount = 4;
         private const int VisibleCashEmoticonCount = 7;
         private const int DefaultBasicEmoticonCount = 3;
-        private const int DefaultCashEmoticonCount = 7;
-        internal const int ClientCashEmoticonCount = 7;
+        private const int DefaultCashEmoticonCount = 8;
+        internal const int ClientVisibleCashEmoticonCount = 7;
         private const int CashEmoticonItemIdStart = 5290000;
         private const int ClientCashEmoticonIdStart = 100;
         private const GuildBbsPermissionMask SupportedPermissionMask =
@@ -130,7 +130,7 @@ namespace HaCreator.MapSimulator.Interaction
         public void ConfigureEmoticonCatalog(int basicEmoticonCount, int cashEmoticonCount)
         {
             _basicEmoticonCount = Math.Max(1, basicEmoticonCount);
-            _cashEmoticonCount = Math.Max(1, Math.Min(ClientCashEmoticonCount, cashEmoticonCount));
+            _cashEmoticonCount = Math.Max(1, cashEmoticonCount);
             NormalizeDraftState();
         }
 
@@ -997,7 +997,7 @@ namespace HaCreator.MapSimulator.Interaction
             return kind switch
             {
                 GuildBbsEmoticonKind.Basic => $"Basic {slotIndex + 1}",
-                GuildBbsEmoticonKind.Cash => $"Cash {(slotIndex / VisibleCashEmoticonCount) + 1}-{(slotIndex % VisibleCashEmoticonCount) + 1}",
+                GuildBbsEmoticonKind.Cash => $"Cash {(slotIndex / ClientVisibleCashEmoticonCount) + 1}-{(slotIndex % ClientVisibleCashEmoticonCount) + 1}",
                 _ => "None"
             };
         }

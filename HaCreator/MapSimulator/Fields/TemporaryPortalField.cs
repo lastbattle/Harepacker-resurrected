@@ -292,6 +292,7 @@ namespace HaCreator.MapSimulator.Fields
                     townMapId,
                     refreshedDestination.Value,
                     metadataRecordedAt.Value,
+                    ownerObservation.Value.ObservationSource,
                     refreshActiveDestination: false);
                 metadata = _remoteTownPortalFieldMetadata.TryGetValue(key, out metadataValue)
                     ? metadataValue
@@ -519,11 +520,17 @@ namespace HaCreator.MapSimulator.Fields
                 existingState);
             if (!destination.HasValue && resolvedDestination.HasValue)
             {
+                RemoteTownPortalObservationSource observationSource = ResolveRemoteTownPortalResolvedDestinationObservationSource(
+                    packet.OwnerCharacterId,
+                    currentMapId,
+                    existingState,
+                    resolvedDestination.Value);
                 RememberRemoteTownPortalObservedFieldMetadata(
                     packet.OwnerCharacterId,
                     currentMapId,
                     resolvedDestination.Value,
-                    currentTime);
+                    currentTime,
+                    observationSource);
             }
 
             RemoteTownPortalVisualPhase phase = ResolveRemoteTownPortalCreatePhase(packet.State, existingState);
@@ -1085,14 +1092,44 @@ namespace HaCreator.MapSimulator.Fields
             uint ownerCharacterId,
             int townMapId,
             RemoteTownPortalResolvedDestination resolvedDestination,
-            int recordedAt)
+            int recordedAt,
+            RemoteTownPortalObservationSource observationSource)
         {
             UpsertRemoteTownPortalObservedFieldMetadata(
                 ownerCharacterId,
                 townMapId,
                 resolvedDestination,
                 recordedAt,
+                observationSource,
                 refreshActiveDestination: true);
+        }
+
+        private RemoteTownPortalObservationSource ResolveRemoteTownPortalResolvedDestinationObservationSource(
+            uint ownerCharacterId,
+            int townMapId,
+            RemoteTownPortalState? existingState,
+            RemoteTownPortalResolvedDestination resolvedDestination)
+        {
+            RemoteTownPortalOwnerTownKey key = new(ownerCharacterId, townMapId);
+            RemoteTownPortalFieldMetadata? metadata = _remoteTownPortalFieldMetadata.TryGetValue(key, out RemoteTownPortalFieldMetadata metadataValue)
+                ? metadataValue
+                : null;
+            if (!TryGetPreferredRemoteTownPortalOwnerObservation(
+                    key,
+                    existingState,
+                    metadata,
+                    out RemoteTownPortalOwnerFieldObservation? ownerObservation)
+                || !ownerObservation.HasValue)
+            {
+                return RemoteTownPortalObservationSource.InferredSourceField;
+            }
+
+            RemoteTownPortalOwnerFieldObservation observation = ownerObservation.Value;
+            return observation.SourceMapId == resolvedDestination.MapId
+                && Math.Abs(observation.SourceX - resolvedDestination.X) < 0.01f
+                && Math.Abs(observation.SourceY - resolvedDestination.Y) < 0.01f
+                    ? observation.ObservationSource
+                    : RemoteTownPortalObservationSource.InferredSourceField;
         }
 
         private void UpsertRemoteTownPortalObservedFieldMetadata(
@@ -1100,6 +1137,7 @@ namespace HaCreator.MapSimulator.Fields
             int townMapId,
             RemoteTownPortalResolvedDestination resolvedDestination,
             int recordedAt,
+            RemoteTownPortalObservationSource observationSource,
             bool refreshActiveDestination)
         {
             if (ownerCharacterId == 0
@@ -1120,7 +1158,12 @@ namespace HaCreator.MapSimulator.Fields
 
                 if (existingMetadata.SourceMapId == resolvedDestination.MapId
                     && Math.Abs(existingMetadata.SourceX - resolvedDestination.X) < 0.01f
-                    && Math.Abs(existingMetadata.SourceY - resolvedDestination.Y) < 0.01f)
+                    && Math.Abs(existingMetadata.SourceY - resolvedDestination.Y) < 0.01f
+                    && CompareRemoteTownPortalSameSourceCoordinateAuthority(
+                        existingMetadata.ObservationSource,
+                        existingMetadata.RecordedAt,
+                        observationSource,
+                        recordedAt) >= 0)
                 {
                     return;
                 }
@@ -1131,7 +1174,7 @@ namespace HaCreator.MapSimulator.Fields
                 resolvedDestination.X,
                 resolvedDestination.Y,
                 townMapId,
-                RemoteTownPortalObservationSource.InferredSourceField,
+                observationSource,
                 recordedAt);
             if (refreshActiveDestination)
             {
@@ -1466,12 +1509,6 @@ namespace HaCreator.MapSimulator.Fields
                     return sameSourceComparison >= 0
                         ? metadataDestination.Value
                         : observationDestination.Value;
-                }
-
-                if (metadata.ObservationSource == RemoteTownPortalObservationSource.InferredSourceField
-                    && ownerObservation.ObservationSource != RemoteTownPortalObservationSource.PacketCast)
-                {
-                    return metadataDestination.Value;
                 }
 
                 int comparison = CompareRemoteTownPortalObservationQuality(

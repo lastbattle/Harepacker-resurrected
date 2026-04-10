@@ -137,6 +137,7 @@ namespace HaCreator.MapSimulator
             SyncPacketOwnedScriptSelectablePetsFromCharacterData(snapshot);
             ApplyPacketOwnedCharacterInventorySnapshot(snapshot);
             ApplyPacketOwnedCharacterSkillSnapshot(snapshot);
+            ApplyPacketOwnedCharacterQuestRecordSnapshot(snapshot);
             CharacterBuild activeBuild = _playerManager?.Player?.Build;
             if (activeBuild != null)
             {
@@ -152,6 +153,16 @@ namespace HaCreator.MapSimulator
             }
 
             ApplyPacketOwnedCharacterDataSnapshot(selectedEntry.Build, snapshot);
+        }
+
+        private void ApplyPacketOwnedCharacterQuestRecordSnapshot(PacketCharacterDataSnapshot snapshot)
+        {
+            if (snapshot?.QuestRecordValues == null || _questRuntime == null)
+            {
+                return;
+            }
+
+            _questRuntime.ApplyPacketOwnedQuestRecordSnapshot(snapshot.QuestRecordValues);
         }
 
         private void UpdatePacketOwnedFollowRequestOptionFromSetField(PacketSetFieldPacket packet)

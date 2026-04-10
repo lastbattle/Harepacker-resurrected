@@ -1555,6 +1555,55 @@ namespace HaCreator.MapSimulator.Interaction
             return TryDispatchPacketBytes(packetBytes, tickCount, out message);
         }
 
+        public bool TryDispatchTradingRoomPacketOwnedMeso(int traderIndex, int offeredMeso, int tickCount, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Trading-room meso packets only apply to the trading-room shell.";
+                return false;
+            }
+
+            if (offeredMeso < 0)
+            {
+                message = "Trading-room meso packets require a non-negative offer amount.";
+                return false;
+            }
+
+            using MemoryStream stream = new MemoryStream();
+            using (BinaryWriter writer = new BinaryWriter(stream, Encoding.ASCII, leaveOpen: true))
+            {
+                writer.Write((byte)Math.Clamp(traderIndex, 0, 1));
+                writer.Write(offeredMeso);
+            }
+
+            return TryDispatchSyntheticDialogPacket(TradingRoomPutMoneyPacketType, stream.ToArray(), tickCount, out message);
+        }
+
+        public bool TryDispatchTradingRoomPacketOwnedTrade(int tickCount, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Trading-room trade packets only apply to the trading-room shell.";
+                return false;
+            }
+
+            return TryDispatchSyntheticDialogPacket(TradingRoomTradePacketType, Array.Empty<byte>(), tickCount, out message);
+        }
+
+        public bool TryDispatchTradingRoomPacketOwnedExceedLimit(int tickCount, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Trading-room exceed-limit packets only apply to the trading-room shell.";
+                return false;
+            }
+
+            return TryDispatchSyntheticDialogPacket(TradingRoomExceedLimitPacketType, Array.Empty<byte>(), tickCount, out message);
+        }
+
         private bool TryDispatchMiniRoomPacket(PacketReader reader, byte packetType, int tickCount, out string message)
         {
             if (!IsMiniRoomOmokActive)
@@ -2128,19 +2177,19 @@ namespace HaCreator.MapSimulator.Interaction
         {
             string baseExpirationText = BuildTradeDateDetail("Expire", item.BaseExpirationTime);
             string cashText = item.HasCashSerialNumber && item.CashSerialNumber > 0
-                ? $" | CashSN {item.CashSerialNumber}"
+                ? $" | liCashItemSN {item.CashSerialNumber}"
                 : string.Empty;
             string titleText = string.IsNullOrWhiteSpace(item.Title)
                 ? string.Empty
-                : $" | Title {item.Title}";
+                : $" | sTitle {item.Title}";
             string metadataText = string.IsNullOrWhiteSpace(item.MetadataSummary)
                 ? string.Empty
                 : $" | {item.MetadataSummary}";
             string nonCashText = item.NonCashSerialNumber.HasValue && item.NonCashSerialNumber.Value > 0
-                ? $" | NonCashSN {item.NonCashSerialNumber.Value}"
+                ? $" | liSN {item.NonCashSerialNumber.Value}"
                 : string.Empty;
             string tailText = item.TailValue.HasValue && item.TailValue.Value != 0
-                ? $" | Tail {item.TailValue.Value}"
+                ? $" | nPrevBonusExpRate {item.TailValue.Value}"
                 : string.Empty;
             string tailMetadataText = string.IsNullOrWhiteSpace(item.TailMetadataSummary)
                 ? string.Empty
@@ -2324,8 +2373,8 @@ namespace HaCreator.MapSimulator.Interaction
             short attribute = reader.ReadInt16();
             ushort skill = reader.ReadUInt16();
             int remainingLife = reader.ReadInt32();
-            short fatigue = reader.ReadInt16();
-            metadataSummary = BuildPetTradeMetadataSummary(level, closeness, fullness, attribute, skill, remainingLife, fatigue, expirationTime);
+            short itemAttribute = reader.ReadInt16();
+            metadataSummary = BuildPetTradeMetadataSummary(level, closeness, fullness, attribute, skill, remainingLife, itemAttribute, expirationTime);
             tailMetadataSummary = BuildResidualTradePacketSummary(reader, "PetTail");
             return true;
         }
@@ -2389,7 +2438,7 @@ namespace HaCreator.MapSimulator.Interaction
             short socket1,
             short socket2,
             long? expirationTime,
-            int? tailValue)
+            int? previousBonusExpRate)
         {
             List<string> parts = new List<string>();
             parts.Add($"RUC {remainingUpgradeCount}");
@@ -2467,12 +2516,12 @@ namespace HaCreator.MapSimulator.Interaction
             string expirationText = FormatTradePacketFileTime(expirationTime);
             if (!string.IsNullOrWhiteSpace(expirationText))
             {
-                parts.Add($"Equipped {expirationText}");
+                parts.Add($"ftEquipped {expirationText}");
             }
 
-            if (tailValue.HasValue && tailValue.Value != 0)
+            if (previousBonusExpRate.HasValue && previousBonusExpRate.Value != 0)
             {
-                parts.Add($"Tail {tailValue.Value}");
+                parts.Add($"nPrevBonusExpRate {previousBonusExpRate.Value}");
             }
 
             return string.Join(", ", parts);
@@ -2501,7 +2550,7 @@ namespace HaCreator.MapSimulator.Interaction
             short attribute,
             ushort skill,
             int remainingLife,
-            short fatigue,
+            short itemAttribute,
             long? expirationTime)
         {
             List<string> parts = new List<string>();
@@ -2523,15 +2572,20 @@ namespace HaCreator.MapSimulator.Interaction
                 parts.Add($"Life {remainingLife}");
             }
 
-            if (fatigue > 0)
+            if (itemAttribute > 0)
             {
-                parts.Add($"Fatigue {fatigue}");
+                parts.Add($"Fatigue {itemAttribute}");
             }
 
             string expirationText = FormatTradePacketFileTime(expirationTime);
             if (!string.IsNullOrWhiteSpace(expirationText))
             {
-                parts.Add($"PetDead {expirationText}");
+                parts.Add($"dateDead {expirationText}");
+            }
+
+            if (itemAttribute != 0)
+            {
+                parts.Add($"ItemAttr 0x{(ushort)itemAttribute:X4}");
             }
 
             return string.Join(", ", parts);
@@ -7071,6 +7125,7 @@ namespace HaCreator.MapSimulator.Interaction
             out long? nonCashSerialNumber,
             out long? expirationTime,
             out int? tailValue,
+            out string tailMetadataSummary,
             out string error)
         {
             slotType = 0;
@@ -7083,6 +7138,7 @@ namespace HaCreator.MapSimulator.Interaction
             nonCashSerialNumber = null;
             expirationTime = null;
             tailValue = null;
+            tailMetadataSummary = string.Empty;
 
             if (!TryDecodePacketOwnedTradeItem(payload, out PacketOwnedTradeItem item, out error))
             {
@@ -7099,6 +7155,7 @@ namespace HaCreator.MapSimulator.Interaction
             nonCashSerialNumber = item.NonCashSerialNumber;
             expirationTime = item.ExpirationTime;
             tailValue = item.TailValue;
+            tailMetadataSummary = item.TailMetadataSummary;
             return true;
         }
 

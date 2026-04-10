@@ -139,12 +139,20 @@ namespace HaCreator.MapSimulator.Managers
             string[] parts = trimmed.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length >= 2 && IsOpcodeFramedRawContextAlias(parts[0]))
             {
-                return TryParseOpcodeFramedRawContextPoint(parts[1], out point, out payloadKind, out error);
+                return TryParseOpcodeFramedRawContextPoint(
+                    string.Join(string.Empty, parts, 1, parts.Length - 1),
+                    out point,
+                    out payloadKind,
+                    out error);
             }
 
             if (parts.Length >= 2 && IsRawContextAlias(parts[0]))
             {
-                return TryParseRawContextPoint(parts[1], out point, out payloadKind, out error);
+                return TryParseRawContextPoint(
+                    string.Join(string.Empty, parts, 1, parts.Length - 1),
+                    out point,
+                    out payloadKind,
+                    out error);
             }
 
             string valueToken = parts.Length switch

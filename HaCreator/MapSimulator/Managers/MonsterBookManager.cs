@@ -87,8 +87,13 @@ namespace HaCreator.MapSimulator.Managers
 
         public MonsterBookSnapshot GetSnapshot(CharacterBuild build)
         {
+            return GetSnapshot(build, build?.Id ?? 0, build?.Name);
+        }
+
+        public MonsterBookSnapshot GetSnapshot(CharacterBuild build, int characterId, string characterName)
+        {
             IReadOnlyList<MonsterBookCardDefinition> catalog = EnsureCatalog();
-            MonsterBookRecord record = GetRecord(build, createIfMissing: false);
+            MonsterBookRecord record = GetRecord(build, characterId, characterName, createIfMissing: false);
             IReadOnlyDictionary<int, int> counts = record?.CardCountsByMob ?? new Dictionary<int, int>();
             int registeredMobId = ResolveRegisteredMobId(record);
 
@@ -171,7 +176,7 @@ namespace HaCreator.MapSimulator.Managers
             return new MonsterBookSnapshot
             {
                 Title = "Monster Book",
-                Subtitle = build == null
+                Subtitle = build == null && characterId <= 0 && string.IsNullOrWhiteSpace(characterName)
                     ? "Monster card ownership is unavailable because there is no active character build."
                     : "Card ownership is persisted per character and built from the WZ-backed monster-card catalog, with chapter tabs derived from the client's 0238xxxx card buckets, client-shaped right-tab detail panes, a singular local registered-card slot, pickup-backed consume-on-pickup Monster Card ownership, and WZ-backed reward/habitat naming.",
                 StatusText = "The Monster Book owner now routes the overview tab, the nine chapter tabs, the four right-tab detail panes, local search focus and cycling, and register or release context actions through the dedicated Monster Book runtime. Ownership now follows picked-up consume-on-pickup Monster Card drops sourced from the WZ-backed card catalog, while packet-authored save flow and real server drop authorship still remain outside this simulator runtime.",
@@ -191,28 +196,33 @@ namespace HaCreator.MapSimulator.Managers
 
         public MonsterBookSnapshot RecordMobKill(CharacterBuild build, int mobId, int count = 1)
         {
+            return RecordMobKill(build, build?.Id ?? 0, build?.Name, mobId, count);
+        }
+
+        public MonsterBookSnapshot RecordMobKill(CharacterBuild build, int characterId, string characterName, int mobId, int count = 1)
+        {
             if (mobId <= 0 || count <= 0)
             {
-                return GetSnapshot(build);
+                return GetSnapshot(build, characterId, characterName);
             }
 
             Dictionary<int, MonsterBookCardDefinition> catalogByMobId = EnsureCatalogByMobId();
             if (!catalogByMobId.TryGetValue(mobId, out MonsterBookCardDefinition definition) || definition == null)
             {
-                return GetSnapshot(build);
+                return GetSnapshot(build, characterId, characterName);
             }
 
-            MonsterBookRecord record = GetRecord(build, createIfMissing: true);
+            MonsterBookRecord record = GetRecord(build, characterId, characterName, createIfMissing: true);
             record.CardCountsByMob.TryGetValue(definition.MobId, out int currentCount);
             int nextCount = Math.Clamp(currentCount + count, 0, 5);
             if (nextCount == currentCount)
             {
-                return GetSnapshot(build);
+                return GetSnapshot(build, characterId, characterName);
             }
 
             record.CardCountsByMob[definition.MobId] = nextCount;
             SaveToDisk();
-            return GetSnapshot(build);
+            return GetSnapshot(build, characterId, characterName);
         }
 
         public MonsterBookSnapshot RecordCardPickup(CharacterBuild build, int itemId, int count = 1)
@@ -279,19 +289,24 @@ namespace HaCreator.MapSimulator.Managers
 
         public MonsterBookSnapshot SetRegisteredCard(CharacterBuild build, int mobId, bool registered)
         {
+            return SetRegisteredCard(build, build?.Id ?? 0, build?.Name, mobId, registered);
+        }
+
+        public MonsterBookSnapshot SetRegisteredCard(CharacterBuild build, int characterId, string characterName, int mobId, bool registered)
+        {
             if (mobId <= 0 || !EnsureCatalogByMobId().ContainsKey(mobId))
             {
-                return GetSnapshot(build);
+                return GetSnapshot(build, characterId, characterName);
             }
 
-            MonsterBookRecord record = GetRecord(build, createIfMissing: true);
+            MonsterBookRecord record = GetRecord(build, characterId, characterName, createIfMissing: true);
             record.RegisteredMobIds ??= new HashSet<int>();
 
             if (registered
                 && (!record.CardCountsByMob.TryGetValue(mobId, out int ownedCopies)
                     || ownedCopies <= 0))
             {
-                return GetSnapshot(build);
+                return GetSnapshot(build, characterId, characterName);
             }
 
             bool changed = false;
@@ -313,7 +328,7 @@ namespace HaCreator.MapSimulator.Managers
                 SaveToDisk();
             }
 
-            return GetSnapshot(build);
+            return GetSnapshot(build, characterId, characterName);
         }
 
         private static string BuildPageSubtitle(IEnumerable<MonsterBookCardSnapshot> cards)
@@ -544,7 +559,12 @@ namespace HaCreator.MapSimulator.Managers
 
         private MonsterBookRecord GetRecord(CharacterBuild build, bool createIfMissing)
         {
-            string key = ResolveCharacterKey(build);
+            return GetRecord(build, build?.Id ?? 0, build?.Name, createIfMissing);
+        }
+
+        private MonsterBookRecord GetRecord(CharacterBuild build, int characterId, string characterName, bool createIfMissing)
+        {
+            string key = ResolveCharacterKey(build, characterId, characterName);
             if (!_bookByCharacter.TryGetValue(key, out MonsterBookRecord record) || record == null)
             {
                 if (!createIfMissing)
@@ -561,10 +581,25 @@ namespace HaCreator.MapSimulator.Managers
             return record;
         }
 
-        private static string ResolveCharacterKey(CharacterBuild build)
+        internal static string ResolveCharacterKey(CharacterBuild build)
+        {
+            return ResolveCharacterKey(build, build?.Id ?? 0, build?.Name);
+        }
+
+        internal static string ResolveCharacterKey(CharacterBuild build, int characterId, string characterName)
         {
             if (build == null)
             {
+                if (characterId > 0)
+                {
+                    return $"id:{characterId}";
+                }
+
+                if (!string.IsNullOrWhiteSpace(characterName))
+                {
+                    return $"name:{characterName.Trim().ToLowerInvariant()}";
+                }
+
                 return "session:default";
             }
 

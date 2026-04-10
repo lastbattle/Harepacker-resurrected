@@ -155,6 +155,7 @@ namespace HaCreator.MapSimulator.Pools
         int Index,
         bool IsLocallyTouched,
         bool ContainsCurrentLocalUserPosition,
+        bool HasExactNameMatch,
         int VisualState);
 
     /// <summary>
@@ -169,7 +170,7 @@ namespace HaCreator.MapSimulator.Pools
         private const float SKILL_DETECTION_RANGE = 100f;    // Range for skill activation
         private const int ACTIVATION_ANIMATION_TIME = 500;   // Animation time for activation
         private const int PACKET_ENTER_FADE_DURATION_MS = 800;
-        private const int PACKET_RELMOVE_FALLBACK_DURATION_MS = 800; // Best-effort default until the client's missing-variant RelMove timing is recovered.
+        private const int PACKET_RELMOVE_FALLBACK_DURATION_MS = 800; // Best-effort vtMissing RelMove duration until the vector default is recovered.
         #endregion
 
         #region Collections
@@ -1725,7 +1726,8 @@ namespace HaCreator.MapSimulator.Pools
                 currentY,
                 x,
                 y,
-                moveEndTime);
+                moveEndTime,
+                allowDefaultRelMove: usesDefaultRelMove);
             data.PacketMoveUsesDefaultRelMove = usesDefaultRelMove;
 
             if (data.PacketMoveEndTime > currentTick)
@@ -1831,9 +1833,15 @@ namespace HaCreator.MapSimulator.Pools
                         if (data.PacketHitStartTime > 0 && currentTick >= data.PacketHitStartTime)
                         {
                             data.PacketHitStartTime = 0;
-                            data.PacketAnimationEndTime = ResolvePacketAnimationEndTime(
-                                currentTick,
-                                StartPacketHitAnimation(reactor, data, currentTick, _onReactorLayerSoundRequested));
+                            int hitAnimationDuration = StartPacketHitAnimation(reactor, data, currentTick, _onReactorLayerSoundRequested);
+                            if (hitAnimationDuration > 0)
+                            {
+                                data.PacketAnimationEndTime = ResolvePacketAnimationEndTime(currentTick, hitAnimationDuration);
+                            }
+                            else if (data.PacketAnimationEndTime <= currentTick)
+                            {
+                                data.PacketAnimationEndTime = 0;
+                            }
                         }
 
                         if (data.PacketHitStartTime == 0
@@ -2005,7 +2013,7 @@ namespace HaCreator.MapSimulator.Pools
             if (data == null)
                 return (0, 0);
 
-            return (data.VisualState, data.StateFrame);
+            return (ResolveRenderableReactorState(data), data.StateFrame);
         }
         #endregion
 
@@ -2230,7 +2238,8 @@ namespace HaCreator.MapSimulator.Pools
             int startY,
             int targetX,
             int targetY,
-            int moveEndTime)
+            int moveEndTime,
+            bool allowDefaultRelMove = false)
         {
             if (data == null)
             {
@@ -2246,7 +2255,7 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketMoveUsesDefaultRelMove = false;
 
             if (reactor == null
-                || !reactor.TemplateMoveEnabled
+                || (!reactor.TemplateMoveEnabled && !allowDefaultRelMove)
                 || moveEndTime <= 0
                 || (startX == targetX && startY == targetY))
             {
@@ -2461,6 +2470,9 @@ namespace HaCreator.MapSimulator.Pools
                     i,
                     IsLocallyTouchedReactor(index: i, data),
                     IsImmediateLocalUserTouchCandidate(reactor, data, currentTick, localPlayerX, localPlayerY),
+                    !string.IsNullOrWhiteSpace(name)
+                        && !string.IsNullOrWhiteSpace(reactor.ReactorInstance.Name)
+                        && string.Equals(reactor.ReactorInstance.Name, name, StringComparison.OrdinalIgnoreCase),
                     data.VisualState));
             }
 
@@ -2481,6 +2493,15 @@ namespace HaCreator.MapSimulator.Pools
             if (candidates.Count == 1)
             {
                 index = candidates[0].Index;
+                return true;
+            }
+
+            List<PacketEnterAuthoredReactorCandidate> exactNameCandidates = candidates
+                .Where(static candidate => candidate.HasExactNameMatch)
+                .ToList();
+            if (exactNameCandidates.Count == 1)
+            {
+                index = exactNameCandidates[0].Index;
                 return true;
             }
 
@@ -3073,7 +3094,7 @@ namespace HaCreator.MapSimulator.Pools
             if (!ReactorItem.TryResolveClientHitEventIndex(sourceEventTypes, hitOption, reactorType, out properEventIndex))
             {
                 properEventIndex = -1;
-                shouldLoadHitLayer = true;
+                shouldLoadHitLayer = false;
                 return true;
             }
 
@@ -3115,7 +3136,22 @@ namespace HaCreator.MapSimulator.Pools
                 sourceState.ToString(CultureInfo.InvariantCulture));
         }
 
-        private static int ResolveReactorRenderSortKey(int page, int zMass, int templateLayerMode)
+        internal static int ResolveRenderableReactorState(ReactorRuntimeData data)
+        {
+            if (data == null)
+            {
+                return 0;
+            }
+
+            bool packetHitLayerIsPendingOrActive = data.IsPacketOwned
+                && (data.PacketPendingVisualState >= 0 || data.PacketLeavePending)
+                && (data.PacketHitStartTime > 0 || data.PacketAnimationEndTime > 0);
+            return packetHitLayerIsPendingOrActive && data.PacketAnimationSourceState >= 0
+                ? data.PacketAnimationSourceState
+                : data.VisualState;
+        }
+
+        internal static int ResolveReactorRenderSortKey(int page, int zMass, int templateLayerMode)
         {
             return templateLayerMode switch
             {

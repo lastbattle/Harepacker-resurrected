@@ -869,19 +869,35 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawCooldownMask(SpriteBatch sprite, Rectangle iconRect, int frameIndex)
         {
-            if (_cooldownMaskTextures.Length <= 0)
+            if (_cooldownMaskTextures.Length > 0)
+            {
+                int resolvedFrameIndex = Math.Clamp(frameIndex, 0, _cooldownMaskTextures.Length - 1);
+                Texture2D maskTexture = _cooldownMaskTextures[resolvedFrameIndex];
+                if (maskTexture != null)
+                {
+                    sprite.Draw(maskTexture, iconRect, Color.White);
+                    return;
+                }
+            }
+
+            if (_debugPlaceholder == null)
             {
                 return;
             }
 
-            int resolvedFrameIndex = Math.Clamp(frameIndex, 0, _cooldownMaskTextures.Length - 1);
-            Texture2D maskTexture = _cooldownMaskTextures[resolvedFrameIndex];
-            if (maskTexture == null)
+            float remainingProgress = SkillManager.ResolveCooldownMaskFallbackFillRatio(frameIndex);
+            int overlayHeight = Math.Clamp((int)Math.Ceiling(iconRect.Height * remainingProgress), 0, iconRect.Height);
+            if (overlayHeight <= 0)
             {
                 return;
             }
 
-            sprite.Draw(maskTexture, iconRect, Color.White);
+            Rectangle overlayRect = new Rectangle(
+                iconRect.X,
+                iconRect.Bottom - overlayHeight,
+                iconRect.Width,
+                overlayHeight);
+            sprite.Draw(_debugPlaceholder, overlayRect, new Color(0, 0, 0, 150));
         }
 
         private static float CalculateTooltipSectionHeight(

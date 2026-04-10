@@ -82,9 +82,15 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static byte[] BuildSlideMenuClientPacket(int npcId, int slideMenuType, string buttonInfo)
         {
+            return BuildSlideMenuClientPacket(npcId, slideMenuType, initialSelectionId: 0, buttonInfo);
+        }
+
+        internal static byte[] BuildSlideMenuClientPacket(int npcId, int slideMenuType, int initialSelectionId, string buttonInfo)
+        {
             using MemoryStream stream = new();
             using BinaryWriter writer = CreateHeader(stream, npcId, 15);
             writer.Write(slideMenuType);
+            writer.Write(initialSelectionId);
             WriteMapleString(writer, buttonInfo);
             return stream.ToArray();
         }

@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.Effects
         private readonly DojoField _dojo = new();
         private readonly SpaceGagaField _spaceGaga = new();
         private readonly MassacreField _massacre = new();
+        private readonly CakePieEventField _cakePie = new();
         #endregion
 
 
@@ -60,7 +61,8 @@ namespace HaCreator.MapSimulator.Effects
         public DojoField Dojo => _dojo;
         public SpaceGagaField SpaceGaga => _spaceGaga;
         public MassacreField Massacre => _massacre;
-        public bool HasBlockingScriptedSequence => _wedding.HasActiveScriptedDialog;
+        public CakePieEventField CakePie => _cakePie;
+        public bool HasBlockingScriptedSequence => _wedding.HasActiveScriptedDialog || _cakePie.IsItemInfoVisible;
 
 
         public void SetWeddingPlayerState(int? localCharacterId, Vector2? localWorldPosition, CharacterBuild localPlayerBuild = null)
@@ -104,6 +106,7 @@ namespace HaCreator.MapSimulator.Effects
             _dojo.Initialize(device);
             _spaceGaga.Initialize(device);
             _massacre.Initialize(device);
+            _cakePie.Initialize(device);
         }
 
 
@@ -114,6 +117,7 @@ namespace HaCreator.MapSimulator.Effects
         {
             int mapId = mapInfo?.id ?? 0;
             FieldType? fieldType = mapInfo?.fieldType;
+            _cakePie.BindMap(mapId);
 
             // Wedding maps: 680000110 (Cathedral), 680000210 (Chapel)
             if (fieldType == FieldType.FIELDTYPE_WEDDING || mapId == 680000110 || mapId == 680000210)
@@ -295,6 +299,11 @@ namespace HaCreator.MapSimulator.Effects
 
             if (_massacre.IsActive)
                 _massacre.Update(currentTimeMs, deltaSeconds);
+
+
+
+            if (_cakePie.IsActive || _cakePie.HasVisibleUi)
+                _cakePie.Update(currentTimeMs);
         }
         #endregion
 
@@ -392,6 +401,11 @@ namespace HaCreator.MapSimulator.Effects
 
             if (_massacre.IsActive)
                 _massacre.Draw(spriteBatch, pixelTexture, font);
+
+
+
+            if (_cakePie.IsActive || _cakePie.HasVisibleUi)
+                _cakePie.Draw(spriteBatch, pixelTexture, font);
         }
         #endregion
 
@@ -406,6 +420,7 @@ namespace HaCreator.MapSimulator.Effects
             _dojo.Reset();
             _spaceGaga.Reset();
             _massacre.Reset();
+            _cakePie.Reset();
         }
         #endregion
     }

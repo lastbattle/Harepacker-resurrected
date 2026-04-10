@@ -664,6 +664,8 @@ namespace HaCreator.MapSimulator
         private const string MemoryGameDirectionModeOwnerName = "__SpecialFieldMemoryGame";
         private const string TournamentMatchTableDirectionModeOwnerName = "__SpecialFieldTournamentMatchTable";
         private const string RockPaperScissorsDirectionModeOwnerName = "__SpecialFieldRockPaperScissors";
+        private const string InitialQuizDirectionModeOwnerName = "__PacketScriptInitialQuiz";
+        private const string SpeedQuizDirectionModeOwnerName = "__PacketScriptSpeedQuiz";
         private bool _sameMapTeleportPending = false;
         private int _sameMapTeleportStartTime = 0;
         private int _sameMapTeleportDelay = 0;
@@ -684,6 +686,7 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedTeleportOutboundOpcode = -1;
         private byte[] _lastPacketOwnedTeleportOutboundPayload = Array.Empty<byte>();
         private string _lastPacketOwnedTeleportOutboundSummary;
+        private int _lastCollisionVerticalJumpMovePathAttribute = -1;
         private PendingMapSpawnTarget _pendingMapSpawnTarget = null;
         private bool _scriptedDirectionModeOwnerActive = false;
         private bool _passiveTransferRequestPending = false;
@@ -2759,7 +2762,9 @@ namespace HaCreator.MapSimulator
                 _specialFieldRuntime.SpecialEffects.Wedding.HasActiveScriptedDialog,
                 _specialFieldRuntime.Minigames.MemoryGame.IsVisible,
                 _specialFieldRuntime.Minigames.Tournament.MatchTableDialog.IsVisible,
-                _specialFieldRuntime.Minigames.RockPaperScissors.IsVisible);
+                _specialFieldRuntime.Minigames.RockPaperScissors.IsVisible,
+                _initialQuizTimerRuntime.IsActive(currTickCount),
+                _speedQuizOwnerRuntime.IsActive(currTickCount));
         }
 
 
@@ -3137,6 +3142,7 @@ namespace HaCreator.MapSimulator
             bool canOpenRidePage = build?.HasMonsterRiding == true ||
                                    (build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart) == true &&
                                     mountPart != null);
+            canOpenRidePage &= FieldInteractionRestrictionEvaluator.CanUseTamingMob(_mapBoard?.MapInfo?.fieldLimit ?? 0);
             skillWindow.ConfigureShortcutButtons(
                 canOpenRidePage,
                 guildSkillContext.HasGuildMembership);
@@ -14082,7 +14088,7 @@ namespace HaCreator.MapSimulator
                     break;
                 case LoginUtilityDialogAction.ConfirmUtilityQuit:
                     HideLoginUtilityDialog();
-                    Exit();
+                    ContinueConfirmedUtilityQuitThroughLogoutGift();
                     return;
                 case LoginUtilityDialogAction.LogoutGiftCompletion:
                     HideLoginUtilityDialog();
@@ -16603,6 +16609,7 @@ namespace HaCreator.MapSimulator
             _cookieHousePointInbox.Dispose();
             _cookieHouseOfficialSessionBridge.Dispose();
             _localUtilityPacketInbox.Dispose();
+            _adminShopPacketInbox.Dispose();
             _localUtilityPacketOutbox.Dispose();
             _localUtilityOfficialSessionBridge.Dispose();
             _reactorTouchPacketOutbox.Dispose();
@@ -21164,6 +21171,7 @@ namespace HaCreator.MapSimulator
             public int DropRate { get; init; }
             public int MesoRate { get; init; }
             public int EnvironmentalDamageProtection { get; init; }
+            public bool ConsumeOnPickup { get; init; }
             public int DurationMs { get; init; }
 
 
@@ -21839,6 +21847,7 @@ namespace HaCreator.MapSimulator
                 DropRate = ResolveConsumablePercentValue(specProperty, "dropRate", "dropR"),
                 MesoRate = ResolveConsumablePercentValue(specProperty, "mesoR"),
                 EnvironmentalDamageProtection = ResolveConsumableEnvironmentalDamageProtection(specProperty["thaw"]),
+                ConsumeOnPickup = GetWzIntValue(specProperty["consumeOnPickup"]) > 0,
                 DurationMs = Math.Max(0, GetWzIntValue(specProperty["time"])),
 
 
@@ -25554,6 +25563,7 @@ namespace HaCreator.MapSimulator
                     AllowsTransferField: ResolvePassiveTransferFieldRuntimeTransferAllowance(),
                     HasPendingSpecialTransfer: _specialFieldRuntime.HasPendingTransfer,
                     HasPendingPacketOwnedTransfer: HasPendingPassiveTransferFieldPacketTransferOwnership(),
+                    HasPendingSameMapTransfer: _sameMapTeleportPending,
                     HasBlockingScriptedSequence: _specialFieldRuntime.HasBlockingScriptedSequence));
         }
 
@@ -25850,7 +25860,7 @@ namespace HaCreator.MapSimulator
             {
                 PortalType.CollisionScript => TryHandleCollisionScriptPortal(portal, portalIndex, currentTime, fieldLimit),
                 PortalType.CollisionVerticalJump => TryHandleVerticalJumpPortal(portal),
-                PortalType.CollisionCustomImpact => TryHandleCustomImpactPortal(portal, currentTime),
+                PortalType.CollisionCustomImpact => TryHandleCustomImpactPortal(portal),
                 _ => TryHandleTransferPortalCollision(portal, portalIndex, currentTime, fieldLimit)
             };
         }
@@ -25894,14 +25904,23 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            double horizontalImpact = portal.horizontalImpact ?? 0;
-            double verticalImpact = -(portal.verticalImpact ?? (int)CVecCtrl.JumpVelocity);
-            player.Physics.Impact(horizontalImpact, verticalImpact);
+            double horizontalImpact = ResolveCollisionVerticalJumpHorizontalImpact(player.HorizontalInputDirection, player.FacingRight);
+            player.Physics.SetImpactNext(horizontalImpact, CollisionVerticalJumpVelocityY);
+            _lastCollisionVerticalJumpMovePathAttribute = CollisionVerticalJumpMovePathAttribute;
             _ = ClearPacketOwnedTeleportPassengerLink();
             return true;
         }
 
-        private bool TryHandleCustomImpactPortal(PortalInstance portal, int currentTime)
+        internal const int CollisionVerticalJumpMovePathAttribute = 24;
+        internal const double CollisionVerticalJumpVelocityY = -2300d;
+
+        internal static double ResolveCollisionVerticalJumpHorizontalImpact(int inputDirection, bool facingRight)
+        {
+            int clampedInputDirection = Math.Clamp(inputDirection, -1, 1);
+            return (clampedInputDirection * 100) + (facingRight ? 200 : -200);
+        }
+
+        private bool TryHandleCustomImpactPortal(PortalInstance portal)
         {
             if (portal == null)
             {
@@ -25919,7 +25938,7 @@ namespace HaCreator.MapSimulator
             }
 
             if (!string.IsNullOrWhiteSpace(portal.sessionValueKey)
-                && TryApplyPortalSessionValueImpact(portal, currentTime))
+                && TryApplyPortalSessionValueImpact(portal))
             {
                 _ = ClearPacketOwnedTeleportPassengerLink();
                 return true;
@@ -25957,7 +25976,7 @@ namespace HaCreator.MapSimulator
                 && visualState != 2;
         }
 
-        private bool TryApplyPortalSessionValueImpact(PortalInstance portal, int currentTime)
+        private bool TryApplyPortalSessionValueImpact(PortalInstance portal)
         {
             PlayerCharacter player = _playerManager?.Player;
             if (player?.Physics == null)
@@ -25966,18 +25985,43 @@ namespace HaCreator.MapSimulator
             }
 
             string sessionValue = string.IsNullOrWhiteSpace(portal.sessionValue) ? "0" : portal.sessionValue;
-            if (TryApplyStructuredFieldSpecificPair(
-                portal.sessionValueKey,
-                sessionValue,
-                PacketFieldSpecificDataOwnerHint.Session,
-                currentTime,
-                out _))
+            if (HasStructuredPortalSessionValueImpactOwner(portal.sessionValueKey, sessionValue))
             {
                 QueuePendingPortalSessionValueImpact(new PendingPortalSessionValueImpact(
                     portal.sessionValueKey,
                     sessionValue,
                     portal.horizontalImpact ?? 0,
                     -(portal.verticalImpact ?? 0)));
+                TryDispatchPortalSessionValueRequest(portal.sessionValueKey);
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool HasStructuredPortalSessionValueImpactOwner(string key, string value)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return false;
+            }
+
+            if (_specialFieldRuntime?.PartyRaid.IsActive == true)
+            {
+                return true;
+            }
+
+            if (IsChaosZakumPortalSessionWrapperMap(_mapBoard?.MapInfo)
+                && IsChaosZakumPortalSessionKey(key))
+            {
+                return true;
+            }
+
+            if (_mapBoard?.MapInfo?.fieldType == MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_HUNTINGADBALLOON
+                && string.Equals(key?.Trim(), "balloon_Team", StringComparison.Ordinal)
+                && (string.Equals(value, "redTeam", StringComparison.Ordinal)
+                    || string.Equals(value, "blueTeam", StringComparison.Ordinal)))
+            {
                 return true;
             }
 
@@ -26306,6 +26350,12 @@ namespace HaCreator.MapSimulator
             _scriptedDirectionModeWindows.TrackOwner(
                 RockPaperScissorsDirectionModeOwnerName,
                 () => _specialFieldRuntime.Minigames.RockPaperScissors.IsVisible);
+            _scriptedDirectionModeWindows.TrackOwner(
+                InitialQuizDirectionModeOwnerName,
+                () => _initialQuizTimerRuntime.IsActive(currentTime));
+            _scriptedDirectionModeWindows.TrackOwner(
+                SpeedQuizDirectionModeOwnerName,
+                () => _speedQuizOwnerRuntime.IsActive(currentTime));
 
 
             bool scriptedOwnerActive = _scriptedDirectionModeWindows.HasVisibleOwnedWindow(IsWindowVisible);
@@ -26452,6 +26502,7 @@ namespace HaCreator.MapSimulator
             });
             _dropPool.SetSourcePositionResolver(ResolveDropPacketSourcePosition);
             _dropPool.SetPacketItemVisualResolver(ResolvePacketItemDropVisuals);
+            _dropPool.SetPacketExpireTimeUtcResolver(ResolveRemoteDropPacketServerUtc);
             _dropPool.SetPartyPickupMembershipEvaluator(AreDropActorsInSameParty);
             _dropPool.SetOnPacketEnterSoundRequested(HandlePacketOwnedDropEnterSoundRequested);
             _dropPool.SetOnPacketExploded(HandlePacketOwnedDropExploded);
@@ -28035,7 +28086,6 @@ namespace HaCreator.MapSimulator
                     //string speaker = _playerManager.Player?.Name ?? "Player";
                     string speaker = "Player";
                     _chat.AddIncomingTargetedMessage(MapSimulatorChatTargetType.Party, speaker, macroName, currTickCount);
-                    TryTriggerSpecialistPetSocialFeedback(macroName, currTickCount);
                 };
             }
 
@@ -30008,6 +30058,17 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (chair.TamingMobItemId is int tamingMobItemId && tamingMobItemId > 0)
+            {
+                string tamingMobRestrictionMessage = FieldInteractionRestrictionEvaluator.GetTamingMobRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+                if (!string.IsNullOrWhiteSpace(tamingMobRestrictionMessage))
+                {
+                    message = tamingMobRestrictionMessage;
+                    ShowFieldRestrictionMessage(message);
+                    return false;
+                }
+            }
+
             if (TryGetPortableChairCooldownMessage(itemId, out string cooldownMessage))
             {
                 message = cooldownMessage;
@@ -30042,8 +30103,8 @@ namespace HaCreator.MapSimulator
             }
 
 
-            string ridingChairNote = chair.TamingMobItemId is int tamingMobItemId && tamingMobItemId > 0
-                ? $" Riding-chair mount applied: {tamingMobItemId}."
+            string ridingChairNote = chair.TamingMobItemId is int ridingChairMountItemId && ridingChairMountItemId > 0
+                ? $" Riding-chair mount applied: {ridingChairMountItemId}."
                 : string.Empty;
             message = $"Activated chair {chair.Name} ({itemId}).{ridingChairNote}";
             return true;

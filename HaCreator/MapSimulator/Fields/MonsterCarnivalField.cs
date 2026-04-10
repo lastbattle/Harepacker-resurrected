@@ -833,6 +833,7 @@ namespace HaCreator.MapSimulator.Fields
         private string _lastClientOwnerAction;
         private int[] _lastClientOwnerStringPoolIds = Array.Empty<int>();
         private readonly Queue<string> _variantActionTrail = new();
+        private readonly MonsterCarnivalUiWindowState _uiWindowState = new();
         private MonsterCarnivalVariantSessionPhase _variantSessionPhase;
         private string _variantSessionSummary;
         private GraphicsDevice _graphicsDevice;
@@ -855,6 +856,7 @@ namespace HaCreator.MapSimulator.Fields
         public IReadOnlyList<int> LastClientOwnerStringPoolIds => _lastClientOwnerStringPoolIds;
         public MonsterCarnivalVariantSessionPhase VariantSessionPhase => _variantSessionPhase;
         public IReadOnlyList<string> VariantActionTrail => _variantActionTrail.ToArray();
+        public MonsterCarnivalUiWindowState UiWindowState => _uiWindowState;
 
         public void Configure(MapInfo mapInfo)
         {
@@ -871,6 +873,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastClientOwnerStringPoolIds = Array.Empty<int>();
             _variantActionTrail.Clear();
             SetVariantSessionPhase(MonsterCarnivalVariantSessionPhase.Init, BuildInitialVariantSessionSummary(_definition));
+            InitializeClientOwnedUiWindowState(_definition);
         }
 
         public void SetLocalPlayerName(string characterName)
@@ -913,6 +916,14 @@ namespace HaCreator.MapSimulator.Fields
             myTeam.TotalCp = Math.Max(myTeam.CurrentCp, myTeamTotalCp);
             enemyTeam.CurrentCp = Math.Max(0, enemyTeamCp);
             enemyTeam.TotalCp = Math.Max(enemyTeam.CurrentCp, enemyTeamTotalCp);
+            _uiWindowState.ApplyEnter(
+                localTeam,
+                _personalCp,
+                _personalTotalCp,
+                myTeam.CurrentCp,
+                myTeam.TotalCp,
+                enemyTeam.CurrentCp,
+                enemyTeam.TotalCp);
 
             ShowStatus(BuildEnterStatusMessage(localTeam), Environment.TickCount);
             SetVariantSessionPhase(
@@ -942,6 +953,7 @@ namespace HaCreator.MapSimulator.Fields
             _team0.TotalCp = Math.Max(_team0.CurrentCp, team0TotalCp);
             _team1.CurrentCp = Math.Max(0, team1CurrentCp);
             _team1.TotalCp = Math.Max(_team1.CurrentCp, team1TotalCp);
+            RefreshClientOwnedUiWindowCpState();
             SetVariantSessionPhase(
                 MonsterCarnivalVariantSessionPhase.LiveHud,
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"} refreshed live CP totals on the shared Carnival seam.");
@@ -959,6 +971,10 @@ namespace HaCreator.MapSimulator.Fields
 
             _personalCp = Math.Max(0, personalCp);
             _personalTotalCp = Math.Max(_personalCp, personalTotalCp);
+            RefreshClientOwnedUiWindowCpState();
+            MarkClientOwnedCpHudRefresh(
+                "OnPersonalCP",
+                "CUIMonsterCarnival::SetPersonalCP");
         }
 
         public void UpdateTeamCp(MonsterCarnivalTeam team, int currentCp, int totalCp)
@@ -971,6 +987,10 @@ namespace HaCreator.MapSimulator.Fields
             MonsterCarnivalTeamState teamState = GetTeamState(team);
             teamState.CurrentCp = Math.Max(0, currentCp);
             teamState.TotalCp = Math.Max(teamState.CurrentCp, totalCp);
+            RefreshClientOwnedUiWindowCpState();
+            MarkClientOwnedCpHudRefresh(
+                "OnTeamCP",
+                $"CUIMonsterCarnival::SetTeamCP({FormatTeam(team)})");
         }
 
         public void ApplyTeamCpDelta(
@@ -993,6 +1013,7 @@ namespace HaCreator.MapSimulator.Fields
             _team0.TotalCp = Math.Max(_team0.CurrentCp, _team0.TotalCp + team0TotalCpDelta);
             _team1.CurrentCp = Math.Max(0, _team1.CurrentCp + team1CurrentCpDelta);
             _team1.TotalCp = Math.Max(_team1.CurrentCp, _team1.TotalCp + team1TotalCpDelta);
+            RefreshClientOwnedUiWindowCpState();
 
             ShowStatus(
                 $"Monster Carnival CP delta applied: personal {FormatSignedDelta(personalCpDelta)}, team0 {FormatSignedDelta(team0CurrentCpDelta)}, team1 {FormatSignedDelta(team1CurrentCpDelta)}.",
@@ -1074,6 +1095,7 @@ namespace HaCreator.MapSimulator.Fields
             string successMessage = BuildRequestSuccessMessage(entry, characterName);
             ShowStatus(successMessage, tickCount);
             MonsterCarnivalStringPoolMessage? successDefinition = GetRequestSuccessMessage(entry.Tab);
+            _uiWindowState.MarkRequestCooldownReset(tickCount, _definition?.ClientOwnerLabel, (int)tab, entryIndex);
             SetVariantSessionPhase(
                 MonsterCarnivalVariantSessionPhase.Request,
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"} accepted tab {(int)tab}, index {entryIndex}, and advanced the request seam.");
@@ -1573,6 +1595,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastClientOwnerAction = null;
             _lastClientOwnerStringPoolIds = Array.Empty<int>();
             _variantActionTrail.Clear();
+            _uiWindowState.Reset();
             _variantSessionPhase = MonsterCarnivalVariantSessionPhase.None;
             _variantSessionSummary = null;
         }
@@ -2031,8 +2054,8 @@ namespace HaCreator.MapSimulator.Fields
             return _definition.ResolvedFieldType switch
             {
                 FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | delegated result StringPool=0x1020/0x1021/0x1022/0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
-                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | delegated result StringPool=0x1020/0x1021/0x1022/0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{_definition.ClientOwnerLabel} packets=346-353 | phase={DescribeVariantSessionPhase()} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F | result StringPool=0x1020/0x1021/0x1022/0x1023 -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | phase={DescribeVariantSessionPhase()} | delegated result StringPool=0x1020/0x1021/0x1022/0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | ui={_uiWindowState.DescribeStatus()} | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{_definition.ClientOwnerLabel} packets=346-353 | phase={DescribeVariantSessionPhase()} | ui={_uiWindowState.DescribeStatus()} | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F | result StringPool=0x1020/0x1021/0x1022/0x1023 -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | trail={BuildVariantActionTrailSummary()} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
                 _ => $"{_definition.ClientOwnerLabel} packets=346-353 | map={FormatMapIdentity(_definition)}"
             };
         }
@@ -2492,6 +2515,50 @@ namespace HaCreator.MapSimulator.Fields
                 Array.Empty<int>());
         }
 
+        private void MarkClientOwnedCpHudRefresh(string packetOwner, string uiOwner)
+        {
+            string ownerLabel = _definition?.ClientOwnerLabel ?? "CField_MonsterCarnival";
+            SetVariantSessionPhase(
+                MonsterCarnivalVariantSessionPhase.LiveHud,
+                $"{ownerLabel}::{packetOwner} refreshed the shared Carnival HUD through {uiOwner}.");
+            RecordRecoveredClientOwnerAction(
+                $"{ownerLabel}::{packetOwner} -> {uiOwner}.",
+                Array.Empty<int>());
+        }
+
+        private void InitializeClientOwnedUiWindowState(MonsterCarnivalFieldDefinition definition)
+        {
+            _uiWindowState.Reset();
+            if (definition == null || definition.IsWaitingRoom || definition.IsDeprecatedMode)
+            {
+                return;
+            }
+
+            _uiWindowState.CreateFromDefinition(definition);
+            RecordClientOwnerAction(
+                "CField_MonsterCarnival::CreateUIWindow -> CUIMonsterCarnival::SetUIData(mob/skill/guardian) -> CUIMonsterCarnival::ResetUI.",
+                Array.Empty<int>());
+        }
+
+        private void RefreshClientOwnedUiWindowCpState()
+        {
+            if (!_uiWindowState.IsCreated)
+            {
+                return;
+            }
+
+            MonsterCarnivalTeamState myTeam = GetTeamState(_localTeam);
+            MonsterCarnivalTeamState enemyTeam = GetTeamState(GetOpposingTeam(_localTeam));
+            _uiWindowState.ApplyEnter(
+                _localTeam,
+                _personalCp,
+                _personalTotalCp,
+                myTeam.CurrentCp,
+                myTeam.TotalCp,
+                enemyTeam.CurrentCp,
+                enemyTeam.TotalCp);
+        }
+
         private string BuildInitialClientOwnerAction(MonsterCarnivalFieldDefinition definition)
         {
             if (definition == null)
@@ -2572,6 +2639,7 @@ namespace HaCreator.MapSimulator.Fields
                 MonsterCarnivalVariantSessionPhase.MemberState => "member-state",
                 MonsterCarnivalVariantSessionPhase.DeathState => "death-state",
                 MonsterCarnivalVariantSessionPhase.ResultRoute => "result-route",
+                MonsterCarnivalVariantSessionPhase.UiWindow => "ui-window",
                 _ => "none"
             };
 

@@ -79,7 +79,8 @@ namespace HaCreator.MapSimulator.Interaction
         RankTitles = 68,
         Notice = 71,
         Mark = 69,
-        PointsAndLevel = 75
+        PointsAndLevel = 75,
+        SkillRecord = 81
     }
 
     internal readonly record struct SocialListClientGuildResultPacket(
@@ -91,7 +92,14 @@ namespace HaCreator.MapSimulator.Interaction
         GuildMarkSelection? MarkSelection,
         int GuildPoints,
         int GuildLevel,
-        SocialListGradeChangePacket GradeChange);
+        SocialListGradeChangePacket GradeChange,
+        SocialListGuildSkillRecordPacket? GuildSkillRecord);
+
+    internal readonly record struct SocialListGuildSkillRecordPacket(
+        int SkillId,
+        int SkillLevel,
+        DateTimeOffset? Expiration,
+        string BuyCharacterName);
 
     internal enum SocialListClientAllianceResultKind : byte
     {
@@ -324,7 +332,8 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             0,
                             0,
-                            new SocialListGradeChangePacket(memberId, 0, absoluteGrade, null));
+                            new SocialListGradeChangePacket(memberId, 0, absoluteGrade, null),
+                            null);
                         return true;
                     }
 
@@ -355,7 +364,7 @@ namespace HaCreator.MapSimulator.Interaction
                                 IsPacketOwned: true));
                         }
 
-                        packet = new SocialListClientGuildResultPacket(kind, guildId, rankingEntries, Array.Empty<string>(), null, null, 0, 0, default);
+                        packet = new SocialListClientGuildResultPacket(kind, guildId, rankingEntries, Array.Empty<string>(), null, null, 0, 0, default, null);
                         return true;
                     }
 
@@ -368,7 +377,7 @@ namespace HaCreator.MapSimulator.Interaction
                             titles[i] = NormalizeRoleLabel(reader.ReadString16(), $"Rank {i + 1}");
                         }
 
-                        packet = new SocialListClientGuildResultPacket(kind, guildId, Array.Empty<GuildRankingSeedEntry>(), titles, null, null, 0, 0, default);
+                        packet = new SocialListClientGuildResultPacket(kind, guildId, Array.Empty<GuildRankingSeedEntry>(), titles, null, null, 0, 0, default, null);
                         return true;
                     }
 
@@ -384,7 +393,8 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             0,
                             0,
-                            default);
+                            default,
+                            null);
                         return true;
                     }
 
@@ -406,7 +416,8 @@ namespace HaCreator.MapSimulator.Interaction
                             selection,
                             0,
                             0,
-                            default);
+                            default,
+                            null);
                         return true;
                     }
 
@@ -424,7 +435,48 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             guildPoints,
                             guildLevel,
-                            default);
+                            default,
+                            null);
+                        return true;
+                    }
+
+                    case SocialListClientGuildResultKind.SkillRecord:
+                    {
+                        int guildId = reader.ReadInt32();
+                        int skillId = reader.ReadInt32();
+                        int skillLevel = reader.ReadUInt16();
+                        long expirationFileTime = reader.ReadInt64();
+                        string buyCharacterName = reader.ReadString16().Trim();
+                        if (skillId <= 0)
+                        {
+                            error = "Client guild-result skill-record skill id must be positive.";
+                            return false;
+                        }
+
+                        DateTimeOffset? expiration = null;
+                        if (expirationFileTime > 0)
+                        {
+                            try
+                            {
+                                expiration = DateTimeOffset.FromFileTime(expirationFileTime);
+                            }
+                            catch (ArgumentOutOfRangeException)
+                            {
+                                expiration = null;
+                            }
+                        }
+
+                        packet = new SocialListClientGuildResultPacket(
+                            kind,
+                            guildId,
+                            Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<string>(),
+                            null,
+                            null,
+                            0,
+                            0,
+                            default,
+                            new SocialListGuildSkillRecordPacket(skillId, skillLevel, expiration, buyCharacterName));
                         return true;
                     }
 
@@ -648,6 +700,21 @@ namespace HaCreator.MapSimulator.Interaction
                     | (_payload[_offset + 3] << 24);
                 _offset += 4;
                 return value;
+            }
+
+            public long ReadInt64()
+            {
+                EnsureRemaining(8);
+                uint low = (uint)(_payload[_offset]
+                    | (_payload[_offset + 1] << 8)
+                    | (_payload[_offset + 2] << 16)
+                    | (_payload[_offset + 3] << 24));
+                uint high = (uint)(_payload[_offset + 4]
+                    | (_payload[_offset + 5] << 8)
+                    | (_payload[_offset + 6] << 16)
+                    | (_payload[_offset + 7] << 24));
+                _offset += 8;
+                return (long)((ulong)low | ((ulong)high << 32));
             }
 
             public string ReadString8()

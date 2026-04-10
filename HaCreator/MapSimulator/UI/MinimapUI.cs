@@ -21,15 +21,16 @@ namespace HaCreator.MapSimulator.UI
 
         public enum HelperMarkerType
         {
-            Another,
-            Friend,
-            Guild,
-            GuildMaster,
-            Match,
-            Party,
-            PartyMaster,
-            UserTrader,
-            AnotherTrader
+            Another = 0,
+            Friend = 1,
+            Guild = 2,
+            GuildMaster = 3,
+            Match = 4,
+            Party = 5,
+            PartyMaster = 6,
+            UserTrader = 7,
+            AnotherTrader = 8,
+            User = 9
         }
 
         public enum NpcMarkerType
@@ -687,58 +688,6 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void CollapseMinimapToRememberedOption()
-        {
-            if (_currentOption != ClientOptionCollapsed)
-            {
-                _previousExpandedOption = _currentOption;
-            }
-
-            _btnMin.SetButtonState(UIObjectState.Disabled);
-            _btnMax.SetButtonState(UIObjectState.Normal);
-            SyncFramePositionsFrom(GetActiveExpandedFrame());
-
-            _currentOption = ClientOptionCollapsed;
-            _bIsCollapsedState = true;
-            UpdateButtonLayout();
-        }
-
-        private void RestoreRememberedExpandedOption()
-        {
-            _btnMin.SetButtonState(UIObjectState.Normal);
-            _btnMax.SetButtonState(UIObjectState.Disabled);
-            _currentOption = NormalizeRememberedExpandedOption(_previousExpandedOption);
-            SyncFramePositionsFrom(_collapsedFrame);
-            _bIsCollapsedState = false;
-            UpdateButtonLayout();
-        }
-
-        private void ToggleExpandedOption()
-        {
-            if (_btnSmall == null || _expandedFrame == null)
-            {
-                return;
-            }
-
-            if (_bIsCollapsedState)
-            {
-                RestoreRememberedExpandedOption();
-                return;
-            }
-
-            SetExpandedOption(_currentOption == ClientOptionExpanded ? ClientOptionCompact : ClientOptionExpanded);
-        }
-
-        private void SetExpandedOption(int option)
-        {
-            BaseDXDrawableItem previousFrame = GetVisibleFrame();
-            _currentOption = NormalizeExpandedOption(option);
-            _previousExpandedOption = _currentOption;
-            _bIsCollapsedState = false;
-            SyncFramePositionsFrom(previousFrame);
-            UpdateButtonLayout();
-        }
-
         private int NormalizeExpandedOption(int option)
         {
             if (_expandedFrame == null || _btnSmall == null)
@@ -908,23 +857,6 @@ namespace HaCreator.MapSimulator.UI
         private static int ResolveAdjacentLeftButtonX(int anchorX, int buttonWidth)
         {
             return Math.Max(0, anchorX - buttonWidth);
-        }
-
-        private void AdvanceToggleCycle()
-        {
-            if (_bIsCollapsedState)
-            {
-                RestoreRememberedExpandedOption();
-                return;
-            }
-
-            if (NormalizeExpandedOption(_currentOption) == ClientOptionCompact)
-            {
-                SetExpandedOption(ClientOptionExpanded);
-                return;
-            }
-
-            CollapseMinimapToRememberedOption();
         }
 
         private void ToggleMinimapState()
@@ -1341,6 +1273,7 @@ namespace HaCreator.MapSimulator.UI
 
             return markerType switch
             {
+                HelperMarkerType.User => ResolveHelperMarker(HelperMarkerType.Another),
                 HelperMarkerType.GuildMaster => ResolveHelperMarker(HelperMarkerType.Guild),
                 HelperMarkerType.PartyMaster => ResolveHelperMarker(HelperMarkerType.Party),
                 HelperMarkerType.UserTrader => ResolveHelperMarker(HelperMarkerType.AnotherTrader) ?? ResolveHelperMarker(HelperMarkerType.Another),

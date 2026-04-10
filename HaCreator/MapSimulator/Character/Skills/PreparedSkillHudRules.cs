@@ -36,6 +36,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             2121001,
             2221001,
             2321001,
+            23121000,
+            24121000,
+            24121005,
+            31001000,
+            31101000,
+            31111005,
             3121004,
             3221001,
             4341003,
@@ -48,6 +54,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             33121009,
             35001001,
             35101009,
+            5721001,
             SG88SkillId
         };
         private static readonly HashSet<int> ReleaseArmedTextSkillIds = new()
@@ -69,6 +76,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int SG88SkillId = 35121003;
         private const int MonkeyWaveFallbackGaugeDurationMs = 1080;
         private static int? _monkeyWaveGaugeDurationMs;
+        private static readonly object AuthoredKeydownSkillCacheLock = new();
+        private static readonly Dictionary<int, bool> AuthoredKeydownSkillCache = new();
         private static readonly object SkillNameCacheLock = new();
         private static readonly Dictionary<int, string> SkillNameCache = new();
 
@@ -121,7 +130,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public static bool UsesReleaseTriggeredExecution(int skillId) => ReleaseTriggeredSkillIds.Contains(skillId);
 
-        public static bool IsSupportedKeyDownSkill(int skillId) => SupportedKeyDownSkillIds.Contains(skillId);
+        public static bool IsSupportedKeyDownSkill(int skillId)
+        {
+            return SupportedKeyDownSkillIds.Contains(skillId)
+                || HasAuthoredKeydownNode(skillId);
+        }
 
         public static bool ResolveKeyDownSkillState(int skillId, bool isKeydownSkill)
         {
@@ -281,6 +294,58 @@ namespace HaCreator.MapSimulator.Character.Skills
         public static bool ArmsAtFullStrengthOnCriticalHit(int skillId) => skillId == MonkeyWaveSkillId;
 
         public static bool IsDragonOverlaySkill(int skillId) => skillId is 22121000 or 22151001;
+
+        private static bool HasAuthoredKeydownNode(int skillId)
+        {
+            if (skillId <= 0)
+            {
+                return false;
+            }
+
+            lock (AuthoredKeydownSkillCacheLock)
+            {
+                if (AuthoredKeydownSkillCache.TryGetValue(skillId, out bool cachedResult))
+                {
+                    return cachedResult;
+                }
+            }
+
+            bool result = false;
+            bool shouldCache = false;
+            try
+            {
+                int jobId = skillId / 10000;
+                if (jobId > 0)
+                {
+                    WzImage image = global::HaCreator.Program.FindImage("Skill", $"{jobId}.img");
+                    if (image != null)
+                    {
+                        if (!image.Parsed)
+                        {
+                            image.ParseImage();
+                        }
+
+                        result = image["skill"]?[skillId.ToString()]?["keydown"] != null;
+                        shouldCache = true;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                result = false;
+                shouldCache = true;
+            }
+
+            if (shouldCache)
+            {
+                lock (AuthoredKeydownSkillCacheLock)
+                {
+                    AuthoredKeydownSkillCache[skillId] = result;
+                }
+            }
+
+            return result;
+        }
 
         public static string ResolveDisplayName(int skillId, string explicitName = null)
         {

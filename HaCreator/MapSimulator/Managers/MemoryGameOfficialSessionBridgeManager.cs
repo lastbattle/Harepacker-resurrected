@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int ErrorInsufficientBuffer = 122;
 
         private readonly ConcurrentQueue<MemoryGamePacketInboxMessage> _pendingMessages = new();
+        private readonly ConcurrentQueue<PendingClientMiniRoomRequest> _pendingOutboundRequests = new();
         private readonly object _sync = new();
 
         private TcpListener _listener;
@@ -82,15 +83,31 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        private readonly record struct PendingClientMiniRoomRequest(byte[] Payload, byte[] RawPacket);
+
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        public int PendingOutboundRequestCount => _pendingOutboundRequests.Count;
         public int ReceivedCount { get; private set; }
         public int ForwardedClientMiniRoomCount { get; private set; }
         public int MirroredClientMiniRoomCount { get; private set; }
+        public int SentClientMiniRoomCount { get; private set; }
+        public int QueuedClientMiniRoomCount { get; private set; }
         public string LastStatus { get; private set; } = "Memory Game official-session bridge inactive.";
+
+        public string DescribeStatus()
+        {
+            string lifecycle = IsRunning
+                ? $"listening on 127.0.0.1:{ListenPort}"
+                : "inactive";
+            string session = HasConnectedSession
+                ? "active Maple session"
+                : "no active Maple session";
+            return $"Memory Game official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwarded-client={ForwardedClientMiniRoomCount}; mirrored-client={MirroredClientMiniRoomCount}; sent-client={SentClientMiniRoomCount}; pending-client={PendingOutboundRequestCount}; queued-client={QueuedClientMiniRoomCount}. {LastStatus}";
+        }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
             int remotePort,
@@ -230,6 +247,77 @@ namespace HaCreator.MapSimulator.Managers
             return _pendingMessages.TryDequeue(out message);
         }
 
+        public bool TrySendOrQueueClientMiniRoomRequest(byte[] payload, out bool queued, out string status)
+        {
+            queued = false;
+            if (HasConnectedSession)
+            {
+                return TrySendClientMiniRoomRequest(payload, out status);
+            }
+
+            if (!TryQueueClientMiniRoomRequest(payload, out status))
+            {
+                return false;
+            }
+
+            queued = true;
+            return true;
+        }
+
+        public bool TrySendClientMiniRoomRequest(byte[] payload, out string status)
+        {
+            status = null;
+            if (!TryValidateClientMiniRoomRequest(payload, out byte subtype, out status))
+            {
+                return false;
+            }
+
+            BridgePair pair = _activePair;
+            if (pair == null || !pair.InitCompleted)
+            {
+                status = "Memory Game official-session bridge has no initialized Maple session.";
+                LastStatus = status;
+                return false;
+            }
+
+            try
+            {
+                pair.ServerSession.SendPacket(BuildClientMiniRoomRequestPacket(payload));
+                SentClientMiniRoomCount++;
+                status = $"Injected Memory Game opcode {OutboundMiniRoomOpcode} subtype {subtype} into live session {pair.RemoteEndpoint}.";
+                LastStatus = status;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ClearActivePair(pair, $"Memory Game official-session client request injection failed: {ex.Message}");
+                status = LastStatus;
+                return false;
+            }
+        }
+
+        public bool TryQueueClientMiniRoomRequest(byte[] payload, out string status)
+        {
+            status = null;
+            if (!TryValidateClientMiniRoomRequest(payload, out byte subtype, out status))
+            {
+                return false;
+            }
+
+            if (!IsRunning)
+            {
+                status = "Memory Game official-session bridge is not armed for deferred live-session injection.";
+                LastStatus = status;
+                return false;
+            }
+
+            _pendingOutboundRequests.Enqueue(new PendingClientMiniRoomRequest((byte[])payload.Clone(), BuildClientMiniRoomRequestPacket(payload)));
+            QueuedClientMiniRoomCount++;
+            status = $"Queued Memory Game opcode {OutboundMiniRoomOpcode} subtype {subtype} for deferred live-session injection.";
+            LastStatus = status;
+            return true;
+        }
+
         public void RecordDispatchResult(string source, bool success, string message)
         {
             string summary = string.IsNullOrWhiteSpace(message) ? "MiniRoom payload" : message;
@@ -330,7 +418,10 @@ namespace HaCreator.MapSimulator.Managers
                     pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
                     pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
                     pair.InitCompleted = true;
-                    LastStatus = $"Memory Game official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
+                    int flushed = FlushQueuedClientMiniRoomRequests(pair);
+                    LastStatus = flushed > 0
+                        ? $"Memory Game official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint} and flushed {flushed} queued client request(s)."
+                        : $"Memory Game official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
                     pair.ClientSession.WaitForData();
                     return;
                 }
@@ -440,10 +531,34 @@ namespace HaCreator.MapSimulator.Managers
                 {
                 }
 
+                while (_pendingOutboundRequests.TryDequeue(out _))
+                {
+                }
+
                 ReceivedCount = 0;
                 ForwardedClientMiniRoomCount = 0;
                 MirroredClientMiniRoomCount = 0;
+                SentClientMiniRoomCount = 0;
+                QueuedClientMiniRoomCount = 0;
             }
+        }
+
+        private int FlushQueuedClientMiniRoomRequests(BridgePair pair)
+        {
+            if (pair == null || !pair.InitCompleted)
+            {
+                return 0;
+            }
+
+            int flushed = 0;
+            while (_pendingOutboundRequests.TryDequeue(out PendingClientMiniRoomRequest pending))
+            {
+                pair.ServerSession.SendPacket((byte[])pending.RawPacket.Clone());
+                SentClientMiniRoomCount++;
+                flushed++;
+            }
+
+            return flushed;
         }
 
         internal static bool TryBuildMirroredClientMessage(byte[] payload, string source, out MemoryGamePacketInboxMessage message)
@@ -476,6 +591,28 @@ namespace HaCreator.MapSimulator.Managers
                 60 => payload.Length >= 2,
                 _ => false
             };
+        }
+
+        private static bool TryValidateClientMiniRoomRequest(byte[] payload, out byte subtype, out string status)
+        {
+            status = null;
+            if (!TryClassifyMirroredClientSubtype(payload, out subtype))
+            {
+                status = payload == null || payload.Length == 0
+                    ? "Memory Game client request payload is empty."
+                    : $"Unsupported Memory Game client subtype {payload[0]}.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static byte[] BuildClientMiniRoomRequestPacket(byte[] payload)
+        {
+            PacketWriter writer = new PacketWriter();
+            writer.WriteShort((short)OutboundMiniRoomOpcode);
+            writer.WriteBytes(payload);
+            return writer.ToArray();
         }
 
         internal static bool TryDecodeClientOpcodePacket(byte[] rawPacket, out byte[] payload, out string error)

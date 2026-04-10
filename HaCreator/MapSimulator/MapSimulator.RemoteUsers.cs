@@ -20,7 +20,7 @@ namespace HaCreator.MapSimulator
         private const string RemoteUserCommandUsage =
             "/remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw|inbox> ...";
         private const string RemoteUserPacketTokenUsage =
-            "<-1101|-1102|-1103|-1104|-1105|-1106|-1107|-1108|-1109|-1110|179|180|181|182|183|184|210|211|212|213|214|215|216|219|220|221|222|223|225|226|228|229|coupleadd|coupleremove|friendadd|friendremove|marriageadd|marriageremove|newyearadd|newyearremove|couplechairadd|couplechairremove|enter|leave|move|state|helper|team|follow|chair|mount|prepare|movingshootprepare|preparedclear|emotion|activeeffect|upgradetomb|officialchair|pickup|melee|effect|avatarmodified|tempset|tempreset|guildname|guildmark>";
+            "<-1101|-1102|-1103|-1104|-1105|-1106|-1107|-1108|-1109|-1110|-1004|-1005|179|180|181|182|183|184|210|211|212|213|214|215|216|218|219|220|221|222|223|224|225|226|227|228|229|230|coupleadd|coupleremove|friendadd|friendremove|marriageadd|marriageremove|newyearadd|newyearremove|couplechairadd|couplechairremove|chat|outsidechat|enter|leave|move|state|helper|team|follow|chair|mount|prepare|movingshootprepare|preparedclear|hit|emotion|activeeffect|upgradetomb|officialchair|usereffect|receivehp|throwgrenade|pickup|melee|effect|avatarmodified|tempset|tempreset|guildname|guildmark>";
         private readonly RemoteUserPacketInboxManager _remoteUserPacketInbox = new();
         private readonly PacketOwnedRelationshipRecordRuntime _packetOwnedRelationshipRecordRuntime = new();
         private readonly PacketOwnedPortableChairRecordRuntime _packetOwnedPortableChairRecordRuntime = new();
@@ -349,7 +349,7 @@ namespace HaCreator.MapSimulator
 
             if (!TryParseRemoteUserHelperMarker(args[2], out MinimapUI.HelperMarkerType? markerType))
             {
-                return ChatCommandHandler.CommandResult.Error("Helper marker must be party, partymaster, guild, guildmaster, friend, another, match, usertrader, anothertrader, or clear.");
+                return ChatCommandHandler.CommandResult.Error("Helper marker must be user, party, partymaster, guild, guildmaster, friend, another, match, usertrader, anothertrader, or clear.");
             }
 
             bool showDirectionOverlay = true;
@@ -873,6 +873,20 @@ namespace HaCreator.MapSimulator
                 return preparedApplied;
             }
 
+            if (packetType == (int)RemoteUserPacketType.UserChat
+                || packetType == (int)RemoteUserPacketType.UserChatFromOutsideMap)
+            {
+                bool fromOutsideOfMap = packetType == (int)RemoteUserPacketType.UserChatFromOutsideMap;
+                if (!RemoteUserPacketCodec.TryParseChat(payload, fromOutsideOfMap, out RemoteUserChatPacket chatPacket, out string chatError))
+                {
+                    result = chatError;
+                    return false;
+                }
+
+                result = ApplyRemoteUserChatPacket(chatPacket, fromOutsideOfMap);
+                return true;
+            }
+
             if (packetType == (int)RemoteUserPacketType.UserMovingShootAttackPrepareOfficial)
             {
                 if (!RemoteUserPacketCodec.TryParseMovingShootAttackPrepare(payload, out RemoteUserMovingShootAttackPreparePacket officialMovingShootPacket, out string movingShootError))
@@ -1009,6 +1023,36 @@ namespace HaCreator.MapSimulator
                     ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {guildMarkPacket.CharacterId}."
                     : guildMarkMessage;
                 return guildMarkApplied;
+            }
+
+            if (packetType == (int)RemoteUserPacketType.UserReceiveHpOfficial)
+            {
+                if (!RemoteUserPacketCodec.TryParseReceiveHp(payload, out RemoteUserReceiveHpPacket receiveHpPacket, out string receiveHpError))
+                {
+                    result = receiveHpError;
+                    return false;
+                }
+
+                bool receiveHpApplied = _remoteUserPool.TryApplyReceiveHp(receiveHpPacket, out string receiveHpMessage);
+                result = receiveHpApplied
+                    ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {receiveHpPacket.CharacterId}."
+                    : receiveHpMessage;
+                return receiveHpApplied;
+            }
+
+            if (packetType == (int)RemoteUserPacketType.UserThrowGrenadeOfficial)
+            {
+                if (!RemoteUserPacketCodec.TryParseThrowGrenade(payload, out RemoteUserThrowGrenadePacket throwGrenadePacket, out string throwGrenadeError))
+                {
+                    result = throwGrenadeError;
+                    return false;
+                }
+
+                bool throwGrenadeApplied = _remoteUserPool.TryApplyThrowGrenade(throwGrenadePacket, currentTime, out string throwGrenadeMessage);
+                result = throwGrenadeApplied
+                    ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {throwGrenadePacket.CharacterId}."
+                    : throwGrenadeMessage;
+                return throwGrenadeApplied;
             }
 
             switch ((RemoteUserPacketType)packetType)
@@ -1624,6 +1668,7 @@ namespace HaCreator.MapSimulator
             markerType = text?.ToLowerInvariant() switch
             {
                 "another" => MinimapUI.HelperMarkerType.Another,
+                "user" => MinimapUI.HelperMarkerType.User,
                 "friend" => MinimapUI.HelperMarkerType.Friend,
                 "guild" => MinimapUI.HelperMarkerType.Guild,
                 "guildmaster" => MinimapUI.HelperMarkerType.GuildMaster,
@@ -1675,6 +1720,8 @@ namespace HaCreator.MapSimulator
                 "newyearremove" => (int)RemoteUserPacketType.UserNewYearCardRecordRemove,
                 "couplechairadd" => (int)RemoteUserPacketType.UserCoupleChairRecordAdd,
                 "couplechairremove" => (int)RemoteUserPacketType.UserCoupleChairRecordRemove,
+                "chat" or "onchat" => (int)RemoteUserPacketType.UserChat,
+                "outsidechat" or "chatoutside" or "onchatoutside" => (int)RemoteUserPacketType.UserChatFromOutsideMap,
                 "enter" => (int)RemoteUserPacketType.UserEnterField,
                 "leave" => (int)RemoteUserPacketType.UserLeaveField,
                 "move" => (int)RemoteUserPacketType.UserMove,
@@ -1692,11 +1739,17 @@ namespace HaCreator.MapSimulator
                 "newyearcardrecordremove" or "newyearremove" => (int)RemoteUserPacketType.UserNewYearCardRecordRemove,
                 "couplechairrecordadd" or "couplechairadd" => (int)RemoteUserPacketType.UserCoupleChairRecordAdd,
                 "couplechairrecordremove" or "couplechairremove" => (int)RemoteUserPacketType.UserCoupleChairRecordRemove,
+                "commonchat" or "userchat" => (int)RemoteUserPacketType.UserChat,
+                "commonoutsidechat" or "useroutsidechat" => (int)RemoteUserPacketType.UserChatFromOutsideMap,
                 "chair" => (int)RemoteUserPacketType.UserPortableChair,
                 "mount" => (int)RemoteUserPacketType.UserMount,
                 "prepare" => (int)RemoteUserPacketType.UserPreparedSkill,
                 "movingshootprepare" or "movingshoot" or "movingprepare" => (int)RemoteUserPacketType.UserMovingShootAttackPrepareOfficial,
                 "preparedclear" => (int)RemoteUserPacketType.UserPreparedSkillClear,
+                "hit" => (int)RemoteUserPacketType.UserHitOfficial,
+                "usereffect" or "officialeffect" => (int)RemoteUserPacketType.UserEffectOfficial,
+                "receivehp" or "partyhp" => (int)RemoteUserPacketType.UserReceiveHpOfficial,
+                "throwgrenade" or "grenade" => (int)RemoteUserPacketType.UserThrowGrenadeOfficial,
                 "pickup" or "droppickup" => (int)RemoteUserPacketType.UserDropPickup,
                 "melee" or "attack" or "meleeattack" => (int)RemoteUserPacketType.UserMeleeAttack,
                 "effect" or "itemeffect" or "ringeffect" => (int)RemoteUserPacketType.UserItemEffect,
@@ -1719,6 +1772,8 @@ namespace HaCreator.MapSimulator
                 (int)RemoteUserPacketType.UserCoupleRecordRemove => "remote user couple-record remove packet",
                 (int)RemoteUserPacketType.UserFriendRecordAdd => "remote user friendship-record add packet",
                 (int)RemoteUserPacketType.UserFriendRecordRemove => "remote user friendship-record remove packet",
+                (int)RemoteUserPacketType.UserChat => "remote user common chat packet",
+                (int)RemoteUserPacketType.UserChatFromOutsideMap => "remote user common outside-map chat packet",
                 (int)RemoteUserPacketType.UserMarriageRecordAdd => "remote user marriage-record add packet",
                 (int)RemoteUserPacketType.UserMarriageRecordRemove => "remote user marriage-record remove packet",
                 (int)RemoteUserPacketType.UserNewYearCardRecordAdd => "remote user New Year card-record add packet",
@@ -1740,14 +1795,67 @@ namespace HaCreator.MapSimulator
                 (int)RemoteUserPacketType.UserAvatarModified => "remote user remote avatar-modified packet",
                 (int)RemoteUserPacketType.UserTemporaryStatSet => "remote user remote temporary-stat set packet",
                 (int)RemoteUserPacketType.UserTemporaryStatReset => "remote user remote temporary-stat reset packet",
+                (int)RemoteUserPacketType.UserHitOfficial => "remote user official hit packet",
                 (int)RemoteUserPacketType.UserEmotionOfficial => "remote user official emotion packet",
                 (int)RemoteUserPacketType.UserActiveEffectItemOfficial => "remote user official active-effect-item packet",
                 (int)RemoteUserPacketType.UserMovingShootAttackPrepareOfficial => "remote user official moving-shoot prepare packet",
                 (int)RemoteUserPacketType.UserPortableChairOfficial => "remote user official portable-chair packet",
+                (int)RemoteUserPacketType.UserEffectOfficial => "remote user official effect packet",
+                (int)RemoteUserPacketType.UserReceiveHpOfficial => "remote user official receive-HP packet",
                 (int)RemoteUserPacketType.UserGuildNameChangedOfficial => "remote user official guild-name packet",
                 (int)RemoteUserPacketType.UserGuildMarkChangedOfficial => "remote user official guild-mark packet",
+                (int)RemoteUserPacketType.UserThrowGrenadeOfficial => "remote user official throw-grenade packet",
                 _ => $"remote user packet {packetType}"
             };
+        }
+
+        private string ApplyRemoteUserChatPacket(RemoteUserChatPacket packet, bool fromOutsideOfMap)
+        {
+            string speakerName = packet.OutsideMapCharacterName;
+            if (string.IsNullOrWhiteSpace(speakerName)
+                && _remoteUserPool.TryGetActor(packet.CharacterId, out RemoteUserActor actor)
+                && !string.IsNullOrWhiteSpace(actor?.Name))
+            {
+                speakerName = actor.Name;
+            }
+
+            if (string.IsNullOrWhiteSpace(speakerName))
+            {
+                speakerName = $"User{packet.CharacterId}";
+            }
+
+            if (packet.OnlyBalloon)
+            {
+                return $"Applied {DescribeRemoteUserPacketType(fromOutsideOfMap ? (int)RemoteUserPacketType.UserChatFromOutsideMap : (int)RemoteUserPacketType.UserChat)} for {packet.CharacterId} as balloon-only text.";
+            }
+
+            string chatLine = $"{speakerName} : {SanitizeRemoteUserChatText(packet.Text)}";
+            int chatLogType = packet.ChatType != 0 ? 11 : 0;
+            _chat?.AddClientChatMessage(
+                chatLine,
+                Environment.TickCount,
+                chatLogType,
+                whisperTargetCandidate: speakerName);
+            return $"Applied {DescribeRemoteUserPacketType(fromOutsideOfMap ? (int)RemoteUserPacketType.UserChatFromOutsideMap : (int)RemoteUserPacketType.UserChat)} for {packet.CharacterId}.";
+        }
+
+        private static string SanitizeRemoteUserChatText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            char[] buffer = text.Trim().ToCharArray();
+            for (int i = 0; i < buffer.Length; i++)
+            {
+                if (char.IsControl(buffer[i]) || buffer[i] == '\u007f')
+                {
+                    buffer[i] = ' ';
+                }
+            }
+
+            return new string(buffer).Trim();
         }
 
         private static bool IsOfficialRemoteAttackPacketType(int packetType)

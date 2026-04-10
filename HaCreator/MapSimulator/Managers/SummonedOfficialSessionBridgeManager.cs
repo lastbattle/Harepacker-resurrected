@@ -2143,23 +2143,13 @@ namespace HaCreator.MapSimulator.Managers
                 TargetMobIds = (int[])capture.TargetMobIds.Clone(),
                 ResolutionSource = preferredResolutionSource
             });
-            templates.Sort((left, right) =>
-            {
-                int observedCompare = right.ObservedAt.CompareTo(left.ObservedAt);
-                if (observedCompare != 0)
-                {
-                    return observedCompare;
-                }
-
-                int resolutionCompare = GetSg88TemplateResolutionRank(right.ResolutionSource)
-                    .CompareTo(GetSg88TemplateResolutionRank(left.ResolutionSource));
-                if (resolutionCompare != 0)
-                {
-                    return resolutionCompare;
-                }
-
-                return string.CompareOrdinal(right.Evidence, left.Evidence);
-            });
+            templates.Sort((left, right) => CompareSg88LearnedTemplateRetentionOrder(
+                left.ResolutionSource,
+                left.ObservedAt,
+                left.Evidence,
+                right.ResolutionSource,
+                right.ObservedAt,
+                right.Evidence));
 
             while (templates.Count > MaxLearnedSg88ManualAttackTemplatesPerTargetCount)
             {
@@ -2413,6 +2403,30 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return candidateObservedAt >= selectedObservedAt;
+        }
+
+        internal static int CompareSg88LearnedTemplateRetentionOrder(
+            string leftResolutionSource,
+            int leftObservedAt,
+            string leftEvidence,
+            string rightResolutionSource,
+            int rightObservedAt,
+            string rightEvidence)
+        {
+            int resolutionCompare = GetSg88TemplateResolutionRank(rightResolutionSource)
+                .CompareTo(GetSg88TemplateResolutionRank(leftResolutionSource));
+            if (resolutionCompare != 0)
+            {
+                return resolutionCompare;
+            }
+
+            int observedCompare = rightObservedAt.CompareTo(leftObservedAt);
+            if (observedCompare != 0)
+            {
+                return observedCompare;
+            }
+
+            return string.CompareOrdinal(rightEvidence, leftEvidence);
         }
 
         private static int[] FindAllInt32Offsets(byte[] payload, int value)

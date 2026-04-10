@@ -129,6 +129,8 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialListClientGuildResultKind.Notice => SetPacketGuildNoticeText(packet.Notice, packet.GuildId),
                 SocialListClientGuildResultKind.Mark when packet.MarkSelection.HasValue => SetPacketGuildMarkSelection(packet.MarkSelection.Value, packet.GuildId),
                 SocialListClientGuildResultKind.PointsAndLevel => SetPacketGuildPointsAndLevel(packet.GuildPoints, packet.GuildLevel, packet.GuildId),
+                SocialListClientGuildResultKind.SkillRecord when packet.GuildSkillRecord.HasValue =>
+                    $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.SkillRecord}) decoded guild-skill record {packet.GuildSkillRecord.Value.SkillId} for guild {packet.GuildId}.",
                 _ => $"Unsupported client guild-result subtype {(byte)packet.Kind}."
             };
         }

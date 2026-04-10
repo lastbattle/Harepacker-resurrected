@@ -14,6 +14,8 @@ namespace HaCreator.MapSimulator.Pools
         UserFollowCharacter = -1001,
         UserDropPickup = -1002,
         UserProfile = -1003,
+        UserChat = -1004,
+        UserChatFromOutsideMap = -1005,
         UserCoupleRecordAdd = -1101,
         UserCoupleRecordRemove = -1102,
         UserFriendRecordAdd = -1103,
@@ -47,12 +49,16 @@ namespace HaCreator.MapSimulator.Pools
         UserPreparedSkillOfficial = 215,
         UserMovingShootAttackPrepareOfficial = 216,
         UserPreparedSkillClearOfficial = 217,
+        UserHitOfficial = 218,
         UserEmotionOfficial = 219,
         UserActiveEffectItemOfficial = 220,
         UserUpgradeTombOfficial = 221,
         UserPortableChairOfficial = 222,
+        UserEffectOfficial = 224,
+        UserReceiveHpOfficial = 227,
         UserGuildNameChangedOfficial = 228,
-        UserGuildMarkChangedOfficial = 229
+        UserGuildMarkChangedOfficial = 229,
+        UserThrowGrenadeOfficial = 230
     }
 
     public readonly record struct RemoteUserEnterFieldPacket(
@@ -72,6 +78,13 @@ namespace HaCreator.MapSimulator.Pools
         int? CarryItemEffect = null,
         int CompletedSetItemId = 0,
         int? ActiveEffectItemId = null);
+
+    public readonly record struct RemoteUserChatPacket(
+        int CharacterId,
+        byte ChatType,
+        string Text,
+        bool OnlyBalloon,
+        string OutsideMapCharacterName);
 
     public readonly record struct RemoteUserTemporaryStatSnapshot(
         int EncodedLength,
@@ -270,6 +283,8 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct RemoteUserActiveEffectItemPacket(int CharacterId, int? ItemId);
     public readonly record struct RemoteUserEmotionPacket(int CharacterId, int EmotionId, int DurationMs, bool ByItemOption);
     public readonly record struct RemoteUserUpgradeTombPacket(int CharacterId, int ItemId, int PositionX, int PositionY);
+    public readonly record struct RemoteUserReceiveHpPacket(int CharacterId, int CurrentHp, int MaxHp);
+    public readonly record struct RemoteUserThrowGrenadePacket(int CharacterId, int X, int Y, int KeyDownTime, int SkillId, int GrenadeId);
     public readonly record struct RemoteUserGuildNameChangedPacket(int CharacterId, string GuildName);
     public readonly record struct RemoteUserGuildMarkChangedPacket(
         int CharacterId,
@@ -845,6 +860,53 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        public static bool TryParseChat(
+            ReadOnlySpan<byte> payload,
+            bool fromOutsideOfMap,
+            out RemoteUserChatPacket packet,
+            out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                byte chatType = reader.ReadByte();
+                string text = reader.ReadString16();
+                bool onlyBalloon = reader.ReadByte() != 0;
+                string outsideMapCharacterName = fromOutsideOfMap
+                    ? reader.ReadString16()
+                    : string.Empty;
+
+                if (reader.RemainingLength != 0)
+                {
+                    error = $"Remote user chat packet has {reader.RemainingLength} unread bytes remaining.";
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    error = "Remote user chat packet text is empty.";
+                    return false;
+                }
+
+                packet = new RemoteUserChatPacket(
+                    characterId,
+                    chatType,
+                    text.Trim(),
+                    onlyBalloon,
+                    outsideMapCharacterName?.Trim() ?? string.Empty);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
         public static bool TryParsePassiveMove(
             ReadOnlySpan<byte> payload,
             int currentTime,
@@ -1115,6 +1177,93 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 packet = new RemoteUserGuildNameChangedPacket(characterId, guildName);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseReceiveHp(ReadOnlySpan<byte> payload, out RemoteUserReceiveHpPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                int currentHp = reader.ReadInt32();
+                int maxHp = reader.ReadInt32();
+                if (reader.RemainingLength != 0)
+                {
+                    error = $"Remote user receive-HP packet has {reader.RemainingLength} unread bytes remaining.";
+                    return false;
+                }
+
+                if (characterId <= 0)
+                {
+                    error = $"Remote user receive-HP packet character ID {characterId} is invalid.";
+                    return false;
+                }
+
+                if (currentHp < 0)
+                {
+                    error = $"Remote user receive-HP packet current HP {currentHp} is invalid.";
+                    return false;
+                }
+
+                if (maxHp <= 0)
+                {
+                    error = $"Remote user receive-HP packet max HP {maxHp} is invalid.";
+                    return false;
+                }
+
+                packet = new RemoteUserReceiveHpPacket(characterId, Math.Min(currentHp, maxHp), maxHp);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseThrowGrenade(ReadOnlySpan<byte> payload, out RemoteUserThrowGrenadePacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                int x = reader.ReadInt32();
+                int y = reader.ReadInt32();
+                int keyDownTime = reader.ReadInt32();
+                int skillId = reader.ReadInt32();
+                int grenadeId = reader.ReadInt32();
+                if (reader.RemainingLength != 0)
+                {
+                    error = $"Remote user throw-grenade packet has {reader.RemainingLength} unread bytes remaining.";
+                    return false;
+                }
+
+                if (characterId <= 0)
+                {
+                    error = $"Remote user throw-grenade packet character ID {characterId} is invalid.";
+                    return false;
+                }
+
+                if (skillId <= 0)
+                {
+                    error = $"Remote user throw-grenade packet skill ID {skillId} is invalid.";
+                    return false;
+                }
+
+                packet = new RemoteUserThrowGrenadePacket(characterId, x, y, Math.Max(0, keyDownTime), skillId, grenadeId);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -2053,7 +2202,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (!TryResolveHelperMarkerName(markerName, out MinimapUI.HelperMarkerType? markerType))
             {
-                error = "Helper marker must be another, friend, guild, guildmaster, match, party, partymaster, usertrader, anothertrader, or clear.";
+                error = "Helper marker must be user, another, friend, guild, guildmaster, match, party, partymaster, usertrader, anothertrader, or clear.";
                 return false;
             }
 
@@ -2085,6 +2234,7 @@ namespace HaCreator.MapSimulator.Pools
             markerType = markerName?.Trim().ToLowerInvariant() switch
             {
                 "another" => MinimapUI.HelperMarkerType.Another,
+                "user" => MinimapUI.HelperMarkerType.User,
                 "friend" => MinimapUI.HelperMarkerType.Friend,
                 "guild" => MinimapUI.HelperMarkerType.Guild,
                 "guildmaster" => MinimapUI.HelperMarkerType.GuildMaster,
@@ -2142,6 +2292,7 @@ namespace HaCreator.MapSimulator.Pools
             return markerType switch
             {
                 MinimapUI.HelperMarkerType.Another => "another",
+                MinimapUI.HelperMarkerType.User => "user",
                 MinimapUI.HelperMarkerType.Friend => "friend",
                 MinimapUI.HelperMarkerType.Guild => "guild",
                 MinimapUI.HelperMarkerType.GuildMaster => "guildmaster",

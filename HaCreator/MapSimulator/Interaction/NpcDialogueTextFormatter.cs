@@ -120,10 +120,27 @@ namespace HaCreator.MapSimulator.Interaction
             preservedMarkers = MalformedQuestDetailStyleRegex.Replace(
                 preservedMarkers,
                 match => BuildQuestStyleMarker(match.Groups["tag"].Value));
+            string styleInput = preservedMarkers;
             preservedMarkers = QuestDetailStyleRegex.Replace(
                 preservedMarkers,
-                match => BuildQuestStyleMarker(match.Groups["tag"].Value));
+                match => PreserveQuestDetailStyleTag(match, styleInput));
             return Format(preservedMarkers, context);
+        }
+
+        private static string PreserveQuestDetailStyleTag(Match match, string text)
+        {
+            string styleTag = match.Groups["tag"].Value;
+            if (string.Equals(styleTag, "c", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(styleTag, "m", StringComparison.OrdinalIgnoreCase))
+            {
+                int nextIndex = match.Index + match.Length;
+                if (nextIndex < text.Length && (char.IsDigit(text[nextIndex]) || text[nextIndex] == '#'))
+                {
+                    return match.Value;
+                }
+            }
+
+            return BuildQuestStyleMarker(styleTag);
         }
 
         public static string BuildItemIconMarker(int itemId)

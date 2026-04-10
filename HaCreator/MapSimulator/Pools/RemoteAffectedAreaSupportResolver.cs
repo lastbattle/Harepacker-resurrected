@@ -385,6 +385,11 @@ namespace HaCreator.MapSimulator.Pools
                 return 0;
             }
 
+            if (HasAmplifyDamageMinionAbility(skill, supportSkills))
+            {
+                return Math.Clamp(levelData.X, 0, 100);
+            }
+
             string combinedText = BuildCombinedSupportText(skill, supportSkills);
             if (string.IsNullOrWhiteSpace(combinedText))
             {
@@ -406,6 +411,30 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return Math.Clamp(levelData.X, 0, 100);
+        }
+
+        private static bool HasAmplifyDamageMinionAbility(SkillData skill, IEnumerable<SkillData> supportSkills)
+        {
+            if (SummonRuntimeRules.HasMinionAbilityToken(skill?.MinionAbility, "amplifyDamage"))
+            {
+                return true;
+            }
+
+            if (supportSkills == null)
+            {
+                return false;
+            }
+
+            foreach (SkillData supportSkill in supportSkills)
+            {
+                if (supportSkill != null
+                    && SummonRuntimeRules.HasMinionAbilityToken(supportSkill.MinionAbility, "amplifyDamage"))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public static RemotePlayerAffectedAreaDisposition ResolveDisposition(SkillData skill, SkillLevelData levelData = null)

@@ -76,7 +76,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, EmployeeActionCatalog> _cashActionCatalogCache = new();
         private readonly Dictionary<int, NameTagAssets> _cashEmployeeNameTagCache = new();
         private readonly HashSet<int> _cashEmployeeNameTagMissingTemplates = new();
-        private readonly Dictionary<(int TemplateId, int ActionIndex), List<IDXObject>> _cashActionCache = new();
+        private readonly Dictionary<uint, List<IDXObject>> _cashActionCache = new();
         private readonly ConcurrentBag<WzObject> _usedProps = new();
         private readonly Random _random = new();
         private MiniRoomBalloonAssets _miniRoomBalloonAssets;
@@ -689,7 +689,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return new List<IDXObject>();
             }
 
-            (int TemplateId, int ActionIndex) cacheKey = (templateId, actionEntry.ClientActionIndex);
+            uint cacheKey = BuildEmployeeActionCacheKey(templateId, actionEntry.ClientActionIndex);
             if (_cashActionCache.TryGetValue(cacheKey, out List<IDXObject> cachedFrames))
             {
                 return cachedFrames;
@@ -713,6 +713,16 @@ namespace HaCreator.MapSimulator.Interaction
 
             _cashActionCache[cacheKey] = frames;
             return frames;
+        }
+
+        internal static uint BuildEmployeeActionCacheKeyForTesting(int templateId, int actionIndex)
+        {
+            return BuildEmployeeActionCacheKey(templateId, actionIndex);
+        }
+
+        private static uint BuildEmployeeActionCacheKey(int templateId, int actionIndex)
+        {
+            return ((uint)Math.Max(0, templateId) << 8) | (uint)Math.Max(0, actionIndex);
         }
 
         private static WzCanvasProperty ResolveCanvasProperty(WzImageProperty property)

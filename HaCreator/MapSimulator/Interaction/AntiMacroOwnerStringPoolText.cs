@@ -172,7 +172,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         public static string FormatUserBranchText(int stringPoolId, string fallbackFormat, string userName)
         {
-            string resolvedName = string.IsNullOrWhiteSpace(userName) ? "Unknown" : userName.Trim();
+            // `CWvsContext::OnAntiMacroResult` forwards the decoded ZXString directly
+            // into ZXString::Format; preserve empty and whitespace-authored names.
+            string resolvedName = userName ?? string.Empty;
             string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
                 stringPoolId,
                 fallbackFormat,
@@ -201,9 +203,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return string.Empty;
             }
 
-            return text
-                .Replace('_', ' ')
-                .Trim();
+            return text.Replace('_', ' ');
         }
 
     }

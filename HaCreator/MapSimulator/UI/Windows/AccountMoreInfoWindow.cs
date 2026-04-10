@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -181,8 +182,8 @@ namespace HaCreator.MapSimulator.UI
                 360f);
 
             DrawWindowText(sprite, "Area", origin + new Vector2(0f, 36f), new Color(255, 226, 150), TextScale, 60f);
-            DrawComboBox(sprite, AreaGroupRect, snapshot.AreaGroup.ToString("D3"), false);
-            DrawComboBox(sprite, AreaDetailRect, snapshot.AreaDetail.ToString("D3"), false);
+            DrawComboBox(sprite, AreaGroupRect, ResolveComboBoxDisplayText(snapshot.AreaGroupText, snapshot.AreaGroup), false);
+            DrawComboBox(sprite, AreaDetailRect, ResolveComboBoxDisplayText(snapshot.AreaDetailText, snapshot.AreaDetail), false);
 
             DrawWindowText(sprite, "Birthday", origin + new Vector2(0f, 61f), new Color(255, 226, 150), TextScale, 70f);
             DrawComboBox(sprite, BirthYearRect, snapshot.BirthYear.ToString("D4"), false);
@@ -206,6 +207,16 @@ namespace HaCreator.MapSimulator.UI
         private AccountMoreInfoOwnerSnapshot GetSnapshot()
         {
             return _snapshotProvider?.Invoke() ?? new AccountMoreInfoOwnerSnapshot();
+        }
+
+        internal static string ResolveComboBoxDisplayText(string label, int fallbackCode)
+        {
+            if (!string.IsNullOrWhiteSpace(label))
+            {
+                return label;
+            }
+
+            return Managers.AccountMoreInfoRuntime.ResolveRegionComboText(fallbackCode);
         }
 
         private void DrawComboBox(SpriteBatch sprite, Rectangle bounds, string value, bool disabled)

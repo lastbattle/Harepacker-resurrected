@@ -7,6 +7,9 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private DateTime? _remoteDropPacketServerUtcAnchor;
+        private int _remoteDropPacketServerTickAnchor;
+
         private ChatCommandHandler.CommandResult ApplyRemoteDropPacketCommand(int packetType, byte[] payload)
         {
             if (_dropPool == null || _mapBoard?.MapInfo == null)
@@ -47,9 +50,48 @@ namespace HaCreator.MapSimulator
 
         private string DescribeRemoteDropStatus()
         {
-            return _dropPool == null
-                ? "Drop pool unavailable."
-                : $"Drop pool count={_dropPool.ActiveDropCount}.";
+            if (_dropPool == null)
+            {
+                return "Drop pool unavailable.";
+            }
+
+            string clockText = _remoteDropPacketServerUtcAnchor.HasValue
+                ? $"serverClock={ResolveRemoteDropPacketServerUtc():O}"
+                : "serverClock=hostUtc";
+            return $"Drop pool count={_dropPool.ActiveDropCount}; {clockText}.";
+        }
+
+        private void SetRemoteDropPacketServerClock(DateTime serverUtc, int currentTime)
+        {
+            _remoteDropPacketServerUtcAnchor = NormalizeRemoteDropPacketClockUtc(serverUtc);
+            _remoteDropPacketServerTickAnchor = currentTime;
+        }
+
+        private void ClearRemoteDropPacketServerClock()
+        {
+            _remoteDropPacketServerUtcAnchor = null;
+            _remoteDropPacketServerTickAnchor = 0;
+        }
+
+        private DateTime ResolveRemoteDropPacketServerUtc()
+        {
+            if (!_remoteDropPacketServerUtcAnchor.HasValue)
+            {
+                return DateTime.UtcNow;
+            }
+
+            int elapsedMs = unchecked(currTickCount - _remoteDropPacketServerTickAnchor);
+            return _remoteDropPacketServerUtcAnchor.Value.AddMilliseconds(elapsedMs);
+        }
+
+        internal static DateTime NormalizeRemoteDropPacketClockUtc(DateTime value)
+        {
+            return value.Kind switch
+            {
+                DateTimeKind.Local => value.ToUniversalTime(),
+                DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+                _ => value
+            };
         }
 
         private void BindRemoteDropPacketField()

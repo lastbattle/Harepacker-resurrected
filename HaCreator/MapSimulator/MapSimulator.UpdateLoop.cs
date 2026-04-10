@@ -204,6 +204,7 @@ namespace HaCreator.MapSimulator
                 EnsureMapTransferOfficialSessionBridgeState(shouldRun: false);
                 EnsureComboCounterPacketInboxState(shouldRun: false);
                 EnsureLocalUtilityPacketInboxState(shouldRun: false);
+                EnsureAdminShopPacketInboxState(shouldRun: false);
                 EnsureLocalUtilityOfficialSessionBridgeState(shouldRun: false);
                 EnsureExpeditionIntermediaryPacketInboxState(shouldRun: false);
                 EnsureExpeditionIntermediaryOfficialSessionBridgeState(shouldRun: false);
@@ -319,6 +320,7 @@ namespace HaCreator.MapSimulator
             SyncPacketOwnedApspContextLifecycle();
             SyncInitialQuizOwnerContextLifecycle();
             EnsureLocalUtilityPacketInboxState(shouldRun: true);
+            EnsureAdminShopPacketInboxState(shouldRun: true);
             EnsurePacketScriptOfficialSessionBridgeState(shouldRun: true);
             RefreshPacketScriptOfficialSessionBridgeDiscovery(currTickCount);
             EnsureLocalUtilityOfficialSessionBridgeState(shouldRun: true);
@@ -329,6 +331,7 @@ namespace HaCreator.MapSimulator
             EnsureSocialListOfficialSessionBridgeState(shouldRun: true);
             RefreshSocialListOfficialSessionBridgeDiscovery(currTickCount);
             DrainLocalUtilityPacketInbox();
+            DrainAdminShopPacketInbox();
             DrainLocalUtilityOfficialSessionBridge();
             DrainExpeditionIntermediaryPacketInbox();
             DrainExpeditionIntermediaryOfficialSessionBridge();

@@ -1046,6 +1046,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool IsKeydownSkill { get; set; }
         public bool IsMesoExplosion { get; set; }
         public bool IsRapidAttack { get; set; }
+        public bool IsMovingAttack { get; set; }
         public bool Invisible { get; set; }          // Hidden skill
         public bool MasterOnly { get; set; }         // Only usable at max level
         public bool FixedState { get; set; }
@@ -1095,6 +1096,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation SummonAttackAnimation { get; set; } // Summon attack sequence
         public SkillAnimation SummonHitAnimation { get; set; } // Summon hit reaction sequence
         public SkillAnimation SummonRemovalAnimation { get; set; } // Optional self-destruct / removal branch
+        public string ClientSummonedUolPath { get; set; }
         public string ResolvedSummonAssetPath { get; set; }
         public List<SkillAnimation> SummonProjectileAnimations { get; set; } = new();
         public List<SkillAnimation> SummonTargetHitAnimations { get; set; } = new();
@@ -2058,6 +2060,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Vector2? WorldOrigin { get; set; }
         public bool FollowOwnerPosition { get; set; } = true;
         public bool FollowOwnerFacing { get; set; } = true;
+        public int? DelayRateOverride { get; set; }
     }
 
     /// <summary>
@@ -2081,6 +2084,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public IReadOnlyList<string> RequestedBranchNames { get; set; }
         public bool FollowOwnerPosition { get; set; } = true;
         public bool FollowOwnerFacing { get; set; } = true;
+        public int? DelayRateOverride { get; set; }
 
         public float TargetX { get; set; }
         public float TargetY { get; set; }

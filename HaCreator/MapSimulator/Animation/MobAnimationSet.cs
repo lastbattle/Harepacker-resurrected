@@ -133,6 +133,13 @@ namespace HaCreator.MapSimulator.Animation
             }
         }
 
+        public sealed class AttackHitEffectEntry
+        {
+            public List<IDXObject> Frames { get; init; }
+            public int SourceFrameIndex { get; init; }
+            public bool IsAttackFrameOwned { get; init; }
+        }
+
         public sealed class AttackEffectNode
         {
             public string Name { get; set; }
@@ -157,6 +164,7 @@ namespace HaCreator.MapSimulator.Animation
 
         // Hit effect frames for each attack (attack1/info/hit, attack2/info/hit, etc.)
         private readonly Dictionary<string, List<IDXObject>> _attackHitEffects = new();
+        private readonly Dictionary<string, List<AttackHitEffectEntry>> _attackHitEffectEntries = new();
         private readonly Dictionary<string, List<IDXObject>> _attackProjectileEffects = new();
         private readonly Dictionary<string, List<IDXObject>> _attackEffects = new();
         private readonly Dictionary<string, List<IDXObject>> _attackWarningEffects = new();
@@ -207,11 +215,32 @@ namespace HaCreator.MapSimulator.Animation
         /// <param name="hitFrames">Hit effect frames from attack/info/hit</param>
         public void AddAttackHitEffect(string attackAction, List<IDXObject> hitFrames)
         {
+            AddAttackHitEffect(attackAction, hitFrames, sourceFrameIndex: 0, isAttackFrameOwned: false);
+        }
+
+        public void AddAttackHitEffect(string attackAction, List<IDXObject> hitFrames, int sourceFrameIndex, bool isAttackFrameOwned)
+        {
             if (hitFrames == null || hitFrames.Count == 0)
                 return;
 
             string key = attackAction.ToLower();
-            _attackHitEffects[key] = hitFrames;
+            if (!_attackHitEffectEntries.TryGetValue(key, out List<AttackHitEffectEntry> entries))
+            {
+                entries = new List<AttackHitEffectEntry>();
+                _attackHitEffectEntries[key] = entries;
+            }
+
+            entries.Add(new AttackHitEffectEntry
+            {
+                Frames = hitFrames,
+                SourceFrameIndex = sourceFrameIndex,
+                IsAttackFrameOwned = isAttackFrameOwned
+            });
+
+            if (!_attackHitEffects.ContainsKey(key) || !isAttackFrameOwned)
+            {
+                _attackHitEffects[key] = hitFrames;
+            }
         }
 
         /// <summary>
@@ -221,10 +250,45 @@ namespace HaCreator.MapSimulator.Animation
         /// <returns>Hit effect frames, or null if not available</returns>
         public List<IDXObject> GetAttackHitEffect(string attackAction)
         {
+            AttackHitEffectEntry entry = GetAttackHitEffectEntry(attackAction);
+            if (entry != null)
+            {
+                return entry.Frames;
+            }
+
             foreach (string key in EnumerateCompatibleAttackKeys(attackAction))
             {
                 if (_attackHitEffects.TryGetValue(key, out var frames))
                     return frames;
+            }
+
+            return null;
+        }
+
+        public AttackHitEffectEntry GetAttackHitEffectEntry(string attackAction, int? attackFrameIndex = null)
+        {
+            foreach (string key in EnumerateCompatibleAttackKeys(attackAction))
+            {
+                if (!_attackHitEffectEntries.TryGetValue(key, out List<AttackHitEffectEntry> entries)
+                    || entries == null
+                    || entries.Count == 0)
+                {
+                    continue;
+                }
+
+                if (attackFrameIndex.HasValue)
+                {
+                    AttackHitEffectEntry frameOwnedEntry = entries.Find(entry =>
+                        entry?.IsAttackFrameOwned == true
+                        && entry.SourceFrameIndex == attackFrameIndex.Value);
+                    if (frameOwnedEntry != null)
+                    {
+                        return frameOwnedEntry;
+                    }
+                }
+
+                AttackHitEffectEntry infoEntry = entries.Find(entry => entry?.IsAttackFrameOwned != true);
+                return infoEntry ?? entries[0];
             }
 
             return null;

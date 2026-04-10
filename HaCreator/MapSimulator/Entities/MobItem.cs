@@ -97,6 +97,8 @@ namespace HaCreator.MapSimulator.Entities
         /// </summary>
         public string CurrentAction => _animationController?.CurrentAction ?? "stand";
 
+        public int CurrentFrameIndex => _animationController?.CurrentFrameIndex ?? 0;
+
         /// <summary>
         /// Whether the death animation has completed (all frames played)
         /// </summary>
@@ -467,6 +469,11 @@ namespace HaCreator.MapSimulator.Entities
         public List<IDXObject> GetAttackHitFrames(string attackAction)
         {
             return _animationSet?.GetAttackHitEffect(attackAction);
+        }
+
+        public MobAnimationSet.AttackHitEffectEntry GetAttackHitEffectEntry(string attackAction, int? attackFrameIndex = null)
+        {
+            return _animationSet?.GetAttackHitEffectEntry(attackAction, attackFrameIndex);
         }
 
         /// <summary>

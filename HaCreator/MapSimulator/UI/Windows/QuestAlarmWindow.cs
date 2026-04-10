@@ -1205,21 +1205,21 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private static string ResolveTitleTooltipText(QuestAlarmEntrySnapshot entry)
+        internal static string ResolveTitleTooltipText(QuestAlarmEntrySnapshot entry)
         {
             if (entry == null)
             {
                 return string.Empty;
             }
 
-            if (!string.IsNullOrWhiteSpace(entry.TooltipText))
-            {
-                return entry.TooltipText;
-            }
-
             if (entry.IsRecentlyUpdated)
             {
                 return QuestAlarmOwnerStringPoolText.GetRecentUpdateTooltip();
+            }
+
+            if (!string.IsNullOrWhiteSpace(entry.TooltipText))
+            {
+                return entry.TooltipText;
             }
 
             return string.Empty;

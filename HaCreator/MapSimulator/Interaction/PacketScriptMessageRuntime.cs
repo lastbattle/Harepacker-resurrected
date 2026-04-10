@@ -1028,6 +1028,22 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal PacketScriptResponsePacket BuildInitialQuizOwnerResponsePacket(string submittedValue)
+        {
+            submittedValue ??= string.Empty;
+            byte[] rawPacket = BuildInitialQuizOwnerResponsePacketBytes(submittedValue);
+            string summary = $"Prepared context-owned Initial Quiz response: {FormatQuotedValue(submittedValue)} (msgType=6).";
+            _statusMessage = summary;
+            return new PacketScriptResponsePacket(
+                6,
+                0,
+                0,
+                0,
+                submittedValue,
+                rawPacket,
+                summary);
+        }
+
         internal void RecordResponseDispatch(PacketScriptResponsePacket responsePacket, bool dispatched, string detail)
         {
             if (responsePacket == null)
@@ -1574,6 +1590,15 @@ namespace HaCreator.MapSimulator.Interaction
                 writer.WriteInt(selectionId);
             }
 
+            return writer.ToArray();
+        }
+
+        internal static byte[] BuildInitialQuizOwnerResponsePacketBytes(string submittedValue)
+        {
+            PacketWriter writer = new PacketWriter();
+            writer.WriteShort(OutboundScriptAnswerOpcode);
+            writer.WriteByte(6);
+            writer.WriteMapleString(submittedValue ?? string.Empty);
             return writer.ToArray();
         }
 

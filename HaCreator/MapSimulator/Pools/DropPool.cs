@@ -711,6 +711,7 @@ namespace HaCreator.MapSimulator.Pools
         private Func<string, IReadOnlyList<IDXObject>> _packetItemVisualResolver;
         private Action<DropItem, int> _onPacketEnterSoundRequested;
         private Action<DropItem, int> _onPacketExploded;
+        private Func<DateTime> _packetExpireTimeUtcResolver = () => DateTime.UtcNow;
 
         // Ground level lookup function
         private Func<float, float, float> _getGroundY;
@@ -742,6 +743,7 @@ namespace HaCreator.MapSimulator.Pools
         public void SetSourcePositionResolver(Func<int, Vector2?> resolver) => _sourcePositionResolver = resolver;
         public void SetPartyPickupMembershipEvaluator(Func<int, int, bool> evaluator) => _partyPickupMembershipEvaluator = evaluator;
         public void SetPacketItemVisualResolver(Func<string, IReadOnlyList<IDXObject>> resolver) => _packetItemVisualResolver = resolver;
+        public void SetPacketExpireTimeUtcResolver(Func<DateTime> resolver) => _packetExpireTimeUtcResolver = resolver ?? (() => DateTime.UtcNow);
         public void SetOnRemotePlayerPickedUp(Action<DropItem, int, string> callback) => _onRemotePlayerPickedUp = callback;
         public void SetOnRemotePetPickedUp(Action<DropItem, int, string> callback) => _onRemotePetPickedUp = callback;
         public void SetOnRemoteOtherPickedUp(Action<DropItem, int, string> callback) => _onRemoteOtherPickedUp = callback;
@@ -2302,7 +2304,11 @@ namespace HaCreator.MapSimulator.Pools
             drop.PacketEnterType = packet.EnterType;
             drop.CreateDelayMs = packet.DelayMs;
             drop.OwnerExpireTime = packet.OwnerId > 0 ? currentTime + OWNER_PRIORITY_DURATION : 0;
-            drop.ExpireTime = ResolvePacketExpireTime(currentTime, packet.IsMoney, packet.ExpireRaw);
+            drop.ExpireTime = ResolvePacketExpireTime(
+                currentTime,
+                packet.IsMoney,
+                packet.ExpireRaw,
+                _packetExpireTimeUtcResolver?.Invoke() ?? DateTime.UtcNow);
             drop.HoverAmplitude = packet.IsMoney ? 3f : 2f;
             drop.HoverFrequency = packet.EnterType == 4 ? 0.6f : 1f;
             drop.HoverPhase = drop.PoolId * 0.31f;
@@ -2504,6 +2510,11 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static int ResolvePacketExpireTime(int currentTime, bool isMoney, long expireRaw)
         {
+            return ResolvePacketExpireTime(currentTime, isMoney, expireRaw, DateTime.UtcNow);
+        }
+
+        internal static int ResolvePacketExpireTime(int currentTime, bool isMoney, long expireRaw, DateTime referenceUtc)
+        {
             if (isMoney)
             {
                 return currentTime + DEFAULT_DROP_LIFETIME;
@@ -2517,7 +2528,16 @@ namespace HaCreator.MapSimulator.Pools
             try
             {
                 DateTime expireUtc = DateTime.FromFileTimeUtc(expireRaw);
-                double remainingMs = (expireUtc - DateTime.UtcNow).TotalMilliseconds;
+                if (referenceUtc.Kind == DateTimeKind.Local)
+                {
+                    referenceUtc = referenceUtc.ToUniversalTime();
+                }
+                else if (referenceUtc.Kind == DateTimeKind.Unspecified)
+                {
+                    referenceUtc = DateTime.SpecifyKind(referenceUtc, DateTimeKind.Utc);
+                }
+
+                double remainingMs = (expireUtc - referenceUtc).TotalMilliseconds;
                 if (remainingMs <= 0)
                 {
                     return currentTime;

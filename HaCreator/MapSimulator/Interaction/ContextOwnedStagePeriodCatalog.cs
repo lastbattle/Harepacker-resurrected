@@ -1,7 +1,9 @@
 using HaCreator.MapEditor.Info;
+using HaCreator.MapSimulator.Managers;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
+using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using System;
@@ -36,7 +38,9 @@ namespace HaCreator.MapSimulator.Interaction
             return theme.TryGetPeriod(mode, out entry);
         }
 
-        internal HashSet<int> ResolveAffectedMaps(ContextOwnedStagePeriodCatalogEntry entry)
+        internal HashSet<int> ResolveAffectedMaps(
+            ContextOwnedStagePeriodCatalogEntry entry,
+            Func<int, QuestStateType> questStateProvider = null)
         {
             HashSet<int> affectedMaps = new(entry?.AffectedMapIds ?? Enumerable.Empty<int>());
             if (entry == null || entry.Keywords.Count == 0)
@@ -46,7 +50,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             foreach ((int fieldId, IReadOnlyList<ContextOwnedStageAffectedMapEntry> entries) in _affectedMapsByFieldId)
             {
-                if (entries != null && entries.Any(candidate => candidate.Matches(entry)))
+                if (entries != null && entries.Any(candidate => candidate.Matches(entry, questStateProvider)))
                 {
                     affectedMaps.Add(fieldId);
                 }
@@ -442,6 +446,7 @@ namespace HaCreator.MapSimulator.Interaction
                         InfoTool.GetInt(property["priority"]),
                         InfoTool.GetInt(property["questID"]),
                         InfoTool.GetInt(property["questState"]),
+                        property["questState"] != null,
                         InfoTool.GetInt(property["randTime"])));
                 }
             }
@@ -723,16 +728,33 @@ namespace HaCreator.MapSimulator.Interaction
         int Priority,
         int QuestId,
         int QuestState,
+        bool HasQuestStateGate,
         int RandomTimeSeconds)
     {
-        internal bool Matches(ContextOwnedStagePeriodCatalogEntry period)
+        internal bool Matches(
+            ContextOwnedStagePeriodCatalogEntry period,
+            Func<int, QuestStateType> questStateProvider = null)
         {
             if (period == null || string.IsNullOrWhiteSpace(StageKeyword) || !period.Keywords.Contains(StageKeyword))
             {
                 return false;
             }
 
-            return QuestId <= 0 || period.EnabledQuestIds.Contains(QuestId);
+            if (QuestId <= 0)
+            {
+                return true;
+            }
+
+            if (!period.EnabledQuestIds.Contains(QuestId))
+            {
+                return false;
+            }
+
+            return !HasQuestStateGate
+                || questStateProvider != null
+                && ItemMakerQuestRequirementPolicy.MatchesClientQuestRequirement(
+                    questStateProvider(QuestId),
+                    QuestState);
         }
     }
 

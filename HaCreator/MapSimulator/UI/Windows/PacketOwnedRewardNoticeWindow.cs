@@ -12,7 +12,7 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class PacketOwnedRewardNoticeWindow : UIWindowBase
     {
-        internal const int DefaultFrameWidth = 312;
+        internal const int DefaultFrameWidth = 260;
         internal const int DefaultFrameHeight = 132;
         internal const int DefaultBodyLineCapacity = 3;
         internal const int FrameHeightStep = 13;

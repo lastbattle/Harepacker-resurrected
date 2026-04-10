@@ -358,6 +358,15 @@ namespace HaCreator.MapSimulator
                     CollectRemoteAffectedAreaSupportSkills(affectedSkill, supportSkills, visitedSkillIds);
                 }
             }
+
+            foreach (int parentSkillId in _playerManager?.SkillLoader?.FindAffectedSkillParentIds(skillId) ?? Array.Empty<int>())
+            {
+                SkillData parentSkill = _playerManager?.SkillLoader?.LoadSkill(parentSkillId);
+                if (parentSkill != null)
+                {
+                    CollectRemoteAffectedAreaSupportSkills(parentSkill, supportSkills, visitedSkillIds);
+                }
+            }
         }
 
         private static SkillLevelData ResolveRemoteAffectedAreaSupportLevelData(

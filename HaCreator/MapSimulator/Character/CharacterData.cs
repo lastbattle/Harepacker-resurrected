@@ -2122,6 +2122,38 @@ namespace HaCreator.MapSimulator.Character
             return null;
         }
 
+        public WeaponPart GetSubWeapon()
+        {
+            if (Equipment.TryGetValue(EquipSlot.Shield, out CharacterPart visibleSubWeapon) &&
+                visibleSubWeapon is WeaponPart visibleSubWeaponPart &&
+                !visibleSubWeaponPart.IsCash)
+            {
+                return visibleSubWeaponPart;
+            }
+
+            if (HiddenEquipment.TryGetValue(EquipSlot.Shield, out CharacterPart hiddenSubWeapon))
+            {
+                return hiddenSubWeapon as WeaponPart;
+            }
+
+            if (Equipment.TryGetValue(EquipSlot.Shield, out CharacterPart fallbackSubWeapon))
+            {
+                return fallbackSubWeapon as WeaponPart;
+            }
+
+            return null;
+        }
+
+        public string GetEffectiveWeaponSfx()
+        {
+            string weaponSfx = GetWeapon()?.Sfx;
+            string subWeaponSfx = GetSubWeapon()?.Sfx;
+
+            return !string.IsNullOrWhiteSpace(subWeaponSfx)
+                ? subWeaponSfx
+                : weaponSfx;
+        }
+
         private static int DefaultRollInclusive(int min, int max)
         {
             return Random.Shared.Next(min, max + 1);

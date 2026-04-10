@@ -435,6 +435,10 @@ namespace HaCreator.MapSimulator.UI
         {
         }
 
+        public virtual void RefreshImePresentationPlacement()
+        {
+        }
+
         public virtual bool CanStartDragAt(int x, int y)
         {
             return GetWindowBounds().Contains(x, y);

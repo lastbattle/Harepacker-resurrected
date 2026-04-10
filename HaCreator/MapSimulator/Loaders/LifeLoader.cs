@@ -33,7 +33,7 @@ namespace HaCreator.MapSimulator.Loaders
         private sealed class CachedMobAttackAssets
         {
             public readonly Dictionary<string, MobAnimationSet.AttackInfoMetadata> AttackMetadata = new(StringComparer.OrdinalIgnoreCase);
-            public readonly Dictionary<string, List<IDXObject>> AttackHitEffects = new(StringComparer.OrdinalIgnoreCase);
+            public readonly Dictionary<string, List<MobAnimationSet.AttackHitEffectEntry>> AttackHitEffects = new(StringComparer.OrdinalIgnoreCase);
             public readonly Dictionary<string, List<IDXObject>> AttackProjectileEffects = new(StringComparer.OrdinalIgnoreCase);
             public readonly Dictionary<string, List<IDXObject>> AttackEffects = new(StringComparer.OrdinalIgnoreCase);
             public readonly Dictionary<string, List<IDXObject>> AttackWarningEffects = new(StringComparer.OrdinalIgnoreCase);
@@ -466,18 +466,25 @@ namespace HaCreator.MapSimulator.Loaders
                     cached.AttackMetadata[actionName] = attackInfo;
                 }
 
-                WzImageProperty hitNode = ResolveAttackHitNode(infoProperty, mobStateProperty, out int hitAnimationSourceFrameIndex);
+                IReadOnlyList<(WzImageProperty HitNode, int SourceFrameIndex, bool IsAttackFrameOwned)> hitNodes =
+                    ResolveAttackHitNodes(infoProperty, mobStateProperty);
+                int hitAnimationSourceFrameIndex = hitNodes.Count > 0 ? hitNodes[0].SourceFrameIndex : 0;
                 if (attackInfo != null)
                 {
                     attackInfo.HitAnimationSourceFrameIndex = hitAnimationSourceFrameIndex;
                 }
 
-                if (hitNode != null)
+                foreach ((WzImageProperty hitNode, int sourceFrameIndex, bool isAttackFrameOwned) in hitNodes)
                 {
                     List<IDXObject> hitFrames = MapSimulatorLoader.LoadFrames(texturePool, hitNode, 0, 0, device, usedProps);
                     if (hitFrames.Count > 0)
                     {
-                        cached.AttackHitEffects[actionName] = hitFrames;
+                        AddCachedAttackHitEffect(
+                            cached,
+                            actionName,
+                            hitFrames,
+                            sourceFrameIndex,
+                            isAttackFrameOwned);
                         System.Diagnostics.Debug.WriteLine($"[LifeLoader] Loaded {hitFrames.Count} hit effect frames for mob {mobInfo.ID} {actionName}");
                     }
                 }
@@ -614,9 +621,16 @@ namespace HaCreator.MapSimulator.Loaders
                 animationSet.SetAttackInfoMetadata(entry.Key, entry.Value);
             }
 
-            foreach (KeyValuePair<string, List<IDXObject>> entry in cachedAssets.AttackHitEffects)
+            foreach (KeyValuePair<string, List<MobAnimationSet.AttackHitEffectEntry>> entry in cachedAssets.AttackHitEffects)
             {
-                animationSet.AddAttackHitEffect(entry.Key, entry.Value);
+                foreach (MobAnimationSet.AttackHitEffectEntry hitEffectEntry in entry.Value)
+                {
+                    animationSet.AddAttackHitEffect(
+                        entry.Key,
+                        hitEffectEntry.Frames,
+                        hitEffectEntry.SourceFrameIndex,
+                        hitEffectEntry.IsAttackFrameOwned);
+                }
             }
 
             foreach (KeyValuePair<string, List<IDXObject>> entry in cachedAssets.AttackProjectileEffects)
@@ -660,6 +674,32 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             effectNodes.Add(effectNode);
+        }
+
+        private static void AddCachedAttackHitEffect(
+            CachedMobAttackAssets cachedAssets,
+            string actionName,
+            List<IDXObject> hitFrames,
+            int sourceFrameIndex,
+            bool isAttackFrameOwned)
+        {
+            if (cachedAssets == null || string.IsNullOrEmpty(actionName) || hitFrames == null || hitFrames.Count == 0)
+            {
+                return;
+            }
+
+            if (!cachedAssets.AttackHitEffects.TryGetValue(actionName, out List<MobAnimationSet.AttackHitEffectEntry> hitEffectEntries))
+            {
+                hitEffectEntries = new List<MobAnimationSet.AttackHitEffectEntry>();
+                cachedAssets.AttackHitEffects[actionName] = hitEffectEntries;
+            }
+
+            hitEffectEntries.Add(new MobAnimationSet.AttackHitEffectEntry
+            {
+                Frames = hitFrames,
+                SourceFrameIndex = sourceFrameIndex,
+                IsAttackFrameOwned = isAttackFrameOwned
+            });
         }
 
         /// <summary>
@@ -910,7 +950,7 @@ namespace HaCreator.MapSimulator.Loaders
             WzImageProperty attackStateProperty,
             out int hitAnimationSourceFrameIndex)
         {
-            foreach ((WzImageProperty hitNode, int sourceFrameIndex) in EnumerateAttackHitNodes(infoProperty, attackStateProperty))
+            foreach ((WzImageProperty hitNode, int sourceFrameIndex, _) in EnumerateAttackHitNodes(infoProperty, attackStateProperty))
             {
                 if (!HasRenderableHitFrames(hitNode))
                 {
@@ -923,6 +963,24 @@ namespace HaCreator.MapSimulator.Loaders
 
             hitAnimationSourceFrameIndex = 0;
             return null;
+        }
+
+        internal static IReadOnlyList<(WzImageProperty HitNode, int SourceFrameIndex, bool IsAttackFrameOwned)> ResolveAttackHitNodes(
+            WzImageProperty infoProperty,
+            WzImageProperty attackStateProperty)
+        {
+            var hitNodes = new List<(WzImageProperty HitNode, int SourceFrameIndex, bool IsAttackFrameOwned)>();
+            foreach ((WzImageProperty hitNode, int sourceFrameIndex, bool isAttackFrameOwned) in EnumerateAttackHitNodes(infoProperty, attackStateProperty))
+            {
+                if (!HasRenderableHitFrames(hitNode))
+                {
+                    continue;
+                }
+
+                hitNodes.Add((hitNode, sourceFrameIndex, isAttackFrameOwned));
+            }
+
+            return hitNodes;
         }
 
         internal static bool ShouldLoadAttackSupportAssetsForAction(string actionName)
@@ -975,7 +1033,7 @@ namespace HaCreator.MapSimulator.Loaders
             return defaultValue;
         }
 
-        private static IEnumerable<(WzImageProperty HitNode, int SourceFrameIndex)> EnumerateAttackHitNodes(
+        private static IEnumerable<(WzImageProperty HitNode, int SourceFrameIndex, bool IsAttackFrameOwned)> EnumerateAttackHitNodes(
             WzImageProperty infoProperty,
             WzImageProperty attackStateProperty)
         {
@@ -983,12 +1041,12 @@ namespace HaCreator.MapSimulator.Loaders
             WzImageProperty infoHitNode = WzInfoTools.GetRealProperty(infoNode?["hit"]);
             if (infoHitNode != null)
             {
-                yield return (infoHitNode, 0);
+                yield return (infoHitNode, 0, false);
             }
 
             foreach ((WzImageProperty frameHitNode, int sourceFrameIndex) in EnumerateAttackFrameHitNodes(attackStateProperty))
             {
-                yield return (frameHitNode, sourceFrameIndex);
+                yield return (frameHitNode, sourceFrameIndex, true);
             }
         }
 

@@ -60,15 +60,21 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0C99] = "You have succesfully passed the Lie Detector Test. Thank you for participating!",
             [0x0C9A] = "You will be sanctioned for using a macro-assisted program.",
             [0x1A65] = "Thank you for your cooperation.",
-            // Recovered from MapleStory.exe v95 `CUIMapTransfer::OnRegister` and
-            // `CUIMapTransfer::OnDelete`. The generated table drifts around this block
-            // in the current workspace, so pin the client-owned map-transfer prompts
-            // and notices here before the simulator formats register/delete/move UI.
+            // Recovered from MapleStory.exe v95 `CUIMapTransfer::OnRegister`,
+            // `CUIMapTransfer::OnDelete`, and `CWvsContext::OnMapTransferResult`.
+            // The generated table drifts around this block in the current workspace,
+            // so pin the client-owned map-transfer prompts and notices here before
+            // the simulator formats register/delete/move UI or packet result failures.
+            [0x0BB0] = "%s is currently difficult to locate, so\r\nthe teleport will not take place.",
+            [0x0BB3] = "This map is not available to enter for the list.",
             [0x0BB4] = "Your teleport list is full.\r\nPlease delete an entry before trying again.",
             [0x0BB5] = "You have already entered this map.",
+            [0x0BB6] = "It's the map you're currently on.",
+            [0x0BB7] = "Users below level 7 are not allowed \r\nto go out from Maple Island.",
             [0x0BB8] = "Will you enter this map\r\nin your teleport list?\r\n[%s]",
             [0x0BB9] = "Will you delete this map from the\r\nteleport list?\r\n[%s]",
             [0x0BBA] = "Will you teleport to this map?\r\n[%s]",
+            [0x0BD3] = "You cannot go to that place.",
             // Recovered from MapleStory.exe v95 StringPool::ms_aString via StringPool::GetString
             // using ms_aKey (0xB98830). These ids are radio-owner literals that were still null
             // in the generated table for this workspace, but the simulator now needs the exact
@@ -106,11 +112,13 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0FF2] = "Effect/BasicEff.img/SkillBook/Success/1",
             [0x0FF3] = "Effect/BasicEff.img/SkillBook/Failure/0",
             [0x0FF4] = "Effect/BasicEff.img/SkillBook/Failure/1",
-            // Recovered from MapleStory.exe v95 `CUIAccountMoreInfo::LoadCountryName`
-            // `CUIAccountMoreInfo::OnDestroy`, and `CUIAccountMoreInfo::OnSaveAccountMoreInfoResult`. The generated
+            // Recovered from MapleStory.exe v95 `CUIAccountMoreInfo::OnCreate`,
+            // `CUIAccountMoreInfo::LoadCountryName`, `CUIAccountMoreInfo::OnDestroy`,
+            // and `CUIAccountMoreInfo::OnSaveAccountMoreInfoResult`. The generated
             // table drifts in this block, so keep these account-more-info owner
             // literals explicit instead of resolving unrelated FriendRecommendations
             // resource paths.
+            [0x16AE] = "UI/UIWindow.img/FriendRecommendations/UserInfo/back",
             [0x16B6] = "Please fill in your information later. If not, you may not receive friend recommendations.",
             [0x16B7] = "Fail. Please try again later.",
             [0x16B8] = "Select",

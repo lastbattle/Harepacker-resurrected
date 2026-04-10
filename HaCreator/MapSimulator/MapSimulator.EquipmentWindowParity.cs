@@ -47,6 +47,11 @@ namespace HaCreator.MapSimulator
                 return EquipmentChangeSubmission.Reject(androidRestrictionRejectReason);
             }
 
+            if (TryGetTamingMobEquipmentRestrictionRejectReason(request, out string tamingMobRestrictionRejectReason))
+            {
+                return EquipmentChangeSubmission.Reject(tamingMobRestrictionRejectReason);
+            }
+
             if (_pendingEquipmentChangeRequests.Count > 0)
             {
                 return EquipmentChangeSubmission.Reject("An equipment change is already pending.");
@@ -997,6 +1002,11 @@ namespace HaCreator.MapSimulator
                 return EquipmentChangeResult.Reject("No target equipment slot was selected.");
             }
 
+            if (TryGetTamingMobEquipmentRestrictionRejectReason(request, out string tamingMobRestrictionRejectReason))
+            {
+                return EquipmentChangeResult.Reject(tamingMobRestrictionRejectReason);
+            }
+
             if (uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
             {
                 return EquipmentChangeResult.Reject("Inventory runtime is unavailable.");
@@ -1064,6 +1074,11 @@ namespace HaCreator.MapSimulator
                 return EquipmentChangeResult.Reject("The equipment move is missing a source or target slot.");
             }
 
+            if (TryGetTamingMobEquipmentRestrictionRejectReason(request, out string tamingMobRestrictionRejectReason))
+            {
+                return EquipmentChangeResult.Reject(tamingMobRestrictionRejectReason);
+            }
+
             CharacterPart liveSourcePart = EquipSlotStateResolver.ResolveDisplayedPart(build, request.SourceEquipSlot.Value);
             if (liveSourcePart == null || liveSourcePart.ItemId != request.ItemId)
             {
@@ -1122,6 +1137,11 @@ namespace HaCreator.MapSimulator
                 return EquipmentChangeResult.Reject("No source equipment slot was selected.");
             }
 
+            if (TryGetTamingMobEquipmentRestrictionRejectReason(request, out string tamingMobRestrictionRejectReason))
+            {
+                return EquipmentChangeResult.Reject(tamingMobRestrictionRejectReason);
+            }
+
             if (uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
             {
                 return EquipmentChangeResult.Reject("Inventory runtime is unavailable.");
@@ -1172,6 +1192,11 @@ namespace HaCreator.MapSimulator
             if (TryGetAndroidCompanionRestrictionRejectReason(request, out string androidRestrictionRejectReason))
             {
                 return EquipmentChangeResult.Reject(androidRestrictionRejectReason);
+            }
+
+            if (TryGetTamingMobEquipmentRestrictionRejectReason(request, out string tamingMobRestrictionRejectReason))
+            {
+                return EquipmentChangeResult.Reject(tamingMobRestrictionRejectReason);
             }
 
             if (request.TargetCompanionKind == EquipmentChangeCompanionKind.None)
@@ -1239,6 +1264,11 @@ namespace HaCreator.MapSimulator
             if (TryGetAndroidCompanionRestrictionRejectReason(request, out string androidRestrictionRejectReason))
             {
                 return EquipmentChangeResult.Reject(androidRestrictionRejectReason);
+            }
+
+            if (TryGetTamingMobEquipmentRestrictionRejectReason(request, out string tamingMobRestrictionRejectReason))
+            {
+                return EquipmentChangeResult.Reject(tamingMobRestrictionRejectReason);
             }
 
             if (uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
@@ -1520,6 +1550,35 @@ namespace HaCreator.MapSimulator
             long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
             rejectReason = FieldInteractionRestrictionEvaluator.GetAndroidRestrictionMessage(fieldLimit);
             return !string.IsNullOrWhiteSpace(rejectReason);
+        }
+
+        private bool TryGetTamingMobEquipmentRestrictionRejectReason(EquipmentChangeRequest request, out string rejectReason)
+        {
+            rejectReason = null;
+            if (request == null)
+            {
+                return false;
+            }
+
+            bool touchesTamingMobEquipment =
+                request.TargetCompanionKind == EquipmentChangeCompanionKind.Mechanic
+                || request.SourceCompanionKind == EquipmentChangeCompanionKind.Mechanic
+                || IsTamingMobEquipmentSlot(request.TargetEquipSlot)
+                || IsTamingMobEquipmentSlot(request.SourceEquipSlot)
+                || IsTamingMobEquipmentSlot(request.RequestedPart?.Slot);
+            if (!touchesTamingMobEquipment)
+            {
+                return false;
+            }
+
+            long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
+            rejectReason = FieldInteractionRestrictionEvaluator.GetTamingMobRestrictionMessage(fieldLimit);
+            return !string.IsNullOrWhiteSpace(rejectReason);
+        }
+
+        private static bool IsTamingMobEquipmentSlot(EquipSlot? slot)
+        {
+            return slot is EquipSlot.TamingMob or EquipSlot.Saddle;
         }
 
         private static void AddDisplacedInventoryCount(Dictionary<InventoryType, int> counts, CompanionEquipItem item)

@@ -61,8 +61,11 @@ namespace HaCreator.MapSimulator.Managers
         public const int MesoGiveFailedPacketType = 237;
         public const int RandomMesobagSucceededPacketType = 238;
         public const int RandomMesobagFailedPacketType = 239;
+        public const int FieldFadeInOutClientPacketType = 240;
+        public const int FieldFadeOutForceClientPacketType = 241;
         public const int SkillLearnItemResultClientPacketType = 50;
         public const int OpenSkillGuideClientPacketType = 262;
+        public const int BalloonMsgClientPacketType = 245;
         public const int PlayEventSoundClientPacketType = 246;
         public const int PlayMinigameSoundClientPacketType = 247;
         public const int AdminShopResultClientPacketType = 366;
@@ -88,6 +91,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int RadioScheduleClientPacketType = 261;
         public const int QuestGuideResultPacketType = 274;
         public const int DeliveryQuestPacketType = 275;
+        public const int ClassCompetitionAuthCachePacketType = 291;
         public const int DamageMeterPacketType = 267;
         public const int TimeBombAttackPacketType = 268;
         public const int PassiveMoveClientPacketType = 269;
@@ -110,16 +114,16 @@ namespace HaCreator.MapSimulator.Managers
         public const int Sg88ManualAttackConfirmPacketType = PacketOwnedMechanicRepeatSkillRuntime.Sg88ManualAttackConfirmPacketType;
         public const int MechanicEquipStatePacketType = 1023;
         public const int CharacterEquipStatePacketType = 1034;
-        public const int PetConsumeResultPacketType = 1026;
         public const int RepairDurabilityResultPacketType = 1025;
-        public const int QuestRewardRaiseOwnerSyncPacketType = 1026;
-        public const int QuestRewardRaisePutItemAddResultPacketType = 1027;
-        public const int QuestRewardRaisePutItemReleaseResultPacketType = 1028;
-        public const int QuestRewardRaisePutItemConfirmResultPacketType = 1029;
-        public const int QuestRewardRaiseOwnerDestroyResultPacketType = 1030;
+        public const int PetConsumeResultPacketType = 1026;
         public const int EventAlarmTextPacketType = 1031;
         public const int EventCalendarEntriesPacketType = 1032;
         public const int RankingPagePacketType = 1033;
+        public const int QuestRewardRaiseOwnerSyncPacketType = 1036;
+        public const int QuestRewardRaisePutItemAddResultPacketType = 1037;
+        public const int QuestRewardRaisePutItemReleaseResultPacketType = 1038;
+        public const int QuestRewardRaisePutItemConfirmResultPacketType = 1039;
+        public const int QuestRewardRaiseOwnerDestroyResultPacketType = 1040;
         public const int ConsumeCashItemUseRequestPacketType = 0x55;
         public const int VegaLaunchPacketType = 1031;
         public const int VegaResultClientPacketType = 429;
@@ -549,6 +553,31 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("fieldfade", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("fade", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("fieldfadeinout", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onfieldfadeinout", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = FieldFadeInOutClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("fieldfadeoutforce", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("fadeoutforce", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onfieldfadeoutforce", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = FieldFadeOutForceClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("balloon", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("balloonmsg", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onballoonmsg", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = BalloonMsgClientPacketType;
+                return true;
+            }
+
             if (token.Equals("directionmode", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("setdirectionmode", StringComparison.OrdinalIgnoreCase))
             {
@@ -662,25 +691,6 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
-            if (token.Equals("adminshopresult", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("adminshopreply", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("adminshoponpacket366", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("cadminshopdlg366", StringComparison.OrdinalIgnoreCase))
-            {
-                packetType = AdminShopResultClientPacketType;
-                return true;
-            }
-
-            if (token.Equals("adminshopopen", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("adminshop", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("adminshopset", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("adminshoponpacket367", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("cadminshopdlg367", StringComparison.OrdinalIgnoreCase))
-            {
-                packetType = AdminShopOpenClientPacketType;
-                return true;
-            }
-
             if (token.Equals("makerhiddenunlock", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("itemmakerhiddenunlock", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("onmakerhiddenunlock", StringComparison.OrdinalIgnoreCase))
@@ -777,6 +787,15 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("classpage", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = OpenClassCompetitionPagePacketType;
+                return true;
+            }
+
+            if (token.Equals("classcompetitionauth", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("classcompetitionkey", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("auth291", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("classauth", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ClassCompetitionAuthCachePacketType;
                 return true;
             }
 
@@ -1012,6 +1031,9 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == MesoGiveFailedPacketType
                 || packetType == RandomMesobagSucceededPacketType
                 || packetType == RandomMesobagFailedPacketType
+                || packetType == FieldFadeInOutClientPacketType
+                || packetType == FieldFadeOutForceClientPacketType
+                || packetType == BalloonMsgClientPacketType
                 || packetType == RandomEmotionPacketType
                 || packetType == DragonBoxClientPacketType
                 || packetType == AccountMoreInfoPacketType
@@ -1030,8 +1052,6 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == NotifyHpDecByFieldPacketType
                 || packetType == OpenClassCompetitionPagePacketType
                 || packetType == MakerResultClientPacketType
-                || packetType == AdminShopResultClientPacketType
-                || packetType == AdminShopOpenClientPacketType
                 || packetType == ItemMakerHiddenRecipeUnlockPacketType
                 || packetType == ItemMakerSessionPacketType
                 || packetType == MechanicEquipStatePacketType
@@ -1046,6 +1066,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == ExJablinApplyPacketType
                 || packetType == QuestGuideResultPacketType
                 || packetType == DeliveryQuestPacketType
+                || packetType == ClassCompetitionAuthCachePacketType
                 || packetType == SkillCooltimeSetPacketType
                 || packetType == SkillLearnItemResultClientPacketType
                 || packetType == FuncKeyMapInitPacketType
@@ -1200,8 +1221,11 @@ namespace HaCreator.MapSimulator.Managers
                 MesoGiveFailedPacketType => "OnMesoGive_Failed(237)",
                 RandomMesobagSucceededPacketType => "OnRandomMesobag_Succeeded(238)",
                 RandomMesobagFailedPacketType => "OnRandomMesobag_Failed(239)",
+                FieldFadeInOutClientPacketType => "OnFieldFadeInOut(240)",
+                FieldFadeOutForceClientPacketType => "OnFieldFadeOutForce(241)",
                 DragonBoxClientPacketType => "OnDragonBallBox(164)",
                 SkillLearnItemResultClientPacketType => "OnSkillLearnItemResult(50)",
+                BalloonMsgClientPacketType => "OnBalloonMsg(245)",
                 PlayEventSoundClientPacketType => "PlayEventSound(246)",
                 PlayMinigameSoundClientPacketType => "PlayMinigameSound(247)",
                 QuestResultPacketType => "OnQuestResult(242)",
@@ -1234,6 +1258,7 @@ namespace HaCreator.MapSimulator.Managers
                 AskApspEventClientPacketType => "AskAPSPEvent(273)",
                 QuestGuideResultPacketType => "QuestGuideResult(274)",
                 DeliveryQuestPacketType => "DeliveryQuest(275)",
+                ClassCompetitionAuthCachePacketType => "ClassCompetitionAuthCache(291)",
                 SkillCooltimeSetPacketType => "SkillCooltimeSet(276)",
                 FuncKeyMapInitPacketType => "FuncKeyMapInit(398)",
                 PetConsumeItemInitPacketType => "PetConsumeItemInit(399)",
@@ -1247,17 +1272,18 @@ namespace HaCreator.MapSimulator.Managers
                 MarriageResultPacketType => "MarriageResult OnMarriageResult(1018)",
                 ItemMakerHiddenRecipeUnlockPacketType => "ItemMakerHiddenRecipeUnlock(1019)",
                 ItemMakerSessionPacketType => "ItemMakerSession(1024)",
-                PetConsumeResultPacketType => "PetConsumeResult(1026) / RaiseOwnerSync(1026)",
+                PetConsumeResultPacketType => "PetConsumeResult(1026)",
                 RepeatSkillModeEndAckPacketType => "RepeatSkillModeEndAck(1020)",
                 Sg88ManualAttackConfirmPacketType => "Sg88ManualAttackConfirm(1021)",
                 MechanicEquipStatePacketType => "MechanicEquipState(1023)",
                 CharacterEquipStatePacketType => "CharacterEquipState(1034)",
                 RepairDurabilityResultPacketType => "RepairDurabilityResult(1025)",
                 ConsumeCashItemUseRequestPacketType => "SendConsumeCashItemUseRequest(85)",
-                QuestRewardRaisePutItemAddResultPacketType => "RaisePutItemAddResult(1027)",
-                QuestRewardRaisePutItemReleaseResultPacketType => "RaisePutItemReleaseResult(1028)",
-                QuestRewardRaisePutItemConfirmResultPacketType => "RaisePutItemConfirmResult(1029)",
-                QuestRewardRaiseOwnerDestroyResultPacketType => "RaiseOwnerDestroyResult(1030)",
+                QuestRewardRaiseOwnerSyncPacketType => "RaiseOwnerSync(1036)",
+                QuestRewardRaisePutItemAddResultPacketType => "RaisePutItemAddResult(1037)",
+                QuestRewardRaisePutItemReleaseResultPacketType => "RaisePutItemReleaseResult(1038)",
+                QuestRewardRaisePutItemConfirmResultPacketType => "RaisePutItemConfirmResult(1039)",
+                QuestRewardRaiseOwnerDestroyResultPacketType => "RaiseOwnerDestroyResult(1040)",
                 _ => $"packet {packetType}"
             };
         }

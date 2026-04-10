@@ -47,7 +47,7 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public const int FollowRequestThrottleMs = 1000;
         public const int FollowRequestOpcode = 134;
-        public const int FollowWithdrawOpcode = 135;
+        public const int FollowWithdrawOpcode = FollowRequestOpcode;
 
         private int _pendingOutgoingDriverId;
         private bool _pendingOutgoingAutoRequest;
@@ -193,9 +193,13 @@ namespace HaCreator.MapSimulator.Interaction
             _pendingOutgoingDriverId = 0;
             _pendingOutgoingAutoRequest = false;
             _pendingOutgoingKeyInput = false;
+            _lastOutgoingRequestOpcodeDriverId = 0;
+            _lastOutgoingRequestOpcodeAutoRequest = false;
+            _lastOutgoingRequestOpcodeKeyInput = true;
+            _lastOutgoingRequestOpcodeTick = currentTime;
             _lastOutgoingWithdrawOpcodeTick = currentTime;
             _lastStatusMessage =
-                $"Withdrew the pending local follow request to {displayName}; simulated outpacket {FollowWithdrawOpcode}.";
+                $"Withdrew the pending local follow request to {displayName}; simulated outpacket {FollowWithdrawOpcode} (0, 0, 1).";
             message = _lastStatusMessage;
             return true;
         }
