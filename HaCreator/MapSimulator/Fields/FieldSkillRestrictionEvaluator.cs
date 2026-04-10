@@ -172,8 +172,6 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     return "This skill is forbidden in this field.";
                 }
-
-                return "This field forbids most skill usage.";
             }
 
             if (FieldLimitType.Move_Skill_Only.Check(fieldLimit) && !skill.IsMovement)
@@ -194,7 +192,7 @@ namespace HaCreator.MapSimulator.Fields
         public static string GetFieldEntryNotice(long fieldLimit)
         {
             if (FieldLimitType.Unable_To_Use_Skill.Check(fieldLimit))
-                return "Most skill usage is disabled in this map.";
+                return "Some client-forbidden skills are disabled in this map.";
 
             if (FieldLimitType.Move_Skill_Only.Check(fieldLimit))
                 return "Only movement skills can be used in this map.";

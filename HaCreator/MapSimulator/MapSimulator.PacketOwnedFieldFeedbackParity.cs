@@ -31,7 +31,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedScreenEffectYOffset = -40;
         private const int PacketOwnedRewardRouletteOffsetX = 400;
         private const int PacketOwnedRewardRouletteOffsetY = 260;
-        private const int PacketOwnedRewardRouletteClientAlpha = 255;
+        private const byte PacketOwnedUiClientAlpha = 255;
         private static readonly int[] PacketOwnedRewardRouletteLayerStringPoolIds =
         {
             0x11E0,
@@ -314,6 +314,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (!CanQueueKnownCrossMapTransfer(mapId, showFailureMessage: true))
+            {
+                return false;
+            }
+
             bool queued = QueueMapTransfer(mapId, null);
             if (queued)
             {
@@ -343,7 +348,9 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            foreach (PacketOwnedUiAnimation animation in _packetFieldFeedbackUiAnimations)
+            foreach (PacketOwnedUiAnimation animation in _packetFieldFeedbackUiAnimations
+                .OrderBy(static animation => animation.DrawOrder)
+                .ThenBy(static animation => animation.StartedAtTick))
             {
                 IDXObject frame = animation.ResolveFrame(currentTickCount);
                 if (frame?.Texture == null)
@@ -352,7 +359,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 Vector2 position = animation.ResolveDrawPosition(frame, _renderParams.RenderWidth, Height);
-                _spriteBatch.Draw(frame.Texture, position, Color.White);
+                _spriteBatch.Draw(frame.Texture, position, animation.ResolveTint());
             }
         }
 
@@ -1090,7 +1097,9 @@ namespace HaCreator.MapSimulator
                 PacketOwnedUiAnchorMode.WindowCenter,
                 0,
                 ScalePacketOwnedUiOffset(PacketOwnedScreenEffectYOffset, renderHeight, PacketOwnedUiReferenceHeight),
-                string.Empty);
+                string.Empty,
+                PacketOwnedUiDrawOrder.ScreenEffect,
+                PacketOwnedUiClientAlpha);
         }
 
         private static PacketOwnedUiRegistration ResolvePacketOwnedRewardRouletteRegistration(
@@ -1108,7 +1117,14 @@ namespace HaCreator.MapSimulator
                 isAnchoredToWindowOrigin
                     ? 0
                     : ScalePacketOwnedUiOffset(PacketOwnedRewardRouletteOffsetY, renderHeight, PacketOwnedUiReferenceHeight),
-                key);
+                key,
+                layerRole switch
+                {
+                    PacketOwnedRewardRouletteLayerRole.Job => PacketOwnedUiDrawOrder.RewardRouletteJob,
+                    PacketOwnedRewardRouletteLayerRole.Part => PacketOwnedUiDrawOrder.RewardRoulettePart,
+                    _ => PacketOwnedUiDrawOrder.RewardRouletteLevel
+                },
+                PacketOwnedUiClientAlpha);
         }
 
         private static int ScalePacketOwnedUiOffset(int referenceOffset, int actualSize, int referenceSize)
@@ -1121,15 +1137,15 @@ namespace HaCreator.MapSimulator
             return (int)Math.Round(referenceOffset * (actualSize / (double)referenceSize), MidpointRounding.AwayFromZero);
         }
 
-        internal static (PacketOwnedUiAnchorMode AnchorMode, int OffsetX, int OffsetY) GetPacketOwnedScreenEffectRegistrationForTest(
+        internal static (PacketOwnedUiAnchorMode AnchorMode, int OffsetX, int OffsetY, PacketOwnedUiDrawOrder DrawOrder, byte Alpha) GetPacketOwnedScreenEffectRegistrationForTest(
             int renderWidth,
             int renderHeight)
         {
             PacketOwnedUiRegistration registration = ResolvePacketOwnedScreenEffectRegistration(renderWidth, renderHeight);
-            return (registration.AnchorMode, registration.OffsetX, registration.OffsetY);
+            return (registration.AnchorMode, registration.OffsetX, registration.OffsetY, registration.DrawOrder, registration.Alpha);
         }
 
-        internal static (PacketOwnedUiAnchorMode AnchorMode, int OffsetX, int OffsetY) GetPacketOwnedRewardRouletteRegistrationForTest(
+        internal static (PacketOwnedUiAnchorMode AnchorMode, int OffsetX, int OffsetY, PacketOwnedUiDrawOrder DrawOrder, byte Alpha) GetPacketOwnedRewardRouletteRegistrationForTest(
             int renderWidth,
             int renderHeight)
         {
@@ -1138,10 +1154,10 @@ namespace HaCreator.MapSimulator
                 renderHeight,
                 "reward-roulette",
                 PacketOwnedRewardRouletteLayerRole.Part);
-            return (registration.AnchorMode, registration.OffsetX, registration.OffsetY);
+            return (registration.AnchorMode, registration.OffsetX, registration.OffsetY, registration.DrawOrder, registration.Alpha);
         }
 
-        internal static (PacketOwnedUiAnchorMode AnchorMode, int OffsetX, int OffsetY) GetPacketOwnedRewardRouletteRegistrationForTest(
+        internal static (PacketOwnedUiAnchorMode AnchorMode, int OffsetX, int OffsetY, PacketOwnedUiDrawOrder DrawOrder, byte Alpha) GetPacketOwnedRewardRouletteRegistrationForTest(
             int renderWidth,
             int renderHeight,
             int layerIndex)
@@ -1158,7 +1174,7 @@ namespace HaCreator.MapSimulator
                 renderHeight,
                 "reward-roulette",
                 layerRole);
-            return (registration.AnchorMode, registration.OffsetX, registration.OffsetY);
+            return (registration.AnchorMode, registration.OffsetX, registration.OffsetY, registration.DrawOrder, registration.Alpha);
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackCommand(string[] args)
@@ -1396,11 +1412,21 @@ namespace HaCreator.MapSimulator
             WindowCenter
         }
 
+        internal enum PacketOwnedUiDrawOrder
+        {
+            ScreenEffect = 0,
+            RewardRouletteJob = 1,
+            RewardRoulettePart = 2,
+            RewardRouletteLevel = 3
+        }
+
         private readonly record struct PacketOwnedUiRegistration(
             PacketOwnedUiAnchorMode AnchorMode,
             int OffsetX,
             int OffsetY,
-            string Key);
+            string Key,
+            PacketOwnedUiDrawOrder DrawOrder,
+            byte Alpha);
 
         private enum PacketOwnedRewardRouletteLayerRole
         {
@@ -1437,6 +1463,7 @@ namespace HaCreator.MapSimulator
 
             public int StartedAtTick { get; }
             public string Key => _registration.Key ?? string.Empty;
+            public PacketOwnedUiDrawOrder DrawOrder => _registration.DrawOrder;
 
             public bool IsComplete(int currentTickCount)
             {
@@ -1480,6 +1507,11 @@ namespace HaCreator.MapSimulator
                 return new Vector2(
                     anchorX + _registration.OffsetX - (frame?.X ?? 0),
                     anchorY + _registration.OffsetY - (frame?.Y ?? 0));
+            }
+
+            public Color ResolveTint()
+            {
+                return new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, _registration.Alpha);
             }
         }
 

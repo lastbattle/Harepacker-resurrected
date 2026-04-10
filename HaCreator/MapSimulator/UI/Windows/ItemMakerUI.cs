@@ -307,42 +307,39 @@ namespace HaCreator.MapSimulator.UI
 
         internal bool TryApplyPacketOwnedSession(PacketOwnedItemMakerSession packetSession, out string message)
         {
+            PacketOwnedItemMakerSessionState appliedState = PacketOwnedItemMakerSessionStateRuntime.Apply(currentState: null, packetSession);
+            return TryApplyPacketOwnedSessionState(appliedState, out message);
+        }
+
+        internal bool TryApplyPacketOwnedSessionState(PacketOwnedItemMakerSessionState sessionState, out string message)
+        {
             message = "Item Maker session is unavailable.";
-            if (packetSession == null)
+            if (sessionState == null)
             {
                 return false;
             }
 
             ClearPacketOwnedSessionState();
-            _packetOwnedServerOwnsCraftExecution = packetSession.ServerOwnsCraftExecution;
-            _packetOwnedHasAuthoritativeDisassemblyTargets = packetSession.HasAuthoritativeDisassemblyTargets;
-            _packetOwnedHasAuthoritativeHiddenRecipeList = packetSession.HasAuthoritativeHiddenRecipeList;
-            _packetOwnedAuthoritativeDisassemblyTargets = packetSession.DisassemblyTargets?.ToArray()
+            _packetOwnedServerOwnsCraftExecution = sessionState.ServerOwnsCraftExecution;
+            _packetOwnedHasAuthoritativeDisassemblyTargets = sessionState.HasAuthoritativeDisassemblyTargets;
+            _packetOwnedHasAuthoritativeHiddenRecipeList = sessionState.HasAuthoritativeHiddenRecipeList;
+            _packetOwnedAuthoritativeDisassemblyTargets = sessionState.DisassemblyTargets?.ToArray()
                 ?? Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>();
 
             int resolvedHiddenEntries = 0;
             int ignoredHiddenEntries = 0;
             if (_packetOwnedHasAuthoritativeHiddenRecipeList)
             {
-                foreach (PacketOwnedItemMakerSessionHiddenEntry entry in packetSession.HiddenRecipeEntries ?? Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>())
+                foreach (PacketOwnedItemMakerSessionHiddenEntry entry in sessionState.HiddenRecipeEntries ?? Array.Empty<PacketOwnedItemMakerSessionHiddenEntry>())
                 {
-                    ItemMakerRecipe recipe = ResolveHiddenRecipeForPacketUnlock(entry.BucketKey, entry.OutputItemId);
-                    if (recipe == null)
+                    if (TryRegisterPacketOwnedHiddenRecipe(entry))
+                    {
+                        resolvedHiddenEntries++;
+                    }
+                    else
                     {
                         ignoredHiddenEntries++;
-                        continue;
                     }
-
-                    if (!string.IsNullOrWhiteSpace(recipe.RecipeKey))
-                    {
-                        _packetOwnedAuthoritativeHiddenRecipeKeys.Add(recipe.RecipeKey);
-                    }
-                    else if (recipe.OutputItemId > 0)
-                    {
-                        _packetOwnedAuthoritativeHiddenRecipeIds.Add(recipe.OutputItemId);
-                    }
-
-                    resolvedHiddenEntries++;
                 }
             }
 
@@ -1646,6 +1643,26 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return "This hidden maker recipe is waiting for its level or mastery reveal.";
+        }
+
+        private bool TryRegisterPacketOwnedHiddenRecipe(PacketOwnedItemMakerSessionHiddenEntry entry)
+        {
+            ItemMakerRecipe recipe = ResolveHiddenRecipeForPacketUnlock(entry.BucketKey, entry.OutputItemId);
+            if (recipe == null)
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(recipe.RecipeKey))
+            {
+                _packetOwnedAuthoritativeHiddenRecipeKeys.Add(recipe.RecipeKey);
+            }
+            else if (recipe.OutputItemId > 0)
+            {
+                _packetOwnedAuthoritativeHiddenRecipeIds.Add(recipe.OutputItemId);
+            }
+
+            return true;
         }
 
         private Rectangle GetCategorySelectorRectangle()

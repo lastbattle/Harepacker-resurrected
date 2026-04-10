@@ -971,7 +971,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             var tileNode = skillNode["tile"];
             if (tileNode != null)
             {
-                skill.ZoneAnimation = LoadZoneAnimation(tileNode);
+                skill.ZoneEffect = LoadZoneEffect(tileNode, skillNode);
+                skill.ZoneAnimation = skill.ZoneEffect?.Animation;
             }
 
             // Load projectile/ball
@@ -2012,6 +2013,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.ShadowPartnerActionAnimations[actionKey] = animation;
             }
 
+            SynthesizePiecedShadowPartnerActionAnimations(skill.ShadowPartnerActionAnimations);
             skill.ShadowPartnerHorizontalOffsetPx = ResolveShadowPartnerHorizontalOffsetPx(skill.ShadowPartnerActionAnimations);
         }
 
@@ -2148,6 +2150,35 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return !string.IsNullOrWhiteSpace(actionKey)
                    && ShadowPartnerReplayTailActionNames.Contains(actionKey);
+        }
+
+        internal static void SynthesizePiecedShadowPartnerActionAnimations(
+            IDictionary<string, SkillAnimation> actionAnimations)
+        {
+            if (actionAnimations == null || actionAnimations.Count == 0)
+            {
+                return;
+            }
+
+            IReadOnlyDictionary<string, SkillAnimation> readOnlyActionAnimations =
+                actionAnimations as IReadOnlyDictionary<string, SkillAnimation>
+                ?? new Dictionary<string, SkillAnimation>(actionAnimations, StringComparer.OrdinalIgnoreCase);
+
+            foreach (string actionName in ShadowPartnerClientActionResolver.EnumeratePiecedShadowPartnerActionNames())
+            {
+                if (string.IsNullOrWhiteSpace(actionName) || actionAnimations.ContainsKey(actionName))
+                {
+                    continue;
+                }
+
+                SkillAnimation piecedAnimation = ShadowPartnerClientActionResolver.TryBuildPiecedShadowPartnerActionAnimation(
+                    readOnlyActionAnimations,
+                    actionName);
+                if (piecedAnimation?.Frames.Count > 0)
+                {
+                    actionAnimations[actionName] = piecedAnimation;
+                }
+            }
         }
 
         internal static void AppendReversedInteriorShadowPartnerFrames(SkillAnimation animation)
@@ -2338,6 +2369,35 @@ namespace HaCreator.MapSimulator.Character.Skills
             return animation;
         }
 
+        private ZoneEffectData LoadZoneEffect(WzImageProperty tileNode, WzImageProperty skillNode)
+        {
+            if (tileNode == null)
+            {
+                return null;
+            }
+
+            var zoneEffect = new ZoneEffectData
+            {
+                Animation = LoadZoneAnimation(tileNode),
+                VariantAnimations = LoadSummonIndexedAnimations(tileNode, "tile"),
+                EffectDistance = GetInt(tileNode, "effectDistance")
+            };
+
+            if (zoneEffect.Animation?.Frames.Count <= 0)
+            {
+                zoneEffect.Animation = zoneEffect.ResolveAnimationVariant(1, 1);
+            }
+
+            PopulateZoneCharacterLevelVariants(zoneEffect, skillNode?["CharLevel"]);
+            PopulateZoneLevelVariants(zoneEffect, skillNode?["level"]);
+
+            bool hasRenderableAnimation = zoneEffect.Animation?.Frames.Count > 0
+                || zoneEffect.VariantAnimations.Count > 0
+                || zoneEffect.CharacterLevelVariantAnimations.Count > 0
+                || zoneEffect.LevelVariantAnimations.Count > 0;
+            return hasRenderableAnimation ? zoneEffect : null;
+        }
+
         private SkillAnimation LoadZoneAnimation(WzImageProperty tileNode)
         {
             if (tileNode == null)
@@ -2435,6 +2495,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             skill.SummonMovementStyle = movementProfile.Style;
             skill.SummonSpawnDistanceX = movementProfile.SpawnDistanceX;
 
+            bool standaloneSummonRoot = LooksLikeStandaloneSummonSourceProperty(summonNode);
+
             SkillAnimation directAnimation = GetOrLoadSummonActionAnimation(skill, summonNode, "summon");
             RegisterSummonActionAnimation(skill, "summon", directAnimation);
 
@@ -2457,7 +2519,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             string preferredBranchName = SelectPreferredSummonIdleBranch(branchNames);
             if (preferredBranchName == null && directAnimation.Frames.Count == 0)
             {
-                preferredBranchName = SelectFallbackSummonIdleBranch(summonNode, branchNames);
+                preferredBranchName = SelectFallbackSummonIdleBranch(summonNode, branchNames, standaloneSummonRoot);
             }
 
             if (preferredBranchName == null)
@@ -2631,8 +2693,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .Where(static animation => animation?.Frames.Count > 0)
                 .ToList();
 
-            LoadSupplementalSummonAnimations(skill, summonNode, branchNames);
-            LoadRemainingSummonActionAnimations(skill, summonNode, branchNames);
+            LoadSupplementalSummonAnimations(skill, summonNode, branchNames, standaloneSummonRoot);
+            LoadRemainingSummonActionAnimations(skill, summonNode, branchNames, standaloneSummonRoot);
             if (!string.IsNullOrWhiteSpace(attackBranchName))
             {
                 PopulateSummonHitTimingMetadata(skill, attackBranchName, hitNode);
@@ -2647,6 +2709,66 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return null;
+        }
+
+        private void PopulateZoneCharacterLevelVariants(ZoneEffectData zoneEffect, WzImageProperty charLevelNode)
+        {
+            if (zoneEffect == null || charLevelNode == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in charLevelNode.WzProperties)
+            {
+                if (child == null || !int.TryParse(child.Name, out int requiredLevel))
+                {
+                    continue;
+                }
+
+                WzImageProperty tileVariantNode = child["tile"];
+                if (tileVariantNode == null)
+                {
+                    continue;
+                }
+
+                List<SkillAnimation> variants = LoadSummonIndexedAnimations(
+                    tileVariantNode,
+                    $"tile/CharLevel/{requiredLevel}");
+                if (variants.Count > 0)
+                {
+                    zoneEffect.CharacterLevelVariantAnimations[requiredLevel] = variants;
+                }
+            }
+        }
+
+        private void PopulateZoneLevelVariants(ZoneEffectData zoneEffect, WzImageProperty levelNode)
+        {
+            if (zoneEffect == null || levelNode == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in levelNode.WzProperties)
+            {
+                if (child == null || !int.TryParse(child.Name, out int skillLevel))
+                {
+                    continue;
+                }
+
+                WzImageProperty tileVariantNode = child["tile"];
+                if (tileVariantNode == null)
+                {
+                    continue;
+                }
+
+                List<SkillAnimation> variants = LoadSummonIndexedAnimations(
+                    tileVariantNode,
+                    $"tile/level/{skillLevel}");
+                if (variants.Count > 0)
+                {
+                    zoneEffect.LevelVariantAnimations[skillLevel] = variants;
+                }
+            }
         }
 
         internal bool TryResolveSummonSourceProperty(
@@ -2827,7 +2949,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             return skillNode != null;
         }
 
-        private void LoadSupplementalSummonAnimations(SkillData skill, WzImageProperty summonNode, IEnumerable<string> branchNames)
+        private void LoadSupplementalSummonAnimations(
+            SkillData skill,
+            WzImageProperty summonNode,
+            IEnumerable<string> branchNames,
+            bool standaloneSummonRoot)
         {
             if (skill == null || summonNode == null || branchNames == null)
             {
@@ -2838,6 +2964,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (string.IsNullOrWhiteSpace(branchName)
                     || Array.IndexOf(SupplementalSummonAnimationBranches, branchName) < 0
+                    || (standaloneSummonRoot && ShouldSkipStandaloneSummonWrapperBranchName(branchName))
                     || skill.SummonNamedAnimations.ContainsKey(branchName))
                 {
                     continue;
@@ -2852,7 +2979,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
-        private void LoadRemainingSummonActionAnimations(SkillData skill, WzImageProperty summonNode, IEnumerable<string> branchNames)
+        private void LoadRemainingSummonActionAnimations(
+            SkillData skill,
+            WzImageProperty summonNode,
+            IEnumerable<string> branchNames,
+            bool standaloneSummonRoot)
         {
             if (skill == null || summonNode == null || branchNames == null)
             {
@@ -2863,6 +2994,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (string.IsNullOrWhiteSpace(branchName)
                     || NonActionSummonBranchNames.Contains(branchName)
+                    || (standaloneSummonRoot && ShouldSkipStandaloneSummonWrapperBranchName(branchName))
                     || string.Equals(branchName, "hit", StringComparison.OrdinalIgnoreCase)
                     || skill.SummonActionAnimations.ContainsKey(branchName))
                 {
@@ -3696,7 +3828,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             return null;
         }
 
-        private static string SelectFallbackSummonIdleBranch(WzImageProperty summonNode, IEnumerable<string> branchNames)
+        private static string SelectFallbackSummonIdleBranch(
+            WzImageProperty summonNode,
+            IEnumerable<string> branchNames,
+            bool standaloneSummonRoot)
         {
             string preferredFallback = SelectPreferredSummonBranch(branchNames, new[] { "attack1", "attack", "die" });
             if (!string.IsNullOrWhiteSpace(preferredFallback))
@@ -3714,6 +3849,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (child == null
                     || string.IsNullOrWhiteSpace(child.Name)
                     || NonActionSummonBranchNames.Contains(child.Name)
+                    || (standaloneSummonRoot && ShouldSkipStandaloneSummonWrapperBranchName(child.Name))
                     || string.Equals(child.Name, "hit", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
@@ -3771,7 +3907,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            if (IsStandaloneSummonWrapperBranchName(child.Name))
+            if (ShouldSkipStandaloneSummonWrapperBranchName(child.Name))
             {
                 return false;
             }
@@ -3873,7 +4009,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || IsRepeatStyleSummonBranchName(branchName);
         }
 
-        private static bool IsStandaloneSummonWrapperBranchName(string branchName)
+        internal static bool ShouldSkipStandaloneSummonWrapperBranchName(string branchName)
         {
             if (string.IsNullOrWhiteSpace(branchName))
             {
@@ -4422,7 +4558,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .Where(static skill => skill != null)
                 .GroupBy(static skill => skill.SkillId)
                 .ToDictionary(static group => group.Key, static group => group.First());
-            Queue<SkillData> pending = new(skillsById.Values.Where(static skill => skill.IsSwallowSkill));
+            Queue<SkillData> pending = new(skillsById.Values.Where(IsExplicitSwallowFamilyRoot));
             HashSet<int> swallowSkillIds = new(pending.Select(static skill => skill.SkillId));
 
             while (pending.Count > 0)
@@ -4453,6 +4589,62 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 skill.IsSwallowFamilySkill = swallowSkillIds.Contains(skill.SkillId);
             }
+        }
+
+        private static bool IsExplicitSwallowFamilyRoot(SkillData skill)
+        {
+            if (skill == null
+                || skill.DummySkillParents == null
+                || skill.DummySkillParents.Length == 0)
+            {
+                return false;
+            }
+
+            foreach (string actionName in EnumerateSwallowFamilyActionNames(skill))
+            {
+                if (IsSwallowFamilyActionName(actionName))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<string> EnumerateSwallowFamilyActionNames(SkillData skill)
+        {
+            if (!string.IsNullOrWhiteSpace(skill?.PrepareActionName))
+            {
+                yield return skill.PrepareActionName;
+            }
+
+            if (skill?.ActionNames != null)
+            {
+                foreach (string actionName in skill.ActionNames)
+                {
+                    if (!string.IsNullOrWhiteSpace(actionName))
+                    {
+                        yield return actionName;
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.ActionName))
+            {
+                yield return skill.ActionName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.KeydownActionName))
+            {
+                yield return skill.KeydownActionName;
+            }
+        }
+
+        private static bool IsSwallowFamilyActionName(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && (string.Equals(actionName, "swallow", StringComparison.OrdinalIgnoreCase)
+                       || actionName.StartsWith("swallow_", StringComparison.OrdinalIgnoreCase));
         }
 
         private static IReadOnlyList<int> GetSkillBookJobIdsForJob(int jobId)

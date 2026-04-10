@@ -22,6 +22,20 @@ namespace HaCreator.MapSimulator.UI
 
     public sealed class CashServiceStageWindow : UIWindowBase
     {
+        public sealed class OneADayHistoryEntry
+        {
+            public int CommoditySerialNumber { get; init; }
+            public int OriginalCommoditySerialNumber { get; init; }
+            public int RawDate { get; init; }
+        }
+
+        internal sealed class OneADayPacketState
+        {
+            public int CurrentDate { get; init; }
+            public int CurrentCommoditySerialNumber { get; init; }
+            public IReadOnlyList<OneADayHistoryEntry> HistoryEntries { get; init; } = Array.Empty<OneADayHistoryEntry>();
+        }
+
         public sealed class PacketCatalogEntry
         {
             public string Title { get; set; } = string.Empty;
@@ -90,6 +104,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<PacketCatalogEntry> _cashPacketCatalogEntries = new();
         private readonly List<PacketCatalogEntry> _cashInventoryPacketEntries = new();
         private readonly Dictionary<int, bool> _cashPurchaseRecordStates = new();
+        private readonly List<OneADayHistoryEntry> _cashOneADayHistoryEntries = new();
         private readonly List<PacketCatalogEntry> _itcPacketCatalogEntries = new();
         private readonly List<PacketCatalogEntry> _itcSalePacketEntries = new();
         private readonly List<PacketCatalogEntry> _itcPurchasePacketEntries = new();
@@ -125,6 +140,8 @@ namespace HaCreator.MapSimulator.UI
         private int _cashCharacterSlotCount;
         private int _cashBuyCharacterCount;
         private int _cashCharacterCount;
+        private int _cashOneADayItemDate;
+        private int _cashOneADayItemSerialNumber;
         private readonly int[] _cashWishlistSerialNumbers = new int[10];
         private string _cashItemLastSummary = "No cash-item result routed yet.";
         private string _cashGiftLastSummary = "No packet-authored gift result routed yet.";
@@ -173,6 +190,9 @@ namespace HaCreator.MapSimulator.UI
         public int ChargeParam => _chargeParam;
         public bool HasPendingCommodityMigration => _hasPendingMigration;
         public bool IsOneADayPending => _packetRoutes.ContainsKey(395);
+        public int CashOneADayItemDate => _cashOneADayItemDate;
+        public int CashOneADayItemSerialNumber => _cashOneADayItemSerialNumber;
+        public IReadOnlyList<OneADayHistoryEntry> CashOneADayHistoryEntries => _cashOneADayHistoryEntries;
         public int CashItemMutationCount => _cashItemMutationCount;
         public int CashLockerItemCount => _cashLockerItemCount;
         public int CashLockerSlotLimit => _cashLockerSlotLimit;
@@ -311,6 +331,9 @@ namespace HaCreator.MapSimulator.UI
             _cashNameChangeLastSummary = "No packet-authored name-change result routed yet.";
             _cashTransferWorldLastSummary = "No packet-authored transfer-world result routed yet.";
             _cashGachaponLastSummary = "No packet-authored cash gachapon result routed yet.";
+            _cashOneADayItemDate = 0;
+            _cashOneADayItemSerialNumber = 0;
+            _cashOneADayHistoryEntries.Clear();
             _itcNormalItemSubtype = -1;
             _itcNormalItemPage = 0;
             _itcNormalItemCategory = 0;
@@ -816,7 +839,7 @@ namespace HaCreator.MapSimulator.UI
                     detail = BuildCashGachaponPacketResult(payload, packetType);
                     break;
                 case 395:
-                    detail = "One-a-day result reached the dedicated stage.";
+                    detail = ApplyCashOneADayPacket(payload);
                     break;
                 case 396:
                     _noticeState = TryReadUtf8Text(payload, out string freeItemNotice) ? freeItemNotice : "Free-item notice packet received.";
@@ -1572,6 +1595,82 @@ namespace HaCreator.MapSimulator.UI
                 : "CashShop gachapon result reached the dedicated stage.";
             _noticeState = _cashGachaponLastSummary;
             return _cashGachaponLastSummary;
+        }
+
+        private string ApplyCashOneADayPacket(byte[] payload)
+        {
+            if (!TryDecodeOneADayPayload(payload, out OneADayPacketState state))
+            {
+                _cashOneADayItemDate = 0;
+                _cashOneADayItemSerialNumber = 0;
+                _cashOneADayHistoryEntries.Clear();
+                _noticeState = "One-a-day owner received an empty packet payload.";
+                return "CCashShop::OnOneADay cleared the current item and previous history from an empty payload.";
+            }
+
+            _cashOneADayItemDate = state.CurrentDate;
+            _cashOneADayItemSerialNumber = state.CurrentCommoditySerialNumber;
+            _cashOneADayHistoryEntries.Clear();
+            _cashOneADayHistoryEntries.AddRange(state.HistoryEntries);
+
+            string currentLabel = _cashOneADayItemSerialNumber > 0
+                ? $"current SN {_cashOneADayItemSerialNumber.ToString(CultureInfo.InvariantCulture)}"
+                : "no current item";
+            _noticeState =
+                $"One-a-day owner loaded {currentLabel}, date {_cashOneADayItemDate.ToString(CultureInfo.InvariantCulture)}, and {_cashOneADayHistoryEntries.Count.ToString(CultureInfo.InvariantCulture)} previous slot(s).";
+            return
+                $"CCashShop::OnOneADay decoded current date {_cashOneADayItemDate.ToString(CultureInfo.InvariantCulture)}, current SN {_cashOneADayItemSerialNumber.ToString(CultureInfo.InvariantCulture)}, and {_cashOneADayHistoryEntries.Count.ToString(CultureInfo.InvariantCulture)} previous entry(ies).";
+        }
+
+        internal static bool TryDecodeOneADayPayload(byte[] payload, out OneADayPacketState state)
+        {
+            state = null;
+            if (payload == null || payload.Length < sizeof(int) * 3)
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                int currentDate = reader.ReadInt32();
+                int currentCommoditySerialNumber = reader.ReadInt32();
+                int historyCount = Math.Max(0, reader.ReadInt32());
+                if (stream.Length - stream.Position < historyCount * 12L)
+                {
+                    return false;
+                }
+
+                List<OneADayHistoryEntry> historyEntries = new(historyCount);
+                for (int i = 0; i < historyCount; i++)
+                {
+                    historyEntries.Add(new OneADayHistoryEntry
+                    {
+                        CommoditySerialNumber = reader.ReadInt32(),
+                        OriginalCommoditySerialNumber = reader.ReadInt32(),
+                        RawDate = reader.ReadInt32()
+                    });
+                }
+
+                state = new OneADayPacketState
+                {
+                    CurrentDate = currentDate,
+                    CurrentCommoditySerialNumber = currentCommoditySerialNumber,
+                    HistoryEntries = historyEntries
+                };
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                state = null;
+                return false;
+            }
+            catch (IOException)
+            {
+                state = null;
+                return false;
+            }
         }
 
         private bool TryApplyItcCatalogList(byte[] payload, bool isSearchResult, out string message)

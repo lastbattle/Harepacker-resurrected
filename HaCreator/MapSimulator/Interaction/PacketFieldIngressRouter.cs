@@ -15,6 +15,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return packetType == 149
                 || packetType == 162
+                || packetType == 163
                 || packetType == 166
                 || packetType == 167
                 || packetType == 169
@@ -50,7 +51,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static string DescribeSupportedClientOpcodes()
         {
-            return "149, 162, 166, 167, 169, 174, 178, reactor-pool";
+            return "149, 162, 163, 166, 167, 169, 174, 178, reactor-pool";
         }
 
         internal static string DescribeFieldScopedPacketType(int packetType)

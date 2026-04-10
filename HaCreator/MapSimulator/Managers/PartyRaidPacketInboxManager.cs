@@ -55,7 +55,8 @@ namespace HaCreator.MapSimulator.Managers
     /// Optional loopback inbox for Party Raid runtime updates.
     /// Each line is encoded as "<scope> <key> <value>", where scope is
     /// "field", "party", "session", "clock", or packet-oriented aliases such as
-    /// "packet 93 <payloadHex>" or "packetclientraw <opcodeFramedHex>".
+    /// "packet 93 <payloadHex>", "packet 163 <relayPayloadHex>", or
+    /// "packetclientraw <opcodeFramedHex>".
     /// </summary>
     public sealed class PartyRaidPacketInboxManager : IDisposable
     {
@@ -253,7 +254,7 @@ namespace HaCreator.MapSimulator.Managers
 
             if (parts.Length < 2 || !int.TryParse(parts[1], out packetType) || !IsSupportedPartyRaidPacketType(packetType))
             {
-                error = "Party Raid packet lines must be 'packet <93|94|95|149> <payloadhex>'.";
+                error = "Party Raid packet lines must be 'packet <93|94|95|149|163> <payloadhex>'.";
                 return false;
             }
 
@@ -405,7 +406,8 @@ namespace HaCreator.MapSimulator.Managers
             return packetType == PartyRaidField.ClientSessionValuePacketType
                 || packetType == PartyRaidField.ClientPartyValuePacketType
                 || packetType == PartyRaidField.ClientFieldSetVariablePacketType
-                || packetType == 149;
+                || packetType == 149
+                || packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
         }
 
         private static bool TryDecodeClientOpcodePacket(byte[] rawPacket, out int packetType, out byte[] payload, out string error)

@@ -3477,7 +3477,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "partyraid",
                 "Inspect or drive the Party Raid runtime shell",
-                "/partyraid [status|stage <n>|point <n>|team <red|blue>|damage <red|blue> <n>|gaugecap <n>|clock <seconds|clear>|raw <93|94|95|149> <hex>|packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|key <field|party|session> <key> <value>|result <point> <bonus> <total> [win|lose|clear]|outcome <win|lose|clear>]",
+                "/partyraid [status|stage <n>|point <n>|team <red|blue>|damage <red|blue> <n>|gaugecap <n>|clock <seconds|clear>|raw <93|94|95|149|163> <hex>|packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|key <field|party|session> <key> <value>|result <point> <bonus> <total> [win|lose|clear]|outcome <win|lose|clear>]",
                 args =>
                 {
                     PartyRaidField partyRaid = _specialFieldRuntime.PartyRaid;
@@ -3621,7 +3621,7 @@ namespace HaCreator.MapSimulator
                     {
                         if (args.Length < 3)
                         {
-                            return ChatCommandHandler.CommandResult.Error("Usage: /partyraid raw <93|94|95|149> <hex>");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /partyraid raw <93|94|95|149|163> <hex>");
                         }
 
                         if (!int.TryParse(args[1], out int rawPacketType))
@@ -3630,7 +3630,7 @@ namespace HaCreator.MapSimulator
                         }
 
                         byte[] rawPayload = ByteUtils.HexToBytes(string.Join(string.Empty, args.Skip(2)));
-                        if (!partyRaid.TryApplyRawPacket(rawPacketType, rawPayload, currTickCount, out string rawPacketError))
+                        if (!TryApplyPartyRaidWrapperPacket(rawPacketType, rawPayload, currTickCount, out string rawPacketError))
                         {
                             return ChatCommandHandler.CommandResult.Error(rawPacketError ?? "Failed to apply Party Raid packet.");
                         }
@@ -3651,7 +3651,7 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Error(framedError ?? "Failed to decode Party Raid opcode-framed packet.");
                         }
 
-                        if (!partyRaid.TryApplyRawPacket(framedPacketType, framedPayload, currTickCount, out string framedPacketError))
+                        if (!TryApplyPartyRaidWrapperPacket(framedPacketType, framedPayload, currTickCount, out string framedPacketError))
                         {
                             return ChatCommandHandler.CommandResult.Error(framedPacketError ?? "Failed to apply Party Raid opcode-framed packet.");
                         }
@@ -7717,7 +7717,7 @@ namespace HaCreator.MapSimulator
                             }
                             return ChatCommandHandler.CommandResult.Ok($"Switched the parcel dialog to the {args[1].Trim()} tab.");
                         case "send":
-                            if (_memoMailbox.TryDispatchActiveDraft(out string sendMessage))
+                            if (_memoMailbox.TryDispatchActiveDraft(true, null, out string sendMessage))
                             {
                                 uiWindowManager?.HideWindow(MapSimulatorWindowNames.MemoSend);
                                 if (!TryOpenFieldRestrictedWindow(MapSimulatorWindowNames.MemoMailbox, out string sendRestrictionMessage, inheritDirectionModeOwner: true))
@@ -8383,7 +8383,7 @@ namespace HaCreator.MapSimulator
                     if (!_playerManager.Skills.TrySetItemHotkey(slotIndex, itemId))
                     {
                         return ChatCommandHandler.CommandResult.Error(
-                            $"Unable to assign item {itemId} to quick-slot {oneBasedSlot}. Only owned USE/CASH entries can be quick-slotted.");
+                            $"Unable to assign item {itemId} to quick-slot {oneBasedSlot}. Only owned client-visible quick-slot consumables and supported cash items can be quick-slotted.");
                     }
 
 
@@ -9422,6 +9422,12 @@ namespace HaCreator.MapSimulator
                     {
                         case "clear":
                             _contextOwnedStagePeriodRuntime.Clear();
+                            _contextOwnedStageActiveKeywords.Clear();
+                            _contextOwnedStageActiveQuestIds.Clear();
+                            _contextOwnedStageAffectedMapIds.Clear();
+                            _contextOwnedStageCurrentBackImages = Array.Empty<ContextOwnedStageBackImageEntry>();
+                            _contextOwnedStageCurrentBackColorArgb = null;
+                            ReloadContextOwnedStagePeriodBackLayers();
                             return ChatCommandHandler.CommandResult.Ok(DescribeContextOwnedStagePeriodStatus());
 
                         case "inbox":
@@ -9708,7 +9714,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "fieldstate",
                 "Inspect or drive packet-authored field help, quest timers, field-specific data, and object-state flips",
-                "/fieldstate [status|wrapperstatus|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]|packetraw <149|162|166|167|169|174|178|334|335|336|337> [hex]|packetclientraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
+                "/fieldstate [status|wrapperstatus|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|163|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]|packetraw <149|162|163|166|167|169|174|178|334|335|336|337> [hex]|packetclientraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
                 args =>
                 {
                     _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
@@ -9851,7 +9857,7 @@ namespace HaCreator.MapSimulator
                                 !int.TryParse(args[1], out int fieldPacketType) ||
                                 !PacketFieldIngressRouter.IsSupportedFieldScopedPacketType(fieldPacketType))
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packet <149|162|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packet <149|162|163|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]");
                             }
 
 
@@ -9861,7 +9867,7 @@ namespace HaCreator.MapSimulator
                             {
                                 if (args.Length < 3 || !TryParseBinaryPayloadArgument(args[2], out fieldPacketPayload, out fieldPacketPayloadError))
                                 {
-                                    return ChatCommandHandler.CommandResult.Error(fieldPacketPayloadError ?? "Usage: /fieldstate packet <149|162|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]");
+                                    return ChatCommandHandler.CommandResult.Error(fieldPacketPayloadError ?? "Usage: /fieldstate packet <149|162|163|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]");
                                 }
                             }
 
@@ -9881,7 +9887,7 @@ namespace HaCreator.MapSimulator
                                 !int.TryParse(args[1], out int rawFieldPacketType) ||
                                 !PacketFieldIngressRouter.IsSupportedFieldScopedPacketType(rawFieldPacketType))
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packetraw <149|162|166|167|169|174|178|334|335|336|337> [hex]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packetraw <149|162|163|166|167|169|174|178|334|335|336|337> [hex]");
                             }
 
 
@@ -9890,7 +9896,7 @@ namespace HaCreator.MapSimulator
                             {
                                 if (args.Length < 3 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(2)), out rawFieldPayload))
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packetraw <149|162|166|167|169|174|178|334|335|336|337> [hex]");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packetraw <149|162|163|166|167|169|174|178|334|335|336|337> [hex]");
                                 }
                             }
 
@@ -9926,7 +9932,7 @@ namespace HaCreator.MapSimulator
 
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate [status|wrapperstatus|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]|packetraw <149|162|166|167|169|174|178|334|335|336|337> [hex]|packetclientraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate [status|wrapperstatus|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|163|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]|packetraw <149|162|163|166|167|169|174|178|334|335|336|337> [hex]|packetclientraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
                     }
                 });
 

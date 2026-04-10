@@ -254,7 +254,7 @@ namespace HaCreator.MapSimulator
                     localPlayerId,
                     area.OwnerId,
                     IsAffectedAreaOwnerPartyMember(area.OwnerId),
-                    ownerIsSameTeamMember: false,
+                    IsAffectedAreaOwnerSameTeamMember(area.OwnerId),
                     levelData))
             {
                 return true;
@@ -541,7 +541,7 @@ namespace HaCreator.MapSimulator
                         localPlayerId,
                         area.OwnerId,
                         IsAffectedAreaOwnerPartyMember(area.OwnerId),
-                        ownerIsSameTeamMember: false,
+                        IsAffectedAreaOwnerSameTeamMember(area.OwnerId),
                         effectiveLevelData))
                 {
                     continue;
@@ -561,6 +561,32 @@ namespace HaCreator.MapSimulator
             }
 
             return _socialListRuntime.IsTrackedPartyMember(actor.Name);
+        }
+
+        private bool IsAffectedAreaOwnerSameTeamMember(int ownerId)
+        {
+            if (ownerId <= 0 || !_remoteUserPool.TryGetActor(ownerId, out RemoteUserActor actor))
+            {
+                return false;
+            }
+
+            Effects.BattlefieldField battlefield = _specialFieldRuntime?.SpecialEffects?.Battlefield;
+            if (battlefield?.IsActive == true
+                && battlefield.LocalTeamId.HasValue
+                && battlefield.TryGetAssignedTeamId(ownerId, out int ownerBattlefieldTeamId))
+            {
+                return ownerBattlefieldTeamId == battlefield.LocalTeamId.Value;
+            }
+
+            Fields.MonsterCarnivalField carnival = _specialFieldRuntime?.Minigames?.MonsterCarnival;
+            if (carnival?.IsVisible == true
+                && !string.IsNullOrWhiteSpace(actor?.Name)
+                && carnival.TryResolveCharacterTeam(actor.Name, out Fields.MonsterCarnivalTeam ownerCarnivalTeam))
+            {
+                return ownerCarnivalTeam == carnival.LocalTeam;
+            }
+
+            return false;
         }
     }
 }

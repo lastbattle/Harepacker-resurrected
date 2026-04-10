@@ -45,6 +45,13 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetTamingMobRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Use_Taming_Mob.Check(fieldLimit)
+                ? "Taming-mob and dragon companion presentation are disabled in this map."
+                : null;
+        }
+
         public static string GetTransferRestrictionMessage(long fieldLimit)
         {
             return FieldLimitType.Unable_To_Migrate.Check(fieldLimit)

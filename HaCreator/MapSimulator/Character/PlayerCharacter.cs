@@ -419,6 +419,30 @@ namespace HaCreator.MapSimulator.Character
             return _activeSkillBlockingStatuses.Count > 0;
         }
 
+        public bool HasSkillBlockingStatus(PlayerSkillBlockingStatus status, int currentTime)
+        {
+            ClearExpiredSkillBlockingStatuses(currentTime);
+            return _activeSkillBlockingStatuses.ContainsKey(status);
+        }
+
+        public bool IsImmovableForPassiveTransferField(int currentTime)
+        {
+            ClearExpiredSkillBlockingStatuses(currentTime);
+            return IsMovementLockedBySkillTransform
+                   || State == PlayerState.Dead
+                   || State == PlayerState.Hit
+                   || State == PlayerState.Attacking
+                   || State == PlayerState.Sitting
+                   || State == PlayerState.Ladder
+                   || State == PlayerState.Rope
+                   || _activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.StopMotion);
+        }
+
+        public bool IsAttractLockedForPassiveTransferField(int currentTime)
+        {
+            return HasSkillBlockingStatus(PlayerSkillBlockingStatus.Attract, currentTime);
+        }
+
         public PacketOwnedUserSummonRegistry PacketOwnedSummons { get; } = new();
 
         // Position shortcuts
@@ -460,6 +484,7 @@ namespace HaCreator.MapSimulator.Character
         private int _packetOwnedEmotionEndTime;
         private int _nextPortableChairRecoveryTime = int.MaxValue;
         private string _packetOwnedEmotionName = "default";
+        private PacketOwnedEmotionState? _lastPacketOwnedEmotionState;
         private CharacterPart _observedTamingMobPart;
         private bool _observedClientOwnedTamingMobActive;
         private CharacterPart _transitionTamingMobOverridePart;
@@ -2042,6 +2067,13 @@ namespace HaCreator.MapSimulator.Character
             _packetOwnedEmotionName = emotionName;
             _packetOwnedEmotionEndTime = resolvedDurationMs > 0 ? currentTime + resolvedDurationMs : 0;
             _packetOwnedEmotionByItemOption = byItemOption;
+            _lastPacketOwnedEmotionState = new PacketOwnedEmotionState(
+                emotionId,
+                emotionName,
+                resolvedDurationMs,
+                currentTime,
+                _packetOwnedEmotionEndTime,
+                byItemOption);
 
             if (Assembler != null)
             {
@@ -2183,6 +2215,18 @@ namespace HaCreator.MapSimulator.Character
                 _packetOwnedEmotionEndTime,
                 _packetOwnedEmotionByItemOption);
             return true;
+        }
+
+        internal bool TryGetLastPacketOwnedEmotionState(out PacketOwnedEmotionState state)
+        {
+            if (_lastPacketOwnedEmotionState.HasValue)
+            {
+                state = _lastPacketOwnedEmotionState.Value;
+                return true;
+            }
+
+            state = default;
+            return false;
         }
 
         public bool TryApplyPacketOwnedRandomEmotion(int areaBuffItemId, int currentTime, out string message)
@@ -4551,7 +4595,8 @@ namespace HaCreator.MapSimulator.Character
             bool facingRight)
         {
             return existingSourceSignature == incomingSourceSignature
-                   && existingPartCount > 0;
+                   && existingPartCount > 0
+                   && existingFacingRight == facingRight;
         }
 
         internal static int ResolveMirrorImagePreparedSourceLayerUpdateTime(
@@ -5645,7 +5690,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             if (TryGetCurrentClientRawActionCode(out int rawActionCode)
-                && rawActionCode == 48)
+                && ShouldSuppressMirrorImageForClientAction(rawActionCode, hasMorphTransform: false))
             {
                 return false;
             }
@@ -5692,6 +5737,28 @@ namespace HaCreator.MapSimulator.Character
                    || string.Equals(normalized, "hit", StringComparison.Ordinal);
         }
 
+        internal static bool IsMirrorImageBackAction(int rawActionCode, bool hasMorphTransform)
+        {
+            if (hasMorphTransform)
+            {
+                return rawActionCode is 9 or 10;
+            }
+
+            return rawActionCode is 45 or 46 or 129 or 130;
+        }
+
+        internal static bool IsMirrorImageAlertBackAction(int rawActionCode)
+        {
+            return rawActionCode is 64 or 65;
+        }
+
+        internal static bool ShouldSuppressMirrorImageForClientAction(int rawActionCode, bool hasMorphTransform)
+        {
+            return rawActionCode == 48
+                   || IsMirrorImageBackAction(rawActionCode, hasMorphTransform)
+                   || IsMirrorImageAlertBackAction(rawActionCode);
+        }
+
         private Point ResolveMirrorImageCurrentOffset(int currentTime)
         {
             return ResolveMirrorImageCurrentOffset(currentTime, _activeMirrorImage?.StartTime ?? currentTime);
@@ -5699,7 +5766,15 @@ namespace HaCreator.MapSimulator.Character
 
         private Point ResolveMirrorImageCurrentOffset(int currentTime, int transitionStartTime)
         {
-            Point targetOffset = ResolveMirrorImageTargetOffset(FacingRight, CurrentActionName, State);
+            int? rawActionCode = TryGetCurrentClientRawActionCode(out int resolvedRawActionCode)
+                ? resolvedRawActionCode
+                : null;
+            Point targetOffset = ResolveMirrorImageTargetOffset(
+                FacingRight,
+                CurrentActionName,
+                State,
+                rawActionCode,
+                HasActiveMorphTransform);
             int elapsedTime = Math.Max(0, currentTime - transitionStartTime);
             float progress = MathHelper.Clamp(elapsedTime / (float)MirrorImageTransitionDurationMs, 0f, 1f);
             return new Point(
@@ -5709,7 +5784,26 @@ namespace HaCreator.MapSimulator.Character
 
         private static Point ResolveMirrorImageTargetOffset(bool facingRight, string actionName, PlayerState state)
         {
-            if (IsShadowPartnerBackAction(actionName, state) || IsMirrorImageSuppressedAction(actionName))
+            return ResolveMirrorImageTargetOffset(
+                facingRight,
+                actionName,
+                state,
+                rawActionCode: null,
+                hasMorphTransform: false);
+        }
+
+        internal static Point ResolveMirrorImageTargetOffset(
+            bool facingRight,
+            string actionName,
+            PlayerState state,
+            int? rawActionCode,
+            bool hasMorphTransform)
+        {
+            if ((rawActionCode.HasValue
+                    && (IsMirrorImageBackAction(rawActionCode.Value, hasMorphTransform)
+                        || IsMirrorImageAlertBackAction(rawActionCode.Value)))
+                || IsShadowPartnerBackAction(actionName, state)
+                || IsMirrorImageSuppressedAction(actionName))
             {
                 return new Point(0, MirrorImageClientBackActionOffsetYPx);
             }

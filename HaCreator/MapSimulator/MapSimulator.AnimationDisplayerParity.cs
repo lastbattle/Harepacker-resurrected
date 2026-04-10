@@ -34,6 +34,9 @@ namespace HaCreator.MapSimulator
         private const int AnimationDisplayerFollowThetaDegrees = 20;
         private const int AnimationDisplayerFollowUpdateIntervalMs = 100;
         private const int AnimationDisplayerFollowDurationMs = 10000;
+        private const int AnimationDisplayerFollowEmissionBoxSize = 25;
+        private const int AnimationDisplayerFollowAbsoluteTravelOffsetY = -20;
+        private const int AnimationDisplayerFollowEmissionVerticalBias = 10;
         private const int AnimationDisplayerPacketOwnedFollowRegistrationMask = unchecked((int)0xC0000000);
         private const int AnimationDisplayerTransientLayerWidth = 800;
         private const int AnimationDisplayerTransientLayerHeight = 600;
@@ -361,7 +364,12 @@ namespace HaCreator.MapSimulator
                     RandomizeStartupAngle = true,
                     UpdateIntervalMs = AnimationDisplayerFollowUpdateIntervalMs,
                     SpawnFrameVariants = followFrameVariants,
-                    SpawnRelativeToTarget = relativeEmission
+                    SpawnRelativeToTarget = relativeEmission,
+                    SpawnArea = BuildAnimationDisplayerFollowEmissionArea(),
+                    SpawnUsesEmissionBox = !relativeEmission,
+                    SpawnVerticalEmissionBias = AnimationDisplayerFollowEmissionVerticalBias,
+                    SpawnOffsetMin = BuildAnimationDisplayerFollowSpawnOffsetMin(relativeEmission),
+                    SpawnOffsetMax = BuildAnimationDisplayerFollowSpawnOffsetMax(relativeEmission)
                 });
             if (followId < 0)
             {
@@ -583,6 +591,10 @@ namespace HaCreator.MapSimulator
 
             int skillId = castInfo.SkillId;
             int delayRate = ResolveAnimationDisplayerSkillUseDelayRate(castInfo);
+            TryResolveAnimationDisplayerSkillUseOwner(
+                castInfo.CasterId,
+                out Func<Vector2> getOwnerPosition,
+                out Func<bool> getOwnerFacingRight);
             bool handledPrimary = castInfo.EffectAnimation == null;
             bool handledSecondary = castInfo.SecondaryEffectAnimation == null;
 
@@ -595,7 +607,9 @@ namespace HaCreator.MapSimulator
                         castInfo.CasterY,
                         castInfo.FacingRight,
                         castInfo.CastTime,
-                        delayRate))
+                        delayRate,
+                        getOwnerPosition,
+                        getOwnerFacingRight))
                 {
                     continue;
                 }
@@ -619,6 +633,36 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void HandleRemoteAnimationDisplayerSkillUse(RemoteUserActorPool.RemoteSkillUsePresentation presentation)
+        {
+            if (presentation.SkillId <= 0 || _animationEffects == null)
+            {
+                return;
+            }
+
+            TryResolveAnimationDisplayerSkillUseOwner(
+                presentation.CharacterId,
+                out Func<Vector2> getOwnerPosition,
+                out Func<bool> getOwnerFacingRight);
+            Vector2 fallbackPosition = getOwnerPosition?.Invoke() ?? Vector2.Zero;
+            bool fallbackFacingRight = getOwnerFacingRight?.Invoke() ?? presentation.FacingRight;
+            int delayRate = ResolveAnimationDisplayerSkillUseDelayRate(presentation.ActionSpeed);
+
+            foreach (string branchName in EnumerateAnimationDisplayerSkillUseBranchNames(presentation.SkillId))
+            {
+                TryRegisterAnimationDisplayerSkillUseBranch(
+                    presentation.SkillId,
+                    branchName,
+                    fallbackPosition.X,
+                    fallbackPosition.Y,
+                    fallbackFacingRight,
+                    presentation.CurrentTime,
+                    delayRate,
+                    getOwnerPosition,
+                    getOwnerFacingRight);
+            }
+        }
+
         private bool TryRegisterAnimationDisplayerSkillUseBranch(
             int skillId,
             string branchName,
@@ -626,7 +670,9 @@ namespace HaCreator.MapSimulator
             float casterY,
             bool facingRight,
             int currentTime,
-            int delayRate)
+            int delayRate,
+            Func<Vector2> getOwnerPosition = null,
+            Func<bool> getOwnerFacingRight = null)
         {
             if (skillId <= 0 || string.IsNullOrWhiteSpace(branchName))
             {
@@ -648,7 +694,22 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                _animationEffects.AddOneTime(adjustedFrames, casterX, casterY, facingRight, currentTime);
+                if (getOwnerPosition != null || getOwnerFacingRight != null)
+                {
+                    _animationEffects.AddOneTimeAttached(
+                        adjustedFrames,
+                        getOwnerPosition,
+                        getOwnerFacingRight,
+                        casterX,
+                        casterY,
+                        facingRight,
+                        currentTime);
+                }
+                else
+                {
+                    _animationEffects.AddOneTime(adjustedFrames, casterX, casterY, facingRight, currentTime);
+                }
+
                 registered = true;
             }
 
@@ -782,6 +843,31 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private IEnumerable<string> EnumerateAnimationDisplayerSkillUseBranchNames(int skillId)
+        {
+            if (skillId <= 0)
+            {
+                yield break;
+            }
+
+            WzImage skillImage = Program.FindImage("Skill", $"{skillId / 10000}.img");
+            skillImage?.ParseImage();
+            if (skillImage?["skill"]?[skillId.ToString("D7", CultureInfo.InvariantCulture)] is not WzImageProperty skillNode)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in skillNode.WzProperties)
+            {
+                if (!IsAnimationDisplayerSkillUseBranchName(child?.Name))
+                {
+                    continue;
+                }
+
+                yield return child.Name;
+            }
+        }
+
         private static bool IsAnimationDisplayerSkillUseBranchName(string branchName)
         {
             if (string.IsNullOrWhiteSpace(branchName) || !branchName.StartsWith("effect", StringComparison.OrdinalIgnoreCase))
@@ -814,6 +900,63 @@ namespace HaCreator.MapSimulator
         {
             int delayRate = _playerManager?.Skills?.ResolveSharedSkillUseDelayRate(castInfo?.SkillId ?? 0) ?? 1000;
             return delayRate > 0 ? delayRate : 1000;
+        }
+
+        private static int ResolveAnimationDisplayerSkillUseDelayRate(int? actionSpeed)
+        {
+            if (!actionSpeed.HasValue)
+            {
+                return 1000;
+            }
+
+            int rate = (1000 * (actionSpeed.Value + 10)) / 16;
+            return rate > 0 ? rate : 1000;
+        }
+
+        private void TryResolveAnimationDisplayerSkillUseOwner(
+            int ownerCharacterId,
+            out Func<Vector2> getPosition,
+            out Func<bool> getFacingRight)
+        {
+            getPosition = null;
+            getFacingRight = null;
+
+            PlayerCharacter player = _playerManager?.Player;
+            if (ownerCharacterId <= 0
+                || (player?.Build?.Id > 0 && player.Build.Id == ownerCharacterId))
+            {
+                if (player != null)
+                {
+                    getPosition = () => _playerManager?.Player?.Position ?? player.Position;
+                    getFacingRight = () => _playerManager?.Player?.FacingRight ?? player.FacingRight;
+                }
+
+                return;
+            }
+
+            if (_remoteUserPool?.TryGetActor(ownerCharacterId, out RemoteUserActor actor) != true || actor == null)
+            {
+                return;
+            }
+
+            getPosition = () =>
+            {
+                if (_remoteUserPool?.TryGetActor(ownerCharacterId, out RemoteUserActor liveActor) == true && liveActor != null)
+                {
+                    return liveActor.Position;
+                }
+
+                return actor.Position;
+            };
+            getFacingRight = () =>
+            {
+                if (_remoteUserPool?.TryGetActor(ownerCharacterId, out RemoteUserActor liveActor) == true && liveActor != null)
+                {
+                    return liveActor.FacingRight;
+                }
+
+                return actor.FacingRight;
+            };
         }
 
         private bool TryLoadAnimationDisplayerQuestDeliveryPhaseFrames(
@@ -968,6 +1111,27 @@ namespace HaCreator.MapSimulator
         internal static string[] EnumerateAnimationDisplayerFollowEffectUols()
         {
             return AnimationDisplayerFollowEffectUolCandidates;
+        }
+
+        internal static Rectangle BuildAnimationDisplayerFollowEmissionArea()
+        {
+            return new Rectangle(
+                0,
+                0,
+                AnimationDisplayerFollowEmissionBoxSize,
+                AnimationDisplayerFollowEmissionBoxSize);
+        }
+
+        internal static Point BuildAnimationDisplayerFollowSpawnOffsetMin(bool relativeEmission)
+        {
+            return relativeEmission
+                ? Point.Zero
+                : new Point(0, AnimationDisplayerFollowAbsoluteTravelOffsetY);
+        }
+
+        internal static Point BuildAnimationDisplayerFollowSpawnOffsetMax(bool relativeEmission)
+        {
+            return BuildAnimationDisplayerFollowSpawnOffsetMin(relativeEmission);
         }
 
         private IReadOnlyList<List<IDXObject>> LoadAnimationDisplayerFollowFrameVariants()

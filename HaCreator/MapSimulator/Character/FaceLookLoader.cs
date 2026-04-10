@@ -104,6 +104,13 @@ namespace HaCreator.MapSimulator.Character
         private static CharacterAnimation ResolveAccessoryExpression(CharacterPart faceAccessoryPart, string expression)
         {
             string normalizedExpression = NormalizeAccessoryExpressionName(expression);
+            if (!string.Equals(normalizedExpression, expression, StringComparison.OrdinalIgnoreCase))
+            {
+                return TryResolveAccessoryAnimation(faceAccessoryPart, normalizedExpression, out CharacterAnimation remappedAnimation)
+                    ? remappedAnimation
+                    : null;
+            }
+
             if (TryResolveAccessoryAnimation(faceAccessoryPart, expression, out CharacterAnimation animation))
             {
                 return animation;

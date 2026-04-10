@@ -547,7 +547,7 @@ namespace HaCreator.MapSimulator
                 TrySendOutbox,
                 TryQueueBridge,
                 TryQueueOutbox,
-                allowDeferredBridge: _localUtilityOfficialSessionBridge?.IsRunning == true);
+                allowDeferredBridge: _localUtilityOfficialSessionBridgeEnabled);
         }
 
         internal static string DescribePacketOwnedFootholdOfficialResponseDispatch(
@@ -848,8 +848,7 @@ namespace HaCreator.MapSimulator
                 _packetFieldUtilityMinimapHiddenByAdminResult = false;
                 _packetFieldUtilityFootholdRequestSummary = "No packet-owned foothold-info request has been handled.";
                 _packetFieldUtilityFootholdOfficialResponseSummary = "No packet-owned foothold-info response payload has been prepared.";
-                ApplyPacketOwnedQuickslotBindings(null, useDefault: true);
-                uiWindowManager?.QuickSlotWindow?.SetPrimaryBarKeyLabels(null);
+                ApplyPacketOwnedQuickslotKeyMap(null, useDefault: true);
                 _fieldEffects?.StopWeather();
                 return ChatCommandHandler.CommandResult.Ok(_packetFieldUtilityRuntime.DescribeStatus());
             }

@@ -4113,6 +4113,25 @@ namespace HaCreator.MapSimulator.UI
                 : null;
         }
 
+        internal static string ResolveConsumableCompatibilityBlockReasonForTests(int consumableItemId, int equipItemId, EquipSlot slot)
+        {
+            if (!TryGetConsumableDefinition(consumableItemId, out EnhancementConsumableDefinition definition))
+            {
+                return null;
+            }
+
+            EnhancementConsumable consumable = new(definition);
+            CharacterPart selectedPart = new CharacterPart
+            {
+                ItemId = equipItemId,
+                Slot = slot
+            };
+
+            return TryGetConsumableCompatibilityBlockReason(consumable, selectedPart, out string reason)
+                ? null
+                : reason;
+        }
+
         private readonly struct VegaModifierProfile
         {
             public VegaModifierProfile(float requiredBaseSuccessRate, float modifiedSuccessRate)

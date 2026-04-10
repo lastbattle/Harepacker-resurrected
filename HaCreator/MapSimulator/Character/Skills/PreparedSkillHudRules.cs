@@ -243,18 +243,25 @@ namespace HaCreator.MapSimulator.Character.Skills
             int normalizedMaxHoldDurationMs = Math.Max(0, maxHoldDurationMs);
             bool normalizedIsKeydownSkill = ResolveKeyDownSkillState(skillId, isKeydownSkill);
             bool usesReleaseTriggeredExecution = UsesReleaseTriggeredExecution(skillId);
+            bool hasHoldWindow = normalizedMaxHoldDurationMs > 0;
+            bool hasDistinctHoldWindow = hasHoldWindow
+                && normalizedMaxHoldDurationMs != normalizedDurationMs;
+            bool supportsAutoHold = explicitAutoEnterHold
+                || usesReleaseTriggeredExecution
+                || hasDistinctHoldWindow;
 
             autoEnterHold = !isHolding
                 && normalizedIsKeydownSkill
-                && normalizedDurationMs > 0
-                && (explicitAutoEnterHold
-                    || usesReleaseTriggeredExecution
-                    || (normalizedMaxHoldDurationMs > 0 && normalizedMaxHoldDurationMs != normalizedDurationMs));
+                && supportsAutoHold
+                && (normalizedDurationMs > 0
+                    || (hasHoldWindow && (explicitAutoEnterHold || usesReleaseTriggeredExecution)));
 
             if (autoEnterHold)
             {
                 prepareDurationMs = normalizedDurationMs;
-                activeDurationMs = normalizedMaxHoldDurationMs;
+                activeDurationMs = hasHoldWindow
+                    ? normalizedMaxHoldDurationMs
+                    : normalizedDurationMs;
                 return;
             }
 

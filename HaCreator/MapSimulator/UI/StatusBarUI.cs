@@ -122,6 +122,8 @@ namespace HaCreator.MapSimulator.UI {
         private Func<int, StatusBarPreparedSkillRenderData> _getPreparedSkillOverlayStatus;
         private Texture2D _pixelTexture;
         private ClientTextRasterizer _clientTextRasterizer;
+        private ClientTextRasterizer _jobTextRasterizer;
+        private ClientTextRasterizer _nameTextRasterizer;
 
         // Gauge textures loaded from UI.wz/StatusBar2.img/mainBar/gauge/hp/0, mp/0, exp/0
         private Texture2D _hpGaugeTexture;
@@ -180,8 +182,10 @@ namespace HaCreator.MapSimulator.UI {
         private static readonly Vector2 LEVEL_TEXT_POS = new Vector2(44, 8);
         private static readonly Vector2 JOB_TEXT_POS = new Vector2(74, 5);
         private static readonly Vector2 NAME_TEXT_POS = new Vector2(74, 17);
-        private const float JOB_TEXT_SCALE = 0.75f;
-        private const float NAME_TEXT_SCALE = 0.8f;
+        private const float JOB_TEXT_SCALE = 1.0f;
+        private const float NAME_TEXT_SCALE = 1.0f;
+        private const float JOB_TEXT_FONT_PIXEL_SIZE = 9f;
+        private const float NAME_TEXT_FONT_PIXEL_SIZE = 10f;
         private const float JOB_TEXT_MAX_WIDTH = 92f;
         private const float DEFAULT_NAME_TEXT_MAX_WIDTH = 140f;
         private static readonly Color JOB_TEXT_COLOR = new Color(132, 182, 104);
@@ -395,6 +399,22 @@ namespace HaCreator.MapSimulator.UI {
             {
                 _clientTextRasterizer = new ClientTextRasterizer(
                     graphicsDevice,
+                    preferEmbeddedPrivateFontSources: true);
+            }
+
+            if (_jobTextRasterizer == null && graphicsDevice != null)
+            {
+                _jobTextRasterizer = new ClientTextRasterizer(
+                    graphicsDevice,
+                    basePointSize: JOB_TEXT_FONT_PIXEL_SIZE,
+                    preferEmbeddedPrivateFontSources: true);
+            }
+
+            if (_nameTextRasterizer == null && graphicsDevice != null)
+            {
+                _nameTextRasterizer = new ClientTextRasterizer(
+                    graphicsDevice,
+                    basePointSize: NAME_TEXT_FONT_PIXEL_SIZE,
                     preferEmbeddedPrivateFontSources: true);
             }
         }
@@ -698,18 +718,11 @@ namespace HaCreator.MapSimulator.UI {
 
             // Job name
             Vector2 jobPos = SnapToPixel(basePosLeft + JOB_TEXT_POS);
-            DrawPlainText(sprite, StatusBarLayoutRules.FormatJobLabel(stats.Job), jobPos, JOB_TEXT_COLOR, JOB_TEXT_SCALE, _jobTextMaxWidth);
+            DrawJobText(sprite, StatusBarLayoutRules.FormatJobLabel(stats.Job), jobPos, _jobTextMaxWidth);
 
             // Character name - drawn with shadow effect (from IDA: multiple positions for shadow)
             Vector2 namePos = SnapToPixel(basePosLeft + NAME_TEXT_POS);
-            DrawDiagonalShadowText(
-                sprite,
-                StatusBarLayoutRules.FormatNameLabel(stats.Name),
-                namePos,
-                NAME_TEXT_COLOR,
-                NAME_TEXT_SHADOW_COLOR,
-                NAME_TEXT_SCALE,
-                _nameTextMaxWidth);
+            DrawNameText(sprite, StatusBarLayoutRules.FormatNameLabel(stats.Name), namePos, _nameTextMaxWidth);
 
             // Draw gauge text section (HP/MP/EXP area) - use basePosGauge
             // HP text - format from client: [HP/MaxHP]
@@ -1216,9 +1229,7 @@ namespace HaCreator.MapSimulator.UI {
                 renderWidth,
                 renderHeight,
                 SanitizeTooltipText(cooldownEntry.SkillName),
-                SanitizeTooltipText(string.IsNullOrWhiteSpace(cooldownEntry.TooltipStateText)
-                    ? $"Cooldown: {SkillCooldownTooltipText.FormatCooldownState(cooldownEntry.RemainingMs)}"
-                    : cooldownEntry.TooltipStateText),
+                BuildCooldownTooltipStatusLineMarkup(cooldownEntry),
                 string.Empty,
                 SanitizeTooltipText(cooldownEntry.Description),
                 cooldownEntry.IconTexture);
@@ -1403,8 +1414,8 @@ namespace HaCreator.MapSimulator.UI {
             float titleWidth = tooltipWidth - (TOOLTIP_PADDING * 2);
             float sectionWidth = tooltipWidth - textLeftOffset - TOOLTIP_PADDING;
             string[] wrappedTitle = WrapTooltipText(title, titleWidth);
-            string[] wrappedStatus = WrapTooltipText(statusLine, sectionWidth);
-            string[] wrappedSecondary = WrapTooltipText(secondaryLine, sectionWidth);
+            StatusBarTooltipLine[] wrappedStatus = WrapTooltipText(statusLine, sectionWidth, Color.White);
+            StatusBarTooltipLine[] wrappedSecondary = WrapTooltipText(secondaryLine, sectionWidth, new Color(181, 224, 255));
             string[] wrappedDescription = WrapTooltipText(description, sectionWidth);
 
             float titleHeight = MeasureLinesHeight(wrappedTitle);
@@ -1448,14 +1459,14 @@ namespace HaCreator.MapSimulator.UI {
             float sectionY = contentY;
             if (statusHeight > 0f)
             {
-                DrawTooltipLines(sprite, wrappedStatus, textX, sectionY, Color.White);
+                DrawTooltipLines(sprite, wrappedStatus, textX, sectionY);
                 sectionY += statusHeight;
             }
 
             if (secondaryHeight > 0f)
             {
                 sectionY += statusHeight > 0f ? 2f : 0f;
-                DrawTooltipLines(sprite, wrappedSecondary, textX, sectionY, new Color(181, 224, 255));
+                DrawTooltipLines(sprite, wrappedSecondary, textX, sectionY);
                 sectionY += secondaryHeight;
             }
 
@@ -1553,6 +1564,32 @@ namespace HaCreator.MapSimulator.UI {
             }
         }
 
+        private void DrawTooltipLines(SpriteBatch sprite, StatusBarTooltipLine[] lines, int x, float y)
+        {
+            for (int i = 0; i < lines.Length; i++)
+            {
+                float drawX = x;
+                StatusBarTooltipLine line = lines[i];
+                if (line?.Runs == null)
+                {
+                    continue;
+                }
+
+                for (int runIndex = 0; runIndex < line.Runs.Count; runIndex++)
+                {
+                    StatusBarTooltipTextRun run = line.Runs[runIndex];
+                    if (string.IsNullOrEmpty(run.Text))
+                    {
+                        continue;
+                    }
+
+                    Vector2 position = new Vector2(drawX, y + (i * ResolveStatusBarLineSpacing()));
+                    DrawTooltipText(sprite, run.Text, position, run.Color);
+                    drawX += MeasureStatusBarText(run.Text, 1.0f).X;
+                }
+            }
+        }
+
         private void DrawTooltipText(SpriteBatch sprite, string text, Vector2 position, Color color)
         {
             if (string.IsNullOrWhiteSpace(text))
@@ -1590,6 +1627,25 @@ namespace HaCreator.MapSimulator.UI {
             for (int i = 0; i < lines.Length; i++)
             {
                 if (!string.IsNullOrWhiteSpace(lines[i]))
+                {
+                    nonEmptyLines++;
+                }
+            }
+
+            return nonEmptyLines > 0 ? nonEmptyLines * ResolveStatusBarLineSpacing() : 0f;
+        }
+
+        private float MeasureLinesHeight(StatusBarTooltipLine[] lines)
+        {
+            if (lines == null || lines.Length == 0)
+            {
+                return 0f;
+            }
+
+            int nonEmptyLines = 0;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (lines[i] != null && !lines[i].IsEmpty)
                 {
                     nonEmptyLines++;
                 }
@@ -1640,6 +1696,169 @@ namespace HaCreator.MapSimulator.UI {
             return lines.ToArray();
         }
 
+        private StatusBarTooltipLine[] WrapTooltipText(string text, float maxWidth, Color baseColor)
+        {
+            if (!HasStatusBarTextRenderer() || string.IsNullOrWhiteSpace(text))
+            {
+                return Array.Empty<StatusBarTooltipLine>();
+            }
+
+            List<StatusBarTooltipToken> tokens = TokenizeTooltipText(text, baseColor);
+            List<StatusBarTooltipLine> lines = new();
+            StatusBarTooltipLine currentLine = new();
+            float currentWidth = 0f;
+
+            foreach (StatusBarTooltipToken token in tokens)
+            {
+                if (token.IsNewLine)
+                {
+                    lines.Add(currentLine);
+                    currentLine = new StatusBarTooltipLine();
+                    currentWidth = 0f;
+                    continue;
+                }
+
+                if (token.IsWhitespace)
+                {
+                    if (currentLine.Runs.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    float whitespaceWidth = MeasureStatusBarText(token.Text, 1.0f).X;
+                    if (currentWidth + whitespaceWidth > maxWidth)
+                    {
+                        lines.Add(currentLine);
+                        currentLine = new StatusBarTooltipLine();
+                        currentWidth = 0f;
+                        continue;
+                    }
+
+                    currentLine.Append(token.Text, token.Color);
+                    currentWidth += whitespaceWidth;
+                    continue;
+                }
+
+                float tokenWidth = MeasureStatusBarText(token.Text, 1.0f).X;
+                if (currentLine.Runs.Count > 0 && currentWidth + tokenWidth > maxWidth)
+                {
+                    lines.Add(currentLine);
+                    currentLine = new StatusBarTooltipLine();
+                    currentWidth = 0f;
+                }
+
+                currentLine.Append(token.Text, token.Color);
+                currentWidth += tokenWidth;
+            }
+
+            if (!currentLine.IsEmpty || lines.Count == 0)
+            {
+                lines.Add(currentLine);
+            }
+
+            return lines.ToArray();
+        }
+
+        private List<StatusBarTooltipToken> TokenizeTooltipText(string text, Color baseColor)
+        {
+            List<StatusBarTooltipToken> tokens = new();
+            foreach ((string segmentText, Color segmentColor) in ParseTooltipSegments(text, baseColor))
+            {
+                int index = 0;
+                while (index < segmentText.Length)
+                {
+                    char ch = segmentText[index];
+                    if (ch == '\n')
+                    {
+                        tokens.Add(StatusBarTooltipToken.NewLine());
+                        index++;
+                        continue;
+                    }
+
+                    int start = index;
+                    bool whitespace = char.IsWhiteSpace(ch);
+                    while (index < segmentText.Length
+                        && segmentText[index] != '\n'
+                        && char.IsWhiteSpace(segmentText[index]) == whitespace)
+                    {
+                        index++;
+                    }
+
+                    string tokenText = segmentText[start..index];
+                    if (whitespace)
+                    {
+                        tokenText = tokenText.Replace('\t', ' ');
+                    }
+
+                    if (tokenText.Length > 0)
+                    {
+                        tokens.Add(new StatusBarTooltipToken(tokenText, segmentColor, isWhitespace: whitespace, isNewLine: false));
+                    }
+                }
+            }
+
+            return tokens;
+        }
+
+        private IEnumerable<(string Text, Color Color)> ParseTooltipSegments(string text, Color baseColor)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                yield break;
+            }
+
+            StringBuilder builder = new();
+            int index = 0;
+            while (index < text.Length)
+            {
+                if (text[index] == '#' && index + 1 < text.Length)
+                {
+                    if (text[index + 1] == '#')
+                    {
+                        builder.Append('#');
+                        index += 2;
+                        continue;
+                    }
+
+                    int closingIndex = text.IndexOf('#', index + 2);
+                    if (closingIndex > index + 2)
+                    {
+                        if (builder.Length > 0)
+                        {
+                            yield return (builder.ToString(), baseColor);
+                            builder.Clear();
+                        }
+
+                        char marker = char.ToLowerInvariant(text[index + 1]);
+                        string segment = text.Substring(index + 2, closingIndex - index - 2);
+                        yield return (segment, ResolveTooltipMarkerColor(marker, baseColor));
+                        index = closingIndex + 1;
+                        continue;
+                    }
+                }
+
+                builder.Append(text[index]);
+                index++;
+            }
+
+            if (builder.Length > 0)
+            {
+                yield return (builder.ToString(), baseColor);
+            }
+        }
+
+        private static Color ResolveTooltipMarkerColor(char marker, Color baseColor)
+        {
+            return marker switch
+            {
+                'c' => new Color(255, 214, 140),
+                'b' => new Color(130, 190, 255),
+                'g' => new Color(160, 255, 160),
+                'r' => new Color(255, 150, 150),
+                _ => baseColor
+            };
+        }
+
         private static string SanitizeTooltipText(string text)
         {
             if (string.IsNullOrEmpty(text))
@@ -1653,14 +1872,26 @@ namespace HaCreator.MapSimulator.UI {
                 .Replace("\t", " ");
         }
 
-        private string ClipTextToWidth(string text, float maxWidth, float scale)
+        private static string BuildCooldownTooltipStatusLineMarkup(StatusBarCooldownRenderData cooldownEntry)
+        {
+            if (cooldownEntry == null)
+            {
+                return string.Empty;
+            }
+
+            return SkillCooldownTooltipText.FormatTooltipStateLineMarkup(
+                cooldownEntry.RemainingMs,
+                cooldownEntry.TooltipStateText);
+        }
+
+        private string ClipTextToWidth(string text, float maxWidth, float scale, ClientTextRasterizer rasterizer = null)
         {
             if (!HasStatusBarTextRenderer() || string.IsNullOrWhiteSpace(text))
             {
                 return text ?? string.Empty;
             }
 
-            if (MeasureStatusBarText(text, scale).X <= maxWidth)
+            if (MeasureStatusBarText(text, scale, rasterizer).X <= maxWidth)
             {
                 return text;
             }
@@ -1668,7 +1899,7 @@ namespace HaCreator.MapSimulator.UI {
             for (int length = text.Length - 1; length > 0; length--)
             {
                 string candidate = text.Substring(0, length).TrimEnd();
-                if (MeasureStatusBarText(candidate, scale).X <= maxWidth)
+                if (MeasureStatusBarText(candidate, scale, rasterizer).X <= maxWidth)
                 {
                     return candidate;
                 }
@@ -1682,14 +1913,14 @@ namespace HaCreator.MapSimulator.UI {
             return sprite?.GraphicsDevice != null;
         }
 
-        private string ResolveTextForWidth(SpriteBatch sprite, string text, float scale, float? maxWidth)
+        private string ResolveTextForWidth(SpriteBatch sprite, string text, float scale, float? maxWidth, ClientTextRasterizer rasterizer = null)
         {
             if (!maxWidth.HasValue || CanUsePixelClippedClientText(sprite))
             {
                 return text;
             }
 
-            return ClipTextToWidth(text, maxWidth.Value, scale);
+            return ClipTextToWidth(text, maxWidth.Value, scale, rasterizer);
         }
 
         private Vector2 GetRightAlignedStatusTextPosition(Vector2 basePos, Vector2 anchorOffset, string text, float bitmapScale, float spriteFontScale)
@@ -1892,6 +2123,44 @@ namespace HaCreator.MapSimulator.UI {
             DrawStatusBarText(sprite, textToDraw, snappedPosition, textColor, scale, maxWidth);
         }
 
+        private void DrawJobText(SpriteBatch sprite, string text, Vector2 position, float? maxWidth = null)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            Vector2 snappedPosition = SnapToPixel(position);
+            string textToDraw = ResolveTextForWidth(sprite, text, JOB_TEXT_SCALE, maxWidth, _jobTextRasterizer);
+            if (string.IsNullOrEmpty(textToDraw))
+            {
+                return;
+            }
+
+            DrawStatusBarText(sprite, textToDraw, snappedPosition, JOB_TEXT_COLOR, JOB_TEXT_SCALE, maxWidth, _jobTextRasterizer);
+        }
+
+        private void DrawNameText(SpriteBatch sprite, string text, Vector2 position, float? maxWidth = null)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            Vector2 snappedPosition = SnapToPixel(position);
+            string textToDraw = ResolveTextForWidth(sprite, text, NAME_TEXT_SCALE, maxWidth, _nameTextRasterizer);
+            if (string.IsNullOrEmpty(textToDraw))
+            {
+                return;
+            }
+
+            DrawDiagonalShadowPass(sprite, textToDraw, snappedPosition, new Vector2(-1, -1), NAME_TEXT_SHADOW_COLOR, NAME_TEXT_SCALE, maxWidth, _nameTextRasterizer);
+            DrawDiagonalShadowPass(sprite, textToDraw, snappedPosition, new Vector2(1, -1), NAME_TEXT_SHADOW_COLOR, NAME_TEXT_SCALE, maxWidth, _nameTextRasterizer);
+            DrawDiagonalShadowPass(sprite, textToDraw, snappedPosition, new Vector2(-1, 1), NAME_TEXT_SHADOW_COLOR, NAME_TEXT_SCALE, maxWidth, _nameTextRasterizer);
+            DrawDiagonalShadowPass(sprite, textToDraw, snappedPosition, new Vector2(1, 1), NAME_TEXT_SHADOW_COLOR, NAME_TEXT_SCALE, maxWidth, _nameTextRasterizer);
+            DrawStatusBarText(sprite, textToDraw, snappedPosition, NAME_TEXT_COLOR, NAME_TEXT_SCALE, maxWidth, _nameTextRasterizer);
+        }
+
         private void DrawDiagonalShadowText(SpriteBatch sprite, string text, Vector2 position, Color textColor, Color shadowColor, float scale = 1.0f, float? maxWidth = null)
         {
             if (!HasStatusBarTextRenderer() || string.IsNullOrEmpty(text))
@@ -1920,7 +2189,8 @@ namespace HaCreator.MapSimulator.UI {
             Vector2 shadowOffset,
             Color shadowColor,
             float scale,
-            float? maxWidth)
+            float? maxWidth,
+            ClientTextRasterizer rasterizer = null)
         {
             Vector2 shadowPosition = basePosition + shadowOffset;
             float? clipWidth = maxWidth;
@@ -1929,14 +2199,19 @@ namespace HaCreator.MapSimulator.UI {
                 clipWidth = Math.Max(0f, maxWidth.Value + (basePosition.X - shadowPosition.X));
             }
 
-            DrawStatusBarText(sprite, text, shadowPosition, shadowColor, scale, clipWidth);
+            DrawStatusBarText(sprite, text, shadowPosition, shadowColor, scale, clipWidth, rasterizer);
         }
 
-        private Vector2 MeasureStatusBarText(string text, float scale)
+        private Vector2 MeasureStatusBarText(string text, float scale, ClientTextRasterizer rasterizer = null)
         {
             if (string.IsNullOrEmpty(text))
             {
                 return Vector2.Zero;
+            }
+
+            if (rasterizer != null)
+            {
+                return rasterizer.MeasureString(text, scale);
             }
 
             if (_clientTextRasterizer != null)
@@ -1963,10 +2238,17 @@ namespace HaCreator.MapSimulator.UI {
             Vector2 position,
             Color color,
             float scale,
-            float? maxWidth = null)
+            float? maxWidth = null,
+            ClientTextRasterizer rasterizer = null)
         {
             if (sprite == null || string.IsNullOrEmpty(text))
             {
+                return;
+            }
+
+            if (rasterizer != null)
+            {
+                rasterizer.DrawString(sprite, text, position, color, scale, maxWidth);
                 return;
             }
 
@@ -2175,5 +2457,61 @@ namespace HaCreator.MapSimulator.UI {
             }
         }
         #endregion
+    }
+
+    internal sealed class StatusBarTooltipLine
+    {
+        public List<StatusBarTooltipTextRun> Runs { get; } = new();
+        public bool IsEmpty => Runs.Count == 0 || Runs.All(run => string.IsNullOrEmpty(run.Text));
+
+        public void Append(string text, Color color)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            if (Runs.Count > 0 && Runs[^1].Color == color)
+            {
+                StatusBarTooltipTextRun previous = Runs[^1];
+                Runs[^1] = new StatusBarTooltipTextRun(previous.Text + text, color);
+                return;
+            }
+
+            Runs.Add(new StatusBarTooltipTextRun(text, color));
+        }
+    }
+
+    internal readonly struct StatusBarTooltipTextRun
+    {
+        public StatusBarTooltipTextRun(string text, Color color)
+        {
+            Text = text;
+            Color = color;
+        }
+
+        public string Text { get; }
+        public Color Color { get; }
+    }
+
+    internal readonly struct StatusBarTooltipToken
+    {
+        public StatusBarTooltipToken(string text, Color color, bool isWhitespace, bool isNewLine)
+        {
+            Text = text;
+            Color = color;
+            IsWhitespace = isWhitespace;
+            IsNewLine = isNewLine;
+        }
+
+        public string Text { get; }
+        public Color Color { get; }
+        public bool IsWhitespace { get; }
+        public bool IsNewLine { get; }
+
+        public static StatusBarTooltipToken NewLine()
+        {
+            return new StatusBarTooltipToken(string.Empty, Color.White, isWhitespace: false, isNewLine: true);
+        }
     }
 }

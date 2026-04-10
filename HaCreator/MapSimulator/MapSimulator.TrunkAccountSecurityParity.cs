@@ -64,7 +64,8 @@ namespace HaCreator.MapSimulator
                 inputMasked: true,
                 inputMaxLength: inputMaxLength,
                 softKeyboardType: keyboardType,
-                inputBoundsOverride: CreateLoginUtilityInputBoundsOverride());
+                inputBoundsOverride: CreateLoginUtilityInputBoundsOverride(),
+                trackDirectionModeOwner: true);
             return true;
         }
 
@@ -97,7 +98,8 @@ namespace HaCreator.MapSimulator
                         "PIC verification failed.",
                         LoginUtilityDialogButtonLayout.Ok,
                         LoginUtilityDialogAction.RetryTrunkPic,
-                        noticeTextIndex: 15);
+                        noticeTextIndex: 15,
+                        trackDirectionModeOwner: true);
                     _loginTitleStatusMessage = "Trunk access rejected the simulator account PIC.";
                     trunkWindow.RefreshSecurityStatus();
                     return true;
@@ -121,7 +123,8 @@ namespace HaCreator.MapSimulator
                         "Secondary password verification failed.",
                         LoginUtilityDialogButtonLayout.Ok,
                         LoginUtilityDialogAction.RetryTrunkSpw,
-                        noticeTextIndex: 93);
+                        noticeTextIndex: 93,
+                        trackDirectionModeOwner: true);
                     _loginTitleStatusMessage = "Trunk access rejected the simulator account secondary password.";
                     trunkWindow.RefreshSecurityStatus();
                     return true;

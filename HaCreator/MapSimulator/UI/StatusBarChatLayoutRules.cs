@@ -224,6 +224,54 @@ namespace HaCreator.MapSimulator.UI
             return safeFirstVisibleIndex + safeVisibleRowCount < safeCandidateCount;
         }
 
+        public static int ResolveWhisperPickerButtonSlotWidth(int minimumWidth, params int[] widths)
+        {
+            int resolvedWidth = Math.Max(1, minimumWidth);
+            if (widths == null)
+            {
+                return resolvedWidth;
+            }
+
+            for (int i = 0; i < widths.Length; i++)
+            {
+                resolvedWidth = Math.Max(resolvedWidth, widths[i]);
+            }
+
+            return resolvedWidth;
+        }
+
+        public static int ResolveWhisperPickerButtonSlotHeight(int minimumHeight, params int[] heights)
+        {
+            int resolvedHeight = Math.Max(1, minimumHeight);
+            if (heights == null)
+            {
+                return resolvedHeight;
+            }
+
+            for (int i = 0; i < heights.Length; i++)
+            {
+                resolvedHeight = Math.Max(resolvedHeight, heights[i]);
+            }
+
+            return resolvedHeight;
+        }
+
+        public static Rectangle ResolveCenteredWhisperPickerButtonBounds(
+            Rectangle slotBounds,
+            int textureWidth,
+            int textureHeight)
+        {
+            int resolvedWidth = Math.Max(1, textureWidth);
+            int resolvedHeight = Math.Max(1, textureHeight);
+            int offsetX = Math.Max(0, (slotBounds.Width - resolvedWidth) / 2);
+            int offsetY = Math.Max(0, (slotBounds.Height - resolvedHeight) / 2);
+            return new Rectangle(
+                slotBounds.X + offsetX,
+                slotBounds.Y + offsetY,
+                resolvedWidth,
+                resolvedHeight);
+        }
+
         private static int ResolveLongestFittingPrefixLength(
             string text,
             float maxWidth,

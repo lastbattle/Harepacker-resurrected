@@ -123,6 +123,9 @@ namespace HaCreator.MapSimulator.Fields
         private const int MemoryGameBookLeavePromptStringPoolId = 0x1E0;
         private const int MemoryGameCancelLeavePromptStringPoolId = 0x1E1;
         private const int MemoryGameCloseRoomPromptStringPoolId = 0x1E4;
+        private const int MemoryGameWinStringPoolId = 0x1D4;
+        private const int MemoryGameDrawStringPoolId = 0x1D5;
+        private const int MemoryGameLoseStringPoolId = 0x1D6;
         private const int ClientPromptBoxWidth = 250;
         private const int ClientPromptBoxHeight = 98;
         private const int ClientPromptButtonWidth = 64;
@@ -1837,7 +1840,7 @@ namespace HaCreator.MapSimulator.Fields
 
             _currentTurnIndex = Math.Clamp(currentTurnIndex, 0, _playerNames.Length - 1);
             _turnDeadlineTick = tickCount + 10000;
-            _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
+            _statusMessage = ResolveMiniRoomGameMessage(1, ResolveParticipantName(_currentTurnIndex));
             _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Time-over packet returned the board to the next turn.");
             SyncMiniRoomRuntime();
             message = _statusMessage;
@@ -1859,8 +1862,8 @@ namespace HaCreator.MapSimulator.Fields
                 _lastWinnerIndex = -1;
                 _draws[0]++;
                 _draws[1]++;
-                _statusMessage = "Round complete. Draw.";
-                _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Game-result packet ended the round in a draw.");
+                _statusMessage = ResolveMemoryGameResultText(isDraw: true);
+                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
                 SyncMiniRoomRuntime();
                 message = _statusMessage;
                 return true;
@@ -1879,8 +1882,8 @@ namespace HaCreator.MapSimulator.Fields
             _lastWinnerIndex = winnerIndex;
             _wins[winnerIndex]++;
             _losses[loserIndex]++;
-            _statusMessage = $"Round complete. {_playerNames[winnerIndex]} wins.";
-            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : Game-result packet declared {_playerNames[winnerIndex]} the winner.");
+            _statusMessage = ResolveMemoryGameResultText(winnerIndex);
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
             SyncMiniRoomRuntime();
             message = _statusMessage;
             return true;
@@ -2716,6 +2719,29 @@ namespace HaCreator.MapSimulator.Fields
                 MemoryGameCloseRoomPromptStringPoolId => "Are you sure you want to leave?",
                 _ => $"Match Cards prompt 0x{stringPoolId:X}."
             };
+
+            return MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackText, appendFallbackSuffix: true);
+        }
+
+        private string ResolveMemoryGameResultText(int winnerIndex = -1, bool isDraw = false)
+        {
+            int stringPoolId;
+            string fallbackText;
+            if (isDraw)
+            {
+                stringPoolId = MemoryGameDrawStringPoolId;
+                fallbackText = "It's a tie.";
+            }
+            else if (winnerIndex == _localPlayerIndex)
+            {
+                stringPoolId = MemoryGameWinStringPoolId;
+                fallbackText = "You win.";
+            }
+            else
+            {
+                stringPoolId = MemoryGameLoseStringPoolId;
+                fallbackText = "You lost.";
+            }
 
             return MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackText, appendFallbackSuffix: true);
         }

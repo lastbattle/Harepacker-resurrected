@@ -1,9 +1,11 @@
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace HaCreator.MapSimulator
@@ -60,6 +62,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            ApplyQuestRewardRaiseQuestRecordContext(activeRaise);
             activeRaise.OpenDispatchSummary = BuildQuestRewardRaiseOpenSummary(activeRaise);
 
             if (windowMode != QuestRewardRaiseWindowMode.PiecePlacement && hasSelectionGroups)
@@ -194,6 +197,7 @@ namespace HaCreator.MapSimulator
                 SlotIndex = request.SourceSlotIndex,
                 ItemId = request.SlotData.ItemId,
                 Quantity = 1,
+                LifecycleState = QuestRewardRaisePieceLifecycleState.PendingAddAck,
                 Label = string.IsNullOrWhiteSpace(request.SlotData.ItemName)
                     ? ResolveQuestRewardRaiseItemName(request.SlotData.ItemId)
                     : request.SlotData.ItemName.Trim()
@@ -222,25 +226,20 @@ namespace HaCreator.MapSimulator
             }
 
             QuestRewardRaisePlacedPiece placedPiece = activeRaise.PlacedPieces.FirstOrDefault(piece => piece.RequestId == requestId);
-            if (placedPiece == null)
+            if (placedPiece == null || placedPiece.LifecycleState == QuestRewardRaisePieceLifecycleState.PendingReleaseAck)
             {
                 return;
             }
 
-            if (uiWindowManager?.InventoryWindow is InventoryUI inventoryWindow)
-            {
-                inventoryWindow.TryClearPendingRequestState(requestId);
-            }
-
+            placedPiece.LifecycleState = QuestRewardRaisePieceLifecycleState.PendingReleaseAck;
             DispatchQuestRewardRaisePieceRequest(
                 activeRaise,
                 placedPiece,
                 QuestRewardRaiseOutboundRequest.CreatePutItemRelease(activeRaise, placedPiece),
                 out string dispatchSummary);
-            activeRaise.PlacedPieces.RemoveAll(piece => piece.RequestId == requestId);
             activeRaise.OpenDispatchSummary = dispatchSummary;
             _chat?.AddSystemMessage(
-                $"Released raise PutItem request #{requestId} for {ResolveQuestRewardRaiseItemName(placedPiece.ItemId)}. {dispatchSummary}",
+                $"Queued raise PutItem release request #{requestId} for {ResolveQuestRewardRaiseItemName(placedPiece.ItemId)}. {dispatchSummary}",
                 currTickCount);
             RefreshQuestRewardRaiseWindow();
         }
@@ -341,6 +340,11 @@ namespace HaCreator.MapSimulator
 
             string confirmDispatchSummary = DispatchQuestRewardRaiseConfirmRequest(activeRaise);
             activeRaise.OpenDispatchSummary = confirmDispatchSummary;
+            activeRaise.AwaitingConfirmAck = true;
+            foreach (QuestRewardRaisePlacedPiece piece in activeRaise.PlacedPieces)
+            {
+                piece.LifecycleState = QuestRewardRaisePieceLifecycleState.PendingConfirmAck;
+            }
 
             if (activeRaise.WindowMode == QuestRewardRaiseWindowMode.PiecePlacement)
             {
@@ -470,11 +474,20 @@ namespace HaCreator.MapSimulator
             List<string> summaries = new(activeRaise.PlacedPieces.Count);
             foreach (QuestRewardRaisePlacedPiece piece in activeRaise.PlacedPieces)
             {
+                if (piece.LifecycleState == QuestRewardRaisePieceLifecycleState.PendingReleaseAck)
+                {
+                    summaries.Add(string.IsNullOrWhiteSpace(piece.DispatchSummary)
+                        ? $"Raise PutItem release request #{piece.RequestId} is already awaiting packet-owned acknowledgement."
+                        : piece.DispatchSummary);
+                    continue;
+                }
+
                 DispatchQuestRewardRaisePieceRequest(
                     activeRaise,
                     piece,
                     QuestRewardRaiseOutboundRequest.CreatePutItemRelease(activeRaise, piece),
                     out string dispatchSummary);
+                piece.LifecycleState = QuestRewardRaisePieceLifecycleState.PendingReleaseAck;
                 summaries.Add(dispatchSummary);
             }
 
@@ -522,6 +535,217 @@ namespace HaCreator.MapSimulator
             }
 
             return $"{request.Summary} [{payloadHex}] remained simulator-owned because neither the live local-utility bridge nor the deferred official-session bridge queue nor the generic outbox transport or deferred outbox queue accepted it. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus} Deferred outbox: {queuedStatus}";
+        }
+
+        private bool TryApplyPacketOwnedQuestRewardRaisePayload(
+            QuestRewardRaiseInboundPacketKind kind,
+            byte[] payload,
+            out string message)
+        {
+            message = null;
+            if (!QuestRewardRaiseInboundPacketCodec.TryDecode(kind, payload, out QuestRewardRaiseInboundPacket packet, out string error))
+            {
+                message = error ?? "Raise inbound payload could not be decoded.";
+                return false;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+            message = ApplyPacketOwnedQuestRewardRaisePacket(packet);
+            RefreshQuestRewardRaiseWindow();
+            return true;
+        }
+
+        private string ApplyPacketOwnedQuestRewardRaisePacket(QuestRewardRaiseInboundPacket packet)
+        {
+            QuestRewardRaisePacketPayload decodedPayload = packet?.Payload;
+            if (decodedPayload == null)
+            {
+                return "Raise inbound packet did not include decoded owner state.";
+            }
+
+            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
+            if (packet.Kind == QuestRewardRaiseInboundPacketKind.OwnerSync && decodedPayload.QuestId > 0)
+            {
+                _questRewardRaiseManager.ObserveOwnerState(
+                    decodedPayload.QuestId,
+                    decodedPayload.OwnerItemId,
+                    decodedPayload.QrData,
+                    Math.Max(1, activeRaise?.MaxDropCount ?? 1),
+                    decodedPayload.WindowMode);
+            }
+
+            if (activeRaise == null
+                || Math.Max(0, activeRaise.Prompt?.QuestId ?? 0) != Math.Max(0, decodedPayload.QuestId))
+            {
+                return DescribePacketOwnedQuestRewardRaisePacket(packet, null);
+            }
+
+            SyncActiveQuestRewardRaiseFromInboundPayload(activeRaise, decodedPayload);
+            activeRaise.LastInboundSummary = DescribePacketOwnedQuestRewardRaisePacket(packet, activeRaise);
+
+            switch (packet.Kind)
+            {
+                case QuestRewardRaiseInboundPacketKind.OwnerSync:
+                    break;
+
+                case QuestRewardRaiseInboundPacketKind.PutItemAddResult:
+                    ApplyPacketOwnedQuestRewardRaiseAddResult(activeRaise, packet);
+                    break;
+
+                case QuestRewardRaiseInboundPacketKind.PutItemReleaseResult:
+                    ApplyPacketOwnedQuestRewardRaiseReleaseResult(activeRaise, packet);
+                    break;
+
+                case QuestRewardRaiseInboundPacketKind.PutItemConfirmResult:
+                    activeRaise.AwaitingConfirmAck = false;
+                    foreach (QuestRewardRaisePlacedPiece piece in activeRaise.PlacedPieces)
+                    {
+                        piece.LifecycleState = packet.Success
+                            ? QuestRewardRaisePieceLifecycleState.Confirmed
+                            : QuestRewardRaisePieceLifecycleState.Active;
+                    }
+                    break;
+
+                case QuestRewardRaiseInboundPacketKind.OwnerDestroyResult:
+                    activeRaise.AwaitingOwnerDestroyAck = false;
+                    break;
+            }
+
+            return activeRaise.LastInboundSummary;
+        }
+
+        private void ApplyPacketOwnedQuestRewardRaiseAddResult(QuestRewardRaiseState activeRaise, QuestRewardRaiseInboundPacket packet)
+        {
+            QuestRewardRaisePlacedPiece placedPiece = activeRaise?.PlacedPieces?
+                .FirstOrDefault(piece => piece.RequestId == packet.Payload.PieceRequestId);
+            if (placedPiece == null)
+            {
+                return;
+            }
+
+            ApplyPacketOwnedQuestRewardRaisePieceInboundState(placedPiece, packet);
+            if (packet.Success)
+            {
+                placedPiece.LifecycleState = QuestRewardRaisePieceLifecycleState.Active;
+                return;
+            }
+
+            if (uiWindowManager?.InventoryWindow is InventoryUI inventoryWindow)
+            {
+                inventoryWindow.TryClearPendingRequestState(placedPiece.RequestId);
+            }
+
+            activeRaise.PlacedPieces.Remove(placedPiece);
+        }
+
+        private void ApplyPacketOwnedQuestRewardRaiseReleaseResult(QuestRewardRaiseState activeRaise, QuestRewardRaiseInboundPacket packet)
+        {
+            QuestRewardRaisePlacedPiece placedPiece = activeRaise?.PlacedPieces?
+                .FirstOrDefault(piece => piece.RequestId == packet.Payload.PieceRequestId);
+            if (placedPiece == null)
+            {
+                return;
+            }
+
+            ApplyPacketOwnedQuestRewardRaisePieceInboundState(placedPiece, packet);
+            if (packet.Success)
+            {
+                if (uiWindowManager?.InventoryWindow is InventoryUI inventoryWindow)
+                {
+                    inventoryWindow.TryClearPendingRequestState(placedPiece.RequestId);
+                }
+
+                activeRaise.PlacedPieces.Remove(placedPiece);
+                return;
+            }
+
+            placedPiece.LifecycleState = QuestRewardRaisePieceLifecycleState.Active;
+        }
+
+        private static void ApplyPacketOwnedQuestRewardRaisePieceInboundState(
+            QuestRewardRaisePlacedPiece placedPiece,
+            QuestRewardRaiseInboundPacket packet)
+        {
+            if (placedPiece == null || packet == null)
+            {
+                return;
+            }
+
+            placedPiece.LastInboundPacketType = packet.Kind switch
+            {
+                QuestRewardRaiseInboundPacketKind.OwnerSync => LocalUtilityPacketInboxManager.QuestRewardRaiseOwnerSyncPacketType,
+                QuestRewardRaiseInboundPacketKind.PutItemAddResult => LocalUtilityPacketInboxManager.QuestRewardRaisePutItemAddResultPacketType,
+                QuestRewardRaiseInboundPacketKind.PutItemReleaseResult => LocalUtilityPacketInboxManager.QuestRewardRaisePutItemReleaseResultPacketType,
+                QuestRewardRaiseInboundPacketKind.PutItemConfirmResult => LocalUtilityPacketInboxManager.QuestRewardRaisePutItemConfirmResultPacketType,
+                QuestRewardRaiseInboundPacketKind.OwnerDestroyResult => LocalUtilityPacketInboxManager.QuestRewardRaiseOwnerDestroyResultPacketType,
+                _ => -1
+            };
+            placedPiece.LastInboundPayload = packet.RawPayload?.ToArray() ?? Array.Empty<byte>();
+            placedPiece.LastInboundSummary = DescribePacketOwnedQuestRewardRaisePacket(packet, null);
+        }
+
+        private void SyncActiveQuestRewardRaiseFromInboundPayload(QuestRewardRaiseState activeRaise, QuestRewardRaisePacketPayload decodedPayload)
+        {
+            if (activeRaise == null || decodedPayload == null)
+            {
+                return;
+            }
+
+            activeRaise.ManagerSessionId = Math.Max(0, decodedPayload.ManagerSessionId);
+            activeRaise.RequestId = Math.Max(0, decodedPayload.OwnerRequestId);
+            activeRaise.OwnerItemId = Math.Max(0, decodedPayload.OwnerItemId);
+            activeRaise.QrData = decodedPayload.QrData;
+            activeRaise.MaxDropCount = Math.Max(1, Math.Max(activeRaise.MaxDropCount, decodedPayload.PlacedPieceCount));
+            activeRaise.WindowMode = decodedPayload.WindowMode;
+            activeRaise.DisplayMode = decodedPayload.DisplayMode;
+        }
+
+        private static string DescribePacketOwnedQuestRewardRaisePacket(QuestRewardRaiseInboundPacket packet, QuestRewardRaiseState activeRaise)
+        {
+            QuestRewardRaisePacketPayload payload = packet?.Payload;
+            if (packet == null || payload == null)
+            {
+                return "Raise inbound packet is unavailable.";
+            }
+
+            string ownerSummary = $"owner #{Math.Max(0, payload.OwnerItemId)} quest #{Math.Max(0, payload.QuestId)} session #{Math.Max(0, payload.ManagerSessionId)} request #{Math.Max(0, payload.OwnerRequestId)}";
+            return packet.Kind switch
+            {
+                QuestRewardRaiseInboundPacketKind.OwnerSync => $"Packet-owned raise owner sync refreshed {ownerSummary} with QR {payload.QrData} in {payload.DisplayMode} mode.",
+                QuestRewardRaiseInboundPacketKind.PutItemAddResult => $"Packet-owned raise PutItem add {(packet.Success ? "accepted" : "rejected")} row #{Math.Max(0, payload.PieceRequestId)} for {ownerSummary}.",
+                QuestRewardRaiseInboundPacketKind.PutItemReleaseResult => $"Packet-owned raise PutItem release {(packet.Success ? "accepted" : "rejected")} row #{Math.Max(0, payload.PieceRequestId)} for {ownerSummary}.",
+                QuestRewardRaiseInboundPacketKind.PutItemConfirmResult => $"Packet-owned raise PutItem confirm {(packet.Success ? "accepted" : "rejected")} for {ownerSummary}.",
+                QuestRewardRaiseInboundPacketKind.OwnerDestroyResult => $"Packet-owned raise owner destroy acknowledged {ownerSummary}.",
+                _ => "Raise inbound packet was observed."
+            };
+        }
+
+        private void ApplyQuestRewardRaiseQuestRecordContext(QuestRewardRaiseState activeRaise)
+        {
+            int questId = Math.Max(0, activeRaise?.Prompt?.QuestId ?? 0);
+            if (activeRaise == null
+                || activeRaise.Prompt?.OwnerContext != null
+                || questId <= 0
+                || _questRuntime == null
+                || !_questRuntime.TryGetQuestRecordValue(questId, out string questRecordValue)
+                || !TryParseQuestRewardRaiseQrData(questRecordValue, out int qrData))
+            {
+                return;
+            }
+
+            activeRaise.QrData = qrData;
+            _questRewardRaiseManager.ObserveOwnerState(
+                questId,
+                activeRaise.OwnerItemId,
+                qrData,
+                activeRaise.MaxDropCount,
+                activeRaise.WindowMode);
+        }
+
+        private static bool TryParseQuestRewardRaiseQrData(string text, out int qrData)
+        {
+            qrData = 0;
+            return int.TryParse(text?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out qrData);
         }
 
         private void ClearQuestRewardRaiseWindow()

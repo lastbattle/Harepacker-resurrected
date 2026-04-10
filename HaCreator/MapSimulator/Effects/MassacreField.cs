@@ -1104,49 +1104,49 @@ namespace HaCreator.MapSimulator.Effects
             LoadDigitTextures(FindFirstUiProperty(uiImages, "MonsterKilling/Count/number"), _timerDigits);
             // CField_Massacre::Init resolves StringPool 0x1513 into the count-board bitmap digits.
             LoadDigitTextures(
-                FindPropertyByResourcePath(CountBoardDigitStringPoolId, CountDigitSourcePath)
-                ?? FindFirstUiProperty(uiImages, "MonsterKilling/Count/number2"),
+                FindFirstUiProperty(uiImages, "MonsterKilling/Count/number2")
+                ?? FindPropertyByResourcePath(CountBoardDigitStringPoolId, CountDigitSourcePath),
                 _countDigits);
             _countBoardTexture = LoadCanvasTexture(FindFirstUiProperty(uiImages, "MonsterKilling/Count/backgrd0") as WzCanvasProperty);
             _countBoardSkillTexture = LoadCanvasTexture(FindFirstUiProperty(uiImages, "MonsterKilling/Count/backgrd1") as WzCanvasProperty);
-            // CField_Massacre::Init maps StringPool ids 0x1519/0x151A and 0x1516-0x1518/0x151B
-            // onto the normal and danger gauge layers recovered from MonsterKilling/Gauge.
+            // Prefer the verified MonsterKilling subtree directly from UIWindow(.2).img before
+            // falling back to StringPool-backed path recovery. This keeps the runtime on the
+            // actual WZ-owned HUD canvases even when regenerated string-pool order drifts.
             _gaugeBackgroundFrame = LoadFrame(
-                ResolveCanvas(FindPropertyByResourcePath(GaugeTextStringPoolId, GaugeBackgroundPath))
-                ?? FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/backgrd") as WzCanvasProperty,
+                FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/backgrd") as WzCanvasProperty,
                 _device);
             _gaugeTextFrame = LoadFrame(
-                ResolveCanvas(FindPropertyByResourcePath(GaugeTextStringPoolId, GaugeTextPath))
-                ?? FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/text") as WzCanvasProperty,
+                FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/text") as WzCanvasProperty
+                ?? ResolveCanvas(FindPropertyByResourcePath(GaugeTextStringPoolId, GaugeTextPath)),
                 _device);
             _gaugePixelTexture = LoadCanvasTexture(
-                ResolveCanvas(FindPropertyByResourcePath(GaugeFillStringPoolId, GaugeFillPath))
-                ?? FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/pixel") as WzCanvasProperty);
-            _dangerFrames = LoadAnimationFrames(FindPropertyByResourcePath(GaugeDangerStringPoolId, GaugeDangerPath) ?? gauge?["danger"]);
-            _dangerIconFrames = LoadAnimationFrames(FindPropertyByResourcePath(GaugeDangerIconStringPoolId, GaugeDangerIconPath) ?? gauge?["iconD"]);
-            _dangerTextFrames = LoadAnimationFrames(FindPropertyByResourcePath(GaugeDangerTextStringPoolId, GaugeDangerTextPath) ?? gauge?["textD"]);
-            _dangerBackgroundFrames = LoadAnimationFrames(FindPropertyByResourcePath(GaugeDangerBackgroundStringPoolId, GaugeDangerBackgroundPath) ?? gauge?["backgrdD"]);
-            _keyOpenFrames = LoadAnimationFrames(FindPropertyByResourcePath(KeyAnimationOpenStringPoolId, KeyAnimationOpenPath) ?? count?["keyBackgrd"]?["open"]);
-            _keyLoopFrames = LoadAnimationFrames(FindPropertyByResourcePath(KeyAnimationLoopStringPoolId, KeyAnimationLoopPath) ?? count?["keyBackgrd"]?["ing"]);
-            _keyCloseFrames = LoadAnimationFrames(FindPropertyByResourcePath(KeyAnimationCloseStringPoolId, KeyAnimationClosePath) ?? count?["keyBackgrd"]?["close"]);
+                FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/pixel") as WzCanvasProperty
+                ?? ResolveCanvas(FindPropertyByResourcePath(GaugeFillStringPoolId, GaugeFillPath)));
+            _dangerFrames = LoadAnimationFrames(gauge?["danger"] ?? FindPropertyByResourcePath(GaugeDangerStringPoolId, GaugeDangerPath));
+            _dangerIconFrames = LoadAnimationFrames(gauge?["iconD"] ?? FindPropertyByResourcePath(GaugeDangerIconStringPoolId, GaugeDangerIconPath));
+            _dangerTextFrames = LoadAnimationFrames(gauge?["textD"] ?? FindPropertyByResourcePath(GaugeDangerTextStringPoolId, GaugeDangerTextPath));
+            _dangerBackgroundFrames = LoadAnimationFrames(gauge?["backgrdD"] ?? FindPropertyByResourcePath(GaugeDangerBackgroundStringPoolId, GaugeDangerBackgroundPath));
+            _keyOpenFrames = LoadAnimationFrames(count?["keyBackgrd"]?["open"] ?? FindPropertyByResourcePath(KeyAnimationOpenStringPoolId, KeyAnimationOpenPath));
+            _keyLoopFrames = LoadAnimationFrames(count?["keyBackgrd"]?["ing"] ?? FindPropertyByResourcePath(KeyAnimationLoopStringPoolId, KeyAnimationLoopPath));
+            _keyCloseFrames = LoadAnimationFrames(count?["keyBackgrd"]?["close"] ?? FindPropertyByResourcePath(KeyAnimationCloseStringPoolId, KeyAnimationClosePath));
             _resultBoardTexture = LoadCanvasTexture(
-                ResolveCanvas(FindPropertyByResourcePath(ResultBoardStringPoolId, ResultBoardPath))
-                ?? FindFirstUiProperty(uiImages, "MonsterKilling/Result/backgrd") as WzCanvasProperty);
-            _resultBoardPulseFrames = LoadAnimationFrames(FindPropertyByResourcePath(ResultOverlayStringPoolId, ResultOverlayPath) ?? result?["backgrd2"]);
+                FindFirstUiProperty(uiImages, "MonsterKilling/Result/backgrd") as WzCanvasProperty
+                ?? ResolveCanvas(FindPropertyByResourcePath(ResultBoardStringPoolId, ResultBoardPath)));
+            _resultBoardPulseFrames = LoadAnimationFrames(result?["backgrd2"] ?? FindPropertyByResourcePath(ResultOverlayStringPoolId, ResultOverlayPath));
             // CField_MassacreResult::Init constructs the small and big CBitmapNumber helpers from
             // StringPool ids 0x151E and 0x151F, which resolve onto Result/number and Result/number2.
             LoadDigitTextures(
-                FindPropertyByResourcePath(ResultRateDigitStringPoolId, ResultRateDigitPath)
-                ?? FindFirstUiProperty(uiImages, "MonsterKilling/Result/number"),
+                FindFirstUiProperty(uiImages, "MonsterKilling/Result/number")
+                ?? FindPropertyByResourcePath(ResultRateDigitStringPoolId, ResultRateDigitPath),
                 _resultRateDigits);
             LoadDigitTextures(
-                FindPropertyByResourcePath(ResultScoreDigitStringPoolId, ResultScoreDigitPath)
-                ?? FindFirstUiProperty(uiImages, "MonsterKilling/Result/number2"),
+                FindFirstUiProperty(uiImages, "MonsterKilling/Result/number2")
+                ?? FindPropertyByResourcePath(ResultScoreDigitStringPoolId, ResultScoreDigitPath),
                 _resultDigits,
                 out _resultPlusTexture);
             // CField_MassacreResult::OnMassacreResult resolves rank-specific layer ids 0x1520-0x1524
             // onto Result/Rank/{a,b,c,d,s} before drawing the repeated result board overlay.
-            LoadRankTextures((FindPropertyByResourcePath(ResultRankSStringPoolId, $"{ResultRankPath}/s")?.Parent as WzImageProperty) ?? result?["Rank"] as WzImageProperty);
+            LoadRankTextures(result?["Rank"] as WzImageProperty ?? (FindPropertyByResourcePath(ResultRankSStringPoolId, $"{ResultRankPath}/s")?.Parent as WzImageProperty));
             WzImageProperty killing = effectImage?["killing"];
             _countEffectFirstStartFrames = LoadAnimationFrames(killing?["first"]?["start"]);
             _countEffectStageFrames = LoadAnimationFrames(killing?["first"]?["stage"]);

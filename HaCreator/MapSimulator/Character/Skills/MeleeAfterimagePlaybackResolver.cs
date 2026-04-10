@@ -66,13 +66,43 @@ namespace HaCreator.MapSimulator.Character.Skills
             int frameIndex,
             int frameElapsedMs)
         {
-            if (action?.FrameSets == null
-                || !action.FrameSets.TryGetValue(frameIndex, out MeleeAfterImageFrameSet frameSet))
+            if (!TryResolveFrameSet(action, frameIndex, out MeleeAfterImageFrameSet frameSet))
             {
                 return null;
             }
 
             return ResolveFrame(frameSet, frameElapsedMs);
+        }
+
+        internal static bool TryResolveFrameSet(
+            MeleeAfterImageAction action,
+            int frameIndex,
+            out MeleeAfterImageFrameSet frameSet)
+        {
+            frameSet = null;
+            if (action?.FrameSets == null || action.FrameSets.Count == 0)
+            {
+                return false;
+            }
+
+            if (action.FrameSets.TryGetValue(frameIndex, out frameSet) && frameSet != null)
+            {
+                return true;
+            }
+
+            if (action.FrameSets.Count != 1)
+            {
+                return false;
+            }
+
+            foreach (KeyValuePair<int, MeleeAfterImageFrameSet> entry in action.FrameSets)
+            {
+                frameSet = entry.Value;
+                return frameSet != null;
+            }
+
+            frameSet = null;
+            return false;
         }
 
         public static SkillFrame ResolveFrame(MeleeAfterImageFrameSet frameSet, int frameElapsedMs)

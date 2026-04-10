@@ -63,7 +63,23 @@ namespace HaCreator.MapSimulator.Character
                 // Client raw morph action names still include `rain`/`arrowEruption` while
                 // Morph/*.img publishes `arrowRain` as the authored archer branch.
                 ["rain"] = new[] { "arrowRain" },
-                ["arrowEruption"] = new[] { "arrowRain" }
+                ["arrowEruption"] = new[] { "arrowRain" },
+                // Character action codes 305-311 name the modern ice-family branches, while
+                // older Morph/2001.img still only publishes `icemanAttack` / `icemandoubleJump`.
+                ["iceAttack1"] = new[] { "icemanAttack" },
+                ["iceAttack2"] = new[] { "icemanAttack" },
+                ["iceSmash"] = new[] { "icemanAttack" },
+                ["iceTempest"] = new[] { "icemanAttack" },
+                ["iceChop"] = new[] { "icemanAttack" },
+                ["icePanic"] = new[] { "icemanAttack" }
+            };
+
+        private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedGenericMorphFallbackAliases =
+            new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                // `savage` still appears on the client morph request surface, but pirate
+                // morphs publish generic stab branches rather than a dedicated `savage` node.
+                ["savage"] = new[] { "stabO1", "stabO2", "proneStab" }
             };
 
         private static readonly string[] ClientPublishedMorphStabFallbackAliases =
@@ -79,7 +95,8 @@ namespace HaCreator.MapSimulator.Character
         private static readonly string[] PublishedDoubleJumpAliases =
         {
             "archerDoubleJump",
-            "iceDoubleJump"
+            "iceDoubleJump",
+            "icemandoubleJump"
         };
 
         public static IEnumerable<string> EnumerateClientActionAliases(CharacterPart morphPart, string actionName)
@@ -320,6 +337,14 @@ namespace HaCreator.MapSimulator.Character
 
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+            foreach (string candidate in EnumerateClientPublishedGenericMeleeFallbackAliases(morphPart, actionName))
+            {
+                if (yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+
             foreach (string candidate in CharacterPart.GetActionLookupStrings(actionName))
             {
                 if (!string.IsNullOrWhiteSpace(candidate)
@@ -344,6 +369,28 @@ namespace HaCreator.MapSimulator.Character
                 if (yielded.Add(candidate))
                 {
                     yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientPublishedGenericMeleeFallbackAliases(CharacterPart morphPart, string actionName)
+        {
+            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                yield break;
+            }
+
+            if (!ClientPublishedGenericMorphFallbackAliases.TryGetValue(actionName, out string[] aliases)
+                || aliases == null)
+            {
+                yield break;
+            }
+
+            foreach (string alias in aliases)
+            {
+                if (!string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
+                {
+                    yield return alias;
                 }
             }
         }

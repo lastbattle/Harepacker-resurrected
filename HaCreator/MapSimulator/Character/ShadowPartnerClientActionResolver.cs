@@ -137,6 +137,25 @@ namespace HaCreator.MapSimulator.Character
                 ["shotC1"] = new[] { "shoot1", "shoot2", "shootF" }
             };
 
+        private static readonly string[] PiecedShadowPartnerActionNames =
+        {
+            "avenger",
+            "assaulter",
+            "flyingAssaulter",
+            "savage",
+            "showdown",
+            "assassination",
+            "assassinations",
+            "ninjastorm",
+            "vampire",
+            "stabD1",
+            "swingD1",
+            "swingD2",
+            "doubleSwing",
+            "tripleSwing",
+            "shotC1"
+        };
+
         public static IEnumerable<string> EnumerateClientMappedCandidates(
             string playerActionName,
             PlayerState state,
@@ -442,6 +461,67 @@ namespace HaCreator.MapSimulator.Character
             return remappedAnimation;
         }
 
+        internal static IEnumerable<string> EnumeratePiecedShadowPartnerActionNames()
+        {
+            foreach (string actionName in PiecedShadowPartnerActionNames)
+            {
+                yield return actionName;
+            }
+        }
+
+        internal static SkillAnimation TryBuildPiecedShadowPartnerActionAnimation(
+            IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
+            string actionName)
+        {
+            if (actionAnimations == null
+                || actionAnimations.Count == 0
+                || string.IsNullOrWhiteSpace(actionName)
+                || !SharedAliasMap.TryGetValue(actionName, out string[] pieceActionNames)
+                || pieceActionNames == null
+                || pieceActionNames.Length == 0)
+            {
+                return null;
+            }
+
+            var frames = new List<SkillFrame>();
+            SkillAnimation firstPieceAnimation = null;
+            foreach (string pieceActionName in pieceActionNames)
+            {
+                if (string.IsNullOrWhiteSpace(pieceActionName)
+                    || !actionAnimations.TryGetValue(pieceActionName, out SkillAnimation pieceAnimation)
+                    || pieceAnimation?.Frames == null
+                    || pieceAnimation.Frames.Count == 0)
+                {
+                    continue;
+                }
+
+                firstPieceAnimation ??= pieceAnimation;
+                foreach (SkillFrame frame in pieceAnimation.Frames)
+                {
+                    if (frame != null)
+                    {
+                        frames.Add(frame);
+                    }
+                }
+            }
+
+            if (frames.Count == 0)
+            {
+                return null;
+            }
+
+            var piecedAnimation = new SkillAnimation
+            {
+                Name = actionName,
+                Frames = frames,
+                Loop = false,
+                Origin = firstPieceAnimation?.Origin ?? Point.Zero,
+                ZOrder = firstPieceAnimation?.ZOrder ?? 0
+            };
+            piecedAnimation.CalculateDuration();
+            return piecedAnimation;
+        }
+
         public static Point ResolveClientTargetOffset(
             string observedPlayerActionName,
             PlayerState state,
@@ -707,7 +787,8 @@ namespace HaCreator.MapSimulator.Character
                 yield break;
             }
 
-            if (yielded.Add(playerActionName))
+            if (!ShouldSuppressRawBackedGenericAttackIdentityCandidate(playerActionName, rawActionCode)
+                && yielded.Add(playerActionName))
             {
                 yield return playerActionName;
             }
@@ -727,6 +808,22 @@ namespace HaCreator.MapSimulator.Character
                     yield return candidate;
                 }
             }
+        }
+
+        internal static bool ShouldSuppressRawBackedGenericAttackIdentityCandidate(
+            string playerActionName,
+            int? rawActionCode)
+        {
+            if (string.IsNullOrWhiteSpace(playerActionName)
+                || !rawActionCode.HasValue
+                || !playerActionName.StartsWith("attack", StringComparison.OrdinalIgnoreCase)
+                || !CharacterPart.TryGetActionStringFromCode(rawActionCode.Value, out string rawActionName)
+                || string.IsNullOrWhiteSpace(rawActionName))
+            {
+                return false;
+            }
+
+            return !string.Equals(playerActionName, rawActionName, StringComparison.OrdinalIgnoreCase);
         }
 
         private static IReadOnlyList<int> ResolveSingleActionFrameRemap(

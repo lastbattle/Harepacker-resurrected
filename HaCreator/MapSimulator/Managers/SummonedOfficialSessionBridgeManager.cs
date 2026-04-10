@@ -27,7 +27,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int MaxRecentSg88ManualAttackRequests = 16;
         private const int Sg88ManualAttackCaptureGraceMs = 120;
         private const int MaxLearnedSg88ManualAttackTemplatesPerTargetCount = 8;
-        private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket);
+        private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket, string ObservedSource);
         private sealed class LearnedSg88ManualAttackTemplate
         {
             public required Sg88ManualAttackRequestPacketTemplate Template { get; init; }
@@ -100,6 +100,11 @@ namespace HaCreator.MapSimulator.Managers
         {
             public bool HasSemanticEvidence => MatchedSummonObjectId || MatchedPrimaryTargetMobId || MatchedTargetCount > 0;
         }
+        internal readonly record struct Sg88ManualAttackTemplateLanePreference(
+            int LaneScore,
+            int OrderedMatchScore,
+            int LeadingOrderedMatchCount,
+            int ExactOrderedMatchCount);
 
         private sealed class BridgePair
         {
@@ -378,6 +383,11 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TrySendOutboundRawPacket(byte[] rawPacket, out string status)
         {
+            return TrySendOutboundRawPacket(rawPacket, "simulator:command-sendraw", out status);
+        }
+
+        internal bool TrySendOutboundRawPacket(byte[] rawPacket, string observedSource, out string status)
+        {
             if (!TryValidateOutboundRawPacket(rawPacket, out int opcode, out string error))
             {
                 status = error;
@@ -405,6 +415,7 @@ namespace HaCreator.MapSimulator.Managers
                 SentCount++;
                 LastSentOpcode = opcode;
                 LastSentRawPacket = clonedRawPacket;
+                RecordObservedOutboundPacket(clonedRawPacket, NormalizeObservedOutboundSource(observedSource, "simulator:outbound"));
                 status = $"Injected summoned outbound raw opcode 0x{opcode:X} into live session {pair.RemoteEndpoint}.";
                 LastStatus = status;
                 return true;
@@ -419,6 +430,11 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TryQueueOutboundRawPacket(byte[] rawPacket, out string status)
         {
+            return TryQueueOutboundRawPacket(rawPacket, "simulator:command-queueraw", out status);
+        }
+
+        internal bool TryQueueOutboundRawPacket(byte[] rawPacket, string observedSource, out string status)
+        {
             if (!TryValidateOutboundRawPacket(rawPacket, out int opcode, out string error))
             {
                 status = error;
@@ -427,7 +443,10 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             byte[] clonedRawPacket = (byte[])rawPacket.Clone();
-            _pendingOutboundPackets.Enqueue(new PendingOutboundPacket(opcode, clonedRawPacket));
+            _pendingOutboundPackets.Enqueue(new PendingOutboundPacket(
+                opcode,
+                clonedRawPacket,
+                NormalizeObservedOutboundSource(observedSource, "simulator:queued-outbound")));
             QueuedCount++;
             LastQueuedOpcode = opcode;
             LastQueuedRawPacket = clonedRawPacket;
@@ -556,13 +575,13 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (!TrySendOutboundRawPacket(rawPacket, out string sendStatus))
+            string replayTraceSource = $"simulator:sg88-template:{requestedAt}";
+            if (!TrySendOutboundRawPacket(rawPacket, replayTraceSource, out string sendStatus))
             {
                 status = sendStatus;
                 return false;
             }
 
-            RecordObservedOutboundPacket(rawPacket, $"simulator:sg88-template:{requestedAt}");
             status = $"{sendStatus} Learned SG-88 template targetCount={template.TargetCount} opcode=0x{template.Opcode:X}.";
             LastStatus = status;
             return true;
@@ -889,6 +908,7 @@ namespace HaCreator.MapSimulator.Managers
                 SentCount++;
                 LastSentOpcode = dequeuedPacket.Opcode;
                 LastSentRawPacket = dequeuedPacket.RawPacket;
+                RecordObservedOutboundPacket(dequeuedPacket.RawPacket, dequeuedPacket.ObservedSource);
                 flushed++;
             }
 
@@ -907,6 +927,13 @@ namespace HaCreator.MapSimulator.Managers
             opcode = rawPacket[0] | (rawPacket[1] << 8);
             error = null;
             return true;
+        }
+
+        private static string NormalizeObservedOutboundSource(string source, string fallbackSource)
+        {
+            return string.IsNullOrWhiteSpace(source)
+                ? fallbackSource
+                : source.Trim();
         }
 
         internal static bool TryDecodeObservedOutboundPacket(byte[] rawPacket, string source, out OutboundPacketTrace trace)
@@ -1380,6 +1407,7 @@ namespace HaCreator.MapSimulator.Managers
             bool selectedCaptureIsPending = false;
             int selectedObservedAt = int.MinValue;
             int selectedLaneScore = int.MinValue;
+            int selectedOrderMatchScore = int.MinValue;
             Sg88ManualAttackRequestPacketTemplate selectedTemplate = default;
 
             bool TryConsiderCapture(Sg88ManualAttackCapture capture, bool isPendingCapture)
@@ -1402,14 +1430,17 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                int laneScore = GetSg88TemplateLaneScore(
+                Sg88ManualAttackTemplateLanePreference lanePreference = EvaluateSg88TemplateLanePreference(
                     primaryTargetMobId,
                     resolvedTargetMobIds,
                     capture.PrimaryTargetMobId,
                     capture.TargetMobIds);
                 if (selectedCapture != null
-                    && (laneScore < selectedLaneScore
-                        || (laneScore == selectedLaneScore && requestPacket.ObservedAt < selectedObservedAt)))
+                    && !ShouldPreferSg88TemplateLanePreference(
+                        lanePreference,
+                        requestPacket.ObservedAt,
+                        new Sg88ManualAttackTemplateLanePreference(selectedLaneScore, selectedOrderMatchScore, 0, 0),
+                        selectedObservedAt))
                 {
                     return false;
                 }
@@ -1418,7 +1449,8 @@ namespace HaCreator.MapSimulator.Managers
                 selectedCapture = capture;
                 selectedCaptureIsPending = isPendingCapture;
                 selectedObservedAt = requestPacket.ObservedAt;
-                selectedLaneScore = laneScore;
+                selectedLaneScore = lanePreference.LaneScore;
+                selectedOrderMatchScore = lanePreference.OrderedMatchScore;
                 return true;
             }
 
@@ -1447,14 +1479,23 @@ namespace HaCreator.MapSimulator.Managers
                 && learnedTemplates.Count > 0)
             {
                 LearnedSg88ManualAttackTemplate learnedTemplate = learnedTemplates
-                    .OrderByDescending(candidate => GetSg88TemplateLaneScore(
+                    .OrderByDescending(candidate => EvaluateSg88TemplateLanePreference(
                         primaryTargetMobId,
                         resolvedTargetMobIds,
                         candidate.PrimaryTargetMobId,
-                        candidate.TargetMobIds))
+                        candidate.TargetMobIds).LaneScore)
+                    .ThenByDescending(candidate =>
+                    {
+                        Sg88ManualAttackTemplateLanePreference preference = EvaluateSg88TemplateLanePreference(
+                            primaryTargetMobId,
+                            resolvedTargetMobIds,
+                            candidate.PrimaryTargetMobId,
+                            candidate.TargetMobIds);
+                        return preference.LaneScore > 0 ? preference.OrderedMatchScore : int.MinValue;
+                    })
                     .ThenByDescending(candidate => candidate.ObservedAt)
                     .First();
-                int laneScore = GetSg88TemplateLaneScore(
+                Sg88ManualAttackTemplateLanePreference lanePreference = EvaluateSg88TemplateLanePreference(
                     primaryTargetMobId,
                     resolvedTargetMobIds,
                     learnedTemplate.PrimaryTargetMobId,
@@ -1464,7 +1505,7 @@ namespace HaCreator.MapSimulator.Managers
                     ? "cached official capture"
                     : $"cached official capture ({learnedTemplate.ResolutionSource})";
                 status =
-                    $"Using cached learned SG-88 request template from opcode 0x{template.Opcode:X} captured at tick {learnedTemplate.RequestedAt} via {resolution} laneScore={laneScore}.";
+                    $"Using cached learned SG-88 request template from opcode 0x{template.Opcode:X} captured at tick {learnedTemplate.RequestedAt} via {resolution} laneScore={lanePreference.LaneScore}.";
                 return true;
             }
 
@@ -1578,7 +1619,7 @@ namespace HaCreator.MapSimulator.Managers
             return normalized.ToArray();
         }
 
-        private static int GetSg88TemplateLaneScore(
+        internal static Sg88ManualAttackTemplateLanePreference EvaluateSg88TemplateLanePreference(
             int primaryTargetMobId,
             IReadOnlyList<int> targetMobIds,
             int candidatePrimaryTargetMobId,
@@ -1593,27 +1634,65 @@ namespace HaCreator.MapSimulator.Managers
             bool sameTargetSet = normalizedTargets.Length == normalizedCandidateTargets.Length
                 && normalizedTargets.OrderBy(static mobId => mobId)
                     .SequenceEqual(normalizedCandidateTargets.OrderBy(static mobId => mobId));
+            int exactOrderedMatchCount = 0;
+            int leadingOrderedMatchCount = 0;
+            bool leadingMismatchSeen = false;
+            for (int i = 0; i < Math.Min(normalizedTargets.Length, normalizedCandidateTargets.Length); i++)
+            {
+                if (normalizedTargets[i] != normalizedCandidateTargets[i])
+                {
+                    leadingMismatchSeen = true;
+                    continue;
+                }
+
+                exactOrderedMatchCount++;
+                if (!leadingMismatchSeen)
+                {
+                    leadingOrderedMatchCount++;
+                }
+            }
+
+            int orderedMatchScore = (leadingOrderedMatchCount * 8) + (exactOrderedMatchCount * 2);
             if (samePrimary && sameOrderedTargets)
             {
-                return 4;
+                return new Sg88ManualAttackTemplateLanePreference(4, orderedMatchScore, leadingOrderedMatchCount, exactOrderedMatchCount);
             }
 
             if (samePrimary && sameTargetSet)
             {
-                return 3;
+                return new Sg88ManualAttackTemplateLanePreference(3, orderedMatchScore, leadingOrderedMatchCount, exactOrderedMatchCount);
             }
 
             if (samePrimary)
             {
-                return 2;
+                return new Sg88ManualAttackTemplateLanePreference(2, orderedMatchScore, leadingOrderedMatchCount, exactOrderedMatchCount);
             }
 
             if (sameTargetSet)
             {
-                return 1;
+                return new Sg88ManualAttackTemplateLanePreference(1, orderedMatchScore, leadingOrderedMatchCount, exactOrderedMatchCount);
             }
 
-            return 0;
+            return new Sg88ManualAttackTemplateLanePreference(0, orderedMatchScore, leadingOrderedMatchCount, exactOrderedMatchCount);
+        }
+
+        private static bool ShouldPreferSg88TemplateLanePreference(
+            Sg88ManualAttackTemplateLanePreference candidate,
+            int candidateObservedAt,
+            Sg88ManualAttackTemplateLanePreference selected,
+            int selectedObservedAt)
+        {
+            if (candidate.LaneScore != selected.LaneScore)
+            {
+                return candidate.LaneScore > selected.LaneScore;
+            }
+
+            if (candidate.LaneScore > 0 && candidate.OrderedMatchScore != selected.OrderedMatchScore)
+            {
+                return candidate.OrderedMatchScore > selected.OrderedMatchScore;
+            }
+
+            return candidateObservedAt >= selectedObservedAt;
         }
 
         private static int[] FindAllInt32Offsets(byte[] payload, int value)

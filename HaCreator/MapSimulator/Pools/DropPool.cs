@@ -256,7 +256,7 @@ namespace HaCreator.MapSimulator.Pools
                 Alpha = 0f;
             }
 
-            if (CreateDelayMs > 0 && currentTime < SpawnTime + CreateDelayMs)
+            if (IsPacketCreateDelayPending(currentTime))
             {
                 return;
             }
@@ -495,7 +495,17 @@ namespace HaCreator.MapSimulator.Pools
         private bool ShouldHoldPacketEnterAlphaAtZero(int currentTime)
         {
             return IsPacketEnterType3AlphaRampActive
-                && currentTime < SpawnTime + Math.Max(0, CreateDelayMs);
+                && IsPacketCreateDelayPending(currentTime);
+        }
+
+        private bool IsPacketCreateDelayPending(int currentTime)
+        {
+            if (!IsPacketControlled || CreateDelayMs <= 0)
+            {
+                return false;
+            }
+
+            return currentTime - (SpawnTime + CreateDelayMs) <= 0;
         }
 
         private void ApplyPacketEnterAlphaRamp(int currentTime)
@@ -530,10 +540,8 @@ namespace HaCreator.MapSimulator.Pools
             if (AnimFrames == null || AnimFrames.Count <= 1)
                 return;
 
-            if (IsPacketControlled
-                && State == DropState.Spawning
-                && CreateDelayMs > 0
-                && currentTime < SpawnTime + CreateDelayMs)
+            if (State == DropState.Spawning
+                && IsPacketCreateDelayPending(currentTime))
             {
                 return;
             }

@@ -1542,29 +1542,33 @@ namespace HaCreator.MapSimulator.UI
             if (string.IsNullOrWhiteSpace(jobName))
                 return false;
 
-            int splitIndex = jobName.IndexOf(' ', Math.Min(10, Math.Max(0, jobName.Length - 1)));
-            if (splitIndex <= 0 || splitIndex >= jobName.Length - 1)
-                splitIndex = jobName.LastIndexOf(' ');
-
-            if (splitIndex <= 0 || splitIndex >= jobName.Length - 1)
+            string[] words = jobName
+                .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length < 2)
                 return false;
 
-            while (splitIndex > 0 && splitIndex < jobName.Length - 1)
+            string currentFirstLine = words[0];
+            if (MeasureSkillBookText(currentFirstLine, BOOK_NAME_TEXT_SCALE).X > BOOK_NAME_MAX_WIDTH)
+                return false;
+
+            for (int wordIndex = 1; wordIndex < words.Length; wordIndex++)
             {
-                string candidateSecondLine = jobName[(splitIndex + 1)..];
-                if (MeasureSkillBookText(candidateSecondLine, BOOK_NAME_TEXT_SCALE).X < BOOK_NAME_MAX_WIDTH)
-                    break;
+                string candidateFirstLine = string.Concat(currentFirstLine, " ", words[wordIndex]);
+                if (MeasureSkillBookText(candidateFirstLine, BOOK_NAME_TEXT_SCALE).X > BOOK_NAME_MAX_WIDTH)
+                {
+                    string candidateSecondLine = string.Join(" ", words.Skip(wordIndex));
+                    if (MeasureSkillBookText(candidateSecondLine, BOOK_NAME_TEXT_SCALE).X > BOOK_NAME_MAX_WIDTH)
+                        return false;
 
-                int nextSplit = jobName.IndexOf(' ', splitIndex + 1);
-                if (nextSplit <= 0 || nextSplit >= jobName.Length - 1)
-                    return false;
+                    firstLine = currentFirstLine;
+                    secondLine = candidateSecondLine;
+                    return true;
+                }
 
-                splitIndex = nextSplit;
+                currentFirstLine = candidateFirstLine;
             }
 
-            firstLine = jobName[..splitIndex].Trim();
-            secondLine = jobName[(splitIndex + 1)..].Trim();
-            return !string.IsNullOrWhiteSpace(firstLine) && !string.IsNullOrWhiteSpace(secondLine);
+            return false;
         }
         #endregion
 

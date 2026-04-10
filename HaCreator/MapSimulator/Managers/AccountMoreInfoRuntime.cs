@@ -30,6 +30,7 @@ namespace HaCreator.MapSimulator.Managers
         public IReadOnlyList<bool> PlayStyleSelections { get; init; } = Array.Empty<bool>();
         public IReadOnlyList<string> ActivityLabels { get; init; } = Array.Empty<string>();
         public IReadOnlyList<bool> ActivitySelections { get; init; } = Array.Empty<bool>();
+        public string GenderStatusText { get; init; } = string.Empty;
         public string StatusText { get; init; } = string.Empty;
         public string LastDispatchText { get; init; } = string.Empty;
     }
@@ -85,6 +86,8 @@ namespace HaCreator.MapSimulator.Managers
         private int _birthDay = 1;
         private uint _playStyleMask;
         private uint _activityMask;
+        private byte? _lastGender;
+        private int _lastGenderTick = int.MinValue;
         private string _statusText = "Account-more-info owner idle.";
         private string _lastDispatchText = string.Empty;
 
@@ -117,6 +120,13 @@ namespace HaCreator.MapSimulator.Managers
         internal void RecordDispatchStatus(string status)
         {
             _lastDispatchText = status?.Trim() ?? string.Empty;
+        }
+
+        internal void ApplySetGender(byte gender, int currentTick)
+        {
+            _lastGender = gender;
+            _lastGenderTick = currentTick;
+            _statusText = $"Applied adjacent CWvsContext::OnSetGender mutation with raw gender byte {gender}.";
         }
 
         internal byte[] BuildLoadRequestPayload()
@@ -279,6 +289,7 @@ namespace HaCreator.MapSimulator.Managers
                 ActivitySelections = Enumerable.Range(0, ActivityLabels.Length)
                     .Select(index => ((_activityMask >> index) & 1u) != 0)
                     .ToArray(),
+                GenderStatusText = BuildGenderStatusText(),
                 StatusText = _statusText,
                 LastDispatchText = _lastDispatchText
             };
@@ -313,6 +324,25 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return minInclusive + normalized;
+        }
+
+        private string BuildGenderStatusText()
+        {
+            if (!_lastGender.HasValue)
+            {
+                return "No adjacent OnSetGender mutation has been observed yet.";
+            }
+
+            string genderText = _lastGender.Value switch
+            {
+                0 => "male",
+                1 => "female",
+                _ => $"raw={_lastGender.Value}"
+            };
+
+            return _lastGenderTick == int.MinValue
+                ? $"Last adjacent OnSetGender mutation: {genderText}."
+                : $"Last adjacent OnSetGender mutation: {genderText} at tick {_lastGenderTick}.";
         }
     }
 }

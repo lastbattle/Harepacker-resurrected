@@ -808,6 +808,7 @@ namespace HaCreator.MapSimulator.Fields
                 packet.ActionCode,
                 packet.MasteryPercent,
                 packet.ChargeSkillId,
+                packet.ActionSpeed,
                 packet.PreparedSkillReleaseFollowUpValue,
                 packet.FacingRight,
                 currentTimeMs,

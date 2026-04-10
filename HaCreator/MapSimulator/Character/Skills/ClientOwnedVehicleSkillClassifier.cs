@@ -93,6 +93,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             "rope2"
         };
 
+        private static readonly string[] ExplicitMechanicVehiclePresentationActionNames =
+        {
+            "alert2",
+            "shot",
+            "ride2",
+            "getoff2",
+            "ladder2",
+            "rope2"
+        };
+
         private static readonly string[] ClientConfirmedMechanicVehicleVehicleIdOnlyActionNames =
         {
             "paralyze",
@@ -280,6 +290,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "herbalism_mechanic", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "mining_mechanic", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool IsExplicitMechanicVehiclePresentationActionName(string actionName)
+        {
+            return ContainsActionName(ExplicitMechanicVehiclePresentationActionNames, actionName);
         }
 
         private static bool IsMechanicSkill(int skillId)

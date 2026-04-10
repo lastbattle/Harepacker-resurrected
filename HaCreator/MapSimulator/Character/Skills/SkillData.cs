@@ -490,6 +490,95 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
     }
 
+    /// <summary>
+    /// Zone/tile effect data with client-shaped variant selection.
+    /// </summary>
+    public class ZoneEffectData
+    {
+        public SkillAnimation Animation { get; set; }
+        public List<SkillAnimation> VariantAnimations { get; set; } = new();
+        public SortedDictionary<int, List<SkillAnimation>> CharacterLevelVariantAnimations { get; set; } = new();
+        public Dictionary<int, List<SkillAnimation>> LevelVariantAnimations { get; set; } = new();
+        public int EffectDistance { get; set; }
+
+        public SkillAnimation ResolveAnimationVariant(int skillLevel, int characterLevel, int maxLevel = 0)
+        {
+            if (CharacterLevelVariantAnimations != null && CharacterLevelVariantAnimations.Count > 0)
+            {
+                List<SkillAnimation> characterLevelVariants = null;
+                foreach ((int requiredLevel, List<SkillAnimation> variants) in CharacterLevelVariantAnimations)
+                {
+                    if (requiredLevel > characterLevel)
+                    {
+                        break;
+                    }
+
+                    characterLevelVariants = variants;
+                }
+
+                SkillAnimation characterLevelAnimation = ResolveAnimationVariant(
+                    characterLevelVariants,
+                    skillLevel,
+                    maxLevel);
+                if (characterLevelAnimation?.Frames.Count > 0)
+                {
+                    return characterLevelAnimation;
+                }
+            }
+
+            if (skillLevel > 0
+                && LevelVariantAnimations != null
+                && LevelVariantAnimations.TryGetValue(skillLevel, out List<SkillAnimation> levelVariants))
+            {
+                SkillAnimation levelAnimation = ResolveAnimationVariant(
+                    levelVariants,
+                    skillLevel,
+                    maxLevel);
+                if (levelAnimation?.Frames.Count > 0)
+                {
+                    return levelAnimation;
+                }
+            }
+
+            return ResolveAnimationVariant(VariantAnimations, skillLevel, maxLevel, Animation);
+        }
+
+        private static SkillAnimation ResolveAnimationVariant(
+            IReadOnlyList<SkillAnimation> variants,
+            int level,
+            int maxLevel = 0,
+            SkillAnimation fallback = null)
+        {
+            if (variants == null || variants.Count == 0)
+            {
+                return fallback;
+            }
+
+            List<SkillAnimation> renderableVariants = variants
+                .Where(static animation => animation?.Frames.Count > 0)
+                .ToList();
+            if (renderableVariants.Count == 0)
+            {
+                return fallback;
+            }
+
+            if (renderableVariants.Count == 1)
+            {
+                return renderableVariants[0];
+            }
+
+            int resolvedLevel = Math.Max(1, level);
+            int resolvedMaxLevel = maxLevel > 0
+                ? maxLevel
+                : Math.Max(resolvedLevel, renderableVariants.Count);
+            int variantIndex = Math.Clamp(
+                ((resolvedLevel - 1) * renderableVariants.Count) / Math.Max(1, resolvedMaxLevel),
+                0,
+                renderableVariants.Count - 1);
+            return renderableVariants[variantIndex];
+        }
+    }
+
     #endregion
 
     #region Skill Definition
@@ -638,6 +727,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool IsMassSpell { get; set; }
         public string DebuffMessageToken { get; set; }
         public SkillAnimation ZoneAnimation { get; set; }
+        public ZoneEffectData ZoneEffect { get; set; }
         public int ClientInfoType { get; set; }
         public bool AvailableInJumpingState { get; set; }
         public bool RequireHighestJump { get; set; }

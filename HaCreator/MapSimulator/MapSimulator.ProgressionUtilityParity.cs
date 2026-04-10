@@ -16,6 +16,11 @@ namespace HaCreator.MapSimulator
         private const int RankingOwnerNavigateDelayMs = 250;
         private const int EventAlarmOwnerMaxVisibleLines = 3;
         private const int EventAlarmFeedLifetimeMs = 8000;
+        private const int EventEntrySortPriorityPrimary = 0;
+        private const int EventEntrySortPriorityRuntime = 1;
+        private const int EventEntrySortPrioritySecondary = 2;
+        private const int EventEntrySortPriorityBootstrap = 3;
+        private const int EventEntrySortPriorityFallback = 4;
         private int _lastRankingOpenTick = int.MinValue;
         private int _lastRankingNavigateTick = int.MinValue;
         private string _lastRankingLaunchSource = string.Empty;
@@ -110,7 +115,10 @@ namespace HaCreator.MapSimulator
                     footer,
                     onConfirm: Exit,
                     onCancel: null);
-                uiWindowManager.ShowWindow(confirmDialogWindow);
+                ShowWindow(
+                    MapSimulatorWindowNames.InGameConfirmDialog,
+                    confirmDialogWindow,
+                    trackDirectionModeOwner: true);
                 return;
             }
 
@@ -120,7 +128,8 @@ namespace HaCreator.MapSimulator
                 LoginUtilityDialogButtonLayout.YesNo,
                 LoginUtilityDialogAction.ConfirmUtilityQuit,
                 inputPlaceholder: string.IsNullOrWhiteSpace(source) ? null : $"Launch source: {source}.",
-                frameVariant: LoginUtilityDialogFrameVariant.InGameFadeYesNo);
+                frameVariant: LoginUtilityDialogFrameVariant.InGameFadeYesNo,
+                trackDirectionModeOwner: true);
         }
 
         private void WireInGameConfirmDialogWindow()
@@ -182,8 +191,10 @@ namespace HaCreator.MapSimulator
                 onConfirm: AcceptMessengerIncomingInvitePrompt,
                 onCancel: RejectMessengerIncomingInvitePrompt);
             _messengerInvitePromptOwnedDialogActive = true;
-            confirmDialogWindow.Show();
-            uiWindowManager.ShowWindow(confirmDialogWindow);
+            ShowWindow(
+                MapSimulatorWindowNames.InGameConfirmDialog,
+                confirmDialogWindow,
+                trackDirectionModeOwner: true);
         }
 
         private void AcceptMessengerIncomingInvitePrompt()
@@ -319,7 +330,7 @@ namespace HaCreator.MapSimulator
                 Subtitle = subtitle,
                 StatusText = "BtRank now mirrors the client owner lifecycle more closely: loading-layer request first, navigated local world/job/popularity/combat cards second. The owner now keeps the recovered StringPool[0xAA2] template, resolved host seed, and explicit worldid/characterid payload split visible, but remote ladders, returned page payloads, and packet-fed ranking pages are still outside this board.",
                 NavigationCaption = usedResolvedTemplateSeed ? templateSeedText : $"{templateSeedText} (fallback)",
-                NavigationSeedText = landingUrl,
+                NavigationSeedText = $"NavigateUrl => {landingUrl}",
                 NavigationHostText = hostText,
                 NavigationRequestText = requestShapeText,
                 NavigationStateText = BuildRankingOwnerLifecycleDetail(build, launchSource, webSeedText, usedResolvedTemplate),
@@ -351,6 +362,7 @@ namespace HaCreator.MapSimulator
                     Status = EventEntryStatus.InProgress,
                     ScheduledAt = DateTime.Today,
                     SourceTick = _lastEventOpenTick,
+                    SortPriority = EventEntrySortPriorityPrimary,
                     SortOrder = nextSortOrder++
                 });
             }
@@ -367,6 +379,7 @@ namespace HaCreator.MapSimulator
                     StatusText = _loginRuntime.HasWorldInformation ? "Clear" : "Running",
                     Status = _loginRuntime.HasWorldInformation ? EventEntryStatus.Clear : EventEntryStatus.InProgress,
                     ScheduledAt = DateTime.Today,
+                    SortPriority = EventEntrySortPriorityBootstrap,
                     SortOrder = nextSortOrder++
                 });
             }
@@ -381,6 +394,7 @@ namespace HaCreator.MapSimulator
                     StatusText = "Running",
                     Status = EventEntryStatus.InProgress,
                     ScheduledAt = DateTime.Today,
+                    SortPriority = EventEntrySortPriorityPrimary,
                     SortOrder = nextSortOrder++
                 });
             }
@@ -395,6 +409,7 @@ namespace HaCreator.MapSimulator
                     StatusText = "Running",
                     Status = EventEntryStatus.InProgress,
                     ScheduledAt = DateTime.Today,
+                    SortPriority = EventEntrySortPriorityPrimary,
                     SortOrder = nextSortOrder++
                 });
             }
@@ -408,6 +423,7 @@ namespace HaCreator.MapSimulator
                     StatusText = "Running",
                     Status = EventEntryStatus.InProgress,
                     ScheduledAt = DateTime.Today,
+                    SortPriority = EventEntrySortPriorityRuntime,
                     SortOrder = nextSortOrder++
                 });
             }
@@ -421,6 +437,7 @@ namespace HaCreator.MapSimulator
                     StatusText = "Running",
                     Status = EventEntryStatus.InProgress,
                     ScheduledAt = DateTime.Today,
+                    SortPriority = EventEntrySortPriorityRuntime,
                     SortOrder = nextSortOrder++
                 });
             }
@@ -435,6 +452,7 @@ namespace HaCreator.MapSimulator
                     Status = EventEntryStatus.Clear,
                     ScheduledAt = DateTime.Today,
                     SourceTick = _lastClassCompetitionOpenTick,
+                    SortPriority = EventEntrySortPrioritySecondary,
                     SortOrder = nextSortOrder++
                 });
             }
@@ -454,6 +472,7 @@ namespace HaCreator.MapSimulator
                     Status = logoutGiftVisible ? EventEntryStatus.InProgress : EventEntryStatus.Clear,
                     ScheduledAt = DateTime.Today,
                     SourceTick = logoutGiftTick,
+                    SortPriority = logoutGiftVisible ? EventEntrySortPriorityPrimary : EventEntrySortPrioritySecondary,
                     SortOrder = nextSortOrder++
                 });
             }
@@ -470,6 +489,7 @@ namespace HaCreator.MapSimulator
                     StatusText = readyCount > 0 ? "Clear" : "Running",
                     Status = readyCount > 0 ? EventEntryStatus.Clear : EventEntryStatus.InProgress,
                     ScheduledAt = DateTime.Today,
+                    SortPriority = readyCount > 0 ? EventEntrySortPrioritySecondary : EventEntrySortPriorityRuntime,
                     SortOrder = nextSortOrder++
                 });
             }
@@ -484,6 +504,7 @@ namespace HaCreator.MapSimulator
                     Status = fieldEntry.Status,
                     ScheduledAt = fieldEntry.ScheduledAt,
                     SourceTick = fieldEntry.SourceTick,
+                    SortPriority = fieldEntry.SortPriority,
                     SortOrder = nextSortOrder++
                 });
             }
@@ -497,6 +518,7 @@ namespace HaCreator.MapSimulator
                     StatusText = "Will",
                     Status = EventEntryStatus.Upcoming,
                     ScheduledAt = DateTime.Today.AddDays(1),
+                    SortPriority = EventEntrySortPriorityFallback,
                     SortOrder = nextSortOrder++
                 });
             }
@@ -563,7 +585,8 @@ namespace HaCreator.MapSimulator
                 Detail = detail,
                 StatusText = "Running",
                 Status = EventEntryStatus.InProgress,
-                ScheduledAt = DateTime.Today
+                ScheduledAt = DateTime.Today,
+                SortPriority = EventEntrySortPriorityRuntime
             };
         }
 
@@ -705,7 +728,10 @@ namespace HaCreator.MapSimulator
                 Status = status,
                 StatusText = statusText,
                 ScheduledAt = DateTime.Today,
-                SourceTick = sourceTick
+                SourceTick = sourceTick,
+                SortPriority = status == EventEntryStatus.InProgress || status == EventEntryStatus.Start
+                    ? EventEntrySortPriorityPrimary
+                    : EventEntrySortPrioritySecondary
             };
         }
 

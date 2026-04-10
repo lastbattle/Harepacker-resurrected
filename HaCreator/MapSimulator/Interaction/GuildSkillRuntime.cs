@@ -516,10 +516,7 @@ namespace HaCreator.MapSimulator.Interaction
             bool gainedLevel = resolvedLevel > previousLevel;
 
             selectedSkill.CurrentLevel = resolvedLevel;
-            if (gainedLevel && previousLevel == 0)
-            {
-                _activeGuildSkillExpirations.Remove(selectedSkill.SkillId);
-            }
+            SyncActiveExpirationForResolvedLevel(selectedSkill, previousLevel, resolvedLevel);
 
             if (packetResolution.GuildFundMeso.HasValue)
             {
@@ -633,10 +630,7 @@ namespace HaCreator.MapSimulator.Interaction
             bool gainedLevel = resolvedLevel > previousLevel;
 
             selectedSkill.CurrentLevel = resolvedLevel;
-            if (gainedLevel && previousLevel == 0)
-            {
-                _activeGuildSkillExpirations.Remove(selectedSkill.SkillId);
-            }
+            SyncActiveExpirationForResolvedLevel(selectedSkill, previousLevel, resolvedLevel);
 
             if (packetResolution.GuildFundMeso.HasValue)
             {
@@ -698,6 +692,19 @@ namespace HaCreator.MapSimulator.Interaction
         private static string ResolvePacketActionLabel(GuildSkillResultPacketKind kind)
         {
             return kind == GuildSkillResultPacketKind.Renew ? "Renewal" : "Level-up";
+        }
+
+        private void SyncActiveExpirationForResolvedLevel(SkillDisplayData selectedSkill, int previousLevel, int resolvedLevel)
+        {
+            if (selectedSkill == null)
+            {
+                return;
+            }
+
+            if (resolvedLevel <= 0 || (resolvedLevel > previousLevel && previousLevel == 0))
+            {
+                _activeGuildSkillExpirations.Remove(selectedSkill.SkillId);
+            }
         }
 
         private static bool TryResolvePendingKind(GuildSkillResultPacketKind kind, out GuildSkillPendingRequestKind pendingKind)

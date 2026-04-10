@@ -434,7 +434,7 @@ namespace HaCreator.MapSimulator.Loaders
                     var mergedSkills = skillMap.Values.ToList();
                     skillWindow.AddSkills(tabIndex, mergedSkills);
                     skillWindow.SetRecommendedSkillEntries(
-                        tabIndex,
+                        pathJobId,
                         SkillDataLoader.LoadRecommendedSkillEntries(
                             pathJobId,
                             mergedSkills.Select(skill => skill.SkillId)));

@@ -774,6 +774,7 @@ namespace HaCreator.MapSimulator
         private LoginUtilityDialogVisualStyle _loginUtilityDialogVisualStyle = LoginUtilityDialogVisualStyle.Default;
         private LoginUtilityDialogButtonLayout _loginUtilityDialogButtonLayout = LoginUtilityDialogButtonLayout.Ok;
         private LoginUtilityDialogFrameVariant _loginUtilityDialogFrameVariant = LoginUtilityDialogFrameVariant.Default;
+        private bool _loginUtilityDialogTracksDirectionModeOwner;
         private int _loginUtilityDialogTargetIndex = -1;
         private int? _loginUtilityDialogNoticeTextIndex;
         private bool _loginUtilityDialogInputMasked;
@@ -2335,7 +2336,7 @@ namespace HaCreator.MapSimulator
                     OpenMemoAttachmentWindow,
                     () =>
                     {
-                        _memoMailbox.TryDispatchActiveDraft(out string message);
+                        _memoMailbox.TryDispatchActiveDraft(true, null, out string message);
                         ShowUtilityFeedbackMessage(message);
                         return message;
                     },
@@ -3722,10 +3723,21 @@ namespace HaCreator.MapSimulator
 
             bool foundActor = (inspectionTarget.CharacterId > 0 && _remoteUserPool.TryGetActor(inspectionTarget.CharacterId, out RemoteUserActor actor))
                 || _remoteUserPool.TryGetActorByName(inspectionTarget.Name, out actor);
-            CharacterBuild resolvedBuild = actor?.Build ?? inspectionTarget.Build;
-            int resolvedCharacterId = actor?.CharacterId ?? inspectionTarget.CharacterId;
-            string resolvedName = !string.IsNullOrWhiteSpace(actor?.Name) ? actor.Name : inspectionTarget.Name;
+            WeddingRemoteParticipantSnapshot? weddingSnapshot = TryGetCharacterInfoWeddingParticipantSnapshot(
+                inspectionTarget.CharacterId,
+                inspectionTarget.Name,
+                out WeddingRemoteParticipantSnapshot resolvedWeddingSnapshot)
+                ? resolvedWeddingSnapshot
+                : null;
+            CharacterBuild resolvedBuild = actor?.Build ?? weddingSnapshot?.Build ?? inspectionTarget.Build;
+            int resolvedCharacterId = actor?.CharacterId ?? (weddingSnapshot?.CharacterId > 0 ? weddingSnapshot.Value.CharacterId : inspectionTarget.CharacterId);
+            string resolvedName = !string.IsNullOrWhiteSpace(actor?.Name)
+                ? actor.Name
+                : !string.IsNullOrWhiteSpace(weddingSnapshot?.Name)
+                    ? weddingSnapshot.Value.Name
+                    : inspectionTarget.Name;
             TryResolveCharacterInfoPresence(
+                resolvedCharacterId,
                 resolvedName,
                 actor,
                 inspectionTarget.LocationSummary,
@@ -3740,7 +3752,7 @@ namespace HaCreator.MapSimulator
                 Name = resolvedName,
                 LocationSummary = locationSummary,
                 Channel = channel,
-                IsLiveRemoteTarget = actor?.IsVisibleInWorld == true
+                IsLiveRemoteTarget = actor?.IsVisibleInWorld == true || weddingSnapshot.HasValue
             };
         }
 
@@ -3991,6 +4003,7 @@ namespace HaCreator.MapSimulator
                 || _remoteUserPool.TryGetActorByName(context.CharacterName, out actor);
 
             if (TryResolveCharacterInfoPresence(
+                    actor?.CharacterId ?? context.CharacterId,
                     context.CharacterName,
                     foundActor ? actor : null,
                     locationSummary,
@@ -4075,6 +4088,20 @@ namespace HaCreator.MapSimulator
                     {
                         return true;
                     }
+                }
+
+                if (_remoteUserPool.HasActiveMarriageRelationshipRecord(actor?.CharacterId ?? context.CharacterId))
+                {
+                    return true;
+                }
+
+                if (TryGetCharacterInfoWeddingParticipantSnapshot(
+                        actor?.CharacterId ?? context.CharacterId,
+                        !string.IsNullOrWhiteSpace(actor?.Name) ? actor.Name : context.CharacterName,
+                        out WeddingRemoteParticipantSnapshot weddingParticipant) &&
+                    weddingParticipant.Role is WeddingParticipantRole.Groom or WeddingParticipantRole.Bride)
+                {
+                    return true;
                 }
             }
 
@@ -4171,6 +4198,7 @@ namespace HaCreator.MapSimulator
             }
 
             TryResolveCharacterInfoPresence(
+                actor.CharacterId,
                 actor.Name,
                 actor,
                 "Location unknown",
@@ -4192,6 +4220,7 @@ namespace HaCreator.MapSimulator
         }
 
         private bool TryResolveCharacterInfoPresence(
+            int characterId,
             string characterName,
             RemoteUserActor actor,
             string fallbackLocationSummary,
@@ -4232,10 +4261,94 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (TryResolveCharacterInfoPresenceFromWeddingSnapshots(
+                    characterId,
+                    characterName,
+                    GetCharacterInfoWeddingParticipantSnapshots(),
+                    GetCurrentMapTransferDisplayName(),
+                    Math.Max(1, _simulatorChannelIndex + 1),
+                    out string weddingLocation,
+                    out int weddingChannel))
+            {
+                locationSummary = weddingLocation;
+                channel = weddingChannel;
+                return true;
+            }
+
             if (actor?.IsVisibleInWorld == true)
             {
                 locationSummary = GetCurrentMapTransferDisplayName();
                 channel = Math.Max(1, _simulatorChannelIndex + 1);
+                return true;
+            }
+
+            return false;
+        }
+
+        internal static bool TryResolveCharacterInfoPresenceFromWeddingSnapshots(
+            int characterId,
+            string characterName,
+            IReadOnlyList<WeddingRemoteParticipantSnapshot> weddingSnapshots,
+            string currentMapDisplayName,
+            int currentChannel,
+            out string locationSummary,
+            out int channel)
+        {
+            locationSummary = string.IsNullOrWhiteSpace(currentMapDisplayName)
+                ? "Location unknown"
+                : currentMapDisplayName.Trim();
+            channel = currentChannel > 0 ? currentChannel : 1;
+
+            if (!TryFindCharacterInfoWeddingParticipantSnapshot(characterId, characterName, weddingSnapshots, out _))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        internal static bool TryFindCharacterInfoWeddingParticipantSnapshot(
+            int characterId,
+            string characterName,
+            IReadOnlyList<WeddingRemoteParticipantSnapshot> weddingSnapshots,
+            out WeddingRemoteParticipantSnapshot snapshot)
+        {
+            snapshot = default;
+            if (weddingSnapshots == null || weddingSnapshots.Count == 0)
+            {
+                return false;
+            }
+
+            if (characterId > 0)
+            {
+                for (int i = 0; i < weddingSnapshots.Count; i++)
+                {
+                    WeddingRemoteParticipantSnapshot candidate = weddingSnapshots[i];
+                    if (candidate.CharacterId != characterId)
+                    {
+                        continue;
+                    }
+
+                    snapshot = candidate;
+                    return true;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(characterName))
+            {
+                return false;
+            }
+
+            string resolvedName = characterName.Trim();
+            for (int i = 0; i < weddingSnapshots.Count; i++)
+            {
+                WeddingRemoteParticipantSnapshot candidate = weddingSnapshots[i];
+                if (!string.Equals(candidate.Name, resolvedName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                snapshot = candidate;
                 return true;
             }
 
@@ -4343,6 +4456,26 @@ namespace HaCreator.MapSimulator
                 : parsedLocation;
             channel = resolvedChannel;
             return true;
+        }
+
+        private IReadOnlyList<WeddingRemoteParticipantSnapshot> GetCharacterInfoWeddingParticipantSnapshots()
+        {
+            WeddingField weddingField = _specialFieldRuntime?.SpecialEffects?.Wedding;
+            return weddingField != null && weddingField.IsActive
+                ? weddingField.GetRemoteParticipantSnapshots()
+                : Array.Empty<WeddingRemoteParticipantSnapshot>();
+        }
+
+        private bool TryGetCharacterInfoWeddingParticipantSnapshot(
+            int characterId,
+            string characterName,
+            out WeddingRemoteParticipantSnapshot snapshot)
+        {
+            return TryFindCharacterInfoWeddingParticipantSnapshot(
+                characterId,
+                characterName,
+                GetCharacterInfoWeddingParticipantSnapshots(),
+                out snapshot);
         }
 
         private UserInfoUI.RankDeltaSnapshot ResolveCharacterInfoRankDeltaSnapshot(CharacterBuild build)
@@ -4683,11 +4816,11 @@ namespace HaCreator.MapSimulator
         }
 
 
-        private void OpenItemUpgradeWindowForConsumable(int itemId)
+        private void OpenItemUpgradeWindowForConsumable(int itemId, InventoryType inventoryType, int slotIndex)
         {
             if (ItemUpgradeUI.IsVegaSpellConsumable(itemId))
             {
-                OpenVegaSpellWindowForConsumable(itemId);
+                OpenVegaSpellWindowForConsumable(itemId, inventoryType, slotIndex);
                 return;
             }
 
@@ -4704,9 +4837,9 @@ namespace HaCreator.MapSimulator
 
 
 
-        private void OpenVegaSpellWindowForConsumable(int itemId)
+        private void OpenVegaSpellWindowForConsumable(int itemId, InventoryType inventoryType, int slotIndex)
         {
-            QueueVegaSpellWindowLaunch(itemId, "consumable-owner request");
+            QueueVegaSpellWindowLaunch(itemId, inventoryType, slotIndex, "consume-cash-item request");
         }
 
 
@@ -12663,6 +12796,15 @@ namespace HaCreator.MapSimulator
                 _loginUtilityDialogVisualStyle,
                 _loginUtilityDialogFrameVariant,
                 _loginUtilityDialogInputBoundsOverride);
+            if (_loginUtilityDialogTracksDirectionModeOwner)
+            {
+                ShowWindow(
+                    MapSimulatorWindowNames.LoginUtilityDialog,
+                    utilityDialogWindow,
+                    trackDirectionModeOwner: true);
+                return;
+            }
+
             uiWindowManager.ShowWindow(utilityDialogWindow);
         }
 
@@ -12685,7 +12827,8 @@ namespace HaCreator.MapSimulator
             LoginUtilityDialogVisualStyle visualStyle = LoginUtilityDialogVisualStyle.Default,
             LoginUtilityDialogFrameVariant frameVariant = LoginUtilityDialogFrameVariant.Default,
             Rectangle? inputBoundsOverride = null,
-            string returnWindowName = null)
+            string returnWindowName = null,
+            bool trackDirectionModeOwner = false)
         {
             if (!string.IsNullOrWhiteSpace(returnWindowName))
             {
@@ -12718,6 +12861,7 @@ namespace HaCreator.MapSimulator
                 noticeTextIndex,
                 inputLabel,
                 visualStyle);
+            _loginUtilityDialogTracksDirectionModeOwner = trackDirectionModeOwner;
             _loginUtilityDialogInputBoundsOverride = inputBoundsOverride;
             ClearActiveConnectionNotice();
             SyncLoginEntryDialogs();
@@ -12775,6 +12919,7 @@ namespace HaCreator.MapSimulator
             _loginUtilityDialogSoftKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric;
             _loginUtilityDialogVisualStyle = LoginUtilityDialogVisualStyle.Default;
             _loginUtilityDialogFrameVariant = LoginUtilityDialogFrameVariant.Default;
+            _loginUtilityDialogTracksDirectionModeOwner = false;
             _loginUtilityDialogInputValue = string.Empty;
             _loginUtilityDialogInputBoundsOverride = null;
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LoginUtilityDialog) is LoginUtilityDialogWindow utilityDialogWindow)
@@ -15662,6 +15807,7 @@ namespace HaCreator.MapSimulator
             _chatFallbackLineHeight = MeasureFallbackChatText("Ag").Y;
             this._mapBoard = _mapBoard;
             this._spawnPortalName = spawnPortalName;
+            _remoteUserPool.SkillUseRegistered += HandleRemoteAnimationDisplayerSkillUse;
             _mapTransferDestinations = new MapTransferDestinationStore();
             _mapTransferRuntime = new MapTransferRuntimeManager(_mapTransferDestinations);
 
@@ -21528,6 +21674,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (!CanQueueKnownCrossMapTransfer(targetMapId, showFailureMessage: true))
+            {
+                return false;
+            }
+
 
             return QueueMapTransfer(targetMapId, null);
 
@@ -21560,6 +21711,11 @@ namespace HaCreator.MapSimulator
                     PushFieldRuleMessage("A map transfer is already in progress.", currTickCount, false);
                 }
 
+                return false;
+            }
+
+            if (!CanQueueKnownCrossMapTransfer(targetMapId, showFailureMessage))
+            {
                 return false;
             }
 
@@ -23014,6 +23170,7 @@ namespace HaCreator.MapSimulator
             }
 
             string localName = player?.Build?.Name;
+            HashSet<string> seededNames = new(StringComparer.OrdinalIgnoreCase);
             foreach (string participantName in memoryGame.PlayerNames)
 
             {
@@ -23027,32 +23184,61 @@ namespace HaCreator.MapSimulator
                 SocialRoomOccupant occupant = runtime.Occupants.FirstOrDefault(candidate =>
                     candidate != null
                     && string.Equals(candidate.Name, participantName, StringComparison.OrdinalIgnoreCase));
-                if (!ShouldSeedSyntheticMinimapOccupantMarker(
-                        SocialRoomKind.MiniRoom,
-                        runtime,
-                        hasDedicatedFieldActorMarker: false,
-                        occupant,
-                        participantName))
+                if (TryAppendMiniRoomTrackedUserMarker(trackedUsers, runtime, player, occupant, participantName))
+                {
+                    seededNames.Add(participantName.Trim());
+                }
+            }
+
+            foreach (SocialRoomOccupant occupant in runtime.Occupants)
+            {
+                if (occupant == null
+                    || string.IsNullOrWhiteSpace(occupant.Name)
+                    || string.Equals(occupant.Name, localName, StringComparison.OrdinalIgnoreCase)
+                    || seededNames.Contains(occupant.Name.Trim()))
                 {
                     continue;
                 }
 
-                MinimapTrackedUserState state = GetOrCreateMinimapTrackedUserState(trackedUsers, participantName);
-                state.IsMatchParticipant = true;
-                ApplyMinimapSocialRoomOccupantTooltip(
-                    state,
-                    SocialRoomKind.MiniRoom,
-                    occupant);
-                TryAssignTrackedUserPosition(state, participantName);
-                TryAssignSocialRoomTrackedUserPosition(
-                    state,
-                    SocialRoomKind.MiniRoom,
-                    runtime,
-                    occupant,
-                    player);
-
+                if (TryAppendMiniRoomTrackedUserMarker(trackedUsers, runtime, player, occupant, occupant.Name))
+                {
+                    seededNames.Add(occupant.Name.Trim());
+                }
             }
 
+        }
+
+        private bool TryAppendMiniRoomTrackedUserMarker(
+            Dictionary<string, MinimapTrackedUserState> trackedUsers,
+            SocialRoomRuntime runtime,
+            PlayerCharacter player,
+            SocialRoomOccupant occupant,
+            string occupantName)
+        {
+            if (!ShouldSeedSyntheticMinimapOccupantMarker(
+                    SocialRoomKind.MiniRoom,
+                    runtime,
+                    hasDedicatedFieldActorMarker: false,
+                    occupant,
+                    occupantName))
+            {
+                return false;
+            }
+
+            MinimapTrackedUserState state = GetOrCreateMinimapTrackedUserState(trackedUsers, occupantName);
+            state.IsMatchParticipant = true;
+            ApplyMinimapSocialRoomOccupantTooltip(
+                state,
+                SocialRoomKind.MiniRoom,
+                occupant);
+            TryAssignTrackedUserPosition(state, occupantName);
+            TryAssignSocialRoomTrackedUserPosition(
+                state,
+                SocialRoomKind.MiniRoom,
+                runtime,
+                occupant,
+                player);
+            return true;
         }
 
         private void AppendTraderTrackedUserMarkers(
@@ -23310,13 +23496,12 @@ namespace HaCreator.MapSimulator
 
         private static Vector2 ResolveMiniRoomTrackedUserOffset(SocialRoomRuntime runtime, SocialRoomOccupant occupant)
         {
-            int visitorOrdinal = GetSocialRoomOccupantRoleOrdinal(runtime, occupant, SocialRoomOccupantRole.Visitor);
-            int guestOrdinal = GetSocialRoomOccupantRoleOrdinal(runtime, occupant, SocialRoomOccupantRole.Guest);
+            int seatIndex = GetSocialRoomOccupantSeatIndex(runtime, occupant);
             return occupant.Role switch
             {
-                SocialRoomOccupantRole.Owner => new Vector2(-90f, -18f),
-                SocialRoomOccupantRole.Guest => new Vector2(90f + (guestOrdinal * 22f), -18f),
-                SocialRoomOccupantRole.Visitor => ResolveAlternatingVisitorOffset(visitorOrdinal, verticalBias: 30f),
+                SocialRoomOccupantRole.Owner => ResolveMiniRoomSeatOffset(0),
+                SocialRoomOccupantRole.Guest => ResolveMiniRoomSeatOffset(Math.Max(1, seatIndex)),
+                SocialRoomOccupantRole.Visitor => ResolveMiniRoomSeatOffset(Math.Max(2, seatIndex)),
                 _ => ResolveDeterministicOccupantOffset(occupant.Name, radiusX: 72f, radiusY: 28f, verticalBias: 14f)
             };
         }
@@ -23330,11 +23515,85 @@ namespace HaCreator.MapSimulator
             int visitorOrdinal = GetSocialRoomOccupantRoleOrdinal(runtime, occupant, SocialRoomOccupantRole.Visitor);
             return occupant.Role switch
             {
-                SocialRoomOccupantRole.Owner when !hasDedicatedFieldActorMarker => new Vector2(-30f, -8f),
-                SocialRoomOccupantRole.Merchant when !hasDedicatedFieldActorMarker => new Vector2(30f, -8f),
-                SocialRoomOccupantRole.Buyer => new Vector2(60f + (buyerOrdinal * 20f), -14f),
-                SocialRoomOccupantRole.Visitor => ResolveAlternatingVisitorOffset(visitorOrdinal, verticalBias: 18f),
+                SocialRoomOccupantRole.Owner when !hasDedicatedFieldActorMarker => new Vector2(-34f, -10f),
+                SocialRoomOccupantRole.Merchant when !hasDedicatedFieldActorMarker => new Vector2(34f, -10f),
+                SocialRoomOccupantRole.Buyer => ResolveTraderBuyerOffset(buyerOrdinal, hasDedicatedFieldActorMarker),
+                SocialRoomOccupantRole.Visitor => ResolveTraderVisitorOffset(visitorOrdinal, hasDedicatedFieldActorMarker),
                 _ => ResolveDeterministicOccupantOffset(occupant.Name, radiusX: 62f, radiusY: 22f, verticalBias: 12f)
+            };
+        }
+
+        private static Vector2 ResolveMiniRoomSeatOffset(int seatIndex)
+        {
+            return seatIndex switch
+            {
+                <= 0 => new Vector2(-90f, -18f),
+                1 => new Vector2(90f, -18f),
+                2 => new Vector2(-54f, 28f),
+                3 => new Vector2(0f, 40f),
+                4 => new Vector2(54f, 28f),
+                5 => new Vector2(-86f, 54f),
+                6 => new Vector2(86f, 54f),
+                _ => ResolveMiniRoomOverflowSeatOffset(seatIndex)
+            };
+        }
+
+        private static Vector2 ResolveMiniRoomOverflowSeatOffset(int seatIndex)
+        {
+            int overflowIndex = Math.Max(0, seatIndex - 7);
+            int side = (overflowIndex % 2 == 0) ? -1 : 1;
+            int row = overflowIndex / 2;
+            return new Vector2(
+                side * (52f + (row * 28f)),
+                68f + (row * 12f));
+        }
+
+        private static Vector2 ResolveTraderBuyerOffset(int ordinal, bool hasDedicatedFieldActorMarker)
+        {
+            int clampedOrdinal = Math.Max(0, ordinal);
+            if (hasDedicatedFieldActorMarker)
+            {
+                return clampedOrdinal switch
+                {
+                    0 => new Vector2(56f, -16f),
+                    1 => new Vector2(-56f, -16f),
+                    2 => new Vector2(82f, 6f),
+                    3 => new Vector2(-82f, 6f),
+                    _ => new Vector2(56f + (clampedOrdinal * 12f), 20f + ((clampedOrdinal - 4) * 6f))
+                };
+            }
+
+            return clampedOrdinal switch
+            {
+                0 => new Vector2(52f, -12f),
+                1 => new Vector2(72f, 8f),
+                2 => new Vector2(44f, 24f),
+                _ => new Vector2(60f + (clampedOrdinal * 14f), 16f + ((clampedOrdinal - 2) * 6f))
+            };
+        }
+
+        private static Vector2 ResolveTraderVisitorOffset(int ordinal, bool hasDedicatedFieldActorMarker)
+        {
+            int clampedOrdinal = Math.Max(0, ordinal);
+            if (hasDedicatedFieldActorMarker)
+            {
+                return clampedOrdinal switch
+                {
+                    0 => new Vector2(-34f, 18f),
+                    1 => new Vector2(34f, 18f),
+                    2 => new Vector2(-66f, 34f),
+                    3 => new Vector2(66f, 34f),
+                    _ => ResolveAlternatingVisitorOffset(clampedOrdinal, verticalBias: 30f)
+                };
+            }
+
+            return clampedOrdinal switch
+            {
+                0 => new Vector2(-26f, 20f),
+                1 => new Vector2(26f, 20f),
+                2 => new Vector2(-54f, 34f),
+                3 => new Vector2(54f, 34f),
+                _ => ResolveAlternatingVisitorOffset(clampedOrdinal, verticalBias: 26f)
             };
         }
 
@@ -23389,6 +23648,33 @@ namespace HaCreator.MapSimulator
             }
 
             return ordinal;
+        }
+
+        private static int GetSocialRoomOccupantSeatIndex(
+            SocialRoomRuntime runtime,
+            SocialRoomOccupant occupant)
+        {
+            if (runtime?.Occupants == null || occupant == null)
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < runtime.Occupants.Count; i++)
+            {
+                SocialRoomOccupant candidate = runtime.Occupants[i];
+                if (candidate == null)
+                {
+                    continue;
+                }
+
+                if (ReferenceEquals(candidate, occupant)
+                    || string.Equals(candidate.Name, occupant.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         private static int ComputeStableMinimapNameHash(string value)
@@ -23541,6 +23827,11 @@ namespace HaCreator.MapSimulator
                     int targetMapId = clickedPortal.PortalInstance.tm;
                     if (targetMapId != MapConstants.MaxMap && targetMapId > 0)
                     {
+                        if (!CanQueueKnownCrossMapTransfer(targetMapId, showFailureMessage: true))
+                        {
+                            return;
+                        }
+
                         PlayPortalSE();
                         _playerManager?.ForceStand();
                             _gameState.PendingMapChange = true;
@@ -23594,6 +23885,11 @@ namespace HaCreator.MapSimulator
                 if (_lastClickedHiddenPortal == clickedHiddenPortal && (currentTime - _lastClickTime) <= DOUBLE_CLICK_TIME_MS)
                 {
                     // Double-click detected on hidden portal
+                    if (!CanQueueKnownCrossMapTransfer(clickedHiddenPortal.tm, showFailureMessage: true))
+                    {
+                        return;
+                    }
+
                     PlayPortalSE();
                     _playerManager?.ForceStand();
                             _gameState.PendingMapChange = true;
@@ -23978,17 +24274,19 @@ namespace HaCreator.MapSimulator
 
 
         /// <summary>
-        /// Check for reactor touch interactions near player.
+        /// Refreshes the client-owned local reactor touch set.
         /// Call this from player movement updates.
         /// </summary>
         /// <param name="playerX">Player X position</param>
         /// <param name="playerY">Player Y position</param>
         /// <param name="playerId">Player ID</param>
-        /// <returns>List of touched reactors</returns>
+        /// <returns>List of currently-entered touched reactors</returns>
         public List<ReactorItem> CheckReactorTouch(float playerX, float playerY, int playerId = 0, int currentTick = int.MinValue)
         {
             if (_reactorPool == null)
                 return new List<ReactorItem>();
+
+            _ = playerId;
 
 
             if (currentTick == int.MinValue)
@@ -24005,18 +24303,41 @@ namespace HaCreator.MapSimulator
 
             _lastReactorCollisionCheckTick = currentTick;
 
-            var touchedReactors = _reactorPool.FindTouchReactorAroundLocalUser(playerX, playerY, currentTick: currentTick);
+            List<ReactorTouchStateChange> touchStateChanges = _reactorPool.RefreshTouchReactorsAroundLocalUser(
+                playerX,
+                playerY,
+                currentTick: currentTick);
+            DispatchReactorTouchStateChanges(touchStateChanges);
+            return touchStateChanges
+                .Where(change => change.IsTouching)
+                .Select(change => change.Reactor)
+                .Where(static reactor => reactor != null)
+                .ToList();
 
+        }
 
-
-            foreach (var (reactor, index) in touchedReactors)
+        private void DispatchReactorTouchStateChanges(IReadOnlyList<ReactorTouchStateChange> touchStateChanges)
+        {
+            if (touchStateChanges == null || touchStateChanges.Count == 0)
             {
-                _reactorPool.ActivateReactor(index, playerId, currentTick, ReactorActivationType.Touch);
+                return;
             }
 
+            bool canInjectLiveTouchRequests = _reactorPoolOfficialSessionBridge?.HasConnectedSession == true;
+            if (!canInjectLiveTouchRequests)
+            {
+                return;
+            }
 
-            return touchedReactors.Select(t => t.reactor).ToList();
+            foreach (ReactorTouchStateChange change in touchStateChanges)
+            {
+                if (!change.UsesPacketObjectId || change.ObjectId <= 0)
+                {
+                    continue;
+                }
 
+                _reactorPoolOfficialSessionBridge.TrySendTouchRequest(change.ObjectId, change.IsTouching, out _);
+            }
         }
 
 
@@ -24694,8 +25015,13 @@ namespace HaCreator.MapSimulator
                 {
                     ClearPassiveTransferRequest();
                 }
-                else if (_playerManager.Player?.CanMove == true && TryHandlePortalInteractCore(currentTime))
+                else if (CanProcessPassiveTransferFieldRequest(currentTime))
                 {
+                    if (CanReplayPassiveTransferFieldUpKeyPath(currentTime))
+                    {
+                        TryHandlePortalInteractCore(currentTime);
+                    }
+
                     ClearPassiveTransferRequest();
                     return;
                 }
@@ -24708,7 +25034,7 @@ namespace HaCreator.MapSimulator
 
 
 
-            if (_playerManager.Player?.CanMove == true)
+            if (CanReplayPassiveTransferFieldUpKeyPath(currentTime) && _playerManager.Player?.CanMove == true)
             {
                 if (TryHandlePortalInteractCore(currentTime))
                 {
@@ -24721,6 +25047,11 @@ namespace HaCreator.MapSimulator
             }
 
 
+
+            if (!ShouldQueuePassiveTransferFieldRequest())
+            {
+                return;
+            }
 
             _passiveTransferRequestPending = true;
 
@@ -24745,6 +25076,35 @@ namespace HaCreator.MapSimulator
         {
             _passiveTransferRequestPending = false;
             _passiveTransferRequestExpiresAt = int.MinValue;
+        }
+
+        private bool CanProcessPassiveTransferFieldRequest(int currentTime)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (player == null || player.IsPlayingClientOwnedOneTimeAction)
+            {
+                return false;
+            }
+
+            long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
+            return FieldInteractionRestrictionEvaluator.CanTransferField(fieldLimit);
+        }
+
+        private bool CanReplayPassiveTransferFieldUpKeyPath(int currentTime)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (player == null)
+            {
+                return false;
+            }
+
+            return !player.IsImmovableForPassiveTransferField(currentTime)
+                   && !player.IsAttractLockedForPassiveTransferField(currentTime);
+        }
+
+        private bool ShouldQueuePassiveTransferFieldRequest()
+        {
+            return _playerManager?.Player?.IsPlayingClientOwnedOneTimeAction == true;
         }
 
 
@@ -24898,6 +25258,11 @@ namespace HaCreator.MapSimulator
                 }
                 else
                 {
+                    if (!CanQueueKnownCrossMapTransfer(temporaryPortalDestination.MapId, showFailureMessage: true))
+                    {
+                        return true;
+                    }
+
                     StagePendingCrossMapTeleport(
                         temporaryPortalDestination.MapId,
                         sourcePortalName: temporarySourcePortalName,
@@ -24980,6 +25345,11 @@ namespace HaCreator.MapSimulator
                     return true;
                 }
 
+                if (!CanQueueKnownCrossMapTransfer(nearestPortal.PortalInstance.tm, showFailureMessage: true))
+                {
+                    return true;
+                }
+
 
                 PlayPortalSE();
                 _playerManager?.ForceStand();
@@ -24997,8 +25367,8 @@ namespace HaCreator.MapSimulator
                     out string[] visibleTargetPortalNameCandidates);
                 StagePendingCrossMapTeleport(
                     nearestPortal.PortalInstance.tm,
-                    nearestPortal.PortalInstance.pn,
-                    visibleTargetPortalName,
+                    sourcePortalName: nearestPortal.PortalInstance.pn,
+                    targetPortalName: visibleTargetPortalName,
                     targetPortalNameCandidates: visibleTargetPortalNameCandidates);
                         _gameState.PendingMapChange = true;
                         _gameState.PendingMapId = nearestPortal.PortalInstance.tm;
@@ -25060,6 +25430,11 @@ namespace HaCreator.MapSimulator
                     return true;
                 }
 
+                if (!CanQueueKnownCrossMapTransfer(nearestHiddenPortal.tm, showFailureMessage: true))
+                {
+                    return true;
+                }
+
 
                 PlayPortalSE();
                 _playerManager?.ForceStand();
@@ -25077,8 +25452,8 @@ namespace HaCreator.MapSimulator
                     out string[] hiddenTargetPortalNameCandidates);
                 StagePendingCrossMapTeleport(
                     nearestHiddenPortal.tm,
-                    nearestHiddenPortal.pn,
-                    hiddenTargetPortalName,
+                    sourcePortalName: nearestHiddenPortal.pn,
+                    targetPortalName: hiddenTargetPortalName,
                     targetPortalNameCandidates: hiddenTargetPortalNameCandidates);
                         _gameState.PendingMapChange = true;
                         _gameState.PendingMapId = nearestHiddenPortal.tm;
@@ -25185,6 +25560,7 @@ namespace HaCreator.MapSimulator
 
         private void StagePendingCrossMapTeleport(
             int targetMapId,
+            int sourceMapId = -1,
             string sourcePortalName = null,
             string targetPortalName = null,
             float? fallbackX = null,
@@ -25192,7 +25568,7 @@ namespace HaCreator.MapSimulator
             string[] targetPortalNameCandidates = null)
         {
             _pendingCrossMapTeleportTarget = targetMapId > 0
-                ? new PendingCrossMapTeleportTarget(targetMapId, sourcePortalName, targetPortalName, fallbackX, fallbackY, targetPortalNameCandidates)
+                ? new PendingCrossMapTeleportTarget(targetMapId, sourceMapId, sourcePortalName, targetPortalName, fallbackX, fallbackY, targetPortalNameCandidates)
                 : null;
             _packetOwnedTeleportRequestActive = _pendingCrossMapTeleportTarget != null;
         }
@@ -26439,6 +26815,7 @@ namespace HaCreator.MapSimulator
             _playerManager.SetAffectedAreaPool(_affectedAreaPool);
             _playerManager.SetRemoteAffectedAreaDamageBlockEvaluator(IsRemoteAffectedAreaProtectionActive);
             _playerManager.SetAffectedAreaOwnerPartyMembershipEvaluator(IsAffectedAreaOwnerPartyMember);
+            _playerManager.SetAffectedAreaOwnerTeamMembershipEvaluator(IsAffectedAreaOwnerSameTeamMember);
 
 
 
@@ -28369,6 +28746,11 @@ namespace HaCreator.MapSimulator
 
         private bool QueueFieldTransfer(int targetMapId, string targetPortalName = null)
         {
+            if (!CanQueueKnownCrossMapTransfer(targetMapId, showFailureMessage: true))
+            {
+                return false;
+            }
+
             return QueueMapTransfer(targetMapId, targetPortalName);
         }
 
@@ -28785,6 +29167,34 @@ namespace HaCreator.MapSimulator
                 BuildFieldEntryRestrictionContext());
         }
 
+        private string GetKnownCrossMapTransferEntryRestrictionMessage(int targetMapId)
+        {
+            if (targetMapId <= 0 || targetMapId == MapConstants.MaxMap)
+            {
+                return null;
+            }
+
+            return GetMapTransferEntryRestrictionMessage(
+                targetMapId,
+                ResolveMapTransferDestinationMapInfo(targetMapId));
+        }
+
+        private bool CanQueueKnownCrossMapTransfer(int targetMapId, bool showFailureMessage)
+        {
+            string restrictionMessage = GetKnownCrossMapTransferEntryRestrictionMessage(targetMapId);
+            if (string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                return true;
+            }
+
+            if (showFailureMessage)
+            {
+                ShowFieldRestrictionMessage(restrictionMessage);
+            }
+
+            return false;
+        }
+
         private FieldEntryRestrictionContext BuildFieldEntryRestrictionContext()
         {
             return new FieldEntryRestrictionContext(
@@ -28952,26 +29362,60 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            int totalEligibleRate = 0;
             for (int i = 0; i < requirements.Count; i++)
             {
                 ConsumeItemRequirementMetadata requirement = requirements[i];
                 InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(requirement.ItemId);
-                if (inventoryType == InventoryType.NONE)
+                if (inventoryType == InventoryType.NONE
+                    || inventoryWindow.GetItemCount(inventoryType, requirement.ItemId) < requirement.Count)
                 {
                     continue;
                 }
 
-                if (inventoryWindow.GetItemCount(inventoryType, requirement.ItemId) < requirement.Count)
+                if (requirement.Rate > 0)
+                {
+                    totalEligibleRate += requirement.Rate;
+                }
+            }
+
+            int weightedRoll = totalEligibleRate > 0
+                ? Random.Shared.Next(1, totalEligibleRate + 1)
+                : 1;
+            if (InventoryItemMetadataResolver.TrySelectConsumeItemRequirement(
+                    requirements,
+                    itemId =>
+                    {
+                        InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+                        return inventoryType == InventoryType.NONE
+                            ? 0
+                            : inventoryWindow.GetItemCount(inventoryType, itemId);
+                    },
+                    weightedRoll,
+                    out ConsumeItemRequirementMetadata selectedRequirement))
+            {
+                InventoryType selectedType = InventoryItemMetadataResolver.ResolveInventoryType(selectedRequirement.ItemId);
+                if (selectedType != InventoryType.NONE
+                    && inventoryWindow.TryConsumeItem(selectedType, selectedRequirement.ItemId, selectedRequirement.Count))
+                {
+                    return true;
+                }
+            }
+
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                ConsumeItemRequirementMetadata requirement = requirements[i];
+                InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(requirement.ItemId);
+                if (inventoryType == InventoryType.NONE
+                    || inventoryWindow.GetItemCount(inventoryType, requirement.ItemId) < requirement.Count)
                 {
                     continue;
                 }
 
-                if (!inventoryWindow.TryConsumeItem(inventoryType, requirement.ItemId, requirement.Count))
+                if (inventoryWindow.TryConsumeItem(inventoryType, requirement.ItemId, requirement.Count))
                 {
-                    continue;
+                    return true;
                 }
-
-                return true;
             }
 
             List<string> requirementLabels = new();
@@ -32663,7 +33107,7 @@ namespace HaCreator.MapSimulator
                     PartyRaidPacketScope.Party => field.OnPartyValue(message.Key, message.Value),
                     PartyRaidPacketScope.Session => field.OnSessionValue(message.Key, message.Value),
                     PartyRaidPacketScope.Clock => TryApplyPartyRaidClockInbox(field, message, currentTickCount),
-                    PartyRaidPacketScope.Packet => _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, currentTickCount, out dispatchMessage),
+                    PartyRaidPacketScope.Packet => TryApplyPartyRaidWrapperPacket(message.PacketType, message.Payload, currentTickCount, out dispatchMessage),
                     _ => false
                 };
 
@@ -32690,13 +33134,20 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeDispatchMessage);
+                bool applied = TryApplyPartyRaidWrapperPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeDispatchMessage);
                 _partyRaidOfficialSessionBridge.RecordDispatchResult(
                     bridgeMessage.Source,
                     bridgeMessage.PacketType,
                     applied,
                     bridgeDispatchMessage);
             }
+        }
+
+        private bool TryApplyPartyRaidWrapperPacket(int packetType, byte[] payload, int currentTickCount, out string message)
+        {
+            return packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode
+                ? _specialFieldRuntime.TryDispatchCurrentWrapperRelayPayload(payload, currentTickCount, out message)
+                : _specialFieldRuntime.TryDispatchCurrentWrapperPacket(packetType, payload, currentTickCount, out message);
         }
 
         private void DrainTournamentPacketInbox(int currentTickCount)

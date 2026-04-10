@@ -722,10 +722,7 @@ namespace HaCreator.MapSimulator.Pools
 
         private static void ArmPacketOwnedSupportSuspend(PacketOwnedSummonState state, int currentTime)
         {
-            if (state?.Summon?.SkillData == null
-                || !SummonRuntimeRules.ShouldTrackSupportSuspendWindow(
-                    state.Summon.SkillData,
-                    state.Summon.AssistType))
+            if (state?.Summon?.SkillData == null)
             {
                 return;
             }
@@ -733,6 +730,15 @@ namespace HaCreator.MapSimulator.Pools
             bool preferHealFirst = SummonRuntimeRules.HasMinionAbilityToken(
                 state.Summon.SkillData.MinionAbility,
                 "heal");
+            if (!SummonRuntimeRules.ShouldTrackSupportSuspendWindow(
+                    state.Summon.SkillData,
+                    state.Summon.AssistType,
+                    preferHealFirst,
+                    state.Summon.CurrentAnimationBranchName))
+            {
+                return;
+            }
+
             int suspendDurationMs = SummonRuntimeRules.ResolveSupportSuspendDurationMs(
                 state.Summon.SkillData,
                 preferHealFirst,
@@ -934,12 +940,26 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            int resolvedSkillLevel = state.SkillLevel > 0
+                ? state.SkillLevel
+                : Math.Max(1, state.Summon.Level);
+            int resolvedOwnerCharacterLevel = Math.Max(1, state.OwnerCharacterLevel);
+            SkillAnimation zoneAnimation = state.Summon.SkillData?.ZoneEffect?.ResolveAnimationVariant(
+                                            resolvedSkillLevel,
+                                            resolvedOwnerCharacterLevel,
+                                            state.Summon.SkillData?.MaxLevel ?? 0)
+                                        ?? state.Summon.SkillData?.ZoneAnimation;
+            if (zoneAnimation?.Frames.Count <= 0)
+            {
+                return;
+            }
+
             int attackDelayMs = PacketOwnedSummonUpdateRules.ResolveClientOwnedPostAttackEffectDelayMs(state.Summon);
             const int tileDelayMs = 200;
             const int tileDurationMs = 500;
             _summonTileEffects.Add(new PacketOwnedSummonTileEffectDisplay
             {
-                Animation = state.Summon.SkillData.ZoneAnimation,
+                Animation = zoneAnimation,
                 Area = area,
                 StartTime = currentTime + attackDelayMs + tileDelayMs,
                 EndTime = currentTime + attackDelayMs + tileDelayMs + tileDurationMs,
@@ -2971,9 +2991,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (state.Summon.AssistType == SummonAssistType.Support)
             {
-                ArmPacketOwnedSupportSuspend(state, currentTime);
-                state.Summon.LastAttackTime = currentTime;
-                return true;
+                return TryDispatchLocalExpirySelfDestructSupportEffects(state, currentTime);
             }
 
             List<MobItem> targets = ResolveLocalExpirySelfDestructTargets(state, currentTime);
@@ -2993,6 +3011,30 @@ namespace HaCreator.MapSimulator.Pools
                 .ToArray();
             SpawnPacketAttackVisuals(state, currentTime);
             TryRegisterClientOwnedAttackTileOverlay(state, currentTime);
+            state.Summon.LastAttackTime = currentTime;
+            return true;
+        }
+
+        private bool TryDispatchLocalExpirySelfDestructSupportEffects(PacketOwnedSummonState state, int currentTime)
+        {
+            if (state?.Summon?.SkillData == null || state.Summon.AssistType != SummonAssistType.Support)
+            {
+                return false;
+            }
+
+            ArmPacketOwnedSupportSuspend(state, currentTime);
+
+            if (state.Summon.SkillData.HitEffect != null)
+            {
+                SpawnHitEffect(
+                    state.Summon.SkillId,
+                    state.Summon.SkillData.HitEffect,
+                    state.Summon.PositionX,
+                    state.Summon.PositionY - 20f,
+                    state.Summon.FacingRight,
+                    currentTime);
+            }
+
             state.Summon.LastAttackTime = currentTime;
             return true;
         }
@@ -3798,29 +3840,11 @@ namespace HaCreator.MapSimulator.Pools
 
             string attackBranchName = summon.CurrentAnimationBranchName;
             int delayMs = ResolvePacketAttackImpactAuthoredDelayMs(summon.SkillData, targetIndex, attackBranchName);
-            delayMs = SummonRuntimeRules.ResolveSummonImpactDelayMs(
+            delayMs = SummonRuntimeRules.ResolveSummonImpactExecutionDelayMs(
                 summon.SkillData,
                 delayMs,
                 attackBranchName);
-
-            int projectileSpeed = summon.SkillData.ResolveSummonAttackProjectileSpeed(attackBranchName);
-            if (projectileSpeed <= 0)
-            {
-                return delayMs;
-            }
-
-            Vector2 impactPosition = ResolvePacketAttackImpactPosition(
-                summon.SkillData,
-                targetIndex,
-                attackBranchName,
-                target,
-                source,
-                currentTime);
-            float distance = Vector2.Distance(
-                SummonImpactPresentationResolver.ResolveSourceAnchor(source),
-                impactPosition);
-            int travelDelayMs = (int)MathF.Round(distance * 1000f / projectileSpeed);
-            return Math.Max(delayMs, travelDelayMs);
+            return delayMs;
         }
 
         private static int ResolvePacketTeslaAttackDelayWindowMs(ActiveSummon summon)

@@ -1115,6 +1115,7 @@ namespace HaCreator.MapSimulator
                         meleePacket.ActionCode,
                         meleePacket.MasteryPercent,
                         meleePacket.ChargeSkillId,
+                        meleePacket.ActionSpeed,
                         meleePacket.PreparedSkillReleaseFollowUpValue,
                         meleePacket.FacingRight,
                         currentTime,

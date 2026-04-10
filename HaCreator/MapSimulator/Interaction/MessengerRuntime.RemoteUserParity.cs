@@ -17,7 +17,17 @@ namespace HaCreator.MapSimulator.Interaction
             Character.CharacterBuild localTemplate,
             Character.CharacterBuild existingBuild)
         {
-            Character.CharacterBuild build = existingBuild?.Clone() ?? localTemplate?.Clone();
+            Character.CharacterBuild build = existingBuild?.Clone();
+            if (build == null)
+            {
+                if (snapshot.AvatarLook == null)
+                {
+                    return null;
+                }
+
+                build = localTemplate?.Clone();
+            }
+
             if (build == null)
             {
                 return null;

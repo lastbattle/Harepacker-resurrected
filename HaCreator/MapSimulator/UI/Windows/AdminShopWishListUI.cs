@@ -1739,6 +1739,11 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetImeCandidateWindowBounds()
         {
+            if (ImeCandidateWindowRendering.ShouldPreferNativeWindow(_candidateListState))
+            {
+                return Rectangle.Empty;
+            }
+
             if (!_candidateListState.HasCandidates || _font == null)
             {
                 return Rectangle.Empty;

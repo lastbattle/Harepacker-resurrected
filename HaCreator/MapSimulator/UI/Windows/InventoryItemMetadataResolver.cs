@@ -445,6 +445,68 @@ namespace HaCreator.MapSimulator.UI
             return resolvedEntries;
         }
 
+        public static bool TrySelectConsumeItemRequirement(
+            IReadOnlyList<ConsumeItemRequirementMetadata> requirements,
+            Func<int, int> ownedItemCountResolver,
+            int weightedRoll,
+            out ConsumeItemRequirementMetadata selectedRequirement)
+        {
+            selectedRequirement = default;
+            if (requirements == null || requirements.Count == 0 || ownedItemCountResolver == null)
+            {
+                return false;
+            }
+
+            List<ConsumeItemRequirementMetadata> eligibleRequirements = new(requirements.Count);
+            int totalWeightedRate = 0;
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                ConsumeItemRequirementMetadata requirement = requirements[i];
+                if (requirement.ItemId <= 0 || ownedItemCountResolver(requirement.ItemId) < requirement.Count)
+                {
+                    continue;
+                }
+
+                eligibleRequirements.Add(requirement);
+                if (requirement.Rate > 0)
+                {
+                    totalWeightedRate += requirement.Rate;
+                }
+            }
+
+            if (eligibleRequirements.Count == 0)
+            {
+                return false;
+            }
+
+            if (totalWeightedRate <= 0)
+            {
+                selectedRequirement = eligibleRequirements[0];
+                return true;
+            }
+
+            int normalizedRoll = Math.Clamp(weightedRoll, 1, totalWeightedRate);
+            int cumulativeRate = 0;
+            for (int i = 0; i < eligibleRequirements.Count; i++)
+            {
+                ConsumeItemRequirementMetadata requirement = eligibleRequirements[i];
+                if (requirement.Rate <= 0)
+                {
+                    continue;
+                }
+
+                cumulativeRate += requirement.Rate;
+                if (normalizedRoll <= cumulativeRate)
+                {
+                    selectedRequirement = requirement;
+                    return true;
+                }
+            }
+
+            selectedRequirement = eligibleRequirements[0];
+            return true;
+        }
+
         public static int ResolveItemCooldownSeconds(int itemId)
         {
             if (itemId <= 0)
@@ -912,8 +974,10 @@ namespace HaCreator.MapSimulator.UI
             AppendReturnMapRecordEffectLine(effectLines, effectSpecProperty["returnMapQR"]);
             AppendRandomMoveInFieldSetEffectLine(effectLines, effectSpecProperty["randomMoveInFieldSet"]);
             AppendExperienceEffectLines(effectLines, effectSpecProperty);
+            AppendDeathmarkEffectLine(effectLines, itemId, effectSpecProperty);
             AppendMobEffectLines(effectLines, effectSpecProperty["mob"] as WzSubProperty);
             AppendSpecExMobSkillEffectLines(effectLines, specExProperty);
+            AppendMobSkillOwnershipEffectLines(effectLines, specProperty, specExProperty);
             AppendPickupTriggerEffectLines(effectLines, specProperty, specExProperty);
 
             int? durationMs = TryGetPositiveInt(effectSpecProperty["time"]);
@@ -1481,6 +1545,26 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static void AppendDeathmarkEffectLine(List<string> effectLines, int itemId, WzSubProperty specProperty)
+        {
+            if (GetIntValue(specProperty?["deathmark"]) != 1)
+            {
+                return;
+            }
+
+            string description = TryResolveItemDescription(itemId, out string resolvedDescription)
+                ? resolvedDescription?.Trim()
+                : string.Empty;
+            if (!string.IsNullOrWhiteSpace(description)
+                && description.IndexOf("death curse", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                effectLines.Add("Removes the Death Curse");
+                return;
+            }
+
+            effectLines.Add("Death Mark effect");
+        }
+
         private static void AppendInfoMetadataLines(
             List<string> metadataLines,
             int itemId,
@@ -1548,6 +1632,20 @@ namespace HaCreator.MapSimulator.UI
                     effectLines.Add(line);
                 }
             }
+        }
+
+        private static void AppendMobSkillOwnershipEffectLines(
+            List<string> effectLines,
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty)
+        {
+            if (GetIntValue(specProperty?["effectedOnAlly"]) != 1
+                && GetIntValue(specExProperty?["effectedOnAlly"]) != 1)
+            {
+                return;
+            }
+
+            effectLines.Add("Affects allies");
         }
 
         private static void AppendSpecExMobSkillMetadataLines(List<string> metadataLines, WzSubProperty specExProperty)
@@ -2592,9 +2690,27 @@ namespace HaCreator.MapSimulator.UI
             return BuildConsumeItemRequirementLines(consumeItemProperty, previewLineLimit);
         }
 
+        public static bool TrySelectConsumeItemRequirementForTests(
+            IReadOnlyList<ConsumeItemRequirementMetadata> requirements,
+            IReadOnlyDictionary<int, int> ownedCounts,
+            int weightedRoll,
+            out ConsumeItemRequirementMetadata selectedRequirement)
+        {
+            return TrySelectConsumeItemRequirement(
+                requirements,
+                itemId => ownedCounts != null && ownedCounts.TryGetValue(itemId, out int count) ? count : 0,
+                weightedRoll,
+                out selectedRequirement);
+        }
+
         public static IReadOnlyList<string> BuildEffectLinesForTests(WzSubProperty specProperty)
         {
             return BuildEffectLines(0, null, null, specProperty, null);
+        }
+
+        public static IReadOnlyList<string> BuildEffectLinesForTests(int itemId, WzSubProperty specProperty)
+        {
+            return BuildEffectLines(itemId, null, null, specProperty, null);
         }
 
         public static IReadOnlyList<string> BuildEffectLinesForTests(WzSubProperty infoProperty, WzSubProperty specProperty)
@@ -2602,7 +2718,12 @@ namespace HaCreator.MapSimulator.UI
             return BuildEffectLines(0, null, infoProperty, specProperty, null);
         }
 
-        public static IReadOnlyList<string> BuildEffectLinesForTests(WzSubProperty itemProperty, WzSubProperty infoProperty, WzSubProperty specProperty)
+        public static IReadOnlyList<string> BuildEffectLinesWithSpecExForTests(WzSubProperty infoProperty, WzSubProperty specProperty, WzSubProperty specExProperty)
+        {
+            return BuildEffectLines(0, null, infoProperty, specProperty, specExProperty);
+        }
+
+        public static IReadOnlyList<string> BuildEffectLinesWithItemPropertyForTests(WzSubProperty itemProperty, WzSubProperty infoProperty, WzSubProperty specProperty)
         {
             return BuildEffectLines(0, itemProperty, infoProperty, specProperty, null);
         }

@@ -715,13 +715,21 @@ namespace HaCreator.MapSimulator.Loaders
             int width = 312,
             int height = 132)
         {
+            Texture2D noticeTexture = LoadCanvasTexture(utilDialogProperty, "notice", device);
+            if (noticeTexture != null
+                && width == noticeTexture.Width
+                && height >= noticeTexture.Height)
+            {
+                return CreateExtendedUtilDlgNoticeFrameTexture(noticeTexture, height, device);
+            }
+
             Texture2D topTexture = LoadCanvasTexture(utilDialogProperty, "t", device);
             Texture2D centerTexture = LoadCanvasTexture(utilDialogProperty, "c", device);
             Texture2D bottomTexture = LoadCanvasTexture(utilDialogProperty, "s", device);
 
             if (topTexture == null || centerTexture == null || bottomTexture == null)
             {
-                return LoadCanvasTexture(utilDialogProperty, "notice", device);
+                return noticeTexture;
             }
 
             int frameWidth = Math.Max(1, width);
@@ -752,6 +760,51 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             Texture2D frameTexture = new Texture2D(device, frameWidth, frameHeight);
+            frameTexture.SetData(frameData);
+            return frameTexture;
+        }
+
+        private static Texture2D CreateExtendedUtilDlgNoticeFrameTexture(
+            Texture2D noticeTexture,
+            int height,
+            GraphicsDevice device)
+        {
+            if (noticeTexture == null)
+            {
+                return null;
+            }
+
+            int frameWidth = noticeTexture.Width;
+            int frameHeight = Math.Max(noticeTexture.Height, height);
+            int topSectionHeight = noticeTexture.Height - 64;
+            int bottomSectionHeight = 64;
+            int centerSectionHeight = Math.Max(1, PacketOwnedRewardNoticeWindow.FrameHeightStep);
+            int centerSourceY = 28;
+
+            Color[] noticeData = GetTextureData(noticeTexture);
+            Color[] frameData = Enumerable.Repeat(Color.Transparent, frameWidth * frameHeight).ToArray();
+
+            BlitTextureRows(frameData, frameWidth, 0, noticeData, frameWidth, 0, topSectionHeight);
+
+            int centerDestinationY = topSectionHeight;
+            int centerDestinationEndY = Math.Max(topSectionHeight, frameHeight - bottomSectionHeight);
+            while (centerDestinationY < centerDestinationEndY)
+            {
+                int stripHeight = Math.Min(centerSectionHeight, centerDestinationEndY - centerDestinationY);
+                BlitTextureRows(frameData, frameWidth, centerDestinationY, noticeData, frameWidth, centerSourceY, stripHeight);
+                centerDestinationY += stripHeight;
+            }
+
+            BlitTextureRows(
+                frameData,
+                frameWidth,
+                frameHeight - bottomSectionHeight,
+                noticeData,
+                frameWidth,
+                noticeTexture.Height - bottomSectionHeight,
+                bottomSectionHeight);
+
+            Texture2D frameTexture = new(device, frameWidth, frameHeight);
             frameTexture.SetData(frameData);
             return frameTexture;
         }
@@ -789,6 +842,18 @@ namespace HaCreator.MapSimulator.Loaders
                 int sourceRow = sourceY + row;
                 Array.Copy(source, sourceRow * sourceWidth, destination, (destinationY + row) * destinationWidth, copyWidth);
             }
+        }
+
+        private static void BlitTextureRows(
+            Color[] destination,
+            int destinationWidth,
+            int destinationY,
+            Color[] source,
+            int sourceWidth,
+            int sourceY,
+            int rowCount)
+        {
+            BlitTextureStrip(destination, destinationWidth, destinationY, source, sourceWidth, rowCount, destinationWidth, sourceY);
         }
 
 
@@ -8543,8 +8608,22 @@ namespace HaCreator.MapSimulator.Loaders
             Point position)
         {
             WzSubProperty utilDialogProperty = uiWindow2Image?["UtilDlgEx"] as WzSubProperty;
-            Texture2D frameTexture = CreateUtilDlgNoticeFrameTexture(utilDialogProperty, device);
-            if (frameTexture == null)
+            Dictionary<int, IDXObject> framesByLineCount = new();
+            for (int lineCount = 1; lineCount <= 8; lineCount++)
+            {
+                int frameHeight = PacketOwnedRewardNoticeWindow.ResolveFrameHeightForBodyLineCount(lineCount);
+                Texture2D frameTexture = CreateUtilDlgNoticeFrameTexture(
+                    utilDialogProperty,
+                    device,
+                    PacketOwnedRewardNoticeWindow.DefaultFrameWidth,
+                    frameHeight);
+                if (frameTexture != null)
+                {
+                    framesByLineCount[lineCount] = new DXObject(0, 0, frameTexture, 0);
+                }
+            }
+
+            if (framesByLineCount.Count == 0)
             {
                 return CreatePlaceholderUtilityWindow(
                     basicImage,
@@ -8556,7 +8635,7 @@ namespace HaCreator.MapSimulator.Loaders
                     position);
             }
 
-            PacketOwnedRewardNoticeWindow window = new(new DXObject(0, 0, frameTexture, 0))
+            PacketOwnedRewardNoticeWindow window = new(framesByLineCount)
             {
                 Position = position
             };
@@ -9328,39 +9407,20 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
 
-            if (inventory.GetItemCount(InventoryType.EQUIP, 1003243) <= 0)
+            int[] mapleMiracleCubeCrimsonReqIds =
             {
-                inventory.AddItem(InventoryType.EQUIP, 1003243, null, 1); // Maple 8th Anniversary Crimson Cap
-            }
+                1003243, 1052358, 1072522, 1082315, 1102295, 1132093,
+                1302170, 1312069, 1322101, 1332145, 1372097, 1382121,
+                1402107, 1412068, 1422070, 1432096, 1442133, 1452126,
+                1462114, 1472137, 1482099, 1492098
+            };
 
-
-            if (inventory.GetItemCount(InventoryType.EQUIP, 1052358) <= 0)
+            foreach (int itemId in mapleMiracleCubeCrimsonReqIds)
             {
-                inventory.AddItem(InventoryType.EQUIP, 1052358, null, 1); // Maple 8th Anniversary Crimson Overall
-            }
-
-
-            if (inventory.GetItemCount(InventoryType.EQUIP, 1072522) <= 0)
-            {
-                inventory.AddItem(InventoryType.EQUIP, 1072522, null, 1); // Maple 8th Anniversary Crimson Shoes
-            }
-
-
-            if (inventory.GetItemCount(InventoryType.EQUIP, 1082315) <= 0)
-            {
-                inventory.AddItem(InventoryType.EQUIP, 1082315, null, 1); // Maple 8th Anniversary Crimson Gloves
-            }
-
-
-            if (inventory.GetItemCount(InventoryType.EQUIP, 1102295) <= 0)
-            {
-                inventory.AddItem(InventoryType.EQUIP, 1102295, null, 1); // Maple 8th Anniversary Crimson Cape
-            }
-
-
-            if (inventory.GetItemCount(InventoryType.EQUIP, 1302170) <= 0)
-            {
-                inventory.AddItem(InventoryType.EQUIP, 1302170, null, 1); // Maple 8th Anniversary Crimson Arcglaive
+                if (inventory.GetItemCount(InventoryType.EQUIP, itemId) <= 0)
+                {
+                    inventory.AddItem(InventoryType.EQUIP, itemId, null, 1);
+                }
             }
         }
 

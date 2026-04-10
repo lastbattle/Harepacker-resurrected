@@ -10,6 +10,7 @@ using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib.WzStructure.Data;
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -268,37 +269,22 @@ namespace HaCreator.MapSimulator
         internal static bool TryGetReviveOwnerMapInfoFlag(MapInfo mapInfo, string propertyName, out bool value)
         {
             value = false;
-            if (mapInfo?.unsupportedInfoProperties == null || string.IsNullOrWhiteSpace(propertyName))
+            if (!TryFindReviveOwnerMapInfoProperty(mapInfo, propertyName, out WzImageProperty property))
             {
                 return false;
             }
 
-            var property = mapInfo.unsupportedInfoProperties.FirstOrDefault(
-                candidate => string.Equals(candidate?.Name, propertyName, StringComparison.OrdinalIgnoreCase));
-            if (property == null)
-            {
-                return false;
-            }
-
-            value = property switch
-            {
-                WzStringProperty stringProperty when bool.TryParse(stringProperty.Value, out bool parsedBool) => parsedBool,
-                WzStringProperty stringProperty when int.TryParse(stringProperty.Value, out int parsed) => parsed != 0,
-                _ => InfoTool.GetInt(property, 0) != 0
-            };
-            return true;
+            return TryReadReviveOwnerBoolean(property, out value);
         }
 
         internal static bool TryGetReviveOwnerMapInfoPoint(MapInfo mapInfo, string propertyName, out Vector2 point)
         {
             point = default;
-            if (mapInfo?.unsupportedInfoProperties == null || string.IsNullOrWhiteSpace(propertyName))
+            if (!TryFindReviveOwnerMapInfoProperty(mapInfo, propertyName, out WzImageProperty property))
             {
                 return false;
             }
 
-            var property = mapInfo.unsupportedInfoProperties.FirstOrDefault(
-                candidate => string.Equals(candidate?.Name, propertyName, StringComparison.OrdinalIgnoreCase));
             if (property is WzVectorProperty vectorProperty)
             {
                 point = new Vector2(vectorProperty.X.Value, vectorProperty.Y.Value);
@@ -310,14 +296,96 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            WzImageProperty xProperty = subProperty["x"] ?? subProperty["X"];
-            WzImageProperty yProperty = subProperty["y"] ?? subProperty["Y"];
-            if (xProperty == null || yProperty == null)
+            WzImageProperty xProperty = FindReviveOwnerChildProperty(subProperty, "x");
+            WzImageProperty yProperty = FindReviveOwnerChildProperty(subProperty, "y");
+            if (!TryReadReviveOwnerInt(xProperty, out int x)
+                || !TryReadReviveOwnerInt(yProperty, out int y))
             {
                 return false;
             }
 
-            point = new Vector2(InfoTool.GetInt(xProperty, 0), InfoTool.GetInt(yProperty, 0));
+            point = new Vector2(x, y);
+            return true;
+        }
+
+        private static bool TryFindReviveOwnerMapInfoProperty(MapInfo mapInfo, string propertyName, out WzImageProperty property)
+        {
+            property = null;
+            if (mapInfo?.unsupportedInfoProperties == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            property = mapInfo.unsupportedInfoProperties.FirstOrDefault(
+                candidate => string.Equals(candidate?.Name, propertyName, StringComparison.OrdinalIgnoreCase));
+            return property != null;
+        }
+
+        private static WzImageProperty FindReviveOwnerChildProperty(WzSubProperty property, string childName)
+        {
+            if (property?.WzProperties == null || string.IsNullOrWhiteSpace(childName))
+            {
+                return null;
+            }
+
+            return property.WzProperties.FirstOrDefault(
+                candidate => string.Equals(candidate?.Name, childName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool TryReadReviveOwnerBoolean(WzImageProperty property, out bool value)
+        {
+            value = false;
+            if (property == null)
+            {
+                return false;
+            }
+
+            if (property is WzStringProperty stringProperty)
+            {
+                string rawValue = stringProperty.Value?.Trim();
+                if (bool.TryParse(rawValue, out bool parsedBool))
+                {
+                    value = parsedBool;
+                    return true;
+                }
+
+                if (int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedInt))
+                {
+                    value = parsedInt != 0;
+                    return true;
+                }
+            }
+
+            value = InfoTool.GetInt(property, 0) != 0;
+            return true;
+        }
+
+        private static bool TryReadReviveOwnerInt(WzImageProperty property, out int value)
+        {
+            value = 0;
+            if (property == null)
+            {
+                return false;
+            }
+
+            if (property is WzStringProperty stringProperty)
+            {
+                string rawValue = stringProperty.Value?.Trim();
+                if (int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out value))
+                {
+                    return true;
+                }
+
+                if (bool.TryParse(rawValue, out bool parsedBool))
+                {
+                    value = parsedBool ? 1 : 0;
+                    return true;
+                }
+
+                return false;
+            }
+
+            value = InfoTool.GetInt(property, 0);
             return true;
         }
 

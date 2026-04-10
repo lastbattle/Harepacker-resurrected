@@ -18,6 +18,20 @@ namespace HaCreator.MapSimulator.Loaders
 {
     internal static class NpcClientActionSetLoader
     {
+        private static readonly string[] StandClientActionCandidates =
+        {
+            Animation.AnimationKeys.Stand,
+            "default"
+        };
+
+        private static readonly string[] DialogClientActionCandidates =
+        {
+            "say",
+            "shop",
+            Animation.AnimationKeys.Speak,
+            Animation.AnimationKeys.Stand
+        };
+
         internal const int AutomaticClientActionSetIndex = -2;
         internal const int RootClientActionSetIndex = -1;
         internal const int DefaultNpcFrameDelay = 180;
@@ -180,6 +194,31 @@ namespace HaCreator.MapSimulator.Loaders
         internal static void ClearCaches()
         {
             ActionFrameCache.Clear();
+        }
+
+        internal static IEnumerable<string> EnumerateClientActionNameCandidates(int clientActionId)
+        {
+            IEnumerable<string> fixedCandidates = clientActionId switch
+            {
+                0 => StandClientActionCandidates,
+                1 => DialogClientActionCandidates,
+                _ => Array.Empty<string>()
+            };
+
+            HashSet<string> yielded = new(StringComparer.OrdinalIgnoreCase);
+            foreach (string candidate in fixedCandidates)
+            {
+                if (!string.IsNullOrWhiteSpace(candidate) && yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+
+            string numericCandidate = clientActionId.ToString(CultureInfo.InvariantCulture);
+            if (yielded.Add(numericCandidate))
+            {
+                yield return numericCandidate;
+            }
         }
 
         internal static List<NpcClientActionSetDefinition> GetClientActionSets(WzImage source)

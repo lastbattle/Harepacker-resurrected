@@ -122,7 +122,7 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued={DescribeOutboundPacket(LastQueuedOpcode, LastQueuedRawPacket)}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Transport official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; forwardedOutbound={ForwardedOutboundCount}; forwardedOutboundTransport={ForwardedOutboundTransportCount}; inbound opcodes=164,165; outbound opcode={TransportationFieldInitRequestCodec.OutboundFieldInitOpcode}.{lastOutbound}{lastQueued} {LastStatus}";
+            return $"Transport official-session bridge {lifecycle}; {session}; attachMode=proxy-only; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; forwardedOutbound={ForwardedOutboundCount}; forwardedOutboundTransport={ForwardedOutboundTransportCount}; inbound opcodes=164,165; outbound opcode={TransportationFieldInitRequestCodec.OutboundFieldInitOpcode}.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public string DescribeRecentOutboundPackets(int maxCount = 10)
@@ -377,7 +377,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            status = $"Transport official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {startStatus}";
+            status = $"Transport official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {startStatus} {BuildDiscoveryAttachmentRequirementMessage(resolvedListenPort)}";
             LastStatus = status;
             return true;
         }
@@ -961,7 +961,17 @@ namespace HaCreator.MapSimulator.Managers
                 + string.Join(
                     Environment.NewLine,
                     entries.Select(entry =>
-                        $"{entry.ProcessName} ({entry.ProcessId}) local {entry.LocalEndpoint.Address}:{entry.LocalEndpoint.Port} -> remote {entry.RemoteEndpoint.Address}:{entry.RemoteEndpoint.Port}"));
+                        $"{entry.ProcessName} ({entry.ProcessId}) local {entry.LocalEndpoint.Address}:{entry.LocalEndpoint.Port} -> remote {entry.RemoteEndpoint.Address}:{entry.RemoteEndpoint.Port}"))
+                + Environment.NewLine
+                + BuildDiscoveryAttachmentRequirementMessage();
+        }
+
+        private static string BuildDiscoveryAttachmentRequirementMessage(int? listenPort = null)
+        {
+            string reconnectTarget = listenPort.HasValue && listenPort.Value > 0
+                ? $"127.0.0.1:{listenPort.Value}"
+                : "the configured localhost listen port";
+            return $"Discovery identifies established Maple sockets, but transport live-session attach is still proxy-only: Maple must reconnect through {reconnectTarget} so the bridge can recover the init packet and Maple crypto instead of attaching in place to the already-established socket.";
         }
 
         private static string FormatOwnershipSuffix(int? owningProcessId, string owningProcessName)

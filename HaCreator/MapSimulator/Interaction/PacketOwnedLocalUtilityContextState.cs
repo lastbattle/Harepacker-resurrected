@@ -40,6 +40,8 @@ namespace HaCreator.MapSimulator.Interaction
         public int RadioCreateLayerMutationSequence { get; private set; }
         public int RadioCreateLayerLastMutationTick { get; private set; } = int.MinValue;
         public string RadioCreateLayerLastMutationSource { get; private set; } = "fallback";
+        private readonly List<string> _recentRadioCreateLayerMutations = new();
+        private const int MaxRecentRadioCreateLayerMutations = 8;
         public bool HasPersistedApspState =>
             BoundCharacterId > 0
             || ApspReceiveContextToken > 0
@@ -77,6 +79,7 @@ namespace HaCreator.MapSimulator.Interaction
             RadioCreateLayerMutationSequence = 0;
             RadioCreateLayerLastMutationTick = int.MinValue;
             RadioCreateLayerLastMutationSource = "fallback";
+            _recentRadioCreateLayerMutations.Clear();
             ClearChairContext();
         }
 
@@ -243,25 +246,23 @@ namespace HaCreator.MapSimulator.Interaction
             RadioCreateLayerBoundCharacterId = resolvedCharacterId;
             HasRadioCreateLayerLeftContextValue = false;
             RadioCreateLayerLeftContextValue = false;
-            RecordRadioCreateLayerMutation("runtime-character-reset", int.MinValue, incrementSequence: true);
+            RecordRadioCreateLayerMutation("runtime-character-reset", int.MinValue);
         }
 
         public void SetRadioCreateLayerLeftContextValue(bool enabled, string source, int currentTick, int runtimeCharacterId)
         {
             EnsureRadioCreateLayerInitializedFromRuntime(runtimeCharacterId);
-            bool changed = !HasRadioCreateLayerLeftContextValue || RadioCreateLayerLeftContextValue != enabled;
             HasRadioCreateLayerLeftContextValue = true;
             RadioCreateLayerLeftContextValue = enabled;
-            RecordRadioCreateLayerMutation(source, currentTick, incrementSequence: changed);
+            RecordRadioCreateLayerMutation(source, currentTick);
         }
 
         public void ClearRadioCreateLayerLeftContextValue(string source, int currentTick, int runtimeCharacterId)
         {
             EnsureRadioCreateLayerInitializedFromRuntime(runtimeCharacterId);
-            bool changed = HasRadioCreateLayerLeftContextValue;
             HasRadioCreateLayerLeftContextValue = false;
             RadioCreateLayerLeftContextValue = false;
-            RecordRadioCreateLayerMutation(source, currentTick, incrementSequence: changed);
+            RecordRadioCreateLayerMutation(source, currentTick);
         }
 
         public bool ResolveRadioCreateLayerLeftContextValue(bool fallback)
@@ -292,6 +293,19 @@ namespace HaCreator.MapSimulator.Interaction
                 $"Packet-owned local utility CWvsContext[{contextSlot}] (radio bLeft): {value} via {source}, " +
                 $"boundCharacter={boundCharacter}, runtimeCharacter={runtimeCharacter}, " +
                 $"mutationSeq={RadioCreateLayerMutationSequence}, lastMutation={RadioCreateLayerLastMutationSource}@{mutationTick}.";
+        }
+
+        public IReadOnlyList<string> GetRecentRadioCreateLayerMutations(int maxCount = 3)
+        {
+            if (maxCount <= 0 || _recentRadioCreateLayerMutations.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            int takeCount = Math.Min(maxCount, _recentRadioCreateLayerMutations.Count);
+            return _recentRadioCreateLayerMutations
+                .Skip(Math.Max(0, _recentRadioCreateLayerMutations.Count - takeCount))
+                .ToArray();
         }
 
         public void ObserveChairSitResult(int currentTick)
@@ -492,17 +506,31 @@ namespace HaCreator.MapSimulator.Interaction
             return contextToken > 0 ? contextToken : NormalizeCharacterId(fallbackCharacterId);
         }
 
-        private void RecordRadioCreateLayerMutation(string source, int currentTick, bool incrementSequence)
+        private void RecordRadioCreateLayerMutation(string source, int currentTick)
         {
-            if (incrementSequence)
-            {
-                RadioCreateLayerMutationSequence++;
-            }
-
+            RadioCreateLayerMutationSequence++;
             RadioCreateLayerLastMutationSource = string.IsNullOrWhiteSpace(source)
                 ? "unknown"
                 : source.Trim();
             RadioCreateLayerLastMutationTick = currentTick;
+            string value = HasRadioCreateLayerLeftContextValue
+                ? (RadioCreateLayerLeftContextValue ? "1" : "0")
+                : "unset";
+            string tick = currentTick == int.MinValue
+                ? "idle"
+                : currentTick.ToString();
+            string boundCharacter = RadioCreateLayerBoundCharacterId > 0
+                ? RadioCreateLayerBoundCharacterId.ToString()
+                : "unset";
+            string runtimeCharacter = RadioCreateLayerLastObservedRuntimeCharacterId > 0
+                ? RadioCreateLayerLastObservedRuntimeCharacterId.ToString()
+                : "unset";
+            _recentRadioCreateLayerMutations.Add(
+                $"seq={RadioCreateLayerMutationSequence} value={value} source={RadioCreateLayerLastMutationSource} tick={tick} boundCharacter={boundCharacter} runtimeCharacter={runtimeCharacter}");
+            if (_recentRadioCreateLayerMutations.Count > MaxRecentRadioCreateLayerMutations)
+            {
+                _recentRadioCreateLayerMutations.RemoveAt(0);
+            }
         }
 
         private static int[] CreatePetConsumeExclusiveRequestTicks()

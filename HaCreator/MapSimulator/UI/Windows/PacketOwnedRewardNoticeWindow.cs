@@ -2,14 +2,20 @@ using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
     internal sealed class PacketOwnedRewardNoticeWindow : UIWindowBase
     {
+        internal const int DefaultFrameWidth = 312;
+        internal const int DefaultFrameHeight = 132;
+        internal const int DefaultBodyLineCapacity = 3;
+        internal const int FrameHeightStep = 13;
         private const float NormalBodyWrapWidth = 200f;
         private const float TightLineBodyWrapWidth = 234f;
         private const float CenteredBodyAreaLeftX = 15f;
@@ -28,18 +34,33 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _closeButton;
         private bool _autoSeparated = true;
         private bool _tightLine = false;
+        private IReadOnlyList<string> _bodyLines = Array.Empty<string>();
+        private readonly IReadOnlyDictionary<int, IDXObject> _framesByLineCount;
+        private readonly IDXObject _defaultFrame;
+        private KeyboardState _previousKeyboardState;
 
-        public PacketOwnedRewardNoticeWindow(IDXObject frame)
-            : base(frame)
+        public PacketOwnedRewardNoticeWindow(
+            IReadOnlyDictionary<int, IDXObject> framesByLineCount)
+            : base(framesByLineCount != null && framesByLineCount.TryGetValue(1, out IDXObject frame) ? frame : null)
         {
+            _framesByLineCount = framesByLineCount ?? new Dictionary<int, IDXObject>();
+            _defaultFrame = Frame;
         }
 
         public override string WindowName => MapSimulatorWindowNames.PacketOwnedRewardResultNotice;
         public override bool SupportsDragging => false;
+        public override bool CapturesKeyboardInput => IsVisible;
 
         internal static float ResolveCenteredBodyLineX(float measuredWidth)
         {
             return CenteredBodyAreaLeftX + ((CenteredBodyAreaWidth - measuredWidth) / 2f);
+        }
+
+        internal static bool ShouldDismissForKeyboard(Keys key)
+        {
+            return key == Keys.Enter
+                || key == Keys.Space
+                || key == Keys.Escape;
         }
 
         public void Configure(string title, string body, bool autoSeparated = true, bool tightLine = false)
@@ -48,6 +69,7 @@ namespace HaCreator.MapSimulator.UI
             _body = body?.Trim() ?? string.Empty;
             _autoSeparated = autoSeparated;
             _tightLine = tightLine;
+            UpdateLayout();
         }
 
         public void InitializeButtons(UIObject okButton, UIObject closeButton)
@@ -55,8 +77,6 @@ namespace HaCreator.MapSimulator.UI
             _okButton = okButton;
             if (_okButton != null)
             {
-                _okButton.X = ResolveOkButtonX(_okButton);
-                _okButton.Y = ResolveOkButtonY(_okButton);
                 _okButton.ButtonClickReleased += _ => Hide();
                 AddButton(_okButton);
             }
@@ -64,10 +84,35 @@ namespace HaCreator.MapSimulator.UI
             if (closeButton != null)
             {
                 _closeButton = closeButton;
-                AnchorCloseButton(closeButton);
                 closeButton.ButtonClickReleased += _ => Hide();
                 InitializeCloseButton(closeButton);
             }
+
+            UpdateLayout();
+        }
+
+        public override void Show()
+        {
+            _previousKeyboardState = Keyboard.GetState();
+            base.Show();
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            if (!IsVisible)
+            {
+                return;
+            }
+
+            KeyboardState keyboardState = Keyboard.GetState();
+            if (WasPressed(keyboardState, Keys.Enter) ||
+                WasPressed(keyboardState, Keys.Space) ||
+                WasPressed(keyboardState, Keys.Escape))
+            {
+                Hide();
+            }
+
+            _previousKeyboardState = keyboardState;
         }
 
         protected override void DrawContents(
@@ -87,7 +132,6 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            List<string> lines = new(BuildBodyLines());
             float y = Position.Y + BodyTopY;
             if (!string.IsNullOrWhiteSpace(_title))
             {
@@ -100,7 +144,7 @@ namespace HaCreator.MapSimulator.UI
                 y += BodyLineSpacing;
             }
 
-            foreach (string line in lines)
+            foreach (string line in _bodyLines)
             {
                 float x = string.IsNullOrWhiteSpace(_title)
                     ? Position.X + ResolveCenteredBodyLineX(MeasureWindowText(null, line).X)
@@ -217,9 +261,41 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        internal static int ResolveFrameHeightForBodyLineCount(int lineCount)
+        {
+            int normalizedLineCount = Math.Max(1, lineCount);
+            int extraLineCount = Math.Max(0, normalizedLineCount - DefaultBodyLineCapacity);
+            return DefaultFrameHeight + (extraLineCount * FrameHeightStep);
+        }
+
+        private bool WasPressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
+        }
+
+        private void UpdateLayout()
+        {
+            _bodyLines = BuildBodyLines().ToArray();
+            int lineCount = Math.Max(1, _bodyLines.Count);
+            Frame = _framesByLineCount.TryGetValue(lineCount, out IDXObject frame)
+                ? frame
+                : _defaultFrame;
+
+            if (_okButton != null)
+            {
+                _okButton.X = ResolveOkButtonX(_okButton);
+                _okButton.Y = ResolveOkButtonY(_okButton);
+            }
+
+            if (_closeButton != null)
+            {
+                AnchorCloseButton(_closeButton);
+            }
+        }
+
         private int ResolveOkButtonX(UIObject okButton)
         {
-            int frameWidth = CurrentFrame?.Width ?? 312;
+            int frameWidth = CurrentFrame?.Width ?? DefaultFrameWidth;
             BaseDXDrawableItem buttonDrawable = okButton.GetBaseDXDrawableItemByState();
             if (buttonDrawable?.Frame0 != null && buttonDrawable.Frame0.Width > 0)
             {
@@ -231,7 +307,7 @@ namespace HaCreator.MapSimulator.UI
 
         private int ResolveOkButtonY(UIObject okButton)
         {
-            int frameHeight = CurrentFrame?.Height ?? 132;
+            int frameHeight = CurrentFrame?.Height ?? DefaultFrameHeight;
             BaseDXDrawableItem buttonDrawable = okButton.GetBaseDXDrawableItemByState();
             if (buttonDrawable?.Frame0 != null && buttonDrawable.Frame0.Height > 0)
             {
@@ -244,18 +320,11 @@ namespace HaCreator.MapSimulator.UI
         private void AnchorCloseButton(UIObject closeButton)
         {
             BaseDXDrawableItem closeButtonDrawable = closeButton.GetBaseDXDrawableItemByState();
-            int frameWidth = CurrentFrame?.Width ?? 312;
+            int frameWidth = CurrentFrame?.Width ?? DefaultFrameWidth;
             int closeButtonWidth = closeButtonDrawable?.Frame0?.Width ?? 16;
 
-            if (closeButton.X <= 0)
-            {
-                closeButton.X = Math.Max(CloseButtonTopMargin, frameWidth - closeButtonWidth - CloseButtonRightMargin);
-            }
-
-            if (closeButton.Y <= 0)
-            {
-                closeButton.Y = CloseButtonTopMargin;
-            }
+            closeButton.X = Math.Max(CloseButtonTopMargin, frameWidth - closeButtonWidth - CloseButtonRightMargin);
+            closeButton.Y = CloseButtonTopMargin;
         }
     }
 }

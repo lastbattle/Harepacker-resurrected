@@ -407,7 +407,7 @@ namespace HaCreator.MapSimulator.UI
             _showCalendar = showCalendar;
             if (_showCalendar)
             {
-                SetCalendarMonth(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1));
+                InitializeCalendarSelection(_currentSnapshot ?? RefreshSnapshot());
             }
         }
 
@@ -473,6 +473,12 @@ namespace HaCreator.MapSimulator.UI
             if (dateComparison != 0)
             {
                 return dateComparison;
+            }
+
+            int priorityComparison = left.SortPriority.CompareTo(right.SortPriority);
+            if (priorityComparison != 0)
+            {
+                return priorityComparison;
             }
 
             int leftTick = left.SourceTick == int.MinValue ? int.MinValue : left.SourceTick;
@@ -589,11 +595,9 @@ namespace HaCreator.MapSimulator.UI
         private void SetCalendarMonth(DateTime month)
         {
             _calendarMonth = new DateTime(month.Year, month.Month, 1);
-            DateTime selected = _selectedCalendarDate?.Date ?? DateTime.Today.Date;
-            if (selected.Year != _calendarMonth.Year || selected.Month != _calendarMonth.Month)
-            {
-                _selectedCalendarDate = _calendarMonth;
-            }
+            IReadOnlyList<EventEntrySnapshot> entries = GetFilteredEntries(_currentSnapshot ?? RefreshSnapshot());
+            DateTime anchorDate = _selectedCalendarDate?.Date ?? DateTime.Today.Date;
+            _selectedCalendarDate = ResolveCalendarSelectionForMonth(entries, _calendarMonth, anchorDate);
         }
 
         private void DisableAutoDismiss()
@@ -762,18 +766,34 @@ namespace HaCreator.MapSimulator.UI
         private void InitializeCalendarSelection(EventWindowSnapshot snapshot)
         {
             IReadOnlyList<EventEntrySnapshot> entries = GetFilteredEntries(snapshot);
+            DateTime targetDate = ResolveNearestCalendarDate(entries, DateTime.Today.Date);
+            _selectedCalendarDate = targetDate;
+            SetCalendarMonth(new DateTime(targetDate.Year, targetDate.Month, 1));
+        }
+
+        private static DateTime ResolveCalendarSelectionForMonth(
+            IReadOnlyList<EventEntrySnapshot> entries,
+            DateTime month,
+            DateTime anchorDate)
+        {
+            DateTime monthStart = new(month.Year, month.Month, 1);
+            DateTime fallbackDate = anchorDate.Date;
+            if (fallbackDate.Year != monthStart.Year || fallbackDate.Month != monthStart.Month)
+            {
+                fallbackDate = monthStart;
+            }
+
             DateTime targetDate = default;
             long bestDistance = long.MaxValue;
-            DateTime today = DateTime.Today.Date;
             for (int i = 0; i < entries.Count; i++)
             {
                 DateTime date = entries[i].ScheduledAt.Date;
-                if (date.Year <= 1)
+                if (date.Year <= 1 || date.Year != monthStart.Year || date.Month != monthStart.Month)
                 {
                     continue;
                 }
 
-                long distance = Math.Abs((date - today).Ticks);
+                long distance = Math.Abs((date - anchorDate.Date).Ticks);
                 if (distance > bestDistance || (distance == bestDistance && targetDate != default && date >= targetDate))
                 {
                     continue;
@@ -783,13 +803,33 @@ namespace HaCreator.MapSimulator.UI
                 targetDate = date;
             }
 
-            if (targetDate.Year <= 1)
+            return targetDate.Year > 1 ? targetDate : fallbackDate;
+        }
+
+        private static DateTime ResolveNearestCalendarDate(IReadOnlyList<EventEntrySnapshot> entries, DateTime anchorDate)
+        {
+            DateTime targetDate = default;
+            long bestDistance = long.MaxValue;
+            DateTime normalizedAnchor = anchorDate.Date;
+            for (int i = 0; i < entries.Count; i++)
             {
-                targetDate = DateTime.Today.Date;
+                DateTime date = entries[i].ScheduledAt.Date;
+                if (date.Year <= 1)
+                {
+                    continue;
+                }
+
+                long distance = Math.Abs((date - normalizedAnchor).Ticks);
+                if (distance > bestDistance || (distance == bestDistance && targetDate != default && date >= targetDate))
+                {
+                    continue;
+                }
+
+                bestDistance = distance;
+                targetDate = date;
             }
 
-            _selectedCalendarDate = targetDate;
-            SetCalendarMonth(new DateTime(targetDate.Year, targetDate.Month, 1));
+            return targetDate.Year > 1 ? targetDate : normalizedAnchor;
         }
 
         private void DrawCalendarSelectionSummary(SpriteBatch sprite, IReadOnlyList<EventEntrySnapshot> entries, Rectangle calendarBounds)

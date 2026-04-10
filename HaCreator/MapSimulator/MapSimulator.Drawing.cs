@@ -103,7 +103,7 @@ namespace HaCreator.MapSimulator
 
             //GraphicsDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
 
-            GraphicsDevice.Clear(Color.Black);
+            GraphicsDevice.Clear(ResolveContextOwnedStageBackClearColor());
 
 
 

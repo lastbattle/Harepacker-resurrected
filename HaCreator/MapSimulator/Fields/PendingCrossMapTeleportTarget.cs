@@ -4,6 +4,7 @@ namespace HaCreator.MapSimulator
     {
         public PendingCrossMapTeleportTarget(
             int mapId,
+            int sourceMapId = -1,
             string sourcePortalName = null,
             string targetPortalName = null,
             float? fallbackX = null,
@@ -11,6 +12,7 @@ namespace HaCreator.MapSimulator
             string[] targetPortalNameCandidates = null)
         {
             MapId = mapId;
+            SourceMapId = sourceMapId;
             SourcePortalName = sourcePortalName;
             TargetPortalName = targetPortalName;
             FallbackX = fallbackX;
@@ -19,6 +21,8 @@ namespace HaCreator.MapSimulator
         }
 
         public int MapId { get; }
+
+        public int SourceMapId { get; }
 
         public string SourcePortalName { get; }
 

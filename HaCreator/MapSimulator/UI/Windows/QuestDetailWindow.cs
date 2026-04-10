@@ -45,7 +45,7 @@ namespace HaCreator.MapSimulator.UI
         private const float ClientDetailScale = 0.58f;
         private const float ClientNavigationScale = 0.52f;
         private static readonly Regex RichTextTokenRegex = new(
-            @"(\{\{ITEMICON:\d+\}\}|\{\{QUESTSURFACE:[^}]+\}\}|\r?\n|\s+)",
+            @"(\{\{ITEMICON:\d+\}\}|\{\{QUESTSURFACE:[^}]+\}\}|\{\{QUESTSTYLE:[^}]+\}\}|\r?\n|\s+)",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         private readonly string _windowName;
@@ -837,7 +837,7 @@ namespace HaCreator.MapSimulator.UI
                 position,
                 maxWidth,
                 scale,
-                (token, drawPosition) =>
+                (token, drawPosition, drawColor) =>
                 {
                     if (token.Texture != null)
                     {
@@ -854,14 +854,15 @@ namespace HaCreator.MapSimulator.UI
                     }
                     else if (!string.IsNullOrEmpty(token.Text))
                     {
-                        DrawTextLineClipped(sprite, token.Text, drawPosition, color, clipRect, scale);
+                        DrawTextLineClipped(sprite, token.Text, drawPosition, drawColor, clipRect, scale);
                     }
-                });
+                },
+                color);
         }
 
         private float AdvanceRichText(string text, float maxWidth, float scale)
         {
-            return LayoutRichText(text, Vector2.Zero, maxWidth, scale, null);
+            return LayoutRichText(text, Vector2.Zero, maxWidth, scale, null, Color.White);
         }
 
         private IEnumerable<string> WrapText(string text, float maxWidth, float scale)
@@ -902,13 +903,20 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private float LayoutRichText(string text, Vector2 position, float maxWidth, float scale, Action<RichTextToken, Vector2> drawToken)
+        private float LayoutRichText(
+            string text,
+            Vector2 position,
+            float maxWidth,
+            float scale,
+            Action<RichTextToken, Vector2, Color> drawToken,
+            Color defaultColor)
         {
             float baselineHeight = Math.Max(1f, GetLineHeight(scale));
             float currentX = position.X;
             float currentY = position.Y;
             float lineStartX = position.X;
             float lineHeight = baselineHeight;
+            Color currentColor = defaultColor;
             bool lineHasContent = false;
 
             foreach (RichTextToken token in EnumerateRichTextTokens(text, scale))
@@ -919,6 +927,12 @@ namespace HaCreator.MapSimulator.UI
                     currentX = lineStartX;
                     lineHeight = baselineHeight;
                     lineHasContent = false;
+                    continue;
+                }
+
+                if (token.Kind == RichTextTokenKind.Style)
+                {
+                    currentColor = ResolveQuestDetailStyleColor(token.StyleTag, defaultColor);
                     continue;
                 }
 
@@ -951,7 +965,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                drawToken?.Invoke(token, new Vector2(currentX, currentY));
+                drawToken?.Invoke(token, new Vector2(currentX, currentY), currentColor);
                 currentX += token.Width;
                 lineHeight = Math.Max(lineHeight, token.Height > 0 ? token.Height : baselineHeight);
                 if (token.Kind != RichTextTokenKind.Space)
@@ -999,6 +1013,7 @@ namespace HaCreator.MapSimulator.UI
                             RichTextTokenKind.Space,
                             value,
                             null,
+                            null,
                             (int)Math.Ceiling(width),
                             (int)Math.Ceiling(GetLineHeight(scale)));
                     }
@@ -1030,6 +1045,7 @@ namespace HaCreator.MapSimulator.UI
                     RichTextTokenKind.Text,
                     text,
                     null,
+                    null,
                     (int)Math.Ceiling(width),
                     (int)Math.Ceiling(GetLineHeight(scale)));
             }
@@ -1056,7 +1072,7 @@ namespace HaCreator.MapSimulator.UI
                 Texture2D iconTexture = ResolveItemIcon(itemId);
                 if (iconTexture != null)
                 {
-                    token = new RichTextToken(RichTextTokenKind.Icon, null, iconTexture, iconTexture.Width, iconTexture.Height);
+                    token = new RichTextToken(RichTextTokenKind.Icon, null, iconTexture, null, iconTexture.Width, iconTexture.Height);
                 }
 
                 return true;
@@ -1069,13 +1085,41 @@ namespace HaCreator.MapSimulator.UI
                 Texture2D surfaceTexture = ResolveQuestSurfaceTexture(surfaceKey);
                 if (surfaceTexture != null)
                 {
-                    token = new RichTextToken(RichTextTokenKind.Surface, null, surfaceTexture, surfaceTexture.Width, surfaceTexture.Height);
+                    token = new RichTextToken(RichTextTokenKind.Surface, null, surfaceTexture, null, surfaceTexture.Width, surfaceTexture.Height);
+                }
+
+                return true;
+            }
+
+            const string questStylePrefix = "{{QUESTSTYLE:";
+            if (value.StartsWith(questStylePrefix, StringComparison.OrdinalIgnoreCase) &&
+                value.EndsWith("}}", StringComparison.Ordinal))
+            {
+                string styleTag = value.Substring(questStylePrefix.Length, value.Length - questStylePrefix.Length - 2).Trim();
+                if (!string.IsNullOrWhiteSpace(styleTag))
+                {
+                    token = RichTextToken.StyleToken(styleTag);
                 }
 
                 return true;
             }
 
             return false;
+        }
+
+        private static Color ResolveQuestDetailStyleColor(string styleTag, Color defaultColor)
+        {
+            return styleTag?.Trim().ToLowerInvariant() switch
+            {
+                "b" => new Color(167, 214, 255),
+                "r" => new Color(255, 166, 154),
+                "g" => new Color(166, 224, 166),
+                "d" => new Color(196, 196, 196),
+                "m" => new Color(244, 182, 255),
+                "c" => new Color(164, 238, 255),
+                "k" => defaultColor,
+                _ => defaultColor
+            };
         }
 
         private HoveredQuestItemInfo ResolveHoveredQuestItem(int mouseX, int mouseY)
@@ -2119,18 +2163,20 @@ namespace HaCreator.MapSimulator.UI
             Space,
             Icon,
             Surface,
+            Style,
             NewLine
         }
 
         private readonly struct RichTextToken
         {
-            public static readonly RichTextToken NewLineToken = new(RichTextTokenKind.NewLine, null, null, 0, 0);
+            public static readonly RichTextToken NewLineToken = new(RichTextTokenKind.NewLine, null, null, null, 0, 0);
 
-            public RichTextToken(RichTextTokenKind kind, string text, Texture2D texture, int width, int height)
+            public RichTextToken(RichTextTokenKind kind, string text, Texture2D texture, string styleTag, int width, int height)
             {
                 Kind = kind;
                 Text = text;
                 Texture = texture;
+                StyleTag = styleTag;
                 Width = Math.Max(0, width);
                 Height = Math.Max(0, height);
             }
@@ -2138,8 +2184,14 @@ namespace HaCreator.MapSimulator.UI
             public RichTextTokenKind Kind { get; }
             public string Text { get; }
             public Texture2D Texture { get; }
+            public string StyleTag { get; }
             public int Width { get; }
             public int Height { get; }
+
+            public static RichTextToken StyleToken(string styleTag)
+            {
+                return new RichTextToken(RichTextTokenKind.Style, null, null, styleTag, 0, 0);
+            }
         }
     }
 }

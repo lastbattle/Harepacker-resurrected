@@ -47,9 +47,6 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _getButton;
         private readonly Texture2D _rowTexture;
         private readonly VerticalScrollbarSkin _scrollbarSkin;
-        private readonly Texture2D _cashIconTexture;
-        private readonly Texture2D[] _moneyDigits;
-        private readonly Texture2D _moneyCommaTexture;
         private readonly Texture2D _selectionTexture;
 
         private PacketOwnedStoreBankDialogRuntime _runtime;
@@ -70,18 +67,12 @@ namespace HaCreator.MapSimulator.UI
             UIObject exitButton,
             Texture2D rowTexture,
             VerticalScrollbarSkin scrollbarSkin,
-            Texture2D cashIconTexture,
-            Texture2D[] moneyDigits,
-            Texture2D moneyCommaTexture,
             GraphicsDevice device)
             : base(frame)
         {
             _getButton = getButton;
             _rowTexture = rowTexture;
             _scrollbarSkin = scrollbarSkin;
-            _cashIconTexture = cashIconTexture;
-            _moneyDigits = moneyDigits ?? Array.Empty<Texture2D>();
-            _moneyCommaTexture = moneyCommaTexture;
 
             _selectionTexture = new Texture2D(device, 1, 1);
             _selectionTexture.SetData(new[] { Color.White });
@@ -317,31 +308,25 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawMoney(SpriteBatch sprite)
         {
-            string moneyText = Math.Max(0, _runtime?.OwnerMoney ?? 0).ToString("N0", CultureInfo.InvariantCulture);
-            int drawX = Position.X + MoneyRightX;
-            int drawY = Position.Y + MoneyY;
-
-            if (_font != null)
+            if (_font == null)
             {
-                Vector2 size = _font.MeasureString(moneyText) * 0.62f;
-                sprite.DrawString(
-                    _font,
-                    moneyText,
-                    new Vector2(drawX - size.X, drawY),
-                    Color.Black,
-                    0f,
-                    Vector2.Zero,
-                    0.62f,
-                    SpriteEffects.None,
-                    0f);
                 return;
             }
 
-            if (_moneyDigits.Length >= 10 && _moneyDigits.Any(static texture => texture != null))
-            {
-                int totalWidth = GetBitmapTextWidth(moneyText);
-                DrawBitmapNumber(sprite, moneyText, drawX - totalWidth, drawY);
-            }
+            string moneyText = Math.Max(0, _runtime?.OwnerMoney ?? 0).ToString("N0", CultureInfo.InvariantCulture);
+            int drawX = Position.X + MoneyRightX;
+            int drawY = Position.Y + MoneyY;
+            Vector2 size = _font.MeasureString(moneyText) * 0.62f;
+            sprite.DrawString(
+                _font,
+                moneyText,
+                new Vector2(drawX - size.X, drawY),
+                Color.Black,
+                0f,
+                Vector2.Zero,
+                0.62f,
+                SpriteEffects.None,
+                0f);
         }
 
         private void DrawPageState(SpriteBatch sprite)
@@ -670,48 +655,6 @@ namespace HaCreator.MapSimulator.UI
             if (texture != null)
             {
                 sprite.Draw(texture, position.ToVector2(), Color.White);
-            }
-        }
-
-        private int GetBitmapTextWidth(string text)
-        {
-            int width = 0;
-            foreach (char ch in text)
-            {
-                if (ch >= '0' && ch <= '9')
-                {
-                    width += _moneyDigits[ch - '0']?.Width ?? 0;
-                }
-                else if (ch == ',')
-                {
-                    width += _moneyCommaTexture?.Width ?? 0;
-                }
-            }
-
-            return width;
-        }
-
-        private void DrawBitmapNumber(SpriteBatch sprite, string text, int x, int y)
-        {
-            foreach (char ch in text)
-            {
-                Texture2D texture = null;
-                if (ch >= '0' && ch <= '9')
-                {
-                    texture = _moneyDigits[ch - '0'];
-                }
-                else if (ch == ',')
-                {
-                    texture = _moneyCommaTexture;
-                }
-
-                if (texture == null)
-                {
-                    continue;
-                }
-
-                sprite.Draw(texture, new Vector2(x, y), Color.White);
-                x += texture.Width;
             }
         }
 

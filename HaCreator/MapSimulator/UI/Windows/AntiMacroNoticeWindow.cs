@@ -117,12 +117,12 @@ namespace HaCreator.MapSimulator.UI
             float y = Position.Y + TextOrigin.Y;
             for (int i = 0; i < _lines.Length; i++)
             {
-                SelectorWindowDrawing.DrawShadowedText(
+                ClientTextDrawing.Draw(
                     sprite,
-                    _font,
                     _lines[i],
                     new Vector2(Position.X + TextOrigin.X, y + (i * LineSpacing)),
-                    Color.White);
+                    Color.White,
+                    fallbackFont: _font);
             }
         }
 

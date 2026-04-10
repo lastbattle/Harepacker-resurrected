@@ -727,6 +727,11 @@ namespace HaCreator.MapSimulator.Fields
             RegisterKnownCharacterTeam(_localCharacterName, _localTeam);
         }
 
+        public bool TryResolveCharacterTeam(string characterName, out MonsterCarnivalTeam team)
+        {
+            return TryResolveKnownCharacterTeam(characterName, out team);
+        }
+
         public void OnEnter(
             MonsterCarnivalTeam localTeam,
             int personalCp,
@@ -905,9 +910,10 @@ namespace HaCreator.MapSimulator.Fields
             ApplySuccessfulRequest(entry, ownerTeamKnown ? ownerTeam : _localTeam, spendLocalCp, ownerTeamKnown);
             string successMessage = BuildRequestSuccessMessage(entry, characterName);
             ShowStatus(successMessage, tickCount);
+            MonsterCarnivalStringPoolMessage? successDefinition = GetRequestSuccessMessage(entry.Tab);
             RecordRecoveredClientOwnerAction(
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnRequestResult accepted tab {(int)tab}, index {entryIndex}, and reset the local request timer state.",
-                Array.Empty<int>());
+                successDefinition.HasValue ? new[] { successDefinition.Value.StringPoolId } : Array.Empty<int>());
         }
 
         public void OnRequestFailure(int reasonCode, int tickCount)

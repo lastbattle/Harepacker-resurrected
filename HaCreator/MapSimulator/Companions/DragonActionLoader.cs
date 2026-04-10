@@ -373,13 +373,11 @@ namespace HaCreator.MapSimulator.Companions
                     continue;
                 }
 
-                WzSubProperty frameSourceNode = ReferenceEquals(metadataNode, skillNode)
-                    ? FindSkillActionFrameSource(skillNode)
-                    : FindSkillActionFrameSource(metadataNode);
+                WzSubProperty frameSourceNode = ResolveSkillActionFrameSource(skillNode, metadataNode);
 
                 if (frameSourceNode == null)
                 {
-                    return false;
+                    continue;
                 }
 
                 resolution = new ActionNodeResolution(metadataNode, frameSourceNode);
@@ -387,6 +385,17 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return false;
+        }
+
+        internal static WzSubProperty ResolveSkillActionFrameSource(WzSubProperty skillNode, WzSubProperty metadataNode)
+        {
+            WzSubProperty metadataFrameSource = FindSkillActionFrameSource(metadataNode);
+            if (metadataFrameSource != null)
+            {
+                return metadataFrameSource;
+            }
+
+            return FindSkillActionFrameSource(skillNode);
         }
 
         private static IEnumerable<(string ActionName, WzSubProperty MetadataNode)> EnumerateSkillActionEntries(WzSubProperty skillNode)

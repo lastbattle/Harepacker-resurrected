@@ -517,7 +517,8 @@ namespace HaCreator.MapSimulator.Managers
             return opcode == PartyRaidField.ClientSessionValuePacketType
                 || opcode == PartyRaidField.ClientPartyValuePacketType
                 || opcode == PartyRaidField.ClientFieldSetVariablePacketType
-                || opcode == 149;
+                || opcode == 149
+                || opcode == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
         }
 
         private static IEnumerable<TcpRowOwnerPid> EnumerateTcpRows()

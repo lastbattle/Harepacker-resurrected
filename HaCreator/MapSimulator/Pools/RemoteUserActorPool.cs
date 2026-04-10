@@ -33,6 +33,13 @@ namespace HaCreator.MapSimulator.Pools
     /// </summary>
     public sealed class RemoteUserActorPool
     {
+        public readonly record struct RemoteSkillUsePresentation(
+            int CharacterId,
+            int SkillId,
+            int? ActionSpeed,
+            bool FacingRight,
+            int CurrentTime);
+
         private readonly record struct RemoteMechanicModePresentation(
             string StandActionName,
             string WalkActionName,
@@ -253,6 +260,7 @@ namespace HaCreator.MapSimulator.Pools
 
         public int Count => _actorsById.Count;
         public IEnumerable<RemoteUserActor> Actors => _actorsById.Values;
+        public event Action<RemoteSkillUsePresentation> SkillUseRegistered;
         public int PreparedSkillWorldOverlayCount => _preparedSkillWorldOverlayCount;
         public int HelperMarkerCount => _helperMarkerCount;
         public Action<int, string> ActorRemovedCallback { get; set; }
@@ -554,6 +562,38 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        public bool HasActiveMarriageRelationshipRecord(int characterId)
+        {
+            if (characterId <= 0)
+            {
+                return false;
+            }
+
+            EnsureRelationshipRecordTablesInitialized();
+            Dictionary<int, RemoteUserRelationshipRecord> marriageTable = GetRelationshipRecordTable(RemoteRelationshipOverlayType.Marriage);
+            if (marriageTable.TryGetValue(characterId, out RemoteUserRelationshipRecord directRecord) &&
+                directRecord.IsActive)
+            {
+                return true;
+            }
+
+            foreach (KeyValuePair<int, RemoteUserRelationshipRecord> entry in marriageTable)
+            {
+                RemoteUserRelationshipRecord marriageRecord = entry.Value;
+                if (!marriageRecord.IsActive)
+                {
+                    continue;
+                }
+
+                if (ResolveMarriagePairCharacterId(entry.Key, marriageRecord) == characterId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         public bool TryMove(int characterId, Vector2 position, bool? facingRight, string actionName, out string message)
         {
             message = null;
@@ -733,6 +773,7 @@ namespace HaCreator.MapSimulator.Pools
             int? actionCode,
             int masteryPercent,
             int chargeSkillId,
+            int? actionSpeed,
             int? preparedSkillReleaseFollowUpValue,
             bool? facingRight,
             int currentTime,
@@ -779,6 +820,16 @@ namespace HaCreator.MapSimulator.Pools
                     rawActionCode: actionCode);
             }
             RegisterMeleeAfterImage(actor, skillId, actor.ActionName, currentTime, masteryPercent, chargeElement, actionCode);
+            if (skillId > 0)
+            {
+                SkillUseRegistered?.Invoke(new RemoteSkillUsePresentation(
+                    actor.CharacterId,
+                    skillId,
+                    actionSpeed,
+                    actor.FacingRight,
+                    currentTime));
+            }
+
             return true;
         }
 
@@ -1471,7 +1522,7 @@ namespace HaCreator.MapSimulator.Pools
                 StartTime = currentTime,
                 IsKeydownSkill = isKeydownSkill,
                 IsHolding = isHolding,
-                AutoEnterHold = autoEnterHold && prepareDurationMs > 0,
+                AutoEnterHold = autoEnterHold,
                 MaxHoldDurationMs = Math.Max(0, maxHoldDurationMs),
                 TextVariant = textVariant,
                 ShowText = showText
@@ -4482,6 +4533,12 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
+            if (ClientOwnedVehicleSkillClassifier.IsExplicitMechanicVehiclePresentationActionName(normalized))
+            {
+                actionName = normalized;
+                return true;
+            }
+
             actionName = normalized switch
             {
                 "stand1" or "stand2" or "alert" or "sit" => presentation.StandActionName,
@@ -5964,13 +6021,6 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            string normalizedLeftActionName = NormalizeActionName(leftActionName, allowSitFallback: false);
-            string normalizedRightActionName = NormalizeActionName(rightActionName, allowSitFallback: false);
-            if (string.Equals(normalizedLeftActionName, normalizedRightActionName, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
             var leftCandidates = CollectShadowPartnerHelperActionIdentityCandidates(leftActionName, leftWeaponType, leftRawActionCode);
             var rightCandidates = CollectShadowPartnerHelperActionIdentityCandidates(rightActionName, rightWeaponType, rightRawActionCode);
             return leftCandidates.Overlaps(rightCandidates);
@@ -5983,7 +6033,10 @@ namespace HaCreator.MapSimulator.Pools
         {
             var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             string normalizedActionName = NormalizeActionName(actionName, allowSitFallback: false);
-            if (!string.IsNullOrWhiteSpace(normalizedActionName))
+            if (!string.IsNullOrWhiteSpace(normalizedActionName)
+                && !ShadowPartnerClientActionResolver.ShouldSuppressRawBackedGenericAttackIdentityCandidate(
+                    normalizedActionName,
+                    rawActionCode))
             {
                 candidates.Add(normalizedActionName);
             }

@@ -78,6 +78,7 @@ namespace HaCreator.MapSimulator.Character
         private AffectedAreaPool _affectedAreaPool;
         private Func<int, bool> _remoteAffectedAreaDamageBlockEvaluator;
         private Func<int, bool> _affectedAreaOwnerPartyMembershipEvaluator;
+        private Func<int, bool> _affectedAreaOwnerTeamMembershipEvaluator;
         private Func<int, int, MobSkillRuntimeData> _mobSkillRuntimeResolver;
         private SoundManager _soundManager;
         private Action<Rectangle, int, int, int> _reactorAttackAreaHandler;
@@ -89,6 +90,7 @@ namespace HaCreator.MapSimulator.Character
         private int _pendingRepeatSkillModeEndReturnSkillId;
         private int _pendingRepeatSkillModeEndRequestTime = int.MinValue;
         private readonly HashSet<int> _activeAffectedAreaAvatarEffectIds = new();
+        private readonly Dictionary<int, int> _activeAffectedAreaAvatarEffectSignatures = new();
         private readonly Dictionary<int, AffectedAreaAvatarEffectCacheEntry> _affectedAreaAvatarEffectSkillCache = new();
         private int _lastForcedHorizontalDirection;
 
@@ -332,6 +334,11 @@ namespace HaCreator.MapSimulator.Character
         public void SetAffectedAreaOwnerPartyMembershipEvaluator(Func<int, bool> evaluator)
         {
             _affectedAreaOwnerPartyMembershipEvaluator = evaluator;
+        }
+
+        public void SetAffectedAreaOwnerTeamMembershipEvaluator(Func<int, bool> evaluator)
+        {
+            _affectedAreaOwnerTeamMembershipEvaluator = evaluator;
         }
 
         public void SetSoundManager(SoundManager soundManager)
@@ -1016,15 +1023,28 @@ namespace HaCreator.MapSimulator.Character
 
             int localPlayerId = Player.Build?.Id ?? 0;
             HashSet<int> nextActiveEffectIds = new();
+            var nextActiveEffectSignatures = new Dictionary<int, int>();
             foreach (ActiveAffectedArea area in _affectedAreaPool.ActiveAreas)
             {
-                if (!TryResolveAffectedAreaAvatarEffect(area, localPlayerId, currentTime, out int avatarEffectId, out SkillData effectSkill))
+                if (!TryResolveAffectedAreaAvatarEffect(
+                        area,
+                        localPlayerId,
+                        currentTime,
+                        out int avatarEffectId,
+                        out SkillData effectSkill,
+                        out int effectSignature))
                 {
                     continue;
                 }
 
                 nextActiveEffectIds.Add(avatarEffectId);
-                if (!Player.HasSkillAvatarEffect(avatarEffectId))
+                nextActiveEffectSignatures[avatarEffectId] = effectSignature;
+                if (ShouldRefreshAffectedAreaAvatarEffect(
+                        _activeAffectedAreaAvatarEffectSignatures.TryGetValue(avatarEffectId, out int existingSignature)
+                            ? existingSignature
+                            : (int?)null,
+                        effectSignature,
+                        Player.HasSkillAvatarEffect(avatarEffectId)))
                 {
                     Player.ApplySkillAvatarEffect(avatarEffectId, effectSkill, currentTime);
                 }
@@ -1038,12 +1058,19 @@ namespace HaCreator.MapSimulator.Character
                 }
 
                 Player.ClearSkillAvatarEffect(activeEffectId, currentTime, playFinish: false);
+                _activeAffectedAreaAvatarEffectSignatures.Remove(activeEffectId);
             }
 
             _activeAffectedAreaAvatarEffectIds.Clear();
             foreach (int activeEffectId in nextActiveEffectIds)
             {
                 _activeAffectedAreaAvatarEffectIds.Add(activeEffectId);
+            }
+
+            _activeAffectedAreaAvatarEffectSignatures.Clear();
+            foreach ((int activeEffectId, int signature) in nextActiveEffectSignatures)
+            {
+                _activeAffectedAreaAvatarEffectSignatures[activeEffectId] = signature;
             }
         }
 
@@ -1052,10 +1079,12 @@ namespace HaCreator.MapSimulator.Character
             int localPlayerId,
             int currentTime,
             out int avatarEffectId,
-            out SkillData effectSkill)
+            out SkillData effectSkill,
+            out int effectSignature)
         {
             avatarEffectId = 0;
             effectSkill = null;
+            effectSignature = 0;
 
             if (area?.SourceKind != AffectedAreaSourceKind.PlayerSkill
                 || area.ObjectId <= 0
@@ -1076,19 +1105,20 @@ namespace HaCreator.MapSimulator.Character
             }
 
             bool ownerIsPartyMember = _affectedAreaOwnerPartyMembershipEvaluator?.Invoke(area.OwnerId) == true;
+            bool ownerIsSameTeamMember = _affectedAreaOwnerTeamMembershipEvaluator?.Invoke(area.OwnerId) == true;
             if (!RemoteAffectedAreaSupportResolver.CanAffectLocalPlayer(
                     skill,
                     supportSkills,
                     localPlayerId,
                     area.OwnerId,
                     ownerIsPartyMember,
-                    ownerIsSameTeamMember: false,
+                    ownerIsSameTeamMember,
                     effectiveLevelData))
             {
                 return false;
             }
 
-            effectSkill = GetOrCreateAffectedAreaAvatarEffectSkill(skill, supportSkills);
+            effectSkill = GetOrCreateAffectedAreaAvatarEffectSkill(skill, supportSkills, out effectSignature);
             if (effectSkill == null)
             {
                 return false;
@@ -1190,8 +1220,10 @@ namespace HaCreator.MapSimulator.Character
 
         private SkillData GetOrCreateAffectedAreaAvatarEffectSkill(
             SkillData skill,
-            IReadOnlyCollection<SkillData> supportSkills)
+            IReadOnlyCollection<SkillData> supportSkills,
+            out int signature)
         {
+            signature = 0;
             if (skill == null)
             {
                 return null;
@@ -1201,7 +1233,7 @@ namespace HaCreator.MapSimulator.Character
                     skill,
                     supportSkills,
                     out SkillData effectSkill,
-                    out int signature))
+                    out signature))
             {
                 _affectedAreaAvatarEffectSkillCache.Remove(skill.SkillId);
                 return null;
@@ -1222,6 +1254,16 @@ namespace HaCreator.MapSimulator.Character
             return effectSkill;
         }
 
+        internal static bool ShouldRefreshAffectedAreaAvatarEffect(
+            int? existingSignature,
+            int nextSignature,
+            bool hasActiveEffect)
+        {
+            return !hasActiveEffect
+                   || !existingSignature.HasValue
+                   || existingSignature.Value != nextSignature;
+        }
+
         private void ClearTrackedAffectedAreaAvatarEffects(int currentTime)
         {
             foreach (int activeEffectId in _activeAffectedAreaAvatarEffectIds)
@@ -1230,6 +1272,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             _activeAffectedAreaAvatarEffectIds.Clear();
+            _activeAffectedAreaAvatarEffectSignatures.Clear();
         }
 
         private static int CreateAffectedAreaAvatarEffectId(int objectId)

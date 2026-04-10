@@ -12,6 +12,7 @@ using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
 using Spine;
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -227,9 +228,46 @@ namespace HaCreator.MapSimulator.Fields
             return applied;
         }
 
+        public bool TryDispatchCurrentWrapperRelayPayload(byte[] relayPayload, int currentTimeMs, out string message)
+        {
+            if (!TryDecodeCurrentWrapperRelayPayload(relayPayload, out int packetType, out byte[] wrapperPayload, out string decodeError))
+            {
+                message = decodeError;
+                return false;
+            }
+
+            return TryDispatchCurrentWrapperPacketRelay(packetType, wrapperPayload, currentTimeMs, out message);
+        }
+
         public bool TryDispatchCurrentWrapperPacket(int packetType, byte[] payload, int currentTimeMs, out string message)
         {
             return TryDispatchCurrentWrapperPacketCore(packetType, payload, currentTimeMs, out message);
+        }
+
+        internal static bool TryDecodeCurrentWrapperRelayPayload(byte[] relayPayload, out int packetType, out byte[] wrapperPayload, out string error)
+        {
+            packetType = 0;
+            wrapperPayload = Array.Empty<byte>();
+            error = null;
+
+            relayPayload ??= Array.Empty<byte>();
+            if (relayPayload.Length < sizeof(ushort))
+            {
+                error =
+                    $"CField::OnPacket opcode {CurrentWrapperRelayOpcode} relay requires a 2-byte wrapper packet id prefix.";
+                return false;
+            }
+
+            packetType = BinaryPrimitives.ReadUInt16LittleEndian(relayPayload.AsSpan(0, sizeof(ushort)));
+            int payloadLength = relayPayload.Length - sizeof(ushort);
+            if (payloadLength == 0)
+            {
+                return true;
+            }
+
+            wrapperPayload = new byte[payloadLength];
+            Buffer.BlockCopy(relayPayload, sizeof(ushort), wrapperPayload, 0, payloadLength);
+            return true;
         }
 
         private bool TryDispatchCurrentWrapperPacketCore(int packetType, byte[] payload, int currentTimeMs, out string message)

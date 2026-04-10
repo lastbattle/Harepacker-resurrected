@@ -140,6 +140,13 @@ namespace HaCreator.MapSimulator.Pools
         public IReadOnlyList<string> ScriptNames { get; init; } = Array.Empty<string>();
     }
 
+    public readonly record struct ReactorTouchStateChange(
+        ReactorItem Reactor,
+        int Index,
+        int ObjectId,
+        bool UsesPacketObjectId,
+        bool IsTouching);
+
     public readonly record struct ReactorFootholdPlacement(int Page, int ZMass);
 
     /// <summary>
@@ -162,6 +169,7 @@ namespace HaCreator.MapSimulator.Pools
         private readonly Dictionary<int, ReactorRuntimeData> _reactorData = new Dictionary<int, ReactorRuntimeData>();
         private readonly Dictionary<string, List<int>> _reactorsByName = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, int> _reactorIndicesByPacketObjectId = new Dictionary<int, int>();
+        private readonly Dictionary<int, int> _reactorsOnLocalUser = new Dictionary<int, int>();
         private readonly List<ReactorSpawnPoint> _spawnPoints = new List<ReactorSpawnPoint>();
         #endregion
 
@@ -334,6 +342,7 @@ namespace HaCreator.MapSimulator.Pools
             _reactorData.Clear();
             _reactorsByName.Clear();
             _reactorIndicesByPacketObjectId.Clear();
+            _reactorsOnLocalUser.Clear();
             _spawnPoints.Clear();
             _nextPoolId = 1;
         }
@@ -428,27 +437,22 @@ namespace HaCreator.MapSimulator.Pools
         /// </summary>
         /// <param name="playerX">Player X position</param>
         /// <param name="playerY">Player Y position</param>
-        /// <param name="playerWidth">Player width (default 40)</param>
-        /// <param name="playerHeight">Player height (default 60)</param>
-        /// <returns>List of touch-able reactors in range</returns>
+        /// <param name="playerWidth">Unused. The client checks the local vec-ctrl position, not the avatar rectangle.</param>
+        /// <param name="playerHeight">Unused. The client checks the local vec-ctrl position, not the avatar rectangle.</param>
+        /// <returns>List of touch-able reactors containing the local-user position</returns>
         public List<(ReactorItem reactor, int index)> FindTouchReactorAroundLocalUser(
             float playerX, float playerY,
             int playerWidth = 40, int playerHeight = 60,
             int? currentTick = null)
         {
             var results = new List<(ReactorItem reactor, int index)>();
+            _ = playerWidth;
+            _ = playerHeight;
 
             if (GetReactorCount() == 0)
                 return results;
 
             int resolvedTick = currentTick ?? _lastUpdateTick;
-
-            // Create player hitbox (centered on X, Y at feet)
-            var playerRect = new Rectangle(
-                (int)(playerX - playerWidth / 2),
-                (int)(playerY - playerHeight),
-                playerWidth,
-                playerHeight);
 
             for (int i = 0; i < GetReactorCount(); i++)
             {
@@ -471,14 +475,73 @@ namespace HaCreator.MapSimulator.Pools
                 // Get reactor hitbox
                 Rectangle reactorRect = reactor.GetCurrentBounds(resolvedTick);
 
-                // Check intersection
-                if (playerRect.Intersects(reactorRect))
+                if (DoesClientTouchBoundsContainPosition(reactorRect, playerX, playerY))
                 {
                     results.Add((reactor, i));
                 }
             }
 
             return results;
+        }
+
+        /// <summary>
+        /// Refreshes the local touch-owner set the same way CUserLocal::CheckReactor_Collision
+        /// drives CReactorPool::FindTouchReactorAroundLocalUser in the client.
+        /// </summary>
+        public List<ReactorTouchStateChange> RefreshTouchReactorsAroundLocalUser(
+            float playerX,
+            float playerY,
+            int? currentTick = null)
+        {
+            List<(ReactorItem reactor, int index)> touchedReactors = FindTouchReactorAroundLocalUser(
+                playerX,
+                playerY,
+                currentTick: currentTick);
+            Dictionary<int, int> currentTouches = new();
+            List<ReactorTouchStateChange> changes = new();
+
+            foreach ((ReactorItem reactor, int index) in touchedReactors)
+            {
+                ReactorRuntimeData data = GetReactorData(index);
+                if (data == null)
+                {
+                    continue;
+                }
+
+                int objectId = ResolveLocalTouchObjectId(data);
+                currentTouches[objectId] = index;
+                if (_reactorsOnLocalUser.ContainsKey(objectId))
+                {
+                    _reactorsOnLocalUser[objectId] = index;
+                    continue;
+                }
+
+                _reactorsOnLocalUser[objectId] = index;
+                changes.Add(new ReactorTouchStateChange(
+                    reactor,
+                    index,
+                    objectId,
+                    data.PacketObjectId.HasValue,
+                    IsTouching: true));
+            }
+
+            foreach ((int objectId, int index) in _reactorsOnLocalUser.ToArray())
+            {
+                if (currentTouches.ContainsKey(objectId))
+                {
+                    continue;
+                }
+
+                _reactorsOnLocalUser.Remove(objectId);
+                changes.Add(new ReactorTouchStateChange(
+                    GetReactor(index),
+                    index,
+                    objectId,
+                    GetReactorData(index)?.PacketObjectId.HasValue == true,
+                    IsTouching: false));
+            }
+
+            return changes;
         }
 
         /// <summary>
@@ -1370,6 +1433,7 @@ namespace HaCreator.MapSimulator.Pools
             if (TryGetReactorIndexByPacketObjectId(packetObjectId, out int existingIndex))
             {
                 ApplyPacketReactorState(existingIndex, initialState, x, y, flip, currentTick);
+                BeginPacketEnterFade(GetReactorData(existingIndex), currentTick);
                 SyncPacketScriptPublication(GetReactor(existingIndex), GetReactorData(existingIndex), currentTick);
                 reactorIndex = existingIndex;
                 message = $"Updated packet-owned reactor {packetObjectId} as template {reactorId} at ({x}, {y}).";
@@ -1435,6 +1499,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             ApplyPacketReactorState(spawnPoint.SpawnId, initialState, x, y, flip, currentTick);
+            BeginPacketEnterFade(GetReactorData(spawnPoint.SpawnId), currentTick);
             SyncPacketScriptPublication(reactor, GetReactorData(spawnPoint.SpawnId), currentTick);
             TrackPacketObjectId(spawnPoint.SpawnId, packetObjectId);
             reactorIndex = spawnPoint.SpawnId;
@@ -1626,6 +1691,20 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (data.IsPacketOwned)
                 {
+                    if (data.PacketEnterFadeEndTime > 0)
+                    {
+                        data.Alpha = ResolvePacketEnterFadeAlpha(
+                            data.PacketEnterFadeStartTime,
+                            data.PacketEnterFadeEndTime,
+                            currentTick);
+                        if (currentTick >= data.PacketEnterFadeEndTime)
+                        {
+                            data.PacketEnterFadeStartTime = 0;
+                            data.PacketEnterFadeEndTime = 0;
+                            data.Alpha = 1f;
+                        }
+                    }
+
                     if (data.PacketLeavePending)
                     {
                         if (data.PacketHitStartTime > 0 && currentTick >= data.PacketHitStartTime)
@@ -1984,6 +2063,8 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketMoveTargetX = x;
             data.PacketMoveTargetY = y;
             data.PacketMoveUsesDefaultRelMove = false;
+            data.PacketEnterFadeStartTime = 0;
+            data.PacketEnterFadeEndTime = 0;
             ClearPreferredAuthoredOrder(data);
 
             if (index < _spawnPoints.Count)
@@ -2213,6 +2294,28 @@ namespace HaCreator.MapSimulator.Pools
             {
                 _reactorIndicesByPacketObjectId.Remove(objectId);
             }
+        }
+
+        internal static bool DoesClientTouchBoundsContainPosition(Rectangle bounds, float playerX, float playerY)
+        {
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return false;
+            }
+
+            return bounds.Contains(
+                (int)MathF.Round(playerX, MidpointRounding.AwayFromZero),
+                (int)MathF.Round(playerY, MidpointRounding.AwayFromZero));
+        }
+
+        private static int ResolveLocalTouchObjectId(ReactorRuntimeData data)
+        {
+            if (data == null)
+            {
+                return 0;
+            }
+
+            return data.PacketObjectId ?? data.PoolId;
         }
 
         private void AddReactorNameLookup(string name, int index)
@@ -2503,6 +2606,29 @@ namespace HaCreator.MapSimulator.Pools
                 : 0;
         }
 
+        internal static float ResolvePacketEnterFadeAlpha(int fadeStartTime, int fadeEndTime, int currentTick)
+        {
+            if (fadeEndTime <= fadeStartTime)
+            {
+                return 1f;
+            }
+
+            if (currentTick <= fadeStartTime)
+            {
+                return 0f;
+            }
+
+            if (currentTick >= fadeEndTime)
+            {
+                return 1f;
+            }
+
+            return MathHelper.Clamp(
+                (currentTick - fadeStartTime) / (float)(fadeEndTime - fadeStartTime),
+                0f,
+                1f);
+        }
+
         private static int StartPacketHitAnimation(ReactorItem reactor, ReactorRuntimeData data, int currentTick, Action<string> playHitSound)
         {
             if (reactor == null || data == null)
@@ -2576,6 +2702,18 @@ namespace HaCreator.MapSimulator.Pools
                 2 => -1073471624,
                 _ => (10 * ((3000 * page) - zMass)) - 1073711834
             };
+        }
+
+        private static void BeginPacketEnterFade(ReactorRuntimeData data, int currentTick)
+        {
+            if (data == null)
+            {
+                return;
+            }
+
+            data.PacketEnterFadeStartTime = currentTick;
+            data.PacketEnterFadeEndTime = currentTick + PACKET_ENTER_FADE_DURATION_MS;
+            data.Alpha = 0f;
         }
 
         private void TryPlayReactorHitSound(ReactorItem reactor, int sourceState)

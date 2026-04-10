@@ -4162,11 +4162,20 @@ namespace HaCreator.MapSimulator.Character
                 weaponSticker = null;
             }
 
-            equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart filteredTamingMobPart);
+            CharacterPart filteredTamingMobPart = activeTamingMobPart;
+            if (filteredTamingMobPart?.Slot != EquipSlot.TamingMob)
+            {
+                equipment.TryGetValue(EquipSlot.TamingMob, out filteredTamingMobPart);
+            }
+
             filteredTamingMobPart = PrepareTamingMobActionMergePart(filteredTamingMobPart, equipment);
             if (filteredTamingMobPart != null)
             {
                 equipment[EquipSlot.TamingMob] = filteredTamingMobPart;
+            }
+            else
+            {
+                equipment.Remove(EquipSlot.TamingMob);
             }
 
             return new CharacterActionMergeInput

@@ -13,10 +13,15 @@ namespace HaCreator.MapSimulator.Interaction
         Select = 4,
         Summary = 5,
         Resolve = 6,
-        Request = 7
+        Request = 7,
+        ReplaceWithIds = 8,
+        UpsertWithId = 9,
+        RemoveById = 10,
+        SelectById = 11
     }
 
     internal readonly record struct SocialListPacketEntry(
+        int? MemberId,
         string Name,
         string PrimaryText,
         string SecondaryText,
@@ -30,6 +35,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal readonly record struct SocialListRosterPacket(
         SocialListRosterPacketKind Kind,
         IReadOnlyList<SocialListPacketEntry> Entries,
+        int? MemberId,
         string Name,
         string Summary,
         string RequestKind,
@@ -97,6 +103,11 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyList<string> RankTitles,
         string Notice);
 
+    internal readonly record struct SocialListGradeChangePacket(
+        int MemberId,
+        int Delta,
+        string Summary);
+
     internal static class SocialListPacketCodec
     {
         public static bool TryParseRoster(ReadOnlySpan<byte> payload, out SocialListRosterPacket packet, out string error)
@@ -111,21 +122,30 @@ namespace HaCreator.MapSimulator.Interaction
                 switch (kind)
                 {
                     case SocialListRosterPacketKind.Replace:
+                    case SocialListRosterPacketKind.ReplaceWithIds:
                     {
                         int count = reader.ReadUInt16();
                         List<SocialListPacketEntry> entries = new(count);
                         for (int i = 0; i < count; i++)
                         {
-                            entries.Add(ReadEntry(ref reader));
+                            entries.Add(ReadEntry(ref reader, kind == SocialListRosterPacketKind.ReplaceWithIds));
                         }
 
                         string summary = reader.HasRemaining ? reader.ReadString16() : null;
-                        packet = new SocialListRosterPacket(kind, entries, null, summary, null, Approved: false);
+                        packet = new SocialListRosterPacket(kind, entries, null, null, summary, null, Approved: false);
                         return true;
                     }
 
                     case SocialListRosterPacketKind.Upsert:
-                        packet = new SocialListRosterPacket(kind, new[] { ReadEntry(ref reader) }, null, null, null, Approved: false);
+                    case SocialListRosterPacketKind.UpsertWithId:
+                        packet = new SocialListRosterPacket(
+                            kind,
+                            new[] { ReadEntry(ref reader, kind == SocialListRosterPacketKind.UpsertWithId) },
+                            null,
+                            null,
+                            null,
+                            null,
+                            Approved: false);
                         return true;
 
                     case SocialListRosterPacketKind.Remove:
@@ -138,21 +158,35 @@ namespace HaCreator.MapSimulator.Interaction
                             return false;
                         }
 
-                        packet = new SocialListRosterPacket(kind, Array.Empty<SocialListPacketEntry>(), name.Trim(), null, null, Approved: false);
+                        packet = new SocialListRosterPacket(kind, Array.Empty<SocialListPacketEntry>(), null, name.Trim(), null, null, Approved: false);
+                        return true;
+                    }
+
+                    case SocialListRosterPacketKind.RemoveById:
+                    case SocialListRosterPacketKind.SelectById:
+                    {
+                        int memberId = reader.ReadInt32();
+                        if (memberId <= 0)
+                        {
+                            error = $"Social-list {kind} packet member id must be positive.";
+                            return false;
+                        }
+
+                        packet = new SocialListRosterPacket(kind, Array.Empty<SocialListPacketEntry>(), memberId, null, null, null, Approved: false);
                         return true;
                     }
 
                     case SocialListRosterPacketKind.Clear:
                     {
                         string summary = reader.HasRemaining ? reader.ReadString16() : null;
-                        packet = new SocialListRosterPacket(kind, Array.Empty<SocialListPacketEntry>(), null, summary, null, Approved: false);
+                        packet = new SocialListRosterPacket(kind, Array.Empty<SocialListPacketEntry>(), null, null, summary, null, Approved: false);
                         return true;
                     }
 
                     case SocialListRosterPacketKind.Summary:
                     {
                         string summary = reader.ReadString16();
-                        packet = new SocialListRosterPacket(kind, Array.Empty<SocialListPacketEntry>(), null, summary, null, Approved: false);
+                        packet = new SocialListRosterPacket(kind, Array.Empty<SocialListPacketEntry>(), null, null, summary, null, Approved: false);
                         return true;
                     }
 
@@ -161,7 +195,7 @@ namespace HaCreator.MapSimulator.Interaction
                         bool approved = reader.ReadBoolean();
                         string requestKind = reader.ReadString8();
                         string summary = reader.HasRemaining ? reader.ReadString16() : null;
-                        packet = new SocialListRosterPacket(kind, Array.Empty<SocialListPacketEntry>(), null, summary, requestKind, Approved: approved);
+                        packet = new SocialListRosterPacket(kind, Array.Empty<SocialListPacketEntry>(), null, null, summary, requestKind, Approved: approved);
                         return true;
                     }
 
@@ -169,7 +203,7 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         string requestKind = reader.ReadString8();
                         string summary = reader.HasRemaining ? reader.ReadString16() : null;
-                        packet = new SocialListRosterPacket(kind, Array.Empty<SocialListPacketEntry>(), null, summary, requestKind, Approved: false);
+                        packet = new SocialListRosterPacket(kind, Array.Empty<SocialListPacketEntry>(), null, null, summary, requestKind, Approved: false);
                         return true;
                     }
 
@@ -463,8 +497,41 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private static SocialListPacketEntry ReadEntry(ref PacketReader reader)
+        public static bool TryParseGradeChange(ReadOnlySpan<byte> payload, out SocialListGradeChangePacket packet, out string error)
         {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload);
+                int memberId = reader.ReadInt32();
+                sbyte delta = unchecked((sbyte)reader.ReadByte());
+                if (memberId <= 0)
+                {
+                    error = "Social-list grade-change member id must be positive.";
+                    return false;
+                }
+
+                if (delta == 0)
+                {
+                    error = "Social-list grade-change delta must not be zero.";
+                    return false;
+                }
+
+                packet = new SocialListGradeChangePacket(memberId, delta > 0 ? 1 : -1, reader.HasRemaining ? reader.ReadString16().Trim() : null);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        private static SocialListPacketEntry ReadEntry(ref PacketReader reader, bool includeMemberId)
+        {
+            int? memberId = includeMemberId ? reader.ReadInt32() : null;
             string name = reader.ReadString8();
             string primary = reader.ReadString8();
             string secondary = reader.ReadString8();
@@ -472,6 +539,7 @@ namespace HaCreator.MapSimulator.Interaction
             int channel = Math.Max(1, (int)reader.ReadByte());
             byte flags = reader.ReadByte();
             return new SocialListPacketEntry(
+                memberId > 0 ? memberId : null,
                 string.IsNullOrWhiteSpace(name) ? "Packet Entry" : name.Trim(),
                 string.IsNullOrWhiteSpace(primary) ? "-" : primary.Trim(),
                 string.IsNullOrWhiteSpace(secondary) ? "-" : secondary.Trim(),

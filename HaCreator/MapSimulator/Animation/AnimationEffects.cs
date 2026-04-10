@@ -76,6 +76,23 @@ namespace HaCreator.MapSimulator.Animation
             _oneTimeAnimations.Add(anim);
         }
 
+        internal void AddOneTimeAttached(
+            List<IDXObject> frames,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip,
+            float fallbackX,
+            float fallbackY,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int zOrder = 0)
+        {
+            if (frames == null || frames.Count == 0) return;
+
+            OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
+            anim.Initialize(frames, fallbackX, fallbackY, fallbackFlip, currentTimeMs, zOrder, getPosition, getFlip);
+            _oneTimeAnimations.Add(anim);
+        }
+
         /// <summary>
         /// Add a one-shot animation with color tint
         /// </summary>
@@ -121,20 +138,24 @@ namespace HaCreator.MapSimulator.Animation
                 return;
             }
 
+            CanvasLayerInsertDescriptor[] insertDescriptors = OneTimeCanvasLayerAnimation.BuildInsertDescriptors(
+                holdDurationMs,
+                fadeDurationMs,
+                riseDistancePx,
+                overlayTexture != null,
+                overlayOffset ?? Point.Zero,
+                overlayDelayMs);
+
             OneTimeCanvasLayerAnimation anim = _oneTimeCanvasLayerPool.Count > 0
                 ? _oneTimeCanvasLayerPool.Dequeue()
                 : new OneTimeCanvasLayerAnimation();
             anim.Initialize(
                 canvasTexture,
+                overlayTexture,
                 left,
                 top,
-                holdDurationMs,
-                fadeDurationMs,
-                riseDistancePx,
                 currentTimeMs,
-                overlayTexture,
-                overlayOffset ?? Point.Zero,
-                overlayDelayMs,
+                insertDescriptors,
                 ownsCanvasTexture,
                 owner);
             _oneTimeCanvasLayers.Add(anim);
@@ -867,6 +888,31 @@ namespace HaCreator.MapSimulator.Animation
             return new Vector2(x, y);
         }
 
+        internal static Vector2 ResolveFollowParticleStartOffset(
+            Vector2 generationPointOffset,
+            bool hasGenerationPoints,
+            int angleDegrees,
+            Vector2 randomOffset,
+            Rectangle emissionArea,
+            bool useEmissionBox,
+            float verticalEmissionBias,
+            Random random)
+        {
+            if (useEmissionBox)
+            {
+                Vector2 emissionStart = ResolveFollowEmissionStartOffset(emissionArea, random);
+                return new Vector2(emissionStart.X, emissionStart.Y + verticalEmissionBias);
+            }
+
+            if (hasGenerationPoints)
+            {
+                return generationPointOffset;
+            }
+
+            float radialDistance = Math.Abs(randomOffset.X);
+            return ResolvePolarFollowOffset(radialDistance, angleDegrees);
+        }
+
         internal static Vector2 ResolveFollowParticleEndOffset(
             Vector2 emissionOffset,
             int angleDegrees,
@@ -878,7 +924,7 @@ namespace HaCreator.MapSimulator.Animation
                 return emissionOffset + randomOffset;
             }
 
-            float radialDistance = Math.Max(Math.Abs(randomOffset.X), Math.Abs(randomOffset.Y));
+            float radialDistance = Math.Abs(randomOffset.Y);
             if (radialDistance <= float.Epsilon)
             {
                 return emissionOffset;
@@ -939,37 +985,113 @@ namespace HaCreator.MapSimulator.Animation
         DamageNumber = 1
     }
 
+    internal enum AnimationCanvasLayerContent
+    {
+        PrimaryCanvas = 0,
+        OverlayCanvas = 1
+    }
+
+    internal enum AnimationCanvasLayerBlendMode
+    {
+        AlphaBlend = 0
+    }
+
+    internal readonly record struct CanvasLayerInsertDescriptor(
+        AnimationCanvasLayerContent Content,
+        Point Offset,
+        int StartDelayMs,
+        int HoldDurationMs,
+        int FadeDurationMs,
+        float StartAlpha,
+        float EndAlpha,
+        int RiseDistancePx,
+        AnimationCanvasLayerBlendMode BlendMode);
+
     /// <summary>
     /// One-shot canvas-backed animation that mirrors RegisterOneTimeAnimation ownership.
     /// </summary>
     internal class OneTimeCanvasLayerAnimation
     {
+        private sealed class CanvasLayerInsertOperation
+        {
+            public Texture2D Texture { get; init; }
+            public CanvasLayerInsertDescriptor Descriptor { get; init; }
+        }
+
         private Texture2D _canvasTexture;
         private Texture2D _overlayTexture;
         private float _left;
         private float _top;
-        private int _holdDurationMs;
-        private int _fadeDurationMs;
-        private int _riseDistancePx;
         private int _startTimeMs;
         private int _elapsedMs;
-        private int _overlayDelayMs;
-        private Point _overlayOffset;
         private bool _ownsCanvasTexture;
+        private CanvasLayerInsertOperation[] _insertOperations = Array.Empty<CanvasLayerInsertOperation>();
 
         public AnimationCanvasLayerOwner Owner { get; private set; } = AnimationCanvasLayerOwner.Generic;
+        internal IReadOnlyList<CanvasLayerInsertDescriptor> InsertDescriptors => Array.ConvertAll(
+            _insertOperations,
+            static operation => operation.Descriptor);
 
-        public void Initialize(
-            Texture2D canvasTexture,
-            float left,
-            float top,
+        internal static CanvasLayerInsertDescriptor[] BuildInsertDescriptors(
             int holdDurationMs,
             int fadeDurationMs,
             int riseDistancePx,
-            int currentTimeMs,
-            Texture2D overlayTexture,
+            bool hasOverlay,
             Point overlayOffset,
-            int overlayDelayMs,
+            int overlayDelayMs)
+        {
+            holdDurationMs = Math.Max(0, holdDurationMs);
+            fadeDurationMs = Math.Max(0, fadeDurationMs);
+            overlayDelayMs = Math.Max(0, overlayDelayMs);
+
+            var descriptors = new List<CanvasLayerInsertDescriptor>(hasOverlay ? 3 : 2)
+            {
+                new(
+                    AnimationCanvasLayerContent.PrimaryCanvas,
+                    Point.Zero,
+                    0,
+                    holdDurationMs,
+                    0,
+                    1f,
+                    1f,
+                    0,
+                    AnimationCanvasLayerBlendMode.AlphaBlend),
+                new(
+                    AnimationCanvasLayerContent.PrimaryCanvas,
+                    Point.Zero,
+                    holdDurationMs,
+                    0,
+                    fadeDurationMs,
+                    1f,
+                    0f,
+                    riseDistancePx,
+                    AnimationCanvasLayerBlendMode.AlphaBlend),
+            };
+
+            if (hasOverlay)
+            {
+                descriptors.Add(new CanvasLayerInsertDescriptor(
+                    AnimationCanvasLayerContent.OverlayCanvas,
+                    overlayOffset,
+                    overlayDelayMs,
+                    Math.Max(0, holdDurationMs - overlayDelayMs),
+                    fadeDurationMs,
+                    1f,
+                    0f,
+                    riseDistancePx,
+                    AnimationCanvasLayerBlendMode.AlphaBlend));
+            }
+
+            return descriptors.ToArray();
+        }
+
+        public void Initialize(
+            Texture2D canvasTexture,
+            Texture2D overlayTexture,
+            float left,
+            float top,
+            int currentTimeMs,
+            IReadOnlyList<CanvasLayerInsertDescriptor> insertDescriptors,
             bool ownsCanvasTexture,
             AnimationCanvasLayerOwner owner)
         {
@@ -977,21 +1099,17 @@ namespace HaCreator.MapSimulator.Animation
             _overlayTexture = overlayTexture;
             _left = left;
             _top = top;
-            _holdDurationMs = Math.Max(0, holdDurationMs);
-            _fadeDurationMs = Math.Max(0, fadeDurationMs);
-            _riseDistancePx = riseDistancePx;
             _startTimeMs = currentTimeMs;
             _elapsedMs = 0;
-            _overlayDelayMs = Math.Max(0, overlayDelayMs);
-            _overlayOffset = overlayOffset;
             _ownsCanvasTexture = ownsCanvasTexture;
+            _insertOperations = BuildInsertOperations(insertDescriptors);
             Owner = owner;
         }
 
         public bool Update(int currentTimeMs)
         {
             _elapsedMs = Math.Max(0, currentTimeMs - _startTimeMs);
-            return _elapsedMs < _holdDurationMs + _fadeDurationMs;
+            return HasActiveInsertOperation();
         }
 
         public void Draw(SpriteBatch spriteBatch, int mapShiftX, int mapShiftY)
@@ -1001,24 +1119,20 @@ namespace HaCreator.MapSimulator.Animation
                 return;
             }
 
-            float fadeProgress = 0f;
-            if (_elapsedMs > _holdDurationMs && _fadeDurationMs > 0)
+            for (int i = 0; i < _insertOperations.Length; i++)
             {
-                fadeProgress = Math.Clamp((float)(_elapsedMs - _holdDurationMs) / _fadeDurationMs, 0f, 1f);
-            }
+                CanvasLayerInsertOperation operation = _insertOperations[i];
+                if (operation?.Texture == null
+                    || !TryResolveOperationDrawState(operation.Descriptor, out float alpha, out float riseOffset))
+                {
+                    continue;
+                }
 
-            float alpha = 1f - fadeProgress;
-            float riseOffset = -_riseDistancePx * fadeProgress;
-            Vector2 position = new(_left + mapShiftX, _top + mapShiftY + riseOffset);
+                Vector2 position = new(
+                    _left + mapShiftX + operation.Descriptor.Offset.X,
+                    _top + mapShiftY + operation.Descriptor.Offset.Y + riseOffset);
 
-            spriteBatch.Draw(_canvasTexture, position, Color.White * alpha);
-
-            if (_overlayTexture != null && _elapsedMs >= _overlayDelayMs)
-            {
-                spriteBatch.Draw(
-                    _overlayTexture,
-                    position + new Vector2(_overlayOffset.X, _overlayOffset.Y),
-                    Color.White * alpha);
+                spriteBatch.Draw(operation.Texture, position, Color.White * alpha);
             }
         }
 
@@ -1033,15 +1147,81 @@ namespace HaCreator.MapSimulator.Animation
             _overlayTexture = null;
             _left = 0f;
             _top = 0f;
-            _holdDurationMs = 0;
-            _fadeDurationMs = 0;
-            _riseDistancePx = 0;
             _startTimeMs = 0;
             _elapsedMs = 0;
-            _overlayDelayMs = 0;
-            _overlayOffset = Point.Zero;
             _ownsCanvasTexture = false;
+            _insertOperations = Array.Empty<CanvasLayerInsertOperation>();
             Owner = AnimationCanvasLayerOwner.Generic;
+        }
+
+        private CanvasLayerInsertOperation[] BuildInsertOperations(IReadOnlyList<CanvasLayerInsertDescriptor> insertDescriptors)
+        {
+            if (insertDescriptors == null || insertDescriptors.Count == 0)
+            {
+                return Array.Empty<CanvasLayerInsertOperation>();
+            }
+
+            var operations = new CanvasLayerInsertOperation[insertDescriptors.Count];
+            for (int i = 0; i < insertDescriptors.Count; i++)
+            {
+                CanvasLayerInsertDescriptor descriptor = insertDescriptors[i];
+                Texture2D texture = descriptor.Content switch
+                {
+                    AnimationCanvasLayerContent.PrimaryCanvas => _canvasTexture,
+                    AnimationCanvasLayerContent.OverlayCanvas => _overlayTexture,
+                    _ => null,
+                };
+
+                operations[i] = new CanvasLayerInsertOperation
+                {
+                    Texture = texture,
+                    Descriptor = descriptor,
+                };
+            }
+
+            return operations;
+        }
+
+        private bool HasActiveInsertOperation()
+        {
+            for (int i = 0; i < _insertOperations.Length; i++)
+            {
+                CanvasLayerInsertOperation operation = _insertOperations[i];
+                if (operation?.Texture != null
+                    && TryResolveOperationDrawState(operation.Descriptor, out _, out _))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryResolveOperationDrawState(
+            CanvasLayerInsertDescriptor descriptor,
+            out float alpha,
+            out float riseOffset)
+        {
+            alpha = 0f;
+            riseOffset = 0f;
+
+            int localElapsedMs = _elapsedMs - descriptor.StartDelayMs;
+            int lifetimeMs = descriptor.HoldDurationMs + descriptor.FadeDurationMs;
+            if (localElapsedMs < 0 || localElapsedMs >= lifetimeMs)
+            {
+                return false;
+            }
+
+            float transitionProgress = 0f;
+            if (descriptor.FadeDurationMs > 0)
+            {
+                int fadeElapsedMs = Math.Max(0, localElapsedMs - descriptor.HoldDurationMs);
+                transitionProgress = Math.Clamp((float)fadeElapsedMs / descriptor.FadeDurationMs, 0f, 1f);
+                riseOffset = -descriptor.RiseDistancePx * transitionProgress;
+            }
+
+            alpha = MathHelper.Lerp(descriptor.StartAlpha, descriptor.EndAlpha, transitionProgress);
+            return alpha > 0f;
         }
     }
 
@@ -1053,6 +1233,8 @@ namespace HaCreator.MapSimulator.Animation
         private List<IDXObject> _frames;
         private float _x, _y;
         private bool _flip;
+        private Func<Vector2> _positionResolver;
+        private Func<bool> _flipResolver;
         private int _startTime;
         private int _currentFrame;
         private int _lastFrameTime;
@@ -1065,10 +1247,25 @@ namespace HaCreator.MapSimulator.Animation
 
         public void Initialize(List<IDXObject> frames, float x, float y, bool flip, int currentTimeMs, int zOrder)
         {
+            Initialize(frames, x, y, flip, currentTimeMs, zOrder, getPosition: null, getFlip: null);
+        }
+
+        public void Initialize(
+            List<IDXObject> frames,
+            float x,
+            float y,
+            bool flip,
+            int currentTimeMs,
+            int zOrder,
+            Func<Vector2> getPosition,
+            Func<bool> getFlip)
+        {
             _frames = frames;
             _x = x;
             _y = y;
             _flip = flip;
+            _positionResolver = getPosition;
+            _flipResolver = getFlip;
             _startTime = currentTimeMs;
             _currentFrame = 0;
             _lastFrameTime = currentTimeMs;
@@ -1111,13 +1308,15 @@ namespace HaCreator.MapSimulator.Animation
             if (_finished || _currentFrame >= _frames.Count) return;
 
             IDXObject frame = _frames[_currentFrame];
+            Vector2 position = _positionResolver?.Invoke() ?? new Vector2(_x, _y);
+            bool flip = _flipResolver?.Invoke() ?? _flip;
 
             // Use the object's built-in DrawObject method
             // Note: DrawObject takes negative shift values because it subtracts them internally
-            int drawShiftX = -(int)_x - mapShiftX;
-            int drawShiftY = -(int)_y - mapShiftY;
+            int drawShiftX = -(int)position.X - mapShiftX;
+            int drawShiftY = -(int)position.Y - mapShiftY;
 
-            frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, _flip, null);
+            frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, flip, null);
         }
     }
 
@@ -1408,6 +1607,11 @@ namespace HaCreator.MapSimulator.Animation
         private int _nextSpawnTime;
         private float _spawnTravelDistanceMin;
         private float _spawnTravelDistanceMax;
+        private bool _spawnUsesEmissionBox;
+        private float _spawnVerticalEmissionBias;
+        private Point _spawnOffsetMin;
+        private Point _spawnOffsetMax;
+        private Rectangle _spawnArea;
 
         public int Id { get; private set; }
 
@@ -1434,6 +1638,11 @@ namespace HaCreator.MapSimulator.Animation
             _spawnDurationMs = Math.Max(0, options?.SpawnDurationMs ?? 0);
             _spawnTravelDistanceMin = Math.Max(0f, options?.SpawnTravelDistanceMin ?? 0f);
             _spawnTravelDistanceMax = Math.Max(_spawnTravelDistanceMin, options?.SpawnTravelDistanceMax ?? _spawnTravelDistanceMin);
+            _spawnUsesEmissionBox = options?.SpawnUsesEmissionBox ?? false;
+            _spawnVerticalEmissionBias = options?.SpawnVerticalEmissionBias ?? 0f;
+            _spawnOffsetMin = options?.SpawnOffsetMin ?? Point.Zero;
+            _spawnOffsetMax = options?.SpawnOffsetMax ?? Point.Zero;
+            _spawnArea = options?.SpawnArea ?? Rectangle.Empty;
             _currentAngleDegrees = options?.RandomizeStartupAngle == true
                 ? random?.Next(0, 360) ?? 0
                 : 0;
@@ -1488,15 +1697,46 @@ namespace HaCreator.MapSimulator.Animation
                         int resolvedDurationMs = AnimationEffects.ResolveFollowSpawnDurationMs(variantFrames, _spawnDurationMs);
                         if (resolvedDurationMs > 0)
                         {
+                            bool hasGenerationPoints = _generationPoints != null && _generationPoints.Count > 0;
                             int particleAngleDegrees = AnimationEffects.ResolveFollowParticleAngleDegrees(_followOffset, _currentAngleDegrees);
-                            float particleTravelDistance = AnimationEffects.ResolveFollowParticleTravelDistance(
-                                _spawnTravelDistanceMin,
-                                _spawnTravelDistanceMax,
+                            Vector2 randomOffset = AnimationEffects.ResolveFollowRandomOffset(
+                                _spawnOffsetMin,
+                                _spawnOffsetMax,
                                 random);
-                            Vector2 particleEndOffset = AnimationEffects.ResolveFollowParticleEndOffset(
-                                _followOffset,
-                                particleAngleDegrees,
-                                particleTravelDistance);
+                            bool useClientOffsetPath = _spawnUsesEmissionBox
+                                || _spawnOffsetMin != Point.Zero
+                                || _spawnOffsetMax != Point.Zero;
+                            Vector2 particleStartOffset = useClientOffsetPath
+                                ? AnimationEffects.ResolveFollowParticleStartOffset(
+                                    _followOffset,
+                                    hasGenerationPoints,
+                                    particleAngleDegrees,
+                                    randomOffset,
+                                    _spawnArea,
+                                    _spawnUsesEmissionBox,
+                                    _spawnVerticalEmissionBias,
+                                    random)
+                                : _followOffset;
+                            Vector2 particleEndOffset;
+                            if (useClientOffsetPath)
+                            {
+                                particleEndOffset = AnimationEffects.ResolveFollowParticleEndOffset(
+                                    particleStartOffset,
+                                    particleAngleDegrees,
+                                    randomOffset,
+                                    _spawnUsesEmissionBox);
+                            }
+                            else
+                            {
+                                float particleTravelDistance = AnimationEffects.ResolveFollowParticleTravelDistance(
+                                    _spawnTravelDistanceMin,
+                                    _spawnTravelDistanceMax,
+                                    random);
+                                particleEndOffset = AnimationEffects.ResolveFollowParticleEndOffset(
+                                    particleStartOffset,
+                                    particleAngleDegrees,
+                                    particleTravelDistance);
+                            }
                             effects.AddFollowParticle(
                                 Id,
                                 variantFrames,
@@ -1505,7 +1745,7 @@ namespace HaCreator.MapSimulator.Animation
                                 _spawnRelativeToTarget,
                                 _offsetX,
                                 _offsetY,
-                                startOffset: _followOffset,
+                                startOffset: particleStartOffset,
                                 endOffset: particleEndOffset,
                                 resolvedDurationMs,
                                 _nextSpawnTime);

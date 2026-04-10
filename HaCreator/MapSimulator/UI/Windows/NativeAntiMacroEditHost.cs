@@ -33,6 +33,7 @@ namespace HaCreator.MapSimulator.UI
         private const int WmGetDlgCode = 0x0087;
         private const int WmChar = 0x0102;
         private const int WmKeyDown = 0x0100;
+        private const int WmKeyUp = 0x0101;
         private const int WmCut = 0x0300;
         private const int WmClear = 0x0303;
         private const int WmUndo = 0x0304;
@@ -45,8 +46,8 @@ namespace HaCreator.MapSimulator.UI
         private const int EcLeftMargin = 0x0001;
         private const int EcRightMargin = 0x0002;
         private const int VkReturn = 0x0D;
-        private const int VkA = 0x41;
-        private const int VkControl = 0x11;
+        private const int VkF1 = 0x70;
+        private const int VkF12 = 0x7B;
         private const uint WsChild = 0x40000000;
         private const uint WsVisible = 0x10000000;
         private const uint WsTabStop = 0x00010000;
@@ -372,7 +373,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int marginLParam = 1 | (1 << 16);
+            int marginLParam = 0;
             SendMessage(_editHandle, EmSetMargins, new IntPtr(EcLeftMargin | EcRightMargin), new IntPtr(marginLParam));
         }
 
@@ -400,17 +401,6 @@ namespace HaCreator.MapSimulator.UI
             StringBuilder builder = new(textLength + 1);
             GetWindowText(_editHandle, builder, builder.Capacity);
             return builder.ToString();
-        }
-
-        private void SelectAll()
-        {
-            if (!IsAttached)
-            {
-                return;
-            }
-
-            SendMessage(_editHandle, EmSetSel, IntPtr.Zero, new IntPtr(-1));
-            SynchronizeState();
         }
 
         private void UpdateImePlacement()
@@ -463,12 +453,6 @@ namespace HaCreator.MapSimulator.UI
                 return new IntPtr(originalResult.ToInt32() | GetClientOwnedAntiMacroDialogCode());
             }
 
-            if (msg == WmKeyDown && wParam.ToInt32() == VkA && (GetKeyState(VkControl) & 0x8000) != 0)
-            {
-                SelectAll();
-                return IntPtr.Zero;
-            }
-
             if (msg == WmKeyDown && wParam.ToInt32() == VkReturn)
             {
                 SubmitRequested?.Invoke();
@@ -477,6 +461,12 @@ namespace HaCreator.MapSimulator.UI
 
             if (msg == WmChar && wParam.ToInt32() == VkReturn)
             {
+                return IntPtr.Zero;
+            }
+
+            if ((msg == WmKeyDown || msg == WmKeyUp) && IsStagePassthroughVirtualKey(wParam.ToInt32()))
+            {
+                ForwardKeyToParent(msg, wParam, lParam);
                 return IntPtr.Zero;
             }
 
@@ -497,6 +487,19 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return result;
+        }
+
+        private void ForwardKeyToParent(uint msg, IntPtr wParam, IntPtr lParam)
+        {
+            if (_parentHandle != IntPtr.Zero && IsWindow(_parentHandle))
+            {
+                SendMessage(_parentHandle, (int)msg, wParam, lParam);
+            }
+        }
+
+        private static bool IsStagePassthroughVirtualKey(int virtualKey)
+        {
+            return virtualKey >= VkF1 && virtualKey <= VkF12;
         }
 
         [DllImport("gdi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -590,9 +593,6 @@ namespace HaCreator.MapSimulator.UI
 
         [DllImport("user32.dll")]
         private static extern IntPtr CallWindowProc(IntPtr lpPrevWndFunc, IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
-
-        [DllImport("user32.dll")]
-        private static extern short GetKeyState(int nVirtKey);
 
         [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
         private static extern int SetWindowTheme(IntPtr hWnd, string pszSubAppName, string pszSubIdList);

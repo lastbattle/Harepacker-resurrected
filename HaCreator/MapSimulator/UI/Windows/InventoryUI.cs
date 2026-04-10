@@ -142,7 +142,7 @@ namespace HaCreator.MapSimulator.UI
 
         #region Properties
         public override string WindowName => "Inventory";
-        public Action<int> ItemUpgradeRequested { get; set; }
+        public Action<int, InventoryType, int> ItemUpgradeRequested { get; set; }
         public Action CashShopRequested { get; set; }
         public Action<string> ItemConsumptionBlocked { get; set; }
         public Func<int, InventoryType, bool> ItemUseRequested { get; set; }
@@ -1340,7 +1340,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (ItemUpgradeUI.IsSupportedConsumable(slot.ItemId))
             {
-                ItemUpgradeRequested?.Invoke(slot.ItemId);
+                ItemUpgradeRequested?.Invoke(slot.ItemId, inventoryType, slotIndex);
                 return true;
             }
 

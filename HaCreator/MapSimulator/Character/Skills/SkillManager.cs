@@ -710,6 +710,21 @@ namespace HaCreator.MapSimulator.Character.Skills
         public const int FUNCTION_SLOT_OFFSET = PRIMARY_SLOT_COUNT;
         public const int CTRL_SLOT_OFFSET = PRIMARY_SLOT_COUNT + FUNCTION_SLOT_COUNT;
 
+        // `CUIStatusBar::CQuickSlot::CompareValidateFuncKeyMappedInfo` only keeps
+        // quick-slot items whose live family is allowed on the status-bar surface.
+        private static readonly HashSet<int> QuickSlotVisibleUseItemFamilies = new()
+        {
+            200, 201, 202, 205, 210, 212, 221, 226, 227, 236, 238, 245
+        };
+
+        // The client resolves these through cash-slot helper enums. The simulator
+        // keeps the restriction on the same quick-slot seam by mirroring the
+        // currently verified cash families already used by the surrounding UI.
+        private static readonly HashSet<int> QuickSlotVisibleCashItemFamilies = new()
+        {
+            506, 553, 557, 561
+        };
+
         #endregion
 
         #region Properties
@@ -1412,10 +1427,27 @@ namespace HaCreator.MapSimulator.Character.Skills
         /// </summary>
         public int RevalidateHotkeys()
         {
+            return RevalidateHotkeys(0, TOTAL_SLOT_COUNT);
+        }
+
+        /// <summary>
+        /// Revalidates the requested hotkey range against the current learned-skill and
+        /// live inventory state.
+        /// </summary>
+        public int RevalidateHotkeys(int startSlotIndex, int slotCount)
+        {
+            if (slotCount <= 0)
+                return 0;
+
+            int normalizedStart = Math.Clamp(startSlotIndex, 0, TOTAL_SLOT_COUNT);
+            int normalizedEnd = Math.Clamp(startSlotIndex + slotCount, normalizedStart, TOTAL_SLOT_COUNT);
             int removed = 0;
 
             foreach (int slotIndex in _skillHotkeys.Keys.ToList())
             {
+                if (!IsHotkeySlotInRange(slotIndex, normalizedStart, normalizedEnd))
+                    continue;
+
                 if (CanAssignHotkeySkill(_skillHotkeys[slotIndex]))
                     continue;
 
@@ -1425,6 +1457,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             foreach (int slotIndex in _itemHotkeys.Keys.ToList())
             {
+                if (!IsHotkeySlotInRange(slotIndex, normalizedStart, normalizedEnd))
+                    continue;
+
                 if (IsValidHotkeyItemBinding(_itemHotkeys[slotIndex]))
                     continue;
 
@@ -1434,6 +1469,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             foreach (int slotIndex in _macroHotkeys.Keys.ToList())
             {
+                if (!IsHotkeySlotInRange(slotIndex, normalizedStart, normalizedEnd))
+                    continue;
+
                 if (IsValidMacroHotkeyBinding(_macroHotkeys[slotIndex]))
                     continue;
 
@@ -1471,7 +1509,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ? inventoryType
                 : InventoryTypeExtensions.GetByType((byte)(itemId / 1000000)) ?? InventoryType.NONE;
 
-            if (resolvedInventoryType != InventoryType.USE && resolvedInventoryType != InventoryType.CASH)
+            if (!IsQuickSlotVisibleItemFamily(itemId, resolvedInventoryType))
                 return false;
 
             return (_inventoryRuntime?.GetItemCount(resolvedInventoryType, itemId) ?? 0) > 0;
@@ -1483,14 +1521,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ? inventoryType
                 : InventoryTypeExtensions.GetByType((byte)(itemId / 1000000)) ?? InventoryType.NONE;
 
-            return itemId > 0 &&
-                   (resolvedInventoryType == InventoryType.USE || resolvedInventoryType == InventoryType.CASH);
+            return itemId > 0 && IsQuickSlotVisibleItemFamily(itemId, resolvedInventoryType);
         }
 
         private bool IsValidHotkeyItemBinding(ItemHotkeyBinding binding)
         {
-            return binding != null &&
-                   (binding.InventoryType == InventoryType.USE || binding.InventoryType == InventoryType.CASH);
+            if (binding == null || !IsQuickSlotVisibleItemFamily(binding.ItemId, binding.InventoryType))
+                return false;
+
+            return _inventoryRuntime == null || _inventoryRuntime.GetItemCount(binding.InventoryType, binding.ItemId) > 0;
         }
 
         private ItemHotkeyBinding GetHotkeyItemBinding(int slotIndex)
@@ -1520,6 +1559,25 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             SkillMacro macro = _macroResolver?.Invoke(macroIndex);
             return macroIndex >= 0 && macro != null && macro.IsEnabled;
+        }
+
+        private static bool IsHotkeySlotInRange(int slotIndex, int startInclusive, int endExclusive)
+        {
+            return slotIndex >= startInclusive && slotIndex < endExclusive;
+        }
+
+        private static bool IsQuickSlotVisibleItemFamily(int itemId, InventoryType inventoryType)
+        {
+            if (itemId <= 0)
+                return false;
+
+            int itemFamily = itemId / 10000;
+            return inventoryType switch
+            {
+                InventoryType.USE => QuickSlotVisibleUseItemFamilies.Contains(itemFamily),
+                InventoryType.CASH => QuickSlotVisibleCashItemFamilies.Contains(itemFamily),
+                _ => false
+            };
         }
 
         #endregion
@@ -6229,11 +6287,6 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            if (!string.IsNullOrWhiteSpace(skill?.ActionName) && yielded.Add(skill.ActionName))
-            {
-                yield return skill.ActionName;
-            }
-
             if (skill?.ActionNames != null)
             {
                 foreach (string actionName in skill.ActionNames)
@@ -6243,6 +6296,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                         yield return actionName;
                     }
                 }
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.ActionName) && yielded.Add(skill.ActionName))
+            {
+                yield return skill.ActionName;
             }
 
             if (currentRawActionCode.HasValue
@@ -8276,8 +8334,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (projectile.ResolvedShootAmmoSelection == null
                 || _inventoryRuntime == null
                 || IsShootSkillNotUsingShootingWeapon(skill.SkillId)
-                || IsShootSkillNotConsumingBullet(skill.SkillId)
-                || HasShootAmmoBypassTemporaryStat())
+                || IsShootSkillNotConsumingBullet(skill.SkillId))
             {
                 return true;
             }
@@ -12036,14 +12093,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            if (state != SummonActorState.Attack && state != SummonActorState.Prepare)
-            {
-                summon.CurrentAnimationBranchName = null;
-            }
-
             if (state == SummonActorState.Idle && ShouldClearSupportSummonSuspend(summon, currentTime))
             {
                 summon.SupportSuspendUntilTime = int.MinValue;
+            }
+
+            if (state != SummonActorState.Attack && state != SummonActorState.Prepare)
+            {
+                summon.CurrentAnimationBranchName = null;
             }
 
             if (summon.ActorState == state)
@@ -12682,13 +12739,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             SkillData parentSkill = GetSkillData(parentSkillId);
-            if (parentSkill?.LinksDummySkill(requestedSkillId) == true)
-            {
-                return true;
-            }
-
-            SkillData requestedSkill = GetSkillData(requestedSkillId);
-            return requestedSkill?.LinksDummySkill(parentSkillId) == true;
+            return IsVisibleSwallowFamilyRequest(requestedSkillId, parentSkill);
         }
 
         private void ActivateWildHunterSwallowDigestState(int currentTime)
@@ -12782,29 +12833,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             string attackBranchName = summon.CurrentAnimationBranchName;
             int delayMs = ResolveSummonImpactAuthoredDelayMs(summon.SkillData, targetOrder, attackBranchName);
-            delayMs = SummonRuntimeRules.ResolveSummonImpactDelayMs(
+            delayMs = SummonRuntimeRules.ResolveSummonImpactExecutionDelayMs(
                 summon.SkillData,
                 delayMs,
                 attackBranchName);
-
-            int projectileSpeed = summon.SkillData.ResolveSummonAttackProjectileSpeed(attackBranchName);
-            if (projectileSpeed <= 0)
-            {
-                return delayMs;
-            }
-
-            Vector2 impactPosition = ResolveSummonImpactDisplayPosition(
-                summon.SkillData,
-                targetOrder,
-                attackBranchName,
-                target,
-                source,
-                currentTime);
-            float distance = Vector2.Distance(
-                SummonImpactPresentationResolver.ResolveSourceAnchor(source),
-                impactPosition);
-            int travelDelayMs = (int)MathF.Round(distance * 1000f / projectileSpeed);
-            return Math.Max(delayMs, travelDelayMs);
+            return delayMs;
         }
 
         private void SpawnSummonAttackProjectiles(ActiveSummon summon, IReadOnlyList<MobItem> targets, int currentTime)
@@ -13525,6 +13558,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             summon.NextHealTime = currentTime + Math.Max(0, healLevelData.X * 1000);
             summon.LastAttackAnimationStartTime = currentTime;
             summon.CurrentAnimationBranchName = SummonRuntimeRules.ResolveBeholderHealBranch(summon.SkillData);
+            ArmSupportSummonSuspend(summon, currentTime);
             SetSummonActorState(summon, SummonActorState.Attack, currentTime);
             return true;
         }
@@ -13559,6 +13593,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             summon.NextBuffTime = currentTime + Math.Max(0, buffLevelData.X * 1000);
             summon.LastAttackAnimationStartTime = currentTime;
             summon.CurrentAnimationBranchName = candidate.AnimationBranchName;
+            ArmSupportSummonSuspend(summon, currentTime);
             SetSummonActorState(summon, SummonActorState.Attack, currentTime);
             return true;
         }
@@ -13865,7 +13900,19 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static void ArmSupportSummonSuspend(ActiveSummon summon, int currentTime)
         {
-            if (summon == null)
+            if (summon?.SkillData == null)
+            {
+                return;
+            }
+
+            bool preferHealFirst = SummonRuntimeRules.HasMinionAbilityToken(
+                summon.SkillData.MinionAbility,
+                "heal");
+            if (!SummonRuntimeRules.ShouldTrackSupportSuspendWindow(
+                    summon.SkillData,
+                    summon.AssistType,
+                    preferHealFirst,
+                    summon.CurrentAnimationBranchName))
             {
                 return;
             }
@@ -15699,6 +15746,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (existingBuff != null)
             {
                 bool previouslyHadPersistentAvatarEffect = existingBuff.SkillData?.HasPersistentAvatarEffect == true;
+                int previousAvatarEffectSignature = ComputePersistentAvatarEffectSignature(existingBuff.SkillData);
+                int nextAvatarEffectSignature = ComputePersistentAvatarEffectSignature(syntheticSkillData);
                 if (!ProjectedSupportBuffStatsMatch(existingBuff.LevelData, projectedLevelData))
                 {
                     ApplyBuffStats(existingBuff, false);
@@ -15711,10 +15760,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                 existingBuff.Level = Math.Max(1, projectedLevelData.Level);
                 existingBuff.SkillData = syntheticSkillData;
                 _externalAreaSupportBuffIds.Add(syntheticBuffId);
-                if (syntheticSkillData.HasPersistentAvatarEffect
-                    && (!previouslyHadPersistentAvatarEffect || !_player.HasSkillAvatarEffect(syntheticBuffId)))
+                if (ShouldRefreshProjectedSupportAvatarEffect(
+                        previouslyHadPersistentAvatarEffect,
+                        syntheticSkillData.HasPersistentAvatarEffect,
+                        _player.HasSkillAvatarEffect(syntheticBuffId),
+                        previousAvatarEffectSignature,
+                        nextAvatarEffectSignature))
                 {
                     _player.ApplySkillAvatarEffect(syntheticBuffId, syntheticSkillData, currentTime);
+                }
+                else if (previouslyHadPersistentAvatarEffect
+                         && !syntheticSkillData.HasPersistentAvatarEffect
+                         && _player.HasSkillAvatarEffect(syntheticBuffId))
+                {
+                    _player.ClearSkillAvatarEffect(syntheticBuffId, currentTime, playFinish: false);
                 }
 
                 RefreshBuffControlledFlyingAbility();
@@ -16412,12 +16471,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             };
 
             IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats = GetBuffTemporaryStatPresentation(buff);
+            ISet<string> authoredTemporaryStatLabels = BuildAuthoredTemporaryStatLabelSet(levelData, temporaryStats);
             BuffTemporaryStatPresentation familyOwnerTemporaryStat = ResolveFamilyOwnerTemporaryStat(temporaryStats);
             BuffTemporaryStatPresentation trayLaneTemporaryStat = ResolvePrimaryTemporaryStat(temporaryStats);
             BuffTemporaryStatPresentation iconOwnerTemporaryStat = ResolveIconOwnerTemporaryStat(
                 temporaryStats,
                 trayLaneTemporaryStat,
-                familyOwnerTemporaryStat);
+                familyOwnerTemporaryStat,
+                authoredTemporaryStatLabels);
             BuffIconCatalogEntry supplementalBuffIconEntry = ResolveSupplementalBuffIconEntry(buff, trayLaneTemporaryStat);
             string authoredFamilyDisplayName = ResolveAuthoredFamilyDisplayName(
                 levelData,
@@ -16455,12 +16516,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach (var buff in _buffs)
             {
                 IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats = GetBuffTemporaryStatPresentation(buff);
+                ISet<string> authoredTemporaryStatLabels = BuildAuthoredTemporaryStatLabelSet(buff?.LevelData, temporaryStats);
                 BuffTemporaryStatPresentation familyOwnerTemporaryStat = ResolveFamilyOwnerTemporaryStat(temporaryStats);
                 BuffTemporaryStatPresentation trayLaneTemporaryStat = ResolvePrimaryTemporaryStat(temporaryStats);
                 BuffTemporaryStatPresentation iconOwnerTemporaryStat = ResolveIconOwnerTemporaryStat(
                     temporaryStats,
                     trayLaneTemporaryStat,
-                    familyOwnerTemporaryStat);
+                    familyOwnerTemporaryStat,
+                    authoredTemporaryStatLabels);
                 BuffIconCatalogEntry supplementalBuffIconEntry = ResolveSupplementalBuffIconEntry(buff, trayLaneTemporaryStat);
                 string authoredFamilyDisplayName = ResolveAuthoredFamilyDisplayName(
                     buff?.LevelData,
@@ -17455,14 +17518,15 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static BuffTemporaryStatPresentation ResolveIconOwnerTemporaryStat(
             IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats,
             BuffTemporaryStatPresentation primaryTemporaryStat,
-            BuffTemporaryStatPresentation familyOwnerTemporaryStat)
+            BuffTemporaryStatPresentation familyOwnerTemporaryStat,
+            ISet<string> authoredTemporaryStatLabels)
         {
-            if (HasResolvedBuffIcon(primaryTemporaryStat))
+            if (HasResolvedAuthoredBuffIcon(primaryTemporaryStat, authoredTemporaryStatLabels))
             {
                 return primaryTemporaryStat;
             }
 
-            if (HasResolvedBuffIcon(familyOwnerTemporaryStat))
+            if (HasResolvedAuthoredBuffIcon(familyOwnerTemporaryStat, authoredTemporaryStatLabels))
             {
                 return familyOwnerTemporaryStat;
             }
@@ -17475,7 +17539,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             for (int i = 0; i < temporaryStats.Count; i++)
             {
                 BuffTemporaryStatPresentation candidate = temporaryStats[i];
-                if (HasResolvedBuffIcon(candidate))
+                if (HasResolvedAuthoredBuffIcon(candidate, authoredTemporaryStatLabels))
                 {
                     return candidate;
                 }
@@ -17487,6 +17551,20 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static bool HasResolvedBuffIcon(BuffTemporaryStatPresentation presentation)
         {
             return presentation != null && !string.IsNullOrWhiteSpace(presentation.IconKey);
+        }
+
+        private static bool HasResolvedAuthoredBuffIcon(
+            BuffTemporaryStatPresentation presentation,
+            ISet<string> authoredTemporaryStatLabels)
+        {
+            if (!HasResolvedBuffIcon(presentation))
+            {
+                return false;
+            }
+
+            return authoredTemporaryStatLabels == null
+                || authoredTemporaryStatLabels.Count == 0
+                || authoredTemporaryStatLabels.Contains(presentation.Label);
         }
 
         private static string BuildCombinedTemporaryStatText(SkillData skill)
@@ -17595,6 +17673,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return authoredOrder;
+        }
+
+        private static ISet<string> BuildAuthoredTemporaryStatLabelSet(
+            SkillLevelData levelData,
+            IReadOnlyCollection<BuffTemporaryStatPresentation> temporaryStats)
+        {
+            IReadOnlyDictionary<string, int> authoredOrder = BuildAuthoredTemporaryStatOrder(levelData, temporaryStats);
+            return authoredOrder.Count == 0
+                ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                : new HashSet<string>(authoredOrder.Keys, StringComparer.OrdinalIgnoreCase);
         }
 
         private static int GetAuthoredTemporaryStatOrder(
@@ -18240,6 +18328,47 @@ namespace HaCreator.MapSimulator.Character.Skills
             };
         }
 
+        internal static bool ShouldRefreshProjectedSupportAvatarEffect(
+            bool previouslyHadPersistentAvatarEffect,
+            bool currentlyHasPersistentAvatarEffect,
+            bool hasActiveEffect,
+            int previousSignature,
+            int nextSignature)
+        {
+            return currentlyHasPersistentAvatarEffect
+                   && (!previouslyHadPersistentAvatarEffect
+                       || !hasActiveEffect
+                       || previousSignature != nextSignature);
+        }
+
+        internal static int ComputePersistentAvatarEffectSignature(SkillData skill)
+        {
+            if (skill?.HasPersistentAvatarEffect != true)
+            {
+                return 0;
+            }
+
+            var hash = new HashCode();
+            AppendPersistentAvatarEffectSignature(ref hash, skill.AvatarOverlayEffect);
+            AppendPersistentAvatarEffectSignature(ref hash, skill.AvatarOverlaySecondaryEffect);
+            AppendPersistentAvatarEffectSignature(ref hash, skill.AvatarUnderFaceEffect);
+            AppendPersistentAvatarEffectSignature(ref hash, skill.AvatarUnderFaceSecondaryEffect);
+            return hash.ToHashCode();
+        }
+
+        private static void AppendPersistentAvatarEffectSignature(ref HashCode hash, SkillAnimation animation)
+        {
+            hash.Add(animation != null);
+            if (animation == null)
+            {
+                return;
+            }
+
+            hash.Add(animation.ZOrder);
+            hash.Add(animation.PositionCode ?? 0);
+            hash.Add(animation.Frames?.Count ?? 0);
+        }
+
         private static string AppendMinionAbilityToken(string minionAbility, string token)
         {
             if (string.IsNullOrWhiteSpace(token))
@@ -18763,8 +18892,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             SkillData swallowSkill = GetSkillData(WildHunterSwallowSkillId);
-            return swallowSkill?.LinksDummySkill(skillId) == true
-                   || skill?.LinksDummySkill(WildHunterSwallowSkillId) == true;
+            return IsVisibleSwallowFamilyRequest(skillId, swallowSkill);
+        }
+
+        internal static bool IsVisibleSwallowFamilyRequest(int requestedSkillId, SkillData visibleSwallowSkill)
+        {
+            if (requestedSkillId <= 0 || visibleSwallowSkill == null)
+            {
+                return false;
+            }
+
+            return requestedSkillId == visibleSwallowSkill.SkillId
+                   || visibleSwallowSkill.LinksDummySkill(requestedSkillId);
         }
 
         private bool HasConfirmedWildHunterSwallow()
@@ -18890,13 +19029,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                         continue;
                     }
 
-                    if (!UsesProjectedSupportAffectedSkillPassive(skill, levelData))
+                    SkillData[] supportSkills = ResolveAffectedSkillPassiveSupportSkills(skill);
+                    if (!UsesProjectedSupportAffectedSkillPassive(skill, levelData, supportSkills))
                     {
                         continue;
                     }
 
                     int syntheticBuffId = ResolveAffectedSkillSupportBuffId(skill.SkillId);
-                    ApplyOrRefreshAffectedSkillSupportBuff(skill, levelData, currentTime, syntheticBuffId);
+                    ApplyOrRefreshAffectedSkillSupportBuff(skill, supportSkills, levelData, currentTime, syntheticBuffId);
                     activeSupportBuffIds ??= new HashSet<int>();
                     activeSupportBuffIds.Add(syntheticBuffId);
                 }
@@ -18993,6 +19133,32 @@ namespace HaCreator.MapSimulator.Character.Skills
             return levelData != null;
         }
 
+        private SkillData[] ResolveAffectedSkillPassiveSupportSkills(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return Array.Empty<SkillData>();
+            }
+
+            int[] affectedSkillIds = skill.GetAffectedSkillIds();
+            if (affectedSkillIds.Length == 0)
+            {
+                return Array.Empty<SkillData>();
+            }
+
+            var supportSkills = new List<SkillData>(affectedSkillIds.Length);
+            foreach (int affectedSkillId in affectedSkillIds)
+            {
+                SkillData supportSkill = GetSkillData(affectedSkillId);
+                if (supportSkill != null)
+                {
+                    supportSkills.Add(supportSkill);
+                }
+            }
+
+            return supportSkills.ToArray();
+        }
+
         internal static bool TryResolveAffectedSkillPassiveRuntimeLevel(
             SkillData skill,
             Func<int, int> getSkillLevel,
@@ -19060,24 +19226,28 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private void ApplyOrRefreshAffectedSkillSupportBuff(
             SkillData sourceSkill,
+            IReadOnlyCollection<SkillData> supportSkills,
             SkillLevelData levelData,
             int currentTime,
             int syntheticBuffId)
         {
             SkillLevelData projectedLevelData = RemoteAffectedAreaSupportResolver.CreateProjectedSupportBuffLevelData(
                 sourceSkill,
-                levelData);
+                levelData,
+                supportSkills?.ToArray() ?? Array.Empty<SkillData>());
             if (projectedLevelData == null)
             {
                 return;
             }
 
             int durationMs = Math.Max(500, Math.Max(projectedLevelData.Time * 1000, 1000));
-            SkillData syntheticSkillData = BuildExternalAreaSupportBuffSkillData(sourceSkill, null, projectedLevelData, syntheticBuffId);
+            SkillData syntheticSkillData = BuildExternalAreaSupportBuffSkillData(sourceSkill, supportSkills, projectedLevelData, syntheticBuffId);
             ActiveBuff existingBuff = _buffs.LastOrDefault(buff => buff?.SkillId == syntheticBuffId);
             if (existingBuff != null)
             {
                 bool previouslyHadPersistentAvatarEffect = existingBuff.SkillData?.HasPersistentAvatarEffect == true;
+                int previousAvatarEffectSignature = ComputePersistentAvatarEffectSignature(existingBuff.SkillData);
+                int nextAvatarEffectSignature = ComputePersistentAvatarEffectSignature(syntheticSkillData);
                 if (!ProjectedSupportBuffStatsMatch(existingBuff.LevelData, projectedLevelData))
                 {
                     ApplyBuffStats(existingBuff, false);
@@ -19090,10 +19260,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                 existingBuff.Level = Math.Max(1, projectedLevelData.Level);
                 existingBuff.SkillData = syntheticSkillData;
                 _affectedSkillSupportBuffIds.Add(syntheticBuffId);
-                if (syntheticSkillData.HasPersistentAvatarEffect
-                    && (!previouslyHadPersistentAvatarEffect || !_player.HasSkillAvatarEffect(syntheticBuffId)))
+                if (ShouldRefreshProjectedSupportAvatarEffect(
+                        previouslyHadPersistentAvatarEffect,
+                        syntheticSkillData.HasPersistentAvatarEffect,
+                        _player.HasSkillAvatarEffect(syntheticBuffId),
+                        previousAvatarEffectSignature,
+                        nextAvatarEffectSignature))
                 {
                     _player.ApplySkillAvatarEffect(syntheticBuffId, syntheticSkillData, currentTime);
+                }
+                else if (previouslyHadPersistentAvatarEffect
+                         && !syntheticSkillData.HasPersistentAvatarEffect
+                         && _player.HasSkillAvatarEffect(syntheticBuffId))
+                {
+                    _player.ClearSkillAvatarEffect(syntheticBuffId, currentTime, playFinish: false);
                 }
 
                 RefreshBuffControlledFlyingAbility();
@@ -19546,7 +19726,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || !RequiresClientShootAttackValidation(skill)
                 || IsShootSkillNotUsingShootingWeapon(skill.SkillId)
                 || IsShootSkillNotConsumingBullet(skill.SkillId)
-                || shootAmmoBypassActive
                 || _inventoryRuntime == null
                 || _player?.Build == null)
             {
@@ -20013,9 +20192,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return 0;
             }
 
-            // Delayed/queued shots should keep the exact cosmetic ammo family selected at cast
-            // time even if the original CASH slot metadata is no longer live by draw time.
-            if (selection.CashItemId > 0)
+            // `GetProperBulletPosition` re-resolves the live CASH lane at fire time. Once that
+            // slot refresh fails, the delayed queued branch falls back to the preserved USE art.
+            if (selection.HasCashAmmo)
             {
                 return selection.CashItemId;
             }
@@ -20488,13 +20667,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && string.Equals(skill.DotType, "aura", StringComparison.OrdinalIgnoreCase);
         }
 
-        internal static bool UsesProjectedSupportAffectedSkillPassive(SkillData skill, SkillLevelData levelData)
+        internal static bool UsesProjectedSupportAffectedSkillPassive(
+            SkillData skill,
+            SkillLevelData levelData,
+            IReadOnlyCollection<SkillData> supportSkills = null)
         {
             return skill?.UsesAffectedSkillPassiveData == true
                    && !skill.UsesAffectedSkillBodyAttack
                    && !UsesAuraDotAffectedSkillPassive(skill)
-                   && RemoteAffectedAreaSupportResolver.IsFriendlyPlayerAreaSkill(skill, levelData)
-                   && RemoteAffectedAreaSupportResolver.CreateProjectedSupportBuffLevelData(skill, levelData) != null;
+                   && RemoteAffectedAreaSupportResolver.IsFriendlyPlayerAreaSkill(skill, supportSkills, levelData)
+                   && RemoteAffectedAreaSupportResolver.CreateProjectedSupportBuffLevelData(
+                       skill,
+                       levelData,
+                       supportSkills?.ToArray() ?? Array.Empty<SkillData>()) != null;
         }
 
         internal static int ResolveAffectedSkillSupportBuffId(int skillId)

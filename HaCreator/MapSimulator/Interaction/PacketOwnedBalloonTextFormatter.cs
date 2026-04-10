@@ -19,6 +19,8 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private const string ItemIconMarkerPrefix = "{{ITEMICON:";
         private const string ItemIconMarkerSuffix = "}}";
+        private const string UiCanvasMarkerPrefix = "{{UICANVAS:";
+        private const string UiCanvasMarkerSuffix = "}}";
 
         private static readonly Regex ItemCountRegex = new(@"#c(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PlayerNameRegex = new(@"#h\d*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -37,9 +39,11 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex QuestAmountRegex = new(@"#a(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestValueRegex = new(@"#x(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ItemIconRegex = new(@"#(?:i|v)(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex UiCanvasRegex = new(@"#(?:f|F)([^#]+)#", RegexOptions.Compiled);
         private static readonly Regex RewardCategoryRegex = new(@"#W[^#\s]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex FontNameRegex = new(@"#fn[^#]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex FontSizeRegex = new(@"#fs-?\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex FontTableRegex = new(@"#w(?:[^#\s]*#)?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)", RegexOptions.Compiled);
         private static readonly Regex InlineSelectionRegex = new(@"#L(?<id>-?\d+)#(?<text>.*?)#l", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
         private static readonly Regex SelectionRegex = new(@"#L\d+#", RegexOptions.Compiled);
@@ -73,9 +77,11 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = QuestAmountRegex.Replace(formatted, static match => ResolveQuestAmountText(match.Groups[1].Value));
             formatted = QuestValueRegex.Replace(formatted, static match => ResolveQuestValueText(match.Groups[1].Value));
             formatted = ItemIconRegex.Replace(formatted, static match => BuildItemIconMarker(match.Groups[1].Value));
+            formatted = UiCanvasRegex.Replace(formatted, static match => BuildUiCanvasMarker(match.Groups[1].Value));
             formatted = RewardCategoryRegex.Replace(formatted, string.Empty);
             formatted = FontNameRegex.Replace(formatted, string.Empty);
             formatted = FontSizeRegex.Replace(formatted, string.Empty);
+            formatted = FontTableRegex.Replace(formatted, string.Empty);
             formatted = ClientPromptTagRegex.Replace(formatted, string.Empty);
             formatted = PluralSuffixRegex.Replace(formatted, "s");
             return formatted;
@@ -146,6 +152,14 @@ namespace HaCreator.MapSimulator.Interaction
             return int.TryParse(itemIdText, out int itemId) && itemId > 0
                 ? $"{ItemIconMarkerPrefix}{itemId}{ItemIconMarkerSuffix}"
                 : string.Empty;
+        }
+
+        private static string BuildUiCanvasMarker(string canvasPath)
+        {
+            string normalizedPath = canvasPath?.Trim().Replace('\\', '/');
+            return string.IsNullOrWhiteSpace(normalizedPath)
+                ? string.Empty
+                : $"{UiCanvasMarkerPrefix}{normalizedPath}{UiCanvasMarkerSuffix}";
         }
 
         private static string ResolveQuestName(string questIdText)

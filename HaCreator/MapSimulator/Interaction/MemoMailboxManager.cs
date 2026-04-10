@@ -6,6 +6,15 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class MemoMailboxManager
     {
+        private const int StringPoolQuickDeliveryCouponMissing = 0xF5E;
+        private const int StringPoolAttachmentRequired = 0xF5F;
+        private const int StringPoolRecipientRequired = 0xF60;
+        private const int StringPoolQuickSendFeePrompt = 0xF61;
+        private const int StringPoolSendFeePrompt = 0xF62;
+        private const int StringPoolDeleteSuccess = 0xF64;
+        private const int StringPoolClaimSuccess = 0xF65;
+        private const int StringPoolSendSuccess = 0xF66;
+
         private enum MemoAttachmentKind
         {
             None,
@@ -716,50 +725,88 @@ namespace HaCreator.MapSimulator.Interaction
             };
             memo.Attachment.IsClaimed = true;
             memo.IsRead = true;
-            message = $"Claimed {BuildAttachmentSummary(memo.Attachment)} from parcel #{memo.MemoId}.";
+            message = MapleStoryStringPool.GetOrFallback(
+                StringPoolClaimSuccess,
+                $"Claimed {BuildAttachmentSummary(memo.Attachment)} from parcel #{memo.MemoId}.");
             _lastActionSummary = message;
             return true;
         }
 
         internal bool TrySendDraft(out string message)
         {
-            if (!CanSendDraft())
+            if (string.IsNullOrWhiteSpace(_draft.Recipient))
             {
-                message = "Parcel send requires recipient and body text before it can be sent.";
+                message = MapleStoryStringPool.GetOrFallback(
+                    StringPoolRecipientRequired,
+                    "Please enter the name of the recipient.");
+                return false;
+            }
+
+            if (!HasDraftAttachment())
+            {
+                message = MapleStoryStringPool.GetOrFallback(
+                    StringPoolAttachmentRequired,
+                    "You must select either Mesos or items to send.");
                 return false;
             }
 
             string recipient = _draft.Recipient;
             string subject = ResolveDraftParcelLabel();
-            string body = _draft.Body;
             MemoAttachmentState attachment = CloneAttachment(_draft.Attachment);
             _showTaxInfo = false;
 
-            _lastActionSummary = attachment == null
-                ? $"Sent parcel to {recipient}."
-                : $"Sent parcel to {recipient} with {BuildAttachmentSummary(attachment)}.";
-            message = _lastActionSummary;
+            message = MapleStoryStringPool.GetOrFallback(
+                StringPoolSendSuccess,
+                attachment == null
+                    ? $"Sent parcel to {recipient}."
+                    : $"Sent parcel to {recipient} with {BuildAttachmentSummary(attachment)}.");
+            _lastActionSummary = message;
 
             DeliverMemo(
                 "Maple Mail Center",
                 $"Delivery receipt: {subject}",
                 attachment == null
-                    ? $"Your parcel to {recipient} was queued through the simulator delivery owner."
-                    : $"Your parcel to {recipient} was queued through the simulator delivery owner with {BuildAttachmentSummary(attachment)}.",
+                    ? $"Your parcel to {recipient} was sent through the simulator delivery owner."
+                    : $"Your parcel to {recipient} was sent through the simulator delivery owner with {BuildAttachmentSummary(attachment)}.",
                 DateTimeOffset.Now,
                 isRead: false,
                 notifySocialText: false);
 
-            NotifySocialChatObserved(body);
             ResetDraft();
             return true;
         }
 
-        internal bool TryQuickSendDraft(out string message)
+        internal bool TryQuickSendDraft(bool hasQuickDeliveryCoupon, Func<bool> consumeQuickDeliveryCoupon, out string message)
         {
+            if (!hasQuickDeliveryCoupon)
+            {
+                message = MapleStoryStringPool.GetOrFallback(
+                    StringPoolQuickDeliveryCouponMissing,
+                    "You do not have the Quick Delivery Coupon.");
+                return false;
+            }
+
             if (!CanQuickSendDraft())
             {
-                message = "Quick delivery requires recipient and body, and it cannot carry an item attachment.";
+                message = string.IsNullOrWhiteSpace(_draft.Recipient)
+                    ? MapleStoryStringPool.GetOrFallback(
+                        StringPoolRecipientRequired,
+                        "Please enter the name of the recipient.")
+                    : string.IsNullOrWhiteSpace(_draft.Body)
+                        ? MapleStoryStringPool.GetOrFallback(
+                            0x11D,
+                            "Please enter the message to send")
+                        : MapleStoryStringPool.GetOrFallback(
+                            StringPoolAttachmentRequired,
+                            "You must select either Mesos or items to send.");
+                return false;
+            }
+
+            if (consumeQuickDeliveryCoupon != null && !consumeQuickDeliveryCoupon())
+            {
+                message = MapleStoryStringPool.GetOrFallback(
+                    StringPoolQuickDeliveryCouponMissing,
+                    "You do not have the Quick Delivery Coupon.");
                 return false;
             }
 
@@ -769,10 +816,12 @@ namespace HaCreator.MapSimulator.Interaction
             string quickSubject = ResolveDraftParcelLabel("Quick delivery");
             _showTaxInfo = false;
 
-            _lastActionSummary = attachment == null
-                ? $"Quick-sent parcel to {recipient}."
-                : $"Quick-sent parcel to {recipient} with {BuildAttachmentSummary(attachment)}.";
-            message = _lastActionSummary;
+            message = MapleStoryStringPool.GetOrFallback(
+                StringPoolSendSuccess,
+                attachment == null
+                    ? $"Quick-sent parcel to {recipient}."
+                    : $"Quick-sent parcel to {recipient} with {BuildAttachmentSummary(attachment)}.");
+            _lastActionSummary = message;
 
             DeliverMemo(
                 "Maple Delivery Service",
@@ -790,11 +839,11 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        internal bool TryDispatchActiveDraft(out string message)
+        internal bool TryDispatchActiveDraft(bool hasQuickDeliveryCoupon, Func<bool> consumeQuickDeliveryCoupon, out string message)
         {
             return _activeTab switch
             {
-                ParcelDialogTab.QuickSend => TryQuickSendDraft(out message),
+                ParcelDialogTab.QuickSend => TryQuickSendDraft(hasQuickDeliveryCoupon, consumeQuickDeliveryCoupon, out message),
                 ParcelDialogTab.Send => TrySendDraft(out message),
                 _ => FailActiveDispatch(out message)
             };
@@ -850,14 +899,15 @@ namespace HaCreator.MapSimulator.Interaction
         private bool CanSendDraft()
         {
             return !string.IsNullOrWhiteSpace(_draft.Recipient)
-                && !string.IsNullOrWhiteSpace(_draft.Body);
+                && HasDraftAttachment();
         }
 
         private bool CanQuickSendDraft()
         {
             return !string.IsNullOrWhiteSpace(_draft.Recipient)
                 && !string.IsNullOrWhiteSpace(_draft.Body)
-                && _draft.Attachment?.Kind != MemoAttachmentKind.Item;
+                && _draft.Attachment?.Kind == MemoAttachmentKind.Meso
+                && _draft.Attachment.Meso > 0;
         }
 
         private void ResetDraft()
@@ -1175,23 +1225,78 @@ namespace HaCreator.MapSimulator.Interaction
             return _activeTab switch
             {
                 ParcelDialogTab.QuickSend =>
-                    "Quick Send tab: recipient and body are required; the simulator keeps item parcels disabled here to match the client split.",
+                    "Quick Send tab: recipient, message, a meso attachment, and a Quick Delivery Coupon are required; item parcels stay blocked on this simulator seam.",
                 ParcelDialogTab.Receive =>
                     "Receive tab: delivered parcel state stays separate from memo, whisper, and messenger surfaces.",
                 _ =>
-                    "Send tab: recipient and body are required; optional item or meso packages still flow through the simulator draft seam."
+                    "Send tab: recipient plus an item or meso attachment are required; the message field stays editable but the client send branch only dispatches the package."
             };
         }
 
         private string BuildTaxSummary()
         {
+            int attachedMeso = _draft.Attachment?.Kind == MemoAttachmentKind.Meso ? Math.Max(0, _draft.Attachment.Meso) : 0;
             return _activeTab switch
             {
-                ParcelDialogTab.QuickSend =>
-                    "Quick-delivery fee info is informational only here. Use the owner meso field or /memo draft meso <amount> for supplemental staging.",
-                _ =>
-                    "Parcel fee info is informational only here. Use the owner package lane and meso field, or /memo draft ... for supplemental staging."
+                ParcelDialogTab.QuickSend => FormatClientPrompt(
+                    StringPoolQuickSendFeePrompt,
+                    "The service charge will cost {0} mesos. This will also use up 1 [Quick Delivery Coupon]. Are you sure you want to send it?",
+                    GetParcelTax(attachedMeso)),
+                _ => FormatClientPrompt(
+                    StringPoolSendFeePrompt,
+                    "The total wiring/transportation fee is {0} mesos. Are you sure you want to send the package?",
+                    GetParcelTax(attachedMeso) + 5000)
             };
+        }
+
+        private bool HasDraftAttachment()
+        {
+            return _draft.Attachment is { Kind: not MemoAttachmentKind.None } attachment
+                && (attachment.Kind != MemoAttachmentKind.Meso || attachment.Meso > 0);
+        }
+
+        private static int GetParcelTax(int meso)
+        {
+            if (meso >= 100_000_000)
+            {
+                return (int)(meso * 0.06d);
+            }
+
+            if (meso >= 25_000_000)
+            {
+                return (int)(meso * 0.05d);
+            }
+
+            if (meso >= 10_000_000)
+            {
+                return (int)(meso * 0.04d);
+            }
+
+            if (meso >= 5_000_000)
+            {
+                return (int)(meso * 0.03d);
+            }
+
+            if (meso >= 1_000_000)
+            {
+                return (int)(meso * 0.018d);
+            }
+
+            if (meso >= 100_000)
+            {
+                return (int)(meso * 0.008d);
+            }
+
+            return 0;
+        }
+
+        private static string FormatClientPrompt(int stringPoolId, string fallbackFormat, int meso)
+        {
+            string template = MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackFormat);
+            return template.Replace("%d", meso.ToString(), StringComparison.Ordinal)
+                .Replace("\r\n", " ", StringComparison.Ordinal)
+                .Replace('\r', ' ')
+                .Replace('\n', ' ');
         }
 
         private MemoDraftAttachmentKind ResolveDraftAttachmentKind()

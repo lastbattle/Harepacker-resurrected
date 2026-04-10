@@ -797,6 +797,8 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
+            IReadOnlyDictionary<Keys, int> existingBindableHotkeySlotIndicesByKey =
+                BuildPacketOwnedExistingBindableHotkeySlotIndicesByKey(input);
             ClearPacketOwnedBindableHotkeyMappings(input);
 
             int translated = 0;
@@ -814,7 +816,12 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                if (!TryResolvePacketOwnedBindableHotkeySlot(input, key, ref nextUnclaimedBindableSlotIndex, out PacketOwnedKeyActionSlot slot))
+                if (!TryResolvePacketOwnedBindableHotkeySlot(
+                    input,
+                    key,
+                    existingBindableHotkeySlotIndicesByKey,
+                    ref nextUnclaimedBindableSlotIndex,
+                    out PacketOwnedKeyActionSlot slot))
                 {
                     continue;
                 }
@@ -1035,6 +1042,7 @@ namespace HaCreator.MapSimulator
         private bool TryResolvePacketOwnedBindableHotkeySlot(
             PlayerInput input,
             Keys key,
+            IReadOnlyDictionary<Keys, int> existingBindableHotkeySlotIndicesByKey,
             ref int nextUnclaimedBindableSlotIndex,
             out PacketOwnedKeyActionSlot slot)
         {
@@ -1044,6 +1052,16 @@ namespace HaCreator.MapSimulator
                 || IsPacketOwnedHotkeyKeyProtected(input, key))
             {
                 return false;
+            }
+
+            if (existingBindableHotkeySlotIndicesByKey != null
+                && existingBindableHotkeySlotIndicesByKey.TryGetValue(key, out int existingSlotIndex)
+                && existingSlotIndex >= 0
+                && existingSlotIndex < _packetOwnedBindableHotkeyAssignedScanCodes.Length
+                && _packetOwnedBindableHotkeyAssignedScanCodes[existingSlotIndex] < 0)
+            {
+                slot = PacketOwnedBindableHotkeySlots[existingSlotIndex];
+                return true;
             }
 
             if (PacketOwnedPreferredBindableHotkeySlotIndicesByKey.TryGetValue(key, out int preferredSlotIndex)
@@ -1167,6 +1185,41 @@ namespace HaCreator.MapSimulator
             }
 
             return slots.ToArray();
+        }
+
+        private static IReadOnlyDictionary<Keys, int> BuildPacketOwnedExistingBindableHotkeySlotIndicesByKey(PlayerInput input)
+        {
+            var slots = new Dictionary<Keys, int>();
+            if (input == null)
+            {
+                return slots;
+            }
+
+            for (int i = 0; i < PacketOwnedBindableHotkeySlots.Length; i++)
+            {
+                KeyBinding binding = input.GetBinding(PacketOwnedBindableHotkeySlots[i].Action);
+                if (binding == null)
+                {
+                    continue;
+                }
+
+                RegisterPacketOwnedBindableHotkeySlotIndex(slots, binding.PrimaryKey, i);
+                RegisterPacketOwnedBindableHotkeySlotIndex(slots, binding.SecondaryKey, i);
+            }
+
+            return slots;
+        }
+
+        private static void RegisterPacketOwnedBindableHotkeySlotIndex(Dictionary<Keys, int> slots, Keys key, int slotIndex)
+        {
+            if (slots == null
+                || key == Keys.None
+                || slots.ContainsKey(key))
+            {
+                return;
+            }
+
+            slots[key] = slotIndex;
         }
 
         private static IReadOnlyDictionary<Keys, int> BuildPacketOwnedPreferredBindableHotkeySlotIndicesByKey()

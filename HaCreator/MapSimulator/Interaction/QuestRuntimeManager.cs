@@ -1164,7 +1164,7 @@ namespace HaCreator.MapSimulator.Interaction
             return new QuestDeliveryEntrySnapshot
             {
                 QuestId = questId,
-                DisplayQuestId = Math.Max(questId, displayQuestId),
+                DisplayQuestId = ResolveQuestDeliveryDisplayQuestIdForClientParity(questId, displayQuestId),
                 TargetNpcId = state.TargetNpcId ?? 0,
                 Title = state.Title,
                 NpcName = npcName,
@@ -1183,6 +1183,13 @@ namespace HaCreator.MapSimulator.Interaction
                 DeliveryCashItemId = state.DeliveryCashItemId,
                 DeliveryCashItemName = state.DeliveryCashItemName
             };
+        }
+
+        internal static int ResolveQuestDeliveryDisplayQuestIdForClientParity(int questId, int displayQuestId)
+        {
+            return displayQuestId > 0
+                ? displayQuestId
+                : Math.Max(0, questId);
         }
 
         public bool TryGetQuestWorldMapTarget(int questId, CharacterBuild build, out QuestWorldMapTarget target)
@@ -1233,7 +1240,21 @@ namespace HaCreator.MapSimulator.Interaction
                 preferVisibleRequirements: true);
             if (incompleteItemRequirement != null)
             {
-                IReadOnlyList<int> itemMapIds = ResolveQuestDemandItemMapIds(definition, currentMapId);
+                IReadOnlyList<int> itemMapIds = Array.Empty<int>();
+                if (TryBuildQuestDemandItemQuery(questId, out QuestDemandItemQueryState itemQueryState) &&
+                    itemQueryState?.VisibleItemMapIds != null &&
+                    itemQueryState.VisibleItemMapIds.TryGetValue(incompleteItemRequirement.ItemId, out IReadOnlyList<int> queryMapIds) &&
+                    queryMapIds != null &&
+                    queryMapIds.Count > 0)
+                {
+                    itemMapIds = queryMapIds;
+                }
+
+                if (itemMapIds.Count == 0)
+                {
+                    itemMapIds = ResolveQuestDemandItemMapIds(definition, currentMapId);
+                }
+
                 target = new QuestWorldMapTarget
                 {
                     Kind = QuestWorldMapTargetKind.Item,
@@ -6378,6 +6399,19 @@ namespace HaCreator.MapSimulator.Interaction
             return text.Any(static ch => ch != '0');
         }
 
+        internal static string NormalizeQuestActionMessage(
+            string text,
+            NpcDialogueFormattingContext formattingContext = null)
+        {
+            string trimmed = text?.Trim();
+            if (!IsMeaningfulQuestActionText(trimmed))
+            {
+                return string.Empty;
+            }
+
+            return NpcDialogueTextFormatter.Format(trimmed, formattingContext);
+        }
+
         private static QuestRewardSelectionType ResolveRewardSelectionType(int prop)
         {
             if (prop < 0)
@@ -8657,7 +8691,9 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add(summaryText);
             }
 
-            lines.AddRange(BuildClientPacketQuestResultNonItemSupplementalLines(actions, build));
+            lines.AddRange(BuildClientPacketQuestResultNonItemSupplementalLines(
+                actions,
+                build));
 
             string noticeText = string.Join("\n", lines.Where(static line => !string.IsNullOrWhiteSpace(line)));
             if (actions.MesoReward < 0)
@@ -8750,22 +8786,29 @@ namespace HaCreator.MapSimulator.Interaction
             return GetPacketQuestResultConversationPages(actionBundle, fallbackPages);
         }
 
-        internal static IReadOnlyList<NpcInteractionPage> GetPacketQuestResultConversationPages(
-            QuestActionBundle actions,
+        internal static IReadOnlyList<NpcInteractionPage> GetPreferredPacketQuestResultConversationPages(
+            IReadOnlyList<NpcInteractionPage> actionPages,
             IReadOnlyList<NpcInteractionPage> fallbackPages)
         {
-            if (actions?.ConversationPages != null)
+            if (actionPages != null)
             {
-                for (int i = 0; i < actions.ConversationPages.Count; i++)
+                for (int i = 0; i < actionPages.Count; i++)
                 {
-                    if (ShouldDisplayConversationPage(actions.ConversationPages[i]))
+                    if (ShouldDisplayConversationPage(actionPages[i]))
                     {
-                        return actions.ConversationPages;
+                        return actionPages;
                     }
                 }
             }
 
             return fallbackPages ?? Array.Empty<NpcInteractionPage>();
+        }
+
+        internal static IReadOnlyList<NpcInteractionPage> GetPacketQuestResultConversationPages(
+            QuestActionBundle actions,
+            IReadOnlyList<NpcInteractionPage> fallbackPages)
+        {
+            return GetPreferredPacketQuestResultConversationPages(actions?.ConversationPages, fallbackPages);
         }
 
         private IReadOnlyList<NpcInteractionPage> ResolveConversationPages(
@@ -8817,6 +8860,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 return lines;
             }
+
+            NpcDialogueFormattingContext formattingContext = CreateDialogueFormattingContext(build);
 
             if (actions.ExpReward > 0)
             {
@@ -8906,9 +8951,10 @@ namespace HaCreator.MapSimulator.Interaction
 
             for (int i = 0; i < actions.Messages.Count; i++)
             {
-                if (!string.IsNullOrWhiteSpace(actions.Messages[i]))
+                string message = NormalizeQuestActionMessage(actions.Messages[i], formattingContext);
+                if (!string.IsNullOrWhiteSpace(message))
                 {
-                    lines.Add(actions.Messages[i]);
+                    lines.Add(message);
                 }
             }
 
@@ -8979,6 +9025,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 return lines;
             }
+
+            NpcDialogueFormattingContext formattingContext = CreateDialogueFormattingContext(build);
 
             if (actions.ExpReward > 0)
             {
@@ -9066,9 +9114,10 @@ namespace HaCreator.MapSimulator.Interaction
 
             for (int i = 0; i < actions.Messages.Count; i++)
             {
-                if (!string.IsNullOrWhiteSpace(actions.Messages[i]))
+                string message = NormalizeQuestActionMessage(actions.Messages[i], formattingContext);
+                if (!string.IsNullOrWhiteSpace(message))
                 {
-                    lines.Add(actions.Messages[i]);
+                    lines.Add(message);
                 }
             }
 

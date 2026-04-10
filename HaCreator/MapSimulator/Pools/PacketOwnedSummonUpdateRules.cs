@@ -174,10 +174,15 @@ namespace HaCreator.MapSimulator.Pools
 
         public static bool ShouldRegisterClientOwnedAttackTileOverlay(ActiveSummon summon)
         {
+            SkillAnimation zoneAnimation = summon?.SkillData?.ZoneEffect?.ResolveAnimationVariant(
+                                            summon.Level,
+                                            1,
+                                            summon?.SkillData?.MaxLevel ?? 0)
+                                        ?? summon?.SkillData?.ZoneAnimation;
             return summon != null
                    && SummonClientPostEffectRules.ShouldRegisterAttackTileOverlay(
                        summon.SkillId,
-                       summon.SkillData?.ZoneAnimation);
+                       zoneAnimation);
         }
 
         public static bool ShouldRegisterClientOwnedReactiveAttackChainEffect(ActiveSummon summon)

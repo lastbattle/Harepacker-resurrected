@@ -2286,7 +2286,32 @@ namespace HaCreator.MapSimulator.Character
 
         private int GetHpIncreaseAmount(Func<int, int, int> rollInclusive)
         {
-            (int min, int max) range = ResolveJobArchetype() switch
+            (int min, int max) range = ResolveHpIncreaseRange();
+
+            return rollInclusive(range.min, range.max);
+        }
+
+        private int GetMpIncreaseAmount(Func<int, int, int> rollInclusive)
+        {
+            (int min, int max) range = ResolveMpIncreaseRange();
+
+            return rollInclusive(range.min, range.max);
+        }
+
+        private (int min, int max) ResolveHpIncreaseRange()
+        {
+            int absoluteJobId = Math.Abs(Job);
+            if (IsBattleMageJob(absoluteJobId))
+            {
+                return (20, 24);
+            }
+
+            if (IsEvanJob(absoluteJobId))
+            {
+                return (12, 16);
+            }
+
+            return ResolveJobArchetype() switch
             {
                 JobArchetype.Warrior => (20, 24),
                 JobArchetype.Magician => (6, 10),
@@ -2295,13 +2320,11 @@ namespace HaCreator.MapSimulator.Character
                 JobArchetype.Pirate => (18, 22),
                 _ => (8, 12)
             };
-
-            return rollInclusive(range.min, range.max);
         }
 
-        private int GetMpIncreaseAmount(Func<int, int, int> rollInclusive)
+        private (int min, int max) ResolveMpIncreaseRange()
         {
-            (int min, int max) range = ResolveJobArchetype() switch
+            return ResolveJobArchetype() switch
             {
                 JobArchetype.Warrior => (2, 4),
                 JobArchetype.Magician => (18, 20),
@@ -2310,8 +2333,16 @@ namespace HaCreator.MapSimulator.Character
                 JobArchetype.Pirate => (14, 16),
                 _ => (6, 8)
             };
+        }
 
-            return rollInclusive(range.min, range.max);
+        private static bool IsEvanJob(int absoluteJobId)
+        {
+            return absoluteJobId == 2001 || absoluteJobId / 100 == 22;
+        }
+
+        private static bool IsBattleMageJob(int absoluteJobId)
+        {
+            return absoluteJobId / 100 == 32;
         }
 
         public static int ResolveAutoAssignClass(int jobId)

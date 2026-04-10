@@ -532,7 +532,7 @@ namespace HaCreator.MapSimulator
             }
 
             int currentFieldId = _mapBoard?.MapInfo?.id ?? 0;
-            int focusItemId = _lastQuestDemandQueryVisibleItemIds[0];
+            int focusItemId = ResolveQuestDemandQueryFocusItemId(currentFieldId);
             IReadOnlyList<int> focusMapIds = ResolveQuestDemandQueryMapIds(focusItemId, currentFieldId);
             int focusMapId = focusMapIds.Count > 0 ? focusMapIds[0] : currentFieldId;
             string focusItemName = InventoryItemMetadataResolver.TryResolveItemName(focusItemId, out string resolvedItemName)
@@ -553,6 +553,33 @@ namespace HaCreator.MapSimulator
             return focusedItem
                 ? $"Opened a packet-shaped quest demand item query for {focusItemName}.{hiddenSuffix}{mapSuffix}".TrimEnd()
                 : $"Opened the world map, but the demand-item query for {focusItemName} could not be resolved.{hiddenSuffix}{mapSuffix}".TrimEnd();
+        }
+
+        private int ResolveQuestDemandQueryFocusItemId(int currentMapId)
+        {
+            if (_lastQuestDemandQueryVisibleItemIds.Count == 0)
+            {
+                return 0;
+            }
+
+            for (int i = 0; i < _lastQuestDemandQueryVisibleItemIds.Count; i++)
+            {
+                int itemId = _lastQuestDemandQueryVisibleItemIds[i];
+                IReadOnlyList<int> mapIds = ResolveQuestDemandQueryMapIds(itemId, fallbackMapId: 0);
+                if (mapIds.Count == 0)
+                {
+                    continue;
+                }
+
+                if (currentMapId > 0 && mapIds.Contains(currentMapId))
+                {
+                    return itemId;
+                }
+
+                return itemId;
+            }
+
+            return _lastQuestDemandQueryVisibleItemIds[0];
         }
 
         private void AppendQuestDemandItemSearchResults(List<WorldMapUI.SearchResultEntry> results, HashSet<string> seen)
@@ -631,6 +658,20 @@ namespace HaCreator.MapSimulator
             return fallbackMapId > 0
                 ? new[] { fallbackMapId }
                 : Array.Empty<int>();
+        }
+
+        private static IReadOnlyList<int> ResolveRuntimeFallbackDemandItemMapIds(QuestDemandItemQueryState runtimeFallbackQuery, int itemId)
+        {
+            if (itemId > 0 &&
+                runtimeFallbackQuery?.VisibleItemMapIds != null &&
+                runtimeFallbackQuery.VisibleItemMapIds.TryGetValue(itemId, out IReadOnlyList<int> mapIds) &&
+                mapIds != null &&
+                mapIds.Count > 0)
+            {
+                return mapIds;
+            }
+
+            return Array.Empty<int>();
         }
 
         private string ApplyClassCompetitionPageLaunch()
@@ -1939,6 +1980,21 @@ namespace HaCreator.MapSimulator
 
                 case LocalUtilityPacketInboxManager.RepairDurabilityResultPacketType:
                     return TryApplyRepairDurabilityResultPayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.QuestRewardRaiseOwnerSyncPacketType:
+                    return TryApplyPacketOwnedQuestRewardRaisePayload(QuestRewardRaiseInboundPacketKind.OwnerSync, payload, out message);
+
+                case LocalUtilityPacketInboxManager.QuestRewardRaisePutItemAddResultPacketType:
+                    return TryApplyPacketOwnedQuestRewardRaisePayload(QuestRewardRaiseInboundPacketKind.PutItemAddResult, payload, out message);
+
+                case LocalUtilityPacketInboxManager.QuestRewardRaisePutItemReleaseResultPacketType:
+                    return TryApplyPacketOwnedQuestRewardRaisePayload(QuestRewardRaiseInboundPacketKind.PutItemReleaseResult, payload, out message);
+
+                case LocalUtilityPacketInboxManager.QuestRewardRaisePutItemConfirmResultPacketType:
+                    return TryApplyPacketOwnedQuestRewardRaisePayload(QuestRewardRaiseInboundPacketKind.PutItemConfirmResult, payload, out message);
+
+                case LocalUtilityPacketInboxManager.QuestRewardRaiseOwnerDestroyResultPacketType:
+                    return TryApplyPacketOwnedQuestRewardRaisePayload(QuestRewardRaiseInboundPacketKind.OwnerDestroyResult, payload, out message);
 
                 case LocalUtilityPacketInboxManager.QuestGuideResultPacketType:
                     return TryApplyPacketOwnedQuestGuidePayload(payload, out message);
@@ -3629,6 +3685,12 @@ namespace HaCreator.MapSimulator
                 appendFallbackSuffix: true));
             lines.Add(DescribePacketOwnedRadioCreateLayerState());
             lines.Add(DescribePacketOwnedRadioCreateLayerLifecycleState());
+            IReadOnlyList<string> recentMutations = _packetOwnedLocalUtilityContext.GetRecentRadioCreateLayerMutations();
+            for (int i = 0; i < recentMutations.Count; i++)
+            {
+                lines.Add($"Context mutation[{i + 1}]: {recentMutations[i]}");
+            }
+
             lines.Add(
                 $"HUD art path: {PacketOwnedRadioUiCanvasPathOn}/0..4 ({PacketOwnedRadioUiFrameDelayMs} ms), {PacketOwnedRadioUiCanvasPathOff}");
             lines.Add(DescribePacketOwnedRadioUiAnimationState());
@@ -4849,7 +4911,8 @@ namespace HaCreator.MapSimulator
                 LoginUtilityDialogButtonLayout.YesNo,
                 LoginUtilityDialogAction.ConfirmApspEvent,
                 primaryLabel: PacketOwnedApspPromptPrimaryLabel,
-                secondaryLabel: PacketOwnedApspPromptSecondaryLabel);
+                secondaryLabel: PacketOwnedApspPromptSecondaryLabel,
+                trackDirectionModeOwner: true);
             message = _lastPacketOwnedAskApspMessage;
             return true;
         }
@@ -6022,7 +6085,8 @@ namespace HaCreator.MapSimulator
                 "Follow Request",
                 BuildPacketOwnedFollowPromptBody(requester.Name, requester.CharacterId),
                 LoginUtilityDialogButtonLayout.YesNo,
-                LoginUtilityDialogAction.ConfirmFollowCharacterRequest);
+                LoginUtilityDialogAction.ConfirmFollowCharacterRequest,
+                trackDirectionModeOwner: true);
             return true;
         }
 
@@ -7068,50 +7132,69 @@ namespace HaCreator.MapSimulator
             return skillId > 0 && PacketOwnedVengeanceSkillIdCatalog.Value.Contains(skillId);
         }
 
-        private static HashSet<int> CreatePacketOwnedVengeanceSkillIdCatalog()
+        internal static HashSet<int> CreatePacketOwnedVengeanceSkillIdCatalog(
+            IEnumerable<KeyValuePair<int, string>> skillNames)
         {
             return PacketOwnedSkillAliasCatalog.BuildVengeanceSkillIdCatalog(
-                EnumeratePacketOwnedSkillNamesFromStringCatalog(),
+                skillNames,
                 PacketOwnedCurrentVengeanceSkillId,
                 PacketOwnedLegacyVengeanceSkillId,
                 PacketOwnedVengeanceSkillName);
         }
 
-        internal static HashSet<int> CreatePacketOwnedTimeBombSkillIdCatalog()
+        private static HashSet<int> CreatePacketOwnedVengeanceSkillIdCatalog()
+        {
+            return CreatePacketOwnedVengeanceSkillIdCatalog(
+                EnumeratePacketOwnedSkillNamesFromStringCatalog());
+        }
+
+        internal static HashSet<int> CreatePacketOwnedTimeBombSkillIdCatalog(
+            IEnumerable<KeyValuePair<int, string>> skillNames,
+            IEnumerable<KeyValuePair<int, string>> skillDescriptions)
         {
             return PacketOwnedSkillAliasCatalog.BuildSkillIdCatalog(
-                skillNames: EnumeratePacketOwnedSkillNamesFromStringCatalog(),
-                skillDescriptions: EnumeratePacketOwnedSkillDescriptionsFromStringCatalog(),
+                skillNames: skillNames,
+                skillDescriptions: skillDescriptions,
                 preferredCurrentSkillId: PacketOwnedCurrentTimeBombSkillId,
                 preferredLegacySkillId: 0,
                 canonicalSkillName: PacketOwnedTimeBombSkillName,
                 canonicalDescriptionFragment: PacketOwnedTimeBombSkillDescriptionMarker);
         }
 
-        private static HashSet<int> CreatePacketOwnedExJablinSkillIdCatalog()
+        internal static HashSet<int> CreatePacketOwnedTimeBombSkillIdCatalog()
+        {
+            return CreatePacketOwnedTimeBombSkillIdCatalog(
+                EnumeratePacketOwnedSkillNamesFromStringCatalog(),
+                EnumeratePacketOwnedSkillDescriptionsFromStringCatalog());
+        }
+
+        internal static HashSet<int> CreatePacketOwnedExJablinSkillIdCatalog(
+            IEnumerable<KeyValuePair<int, string>> skillNames,
+            IEnumerable<KeyValuePair<int, string>> skillDescriptions)
         {
             return PacketOwnedSkillAliasCatalog.BuildSkillIdCatalog(
-                skillNames: EnumeratePacketOwnedSkillNamesFromStringCatalog(),
-                skillDescriptions: EnumeratePacketOwnedSkillDescriptionsFromStringCatalog(),
+                skillNames: skillNames,
+                skillDescriptions: skillDescriptions,
                 preferredCurrentSkillId: PacketOwnedCurrentExJablinSkillId,
                 preferredLegacySkillId: 0,
                 canonicalDescriptionFragment: PacketOwnedExJablinSkillDescriptionMarker);
         }
 
-        private static IReadOnlyDictionary<int, int[]> CreatePacketOwnedSkillIdAliasCandidates()
+        private static HashSet<int> CreatePacketOwnedExJablinSkillIdCatalog()
         {
-            int[] timeBombCandidates = PacketOwnedSkillAliasCatalog.BuildPreferredAliasCandidates(
-                PacketOwnedTimeBombSkillIdCatalog.Value,
-                PacketOwnedCurrentTimeBombSkillId,
-                0);
-            int[] vengeanceCandidates = PacketOwnedSkillAliasCatalog.BuildPreferredAliasCandidates(
-                PacketOwnedVengeanceSkillIdCatalog.Value,
-                PacketOwnedCurrentVengeanceSkillId,
-                PacketOwnedLegacyVengeanceSkillId);
-            int[] exJablinCandidates = PacketOwnedSkillAliasCatalog.BuildPreferredAliasCandidates(
-                PacketOwnedExJablinSkillIdCatalog.Value,
-                PacketOwnedCurrentExJablinSkillId,
-                0);
+            return CreatePacketOwnedExJablinSkillIdCatalog(
+                EnumeratePacketOwnedSkillNamesFromStringCatalog(),
+                EnumeratePacketOwnedSkillDescriptionsFromStringCatalog());
+        }
+
+        internal static IReadOnlyDictionary<int, int[]> CreatePacketOwnedSkillIdAliasCandidates(
+            IEnumerable<int> timeBombSkillIds,
+            IEnumerable<int> vengeanceSkillIds,
+            IEnumerable<int> exJablinSkillIds)
+        {
+            int[] timeBombCandidates = PacketOwnedSkillAliasCatalog.BuildPreferredAliasCandidates(timeBombSkillIds, PacketOwnedCurrentTimeBombSkillId, 0);
+            int[] vengeanceCandidates = PacketOwnedSkillAliasCatalog.BuildPreferredAliasCandidates(vengeanceSkillIds, PacketOwnedCurrentVengeanceSkillId, PacketOwnedLegacyVengeanceSkillId);
+            int[] exJablinCandidates = PacketOwnedSkillAliasCatalog.BuildPreferredAliasCandidates(exJablinSkillIds, PacketOwnedCurrentExJablinSkillId, 0);
             var aliases = new Dictionary<int, int[]>(timeBombCandidates.Length + vengeanceCandidates.Length + exJablinCandidates.Length);
             AddFamilyAliases(timeBombCandidates);
             AddFamilyAliases(vengeanceCandidates);
@@ -7126,6 +7209,14 @@ namespace HaCreator.MapSimulator
                     aliases[candidates[i]] = candidates;
                 }
             }
+        }
+
+        private static IReadOnlyDictionary<int, int[]> CreatePacketOwnedSkillIdAliasCandidates()
+        {
+            return CreatePacketOwnedSkillIdAliasCandidates(
+                PacketOwnedTimeBombSkillIdCatalog.Value,
+                PacketOwnedVengeanceSkillIdCatalog.Value,
+                PacketOwnedExJablinSkillIdCatalog.Value);
         }
 
         private static IEnumerable<KeyValuePair<int, string>> EnumeratePacketOwnedSkillNamesFromStringCatalog()
@@ -7830,6 +7921,7 @@ namespace HaCreator.MapSimulator
                 Dictionary<int, IReadOnlyList<int>> visibleItemMapIds = new();
                 int hiddenItemCount = 0;
                 int currentMapId = _mapBoard?.MapInfo?.id ?? 0;
+                bool hasPacketOwnedMapResults = false;
                 for (int i = 0; i < records.Count; i++)
                 {
                     int itemId = records[i].PrimaryId;
@@ -7855,6 +7947,7 @@ namespace HaCreator.MapSimulator
                                 if (packetMapIds[mapIndex] > 0)
                                 {
                                     mapIds.Add(packetMapIds[mapIndex]);
+                                    hasPacketOwnedMapResults = true;
                                 }
                             }
                         }
@@ -7863,6 +7956,15 @@ namespace HaCreator.MapSimulator
                     if (!visibleItemIds.Contains(itemId))
                     {
                         visibleItemIds.Add(itemId);
+                    }
+
+                    IReadOnlyList<int> runtimeFallbackMapIds = ResolveRuntimeFallbackDemandItemMapIds(runtimeFallbackQuery, itemId);
+                    for (int mapIndex = 0; mapIndex < runtimeFallbackMapIds.Count; mapIndex++)
+                    {
+                        if (runtimeFallbackMapIds[mapIndex] > 0)
+                        {
+                            mapIds.Add(runtimeFallbackMapIds[mapIndex]);
+                        }
                     }
 
                     if (mapIds.Count == 0 && currentMapId > 0)
@@ -7877,6 +7979,29 @@ namespace HaCreator.MapSimulator
                 }
 
                 string fallbackNpcName = runtimeFallbackQuery?.FallbackNpcName ?? string.Empty;
+                if (visibleItemIds.Count == 0 && runtimeFallbackQuery?.VisibleItemIds != null)
+                {
+                    for (int i = 0; i < runtimeFallbackQuery.VisibleItemIds.Count; i++)
+                    {
+                        int itemId = runtimeFallbackQuery.VisibleItemIds[i];
+                        if (itemId <= 0 || visibleItemIds.Contains(itemId))
+                        {
+                            continue;
+                        }
+
+                        visibleItemIds.Add(itemId);
+                        IReadOnlyList<int> runtimeFallbackMapIds = ResolveRuntimeFallbackDemandItemMapIds(runtimeFallbackQuery, itemId);
+                        if (runtimeFallbackMapIds.Count > 0)
+                        {
+                            visibleItemMapIds[itemId] = runtimeFallbackMapIds
+                                .Where(mapId => mapId > 0)
+                                .Distinct()
+                                .OrderBy(mapId => mapId)
+                                .ToArray();
+                        }
+                    }
+                }
+
                 if (hiddenItemCount == 0 && runtimeFallbackQuery?.HiddenItemCount > 0)
                 {
                     hiddenItemCount = runtimeFallbackQuery.HiddenItemCount;
@@ -7889,7 +8014,7 @@ namespace HaCreator.MapSimulator
                     VisibleItemMapIds = visibleItemMapIds,
                     HiddenItemCount = hiddenItemCount,
                     FallbackNpcName = fallbackNpcName,
-                    HasPacketOwnedMapResults = true
+                    HasPacketOwnedMapResults = hasPacketOwnedMapResults
                 });
                 return true;
             }

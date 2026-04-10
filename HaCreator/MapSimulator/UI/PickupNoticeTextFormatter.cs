@@ -129,17 +129,15 @@ namespace HaCreator.MapSimulator.UI
                         FormatClientString(InventoryFullScreenStringPoolId, "Your inventory is full."),
                         string.Empty);
                 case DropPickupFailureReason.OwnershipRestricted:
-                    return FormatCantPickupGeneric();
+                    return FormatGenericFailure();
                 case DropPickupFailureReason.PetPickupBlocked:
                     return FormatPetPickupBlocked(itemName, sourceName, pickedByPet);
                 case DropPickupFailureReason.FieldRestricted:
-                    return FormatCantPickupGeneric();
+                    return FormatGenericFailure();
                 case DropPickupFailureReason.Unavailable:
                     return FormatUnavailable(dropType, itemName, quantity, mesoAmount, recentPickup, recentActorName);
                 default:
-                    return new PickupNoticeMessagePair(
-                        FormatClientString(GenericFailureScreenStringPoolId, "Unable to pick up the item."),
-                        string.Empty);
+                    return FormatGenericFailure();
             }
         }
 
@@ -174,21 +172,27 @@ namespace HaCreator.MapSimulator.UI
             int quantity = 1,
             int mesoAmount = 0)
         {
-            string dropLabel = FormatDropLabel(dropType, itemName, quantity, mesoAmount);
+            string chatMessage = TryFormatRemoteChatMessage(
+                actorKind,
+                dropType,
+                sourceName,
+                itemName,
+                quantity,
+                mesoAmount);
             return actorKind switch
             {
                 DropPickupActorKind.Pet => new PickupNoticeMessagePair(
                     FormatRemoteScreenMessage(sourceName, "A pet"),
-                    $"{FormatActorLabel(sourceName, "A pet")} picked up {dropLabel}."),
+                    chatMessage),
                 DropPickupActorKind.Mob => new PickupNoticeMessagePair(
                     FormatRemoteScreenMessage(sourceName, "A monster"),
-                    $"{FormatActorLabel(sourceName, "A monster")} picked up {dropLabel}."),
+                    chatMessage),
                 DropPickupActorKind.Player => new PickupNoticeMessagePair(
                     FormatRemoteScreenMessage(sourceName, "Another player"),
-                    $"{FormatActorLabel(sourceName, "Another player")} picked up {dropLabel}."),
+                    chatMessage),
                 _ => new PickupNoticeMessagePair(
                     FormatRemoteScreenMessage(sourceName, "Another character"),
-                    $"{FormatActorLabel(sourceName, "Another character")} picked up {dropLabel}.")
+                    chatMessage)
             };
         }
 
@@ -218,10 +222,17 @@ namespace HaCreator.MapSimulator.UI
         {
             if (recentPickup == null)
             {
-                return FormatCantPickupGeneric();
+                return FormatGenericFailure();
             }
 
             return FormatRemotePickup(recentPickup.ActorKind, dropType, recentActorName, itemName, quantity, mesoAmount);
+        }
+
+        private static PickupNoticeMessagePair FormatGenericFailure()
+        {
+            return new PickupNoticeMessagePair(
+                FormatClientString(GenericFailureScreenStringPoolId, "You can't get anymore items."),
+                string.Empty);
         }
 
         private static PickupNoticeMessagePair FormatCantPickupGeneric()
@@ -249,7 +260,32 @@ namespace HaCreator.MapSimulator.UI
             return $"{FormatActorLabel(actorName, fallback)} picked up the drop.";
         }
 
-        private static string FormatDropLabel(DropType dropType, string itemName, int quantity, int mesoAmount)
+        private static string TryFormatRemoteChatMessage(
+            DropPickupActorKind actorKind,
+            DropType dropType,
+            string actorName,
+            string itemName,
+            int quantity,
+            int mesoAmount)
+        {
+            string dropLabel = TryFormatDropLabel(dropType, itemName, quantity, mesoAmount);
+            if (string.IsNullOrWhiteSpace(dropLabel))
+            {
+                return string.Empty;
+            }
+
+            string fallback = actorKind switch
+            {
+                DropPickupActorKind.Pet => "A pet",
+                DropPickupActorKind.Mob => "A monster",
+                DropPickupActorKind.Player => "Another player",
+                _ => "Another character"
+            };
+
+            return $"{FormatActorLabel(actorName, fallback)} picked up {dropLabel}.";
+        }
+
+        private static string TryFormatDropLabel(DropType dropType, string itemName, int quantity, int mesoAmount)
         {
             if (dropType == DropType.Meso)
             {
@@ -258,9 +294,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (string.IsNullOrWhiteSpace(itemName))
             {
-                return quantity > 1
-                    ? $"an item stack x {quantity}"
-                    : "an item";
+                return string.Empty;
             }
 
             return quantity > 1

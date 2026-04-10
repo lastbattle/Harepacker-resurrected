@@ -8,15 +8,17 @@ namespace HaCreator.MapSimulator.Managers
     internal static class MapTransferAuthoritativeBootstrapDecoder
     {
         private const ulong CharacterDataSkillRecordFlag = 0x100UL;
-        private const ulong CharacterDataQuestRecordFlag = 0x200UL;
+        private const ulong CharacterDataSkillExpirationFlag = 0x200UL;
         private const ulong CharacterDataMiniGameRecordFlag = 0x400UL;
         private const ulong CharacterDataRelationshipRecordFlag = 0x800UL;
         internal const ulong CharacterDataMapTransferFlag = 0x1000UL;
-        private const ulong CharacterDataShortFileTimeRecordFlag = 0x4000UL;
-        private const ulong CharacterDataInt16ValueRecordFlag = 0x8000UL;
+        private const ulong CharacterDataSkillCooldownFlag = 0x4000UL;
+        private const ulong CharacterDataQuestRecordFlag = 0x10000UL;
+        private const ulong CharacterDataShortFileTimeRecordFlag = 0x20000UL;
         private const int LogoutGiftConfigByteLength = 3 * sizeof(int);
-        private const int SkillRecordBaseByteLength = sizeof(int) + sizeof(int) + sizeof(long);
+        private const int SkillRecordBaseByteLength = sizeof(int) + sizeof(int);
         private const int SkillRecordOptionalMasterLevelByteLength = sizeof(int);
+        private const int SkillExpirationRecordByteLength = sizeof(int) + sizeof(long);
         private const int Int16ValueRecordByteLength = sizeof(int) + sizeof(ushort);
         private const int ShortFileTimeRecordByteLength = sizeof(ushort) + sizeof(long);
         private const int MiniGameRecordByteLength = 0x14;
@@ -362,14 +364,19 @@ namespace HaCreator.MapSimulator.Managers
                 candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetPossibleSkillRecordGroupOffsets);
             }
 
-            if ((characterDataFlags & CharacterDataInt16ValueRecordFlag) != 0)
+            if ((characterDataFlags & CharacterDataSkillExpirationFlag) != 0)
             {
-                candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipInt16ValueRecordGroup));
+                candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipSkillExpirationRecordGroup));
             }
 
             if ((characterDataFlags & CharacterDataQuestRecordFlag) != 0)
             {
                 candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipQuestRecordGroup));
+            }
+
+            if ((characterDataFlags & CharacterDataSkillCooldownFlag) != 0)
+            {
+                candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipInt16ValueRecordGroup));
             }
 
             if ((characterDataFlags & CharacterDataShortFileTimeRecordFlag) != 0)
@@ -456,6 +463,11 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return offsets;
+        }
+
+        private static bool TrySkipSkillExpirationRecordGroup(ReadOnlySpan<byte> payload, int offset, out int nextOffset)
+        {
+            return TrySkipFixedRecordGroup(payload, offset, SkillExpirationRecordByteLength, out nextOffset);
         }
 
         private static bool TrySkipInt16ValueRecordGroup(ReadOnlySpan<byte> payload, int offset, out int nextOffset)

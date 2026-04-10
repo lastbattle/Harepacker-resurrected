@@ -888,14 +888,9 @@ namespace HaCreator.MapSimulator.Entities
 
         private static int GetSelectorPriority(AuthoredStateTransition transition, ReactorTransitionRequest request)
         {
-            if (transition.SelectorValues.Length == 0)
-            {
-                return 0;
-            }
-
             if (request.ActivationValue <= 0)
             {
-                return 1;
+                return transition.SelectorValues.Length == 0 ? 0 : 1;
             }
 
             if (transition.SelectorValues.Contains(request.ActivationValue))
@@ -903,7 +898,7 @@ namespace HaCreator.MapSimulator.Entities
                 return 0;
             }
 
-            return 2;
+            return transition.SelectorValues.Length == 0 ? 1 : 2;
         }
 
         private static int GetEventTypePriority(int eventType, ReactorTransitionRequest request)

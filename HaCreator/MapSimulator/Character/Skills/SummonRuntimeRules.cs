@@ -182,6 +182,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                    + ResolveSummonActionPrepareDurationMs(skill, branchName);
         }
 
+        public static int ResolveSummonImpactExecutionDelayMs(
+            SkillData skill,
+            int authoredDelayMs,
+            string branchName)
+        {
+            return ResolveSummonImpactDelayMs(skill, authoredDelayMs, branchName);
+        }
+
         public static string ResolvePacketSkillBranch(SkillData skill, byte packetAction, SummonAssistType? assistType = null)
         {
             if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)
@@ -257,7 +265,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (HasMinionAbilityToken(skill.MinionAbility, "summon"))
             {
-                return ResolveNamedSummonBranch(skill, "subsummon", "skill1", "skill2");
+                return ResolveNamedSummonBranch(skill, "subsummon", "skill1", "skill2")
+                       ?? ResolveAuthoredCustomSummonSkillBranch(skill, 0);
             }
 
             return null;
@@ -596,7 +605,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool ShouldClearSupportSuspend(ActiveSummon summon, int currentTime)
         {
             return summon != null
-                   && ShouldTrackSupportSuspendWindow(summon.SkillData, summon.AssistType)
+                   && ShouldTrackSupportSuspendWindow(
+                       summon.SkillData,
+                       summon.AssistType,
+                       explicitBranchName: summon.CurrentAnimationBranchName)
                    && summon.SupportSuspendUntilTime != int.MinValue
                    && currentTime >= summon.SupportSuspendUntilTime;
         }
@@ -847,6 +859,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (assistType == SummonAssistType.Support)
             {
                 yield return ResolveSelfDestructFinalBranch(skill, assistType);
+
+                if (skill?.SkillId == 1321007)
+                {
+                    yield return ResolveBeholderHealBranch(skill);
+
+                    for (int branchIndex = BeholderPddBranchIndex; branchIndex <= BeholderPadBranchIndex; branchIndex++)
+                    {
+                        yield return GetBeholderBranchName(branchIndex);
+                    }
+                }
             }
         }
 

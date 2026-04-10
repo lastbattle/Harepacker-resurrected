@@ -80,13 +80,30 @@ namespace HaCreator.MapSimulator.UI
             InputAction.Escape,
         };
 
+        private static readonly InputAction[] JoypadClientCoreBindingActions =
+        {
+            InputAction.Jump,
+            InputAction.Attack,
+            InputAction.Pickup,
+            InputAction.Interact,
+            InputAction.Skill1,
+            InputAction.Skill2,
+            InputAction.Skill3,
+            InputAction.Skill4,
+            InputAction.QuickSlot1,
+            InputAction.QuickSlot2,
+            InputAction.ToggleInventory,
+            InputAction.Escape,
+        };
+
         private const int JoypadSummaryTop = 72;
-        private const int JoypadSummaryHeight = 40;
-        private const int JoypadRowsTop = 116;
+        private const int JoypadSummaryHeight = 58;
+        private const int JoypadRowsTop = 136;
         private const int JoypadRowPitch = 20;
         private const int JoypadFooterReserve = 52;
         private const int JoypadScrollTrackWidth = 12;
         private const int JoypadScrollTrackMargin = 8;
+        private const string JoypadDetectionFailedText = "JoyPad detection failed.";
 
         private readonly struct PageLayer
         {
@@ -720,6 +737,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawJoypadSummary(sprite, input, session);
+            DrawJoypadClientBindingSummary(sprite, session);
 
             int firstVisibleRow = _joypadScrollOffset;
             int visibleRowCount = GetJoypadVisibleRowCount();
@@ -1140,7 +1158,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawJoypadSummary(SpriteBatch sprite, PlayerInput input, JoypadSessionSnapshot session)
         {
-            Rectangle bounds = new Rectangle(Position.X + 12, Position.Y + 72, Math.Max(220, (CurrentFrame?.Width ?? 283) - 30), 40);
+            Rectangle bounds = new Rectangle(Position.X + 12, Position.Y + 72, Math.Max(220, (CurrentFrame?.Width ?? 283) - 30), JoypadSummaryHeight);
             sprite.Draw(_highlightTexture, bounds, new Color(30, 38, 52, 225));
 
             GamePadState state = GamePad.GetState(session.GamepadIndex);
@@ -1154,7 +1172,7 @@ namespace HaCreator.MapSimulator.UI
 
             string calibrationText = state.IsConnected
                 ? $"LX {state.ThumbSticks.Left.X:+0.00;-0.00;0.00}  LY {state.ThumbSticks.Left.Y:+0.00;-0.00;0.00}  LT {state.Triggers.Left:0.00}  RT {state.Triggers.Right:0.00}"
-                : "Cycle the slot until a live controller is found; movement directions stay reserved while this owner is open.";
+                : $"{JoypadDetectionFailedText} Cycle the slot until a live controller is found; movement directions stay reserved while this owner is open.";
             string thresholdText = $"DX {session.LeftStickDeadZoneX:0.00} DY {session.LeftStickDeadZoneY:0.00}  LT/RT {session.LeftTriggerThreshold:0.00}/{session.RightTriggerThreshold:0.00}  {FormatResponseCurve(session.ResponseCurve)}";
 
             DrawWindowText(sprite, connectionText, new Vector2(bounds.X + 8, bounds.Y + 3), Color.White);
@@ -1163,7 +1181,24 @@ namespace HaCreator.MapSimulator.UI
             DrawJoypadMeter(sprite, new Rectangle(bounds.X + 74, bounds.Y + 28, 60, 8), "LY", NormalizeSignedAxis(state.ThumbSticks.Left.Y), session.LeftStickDeadZoneY, session.LeftStickInvertY);
             DrawJoypadTriggerMeter(sprite, new Rectangle(bounds.X + 140, bounds.Y + 28, 48, 8), "LT", state.Triggers.Left, session.LeftTriggerThreshold);
             DrawJoypadTriggerMeter(sprite, new Rectangle(bounds.X + 194, bounds.Y + 28, 48, 8), "RT", state.Triggers.Right, session.RightTriggerThreshold);
-            DrawWindowText(sprite, thresholdText, new Vector2(bounds.X + 8, bounds.Bottom - 1), new Color(255, 228, 151), 0.42f);
+            DrawWindowText(sprite, thresholdText, new Vector2(bounds.X + 8, bounds.Y + 40), new Color(255, 228, 151), 0.42f);
+        }
+
+        private void DrawJoypadClientBindingSummary(SpriteBatch sprite, JoypadSessionSnapshot session)
+        {
+            if (session == null)
+            {
+                return;
+            }
+
+            Rectangle bounds = new Rectangle(Position.X + 12, Position.Y + 112, Math.Max(220, (CurrentFrame?.Width ?? 283) - 30), 20);
+            sprite.Draw(_highlightTexture, bounds, new Color(18, 26, 42, 210));
+
+            string coreText = BuildJoypadClientCoreSummary(session);
+            DrawWindowText(sprite, coreText, new Vector2(bounds.X + 6, bounds.Y + 2), new Color(255, 228, 151), 0.39f);
+
+            string extensionText = BuildJoypadExtensionSummary(session);
+            DrawWindowText(sprite, extensionText, new Vector2(bounds.X + 6, bounds.Y + 10), new Color(214, 214, 214), 0.37f);
         }
 
         private void BeginSession()
@@ -1891,8 +1926,19 @@ namespace HaCreator.MapSimulator.UI
 
             string value = row.GetValue?.Invoke(session) ?? "Unavailable";
             return row.Action.HasValue
-                ? $"{row.Label}: {value}. Left or right cycles the staged shared-button binding, A or Space arms capture, and Delete or X clears it."
+                ? BuildJoypadBindingSelectionStatus(row.Action.Value, row.Label, value)
                 : $"{row.Label}: {value}. Use left/right or D-pad to adjust this staged control.";
+        }
+
+        private static string BuildJoypadBindingSelectionStatus(InputAction action, string label, string value)
+        {
+            int coreSlotIndex = GetJoypadClientCoreSlotIndex(action);
+            if (coreSlotIndex >= 0)
+            {
+                return $"{label}: {value}. Client CUIJoyPad slot {coreSlotIndex + 1} is now staged here; left or right cycles the shared button family, A or Space arms capture, and Delete or X clears it.";
+            }
+
+            return $"{label}: {value}. This stays on the simulator extension lane beyond the recovered 12-slot CUIJoyPad core set; left or right cycles the staged shared-button binding, A or Space arms capture, and Delete or X clears it.";
         }
 
         private static int GetNearestStepIndex(IReadOnlyList<float> steps, float value)
@@ -2318,6 +2364,28 @@ namespace HaCreator.MapSimulator.UI
                 Buttons.DPadRight => "D-Right",
                 _ => button.ToString(),
             };
+        }
+
+        private static string BuildJoypadClientCoreSummary(JoypadSessionSnapshot session)
+        {
+            List<string> slots = new(JoypadClientCoreBindingActions.Length);
+            for (int i = 0; i < JoypadClientCoreBindingActions.Length; i++)
+            {
+                InputAction action = JoypadClientCoreBindingActions[i];
+                slots.Add($"{i + 1}:{FormatGamepadButton(GetJoypadBinding(session, action))}");
+            }
+
+            return $"CUIJoyPad core 1-12: {string.Join("  ", slots)}";
+        }
+
+        private static string BuildJoypadExtensionSummary(JoypadSessionSnapshot session)
+        {
+            return $"Extensions: Map {FormatGamepadButton(GetJoypadBinding(session, InputAction.ToggleMinimap))}, Chat {FormatGamepadButton(GetJoypadBinding(session, InputAction.ToggleChat))}, Quick UI {FormatGamepadButton(GetJoypadBinding(session, InputAction.ToggleQuickSlot))}, Key {FormatGamepadButton(GetJoypadBinding(session, InputAction.ToggleKeyConfig))}";
+        }
+
+        private static int GetJoypadClientCoreSlotIndex(InputAction action)
+        {
+            return Array.IndexOf(JoypadClientCoreBindingActions, action);
         }
 
         private void DrawJoypadMeter(

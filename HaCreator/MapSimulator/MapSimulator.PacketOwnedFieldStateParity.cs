@@ -27,6 +27,11 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyPacketOwnedFieldStatePacket(int packetType, byte[] payload, out string message)
         {
+            if (packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                return _specialFieldRuntime.TryDispatchCurrentWrapperRelayPayload(payload, currTickCount, out message);
+            }
+
             if (TryApplyClientOwnedWrapperPacket(packetType, payload, currTickCount, out message))
             {
                 return true;

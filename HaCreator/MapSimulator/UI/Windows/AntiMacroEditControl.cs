@@ -63,8 +63,8 @@ namespace HaCreator.MapSimulator.UI
             CaretColor: new Color(32, 32, 32),
             BackgroundColor: Color.Transparent,
             BorderColor: Color.Transparent,
-            TextPadding: new Point(0, -1),
-            CaretPadding: new Point(0, 1));
+            TextPadding: new Point(0, -2),
+            CaretPadding: Point.Zero);
 
         private sealed class InputVisualState
         {
@@ -762,6 +762,11 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetImeCandidateWindowBounds(Viewport viewport, Rectangle inputBounds)
         {
+            if (ImeCandidateWindowRendering.ShouldPreferNativeWindow(_candidateListState))
+            {
+                return Rectangle.Empty;
+            }
+
             int visibleCount = GetVisibleCandidateCount();
             if (visibleCount <= 0 || _font == null)
             {

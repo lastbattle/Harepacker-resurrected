@@ -18,6 +18,7 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class ReactorPoolOfficialSessionBridgeManager : IDisposable
     {
         public const int DefaultListenPort = 18499;
+        public const short OutboundTouchReactorOpcode = 250;
         private const string DefaultProcessName = "MapleStory";
 
         private readonly ConcurrentQueue<ReactorPoolPacketInboxMessage> _pendingMessages = new();
@@ -87,6 +88,42 @@ namespace HaCreator.MapSimulator.Managers
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
             return $"Reactor official-session bridge {lifecycle}; {session}; received={ReceivedCount}; inbound opcodes=334,335,336,337. {LastStatus}";
+        }
+
+        public bool TrySendTouchRequest(int objectId, bool isTouching, out string status)
+        {
+            if (objectId <= 0)
+            {
+                status = "Reactor touch injection requires a positive reactor object id.";
+                return false;
+            }
+
+            BridgePair pair;
+            lock (_sync)
+            {
+                pair = _activePair;
+            }
+
+            if (pair?.InitCompleted != true)
+            {
+                status = "Reactor official-session bridge has no connected Maple session for touch injection.";
+                return false;
+            }
+
+            byte[] packet = BuildTouchRequestPacket(objectId, isTouching);
+            pair.ServerSession.SendPacket(packet);
+            LastStatus = $"Injected reactor touch opcode {OutboundTouchReactorOpcode} for object {objectId} ({(isTouching ? "enter" : "leave")}) into live session {pair.RemoteEndpoint}.";
+            status = LastStatus;
+            return true;
+        }
+
+        internal static byte[] BuildTouchRequestPacket(int objectId, bool isTouching)
+        {
+            byte[] packet = new byte[7];
+            BitConverter.GetBytes(OutboundTouchReactorOpcode).CopyTo(packet, 0);
+            BitConverter.GetBytes(objectId).CopyTo(packet, 2);
+            packet[6] = isTouching ? (byte)1 : (byte)0;
+            return packet;
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)

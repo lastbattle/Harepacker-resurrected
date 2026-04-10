@@ -67,6 +67,42 @@ namespace HaCreator.MapSimulator.UI
             return string.Concat(formattedFragments);
         }
 
+        public static string FormatTooltipStateLine(int remainingMs, string tooltipStateText = null)
+        {
+            List<TooltipCostFragment> fragments = EnumerateTooltipStateFragments(
+                remainingMs,
+                tooltipStateText);
+            return string.Concat(fragments.ConvertAll(static fragment => fragment.Text));
+        }
+
+        public static string FormatTooltipStateLineMarkup(int remainingMs, string tooltipStateText = null)
+        {
+            List<TooltipCostFragment> fragments = EnumerateTooltipStateFragments(
+                remainingMs,
+                tooltipStateText,
+                includeColorMarkers: true);
+            if (fragments.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            List<string> formattedFragments = new(fragments.Count);
+            for (int i = 0; i < fragments.Count; i++)
+            {
+                TooltipCostFragment fragment = fragments[i];
+                if (fragment.ColorMarker.HasValue && !string.IsNullOrWhiteSpace(fragment.Text))
+                {
+                    formattedFragments.Add($"#{fragment.ColorMarker.Value}#{fragment.Text}#");
+                }
+                else
+                {
+                    formattedFragments.Add(fragment.Text);
+                }
+            }
+
+            return string.Concat(formattedFragments);
+        }
+
         private static List<TooltipCostFragment> EnumerateTooltipCostFragments(
             SkillLevelData levelData,
             bool includeCooldownState,
@@ -137,6 +173,49 @@ namespace HaCreator.MapSimulator.UI
             }
 
             AppendSeparator();
+            if (remainingMs <= 0)
+            {
+                AppendFragment(cooldownText, 'g');
+                return fragments;
+            }
+
+            if (TrySplitRemainingCooldownText(cooldownText, out string secondsText, out string suffixText))
+            {
+                AppendFragment(secondsText, 'c');
+                AppendFragment(suffixText);
+                return fragments;
+            }
+
+            AppendFragment(cooldownText, 'c');
+            return fragments;
+        }
+
+        private static List<TooltipCostFragment> EnumerateTooltipStateFragments(
+            int remainingMs,
+            string tooltipStateText,
+            bool includeColorMarkers = false)
+        {
+            List<TooltipCostFragment> fragments = new();
+
+            void AppendFragment(string text, char? colorMarker = null)
+            {
+                if (!string.IsNullOrEmpty(text))
+                {
+                    fragments.Add(new TooltipCostFragment(text, includeColorMarkers ? colorMarker : null));
+                }
+            }
+
+            string cooldownText = !string.IsNullOrWhiteSpace(tooltipStateText)
+                ? tooltipStateText
+                : FormatCooldownState(remainingMs);
+            bool hasEntry = false;
+            if (TryAppendDurabilityState(fragments, cooldownText, includeColorMarkers, ref hasEntry))
+            {
+                return fragments;
+            }
+
+            AppendFragment("Cooldown:", 'c');
+            AppendFragment(" ");
             if (remainingMs <= 0)
             {
                 AppendFragment(cooldownText, 'g');

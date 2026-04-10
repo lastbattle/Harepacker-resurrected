@@ -112,6 +112,39 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        public void ObserveOwnerState(
+            int questId,
+            int ownerItemId,
+            int qrData,
+            int maxDropCount,
+            QuestRewardRaiseWindowMode windowMode)
+        {
+            questId = Math.Max(0, questId);
+            if (questId <= 0)
+            {
+                return;
+            }
+
+            ownerItemId = Math.Max(0, ownerItemId);
+            maxDropCount = Math.Max(1, maxDropCount);
+
+            _ownerSnapshotsByQuestId[questId] = new QuestRewardRaiseOwnerSnapshot(
+                ownerItemId,
+                qrData,
+                maxDropCount,
+                windowMode);
+
+            if (ActiveRaise?.Prompt?.QuestId != questId)
+            {
+                return;
+            }
+
+            ActiveRaise.OwnerItemId = ownerItemId;
+            ActiveRaise.QrData = qrData;
+            ActiveRaise.MaxDropCount = maxDropCount;
+            ActiveRaise.WindowMode = windowMode;
+        }
+
         public QuestRewardRaiseState DestroyByQuestId(int questId)
         {
             questId = Math.Max(0, questId);

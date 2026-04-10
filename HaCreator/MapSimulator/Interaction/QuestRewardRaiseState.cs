@@ -16,13 +16,13 @@ namespace HaCreator.MapSimulator.Interaction
         public QuestRewardRaiseSourceKind Source { get; init; }
         public QuestRewardChoicePrompt Prompt { get; init; }
         public int GroupIndex { get; set; }
-        public int ManagerSessionId { get; init; }
-        public int RequestId { get; init; }
-        public int OwnerItemId { get; init; }
+        public int ManagerSessionId { get; set; }
+        public int RequestId { get; set; }
+        public int OwnerItemId { get; set; }
         public int QrData { get; set; }
-        public int MaxDropCount { get; init; } = 1;
+        public int MaxDropCount { get; set; } = 1;
         public Point WindowPosition { get; set; }
-        public QuestRewardRaiseWindowMode WindowMode { get; init; }
+        public QuestRewardRaiseWindowMode WindowMode { get; set; }
         public QuestRewardRaiseWindowMode DisplayMode { get; set; }
         public string OpenDispatchSummary { get; set; } = string.Empty;
         public string LastInboundSummary { get; set; } = string.Empty;

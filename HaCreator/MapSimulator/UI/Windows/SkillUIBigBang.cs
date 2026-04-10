@@ -216,7 +216,7 @@ namespace HaCreator.MapSimulator.UI
 
         // Skill points available per tab
         private readonly Dictionary<int, int> skillPointsByTab;
-        private readonly Dictionary<int, List<SkillDataLoader.RecommendedSkillEntry>> _recommendedSkillsByTab;
+        private readonly Dictionary<int, List<SkillDataLoader.RecommendedSkillEntry>> _recommendedSkillsBySkillRootId;
 
         // Graphics device
         private GraphicsDevice _device;
@@ -321,15 +321,18 @@ namespace HaCreator.MapSimulator.UI
                 { TAB_DUAL_5TH, 0 },
                 { TAB_DUAL_6TH, 0 }
             };
-            _recommendedSkillsByTab = new Dictionary<int, List<SkillDataLoader.RecommendedSkillEntry>>
+            _recommendedSkillsBySkillRootId = new Dictionary<int, List<SkillDataLoader.RecommendedSkillEntry>>
             {
-                { TAB_BEGINNER, new List<SkillDataLoader.RecommendedSkillEntry>() },
-                { TAB_1ST, new List<SkillDataLoader.RecommendedSkillEntry>() },
-                { TAB_2ND, new List<SkillDataLoader.RecommendedSkillEntry>() },
-                { TAB_3RD, new List<SkillDataLoader.RecommendedSkillEntry>() },
-                { TAB_4TH, new List<SkillDataLoader.RecommendedSkillEntry>() },
-                { TAB_DUAL_5TH, new List<SkillDataLoader.RecommendedSkillEntry>() },
-                { TAB_DUAL_6TH, new List<SkillDataLoader.RecommendedSkillEntry>() }
+                { 0, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { 100, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { 200, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { 300, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { 400, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { 430, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { 431, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { 432, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { 433, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { 434, new List<SkillDataLoader.RecommendedSkillEntry>() }
             };
 
             // Initialize job header data
@@ -422,13 +425,13 @@ namespace HaCreator.MapSimulator.UI
             _recommendTexture = recommendTexture;
         }
 
-        public void SetRecommendedSkillEntries(int tab, IEnumerable<SkillDataLoader.RecommendedSkillEntry> entries)
+        public void SetRecommendedSkillEntries(int skillRootId, IEnumerable<SkillDataLoader.RecommendedSkillEntry> entries)
         {
-            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, MAX_TAB_INDEX);
-            if (!_recommendedSkillsByTab.TryGetValue(tabIndex, out List<SkillDataLoader.RecommendedSkillEntry> list))
+            int normalizedSkillRootId = Math.Max(0, skillRootId);
+            if (!_recommendedSkillsBySkillRootId.TryGetValue(normalizedSkillRootId, out List<SkillDataLoader.RecommendedSkillEntry> list))
             {
                 list = new List<SkillDataLoader.RecommendedSkillEntry>();
-                _recommendedSkillsByTab[tabIndex] = list;
+                _recommendedSkillsBySkillRootId[normalizedSkillRootId] = list;
             }
 
             list.Clear();
@@ -817,7 +820,7 @@ namespace HaCreator.MapSimulator.UI
         {
             var skills = CurrentSkills;
             int availableSp = GetCurrentSkillPoints();
-            int recommendedSkillId = ResolveRecommendedSkillId(skills, availableSp);
+            int recommendedSkillId = ResolveRecommendedSkillId(skills);
 
             for (int rowIndex = 0; rowIndex < VISIBLE_SKILLS; rowIndex++)
             {
@@ -949,80 +952,39 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private int ResolveRecommendedSkillId(IReadOnlyList<SkillDisplayData> skills, int availableSp)
+        private int ResolveRecommendedSkillId(IReadOnlyList<SkillDisplayData> skills)
         {
-            if (skills == null || skills.Count == 0 || availableSp <= 0)
+            if (skills == null || skills.Count == 0)
                 return 0;
 
-            int tableRecommendedSkillId = ResolveRecommendedSkillIdFromThresholdTable(skills, availableSp);
-            if (tableRecommendedSkillId > 0)
-                return tableRecommendedSkillId;
-
-            for (int i = 0; i < skills.Count; i++)
-            {
-                SkillDisplayData skill = skills[i];
-                if (skill == null)
-                    continue;
-
-                if (CanLevelUp(skill, availableSp))
-                    return skill.SkillId;
-            }
-
-            return 0;
+            return ResolveRecommendedSkillIdFromThresholdTable(skills);
         }
 
-        private int ResolveRecommendedSkillIdFromThresholdTable(IReadOnlyList<SkillDisplayData> skills, int availableSp)
+        private int ResolveRecommendedSkillIdFromThresholdTable(IReadOnlyList<SkillDisplayData> skills)
         {
-            int recommendationTab = ResolveRecommendationSourceTab();
-            if (!_recommendedSkillsByTab.TryGetValue(recommendationTab, out List<SkillDataLoader.RecommendedSkillEntry> entries) ||
+            int currentSkillRootId = GetDisplayedSkillRootId(_currentTab);
+            int recommendationSkillRootId = SkillRootRecommendationResolver.ResolveRecommendationSourceSkillRootId(currentSkillRootId);
+            if (recommendationSkillRootId <= 0 ||
+                !_recommendedSkillsBySkillRootId.TryGetValue(recommendationSkillRootId, out List<SkillDataLoader.RecommendedSkillEntry> entries) ||
                 entries == null ||
                 entries.Count == 0)
             {
                 return 0;
             }
 
-            int spentSp = GetRecommendedSkillSpentPoints(recommendationTab);
-            for (int i = 0; i < entries.Count; i++)
-            {
-                SkillDataLoader.RecommendedSkillEntry entry = entries[i];
-                if (entry.SpentSpThreshold > spentSp)
-                    return ResolveRecommendedSkillCandidate(skills, availableSp, i > 0 ? entries[i - 1].SkillId : 0);
-
-                if (entry.SpentSpThreshold == spentSp)
-                    return ResolveRecommendedSkillCandidate(skills, availableSp, entry.SkillId);
-            }
-
-            return 0;
+            int spentSp = GetRecommendedSkillSpentPoints(currentSkillRootId, recommendationSkillRootId);
+            return SkillRootRecommendationResolver.ResolveRecommendedSkillId(skills, entries, spentSp);
         }
 
-        private int ResolveRecommendationSourceTab()
+        private int GetRecommendedSkillSpentPoints(int currentSkillRootId, int recommendationSkillRootId)
         {
-            int currentSkillRootId = GetDisplayedSkillRootId(_currentTab);
-            if (currentSkillRootId != 400 && currentSkillRootId != 430)
+            if (SkillRootRecommendationResolver.UsesCombinedDualBladeSpentPoints(currentSkillRootId))
             {
-                return _currentTab;
+                return GetSpentSkillPointsForDisplayedSkillRootId(SkillRootRecommendationResolver.DualBladeRogueSkillRootId) +
+                    GetSpentSkillPointsForDisplayedSkillRootId(SkillRootRecommendationResolver.DualBladeFirstSkillRootId);
             }
 
-            int dualBladeFirstTab = FindTabByDisplayedSkillRootId(430);
-            return dualBladeFirstTab >= 0
-                ? dualBladeFirstTab
-                : _currentTab;
-        }
-
-        private int GetRecommendedSkillSpentPoints(int recommendationTab)
-        {
-            int currentSkillRootId = GetDisplayedSkillRootId(_currentTab);
-            if (currentSkillRootId == 400 || currentSkillRootId == 430)
-            {
-                int dualRogueTab = FindTabByDisplayedSkillRootId(400);
-                int dualBladeFirstTab = FindTabByDisplayedSkillRootId(430);
-                if (dualRogueTab >= 0 && dualBladeFirstTab >= 0)
-                {
-                    return GetSpentSkillPointsForTab(dualRogueTab) + GetSpentSkillPointsForTab(dualBladeFirstTab);
-                }
-            }
-
-            return GetSpentSkillPointsForTab(recommendationTab);
+            return GetSpentSkillPointsForDisplayedSkillRootId(recommendationSkillRootId);
         }
 
         private int GetDisplayedSkillRootId(int tab)
@@ -1045,19 +1007,10 @@ namespace HaCreator.MapSimulator.UI
             return -1;
         }
 
-        private int ResolveRecommendedSkillCandidate(IReadOnlyList<SkillDisplayData> skills, int availableSp, int candidateSkillId)
+        private int GetSpentSkillPointsForDisplayedSkillRootId(int skillRootId)
         {
-            if (candidateSkillId <= 0)
-                return 0;
-
-            for (int i = 0; i < skills.Count; i++)
-            {
-                SkillDisplayData skill = skills[i];
-                if (skill?.SkillId == candidateSkillId && CanLevelUp(skill, availableSp))
-                    return candidateSkillId;
-            }
-
-            return 0;
+            int tab = FindTabByDisplayedSkillRootId(skillRootId);
+            return tab >= 0 ? GetSpentSkillPointsForTab(tab) : 0;
         }
 
         private Texture2D GetSpUpTexture(bool canLevelUp, int skillIndex)
@@ -2052,31 +2005,33 @@ namespace HaCreator.MapSimulator.UI
             if (string.IsNullOrWhiteSpace(jobName))
                 return false;
 
-            int splitIndex = jobName.IndexOf(' ', Math.Min(10, Math.Max(0, jobName.Length - 1)));
-            if (splitIndex <= 0 || splitIndex >= jobName.Length - 1)
-            {
-                splitIndex = jobName.LastIndexOf(' ');
-            }
-
-            if (splitIndex <= 0 || splitIndex >= jobName.Length - 1)
+            string[] words = jobName
+                .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length < 2)
                 return false;
 
-            while (splitIndex > 0 && splitIndex < jobName.Length - 1)
+            string currentFirstLine = words[0];
+            if (MeasureSkillBookText(currentFirstLine, BOOK_NAME_TEXT_SCALE).X > BOOK_NAME_MAX_WIDTH)
+                return false;
+
+            for (int wordIndex = 1; wordIndex < words.Length; wordIndex++)
             {
-                string candidateSecondLine = jobName.Substring(splitIndex + 1);
-                if (MeasureSkillBookText(candidateSecondLine, BOOK_NAME_TEXT_SCALE).X < BOOK_NAME_MAX_WIDTH)
-                    break;
+                string candidateFirstLine = string.Concat(currentFirstLine, " ", words[wordIndex]);
+                if (MeasureSkillBookText(candidateFirstLine, BOOK_NAME_TEXT_SCALE).X > BOOK_NAME_MAX_WIDTH)
+                {
+                    string candidateSecondLine = string.Join(" ", words.Skip(wordIndex));
+                    if (MeasureSkillBookText(candidateSecondLine, BOOK_NAME_TEXT_SCALE).X > BOOK_NAME_MAX_WIDTH)
+                        return false;
 
-                int nextSplit = jobName.IndexOf(' ', splitIndex + 1);
-                if (nextSplit <= splitIndex || nextSplit >= jobName.Length - 1)
-                    break;
+                    firstLine = currentFirstLine;
+                    secondLine = candidateSecondLine;
+                    return true;
+                }
 
-                splitIndex = nextSplit;
+                currentFirstLine = candidateFirstLine;
             }
 
-            firstLine = jobName.Substring(0, splitIndex);
-            secondLine = jobName.Substring(splitIndex + 1);
-            return !string.IsNullOrWhiteSpace(firstLine) && !string.IsNullOrWhiteSpace(secondLine);
+            return false;
         }
 
         private Vector2 MeasureSkillBookText(string text, float scale)
@@ -2465,7 +2420,7 @@ namespace HaCreator.MapSimulator.UI
                 skillPointsByTab[kvp.Key] = 0;
             }
 
-            foreach (var kvp in _recommendedSkillsByTab)
+            foreach (var kvp in _recommendedSkillsBySkillRootId)
             {
                 kvp.Value.Clear();
             }

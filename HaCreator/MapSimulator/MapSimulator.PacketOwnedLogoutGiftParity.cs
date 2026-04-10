@@ -276,6 +276,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (window.IsVisible)
+            {
+                message = "CUILogoutGift::TryShowLogoutGiftDialog skipped because a logout-gift modal owner is already instantiated.";
+                _lastPacketOwnedLogoutGiftSummary = message;
+                return false;
+            }
+
             _packetOwnedLogoutGiftPendingContinuation = continuation;
             _lastPacketOwnedLogoutGiftLaunchSource = string.IsNullOrWhiteSpace(launchSource) ? "simulator" : launchSource.Trim();
             window.Position = ResolvePacketOwnedLogoutGiftWindowPosition(window);
@@ -285,9 +292,7 @@ namespace HaCreator.MapSimulator
                 trackDirectionModeOwner: ShouldTrackInheritedDirectionModeOwner());
             uiWindowManager?.BringToFront(window);
 
-            message = window.IsVisible
-                ? $"CUILogoutGift::TryShowLogoutGiftDialog presented the dedicated owner from {_lastPacketOwnedLogoutGiftLaunchSource} using cached commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()}."
-                : $"CUILogoutGift::TryShowLogoutGiftDialog refreshed the already-visible owner from {_lastPacketOwnedLogoutGiftLaunchSource}.";
+            message = $"CUILogoutGift::TryShowLogoutGiftDialog presented the dedicated owner from {_lastPacketOwnedLogoutGiftLaunchSource} using cached commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()}.";
             _lastPacketOwnedLogoutGiftSummary = message;
             NotifyEventAlarmOwnerActivity("packet-owned logout gift");
             return true;

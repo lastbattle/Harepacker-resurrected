@@ -48,6 +48,7 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedAntiMacroNoticeStringPoolId = -1;
         private int _lastPacketOwnedAntiMacroChatStringPoolId = -1;
         private int _lastPacketOwnedAntiMacroSubmittedRemainingMs = -1;
+        private int _packetOwnedAntiMacroCurrentRemainingMs;
         private string _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
         private bool _packetOwnedAntiMacroComboHeld;
         private bool _packetOwnedAntiMacroAwaitingResult;
@@ -317,6 +318,7 @@ namespace HaCreator.MapSimulator
 
             _lastPacketOwnedAntiMacroSubmittedAnswer = submittedAnswer;
             _lastPacketOwnedAntiMacroSubmittedRemainingMs = Math.Max(0, window.ExpiresAt - Environment.TickCount);
+            _packetOwnedAntiMacroCurrentRemainingMs = _lastPacketOwnedAntiMacroSubmittedRemainingMs;
             _packetOwnedAntiMacroAwaitingResult = true;
 
             window.ClearChallenge();
@@ -399,6 +401,7 @@ namespace HaCreator.MapSimulator
             _packetOwnedAntiMacroAwaitingResult = false;
             _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
             _lastPacketOwnedAntiMacroSubmittedRemainingMs = -1;
+            _packetOwnedAntiMacroCurrentRemainingMs = 0;
             _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
             _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
             _lastPacketOwnedAntiMacroSummary = "Closed packet-owned anti-macro owner.";
@@ -426,7 +429,8 @@ namespace HaCreator.MapSimulator
             uiWindowManager.HideWindow(adminVariant ? MapSimulatorWindowNames.AntiMacro : MapSimulatorWindowNames.AdminAntiMacro);
 
             Texture2D challengeTexture = TryDecodePacketOwnedAntiMacroCanvas(jpegBytes);
-            int expiresAt = Environment.TickCount + PacketOwnedAntiMacroDefaultDurationMs;
+            int remainingMs = ResolvePacketOwnedAntiMacroLaunchRemainingMs(_packetOwnedAntiMacroCurrentRemainingMs, answerCount);
+            int expiresAt = Environment.TickCount + remainingMs;
             string statusText = answerCount > 0
                 ? string.Format(
                     CultureInfo.InvariantCulture,
@@ -441,12 +445,14 @@ namespace HaCreator.MapSimulator
                 trackDirectionModeOwner: ShouldTrackInheritedDirectionModeOwner());
 
             SetPacketOwnedAntiMacroComboHold(true);
+            _packetOwnedAntiMacroCurrentRemainingMs = remainingMs;
             _packetOwnedAntiMacroAwaitingResult = false;
             _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
             _lastPacketOwnedAntiMacroSubmittedRemainingMs = -1;
             _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
             _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
-            _lastPacketOwnedAntiMacroSummary = $"Opened packet-owned {(adminVariant ? "admin " : string.Empty)}anti-macro challenge and held Ctrl combo input.";
+            _lastPacketOwnedAntiMacroSummary =
+                $"Opened packet-owned {(adminVariant ? "admin " : string.Empty)}anti-macro challenge with remaining={remainingMs}ms and held Ctrl combo input.";
             return _lastPacketOwnedAntiMacroSummary;
         }
 
@@ -502,6 +508,16 @@ namespace HaCreator.MapSimulator
             string noticeSummary = ApplyPacketOwnedAntiMacroNotice(mode, antiMacroType);
             _lastPacketOwnedAntiMacroSummary = $"{clearSummary} {noticeSummary}";
             return _lastPacketOwnedAntiMacroSummary;
+        }
+
+        internal static int ResolvePacketOwnedAntiMacroLaunchRemainingMs(int currentRemainingMs, int answerCount)
+        {
+            // `CWvsContext::OnAntiMacroResult` only reseeds the client timer to 60000ms
+            // when the decoded question counter is non-zero; otherwise it reuses the
+            // current context-owned anti-macro remaining time.
+            return answerCount != 0
+                ? PacketOwnedAntiMacroDefaultDurationMs
+                : Math.Max(0, currentRemainingMs);
         }
 
         private static PacketOwnedAntiMacroNoticeDefinition ResolvePacketOwnedAntiMacroNoticeDefinition(int noticeType, int antiMacroType)

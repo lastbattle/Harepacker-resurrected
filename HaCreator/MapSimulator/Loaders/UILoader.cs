@@ -645,11 +645,23 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["bar"] as WzCanvasProperty, device),
                 LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["line"] as WzCanvasProperty, device),
                 LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtPrev"]?["normal"]?["0"] as WzCanvasProperty, device),
-                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtNext"]?["normal"]?["0"] as WzCanvasProperty, device),
-                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtOK"]?["normal"]?["0"] as WzCanvasProperty, device),
-                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtClose"]?["normal"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtPrev"]?["mouseOver"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtPrev"]?["pressed"]?["0"] as WzCanvasProperty, device),
                 LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtPrev"]?["disabled"]?["0"] as WzCanvasProperty, device),
-                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtNext"]?["disabled"]?["0"] as WzCanvasProperty, device));
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtPrev"]?["keyFocused"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtNext"]?["normal"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtNext"]?["mouseOver"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtNext"]?["pressed"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtNext"]?["disabled"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtNext"]?["keyFocused"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtOK"]?["normal"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtOK"]?["mouseOver"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtOK"]?["pressed"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtOK"]?["keyFocused"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtClose"]?["normal"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtClose"]?["mouseOver"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtClose"]?["pressed"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtClose"]?["keyFocused"]?["0"] as WzCanvasProperty, device));
                     Vector2 chatTargetLabelPos = ResolveCanvasPosition(chatFrameAnchorOrigin, subProperty_chatTarget?["all"] as WzCanvasProperty).ToVector2();
                     Vector2 chatEnterPos = ResolveCanvasPosition(chatFrameAnchorOrigin, chatEnterCanvas).ToVector2();
                     Rectangle chatEnterBounds = ResolveCanvasBounds(chatFrameAnchorOrigin, chatEnterCanvas);
@@ -1857,7 +1869,7 @@ namespace HaCreator.MapSimulator.Loaders
             return maxHeight;
         }
 
-        internal readonly record struct CollapsedMinimapTitleChromeMetrics(int LaneTop, int LaneHeight, int LeftInset);
+        internal readonly record struct CollapsedMinimapTitleChromeMetrics(int LaneTop, int LaneHeight, int LeftInset, int RightInset);
 
         internal static int ResolveCollapsedMinimapButtonReserveWidthForTesting(
             int minimizeButtonWidth,
@@ -1938,7 +1950,8 @@ namespace HaCreator.MapSimulator.Loaders
             int barHeight,
             int fallbackLaneTop,
             int fallbackButtonHeight,
-            int fallbackLeftInset)
+            int fallbackLeftInset,
+            int fallbackRightInset)
         {
             int resolvedLaneTop = Math.Max(0, fallbackLaneTop);
             int resolvedLaneHeight = ResolveCollapsedMinimapTitleLaneHeightForTesting(
@@ -1956,7 +1969,12 @@ namespace HaCreator.MapSimulator.Loaders
                 resolvedLaneTop,
                 resolvedLaneHeight,
                 fallbackLeftInset);
-            return new CollapsedMinimapTitleChromeMetrics(resolvedLaneTop, resolvedLaneHeight, resolvedLeftInset);
+            int resolvedRightInset = ResolveCollapsedMinimapTitleRightInsetForTesting(
+                rightCap,
+                resolvedLaneTop,
+                resolvedLaneHeight,
+                fallbackRightInset);
+            return new CollapsedMinimapTitleChromeMetrics(resolvedLaneTop, resolvedLaneHeight, resolvedLeftInset, resolvedRightInset);
         }
 
         internal static int ResolveCollapsedMinimapVerticalContentOffsetForTesting(
@@ -2054,6 +2072,46 @@ namespace HaCreator.MapSimulator.Loaders
                 if (runLength >= minimumRunLength)
                 {
                     return x;
+                }
+            }
+
+            return Math.Max(0, fallbackInset);
+        }
+
+        internal static int ResolveCollapsedMinimapTitleRightInsetForTesting(
+            SD.Bitmap rightCap,
+            int laneTop,
+            int laneHeight,
+            int fallbackInset)
+        {
+            if (!TryGetBitmapDimensions(rightCap, out int width, out int height))
+            {
+                return Math.Max(0, fallbackInset);
+            }
+
+            int scanRow = Math.Clamp(
+                Math.Max(0, laneTop) + Math.Max(0, (Math.Max(1, laneHeight) - 1) / 2),
+                0,
+                Math.Max(0, height - 1));
+            const int minimumRunLength = 4;
+            for (int x = width - 1; x >= 0; x--)
+            {
+                SD.Color pixel = rightCap.GetPixel(x, scanRow);
+                if (!IsCollapsedMinimapInteriorPixel(pixel))
+                {
+                    continue;
+                }
+
+                int runLength = 1;
+                while (x - runLength >= 0
+                    && IsCollapsedMinimapInteriorPixel(rightCap.GetPixel(x - runLength, scanRow)))
+                {
+                    runLength++;
+                }
+
+                if (runLength >= minimumRunLength)
+                {
+                    return Math.Max(0, (width - 1) - x);
                 }
             }
 
@@ -2511,7 +2569,8 @@ namespace HaCreator.MapSimulator.Loaders
                 fallbackButtonHeight: Math.Max(
                     ResolveUiButtonSnapshotHeight(collapsedMaximizeButtonProperty),
                     ResolveUiButtonSnapshotHeight(collapsedMapButtonProperty)),
-                fallbackLeftInset: 4);
+                fallbackLeftInset: 4,
+                fallbackRightInset: 4);
             int collapsedTitleMaxBarWidth = Math.Max(1, fullMiniMapStackPanel.GetSize().Width);
             System.Drawing.Bitmap collapsedTitleContent = RenderCollapsedMinimapTitleContent(
                 mapMark,

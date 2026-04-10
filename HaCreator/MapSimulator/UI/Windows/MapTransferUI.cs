@@ -1208,6 +1208,11 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetImeCandidateWindowBounds(Viewport viewport)
         {
+            if (ImeCandidateWindowRendering.ShouldPreferNativeWindow(_candidateListState))
+            {
+                return Rectangle.Empty;
+            }
+
             int visibleCount = GetVisibleCandidateCount();
             if (visibleCount <= 0 || _font == null)
             {

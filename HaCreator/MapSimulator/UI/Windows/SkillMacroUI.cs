@@ -2363,6 +2363,11 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetImeCandidateWindowBounds(Viewport viewport)
         {
+            if (ImeCandidateWindowRendering.ShouldPreferNativeWindow(_candidateListState))
+            {
+                return Rectangle.Empty;
+            }
+
             int visibleCount = GetVisibleCandidateCount();
             if (visibleCount <= 0)
             {
@@ -2406,8 +2411,8 @@ namespace HaCreator.MapSimulator.UI
                 height = metrics.Height;
             }
 
-            width = Math.Max(64, width);
-            height = Math.Max(4, Math.Min(viewportHeight, height));
+            width = Math.Max(1, width);
+            height = Math.Max(1, height);
             Point origin = ResolveCandidateWindowOrigin(viewport, width, height);
 
             return SkillMacroImeCandidateWindowLayout.ResolveClientOwnerBounds(

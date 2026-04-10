@@ -23,6 +23,10 @@ namespace HaCreator.MapSimulator
         private const int InitialQuizAnswerLabelStringPoolId = 3959;
         private const int InitialQuizAnswerNoticeStringPoolId = 3960;
         private const int InitialQuizTimeoutNoticeStringPoolId = 3964;
+        private const float InitialQuizOwnerTextScale = 0.44f;
+        private const float InitialQuizOwnerSecondaryTextScale = 0.42f;
+        private const float InitialQuizOwnerLabelTextScale = 0.39f;
+        private const float InitialQuizOwnerInputTextScale = 0.38f;
 
         private bool _initialQuizOwnerVisualsLoaded;
         private Texture2D _initialQuizOwnerBackgroundTexture;
@@ -36,6 +40,7 @@ namespace HaCreator.MapSimulator
         private Texture2D[] _initialQuizOwnerHeaderDigits;
         private Texture2D _initialQuizOwnerCommaTexture;
         private InitialQuizAnimationFrame[] _initialQuizOwnerAnimationFrames = Array.Empty<InitialQuizAnimationFrame>();
+        private Point _initialQuizOwnerBackground3Origin = Point.Zero;
 
         private readonly StringBuilder _initialQuizOwnerInput = new(InitialQuizOwnerInputMaxLength);
         private int _initialQuizOwnerCursorIndex;
@@ -295,41 +300,35 @@ namespace HaCreator.MapSimulator
             DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture2, ownerBounds);
             DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture3, overlayBounds);
 
-            Rectangle timerBounds = new(ownerBounds.X + 111, ownerBounds.Y + 33, 43, 24);
-            Rectangle questionBounds = new(ownerBounds.X + 219, ownerBounds.Y + 72, 30, 24);
-            DrawInitialQuizOwnerTimerDigits(timerBounds, snapshot.RemainingSeconds);
-            DrawPacketScriptNumber(questionBounds, Math.Max(0, snapshot.QuestionNumber), _initialQuizOwnerHeaderDigits, Color.White);
+            DrawInitialQuizOwnerTimerDigits(ownerBounds, snapshot.RemainingSeconds);
+            DrawInitialQuizOwnerQuestionNumber(ownerBounds, Math.Max(0, snapshot.QuestionNumber));
 
             DrawInitialQuizOwnerAnimationFrame(ownerBounds, currentTickCount);
 
-            DrawPacketScriptOwnerWrappedText(
+            DrawInitialQuizOwnerSingleLineText(
                 snapshot.Title,
                 new Rectangle(ownerBounds.X + 30, ownerBounds.Y + 84, 190, 18),
                 Color.White,
-                0.44f,
-                maxLines: 1);
-            DrawPacketScriptOwnerWrappedText(
+                InitialQuizOwnerTextScale);
+            DrawInitialQuizOwnerSingleLineText(
                 snapshot.ProblemText,
                 new Rectangle(ownerBounds.X + 92, ownerBounds.Y + 110, 146, 18),
                 Color.White,
-                0.44f,
-                maxLines: 1);
+                InitialQuizOwnerTextScale);
 
             if (ShouldShowInitialQuizOwnerHint(snapshot.HintText))
             {
                 string hintLabel = MapleStoryStringPool.GetOrFallback(InitialQuizHintLabelStringPoolId, "Clue:");
-                DrawPacketScriptOwnerWrappedText(
+                DrawInitialQuizOwnerSingleLineText(
                     hintLabel.Trim(),
                     new Rectangle(ownerBounds.X + 52, ownerBounds.Y + 130, 38, 18),
                     Color.White,
-                    0.42f,
-                    maxLines: 1);
-                DrawPacketScriptOwnerWrappedText(
+                    InitialQuizOwnerSecondaryTextScale);
+                DrawInitialQuizOwnerSingleLineText(
                     snapshot.HintText,
                     new Rectangle(ownerBounds.X + 92, ownerBounds.Y + 130, 146, 18),
                     Color.White,
-                    0.42f,
-                    maxLines: 1);
+                    InitialQuizOwnerSecondaryTextScale);
             }
 
             bool showInput = ShouldShowInitialQuizOwnerInput(snapshot.RemainingMs);
@@ -338,21 +337,19 @@ namespace HaCreator.MapSimulator
                 DrawInitialQuizOwnerInputField(inputBounds, currentTickCount);
             }
 
-            DrawPacketScriptOwnerWrappedText(
+            DrawInitialQuizOwnerSingleLineText(
                 MapleStoryStringPool.GetOrFallback(InitialQuizAnswerNoticeStringPoolId, "Enter your answer."),
                 new Rectangle(ownerBounds.X + 38, ownerBounds.Y + 202, 190, 18),
                 new Color(255, 80, 80),
-                0.39f,
-                maxLines: 1);
+                InitialQuizOwnerLabelTextScale);
 
             if (!showInput)
             {
-                DrawPacketScriptOwnerWrappedText(
+                DrawInitialQuizOwnerSingleLineText(
                     MapleStoryStringPool.GetOrFallback(InitialQuizTimeoutNoticeStringPoolId, "Time is over."),
                     new Rectangle(ownerBounds.X + 119, ownerBounds.Y + 158, 120, 18),
                     new Color(255, 80, 80),
-                    0.39f,
-                    maxLines: 1);
+                    InitialQuizOwnerLabelTextScale);
             }
 
             Texture2D okButtonTexture = ResolveInitialQuizOwnerOkButtonTexture(showInput);
@@ -374,23 +371,17 @@ namespace HaCreator.MapSimulator
             DrawPacketScriptOwnerFrame(inputBounds, fillColor, borderColor);
 
             string answerLabel = MapleStoryStringPool.GetOrFallback(InitialQuizAnswerLabelStringPoolId, "Answer:");
-            DrawPacketScriptOwnerWrappedText(
+            DrawInitialQuizOwnerSingleLineText(
                 answerLabel,
                 new Rectangle(inputBounds.X - 64, inputBounds.Y, 60, inputBounds.Height),
                 Color.White,
-                0.37f,
-                maxLines: 1);
+                0.37f);
 
             string inputText = _initialQuizOwnerInput.ToString();
-            bool showPlaceholder = string.IsNullOrEmpty(inputText);
-            string displayText = showPlaceholder ? "Type answer..." : inputText;
-            Color textColor = showPlaceholder ? new Color(123, 123, 123) : Color.Black;
             Vector2 drawPosition = new(inputBounds.X + 4, inputBounds.Y - 1);
-            _spriteBatch.DrawString(_fontChat, displayText, drawPosition, textColor, 0f, Vector2.Zero, 0.38f, SpriteEffects.None, 0f);
-
-            if (showPlaceholder)
+            if (!string.IsNullOrEmpty(inputText))
             {
-                return;
+                _spriteBatch.DrawString(_fontChat, inputText, drawPosition, Color.Black, 0f, Vector2.Zero, InitialQuizOwnerInputTextScale, SpriteEffects.None, 0f);
             }
 
             bool cursorVisible = ((currentTickCount - _initialQuizOwnerCursorBlinkStartedAt) / 500) % 2 == 0;
@@ -400,7 +391,7 @@ namespace HaCreator.MapSimulator
             }
 
             string prefix = inputText[..Math.Clamp(_initialQuizOwnerCursorIndex, 0, inputText.Length)];
-            int cursorX = inputBounds.X + 4 + (int)Math.Round(_fontChat.MeasureString(prefix).X * 0.38f);
+            int cursorX = inputBounds.X + 4 + (int)Math.Round(_fontChat.MeasureString(prefix).X * InitialQuizOwnerInputTextScale);
             Rectangle cursorBounds = new(cursorX, inputBounds.Y + 2, 1, Math.Max(9, inputBounds.Height - 4));
             _spriteBatch.Draw(_packetScriptOwnerPixelTexture, cursorBounds, Color.Black);
         }
@@ -425,22 +416,51 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private void DrawInitialQuizOwnerTimerDigits(Rectangle bounds, int remainingSeconds)
+        private void DrawInitialQuizOwnerTimerDigits(Rectangle ownerBounds, int remainingSeconds)
         {
+            string timerText = ComposeInitialQuizOwnerTimerText(remainingSeconds);
             if (_initialQuizOwnerDigits == null || _initialQuizOwnerDigits.Length == 0)
             {
-                DrawPacketScriptTime(bounds, remainingSeconds, _packetScriptInitialQuizDigits, Color.White);
+                DrawInitialQuizOwnerSingleLineText(
+                    timerText.Replace(',', ':'),
+                    new Rectangle(ownerBounds.X + 111, ownerBounds.Y + 33, 78, 24),
+                    Color.White,
+                    InitialQuizOwnerSecondaryTextScale);
                 return;
             }
 
-            int minutes = Math.Max(0, remainingSeconds) / 60;
-            int seconds = Math.Max(0, remainingSeconds) % 60;
-            string minuteText = $"{minutes:D2}";
-            string secondText = $"{seconds:D2}";
-            DrawPacketScriptNumber(new Rectangle(bounds.X, bounds.Y, 21, bounds.Height), minuteText[0].ToString(), _initialQuizOwnerDigits, Color.White, centerHorizontally: false);
-            DrawPacketScriptNumber(new Rectangle(bounds.X + 21, bounds.Y, 21, bounds.Height), minuteText[1].ToString(), _initialQuizOwnerDigits, Color.White, centerHorizontally: false);
-            DrawPacketScriptNumber(new Rectangle(bounds.X + 43, bounds.Y, 21, bounds.Height), secondText[0].ToString(), _initialQuizOwnerDigits, Color.White, centerHorizontally: false);
-            DrawPacketScriptNumber(new Rectangle(bounds.X + 64, bounds.Y, 21, bounds.Height), secondText[1].ToString(), _initialQuizOwnerDigits, Color.White, centerHorizontally: false);
+            DrawInitialQuizOwnerDigitGlyph(ownerBounds, timerText[0], 111, 33);
+            DrawInitialQuizOwnerDigitGlyph(ownerBounds, timerText[1], 132, 33);
+            DrawInitialQuizOwnerDigitGlyph(ownerBounds, timerText[2], 148, 36);
+            DrawInitialQuizOwnerDigitGlyph(ownerBounds, timerText[3], 153, 33);
+            DrawInitialQuizOwnerDigitGlyph(ownerBounds, timerText[4], 174, 33);
+        }
+
+        private void DrawInitialQuizOwnerQuestionNumber(Rectangle ownerBounds, int questionNumber)
+        {
+            string questionText = Math.Max(0, questionNumber).ToString();
+            if (_initialQuizOwnerHeaderDigits == null || _initialQuizOwnerHeaderDigits.Length == 0)
+            {
+                DrawInitialQuizOwnerSingleLineText(
+                    questionText,
+                    new Rectangle(ownerBounds.X + 219, ownerBounds.Y + 72, 30, 24),
+                    Color.White,
+                    InitialQuizOwnerTextScale);
+                return;
+            }
+
+            int drawX = ownerBounds.X + 219;
+            for (int i = 0; i < questionText.Length; i++)
+            {
+                Texture2D digitTexture = ResolveInitialQuizOwnerDigitTexture(questionText[i], _initialQuizOwnerHeaderDigits, null);
+                if (digitTexture == null)
+                {
+                    continue;
+                }
+
+                _spriteBatch.Draw(digitTexture, new Rectangle(drawX, ownerBounds.Y + 72, digitTexture.Width, digitTexture.Height), Color.White);
+                drawX += digitTexture.Width;
+            }
         }
 
         private Texture2D ResolveInitialQuizOwnerOkButtonTexture(bool enabled)
@@ -497,11 +517,6 @@ namespace HaCreator.MapSimulator
             return new Rectangle(left, top, InitialQuizOwnerWidth, InitialQuizOwnerHeight);
         }
 
-        private static Rectangle ResolveInitialQuizOwnerOverlayBounds(Rectangle ownerBounds)
-        {
-            return new Rectangle(ownerBounds.X + 22, ownerBounds.Y + 67, 234, 118);
-        }
-
         private static Rectangle ResolveInitialQuizOwnerOkButtonBounds(Rectangle ownerBounds)
         {
             return new Rectangle(ownerBounds.X + 241, ownerBounds.Y + 199, 40, 16);
@@ -527,10 +542,12 @@ namespace HaCreator.MapSimulator
             WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img") ?? uiWindowImage;
             WzSubProperty preferred = uiWindow2Image?["InitialQuiz"] as WzSubProperty;
             WzSubProperty fallback = uiWindowImage?["InitialQuiz"] as WzSubProperty;
+            WzCanvasProperty preferredBackground3 = preferred?["backgrnd3"] as WzCanvasProperty;
+            WzCanvasProperty fallbackBackground3 = fallback?["backgrnd3"] as WzCanvasProperty;
 
             _initialQuizOwnerBackgroundTexture = LoadUiCanvasTexture((preferred?["backgrnd"] ?? fallback?["backgrnd"]) as WzCanvasProperty);
             _initialQuizOwnerBackgroundTexture2 = LoadUiCanvasTexture((preferred?["backgrnd2"] ?? fallback?["backgrnd2"]) as WzCanvasProperty);
-            _initialQuizOwnerBackgroundTexture3 = LoadUiCanvasTexture((preferred?["backgrnd3"] ?? fallback?["backgrnd3"]) as WzCanvasProperty);
+            _initialQuizOwnerBackgroundTexture3 = LoadUiCanvasTexture(preferredBackground3 ?? fallbackBackground3);
             _initialQuizOwnerOkButtonNormalTexture = LoadUiCanvasTexture(ResolveInitialQuizOwnerButtonCanvas(preferred?["BtOK"] as WzSubProperty, "normal") ?? ResolveInitialQuizOwnerButtonCanvas(fallback?["BtOK"] as WzSubProperty, "normal"));
             _initialQuizOwnerOkButtonHoverTexture = LoadUiCanvasTexture(ResolveInitialQuizOwnerButtonCanvas(preferred?["BtOK"] as WzSubProperty, "mouseOver") ?? ResolveInitialQuizOwnerButtonCanvas(fallback?["BtOK"] as WzSubProperty, "mouseOver"));
             _initialQuizOwnerOkButtonPressedTexture = LoadUiCanvasTexture(ResolveInitialQuizOwnerButtonCanvas(preferred?["BtOK"] as WzSubProperty, "pressed") ?? ResolveInitialQuizOwnerButtonCanvas(fallback?["BtOK"] as WzSubProperty, "pressed"));
@@ -538,6 +555,7 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerDigits = LoadInitialQuizOwnerDigits(preferred?["num1"] as WzSubProperty, fallback?["num1"] as WzSubProperty, out _initialQuizOwnerCommaTexture);
             _initialQuizOwnerHeaderDigits = LoadInitialQuizOwnerDigits(preferred?["number"] as WzSubProperty, fallback?["number"] as WzSubProperty, out _);
             _initialQuizOwnerAnimationFrames = LoadInitialQuizOwnerAnimationFrames(preferred?["ani"] as WzSubProperty, fallback?["ani"] as WzSubProperty);
+            _initialQuizOwnerBackground3Origin = ResolveCanvasOrigin(preferredBackground3 ?? fallbackBackground3);
         }
 
         private Texture2D[] LoadInitialQuizOwnerDigits(WzSubProperty preferred, WzSubProperty fallback, out Texture2D commaTexture)
@@ -597,6 +615,122 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldShowInitialQuizOwnerInput(int remainingMs)
         {
             return remainingMs > 0;
+        }
+
+        internal static string ComposeInitialQuizOwnerTimerText(int remainingSeconds)
+        {
+            int minutes = Math.Max(0, remainingSeconds) / 60;
+            int seconds = Math.Max(0, remainingSeconds) % 60;
+            return $"{minutes:D2},{seconds:D2}";
+        }
+
+        internal static string NormalizeInitialQuizOwnerSingleLineText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            return string.Join(
+                " ",
+                text.Replace("\r", " ", StringComparison.Ordinal)
+                    .Replace("\n", " ", StringComparison.Ordinal)
+                    .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+        }
+
+        private void DrawInitialQuizOwnerSingleLineText(string text, Rectangle bounds, Color color, float scale)
+        {
+            if (_fontChat == null || bounds == Rectangle.Empty)
+            {
+                return;
+            }
+
+            string displayText = FitInitialQuizOwnerTextToBounds(NormalizeInitialQuizOwnerSingleLineText(text), bounds.Width, scale);
+            if (string.IsNullOrEmpty(displayText))
+            {
+                return;
+            }
+
+            _spriteBatch.DrawString(_fontChat, displayText, new Vector2(bounds.X, bounds.Y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        }
+
+        private string FitInitialQuizOwnerTextToBounds(string text, int maxWidth, float scale)
+        {
+            if (_fontChat == null || string.IsNullOrEmpty(text) || maxWidth <= 0)
+            {
+                return string.Empty;
+            }
+
+            if (_fontChat.MeasureString(text).X * scale <= maxWidth)
+            {
+                return text;
+            }
+
+            int length = text.Length;
+            while (length > 0)
+            {
+                string candidate = text[..length];
+                if (_fontChat.MeasureString(candidate).X * scale <= maxWidth)
+                {
+                    return candidate.TrimEnd();
+                }
+
+                length--;
+            }
+
+            return string.Empty;
+        }
+
+        private void DrawInitialQuizOwnerDigitGlyph(Rectangle ownerBounds, char ch, int relativeX, int relativeY)
+        {
+            Texture2D texture = ResolveInitialQuizOwnerDigitTexture(ch, _initialQuizOwnerDigits, _initialQuizOwnerCommaTexture);
+            if (texture == null)
+            {
+                return;
+            }
+
+            Rectangle drawBounds = new(ownerBounds.X + relativeX, ownerBounds.Y + relativeY, texture.Width, texture.Height);
+            _spriteBatch.Draw(texture, drawBounds, Color.White);
+        }
+
+        private static Texture2D ResolveInitialQuizOwnerDigitTexture(char ch, Texture2D[] digits, Texture2D commaTexture)
+        {
+            if (char.IsDigit(ch))
+            {
+                int index = ch - '0';
+                return index >= 0 && digits != null && index < digits.Length
+                    ? digits[index]
+                    : null;
+            }
+
+            return ch is ',' or ':'
+                ? commaTexture
+                : null;
+        }
+
+        private Rectangle ResolveInitialQuizOwnerOverlayBounds(Rectangle ownerBounds)
+        {
+            if (_initialQuizOwnerBackgroundTexture3 == null)
+            {
+                return new Rectangle(ownerBounds.X + 22, ownerBounds.Y + 67, 234, 118);
+            }
+
+            return new Rectangle(
+                ownerBounds.X - _initialQuizOwnerBackground3Origin.X,
+                ownerBounds.Y - _initialQuizOwnerBackground3Origin.Y,
+                _initialQuizOwnerBackgroundTexture3.Width,
+                _initialQuizOwnerBackgroundTexture3.Height);
+        }
+
+        private static Point ResolveCanvasOrigin(WzCanvasProperty canvas)
+        {
+            if (canvas == null)
+            {
+                return Point.Zero;
+            }
+
+            System.Drawing.PointF origin = canvas.GetCanvasOriginPosition();
+            return new Point((int)Math.Round(origin.X), (int)Math.Round(origin.Y));
         }
 
         private static char? TryMapInitialQuizOwnerChar(Keys key, bool shiftPressed)

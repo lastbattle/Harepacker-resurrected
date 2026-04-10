@@ -780,14 +780,34 @@ namespace HaCreator.MapSimulator.Managers
 
         private bool TryPromoteInferredInboundPointOpcodeNoLock(out int opcode, out string status)
         {
+            if (!TryInferBestInboundPointOpcode(_recentInferencePackets, _mappedInboundPointOpcodes, out opcode, out status))
+            {
+                return false;
+            }
+
+            if (_mappedInboundPointOpcodes.Add(opcode))
+            {
+                _inferredInboundPointOpcodes.Add(opcode);
+            }
+
+            return true;
+        }
+
+        internal static bool TryInferBestInboundPointOpcode(
+            IEnumerable<byte[]> rawPackets,
+            ISet<int> mappedOpcodes,
+            out int opcode,
+            out string status)
+        {
             opcode = 0;
-            List<InboundPointOpcodeCandidateSummary> candidates = SummarizeInferenceCandidates(_recentInferencePackets, _mappedInboundPointOpcodes);
+            List<InboundPointOpcodeCandidateSummary> candidates = SummarizeInferenceCandidates(rawPackets, mappedOpcodes);
             List<InboundPointOpcodeCandidateSummary> eligibleCandidates = candidates
                 .Where(candidate =>
                     candidate.ObservationCount >= MinimumInferenceObservations
                     && candidate.DistinctPointValueCount >= MinimumInferenceDistinctPointValues)
                 .OrderByDescending(candidate => candidate.ObservationCount)
                 .ThenByDescending(candidate => candidate.DistinctPointValueCount)
+                .ThenByDescending(candidate => candidate.TransitionCount)
                 .ThenBy(candidate => candidate.Opcode)
                 .ToList();
 
@@ -811,11 +831,6 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             opcode = bestCandidate.Opcode;
-            if (_mappedInboundPointOpcodes.Add(opcode))
-            {
-                _inferredInboundPointOpcodes.Add(opcode);
-            }
-
             status = $"Cookie House official-session bridge promoted the best-ranked point-opcode candidate after {bestCandidate.ObservationCount} observations, {bestCandidate.DistinctPointValueCount} distinct point values, and {bestCandidate.TransitionCount} score transitions.";
             return true;
         }
@@ -845,6 +860,7 @@ namespace HaCreator.MapSimulator.Managers
             return candidates.Values
                 .OrderByDescending(candidate => candidate.ObservationCount)
                 .ThenByDescending(candidate => candidate.DistinctPointValueCount)
+                .ThenByDescending(candidate => candidate.TransitionCount)
                 .ThenBy(candidate => candidate.Opcode)
                 .Select(candidate => candidate.ToSummary())
                 .ToList();

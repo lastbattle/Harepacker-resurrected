@@ -30,7 +30,15 @@ namespace HaCreator.MapSimulator.Interaction
             0x40UL
         };
 
-        private const ulong CharacterDataKnownOpaquePreMapTransferFlags = 0x30000UL;
+        private const ulong CharacterDataSkillRecordFlag = 0x100UL;
+        private const ulong CharacterDataSkillExpirationFlag = 0x200UL;
+        private const ulong CharacterDataMiniGameRecordFlag = 0x400UL;
+        private const ulong CharacterDataRelationshipRecordFlag = 0x800UL;
+        private const ulong CharacterDataMapTransferFlag = 0x1000UL;
+        private const ulong CharacterDataSkillCooldownFlag = 0x4000UL;
+        private const ulong CharacterDataOpaquePreMapTransferFlag = 0x8000UL;
+        private const ulong CharacterDataQuestRecordFlag = 0x10000UL;
+        private const ulong CharacterDataShortFileTimeRecordFlag = 0x20000UL;
         private const int CharacterDataMiniGameRecordByteLength = 0x14;
         private const int CharacterDataCoupleRecordByteLength = 0x21;
         private const int CharacterDataFriendRecordByteLength = 0x25;
@@ -1052,6 +1060,7 @@ namespace HaCreator.MapSimulator.Interaction
             long startPosition = reader.BaseStream.Position;
             try
             {
+                Dictionary<InventoryType, IReadOnlyList<PacketCharacterDataItemSlot>> inventoryItemsByType = new();
                 for (int inventoryIndex = 0; inventoryIndex < CharacterDataInventoryOrder.Length; inventoryIndex++)
                 {
                     if ((characterDataFlags & CharacterDataInventorySectionFlags[inventoryIndex]) == 0)
@@ -1059,23 +1068,35 @@ namespace HaCreator.MapSimulator.Interaction
                         continue;
                     }
 
+                    InventoryType inventoryType = CharacterDataInventoryOrder[inventoryIndex];
                     if (inventoryIndex == 0)
                     {
-                        if (!TryDecodeCharacterDataEquipInventory(reader, decoratedSnapshot, out PacketCharacterDataSnapshot equipDecoratedSnapshot))
+                        if (!TryDecodeCharacterDataEquipInventory(
+                            reader,
+                            decoratedSnapshot,
+                            out PacketCharacterDataSnapshot equipDecoratedSnapshot,
+                            out IReadOnlyList<PacketCharacterDataItemSlot> equipItems))
                         {
                             return false;
                         }
 
                         decoratedSnapshot = equipDecoratedSnapshot;
+                        inventoryItemsByType[inventoryType] = equipItems;
                         continue;
                     }
 
-                    if (!TrySkipCharacterDataInventoryEntries(reader))
+                    if (!TryDecodeCharacterDataInventoryEntries(reader, inventoryType, out IReadOnlyList<PacketCharacterDataItemSlot> inventoryItems))
                     {
                         return false;
                     }
+
+                    inventoryItemsByType[inventoryType] = inventoryItems;
                 }
 
+                decoratedSnapshot = decoratedSnapshot with
+                {
+                    InventoryItemsByType = inventoryItemsByType
+                };
                 return true;
             }
             catch (Exception) when (reader.BaseStream.CanSeek)
@@ -1089,14 +1110,17 @@ namespace HaCreator.MapSimulator.Interaction
         private static bool TryDecodeCharacterDataEquipInventory(
             BinaryReader reader,
             PacketCharacterDataSnapshot snapshot,
-            out PacketCharacterDataSnapshot decoratedSnapshot)
+            out PacketCharacterDataSnapshot decoratedSnapshot,
+            out IReadOnlyList<PacketCharacterDataItemSlot> decodedItems)
         {
             decoratedSnapshot = snapshot;
+            decodedItems = Array.Empty<PacketCharacterDataItemSlot>();
             long startPosition = reader.BaseStream.Position;
             try
             {
                 Dictionary<byte, int> equipped = new();
                 Dictionary<byte, int> cashEquipped = new();
+                List<PacketCharacterDataItemSlot> items = new();
                 while (true)
                 {
                     short position = reader.ReadInt16();
@@ -1105,11 +1129,12 @@ namespace HaCreator.MapSimulator.Interaction
                         break;
                     }
 
-                    if (!TryDecodeCharacterDataItemSlot(reader, out PacketCharacterDataItemSlot itemSlot))
+                    if (!TryDecodeCharacterDataItemSlot(reader, InventoryType.EQUIP, position, out PacketCharacterDataItemSlot itemSlot))
                     {
                         return false;
                     }
 
+                    items.Add(itemSlot);
                     if (itemSlot.ItemId <= 0)
                     {
                         continue;
@@ -1179,43 +1204,58 @@ namespace HaCreator.MapSimulator.Interaction
                         PetIds = Array.Empty<int>()
                     }
                 };
+                decodedItems = items;
                 return true;
             }
             catch (Exception) when (reader.BaseStream.CanSeek)
             {
                 reader.BaseStream.Position = startPosition;
                 decoratedSnapshot = snapshot;
+                decodedItems = Array.Empty<PacketCharacterDataItemSlot>();
                 return false;
             }
         }
 
-        private static bool TrySkipCharacterDataInventoryEntries(BinaryReader reader)
+        private static bool TryDecodeCharacterDataInventoryEntries(
+            BinaryReader reader,
+            InventoryType inventoryType,
+            out IReadOnlyList<PacketCharacterDataItemSlot> decodedItems)
         {
+            decodedItems = Array.Empty<PacketCharacterDataItemSlot>();
             long startPosition = reader.BaseStream.Position;
             try
             {
+                List<PacketCharacterDataItemSlot> items = new();
                 while (true)
                 {
                     short position = reader.ReadInt16();
                     if (position == 0)
                     {
+                        decodedItems = items;
                         return true;
                     }
 
-                    if (!TryDecodeCharacterDataItemSlot(reader, out _))
+                    if (!TryDecodeCharacterDataItemSlot(reader, inventoryType, position, out PacketCharacterDataItemSlot itemSlot))
                     {
                         return false;
                     }
+
+                    items.Add(itemSlot);
                 }
             }
             catch (Exception) when (reader.BaseStream.CanSeek)
             {
                 reader.BaseStream.Position = startPosition;
+                decodedItems = Array.Empty<PacketCharacterDataItemSlot>();
                 return false;
             }
         }
 
-        private static bool TryDecodeCharacterDataItemSlot(BinaryReader reader, out PacketCharacterDataItemSlot itemSlot)
+        private static bool TryDecodeCharacterDataItemSlot(
+            BinaryReader reader,
+            InventoryType inventoryType,
+            short inventoryPosition,
+            out PacketCharacterDataItemSlot itemSlot)
         {
             itemSlot = default;
             long startPosition = reader.BaseStream.Position;
@@ -1224,9 +1264,10 @@ namespace HaCreator.MapSimulator.Interaction
                 byte itemType = reader.ReadByte();
                 int itemId = reader.ReadInt32();
                 bool hasCashItemSerialNumber = reader.ReadByte() != 0;
+                long cashItemSerialNumber = 0;
                 if (hasCashItemSerialNumber)
                 {
-                    _ = reader.ReadInt64();
+                    cashItemSerialNumber = reader.ReadInt64();
                 }
 
                 _ = reader.ReadInt64(); // dateExpire
@@ -1283,7 +1324,13 @@ namespace HaCreator.MapSimulator.Interaction
                         return false;
                 }
 
-                itemSlot = new PacketCharacterDataItemSlot(itemType, itemId);
+                itemSlot = new PacketCharacterDataItemSlot(
+                    inventoryType,
+                    inventoryPosition,
+                    itemType,
+                    itemId,
+                    hasCashItemSerialNumber,
+                    cashItemSerialNumber);
                 return true;
             }
             catch (Exception) when (reader.BaseStream.CanSeek)
@@ -1347,7 +1394,7 @@ namespace HaCreator.MapSimulator.Interaction
                 decoratedSnapshot = preMapTransferSnapshot;
 
                 long preKnownTailPosition = reader.BaseStream.Position;
-                ulong opaquePreMapTransferFlags = characterDataFlags & CharacterDataKnownOpaquePreMapTransferFlags;
+                ulong opaquePreMapTransferFlags = characterDataFlags & CharacterDataOpaquePreMapTransferFlag;
                 if (opaquePreMapTransferFlags == 0)
                 {
                     if (!TryDecodeKnownCharacterDataTailSectionsAfterOpaqueMiddleSections(
@@ -1412,6 +1459,33 @@ namespace HaCreator.MapSimulator.Interaction
             long startPosition = reader.BaseStream.Position;
             try
             {
+                decoratedSnapshot = snapshot with
+                {
+                    OpaquePreMapTransferFlags = opaquePreMapTransferFlags,
+                    OpaquePreMapTransferSectionByteCount = opaquePreMapTransferBytes?.Length ?? 0,
+                    OpaquePreMapTransferSectionBytes = opaquePreMapTransferBytes ?? Array.Empty<byte>()
+                };
+
+                if ((characterDataFlags & CharacterDataQuestRecordFlag) != 0)
+                {
+                    IReadOnlyDictionary<int, string> questRecords = ReadCharacterDataQuestStringRecords(reader);
+                    decoratedSnapshot = decoratedSnapshot with
+                    {
+                        QuestRecordCount = questRecords.Count,
+                        QuestRecordValues = questRecords
+                    };
+                }
+
+                if ((characterDataFlags & CharacterDataShortFileTimeRecordFlag) != 0)
+                {
+                    IReadOnlyDictionary<int, long> shortFileTimeRecords = ReadCharacterDataShortFileTimeRecords(reader);
+                    decoratedSnapshot = decoratedSnapshot with
+                    {
+                        ShortFileTimeRecordCount = shortFileTimeRecords.Count,
+                        ShortFileTimeRecords = shortFileTimeRecords
+                    };
+                }
+
                 if (!TryDecodeCharacterDataLeadingTailSections(
                         reader,
                         characterDataFlags,
@@ -1424,18 +1498,15 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
-                decoratedSnapshot = snapshot with
+                decoratedSnapshot = decoratedSnapshot with
                 {
-                    OpaquePreMapTransferFlags = opaquePreMapTransferFlags,
-                    OpaquePreMapTransferSectionByteCount = opaquePreMapTransferBytes?.Length ?? 0,
-                    OpaquePreMapTransferSectionBytes = opaquePreMapTransferBytes ?? Array.Empty<byte>(),
                     MiniGameRecordCount = miniGameRecordCount,
                     CoupleRecordCount = coupleRecordCount,
                     FriendRecordCount = friendRecordCount,
                     MarriageRecordCount = marriageRecordCount
                 };
 
-                if ((characterDataFlags & MapTransferAuthoritativeBootstrapDecoder.CharacterDataMapTransferFlag) != 0)
+                if ((characterDataFlags & CharacterDataMapTransferFlag) != 0)
                 {
                     decoratedSnapshot = decoratedSnapshot with
                     {
@@ -1537,7 +1608,7 @@ namespace HaCreator.MapSimulator.Interaction
                 int skillExpirationRecordCount = 0;
                 int skillCooldownRecordCount = 0;
 
-                if ((characterDataFlags & 0x100UL) != 0)
+                if ((characterDataFlags & CharacterDataSkillRecordFlag) != 0)
                 {
                     ReadCharacterDataSkillRecordSection(
                         reader,
@@ -1546,13 +1617,13 @@ namespace HaCreator.MapSimulator.Interaction
                     skillRecordCount = skillRecordEntries?.Count ?? 0;
                 }
 
-                if ((characterDataFlags & 0x200UL) != 0)
+                if ((characterDataFlags & CharacterDataSkillExpirationFlag) != 0)
                 {
                     skillExpirations = ReadCharacterDataSkillExpirationRecords(reader);
                     skillExpirationRecordCount = skillExpirations.Count;
                 }
 
-                if ((characterDataFlags & 0x4000UL) != 0)
+                if ((characterDataFlags & CharacterDataSkillCooldownFlag) != 0)
                 {
                     skillCooldowns = ReadCharacterDataInt16ValueRecords(reader);
                     skillCooldownRecordCount = skillCooldowns.Count;
@@ -1694,14 +1765,14 @@ namespace HaCreator.MapSimulator.Interaction
             long startPosition = reader.BaseStream.Position;
             try
             {
-                if ((characterDataFlags & 0x400UL) != 0 &&
+                if ((characterDataFlags & CharacterDataMiniGameRecordFlag) != 0 &&
                     (leadingLayout is CharacterDataLeadingTailLayout.MiniGameOnly or CharacterDataLeadingTailLayout.MiniGameAndRelationships))
                 {
                     miniGameRecordCount = reader.ReadUInt16();
                     SkipCharacterDataFixedRecordGroup(reader, miniGameRecordCount, CharacterDataMiniGameRecordByteLength);
                 }
 
-                if ((characterDataFlags & 0x800UL) != 0 &&
+                if ((characterDataFlags & CharacterDataRelationshipRecordFlag) != 0 &&
                     (leadingLayout is CharacterDataLeadingTailLayout.RelationshipsOnly or CharacterDataLeadingTailLayout.MiniGameAndRelationships))
                 {
                     coupleRecordCount = reader.ReadUInt16();
@@ -1714,13 +1785,13 @@ namespace HaCreator.MapSimulator.Interaction
                     SkipCharacterDataFixedRecordGroup(reader, marriageRecordCount, CharacterDataMarriageRecordByteLength);
                 }
 
-                if ((characterDataFlags & 0x400UL) == 0 &&
+                if ((characterDataFlags & CharacterDataMiniGameRecordFlag) == 0 &&
                     (leadingLayout is CharacterDataLeadingTailLayout.MiniGameOnly or CharacterDataLeadingTailLayout.MiniGameAndRelationships))
                 {
                     return false;
                 }
 
-                if ((characterDataFlags & 0x800UL) == 0 &&
+                if ((characterDataFlags & CharacterDataRelationshipRecordFlag) == 0 &&
                     (leadingLayout is CharacterDataLeadingTailLayout.RelationshipsOnly or CharacterDataLeadingTailLayout.MiniGameAndRelationships))
                 {
                     return false;
@@ -2064,6 +2135,7 @@ namespace HaCreator.MapSimulator.Interaction
         string LinkedCharacterName,
         int? Meso = null,
         IReadOnlyDictionary<InventoryType, int> InventorySlotLimits = null,
+        IReadOnlyDictionary<InventoryType, IReadOnlyList<PacketCharacterDataItemSlot>> InventoryItemsByType = null,
         LoginAvatarLook AvatarLook = null,
         int? PreInventoryHeaderValue1 = null,
         int? PreInventoryHeaderValue2 = null,
@@ -2097,7 +2169,13 @@ namespace HaCreator.MapSimulator.Interaction
         int QuestCompleteRecordCount = 0,
         int VisitorQuestRecordCount = 0);
 
-    internal readonly record struct PacketCharacterDataItemSlot(byte ItemType, int ItemId);
+    internal readonly record struct PacketCharacterDataItemSlot(
+        InventoryType InventoryType,
+        short InventoryPosition,
+        byte ItemType,
+        int ItemId,
+        bool HasCashItemSerialNumber,
+        long CashItemSerialNumber);
 
     internal readonly record struct PacketSetFieldPacket(
         IReadOnlyDictionary<uint, int> ClientOptions,

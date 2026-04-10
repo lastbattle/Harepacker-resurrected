@@ -74,6 +74,28 @@ namespace HaCreator.MapSimulator.Loaders
                 rootHitFrames);
         }
 
+        internal static WzImageProperty ResolveReactorFrameSourceProperty(WzImageProperty property)
+        {
+            WzImageProperty resolvedProperty = WzInfoTools.GetRealProperty(property);
+            if (resolvedProperty == null)
+            {
+                return null;
+            }
+
+            if (resolvedProperty is WzCanvasProperty || HasDirectNumericFrames(resolvedProperty))
+            {
+                return resolvedProperty;
+            }
+
+            WzImageProperty nestedDefaultFrames = WzInfoTools.GetRealProperty(resolvedProperty["0"]);
+            if (nestedDefaultFrames is WzCanvasProperty || HasDirectNumericFrames(nestedDefaultFrames))
+            {
+                return resolvedProperty;
+            }
+
+            return null;
+        }
+
         private static Dictionary<int, List<IDXObject>> LoadReactorStateFrames(
             TexturePool texturePool,
             WzImage linkedReactorImage,
@@ -183,6 +205,59 @@ namespace HaCreator.MapSimulator.Loaders
             return stateHitFrames;
         }
 
+        private static Dictionary<int, WzImageProperty> GetReactorStateLayerProperties(WzImage linkedReactorImage)
+        {
+            Dictionary<int, WzImageProperty> stateProperties = new Dictionary<int, WzImageProperty>();
+            if (linkedReactorImage == null)
+            {
+                return stateProperties;
+            }
+
+            IEnumerable<int> stateIds = linkedReactorImage.WzProperties
+                .Select(prop => prop?.Name)
+                .Where(name => int.TryParse(name, out _))
+                .Select(int.Parse)
+                .OrderBy(state => state);
+
+            foreach (int state in stateIds)
+            {
+                WzImageProperty stateProperty = ResolveReactorFrameSourceProperty(linkedReactorImage[state.ToString()]);
+                if (stateProperty != null)
+                {
+                    stateProperties[state] = stateProperty;
+                }
+            }
+
+            return stateProperties;
+        }
+
+        private static Dictionary<int, WzImageProperty> GetReactorStateHitProperties(WzImage linkedReactorImage)
+        {
+            Dictionary<int, WzImageProperty> hitProperties = new Dictionary<int, WzImageProperty>();
+            if (linkedReactorImage == null)
+            {
+                return hitProperties;
+            }
+
+            IEnumerable<int> stateIds = linkedReactorImage.WzProperties
+                .Select(prop => prop?.Name)
+                .Where(name => int.TryParse(name, out _))
+                .Select(int.Parse)
+                .OrderBy(state => state);
+
+            foreach (int state in stateIds)
+            {
+                WzImageProperty hitProperty = ResolveReactorFrameSourceProperty(
+                    WzInfoTools.GetRealProperty(linkedReactorImage[state.ToString()])?["hit"]);
+                if (hitProperty != null)
+                {
+                    hitProperties[state] = hitProperty;
+                }
+            }
+
+            return hitProperties;
+        }
+
         private static Dictionary<(int State, int ProperEventIndex), List<IDXObject>> LoadReactorIndexedHitFrames(
             TexturePool texturePool,
             WzImage linkedReactorImage,
@@ -232,6 +307,46 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return indexedHitFrames;
+        }
+
+        private static Dictionary<(int State, int ProperEventIndex), WzImageProperty> GetReactorIndexedHitProperties(WzImage linkedReactorImage)
+        {
+            Dictionary<(int State, int ProperEventIndex), WzImageProperty> indexedHitProperties = new Dictionary<(int State, int ProperEventIndex), WzImageProperty>();
+            if (linkedReactorImage == null)
+            {
+                return indexedHitProperties;
+            }
+
+            IEnumerable<int> stateIds = linkedReactorImage.WzProperties
+                .Select(prop => prop?.Name)
+                .Where(name => int.TryParse(name, out _))
+                .Select(int.Parse)
+                .OrderBy(state => state);
+
+            foreach (int state in stateIds)
+            {
+                WzImageProperty stateProperty = WzInfoTools.GetRealProperty(linkedReactorImage[state.ToString()]);
+                if (stateProperty?.WzProperties == null)
+                {
+                    continue;
+                }
+
+                foreach (WzImageProperty child in stateProperty.WzProperties)
+                {
+                    if (!int.TryParse(child?.Name, out int properEventIndex))
+                    {
+                        continue;
+                    }
+
+                    WzImageProperty hitProperty = ResolveReactorFrameSourceProperty(child);
+                    if (hitProperty != null)
+                    {
+                        indexedHitProperties[(state, properEventIndex)] = hitProperty;
+                    }
+                }
+            }
+
+            return indexedHitProperties;
         }
 
         private static List<IDXObject> LoadReactorFramesForProperty(

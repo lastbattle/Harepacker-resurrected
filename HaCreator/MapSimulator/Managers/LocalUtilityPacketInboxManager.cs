@@ -46,6 +46,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int FollowCharacterFailedPacketType = 1009;
         public const int RadioSchedulePacketType = 1010;
         public const int AntiMacroResultPacketType = 1011;
+        public const int DragonBoxClientPacketType = 164;
         public const int FollowCharacterPacketType = 1012;
         public const int SetDirectionModePacketType = 1013;
         public const int SetStandAloneModePacketType = 1014;
@@ -103,8 +104,13 @@ namespace HaCreator.MapSimulator.Managers
         public const int RepeatSkillModeEndAckPacketType = PacketOwnedMechanicRepeatSkillRuntime.RepeatSkillModeEndAckPacketType;
         public const int Sg88ManualAttackConfirmPacketType = PacketOwnedMechanicRepeatSkillRuntime.Sg88ManualAttackConfirmPacketType;
         public const int MechanicEquipStatePacketType = 1023;
-        public const int PetConsumeResultPacketType = 1024;
+        public const int PetConsumeResultPacketType = 1026;
         public const int RepairDurabilityResultPacketType = 1025;
+        public const int QuestRewardRaiseOwnerSyncPacketType = 1026;
+        public const int QuestRewardRaisePutItemAddResultPacketType = 1027;
+        public const int QuestRewardRaisePutItemReleaseResultPacketType = 1028;
+        public const int QuestRewardRaisePutItemConfirmResultPacketType = 1029;
+        public const int QuestRewardRaiseOwnerDestroyResultPacketType = 1030;
 
         private readonly ConcurrentQueue<LocalUtilityPacketInboxMessage> _pendingMessages = new();
         private readonly object _listenerLock = new();
@@ -395,6 +401,15 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("onfollowcharacterfailed", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = FollowCharacterFailedPacketType;
+                return true;
+            }
+
+            if (token.Equals("dragonbox", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("dragonballbox", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("ondragonballbox", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("ondragonbox", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = DragonBoxClientPacketType;
                 return true;
             }
 
@@ -757,6 +772,46 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("raiseownersync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseowner", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseroot", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestRewardRaiseOwnerSyncPacketType;
+                return true;
+            }
+
+            if (token.Equals("raiseputitemadd", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseaddresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raisepieceadd", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestRewardRaisePutItemAddResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("raiseputitemrelease", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raisereleaseresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raisepieceremove", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestRewardRaisePutItemReleaseResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("raiseputitemconfirm", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseconfirmresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseconfirm", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestRewardRaisePutItemConfirmResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("raisedestroy", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseownerdestroy", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raisedestroyresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestRewardRaiseOwnerDestroyResultPacketType;
+                return true;
+            }
+
             if (token.Equals("skillcooltime", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("skillcooltimeset", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("cooltime", StringComparison.OrdinalIgnoreCase)
@@ -839,6 +894,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == RandomMesobagSucceededPacketType
                 || packetType == RandomMesobagFailedPacketType
                 || packetType == RandomEmotionPacketType
+                || packetType == DragonBoxClientPacketType
                 || packetType == RadioSchedulePacketType
                 || packetType == RadioScheduleClientPacketType
                 || packetType == LogoutGiftClientPacketType
@@ -873,7 +929,12 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == ParcelDialogPacketType
                 || packetType == TrunkDialogPacketType
                 || packetType == MessengerDispatchPacketType
-                || packetType == MarriageResultPacketType;
+                || packetType == MarriageResultPacketType
+                || packetType == QuestRewardRaiseOwnerSyncPacketType
+                || packetType == QuestRewardRaisePutItemAddResultPacketType
+                || packetType == QuestRewardRaisePutItemReleaseResultPacketType
+                || packetType == QuestRewardRaisePutItemConfirmResultPacketType
+                || packetType == QuestRewardRaiseOwnerDestroyResultPacketType;
         }
 
         public static bool TryDecodeOpcodeFramedPacket(byte[] rawPacket, out int packetType, out byte[] payload, out string error)
@@ -1009,6 +1070,7 @@ namespace HaCreator.MapSimulator.Managers
                 MesoGiveFailedPacketType => "OnMesoGive_Failed(237)",
                 RandomMesobagSucceededPacketType => "OnRandomMesobag_Succeeded(238)",
                 RandomMesobagFailedPacketType => "OnRandomMesobag_Failed(239)",
+                DragonBoxClientPacketType => "OnDragonBallBox(164)",
                 SkillLearnItemResultClientPacketType => "OnSkillLearnItemResult(50)",
                 PlayEventSoundClientPacketType => "PlayEventSound(246)",
                 PlayMinigameSoundClientPacketType => "PlayMinigameSound(247)",
@@ -1053,10 +1115,15 @@ namespace HaCreator.MapSimulator.Managers
                 MarriageResultPacketType => "MarriageResult OnMarriageResult(1018)",
                 ItemMakerHiddenRecipeUnlockPacketType => "ItemMakerHiddenRecipeUnlock(1019)",
                 ItemMakerSessionPacketType => "ItemMakerSession(1024)",
+                PetConsumeResultPacketType => "PetConsumeResult(1026) / RaiseOwnerSync(1026)",
                 RepeatSkillModeEndAckPacketType => "RepeatSkillModeEndAck(1020)",
                 Sg88ManualAttackConfirmPacketType => "Sg88ManualAttackConfirm(1021)",
                 MechanicEquipStatePacketType => "MechanicEquipState(1023)",
                 RepairDurabilityResultPacketType => "RepairDurabilityResult(1025)",
+                QuestRewardRaisePutItemAddResultPacketType => "RaisePutItemAddResult(1027)",
+                QuestRewardRaisePutItemReleaseResultPacketType => "RaisePutItemReleaseResult(1028)",
+                QuestRewardRaisePutItemConfirmResultPacketType => "RaisePutItemConfirmResult(1029)",
+                QuestRewardRaiseOwnerDestroyResultPacketType => "RaiseOwnerDestroyResult(1030)",
                 _ => $"packet {packetType}"
             };
         }

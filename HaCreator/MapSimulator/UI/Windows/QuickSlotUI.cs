@@ -87,6 +87,8 @@ namespace HaCreator.MapSimulator.UI
             new[] { "^1", "^2", "^3", "^4", "^5", "^6", "^7", "^8" }
         };
         private readonly Dictionary<int, string[]> _barKeyLabelOverrides = new();
+        private readonly QuickSlotPresentationState[] _primaryQuickSlotPresentationStates = new QuickSlotPresentationState[SkillManager.PRIMARY_SLOT_COUNT];
+        private bool _hasPrimaryQuickSlotPresentationSnapshot;
 
         private enum DragBindingType
         {
@@ -94,6 +96,47 @@ namespace HaCreator.MapSimulator.UI
             Skill,
             Macro,
             Item
+        }
+
+        private enum QuickSlotPresentationBindingType
+        {
+            None,
+            Skill,
+            Macro,
+            Item
+        }
+
+        private readonly struct QuickSlotPresentationState : IEquatable<QuickSlotPresentationState>
+        {
+            public QuickSlotPresentationState(QuickSlotPresentationBindingType bindingType, int id, int quantity)
+            {
+                BindingType = bindingType;
+                Id = id;
+                Quantity = quantity;
+            }
+
+            public QuickSlotPresentationBindingType BindingType { get; }
+
+            public int Id { get; }
+
+            public int Quantity { get; }
+
+            public bool Equals(QuickSlotPresentationState other)
+            {
+                return BindingType == other.BindingType &&
+                       Id == other.Id &&
+                       Quantity == other.Quantity;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is QuickSlotPresentationState other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                return HashCode.Combine((int)BindingType, Id, Quantity);
+            }
         }
         #endregion
 
@@ -263,7 +306,7 @@ namespace HaCreator.MapSimulator.UI
             if (_skillManager == null)
                 return;
 
-            _skillManager.RevalidateHotkeys();
+            ValidateVisibleQuickSlotPresentation();
 
             int slotCount = SlotCount;
             int slotOffset = SlotOffset;
@@ -1302,7 +1345,7 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Update(gameTime);
 
-            _skillManager?.RevalidateHotkeys();
+            ValidateVisibleQuickSlotPresentation();
 
             if (_isDragging && !IsCurrentDragBindingStillValid())
             {
@@ -1387,6 +1430,68 @@ namespace HaCreator.MapSimulator.UI
                 DragBindingType.Item => _skillManager?.TrySetItemHotkey(targetSlot, _dragItemId, _dragItemInventoryType) == true,
                 _ => false
             };
+        }
+
+        private void ValidateVisibleQuickSlotPresentation()
+        {
+            if (_skillManager == null)
+                return;
+
+            if (_currentBar == BAR_PRIMARY)
+            {
+                CompareValidatePrimaryQuickSlotPresentation();
+                return;
+            }
+
+            _skillManager.RevalidateHotkeys(SlotOffset, SlotCount);
+        }
+
+        private bool CompareValidatePrimaryQuickSlotPresentation()
+        {
+            if (_skillManager == null)
+            {
+                bool alreadyEmpty = !_hasPrimaryQuickSlotPresentationSnapshot ||
+                                   _primaryQuickSlotPresentationStates.All(static state => state.Equals(default));
+                Array.Clear(_primaryQuickSlotPresentationStates, 0, _primaryQuickSlotPresentationStates.Length);
+                _hasPrimaryQuickSlotPresentationSnapshot = false;
+                return alreadyEmpty;
+            }
+
+            _skillManager.RevalidateHotkeys(0, SkillManager.PRIMARY_SLOT_COUNT);
+
+            bool same = _hasPrimaryQuickSlotPresentationSnapshot;
+            for (int slotIndex = 0; slotIndex < SkillManager.PRIMARY_SLOT_COUNT; slotIndex++)
+            {
+                QuickSlotPresentationState currentState = BuildPrimaryQuickSlotPresentationState(slotIndex);
+                if (!_primaryQuickSlotPresentationStates[slotIndex].Equals(currentState))
+                {
+                    same = false;
+                    _primaryQuickSlotPresentationStates[slotIndex] = currentState;
+                }
+            }
+
+            _hasPrimaryQuickSlotPresentationSnapshot = true;
+            return same;
+        }
+
+        private QuickSlotPresentationState BuildPrimaryQuickSlotPresentationState(int slotIndex)
+        {
+            int skillId = _skillManager?.GetHotkeySkill(slotIndex) ?? 0;
+            if (skillId > 0)
+                return new QuickSlotPresentationState(QuickSlotPresentationBindingType.Skill, skillId, 0);
+
+            int macroIndex = _skillManager?.GetHotkeyMacroIndex(slotIndex) ?? -1;
+            if (macroIndex >= 0)
+                return new QuickSlotPresentationState(QuickSlotPresentationBindingType.Macro, macroIndex, 0);
+
+            int itemId = _skillManager?.GetHotkeyItem(slotIndex) ?? 0;
+            if (itemId > 0)
+            {
+                int itemCount = _skillManager?.GetHotkeyItemCount(slotIndex) ?? 0;
+                return new QuickSlotPresentationState(QuickSlotPresentationBindingType.Item, itemId, itemCount);
+            }
+
+            return default;
         }
 
         private void RestoreBinding(int slotIndex, int skillId, int macroIndex, int itemId, InventoryType inventoryType)

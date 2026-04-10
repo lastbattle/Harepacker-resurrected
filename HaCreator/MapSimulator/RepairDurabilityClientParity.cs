@@ -9,11 +9,24 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Managers;
 using MapleLib.WzLib;
+using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator
 {
     internal static class RepairDurabilityClientParity
     {
+        internal readonly struct HoverTooltipPlacement
+        {
+            public HoverTooltipPlacement(Rectangle bounds, int frameIndex)
+            {
+                Bounds = bounds;
+                FrameIndex = frameIndex;
+            }
+
+            public Rectangle Bounds { get; }
+            public int FrameIndex { get; }
+        }
+
         internal readonly struct ResultPayload
         {
             public ResultPayload(bool success, int? reasonCode, short? operationCode, string statusText)
@@ -55,7 +68,11 @@ namespace HaCreator.MapSimulator
                 clientShopAction = 1;
             }
 
-            yield return clientShopAction.ToString(CultureInfo.InvariantCulture);
+            foreach (string candidate in NpcClientActionSetLoader.EnumerateClientActionNameCandidates(clientShopAction))
+            {
+                yield return candidate;
+            }
+
             foreach (string candidate in ExplicitNpcActionFallbacks)
             {
                 yield return candidate;
@@ -191,6 +208,55 @@ namespace HaCreator.MapSimulator
             return payload;
         }
 
+        internal static HoverTooltipPlacement ResolveHoverTooltipPlacement(
+            Point anchorPoint,
+            int tooltipWidth,
+            int tooltipHeight,
+            int renderWidth,
+            int renderHeight,
+            int viewportPadding,
+            int cursorGap)
+        {
+            Rectangle[] candidates =
+            {
+                new(anchorPoint.X, anchorPoint.Y, tooltipWidth, tooltipHeight),
+                new(anchorPoint.X - tooltipWidth, anchorPoint.Y, tooltipWidth, tooltipHeight),
+                new(anchorPoint.X, anchorPoint.Y - tooltipHeight - cursorGap, tooltipWidth, tooltipHeight),
+                new(anchorPoint.X - tooltipWidth, anchorPoint.Y - tooltipHeight - cursorGap, tooltipWidth, tooltipHeight)
+            };
+
+            Rectangle bestRect = candidates[0];
+            int bestFrame = ResolveHoverTooltipFrameIndex(anchorPoint, bestRect);
+            int bestOverflow = int.MaxValue;
+
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                Rectangle candidate = candidates[i];
+                int overflow = ComputeTooltipOverflow(candidate, renderWidth, renderHeight, viewportPadding);
+                int frameIndex = ResolveHoverTooltipFrameIndex(anchorPoint, candidate);
+                if (overflow == 0)
+                {
+                    return new HoverTooltipPlacement(candidate, frameIndex);
+                }
+
+                if (overflow < bestOverflow)
+                {
+                    bestOverflow = overflow;
+                    bestRect = candidate;
+                    bestFrame = frameIndex;
+                }
+            }
+
+            return new HoverTooltipPlacement(
+                ClampTooltipRect(bestRect, renderWidth, renderHeight, viewportPadding),
+                bestFrame);
+        }
+
+        internal static bool MatchesPendingResultOperation(short pendingOperationCode, short? resultOperationCode)
+        {
+            return !resultOperationCode.HasValue || resultOperationCode.Value == pendingOperationCode;
+        }
+
         internal static bool TryDecodeSyntheticResultPayload(
             byte[] payload,
             out ResultPayload result,
@@ -244,18 +310,104 @@ namespace HaCreator.MapSimulator
                 return string.Empty;
             }
 
-            int terminatorIndex = payload.IndexOf((byte)0);
-            if (terminatorIndex >= 0)
+            if (LooksLikeUtf16Le(payload))
             {
-                payload = payload[..terminatorIndex];
+                int terminatorIndex = payload.IndexOf(stackalloc byte[] { 0, 0 });
+                if (terminatorIndex >= 0)
+                {
+                    payload = payload[..terminatorIndex];
+                }
+
+                if ((payload.Length & 1) != 0)
+                {
+                    payload = payload[..^1];
+                }
+
+                return payload.Length <= 0
+                    ? string.Empty
+                    : Encoding.Unicode.GetString(payload).Trim();
             }
 
-            if (payload.Length <= 0)
+            int utf8TerminatorIndex = payload.IndexOf((byte)0);
+            if (utf8TerminatorIndex >= 0)
             {
-                return string.Empty;
+                payload = payload[..utf8TerminatorIndex];
             }
 
             return Encoding.UTF8.GetString(payload).Trim();
+        }
+
+        private static bool LooksLikeUtf16Le(ReadOnlySpan<byte> payload)
+        {
+            if (payload.Length < 2 || (payload.Length & 1) != 0)
+            {
+                return false;
+            }
+
+            int zeroCount = 0;
+            for (int i = 1; i < payload.Length; i += 2)
+            {
+                if (payload[i] == 0)
+                {
+                    zeroCount++;
+                }
+            }
+
+            return zeroCount >= payload.Length / 4;
+        }
+
+        private static int ResolveHoverTooltipFrameIndex(Point anchorPoint, Rectangle rect)
+        {
+            bool drawsLeftOfAnchor = rect.X < anchorPoint.X;
+            bool drawsBelowAnchor = rect.Y >= anchorPoint.Y;
+
+            if (drawsLeftOfAnchor)
+            {
+                return drawsBelowAnchor ? 2 : 0;
+            }
+
+            return 1;
+        }
+
+        private static int ComputeTooltipOverflow(Rectangle rect, int renderWidth, int renderHeight, int viewportPadding)
+        {
+            int overflow = 0;
+
+            if (rect.Left < viewportPadding)
+            {
+                overflow += viewportPadding - rect.Left;
+            }
+
+            if (rect.Top < viewportPadding)
+            {
+                overflow += viewportPadding - rect.Top;
+            }
+
+            if (rect.Right > renderWidth - viewportPadding)
+            {
+                overflow += rect.Right - (renderWidth - viewportPadding);
+            }
+
+            if (rect.Bottom > renderHeight - viewportPadding)
+            {
+                overflow += rect.Bottom - (renderHeight - viewportPadding);
+            }
+
+            return overflow;
+        }
+
+        private static Rectangle ClampTooltipRect(Rectangle rect, int renderWidth, int renderHeight, int viewportPadding)
+        {
+            int minX = viewportPadding;
+            int minY = viewportPadding;
+            int maxX = Math.Max(minX, renderWidth - viewportPadding - rect.Width);
+            int maxY = Math.Max(minY, renderHeight - viewportPadding - rect.Height);
+
+            return new Rectangle(
+                Math.Clamp(rect.X, minX, maxX),
+                Math.Clamp(rect.Y, minY, maxY),
+                rect.Width,
+                rect.Height);
         }
     }
 }

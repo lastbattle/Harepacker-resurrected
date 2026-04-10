@@ -110,11 +110,6 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty storeBankProperty = uiWindow2Image?["StoreBank"] as WzSubProperty;
             Texture2D frameTexture = LoadCanvasTexture(storeBankProperty, "backgrnd", device)
                 ?? CreatePlaceholderWindowTexture(device, 210, 330, "Store Bank");
-            WzImage statusBarImage = global::HaCreator.Program.FindImage("ui", "StatusBar.img");
-            WzImage cashShopImage = global::HaCreator.Program.FindImage("ui", "CashShop.img");
-            Texture2D[] moneyDigits = LoadDigitStrip(statusBarImage?["number"] as WzSubProperty, device);
-            Texture2D moneyCommaTexture = LoadCanvasTexture(statusBarImage?["number"] as WzSubProperty, "comma", device)
-                ?? LoadCanvasTexture(statusBarImage?["number"] as WzSubProperty, "slash", device);
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
             UIObject exitButton = LoadButton(storeBankProperty, "BtExit", btClickSound, btOverSound, device);
@@ -127,9 +122,6 @@ namespace HaCreator.MapSimulator.Loaders
                 exitButton,
                 LoadCanvasTexture(storeBankProperty, "en", device),
                 LoadVerticalScrollbarSkin(basicImage?["VScr9"] as WzSubProperty, device),
-                LoadCanvasTexture(cashShopImage?["CashItem"] as WzSubProperty, "0", device),
-                moneyDigits,
-                moneyCommaTexture,
                 device)
             {
                 Position = position
@@ -143,22 +135,6 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return window;
-        }
-
-        private static Texture2D[] LoadDigitStrip(WzSubProperty digitProperty, GraphicsDevice device)
-        {
-            Texture2D[] digits = new Texture2D[10];
-            if (digitProperty == null)
-            {
-                return digits;
-            }
-
-            for (int i = 0; i < digits.Length; i++)
-            {
-                digits[i] = LoadCanvasTexture(digitProperty, i.ToString(), device);
-            }
-
-            return digits;
         }
 
         private static void PositionButtonFromOrigin(UIObject button, WzCanvasProperty canvas)

@@ -948,6 +948,7 @@ namespace HaCreator.MapSimulator
                 UpdateReviveOwnerState(currTickCount);
                 UpdatePacketOwnedPetConsumeMpRuntime(currTickCount);
                 SyncPacketOwnedLocalFollowCharacter();
+                SyncPacketOwnedAnimationDisplayerFollow();
 
 
                 if (_gameState.IsPlayerInputEnabled && _playerManager.IsPlayerActive)

@@ -60,7 +60,12 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal static class SocialRoomEmployeePoolCodec
     {
-        internal readonly record struct RoutingHint(int EmployerId, byte MiniRoomType);
+        internal readonly record struct RoutingHint(
+            int EmployerId,
+            byte MiniRoomType,
+            int MiniRoomSerial,
+            string OwnerName,
+            string BalloonTitle);
         internal readonly record struct EnterFieldPacket(
             int EmployerId,
             int TemplateId,
@@ -241,7 +246,12 @@ namespace HaCreator.MapSimulator.Interaction
                         return false;
                     }
 
-                    hint = new RoutingHint(enterPacket.EmployerId, enterPacket.MiniRoomType);
+                    hint = new RoutingHint(
+                        enterPacket.EmployerId,
+                        enterPacket.MiniRoomType,
+                        enterPacket.MiniRoomSerial,
+                        enterPacket.NameTag,
+                        enterPacket.BalloonTitle);
                     return true;
 
                 case HaCreator.MapSimulator.Managers.SocialRoomEmployeeOfficialSessionBridgeManager.EmployeeLeaveFieldOpcode:
@@ -250,7 +260,7 @@ namespace HaCreator.MapSimulator.Interaction
                         return false;
                     }
 
-                    hint = new RoutingHint(leavePacket.EmployerId, 0);
+                    hint = new RoutingHint(leavePacket.EmployerId, 0, 0, string.Empty, string.Empty);
                     return true;
 
                 case HaCreator.MapSimulator.Managers.SocialRoomEmployeeOfficialSessionBridgeManager.EmployeeMiniRoomBalloonOpcode:
@@ -259,7 +269,12 @@ namespace HaCreator.MapSimulator.Interaction
                         return false;
                     }
 
-                    hint = new RoutingHint(balloonPacket.EmployerId, balloonPacket.MiniRoomType);
+                    hint = new RoutingHint(
+                        balloonPacket.EmployerId,
+                        balloonPacket.MiniRoomType,
+                        balloonPacket.MiniRoomSerial,
+                        string.Empty,
+                        balloonPacket.BalloonTitle);
                     return true;
 
                 default:
@@ -347,6 +362,79 @@ namespace HaCreator.MapSimulator.Interaction
         {
             int normalizedEmployerId = Math.Max(0, employerId);
             return normalizedEmployerId > 0 && _entries.ContainsKey(normalizedEmployerId);
+        }
+
+        internal int ScoreRoutingHint(SocialRoomEmployeePoolCodec.RoutingHint hint)
+        {
+            if (_entries.Count == 0)
+            {
+                return 0;
+            }
+
+            int bestScore = 0;
+            foreach (SocialRoomEmployeePoolEntryState entry in _entries.Values)
+            {
+                int score = 0;
+                if (hint.EmployerId > 0 && hint.EmployerId == entry.EmployerId)
+                {
+                    score += 100;
+                }
+
+                if (hint.MiniRoomType != 0)
+                {
+                    if (entry.MiniRoomType == hint.MiniRoomType)
+                    {
+                        score += 40;
+                    }
+                    else if (entry.MiniRoomType != 0)
+                    {
+                        score -= 25;
+                    }
+                }
+
+                if (hint.MiniRoomSerial > 0)
+                {
+                    if (entry.MiniRoomSerial == hint.MiniRoomSerial)
+                    {
+                        score += 20;
+                    }
+                    else if (entry.MiniRoomSerial > 0)
+                    {
+                        score -= 10;
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(hint.OwnerName))
+                {
+                    if (string.Equals(entry.NameTag, hint.OwnerName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        score += 25;
+                    }
+                    else if (!string.IsNullOrWhiteSpace(entry.NameTag))
+                    {
+                        score -= 5;
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(hint.BalloonTitle))
+                {
+                    if (string.Equals(entry.BalloonTitle, hint.BalloonTitle, StringComparison.OrdinalIgnoreCase))
+                    {
+                        score += 30;
+                    }
+                    else if (!string.IsNullOrWhiteSpace(entry.BalloonTitle))
+                    {
+                        score -= 10;
+                    }
+                }
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                }
+            }
+
+            return Math.Max(0, bestScore);
         }
 
         internal bool TryGetPrimaryEntry(out SocialRoomEmployeePoolEntryState state)

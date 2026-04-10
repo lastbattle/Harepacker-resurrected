@@ -8,7 +8,7 @@ namespace HaCreator.MapSimulator.Companions
 {
     internal static class PetActionAliases
     {
-        private static readonly string[] KnownActions =
+        private static readonly string[] ClientBaseActionNames =
         {
             "stand0",
             "stand1",
@@ -18,7 +18,11 @@ namespace HaCreator.MapSimulator.Companions
             "hungry",
             "rest0",
             "chat",
-            "hang",
+            "hang"
+        };
+
+        private static readonly string[] SupplementalKnownActions =
+        {
             "stand",
             "walk",
             "rest1",
@@ -75,6 +79,11 @@ namespace HaCreator.MapSimulator.Companions
             "transform",
             "warp"
         };
+
+        private static readonly string[] KnownActions = ClientBaseActionNames
+            .Concat(SupplementalKnownActions)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
         private static readonly IReadOnlyDictionary<string, string[]> LookupCandidates =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
@@ -166,6 +175,11 @@ namespace HaCreator.MapSimulator.Companions
         internal static IEnumerable<string> EnumerateKnownActions()
         {
             return KnownActions;
+        }
+
+        internal static IEnumerable<string> EnumerateClientBaseActions()
+        {
+            return ClientBaseActionNames;
         }
     }
 

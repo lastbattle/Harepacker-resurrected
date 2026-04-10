@@ -590,12 +590,11 @@ namespace HaCreator.MapSimulator
                 _coconutAppearanceOverrideApplied = true;
             }
 
-            build.Equipment.Clear();
-            build.HiddenEquipment.Clear();
-            foreach (CharacterPart forcedPart in forcedParts)
-            {
-                build.Equip(forcedPart);
-            }
+            ApplyCoconutAppearanceOverride(
+                build,
+                _coconutEquipmentSnapshot,
+                _coconutHiddenEquipmentSnapshot,
+                forcedParts);
         }
 
         private void RestoreCoconutFieldAppearance(CharacterBuild build)
@@ -631,6 +630,71 @@ namespace HaCreator.MapSimulator
             _coconutAppearanceOverrideBuild = null;
             _coconutEquipmentSnapshot = null;
             _coconutHiddenEquipmentSnapshot = null;
+        }
+
+        internal static void ApplyCoconutAppearanceOverride(
+            CharacterBuild build,
+            IReadOnlyDictionary<EquipSlot, CharacterPart> baseEquipment,
+            IReadOnlyDictionary<EquipSlot, CharacterPart> baseHiddenEquipment,
+            IEnumerable<CharacterPart> forcedParts)
+        {
+            if (build == null)
+            {
+                return;
+            }
+
+            build.Equipment.Clear();
+            build.HiddenEquipment.Clear();
+
+            if (baseEquipment != null)
+            {
+                foreach (KeyValuePair<EquipSlot, CharacterPart> entry in baseEquipment)
+                {
+                    build.Equipment[entry.Key] = entry.Value;
+                }
+            }
+
+            if (baseHiddenEquipment != null)
+            {
+                foreach (KeyValuePair<EquipSlot, CharacterPart> entry in baseHiddenEquipment)
+                {
+                    build.HiddenEquipment[entry.Key] = entry.Value;
+                }
+            }
+
+            foreach (CharacterPart forcedPart in forcedParts ?? Enumerable.Empty<CharacterPart>())
+            {
+                if (forcedPart == null)
+                {
+                    continue;
+                }
+
+                foreach (EquipSlot slot in EnumerateCoconutAppearanceAffectedSlots(forcedPart.Slot))
+                {
+                    build.Equipment.Remove(slot);
+                    build.HiddenEquipment.Remove(slot);
+                }
+
+                build.Equipment[forcedPart.Slot] = forcedPart;
+            }
+        }
+
+        internal static IReadOnlyCollection<EquipSlot> EnumerateCoconutAppearanceAffectedSlots(EquipSlot slot)
+        {
+            HashSet<EquipSlot> affectedSlots = new() { slot };
+            switch (slot)
+            {
+                case EquipSlot.Longcoat:
+                    affectedSlots.Add(EquipSlot.Coat);
+                    affectedSlots.Add(EquipSlot.Pants);
+                    break;
+                case EquipSlot.Coat:
+                case EquipSlot.Pants:
+                    affectedSlots.Add(EquipSlot.Longcoat);
+                    break;
+            }
+
+            return affectedSlots;
         }
 
         private void ApplyTransitAndVoyageFieldWrapper(MapInfo mapInfo)

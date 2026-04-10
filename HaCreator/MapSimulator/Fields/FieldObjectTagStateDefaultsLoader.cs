@@ -34,7 +34,25 @@ namespace HaCreator.MapSimulator.Fields
 
             ParseTaggedObjectDefaults(mapInfo.additionalNonInfoProps, states);
             ParseTaggedObjectDefaults(mapInfo.unsupportedInfoProperties, states);
+            ParseTaggedObjectDefaults(mapInfo.Image, states);
             return states;
+        }
+
+        private static void ParseTaggedObjectDefaults(WzImage mapImage, IDictionary<string, bool> states)
+        {
+            if (mapImage?["info"] is not WzImageProperty infoProperty)
+            {
+                return;
+            }
+
+            for (int i = 0; i < SupportedPropertyNames.Length; i++)
+            {
+                WzImageProperty property = infoProperty[SupportedPropertyNames[i]];
+                if (property != null)
+                {
+                    ParseProperty(property, states);
+                }
+            }
         }
 
         private static void ParseTaggedObjectDefaults(IEnumerable<WzImageProperty> properties, IDictionary<string, bool> states)
