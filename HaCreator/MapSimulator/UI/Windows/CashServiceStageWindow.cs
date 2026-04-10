@@ -72,6 +72,12 @@ namespace HaCreator.MapSimulator.UI
             public string Message { get; init; } = string.Empty;
         }
 
+        private sealed class CashStatusSnapshot
+        {
+            public string StatusMessage { get; init; } = string.Empty;
+            public IReadOnlyList<string> DetailLines { get; init; } = Array.Empty<string>();
+        }
+
         private sealed class StageLayer
         {
             public StageLayer(IDXObject layer, Point offset)
@@ -468,6 +474,11 @@ namespace HaCreator.MapSimulator.UI
         public IReadOnlyList<string> DescribeListOwnerState() => BuildListPane();
         public IReadOnlyList<string> DescribeBestOwnerState() => BuildBestPane();
         public IReadOnlyList<string> DescribeStatusOwnerState() => BuildStatusPane();
+
+        public IReadOnlyList<string> GetStatusOwnerDetailLines()
+        {
+            return BuildStatusSnapshot().DetailLines;
+        }
         public IReadOnlyList<string> DescribeSearchOwnerState() => BuildSearchPane();
         public IReadOnlyList<string> DescribeSaleOwnerState() => BuildSalePane();
         public IReadOnlyList<string> DescribePurchaseOwnerState() => BuildPurchasePane();
@@ -754,20 +765,44 @@ namespace HaCreator.MapSimulator.UI
 
         private IReadOnlyList<string> BuildStatusPane()
         {
+            CashStatusSnapshot snapshot = BuildStatusSnapshot();
             string balanceLine = $"NX {_nexonCash.ToString("N0", CultureInfo.InvariantCulture)}  MP {_maplePoint.ToString("N0", CultureInfo.InvariantCulture)}  Prepaid {_prepaidCash.ToString("N0", CultureInfo.InvariantCulture)}";
             if (_chargeParam != 0)
             {
                 balanceLine += $"  Charge {_chargeParam.ToString(CultureInfo.InvariantCulture)}";
             }
 
-            return new[]
+            List<string> lines = new()
             {
                 balanceLine,
-                _statusMessage,
-                _noticeState,
-                _stageKind == CashServiceStageKind.CashShop
-                    ? $"{_cashCouponLastSummary} {_cashNameChangeLastSummary} {_cashTransferWorldLastSummary} {_cashGachaponLastSummary}".Trim()
-                    : _itcNormalItemLastSummary
+                snapshot.StatusMessage
+            };
+            lines.AddRange(snapshot.DetailLines);
+            return lines;
+        }
+
+        private CashStatusSnapshot BuildStatusSnapshot()
+        {
+            List<string> detailLines = new();
+            AppendStatusDetail(detailLines, _noticeState);
+            if (_stageKind == CashServiceStageKind.CashShop)
+            {
+                AppendStatusDetail(detailLines, _cashCouponLastSummary, suppressDefaultPrefix: "No packet-authored");
+                AppendStatusDetail(detailLines, _cashNameChangeLastSummary, suppressDefaultPrefix: "No packet-authored");
+                AppendStatusDetail(detailLines, _cashTransferWorldLastSummary, suppressDefaultPrefix: "No packet-authored");
+                AppendStatusDetail(detailLines, _cashGachaponLastSummary, suppressDefaultPrefix: "No packet-authored");
+                AppendStatusDetail(detailLines, _cashPurchaseRecordSummary, suppressDefaultPrefix: "No packet-authored");
+                AppendStatusDetail(detailLines, _cashGiftLastSummary, suppressDefaultPrefix: "No packet-authored");
+            }
+            else
+            {
+                AppendStatusDetail(detailLines, _itcNormalItemLastSummary, suppressDefaultPrefix: "No ITC normal-item packet");
+            }
+
+            return new CashStatusSnapshot
+            {
+                StatusMessage = _statusMessage,
+                DetailLines = detailLines
             };
         }
 
@@ -1108,21 +1143,35 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            long itemBlockLength = 55L * itemCount;
-            if (stream.Length - stream.Position < itemBlockLength + (sizeof(short) * 4))
+            List<CashItemInfoPacketSnapshot> snapshots = new(Math.Max(0, (int)itemCount));
+            for (int i = 0; i < itemCount; i++)
+            {
+                if (!TryReadCashItemInfoPacketSnapshot(reader, out CashItemInfoPacketSnapshot snapshot))
+                {
+                    return false;
+                }
+
+                snapshots.Add(snapshot);
+            }
+
+            if (stream.Length - stream.Position < (sizeof(short) * 4))
             {
                 return false;
             }
 
-            stream.Position += itemBlockLength;
             _cashLockerItemCount = Math.Max(0, (int)itemCount);
             _cashLockerSlotLimit = Math.Max(0, (int)reader.ReadInt16());
             _cashCharacterSlotCount = Math.Max(0, (int)reader.ReadInt16());
             _cashBuyCharacterCount = Math.Max(0, (int)reader.ReadInt16());
             _cashCharacterCount = Math.Max(0, (int)reader.ReadInt16());
-            _noticeState = $"Cash locker refreshed to {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)}/{_cashLockerSlotLimit.ToString(CultureInfo.InvariantCulture)} entries.";
+            string firstLockerDetail = snapshots.Count > 0
+                ? DescribeCashItemInfoPacketSnapshot(snapshots[0], includeSerialNumber: true)
+                : string.Empty;
+            _noticeState = snapshots.Count > 0
+                ? $"Cash locker refreshed to {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)}/{_cashLockerSlotLimit.ToString(CultureInfo.InvariantCulture)} entries. {firstLockerDetail}"
+                : $"Cash locker refreshed to {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)}/{_cashLockerSlotLimit.ToString(CultureInfo.InvariantCulture)} entries.";
             message =
-                $"CCashShop::OnCashItemResLoadLockerDone loaded {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)} cash locker item(s), locker limit {_cashLockerSlotLimit.ToString(CultureInfo.InvariantCulture)}, character slots {_cashCharacterSlotCount.ToString(CultureInfo.InvariantCulture)}, buy-count {_cashBuyCharacterCount.ToString(CultureInfo.InvariantCulture)}, characters {_cashCharacterCount.ToString(CultureInfo.InvariantCulture)}.";
+                $"CCashShop::OnCashItemResLoadLockerDone loaded {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)} cash locker item(s), locker limit {_cashLockerSlotLimit.ToString(CultureInfo.InvariantCulture)}, character slots {_cashCharacterSlotCount.ToString(CultureInfo.InvariantCulture)}, buy-count {_cashBuyCharacterCount.ToString(CultureInfo.InvariantCulture)}, characters {_cashCharacterCount.ToString(CultureInfo.InvariantCulture)}{(string.IsNullOrWhiteSpace(firstLockerDetail) ? string.Empty : $". First row: {firstLockerDetail}")}.";
             return true;
         }
 
@@ -1134,24 +1183,37 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            short giftCount = BitConverter.ToInt16(payload, 1);
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            _ = reader.ReadByte();
+            short giftCount = reader.ReadInt16();
             List<PacketCatalogEntry> entries = new();
             for (int i = 0; i < Math.Max(0, (int)giftCount); i++)
             {
+                if (!TryReadGiftListPacketSnapshot(reader, out GiftListPacketSnapshot snapshot))
+                {
+                    return false;
+                }
+
                 int rowNumber = i + 1;
+                string itemTitle = ResolveCashStageGiftRowTitle(snapshot.ItemId, rowNumber, "Gift row");
+                string sender = SanitizePacketString(snapshot.Sender, "CCashShop gift inbox");
+                string giftMessage = SanitizePacketString(snapshot.Message, "No gift message.");
                 entries.Add(new PacketCatalogEntry
                 {
-                    Title = $"Gift row {rowNumber.ToString(CultureInfo.InvariantCulture)}",
-                    Detail = $"GW_GiftList row {rowNumber.ToString(CultureInfo.InvariantCulture)} is waiting inside the packet-owned Cash Shop gift inbox.",
-                    Seller = "CCashShop gift inbox",
-                    PriceLabel = "Gift",
+                    Title = itemTitle,
+                    Detail = $"Gift row {rowNumber.ToString(CultureInfo.InvariantCulture)} from {sender} carries item {Math.Max(0, snapshot.ItemId).ToString(CultureInfo.InvariantCulture)} / serial {snapshot.SerialNumber.ToString(CultureInfo.InvariantCulture)}. {giftMessage}",
+                    Seller = sender,
+                    PriceLabel = $"Item {Math.Max(0, snapshot.ItemId).ToString(CultureInfo.InvariantCulture)}",
                     StateLabel = "Pending receive",
                     ListingId = rowNumber
                 });
             }
 
             ReplaceCashPacketCatalogEntries("Packet gifts", "Gift", entries);
-            _noticeState = $"Gift inbox refreshed with {Math.Max(0, (int)giftCount).ToString(CultureInfo.InvariantCulture)} gift row(s).";
+            _noticeState = entries.Count > 0
+                ? $"Gift inbox refreshed with {entries.Count.ToString(CultureInfo.InvariantCulture)} gift row(s). {entries[0].Detail}"
+                : $"Gift inbox refreshed with {Math.Max(0, (int)giftCount).ToString(CultureInfo.InvariantCulture)} gift row(s).";
             message = $"CCashShop::OnCashItemResLoadGiftDone loaded {Math.Max(0, (int)giftCount).ToString(CultureInfo.InvariantCulture)} gift row(s) into the dedicated receive-gift flow.";
             return true;
         }
@@ -1205,17 +1267,18 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            _cashLockerItemCount = Math.Max(0, _cashLockerItemCount + 1);
-            AppendCashPacketCatalogEntry("Packet purchase", "Buy", new PacketCatalogEntry
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            if (!TryReadCashItemInfoPacketSnapshot(reader, out CashItemInfoPacketSnapshot snapshot))
             {
-                Title = "Locker purchase",
-                Detail = "A packet-authored cash-item body was appended to the dedicated locker owner.",
-                Seller = "CCSWnd_Locker",
-                PriceLabel = "Locker",
-                StateLabel = "Bought"
-            });
-            _noticeState = $"A purchased cash item was appended to the locker (now {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)} item(s)).";
-            message = "CCashShop::OnCashItemResBuyDone appended one 55-byte cash-item body to the locker and invalidated CCSWnd_Locker.";
+                return false;
+            }
+
+            _cashLockerItemCount = Math.Max(0, _cashLockerItemCount + 1);
+            PacketCatalogEntry entry = BuildCashItemInfoPacketEntry(snapshot, "Purchased", "CCSWnd_Locker", "Bought");
+            AppendCashPacketCatalogEntry("Packet purchase", "Buy", entry);
+            _noticeState = $"A purchased cash item was appended to the locker (now {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)} item(s)). {DescribeCashItemInfoPacketSnapshot(snapshot, includeSerialNumber: true)}";
+            message = $"CCashShop::OnCashItemResBuyDone appended one decoded GW_CashItemInfo body to CCSWnd_Locker: {DescribeCashItemInfoPacketSnapshot(snapshot, includeSerialNumber: true)}";
             return true;
         }
 
@@ -1308,26 +1371,49 @@ namespace HaCreator.MapSimulator.UI
 
             _ = reader.ReadByte();
             int itemCount = Math.Max(0, (int)reader.ReadByte());
-            long itemBlockLength = 55L * itemCount;
-            if (stream.Length - stream.Position < itemBlockLength + sizeof(short))
+            List<CashItemInfoPacketSnapshot> snapshots = new(itemCount);
+            for (int i = 0; i < itemCount; i++)
+            {
+                if (!TryReadCashItemInfoPacketSnapshot(reader, out CashItemInfoPacketSnapshot snapshot))
+                {
+                    return false;
+                }
+
+                snapshots.Add(snapshot);
+            }
+
+            if (stream.Length - stream.Position < sizeof(short))
             {
                 return false;
             }
 
-            stream.Position += itemBlockLength;
             int bonusCount = Math.Max(0, (int)reader.ReadUInt16());
             _cashLockerItemCount = Math.Max(0, _cashLockerItemCount + itemCount);
-            AppendCashPacketCatalogEntry("Packet package", "Package", new PacketCatalogEntry
+            if (snapshots.Count == 0)
             {
-                Title = "Package purchase",
-                Detail = $"Package purchase appended {itemCount.ToString(CultureInfo.InvariantCulture)} locker item(s){(bonusCount > 0 ? $" and reported {bonusCount.ToString(CultureInfo.InvariantCulture)} bonus count" : string.Empty)}.",
-                Seller = "CCSWnd_Locker",
-                PriceLabel = itemCount.ToString(CultureInfo.InvariantCulture),
-                StateLabel = "Package"
-            });
-            _noticeState = $"Package purchase appended {itemCount.ToString(CultureInfo.InvariantCulture)} locker item(s){(bonusCount > 0 ? $" and reported {bonusCount.ToString(CultureInfo.InvariantCulture)} bonus count." : ".")}";
+                AppendCashPacketCatalogEntry("Packet package", "Package", new PacketCatalogEntry
+                {
+                    Title = "Package purchase",
+                    Detail = $"Package purchase appended {itemCount.ToString(CultureInfo.InvariantCulture)} locker item(s){(bonusCount > 0 ? $" and reported {bonusCount.ToString(CultureInfo.InvariantCulture)} bonus count" : string.Empty)}.",
+                    Seller = "CCSWnd_Locker",
+                    PriceLabel = itemCount.ToString(CultureInfo.InvariantCulture),
+                    StateLabel = "Package"
+                });
+            }
+            else
+            {
+                for (int i = snapshots.Count - 1; i >= 0; i--)
+                {
+                    AppendCashPacketCatalogEntry("Packet package", "Package", BuildCashItemInfoPacketEntry(snapshots[i], "Package item", "CCSWnd_Locker", "Package"));
+                }
+            }
+
+            string firstPackageDetail = snapshots.Count > 0
+                ? DescribeCashItemInfoPacketSnapshot(snapshots[0], includeSerialNumber: true)
+                : string.Empty;
+            _noticeState = $"Package purchase appended {itemCount.ToString(CultureInfo.InvariantCulture)} locker item(s){(bonusCount > 0 ? $" and reported {bonusCount.ToString(CultureInfo.InvariantCulture)} bonus count" : string.Empty)}{(string.IsNullOrWhiteSpace(firstPackageDetail) ? "." : $". First row: {firstPackageDetail}")}";
             message =
-                $"CCashShop::OnCashItemResBuyPackageDone appended {itemCount.ToString(CultureInfo.InvariantCulture)} 55-byte cash-item bodies to CCSWnd_Locker{(bonusCount > 0 ? $" and surfaced bonus count {bonusCount.ToString(CultureInfo.InvariantCulture)}" : string.Empty)}.";
+                $"CCashShop::OnCashItemResBuyPackageDone appended {itemCount.ToString(CultureInfo.InvariantCulture)} decoded GW_CashItemInfo bod{(itemCount == 1 ? "y" : "ies")} to CCSWnd_Locker{(bonusCount > 0 ? $" and surfaced bonus count {bonusCount.ToString(CultureInfo.InvariantCulture)}" : string.Empty)}{(string.IsNullOrWhiteSpace(firstPackageDetail) ? string.Empty : $". First row: {firstPackageDetail}")}.";
             return true;
         }
 
@@ -2368,6 +2454,216 @@ namespace HaCreator.MapSimulator.UI
         {
             string trimmed = value?.Trim();
             return string.IsNullOrWhiteSpace(trimmed) ? fallback : trimmed;
+        }
+
+        private static void AppendStatusDetail(List<string> lines, string value, string suppressDefaultPrefix = null)
+        {
+            if (lines == null || string.IsNullOrWhiteSpace(value))
+            {
+                return;
+            }
+
+            string trimmed = value.Trim();
+            if (!string.IsNullOrWhiteSpace(suppressDefaultPrefix)
+                && trimmed.StartsWith(suppressDefaultPrefix, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (!lines.Contains(trimmed, StringComparer.Ordinal))
+            {
+                lines.Add(trimmed);
+            }
+        }
+
+        private static bool TryReadCashItemInfoPacketSnapshot(BinaryReader reader, out CashItemInfoPacketSnapshot snapshot)
+        {
+            snapshot = null;
+            if (reader == null)
+            {
+                return false;
+            }
+
+            Stream stream = reader.BaseStream;
+            if (stream.Length - stream.Position < 55)
+            {
+                return false;
+            }
+
+            snapshot = new CashItemInfoPacketSnapshot
+            {
+                SerialNumber = reader.ReadInt64(),
+                AccountId = reader.ReadInt32(),
+                CharacterId = reader.ReadInt32(),
+                ItemId = reader.ReadInt32(),
+                CommodityId = reader.ReadInt32(),
+                Quantity = Math.Max(1, (int)reader.ReadInt16()),
+                BuyerCharacterId = ReadFixedPacketString(reader, 13),
+                RawExpireFileTime = reader.ReadInt64(),
+                PaybackRate = Math.Max(0, reader.ReadInt32()),
+                DiscountRate = Math.Max(0, reader.ReadInt32())
+            };
+            return true;
+        }
+
+        private static bool TryReadGiftListPacketSnapshot(BinaryReader reader, out GiftListPacketSnapshot snapshot)
+        {
+            snapshot = null;
+            if (reader == null)
+            {
+                return false;
+            }
+
+            Stream stream = reader.BaseStream;
+            if (stream.Length - stream.Position < 98)
+            {
+                return false;
+            }
+
+            snapshot = new GiftListPacketSnapshot
+            {
+                SerialNumber = reader.ReadInt64(),
+                ItemId = Math.Max(0, reader.ReadInt32()),
+                Sender = ReadFixedPacketString(reader, 13),
+                Message = ReadFixedPacketString(reader, 73)
+            };
+            return true;
+        }
+
+        private static string ReadFixedPacketString(BinaryReader reader, int length)
+        {
+            if (reader == null || length <= 0)
+            {
+                return string.Empty;
+            }
+
+            byte[] bytes = reader.ReadBytes(length);
+            int terminatorIndex = Array.IndexOf(bytes, (byte)0);
+            int count = terminatorIndex >= 0 ? terminatorIndex : bytes.Length;
+            return count <= 0
+                ? string.Empty
+                : Encoding.ASCII.GetString(bytes, 0, count).Trim();
+        }
+
+        private static PacketCatalogEntry BuildCashItemInfoPacketEntry(CashItemInfoPacketSnapshot snapshot, string titlePrefix, string seller, string stateLabel)
+        {
+            int itemId = Math.Max(0, snapshot?.ItemId ?? 0);
+            int commodityId = Math.Max(0, snapshot?.CommodityId ?? 0);
+            int quantity = Math.Max(1, snapshot?.Quantity ?? 1);
+            string buyerCharacterId = SanitizePacketString(snapshot?.BuyerCharacterId, "Cash Shop");
+            string title = ResolveCashStageItemTitle(itemId, commodityId, titlePrefix);
+            string expireLabel = FormatPacketFileTime(snapshot?.RawExpireFileTime ?? 0);
+            string detail = DescribeCashItemInfoPacketSnapshot(snapshot, includeSerialNumber: true);
+            return new PacketCatalogEntry
+            {
+                Title = title,
+                Detail = detail,
+                Seller = string.IsNullOrWhiteSpace(seller) ? buyerCharacterId : seller,
+                PriceLabel = commodityId > 0 ? $"SN {commodityId.ToString(CultureInfo.InvariantCulture)}" : $"Item {itemId.ToString(CultureInfo.InvariantCulture)}",
+                StateLabel = string.IsNullOrWhiteSpace(expireLabel) ? stateLabel : $"{stateLabel} / {expireLabel}",
+                SerialNumber = snapshot?.SerialNumber ?? 0,
+                ListingId = commodityId,
+                ItemId = itemId,
+                Quantity = quantity
+            };
+        }
+
+        private static string DescribeCashItemInfoPacketSnapshot(CashItemInfoPacketSnapshot snapshot, bool includeSerialNumber)
+        {
+            if (snapshot == null)
+            {
+                return string.Empty;
+            }
+
+            List<string> parts = new();
+            if (includeSerialNumber && snapshot.SerialNumber > 0)
+            {
+                parts.Add($"Serial {snapshot.SerialNumber.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            int itemId = Math.Max(0, snapshot.ItemId);
+            int commodityId = Math.Max(0, snapshot.CommodityId);
+            parts.Add(ResolveCashStageItemTitle(itemId, commodityId, "Item"));
+            if (commodityId > 0)
+            {
+                parts.Add($"SN {commodityId.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            parts.Add($"Qty {Math.Max(1, snapshot.Quantity).ToString(CultureInfo.InvariantCulture)}");
+            string buyer = SanitizePacketString(snapshot.BuyerCharacterId, string.Empty);
+            if (!string.IsNullOrWhiteSpace(buyer))
+            {
+                parts.Add($"Buyer {buyer}");
+            }
+
+            string expireLabel = FormatPacketFileTime(snapshot.RawExpireFileTime);
+            if (!string.IsNullOrWhiteSpace(expireLabel))
+            {
+                parts.Add(expireLabel);
+            }
+
+            if (snapshot.DiscountRate > 0)
+            {
+                parts.Add($"Discount {snapshot.DiscountRate.ToString(CultureInfo.InvariantCulture)}%");
+            }
+
+            if (snapshot.PaybackRate > 0)
+            {
+                parts.Add($"Payback {snapshot.PaybackRate.ToString(CultureInfo.InvariantCulture)}%");
+            }
+
+            return string.Join(" / ", parts);
+        }
+
+        private static string ResolveCashStageItemTitle(int itemId, int fallbackId, string fallbackPrefix)
+        {
+            int resolvedId = itemId > 0 ? itemId : Math.Max(0, fallbackId);
+            if (resolvedId > 0 && InventoryItemMetadataResolver.TryResolveItemName(resolvedId, out string itemName) && !string.IsNullOrWhiteSpace(itemName))
+            {
+                return itemName.Trim();
+            }
+
+            if (resolvedId > 0)
+            {
+                return $"{fallbackPrefix} {resolvedId.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            return fallbackPrefix;
+        }
+
+        private static string ResolveCashStageGiftRowTitle(int itemId, int rowNumber, string fallbackPrefix)
+        {
+            if (itemId > 0 && InventoryItemMetadataResolver.TryResolveItemName(itemId, out string itemName) && !string.IsNullOrWhiteSpace(itemName))
+            {
+                return itemName.Trim();
+            }
+
+            return itemId > 0
+                ? $"Item {itemId.ToString(CultureInfo.InvariantCulture)}"
+                : $"{fallbackPrefix} {rowNumber.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        private static string FormatPacketFileTime(long rawFileTime)
+        {
+            if (rawFileTime <= 0 || rawFileTime == long.MaxValue)
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                DateTime timestamp = DateTime.FromFileTimeUtc(rawFileTime);
+                if (timestamp.Year < 2000 || timestamp.Year > 2100)
+                {
+                    return string.Empty;
+                }
+
+                return $"Expire {timestamp:yyyy-MM-dd}";
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return string.Empty;
+            }
         }
 
         private string ResolveCashPurchaseRecordStateLabel(int commoditySerialNumber)

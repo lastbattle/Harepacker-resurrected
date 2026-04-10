@@ -33,6 +33,7 @@ namespace HaCreator.MapSimulator.UI
         private string _title = "Game Menu";
         private string _body = string.Empty;
         private string _footer = string.Empty;
+        private InGameConfirmDialogPresentation _presentation = InGameConfirmDialogPresentation.Default;
 
         public InGameConfirmDialogWindow(
             IDXObject frame,
@@ -65,11 +66,12 @@ namespace HaCreator.MapSimulator.UI
             base.SetFont(font);
         }
 
-        public void Configure(string title, string body, string footer = null)
+        public void Configure(string title, string body, string footer = null, InGameConfirmDialogPresentation presentation = null)
         {
             _title = string.IsNullOrWhiteSpace(title) ? "Game Menu" : title.Trim();
             _body = body ?? string.Empty;
             _footer = footer ?? string.Empty;
+            _presentation = presentation ?? InGameConfirmDialogPresentation.Default;
             CenterFrame();
             ConfigureButtons();
         }
@@ -195,6 +197,15 @@ namespace HaCreator.MapSimulator.UI
         {
             int width = Frame?.Width > 0 ? Frame.Width : 206;
             int height = Frame?.Height > 0 ? Frame.Height : 60;
+
+            if (_presentation.AnchorMode == InGameConfirmDialogAnchorMode.BottomLeft)
+            {
+                Position = new Point(
+                    Math.Clamp(_presentation.AnchorX, 0, Math.Max(0, _screenWidth - width)),
+                    Math.Clamp(_screenHeight - height - _presentation.BottomOffset, 0, Math.Max(0, _screenHeight - height)));
+                return;
+            }
+
             Position = new Point(
                 Math.Max(24, (_screenWidth / 2) - (width / 2)),
                 Math.Max(24, (_screenHeight / 2) - (height / 2)));
@@ -221,24 +232,34 @@ namespace HaCreator.MapSimulator.UI
                 return _wrappedLines;
             }
 
-            string[] words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            string currentLine = string.Empty;
-            foreach (string word in words)
+            string[] paragraphs = text.Replace("\r\n", "\n").Split('\n');
+            foreach (string paragraph in paragraphs)
             {
-                string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
-                if (MeasureLineWidth(candidate) <= maxLineWidth || string.IsNullOrEmpty(currentLine))
+                if (string.IsNullOrWhiteSpace(paragraph))
                 {
-                    currentLine = candidate;
+                    _wrappedLines.Add(string.Empty);
                     continue;
                 }
 
-                _wrappedLines.Add(currentLine);
-                currentLine = word;
-            }
+                string[] words = paragraph.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                string currentLine = string.Empty;
+                foreach (string word in words)
+                {
+                    string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
+                    if (MeasureLineWidth(candidate) <= maxLineWidth || string.IsNullOrEmpty(currentLine))
+                    {
+                        currentLine = candidate;
+                        continue;
+                    }
 
-            if (!string.IsNullOrEmpty(currentLine))
-            {
-                _wrappedLines.Add(currentLine);
+                    _wrappedLines.Add(currentLine);
+                    currentLine = word;
+                }
+
+                if (!string.IsNullOrEmpty(currentLine))
+                {
+                    _wrappedLines.Add(currentLine);
+                }
             }
 
             return _wrappedLines;
@@ -268,5 +289,19 @@ namespace HaCreator.MapSimulator.UI
             button.SetEnabled(true);
             button.SetVisible(true);
         }
+    }
+
+    public enum InGameConfirmDialogAnchorMode
+    {
+        Center = 0,
+        BottomLeft = 1
+    }
+
+    public sealed record InGameConfirmDialogPresentation(
+        InGameConfirmDialogAnchorMode AnchorMode,
+        int AnchorX,
+        int BottomOffset)
+    {
+        public static InGameConfirmDialogPresentation Default { get; } = new(InGameConfirmDialogAnchorMode.Center, 0, 0);
     }
 }

@@ -9,6 +9,7 @@ using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using HaCreator.MapSimulator.Fields;
 using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 
@@ -556,9 +557,10 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             byte[] payload = rawPacket.Skip(sizeof(short)).ToArray();
+            byte[] relayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
             message = new TournamentPacketInboxMessage(
-                opcode,
-                payload,
+                SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
+                relayPayload,
                 source,
                 $"packetraw {Convert.ToHexString(rawPacket)}");
             return true;

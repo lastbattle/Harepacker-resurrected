@@ -74,12 +74,14 @@ namespace HaCreator.MapSimulator.UI
 
         public static string FormatItemPickup(string itemName, string itemTypeName, int quantity)
         {
-            string resolvedItemName = string.IsNullOrWhiteSpace(itemName) ? "Unknown Item" : itemName;
-            string resolvedTypeName = string.IsNullOrWhiteSpace(itemTypeName) ? "item" : itemTypeName;
+            if (string.IsNullOrWhiteSpace(itemName) || string.IsNullOrWhiteSpace(itemTypeName))
+            {
+                return string.Empty;
+            }
 
             return quantity > 1
-                ? FormatClientString(ItemMultiScreenStringPoolId, $"You have gained a(n) {resolvedTypeName} ({resolvedItemName}) x {quantity}.", resolvedTypeName, resolvedItemName, quantity)
-                : FormatClientString(ItemSingleScreenStringPoolId, $"You have gained a(n) {resolvedTypeName} ({resolvedItemName}).", resolvedTypeName, resolvedItemName);
+                ? FormatClientString(ItemMultiScreenStringPoolId, $"You have gained a(n) {itemTypeName} ({itemName}) x {quantity}.", itemTypeName, itemName, quantity)
+                : FormatClientString(ItemSingleScreenStringPoolId, $"You have gained a(n) {itemTypeName} ({itemName}).", itemTypeName, itemName);
         }
 
         public static string FormatQuestItemPickup(string itemName, string itemTypeName)
@@ -90,7 +92,7 @@ namespace HaCreator.MapSimulator.UI
         public static bool TryFormatItemPickup(string itemName, string itemTypeName, int quantity, out string message)
         {
             message = string.Empty;
-            if (string.IsNullOrWhiteSpace(itemName))
+            if (string.IsNullOrWhiteSpace(itemName) || string.IsNullOrWhiteSpace(itemTypeName))
             {
                 return false;
             }
@@ -102,7 +104,7 @@ namespace HaCreator.MapSimulator.UI
         public static bool TryFormatQuestItemPickup(string itemName, string itemTypeName, out string message)
         {
             message = string.Empty;
-            if (string.IsNullOrWhiteSpace(itemName))
+            if (string.IsNullOrWhiteSpace(itemName) || string.IsNullOrWhiteSpace(itemTypeName))
             {
                 return false;
             }

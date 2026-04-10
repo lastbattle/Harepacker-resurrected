@@ -354,6 +354,7 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
+            HashSet<string> aliases = new(StringComparer.OrdinalIgnoreCase);
             string objectKeyName = TryResolveObjectKeyName(mapObject, out string candidateObjectKeyName)
                 ? candidateObjectKeyName
                 : null;
@@ -368,6 +369,19 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
 
             foreach (string alias in BuildDynamicObjectAliasCandidates(resolvedName, objectKeyName, layer?.Name, mapObject?.Name, piece, x, y))
+            {
+                aliases.Add(alias);
+            }
+
+            if (TryReadStringProperty(mapObject, "tags", out string tagsValue))
+            {
+                foreach (string tagAlias in BuildDynamicObjectTagAliasCandidates(tagsValue, piece, x, y))
+                {
+                    aliases.Add(tagAlias);
+                }
+            }
+
+            foreach (string alias in aliases)
             {
                 RegisterAuthoredDynamicObjectName(alias, platformId);
             }
@@ -447,6 +461,48 @@ namespace HaCreator.MapSimulator.Fields
             string yToken = yValue.ToString(CultureInfo.InvariantCulture);
             AddDynamicObjectAlias(aliases, $"{baseAlias}/{xToken}/{yToken}");
             AddDynamicObjectAlias(aliases, $"{baseAlias}/{xToken},{yToken}");
+        }
+
+        private static IReadOnlyList<string> BuildDynamicObjectTagAliasCandidates(string tagsValue, int? piece, int? x, int? y)
+        {
+            HashSet<string> aliases = new(StringComparer.OrdinalIgnoreCase);
+            foreach (string tagAlias in SplitDynamicObjectTags(tagsValue))
+            {
+                AddCoordinateAliases(aliases, tagAlias, x, y);
+                if (piece is int pieceValue && pieceValue >= 0)
+                {
+                    string pieceSuffix = pieceValue.ToString(CultureInfo.InvariantCulture);
+                    AddDynamicObjectAlias(aliases, $"{tagAlias}/{pieceSuffix}");
+                    AddDynamicObjectAlias(aliases, $"{tagAlias}/piece/{pieceSuffix}");
+                    AddCoordinateAliases(aliases, $"{tagAlias}/{pieceSuffix}", x, y);
+                    AddCoordinateAliases(aliases, $"{tagAlias}/piece/{pieceSuffix}", x, y);
+                }
+            }
+
+            List<string> aliasList = new(aliases.Count);
+            foreach (string alias in aliases)
+            {
+                aliasList.Add(alias);
+            }
+
+            return aliasList;
+        }
+
+        private static IEnumerable<string> SplitDynamicObjectTags(string tagsValue)
+        {
+            if (string.IsNullOrWhiteSpace(tagsValue))
+            {
+                yield break;
+            }
+
+            foreach (string segment in tagsValue.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string normalized = NormalizeDynamicObjectKey(segment);
+                if (normalized.Length > 0)
+                {
+                    yield return normalized;
+                }
+            }
         }
 
         private static string BuildLayerObjectAlias(string layerName, string objectName)

@@ -411,6 +411,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return ClientTeslaTriangleAttackAction;
             }
 
+            int beholderSupportAction = ResolveBeholderLocalSupportActionCode(skill, branchName);
+            if (beholderSupportAction > 0)
+            {
+                return beholderSupportAction;
+            }
+
             if (assistType == SummonAssistType.Support
                 && IsSupportOwnedSuspendBranch(skill, assistType, branchName))
             {
@@ -429,6 +435,51 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return ResolveNamedSummonBranch(skill, "subsummon", "skill1", "skill2")
                    ?? ResolveAuthoredCustomSummonSkillBranch(skill, 0);
+        }
+
+        internal static string ResolveEmptyActionRetryBranch(SkillData skill)
+        {
+            if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)
+            {
+                return null;
+            }
+
+            string preferredRetryBranch = UsesFlyStyleEmptyActionRetry(skill)
+                ? ResolveNamedSummonBranch(skill, "fly")
+                : ResolveNamedSummonBranch(skill, "stand");
+            if (!string.IsNullOrWhiteSpace(preferredRetryBranch))
+            {
+                return preferredRetryBranch;
+            }
+
+            return ResolveIdlePlaybackBranch(skill);
+        }
+
+        private static int ResolveBeholderLocalSupportActionCode(SkillData skill, string branchName)
+        {
+            if (skill?.SkillId != BeholderSummonSkillId || string.IsNullOrWhiteSpace(branchName))
+            {
+                return 0;
+            }
+
+            string healBranchName = ResolveBeholderHealBranch(skill);
+            if (!string.IsNullOrWhiteSpace(healBranchName)
+                && string.Equals(branchName, healBranchName, StringComparison.OrdinalIgnoreCase))
+            {
+                return PacketSkillActionBeholderHeal;
+            }
+
+            for (int branchIndex = BeholderPddBranchIndex; branchIndex <= BeholderPadBranchIndex; branchIndex++)
+            {
+                string buffBranchName = GetBeholderBranchName(branchIndex);
+                if (!string.IsNullOrWhiteSpace(buffBranchName)
+                    && string.Equals(branchName, buffBranchName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return PacketSkillActionBeholderBuffBase + branchIndex;
+                }
+            }
+
+            return 0;
         }
 
         private static string ResolveAssistOwnedPacketSkillBranch(SkillData skill, SummonAssistType assistType)
@@ -516,6 +567,32 @@ namespace HaCreator.MapSimulator.Character.Skills
             return skill.GetSummonAttackRange(facingRight);
         }
 
+        internal static Rectangle ResolveSupportOwnedExpiryRange(
+            SkillData skill,
+            bool facingRight,
+            string selfDestructBranchName)
+        {
+            Rectangle supportRange = ResolveSupportOwnedRange(skill, facingRight);
+            if (skill == null
+                || string.IsNullOrWhiteSpace(selfDestructBranchName)
+                || !skill.TryGetSummonAttackRange(facingRight, selfDestructBranchName, out Rectangle selfDestructRange))
+            {
+                return supportRange;
+            }
+
+            if (supportRange.IsEmpty)
+            {
+                return selfDestructRange;
+            }
+
+            if (selfDestructRange.IsEmpty)
+            {
+                return supportRange;
+            }
+
+            return Rectangle.Union(supportRange, selfDestructRange);
+        }
+
         private static string ResolvePacketIndexedSkillBranch(SkillData skill, byte normalizedAction)
         {
             if (normalizedAction < PacketSkillActionSkillBranchMin
@@ -572,6 +649,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return branchName;
                 }
             }
+        }
+
+        private static bool UsesFlyStyleEmptyActionRetry(SkillData skill)
+        {
+            int moveAbility = skill?.SummonMoveAbility ?? 0;
+            return moveAbility == 4 || moveAbility == 5;
         }
 
         private static bool IsAuthoredCustomSummonSkillBranch(string branchName)

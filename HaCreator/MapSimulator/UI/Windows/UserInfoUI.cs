@@ -107,6 +107,44 @@ namespace HaCreator.MapSimulator.UI
             public int? PreviousJobRank { get; }
         }
 
+        public readonly struct RemoteRideSnapshot
+        {
+            public RemoteRideSnapshot(bool hasAuthoritativeRideState, bool isMountedInField)
+            {
+                HasAuthoritativeRideState = hasAuthoritativeRideState;
+                IsMountedInField = isMountedInField;
+            }
+
+            public bool HasAuthoritativeRideState { get; }
+            public bool IsMountedInField { get; }
+        }
+
+        internal readonly struct RidePagePresentation
+        {
+            public RidePagePresentation(
+                bool hasAuthoritativeRideState,
+                bool hasBuildBackedRideState,
+                bool ridingReady,
+                string statusText,
+                Color statusColor,
+                string notesText)
+            {
+                HasAuthoritativeRideState = hasAuthoritativeRideState;
+                HasBuildBackedRideState = hasBuildBackedRideState;
+                RidingReady = ridingReady;
+                StatusText = statusText ?? string.Empty;
+                StatusColor = statusColor;
+                NotesText = notesText ?? string.Empty;
+            }
+
+            public bool HasAuthoritativeRideState { get; }
+            public bool HasBuildBackedRideState { get; }
+            public bool RidingReady { get; }
+            public string StatusText { get; }
+            public Color StatusColor { get; }
+            public string NotesText { get; }
+        }
+
         public sealed class UserInfoInspectionTarget
         {
             public CharacterBuild Build { get; init; }
@@ -212,6 +250,7 @@ namespace HaCreator.MapSimulator.UI
         private Func<CharacterBuild, ItemMakerProgressionSnapshot> _collectionSnapshotProvider;
         private Func<CharacterBuild, MonsterBookSnapshot> _monsterBookSnapshotProvider;
         private Func<CharacterBuild, RankDeltaSnapshot> _rankDeltaProvider;
+        private Func<UserInfoActionContext, RemoteRideSnapshot> _remoteRideSnapshotProvider;
         private AuxiliaryPopupKind _activePopup;
         private LegacyExpandedPanel _legacyExpandedPanel;
         private LegacyCollectionMode _legacyCollectionMode = LegacyCollectionMode.Overview;
@@ -585,6 +624,11 @@ namespace HaCreator.MapSimulator.UI
             _rankDeltaProvider = rankDeltaProvider;
         }
 
+        public void SetRemoteRideSnapshotProvider(Func<UserInfoActionContext, RemoteRideSnapshot> remoteRideSnapshotProvider)
+        {
+            _remoteRideSnapshotProvider = remoteRideSnapshotProvider;
+        }
+
         public void SetProductSkillIcon(ItemMakerRecipeFamily family, IDXObject icon)
         {
             if (icon != null)
@@ -911,39 +955,31 @@ namespace HaCreator.MapSimulator.UI
             CharacterBuild displayBuild = GetDisplayedBuild();
             string mountName = GetEquippedItemName(EquipSlot.TamingMob, displayBuild);
             string saddleName = GetEquippedItemName(EquipSlot.Saddle, displayBuild);
-            bool ridingReady = displayBuild?.HasMonsterRiding == true && !string.Equals(mountName, "-", StringComparison.Ordinal);
-            bool hasAuthoritativeRide = HasAuthoritativeRideState(displayBuild);
             bool hasBuildBackedRide = HasBuildBackedRideState(displayBuild, mountName, saddleName);
+            RidePagePresentation presentation = ResolveRidePagePresentation(
+                IsRemoteInspectionActive(),
+                HasAuthoritativeRideState(displayBuild),
+                hasBuildBackedRide,
+                displayBuild?.HasMonsterRiding == true,
+                mountName,
+                saddleName,
+                GetRemoteRideSnapshot());
 
             DrawSectionHeader(sprite, "Ride");
             DrawLabeledRow(
                 sprite,
                 42,
                 "Status",
-                hasAuthoritativeRide
-                    ? (ridingReady ? "Ride available" : "No active mount slot")
-                    : hasBuildBackedRide
-                        ? (ridingReady ? "Build-backed ride equipped" : "Build-backed mount data only")
-                        : "Remote ride state unavailable",
-                hasAuthoritativeRide
-                    ? (ridingReady ? SuccessColor : WarningColor)
-                    : hasBuildBackedRide
-                        ? SecondaryColor
-                        : MutedColor);
-            DrawLabeledRow(sprite, 66, "Mount", hasAuthoritativeRide || hasBuildBackedRide ? mountName : "-", ValueColor);
-            DrawLabeledRow(sprite, 90, "Saddle", hasAuthoritativeRide || hasBuildBackedRide ? saddleName : "-", ValueColor);
+                presentation.StatusText,
+                presentation.StatusColor);
+            DrawLabeledRow(sprite, 66, "Mount", presentation.HasAuthoritativeRideState || presentation.HasBuildBackedRideState ? mountName : "-", ValueColor);
+            DrawLabeledRow(sprite, 90, "Saddle", presentation.HasAuthoritativeRideState || presentation.HasBuildBackedRideState ? saddleName : "-", ValueColor);
             DrawLabeledRow(sprite, 114, "Job", GetDisplayJobText(displayBuild), ValueColor);
             DrawLabeledRow(
                 sprite,
                 138,
                 "Notes",
-                hasAuthoritativeRide
-                    ? (ridingReady
-                        ? "Taming-mob equipment is present in the simulator build."
-                        : "Equip a taming mob and saddle to mirror the client ride page.")
-                    : hasBuildBackedRide
-                        ? "AvatarLook-backed equipment keeps the inspected ride page populated, but live remote ride state is still unavailable."
-                        : "AvatarLook and field state do not expose the inspected profile ride page authoritatively.",
+                presentation.NotesText,
                 MutedColor,
                 144);
         }
@@ -3142,9 +3178,85 @@ namespace HaCreator.MapSimulator.UI
             return GetResolvedInspectionTarget()?.IsLiveRemoteTarget == true;
         }
 
+        private RemoteRideSnapshot GetRemoteRideSnapshot()
+        {
+            if (!IsRemoteInspectionActive())
+            {
+                return default;
+            }
+
+            return _remoteRideSnapshotProvider?.Invoke(BuildCurrentActionContext()) ?? default;
+        }
+
         private CharacterBuild GetDisplayedBuild()
         {
             return GetResolvedInspectionTarget()?.Build ?? _characterBuild;
+        }
+
+        internal static RidePagePresentation ResolveRidePagePresentation(
+            bool isRemoteInspection,
+            bool hasAuthoritativeRideFromBuild,
+            bool hasBuildBackedRide,
+            bool buildReportsRideEquipped,
+            string mountName,
+            string saddleName,
+            RemoteRideSnapshot remoteRideSnapshot)
+        {
+            bool hasAuthRide = hasAuthoritativeRideFromBuild || (isRemoteInspection && remoteRideSnapshot.HasAuthoritativeRideState);
+            bool hasVisibleMount = !string.Equals(mountName, "-", StringComparison.Ordinal);
+            bool hasVisibleSaddle = !string.Equals(saddleName, "-", StringComparison.Ordinal);
+            bool ridingReady = isRemoteInspection && remoteRideSnapshot.HasAuthoritativeRideState
+                ? remoteRideSnapshot.IsMountedInField && hasVisibleMount
+                : buildReportsRideEquipped && hasVisibleMount;
+
+            if (hasAuthRide)
+            {
+                if (isRemoteInspection && remoteRideSnapshot.HasAuthoritativeRideState)
+                {
+                    return new RidePagePresentation(
+                        true,
+                        hasBuildBackedRide,
+                        ridingReady,
+                        ridingReady ? "Mounted in shared field" : "Not riding in shared field",
+                        ridingReady ? SuccessColor : WarningColor,
+                        ridingReady
+                            ? "Shared-field actor state confirms the inspected target is actively mounted."
+                            : hasVisibleMount || hasVisibleSaddle
+                                ? "Shared-field actor state confirms the inspected target currently is not mounted, even though mount equipment is present."
+                                : "Shared-field actor state confirms the inspected target currently has no active ride state.");
+                }
+
+                return new RidePagePresentation(
+                    true,
+                    hasBuildBackedRide,
+                    ridingReady,
+                    ridingReady ? "Ride available" : "No active mount slot",
+                    ridingReady ? SuccessColor : WarningColor,
+                    ridingReady
+                        ? "Taming-mob equipment is present in the simulator build."
+                        : "Equip a taming mob and saddle to mirror the client ride page.");
+            }
+
+            if (hasBuildBackedRide)
+            {
+                return new RidePagePresentation(
+                    false,
+                    true,
+                    buildReportsRideEquipped && hasVisibleMount,
+                    buildReportsRideEquipped && hasVisibleMount ? "Build-backed ride equipped" : "Build-backed mount data only",
+                    SecondaryColor,
+                    "AvatarLook-backed equipment keeps the inspected ride page populated, but live remote ride state is still unavailable.");
+            }
+
+            return new RidePagePresentation(
+                false,
+                false,
+                false,
+                isRemoteInspection ? "Remote ride state unavailable" : "No active mount slot",
+                isRemoteInspection ? MutedColor : WarningColor,
+                isRemoteInspection
+                    ? "AvatarLook and field state do not expose the inspected profile ride page authoritatively."
+                    : "Equip a taming mob and saddle to mirror the client ride page.");
         }
 
         private UserInfoActionContext BuildCurrentActionContext()

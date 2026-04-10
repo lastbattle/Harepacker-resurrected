@@ -124,6 +124,28 @@ namespace HaCreator.MapSimulator.Interaction
             return writer.ToArray();
         }
 
+        public static byte[] BuildInvitePayload(
+            string contactName,
+            byte inviteType = 0,
+            int inviteSequence = 0,
+            bool skipBlacklistAutoReject = false)
+        {
+            PacketWriter writer = new();
+            writer.WriteMapleString(NormalizeText(contactName));
+            writer.WriteByte(inviteType);
+            writer.WriteInt(inviteSequence);
+            writer.WriteByte(skipBlacklistAutoReject ? 1 : 0);
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildChatPayload(string contactName, string message)
+        {
+            PacketWriter writer = new();
+            WriteString8(writer, contactName);
+            writer.WriteMapleString(NormalizeText(message));
+            return writer.ToArray();
+        }
+
         public static bool TryParseClientDispatch(ReadOnlySpan<byte> payload, out byte packetType, out byte[] body, out string error)
         {
             packetType = 0;
@@ -139,6 +161,21 @@ namespace HaCreator.MapSimulator.Interaction
             packetType = payload[0];
             body = payload[1..].ToArray();
             return true;
+        }
+
+        private static void WriteString8(PacketWriter writer, string value)
+        {
+            string normalized = NormalizeText(value);
+            writer.WriteByte(Math.Min(byte.MaxValue, normalized.Length));
+            if (normalized.Length > 0)
+            {
+                writer.WriteString(normalized[..Math.Min(byte.MaxValue, normalized.Length)]);
+            }
+        }
+
+        private static string NormalizeText(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
         }
 
         public static bool TryParseInvite(ReadOnlySpan<byte> payload, out MessengerInvitePacket packet, out string error)

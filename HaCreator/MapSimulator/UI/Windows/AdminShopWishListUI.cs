@@ -98,6 +98,7 @@ namespace HaCreator.MapSimulator.UI
         private int _searchResultSessionPageIndex;
         private int _searchResultSessionToken;
         private string _searchResultSessionSelectedEntryKey = string.Empty;
+        private string _searchResultSessionCatalogSignature = string.Empty;
         private PopupMode _popupMode;
 
         public AdminShopWishListUI(
@@ -1613,6 +1614,7 @@ namespace HaCreator.MapSimulator.UI
         {
             AdvanceWishlistSearchResultSessionToken();
             ClearWishlistSearchResultSession(advanceToken: false);
+            _searchResultSessionCatalogSignature = _sourceDialog?.GetWishlistSearchCatalogSessionSignature() ?? string.Empty;
             if (results == null)
             {
                 return;
@@ -1640,6 +1642,7 @@ namespace HaCreator.MapSimulator.UI
             _searchResultSessionEntryKeys.Clear();
             _searchResultSessionPageIndex = 0;
             _searchResultSessionSelectedEntryKey = string.Empty;
+            _searchResultSessionCatalogSignature = string.Empty;
         }
 
         private void InvalidateWishlistSearchResultSession()
@@ -1666,6 +1669,14 @@ namespace HaCreator.MapSimulator.UI
             if (_sourceDialog == null || _searchResultSessionEntryKeys.Count == 0)
             {
                 ClearWishlistSearchResultSession();
+                return new List<AdminShopDialogUI.WishlistSearchResult>();
+            }
+
+            string liveCatalogSignature = _sourceDialog.GetWishlistSearchCatalogSessionSignature();
+            if (!string.IsNullOrWhiteSpace(_searchResultSessionCatalogSignature)
+                && !string.Equals(_searchResultSessionCatalogSignature, liveCatalogSignature, StringComparison.Ordinal))
+            {
+                ResetWishlistSearchResultSessionForCatalogChange();
                 return new List<AdminShopDialogUI.WishlistSearchResult>();
             }
 
@@ -1710,6 +1721,26 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return liveResults;
+        }
+
+        private void ResetWishlistSearchResultSessionForCatalogChange()
+        {
+            _searchResults.Clear();
+            _selectedResultIndex = 0;
+            _resultScrollOffset = 0;
+            if (IsSearchResultAddOnOpen())
+            {
+                HideSearchResultAddOnRequested?.Invoke();
+            }
+
+            if (_popupMode == PopupMode.Results)
+            {
+                _popupMode = PopupMode.None;
+            }
+
+            ClearWishlistSearchResultSession();
+            _statusMessage = "SearchItemName invalidated the staged result session after the admin-shop catalog payload changed.";
+            UpdatePopupButtons();
         }
 
         private void AdvanceWishlistSearchResultSessionToken()

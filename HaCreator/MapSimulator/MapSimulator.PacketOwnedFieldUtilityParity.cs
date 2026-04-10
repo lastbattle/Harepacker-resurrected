@@ -780,7 +780,8 @@ namespace HaCreator.MapSimulator
 
         private string ResolvePacketOwnedDynamicPlatformSnapshotName(int platformId)
         {
-            if (_dynamicFootholdField.TryResolvePacketOwnedSnapshotDynamicObjectName(platformId, out string authoredName)
+            if (_dynamicFootholdField != null
+                && _dynamicFootholdField.TryResolvePacketOwnedSnapshotDynamicObjectName(platformId, out string authoredName)
                 && !string.IsNullOrWhiteSpace(authoredName))
             {
                 return authoredName;
@@ -792,7 +793,8 @@ namespace HaCreator.MapSimulator
                 return packetName;
             }
 
-            if (_dynamicFootholdField.TryResolveAuthoredDynamicObjectName(platformId, out authoredName)
+            if (_dynamicFootholdField != null
+                && _dynamicFootholdField.TryResolveAuthoredDynamicObjectName(platformId, out authoredName)
                 && !string.IsNullOrWhiteSpace(authoredName))
             {
                 return authoredName;

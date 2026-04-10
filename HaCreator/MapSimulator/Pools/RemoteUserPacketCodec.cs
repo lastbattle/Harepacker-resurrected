@@ -37,7 +37,18 @@ namespace HaCreator.MapSimulator.Pools
         UserItemEffect = 215,
         UserAvatarModified = 223,
         UserTemporaryStatSet = 225,
-        UserTemporaryStatReset = 226
+        UserTemporaryStatReset = 226,
+        UserMoveOfficial = 210,
+        UserAttackOfficial1 = 211,
+        UserAttackOfficial2 = 212,
+        UserAttackOfficial3 = 213,
+        UserAttackOfficial4 = 214,
+        UserPreparedSkillOfficial = 215,
+        UserMovingShootAttackPrepareOfficial = 216,
+        UserPreparedSkillClearOfficial = 217,
+        UserEmotionOfficial = 219,
+        UserActiveEffectItemOfficial = 220,
+        UserPortableChairOfficial = 222
     }
 
     public readonly record struct RemoteUserEnterFieldPacket(
@@ -253,6 +264,7 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct RemoteUserPortableChairRecordRemovePacket(int CharacterId);
     public readonly record struct RemoteUserMountPacket(int CharacterId, int? TamingMobItemId);
     public readonly record struct RemoteUserActiveEffectItemPacket(int CharacterId, int? ItemId);
+    public readonly record struct RemoteUserEmotionPacket(int CharacterId, int EmotionId, int DurationMs, bool ByItemOption);
     public readonly record struct RemoteUserTemporaryStatSetPacket(int CharacterId, RemoteUserTemporaryStatSnapshot TemporaryStats, ushort Delay);
     public readonly record struct RemoteUserTemporaryStatResetPacket(int CharacterId, int[] MaskWords);
     public readonly record struct RemoteUserPreparedSkillPacket(
@@ -927,6 +939,46 @@ namespace HaCreator.MapSimulator.Pools
 
             packet = new RemoteUserActiveEffectItemPacket(characterId, itemId);
             return true;
+        }
+
+        public static bool TryParseEmotion(ReadOnlySpan<byte> payload, out RemoteUserEmotionPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                int emotionId = reader.ReadInt32();
+                int durationMs = reader.ReadInt32();
+                bool byItemOption = reader.ReadByte() != 0;
+                if (reader.RemainingLength != 0)
+                {
+                    error = $"Remote user emotion packet has {reader.RemainingLength} unread bytes remaining.";
+                    return false;
+                }
+
+                if (characterId <= 0)
+                {
+                    error = $"Remote user emotion packet character ID {characterId} is invalid.";
+                    return false;
+                }
+
+                if (emotionId < 0)
+                {
+                    error = $"Remote user emotion id {emotionId} is invalid.";
+                    return false;
+                }
+
+                packet = new RemoteUserEmotionPacket(characterId, emotionId, durationMs, byItemOption);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
         }
 
         public static bool TryParseTemporaryStatSet(ReadOnlySpan<byte> payload, out RemoteUserTemporaryStatSetPacket packet, out string error)
@@ -2216,6 +2268,11 @@ namespace HaCreator.MapSimulator.Pools
                     {
                         magicShieldSkillId = magicShieldValue;
                     }
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Flying))
+                {
+                    hasFlying = true;
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Frozen))

@@ -42,11 +42,10 @@ namespace HaCreator.MapSimulator.Interaction
             out string message)
         {
             bool applied = _mapleTvRuntime.TryApplyPacket(packetType, payload, currentTick, buildResolver, out message);
-            if (applied)
-            {
-                _lastMapleTvDispatchSummary = $"CMapleTVMan::OnPacket dispatched packet {packetType.ToString(CultureInfo.InvariantCulture)}.";
-                _lastDispatchSummary = _lastMapleTvDispatchSummary;
-            }
+            _lastMapleTvDispatchSummary = applied
+                ? $"CMapleTVMan::OnPacket dispatched {DescribeMapleTvPacketType(packetType)}. {message}"
+                : $"CMapleTVMan::OnPacket rejected {DescribeMapleTvPacketType(packetType)}. {message}";
+            _lastDispatchSummary = _lastMapleTvDispatchSummary;
 
             return applied;
         }
@@ -140,7 +139,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             message = _messengerRuntime.ApplyPacketDispatchPayload(payload);
-            _lastMessengerDispatchSummary = $"CUIMessenger::OnPacket dispatched subtype {packetSubtype}.";
+            _lastMessengerDispatchSummary = $"CUIMessenger::OnPacket dispatched subtype {packetSubtype} ({DescribeMessengerDispatchSubtype(packetSubtype)}). {_messengerRuntime.LastPacketSummary}";
             _lastDispatchSummary = _lastMessengerDispatchSummary;
             return true;
         }
@@ -156,7 +155,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             message = _messengerRuntime.ApplyPacketPayload(packetType, payload);
-            _lastMessengerDispatchSummary = $"CUIMessenger packet-owned {DescribeMessengerPacketType(packetType)} payload applied.";
+            _lastMessengerDispatchSummary = $"CUIMessenger packet-owned {DescribeMessengerPacketType(packetType)} payload applied. {_messengerRuntime.LastPacketSummary}";
             _lastDispatchSummary = _lastMessengerDispatchSummary;
             return true;
         }
@@ -288,6 +287,34 @@ namespace HaCreator.MapSimulator.Interaction
                 MessengerPacketType.Migrated => "migrated",
                 MessengerPacketType.SelfEnterResult => "self-enter-result",
                 _ => packetType.ToString()
+            };
+        }
+
+        private static string DescribeMessengerDispatchSubtype(byte packetSubtype)
+        {
+            return packetSubtype switch
+            {
+                0 => "OnEnter",
+                1 => "OnSelfEnterResult",
+                2 => "OnLeave",
+                3 => "OnInvite",
+                4 => "OnInviteResult",
+                5 => "OnBlocked",
+                6 => "OnChat",
+                7 => "OnAvatar",
+                8 => "OnMigrated",
+                _ => packetSubtype.ToString(CultureInfo.InvariantCulture)
+            };
+        }
+
+        private static string DescribeMapleTvPacketType(int packetType)
+        {
+            return packetType switch
+            {
+                MapleTvRuntime.PacketTypeSetMessage => "packet 405 (OnSetMessage)",
+                MapleTvRuntime.PacketTypeClearMessage => "packet 406 (OnClearMessage)",
+                MapleTvRuntime.PacketTypeSendMessageResult => "packet 407 (OnSendMessageResult)",
+                _ => $"packet {packetType.ToString(CultureInfo.InvariantCulture)}"
             };
         }
     }

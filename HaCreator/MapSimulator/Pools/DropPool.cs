@@ -2363,7 +2363,8 @@ namespace HaCreator.MapSimulator.Pools
             int localCharacterId,
             Func<PacketDropLeaveReason, RemoteDropLeavePacket, string> actorNameResolver = null,
             Func<PacketDropLeaveReason, RemoteDropLeavePacket, Vector2?> actorPositionResolver = null,
-            Func<RemoteDropLeavePacket, int> petPickupActorIdResolver = null)
+            Func<RemoteDropLeavePacket, int> petPickupActorIdResolver = null,
+            Action<RemoteDropLeavePacket> beforeLocalPetPickup = null)
         {
             if (!_dropById.TryGetValue(packet.DropId, out DropItem drop))
             {
@@ -2435,6 +2436,7 @@ namespace HaCreator.MapSimulator.Pools
                     if (packet.ActorId == localCharacterId)
                     {
                         int localPetId = petPickupActorIdResolver?.Invoke(packet) ?? packet.ActorId;
+                        beforeLocalPetPickup?.Invoke(packet);
                         return CompletePickup(
                             drop,
                             localPetId,

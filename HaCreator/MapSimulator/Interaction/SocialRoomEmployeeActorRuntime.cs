@@ -19,12 +19,15 @@ using Spine;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class SocialRoomEmployeeActorRuntime
     {
+        private const int HiredMerchantNameTagStringPoolId = 0x0DA6;
+        private const string HiredMerchantNameTagFallbackFormat = "{0}'s Hired Merchant";
         private const string MerchantNpcId = "9071001";
         private const string StoreBankerNpcId = "9030000";
         private const int SignVerticalOffset = 34;
@@ -44,8 +47,25 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Color SignPanelColor = new(28, 22, 18, 210);
         private static readonly Color SignBorderColor = new(180, 138, 69, 255);
 
+        private sealed class EmployeeImageEntry
+        {
+            internal EmployeeImageEntry(int templateId, string imagePath, WzImage imageRoot, WzImageProperty propertyRoot)
+            {
+                TemplateId = Math.Max(0, templateId);
+                ImagePath = imagePath ?? string.Empty;
+                ImageRoot = imageRoot;
+                PropertyRoot = propertyRoot;
+            }
+
+            internal int TemplateId { get; }
+            internal string ImagePath { get; }
+            internal WzImage ImageRoot { get; }
+            internal WzImageProperty PropertyRoot { get; }
+        }
+
         private readonly Dictionary<string, NpcItem> _actorCache = new(StringComparer.Ordinal);
         private readonly Dictionary<string, EmployeeTemplateProfile> _cashProfileCache = new(StringComparer.Ordinal);
+        private readonly Dictionary<int, EmployeeImageEntry> _cashEmployeeImgEntryCache = new();
         private readonly Dictionary<int, EmployeeActionCatalog> _cashActionCatalogCache = new();
         private readonly Dictionary<(int TemplateId, int ActionIndex), List<IDXObject>> _cashActionCache = new();
         private readonly ConcurrentBag<WzObject> _usedProps = new();
@@ -333,8 +353,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return cachedCatalog;
             }
 
-            WzImageProperty employeeRoot = ResolveEmployeeProperty(templateId);
-            EmployeeActionCatalog catalog = EmployeeActionCatalog.Create(employeeRoot);
+            EmployeeImageEntry employeeImgEntry = ResolveEmployeeImgEntry(templateId);
+            EmployeeActionCatalog catalog = EmployeeActionCatalog.Create(employeeImgEntry);
             if (catalog != null)
             {
                 _cashActionCatalogCache[templateId] = catalog;
@@ -610,16 +630,40 @@ namespace HaCreator.MapSimulator.Interaction
                 : snapshot.Template.ToString();
         }
 
-        private static WzImageProperty ResolveEmployeeProperty(int templateId)
+        private EmployeeImageEntry ResolveEmployeeImgEntry(int templateId)
         {
             if (templateId <= 0)
             {
                 return null;
             }
 
-            WzImage itemImage = global::HaCreator.Program.FindImage("Item", $"Cash/{templateId / 10000:D4}.img");
-            itemImage?.ParseImage();
-            return ResolveLinkedProperty(itemImage?[templateId.ToString("D8")]?["employee"]);
+            if (_cashEmployeeImgEntryCache.TryGetValue(templateId, out EmployeeImageEntry cachedEntry))
+            {
+                return cachedEntry;
+            }
+
+            string imagePath = FormatEmployeeImagePath(templateId);
+            WzImage itemImage = global::HaCreator.Program.FindImage("Item", imagePath);
+            if (itemImage == null)
+            {
+                return null;
+            }
+
+            itemImage.ParseImage();
+            WzImageProperty employeeRoot = ResolveLinkedProperty(itemImage[templateId.ToString("D8")]?["employee"]);
+            if (employeeRoot == null)
+            {
+                return null;
+            }
+
+            EmployeeImageEntry entry = new(templateId, imagePath, itemImage, employeeRoot);
+            _cashEmployeeImgEntryCache[templateId] = entry;
+            return entry;
+        }
+
+        private static string FormatEmployeeImagePath(int templateId)
+        {
+            return $"Cash/{Math.Max(0, templateId) / 10000:D4}.img";
         }
 
         private List<IDXObject> LoadEmployeeActionFrames(
@@ -1201,8 +1245,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            string ownerName = ExtractOwnerName(_activeSnapshot.Detail);
-            if (string.IsNullOrWhiteSpace(ownerName))
+            string nameTagText = ResolveNameTagText(_activeSnapshot);
+            if (string.IsNullOrWhiteSpace(nameTagText))
             {
                 return;
             }
@@ -1210,7 +1254,7 @@ namespace HaCreator.MapSimulator.Interaction
             int actorScreenX = _activeActor.CurrentX - mapShiftX + mapCenterX;
             int actorScreenY = _activeActor.CurrentY - mapShiftY + mapCenterY;
             NameTagAssets assets = _nameTagAssets;
-            Vector2 textSize = font.MeasureString(ownerName) * NameTagScale;
+            Vector2 textSize = font.MeasureString(nameTagText) * NameTagScale;
 
             if (assets?.IsLoaded == true)
             {
@@ -1246,14 +1290,77 @@ namespace HaCreator.MapSimulator.Interaction
                 Vector2 textPosition = new(
                     left + ((totalWidth - textSize.X) * 0.5f),
                     y + NameTagTextInsetY);
-                DrawOutlinedScaledText(spriteBatch, font, ownerName, textPosition, assets.TextColor, NameTagScale);
+                DrawOutlinedScaledText(spriteBatch, font, nameTagText, textPosition, assets.TextColor, NameTagScale);
                 return;
             }
 
             Vector2 fallbackPosition = new(
                 actorScreenX - (textSize.X * 0.5f),
                 actorScreenY - _activeActor.NpcInstance.Height - textSize.Y - NameTagVerticalOffset);
-            DrawOutlinedScaledText(spriteBatch, font, ownerName, fallbackPosition, Color.White, NameTagScale);
+            DrawOutlinedScaledText(spriteBatch, font, nameTagText, fallbackPosition, Color.White, NameTagScale);
+        }
+
+        private static string ResolveNameTagText(SocialRoomFieldActorSnapshot snapshot)
+        {
+            string ownerName = ExtractOwnerName(snapshot?.Detail);
+            if (string.IsNullOrWhiteSpace(ownerName))
+            {
+                return string.Empty;
+            }
+
+            if (!ShouldShowLiveEmployeeNameTag(snapshot))
+            {
+                return string.Empty;
+            }
+
+            return FormatHiredMerchantNameTag(ownerName);
+        }
+
+        private static bool ShouldShowLiveEmployeeNameTag(SocialRoomFieldActorSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return false;
+            }
+
+            if (snapshot.Kind != SocialRoomKind.PersonalShop && snapshot.Kind != SocialRoomKind.EntrustedShop)
+            {
+                return false;
+            }
+
+            string stateKey = snapshot.StateKey ?? string.Empty;
+            if (snapshot.Template == SocialRoomFieldActorTemplate.StoreBanker
+                && stateKey.IndexOf("expired", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static string FormatHiredMerchantNameTag(string ownerName)
+        {
+            if (string.IsNullOrWhiteSpace(ownerName))
+            {
+                return string.Empty;
+            }
+
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                HiredMerchantNameTagStringPoolId,
+                HiredMerchantNameTagFallbackFormat,
+                maxPlaceholderCount: 1,
+                out _);
+            return string.Format(CultureInfo.InvariantCulture, format, ownerName.Trim());
+        }
+
+        internal static string ResolveNameTagTextForTesting(SocialRoomKind kind, SocialRoomFieldActorTemplate template, string detail, string stateKey)
+        {
+            return ResolveNameTagText(new SocialRoomFieldActorSnapshot(
+                kind,
+                template,
+                headline: string.Empty,
+                detail: detail,
+                stateKey: stateKey ?? string.Empty));
         }
 
         private static void DrawOutlinedScaledText(
@@ -1532,9 +1639,9 @@ namespace HaCreator.MapSimulator.Interaction
                 OrderedActionNames = orderedActionNames ?? Array.Empty<string>();
             }
 
-            internal static EmployeeActionCatalog Create(WzImageProperty employeeRoot)
+            internal static EmployeeActionCatalog Create(EmployeeImageEntry employeeImgEntry)
             {
-                if (employeeRoot == null)
+                if (employeeImgEntry?.PropertyRoot == null)
                 {
                     return null;
                 }
@@ -1543,7 +1650,7 @@ namespace HaCreator.MapSimulator.Interaction
                 List<string> orderedActionNames = new();
                 HashSet<string> seenActionNames = new(StringComparer.Ordinal);
                 int nextTemplateActionIndex = 1;
-                foreach (WzImageProperty childProperty in employeeRoot.WzProperties)
+                foreach (WzImageProperty childProperty in employeeImgEntry.PropertyRoot.WzProperties)
                 {
                     if (childProperty == null || string.IsNullOrWhiteSpace(childProperty.Name))
                     {

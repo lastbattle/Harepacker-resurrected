@@ -20,6 +20,7 @@ namespace HaCreator.MapSimulator.Managers
     {
         private readonly ConcurrentDictionary<string, SoundEffect> _soundSources;
         private readonly List<OneShotSound> _activeSounds;
+        private readonly ConcurrentDictionary<string, LoopingSound> _activeLoopingSounds;
         private readonly object _lock = new object();
         private float _volume = 0.5f;
         private bool _disposed;
@@ -33,6 +34,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             _soundSources = new ConcurrentDictionary<string, SoundEffect>();
             _activeSounds = new List<OneShotSound>();
+            _activeLoopingSounds = new ConcurrentDictionary<string, LoopingSound>();
             _activeSoundCounts = new ConcurrentDictionary<string, int>();
         }
 
@@ -112,6 +114,51 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public void PlayLoopingSound(string name)
+        {
+            PlayLoopingSound(name, 1f);
+        }
+
+        public void PlayLoopingSound(string name, float volumeScale)
+        {
+            if (_disposed) return;
+
+            if (!_soundSources.TryGetValue(name, out var soundSource))
+            {
+                Debug.WriteLine($"[SoundManager] Looping sound '{name}' not registered");
+                return;
+            }
+
+            try
+            {
+                LoopingSound loopingSound = _activeLoopingSounds.GetOrAdd(
+                    name,
+                    _ => new LoopingSound(soundSource, Math.Max(0f, Math.Min(1f, _volume * Math.Max(0f, volumeScale)))));
+                loopingSound.Volume = Math.Max(0f, Math.Min(1f, _volume * Math.Max(0f, volumeScale)));
+                if (_focusActive)
+                {
+                    loopingSound.Play();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SoundManager] Failed to play looping sound '{name}': {ex.Message}");
+            }
+        }
+
+        public void StopLoopingSound(string name)
+        {
+            if (_disposed || string.IsNullOrWhiteSpace(name))
+            {
+                return;
+            }
+
+            if (_activeLoopingSounds.TryRemove(name, out LoopingSound loopingSound))
+            {
+                loopingSound.Dispose();
+            }
+        }
+
         public void SetFocusActive(bool isActive)
         {
             if (_disposed || _focusActive == isActive)
@@ -124,6 +171,18 @@ namespace HaCreator.MapSimulator.Managers
             lock (_lock)
             {
                 foreach (var sound in _activeSounds)
+                {
+                    if (isActive)
+                    {
+                        sound.Resume();
+                    }
+                    else
+                    {
+                        sound.Pause();
+                    }
+                }
+
+                foreach (LoopingSound sound in _activeLoopingSounds.Values)
                 {
                     if (isActive)
                     {
@@ -184,6 +243,11 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     sound.Stop();
                 }
+
+                foreach (LoopingSound sound in _activeLoopingSounds.Values)
+                {
+                    sound.Stop();
+                }
             }
         }
 
@@ -201,6 +265,13 @@ namespace HaCreator.MapSimulator.Managers
                 }
                 _activeSounds.Clear();
             }
+
+            foreach (var pair in _activeLoopingSounds)
+            {
+                pair.Value.Dispose();
+            }
+
+            _activeLoopingSounds.Clear();
 
             _soundSources.Clear();
             _activeSoundCounts.Clear();
@@ -281,6 +352,90 @@ namespace HaCreator.MapSimulator.Managers
                     _instance.Dispose();
                 }
                 catch { }
+            }
+        }
+
+        private sealed class LoopingSound : IDisposable
+        {
+            private readonly SoundEffectInstance _instance;
+            private bool _disposed;
+
+            public LoopingSound(SoundEffect sound, float volume)
+            {
+                _instance = sound.CreateInstance();
+                _instance.IsLooped = true;
+                _instance.Volume = volume;
+            }
+
+            public float Volume
+            {
+                set
+                {
+                    if (_disposed)
+                    {
+                        return;
+                    }
+
+                    _instance.Volume = value;
+                }
+            }
+
+            public void Play()
+            {
+                if (_disposed || _instance.State == SoundState.Playing)
+                {
+                    return;
+                }
+
+                _instance.Play();
+            }
+
+            public void Pause()
+            {
+                if (_disposed || _instance.State != SoundState.Playing)
+                {
+                    return;
+                }
+
+                _instance.Pause();
+            }
+
+            public void Resume()
+            {
+                if (_disposed || _instance.State != SoundState.Paused)
+                {
+                    return;
+                }
+
+                _instance.Resume();
+            }
+
+            public void Stop()
+            {
+                if (_disposed || _instance.State == SoundState.Stopped)
+                {
+                    return;
+                }
+
+                _instance.Stop();
+            }
+
+            public void Dispose()
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _disposed = true;
+                try
+                {
+                    _instance.Stop();
+                    _instance.Dispose();
+                }
+                catch
+                {
+                }
             }
         }
     }

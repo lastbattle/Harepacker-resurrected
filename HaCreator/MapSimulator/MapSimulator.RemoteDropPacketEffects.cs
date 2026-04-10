@@ -7,6 +7,7 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.Util;
 using HaCreator.MapSimulator.Pools;
+using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Wz;
 using Microsoft.Xna.Framework;
 
@@ -96,12 +97,26 @@ namespace HaCreator.MapSimulator
         }
     }
 
+    internal static class PacketOwnedDropPetPickupPresentation
+    {
+        internal const int SoundStringPoolId = 0x0506;
+        internal const string SoundDescriptorFallback = "Sound/Game.img/PickUpItem";
+        internal const string SoundName = "PickUpItem";
+
+        internal static string CreateSoundKey(string resolvedDescriptor)
+        {
+            return $"DropPetPickup:{resolvedDescriptor}";
+        }
+    }
+
     public partial class MapSimulator
     {
         private readonly Dictionary<int, List<IDXObject>> _packetOwnedDropExplodeFramesByVariant = new();
         private int _packetOwnedDropExplodeVariantCount = -1;
         private bool _packetOwnedDropExplodeSoundRegistrationAttempted;
         private string _packetOwnedDropExplodeSoundKey;
+        private bool _packetOwnedLocalPetPickupSoundRegistrationAttempted;
+        private string _packetOwnedLocalPetPickupSoundKey;
 
         private bool TryShowPacketOwnedDropExplodeAnimation(DropItem drop, int currentTime)
         {
@@ -136,6 +151,47 @@ namespace HaCreator.MapSimulator
             }
 
             PlayDropItemSE(volumeScale);
+        }
+
+        private void PlayPacketOwnedLocalPetPickupSound()
+        {
+            if (_soundManager == null)
+            {
+                return;
+            }
+
+            string soundKey = EnsurePacketOwnedLocalPetPickupSoundKey();
+            if (!string.IsNullOrWhiteSpace(soundKey))
+            {
+                _soundManager.PlaySound(soundKey);
+                return;
+            }
+
+            PlayPickUpItemSE();
+        }
+
+        private string EnsurePacketOwnedLocalPetPickupSoundKey()
+        {
+            if (_packetOwnedLocalPetPickupSoundRegistrationAttempted)
+            {
+                return _packetOwnedLocalPetPickupSoundKey;
+            }
+
+            _packetOwnedLocalPetPickupSoundRegistrationAttempted = true;
+
+            string descriptor = MapleStoryStringPool.GetOrFallback(
+                PacketOwnedDropPetPickupPresentation.SoundStringPoolId,
+                PacketOwnedDropPetPickupPresentation.SoundDescriptorFallback);
+
+            if (!TryResolvePacketOwnedWzSound(descriptor, "Game.img", out WzBinaryProperty soundProperty, out string resolvedDescriptor)
+                || soundProperty == null)
+            {
+                return PacketOwnedDropPetPickupPresentation.SoundName;
+            }
+
+            _packetOwnedLocalPetPickupSoundKey = PacketOwnedDropPetPickupPresentation.CreateSoundKey(resolvedDescriptor);
+            _soundManager.RegisterSound(_packetOwnedLocalPetPickupSoundKey, soundProperty);
+            return _packetOwnedLocalPetPickupSoundKey;
         }
 
         private string EnsurePacketOwnedDropExplodeSoundKey()

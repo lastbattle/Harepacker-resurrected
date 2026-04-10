@@ -209,7 +209,8 @@ namespace HaCreator.MapSimulator
                         MaplePointBalance = stageWindow.MaplePointBalance,
                         PrepaidCashBalance = stageWindow.PrepaidCashBalance,
                         ChargeParam = stageWindow.ChargeParam,
-                        StatusMessage = stageWindow.StatusMessage
+                        StatusMessage = stageWindow.StatusMessage,
+                        DetailSummaries = stageWindow.GetStatusOwnerDetailLines()
                     };
                 });
                 statusWindow.SetExternalAction("BtCharge", () => "CCSWnd_Status kept the dedicated charge button armed; live billing flow remains outside the simulator.");
@@ -264,6 +265,7 @@ namespace HaCreator.MapSimulator
                         Hour = 0,
                         Minute = 0,
                         Second = 0,
+                        PacketStateSignature = BuildCashShopOneADayPacketStateSignature(stageWindow, historyEntries),
                         HistoryEntries = historyEntries,
                         RecentPackets = stageWindow.GetRecentPacketSummaries()
                     };
@@ -295,6 +297,39 @@ namespace HaCreator.MapSimulator
             }
 
             return entries;
+        }
+
+        private static string BuildCashShopOneADayPacketStateSignature(
+            CashServiceStageWindow stageWindow,
+            IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> historyEntries)
+        {
+            if (stageWindow == null)
+            {
+                return string.Empty;
+            }
+
+            List<string> parts = new()
+            {
+                stageWindow.IsOneADayPending ? "1" : "0",
+                stageWindow.CashOneADayItemSerialNumber.ToString(CultureInfo.InvariantCulture),
+                stageWindow.CashOneADayItemDate.ToString(CultureInfo.InvariantCulture),
+                stageWindow.NoticeState ?? string.Empty
+            };
+
+            if (historyEntries != null)
+            {
+                foreach (CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState entry in historyEntries)
+                {
+                    if (entry == null)
+                    {
+                        continue;
+                    }
+
+                    parts.Add($"{entry.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}:{entry.OriginalCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}:{entry.DateLabel}");
+                }
+            }
+
+            return string.Join("|", parts);
         }
 
         private static string ResolveCashShopOneADayCommodityLabel(int commoditySerialNumber)
@@ -870,7 +905,8 @@ namespace HaCreator.MapSimulator
                     MaplePointBalance = mtsStageWindow.MaplePointBalance,
                     PrepaidCashBalance = mtsStageWindow.PrepaidCashBalance,
                     ChargeParam = mtsStageWindow.ChargeParam,
-                    StatusMessage = mtsStageWindow.StatusMessage
+                    StatusMessage = mtsStageWindow.StatusMessage,
+                    DetailSummaries = mtsStageWindow.GetStatusOwnerDetailLines()
                 });
                 statusWindow.SetExternalAction("BtCharge", () => "CITCWnd_Status kept charge ownership on the ITC stage.");
                 statusWindow.SetExternalAction("BtCheck", () =>

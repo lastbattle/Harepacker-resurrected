@@ -243,15 +243,7 @@ namespace HaCreator.MapSimulator
                 return reviveCurFieldOfNoTransfer;
             }
 
-            if (TryGetReviveOwnerMapInfoFlag(mapInfo, "forceReturnOnDead", out bool forceReturnOnDead) && forceReturnOnDead)
-            {
-                return false;
-            }
-
-            int mapId = mapInfo.id;
-            return mapInfo.forcedReturn <= 0
-                || mapInfo.forcedReturn == MapConstants.MaxMap
-                || mapInfo.forcedReturn == mapId;
+            return ShouldUseCurrentFieldReviveSpawnApproximation(mapInfo);
         }
 
         private Vector2 ResolveCurrentFieldReviveRespawnPoint(ReviveOwnerVariant variant, Vector2 fallbackPoint)
@@ -261,9 +253,17 @@ namespace HaCreator.MapSimulator
                 return fallbackPoint;
             }
 
-            return TryGetReviveOwnerMapInfoPoint(_mapBoard?.MapInfo, "ReviveCurFieldOfNoTransferPoint", out Vector2 revivePoint)
+            Vector2 spawnPoint = _playerManager?.GetSpawnPoint() ?? fallbackPoint;
+            return ResolveCurrentFieldReviveRespawnPoint(_mapBoard?.MapInfo, spawnPoint, fallbackPoint);
+        }
+
+        internal static Vector2 ResolveCurrentFieldReviveRespawnPoint(MapInfo mapInfo, Vector2 spawnPoint, Vector2 fallbackPoint)
+        {
+            return TryGetReviveOwnerMapInfoPoint(mapInfo, "ReviveCurFieldOfNoTransferPoint", out Vector2 revivePoint)
                 ? revivePoint
-                : fallbackPoint;
+                : ShouldUseCurrentFieldReviveSpawnApproximation(mapInfo)
+                    ? spawnPoint
+                    : fallbackPoint;
         }
 
         internal static bool TryGetReviveOwnerMapInfoFlag(MapInfo mapInfo, string propertyName, out bool value)
@@ -306,6 +306,24 @@ namespace HaCreator.MapSimulator
 
             point = new Vector2(x, y);
             return true;
+        }
+
+        internal static bool ShouldUseCurrentFieldReviveSpawnApproximation(MapInfo mapInfo)
+        {
+            if (mapInfo == null)
+            {
+                return true;
+            }
+
+            if (TryGetReviveOwnerMapInfoFlag(mapInfo, "forceReturnOnDead", out bool forceReturnOnDead) && forceReturnOnDead)
+            {
+                return false;
+            }
+
+            int mapId = mapInfo.id;
+            return mapInfo.forcedReturn <= 0
+                || mapInfo.forcedReturn == MapConstants.MaxMap
+                || mapInfo.forcedReturn == mapId;
         }
 
         private static bool TryFindReviveOwnerMapInfoProperty(MapInfo mapInfo, string propertyName, out WzImageProperty property)

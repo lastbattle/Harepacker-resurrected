@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator
         private Texture2D _initialQuizOwnerOkButtonHoverTexture;
         private Texture2D _initialQuizOwnerOkButtonPressedTexture;
         private Texture2D _initialQuizOwnerOkButtonDisabledTexture;
+        private Texture2D _initialQuizOwnerOkButtonKeyFocusedTexture;
         private Texture2D[] _initialQuizOwnerDigits;
         private Texture2D[] _initialQuizOwnerHeaderDigits;
         private Texture2D _initialQuizOwnerCommaTexture;
@@ -48,8 +49,23 @@ namespace HaCreator.MapSimulator
         private bool _initialQuizOwnerHoveringOkButton;
         private bool _initialQuizOwnerPressedOkButton;
         private bool _initialQuizOwnerResultSent;
+        private InitialQuizOwnerFocusTarget _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
 
         private sealed record InitialQuizAnimationFrame(Texture2D Texture, int DelayMs);
+        internal enum InitialQuizOwnerFocusTarget
+        {
+            Input,
+            OkButton
+        }
+
+        internal enum InitialQuizOwnerButtonVisualState
+        {
+            Normal,
+            Hover,
+            Pressed,
+            Disabled,
+            KeyFocused
+        }
 
         private bool TryApplyPacketOwnedInitialQuizPayload(byte[] payload, out string message)
         {
@@ -100,6 +116,7 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerHoveringOkButton = false;
             _initialQuizOwnerPressedOkButton = false;
             _initialQuizOwnerResultSent = false;
+            _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
         }
 
         private void ClearInitialQuizOwnerInputState()
@@ -109,6 +126,7 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerHoveringOkButton = false;
             _initialQuizOwnerPressedOkButton = false;
             _initialQuizOwnerResultSent = false;
+            _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
         }
 
         private void UpdateInitialQuizOwner(int currentTickCount)
@@ -129,15 +147,17 @@ namespace HaCreator.MapSimulator
 
         private bool HandleInitialQuizOwnerMouse(MouseState mouseState, MouseState previousMouseState, int currentTickCount)
         {
-            if (!_initialQuizTimerRuntime.TryBuildOwnerSnapshot(currentTickCount, out _))
+            if (!_initialQuizTimerRuntime.TryBuildOwnerSnapshot(currentTickCount, out InitialQuizOwnerSnapshot snapshot))
             {
                 return false;
             }
 
             Rectangle ownerBounds = ResolveInitialQuizOwnerBounds();
             Rectangle okButtonBounds = ResolveInitialQuizOwnerOkButtonBounds(ownerBounds);
+            Rectangle inputBounds = ResolveInitialQuizOwnerInputBounds(ownerBounds);
             Point cursor = new(mouseState.X, mouseState.Y);
             _initialQuizOwnerHoveringOkButton = okButtonBounds.Contains(cursor);
+            bool showInput = ShouldShowInitialQuizOwnerInput(snapshot.RemainingMs);
 
             bool leftPressed = mouseState.LeftButton == ButtonState.Pressed;
             bool justPressed = leftPressed && previousMouseState.LeftButton == ButtonState.Released;
@@ -145,8 +165,25 @@ namespace HaCreator.MapSimulator
 
             if (justPressed)
             {
-                _initialQuizOwnerPressedOkButton = _initialQuizOwnerHoveringOkButton;
-                _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
+                if (_initialQuizOwnerHoveringOkButton)
+                {
+                    _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.OkButton;
+                    _initialQuizOwnerPressedOkButton = showInput;
+                }
+                else if (showInput && inputBounds.Contains(cursor))
+                {
+                    _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
+                    _initialQuizOwnerPressedOkButton = false;
+                }
+                else
+                {
+                    _initialQuizOwnerPressedOkButton = false;
+                }
+
+                if (showInput)
+                {
+                    _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
+                }
             }
             else if (!leftPressed)
             {
@@ -178,10 +215,32 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (newKeyboardState.IsKeyDown(Keys.Tab) && oldKeyboardState.IsKeyUp(Keys.Tab))
+            {
+                _initialQuizOwnerFocusTarget = ResolveNextInitialQuizOwnerFocusTarget(_initialQuizOwnerFocusTarget);
+                _initialQuizOwnerPressedOkButton = false;
+                _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
+                return true;
+            }
+
+            bool inputFocused = _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input;
+            bool buttonFocused = _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.OkButton;
+
             if (newKeyboardState.IsKeyDown(Keys.Enter) && oldKeyboardState.IsKeyUp(Keys.Enter))
             {
                 SubmitInitialQuizOwnerResult(_initialQuizOwnerInput.ToString(), currentTickCount, showFeedback: true);
                 return true;
+            }
+
+            if (newKeyboardState.IsKeyDown(Keys.Space) && oldKeyboardState.IsKeyUp(Keys.Space) && buttonFocused)
+            {
+                SubmitInitialQuizOwnerResult(_initialQuizOwnerInput.ToString(), currentTickCount, showFeedback: true);
+                return true;
+            }
+
+            if (!inputFocused)
+            {
+                return buttonFocused;
             }
 
             if (newKeyboardState.IsKeyDown(Keys.Back) && oldKeyboardState.IsKeyUp(Keys.Back))
@@ -387,8 +446,13 @@ namespace HaCreator.MapSimulator
 
         private void DrawInitialQuizOwnerInputField(Rectangle inputBounds, int currentTickCount)
         {
-            Color fillColor = new Color(255, 255, 255, 212);
-            Color borderColor = new Color(113, 78, 48);
+            bool inputFocused = _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input;
+            Color fillColor = inputFocused
+                ? new Color(255, 255, 255, 212)
+                : new Color(232, 228, 221, 212);
+            Color borderColor = inputFocused
+                ? new Color(113, 78, 48)
+                : new Color(93, 80, 60);
             DrawPacketScriptOwnerFrame(inputBounds, fillColor, borderColor);
 
             string answerLabel = MapleStoryStringPool.GetOrFallback(InitialQuizAnswerLabelStringPoolId, "Answer:");
@@ -405,7 +469,7 @@ namespace HaCreator.MapSimulator
                 _spriteBatch.DrawString(_fontChat, inputText, drawPosition, Color.Black, 0f, Vector2.Zero, InitialQuizOwnerInputTextScale, SpriteEffects.None, 0f);
             }
 
-            bool cursorVisible = ((currentTickCount - _initialQuizOwnerCursorBlinkStartedAt) / 500) % 2 == 0;
+            bool cursorVisible = inputFocused && ShouldDrawInitialQuizOwnerCursor(currentTickCount, _initialQuizOwnerCursorBlinkStartedAt);
             if (!cursorVisible)
             {
                 return;
@@ -486,22 +550,20 @@ namespace HaCreator.MapSimulator
 
         private Texture2D ResolveInitialQuizOwnerOkButtonTexture(bool enabled)
         {
-            if (!enabled)
-            {
-                return _initialQuizOwnerOkButtonDisabledTexture ?? _initialQuizOwnerOkButtonNormalTexture;
-            }
+            InitialQuizOwnerButtonVisualState state = ResolveInitialQuizOwnerButtonVisualState(
+                enabled,
+                _initialQuizOwnerPressedOkButton,
+                _initialQuizOwnerHoveringOkButton,
+                _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.OkButton);
 
-            if (_initialQuizOwnerPressedOkButton)
+            return state switch
             {
-                return _initialQuizOwnerOkButtonPressedTexture ?? _initialQuizOwnerOkButtonHoverTexture ?? _initialQuizOwnerOkButtonNormalTexture;
-            }
-
-            if (_initialQuizOwnerHoveringOkButton)
-            {
-                return _initialQuizOwnerOkButtonHoverTexture ?? _initialQuizOwnerOkButtonNormalTexture;
-            }
-
-            return _initialQuizOwnerOkButtonNormalTexture;
+                InitialQuizOwnerButtonVisualState.Disabled => _initialQuizOwnerOkButtonDisabledTexture ?? _initialQuizOwnerOkButtonNormalTexture,
+                InitialQuizOwnerButtonVisualState.Pressed => _initialQuizOwnerOkButtonPressedTexture ?? _initialQuizOwnerOkButtonHoverTexture ?? _initialQuizOwnerOkButtonKeyFocusedTexture ?? _initialQuizOwnerOkButtonNormalTexture,
+                InitialQuizOwnerButtonVisualState.Hover => _initialQuizOwnerOkButtonHoverTexture ?? _initialQuizOwnerOkButtonKeyFocusedTexture ?? _initialQuizOwnerOkButtonNormalTexture,
+                InitialQuizOwnerButtonVisualState.KeyFocused => _initialQuizOwnerOkButtonKeyFocusedTexture ?? _initialQuizOwnerOkButtonHoverTexture ?? _initialQuizOwnerOkButtonNormalTexture,
+                _ => _initialQuizOwnerOkButtonNormalTexture
+            };
         }
 
         private InitialQuizAnimationFrame ResolveInitialQuizOwnerAnimationFrame(int currentTickCount)
@@ -579,6 +641,7 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerOkButtonHoverTexture = LoadUiCanvasTexture(ResolveInitialQuizOwnerButtonCanvas(preferred?["BtOK"] as WzSubProperty, "mouseOver") ?? ResolveInitialQuizOwnerButtonCanvas(fallback?["BtOK"] as WzSubProperty, "mouseOver"));
             _initialQuizOwnerOkButtonPressedTexture = LoadUiCanvasTexture(ResolveInitialQuizOwnerButtonCanvas(preferred?["BtOK"] as WzSubProperty, "pressed") ?? ResolveInitialQuizOwnerButtonCanvas(fallback?["BtOK"] as WzSubProperty, "pressed"));
             _initialQuizOwnerOkButtonDisabledTexture = LoadUiCanvasTexture(ResolveInitialQuizOwnerButtonCanvas(preferred?["BtOK"] as WzSubProperty, "disabled") ?? ResolveInitialQuizOwnerButtonCanvas(fallback?["BtOK"] as WzSubProperty, "disabled"));
+            _initialQuizOwnerOkButtonKeyFocusedTexture = LoadUiCanvasTexture(ResolveInitialQuizOwnerButtonCanvas(preferred?["BtOK"] as WzSubProperty, "keyFocused") ?? ResolveInitialQuizOwnerButtonCanvas(fallback?["BtOK"] as WzSubProperty, "keyFocused"));
             _initialQuizOwnerDigits = LoadInitialQuizOwnerDigits(preferred?["num1"] as WzSubProperty, fallback?["num1"] as WzSubProperty, out _initialQuizOwnerCommaTexture);
             _initialQuizOwnerHeaderDigits = LoadInitialQuizOwnerDigits(
                 ResolveInitialQuizOwnerHeaderDigits(preferred),
@@ -651,6 +714,40 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldShowInitialQuizOwnerInput(int remainingMs)
         {
             return remainingMs > 0;
+        }
+
+        internal static InitialQuizOwnerFocusTarget ResolveNextInitialQuizOwnerFocusTarget(InitialQuizOwnerFocusTarget currentFocus)
+        {
+            return currentFocus == InitialQuizOwnerFocusTarget.Input
+                ? InitialQuizOwnerFocusTarget.OkButton
+                : InitialQuizOwnerFocusTarget.Input;
+        }
+
+        internal static InitialQuizOwnerButtonVisualState ResolveInitialQuizOwnerButtonVisualState(bool enabled, bool pressed, bool hover, bool keyFocused)
+        {
+            if (!enabled)
+            {
+                return InitialQuizOwnerButtonVisualState.Disabled;
+            }
+
+            if (pressed)
+            {
+                return InitialQuizOwnerButtonVisualState.Pressed;
+            }
+
+            if (hover)
+            {
+                return InitialQuizOwnerButtonVisualState.Hover;
+            }
+
+            return keyFocused
+                ? InitialQuizOwnerButtonVisualState.KeyFocused
+                : InitialQuizOwnerButtonVisualState.Normal;
+        }
+
+        internal static bool ShouldDrawInitialQuizOwnerCursor(int currentTickCount, int cursorBlinkStartedAt)
+        {
+            return ((currentTickCount - cursorBlinkStartedAt) / 500) % 2 == 0;
         }
 
         internal static string ComposeInitialQuizOwnerTimerText(int remainingSeconds)

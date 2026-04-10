@@ -771,7 +771,11 @@ namespace HaCreator.MapSimulator.Character
         // For equipment with visible slots
         public string VSlot { get; set; }           // Visible slot conflicts
         public string ISlot { get; set; }           // Item slot priority
+        public string Sfx { get; set; }             // Client-owned info/sfx metadata
         public bool IsCash { get; set; }            // Cash shop item (overrides defaults)
+        public bool HasWeeklyVariant { get; set; }  // Client-owned info/weekly flag
+        public bool UsesWeeklyVariantOverride { get; set; }
+        public int ResolvedWeeklyVariantIndex { get; set; } = -1;
         public string Description { get; set; }
         public string ItemCategory { get; set; }
         public DateTime? ExpirationDateUtc { get; set; }
@@ -844,7 +848,11 @@ namespace HaCreator.MapSimulator.Character
                 AvailableAnimations = new HashSet<string>(AvailableAnimations ?? Enumerable.Empty<string>(), StringComparer.OrdinalIgnoreCase),
                 VSlot = VSlot,
                 ISlot = ISlot,
+                Sfx = Sfx,
                 IsCash = IsCash,
+                HasWeeklyVariant = HasWeeklyVariant,
+                UsesWeeklyVariantOverride = UsesWeeklyVariantOverride,
+                ResolvedWeeklyVariantIndex = ResolvedWeeklyVariantIndex,
                 Description = Description,
                 ItemCategory = ItemCategory,
                 ExpirationDateUtc = ExpirationDateUtc,
@@ -1256,6 +1264,9 @@ namespace HaCreator.MapSimulator.Character
         public int Attack { get; set; }                  // Weapon attack
         public string WeaponType { get; set; }           // "1h sword", "2h sword", "bow", etc.
         public string AfterImageType { get; set; }       // WZ info/afterImage family (e.g. swordOL, swordOS)
+        public int WalkFrameCount { get; set; }
+        public int StandFrameCount { get; set; }
+        public int AttackFrameCount { get; set; }
         public int Range { get; set; } = 100;            // Attack range in pixels
         public bool IsTwoHanded { get; set; }
 
@@ -1270,7 +1281,11 @@ namespace HaCreator.MapSimulator.Character
                 Animations = new Dictionary<string, CharacterAnimation>(Animations),
                 VSlot = VSlot,
                 ISlot = ISlot,
+                Sfx = Sfx,
                 IsCash = IsCash,
+                HasWeeklyVariant = HasWeeklyVariant,
+                UsesWeeklyVariantOverride = UsesWeeklyVariantOverride,
+                ResolvedWeeklyVariantIndex = ResolvedWeeklyVariantIndex,
                 Description = Description,
                 ItemCategory = ItemCategory,
                 ExpirationDateUtc = ExpirationDateUtc,
@@ -1330,6 +1345,9 @@ namespace HaCreator.MapSimulator.Character
                 Attack = Attack,
                 WeaponType = WeaponType,
                 AfterImageType = AfterImageType,
+                WalkFrameCount = WalkFrameCount,
+                StandFrameCount = StandFrameCount,
+                AttackFrameCount = AttackFrameCount,
                 Range = Range,
                 IsTwoHanded = IsTwoHanded
             };

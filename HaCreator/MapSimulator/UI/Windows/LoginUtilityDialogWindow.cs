@@ -165,7 +165,7 @@ namespace HaCreator.MapSimulator.UI
             LoginUtilityDialogFrameVariant frameVariant = LoginUtilityDialogFrameVariant.Default,
             Rectangle? inputBoundsOverride = null)
         {
-            _title = string.IsNullOrWhiteSpace(title) ? "Login Utility" : title;
+            _title = title ?? string.Empty;
             _body = body ?? string.Empty;
             _primaryLabel = primaryLabel ?? string.Empty;
             _secondaryLabel = secondaryLabel ?? string.Empty;
@@ -603,7 +603,10 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private bool HasInputField => !string.IsNullOrWhiteSpace(_inputLabel);
+        private bool HasInputField => _inputMaxLength > 0
+            || !string.IsNullOrWhiteSpace(_inputLabel)
+            || !string.IsNullOrWhiteSpace(_inputPlaceholder)
+            || _inputBoundsOverride.HasValue;
 
         private bool Pressed(KeyboardState keyboardState, Keys key)
         {

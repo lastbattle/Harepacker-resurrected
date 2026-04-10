@@ -369,14 +369,14 @@ namespace HaCreator.MapSimulator.Managers
                 candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipSkillExpirationRecordGroup));
             }
 
-            if ((characterDataFlags & CharacterDataQuestRecordFlag) != 0)
-            {
-                candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipQuestRecordGroup));
-            }
-
             if ((characterDataFlags & CharacterDataSkillCooldownFlag) != 0)
             {
                 candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipInt16ValueRecordGroup));
+            }
+
+            if ((characterDataFlags & CharacterDataQuestRecordFlag) != 0)
+            {
+                candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipQuestRecordGroup));
             }
 
             if ((characterDataFlags & CharacterDataShortFileTimeRecordFlag) != 0)

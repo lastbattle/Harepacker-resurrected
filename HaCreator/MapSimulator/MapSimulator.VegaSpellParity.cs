@@ -16,8 +16,15 @@ namespace HaCreator.MapSimulator
         private const int VegaOwnerExternalResultFallbackDelayMs = 3000;
         private const int VegaResultPreludeLoopSoundStringPoolId = 0x1534;
         private const string VegaResultPreludeLoopSoundFallback = "Sound/UI.img/EnchantDelay";
+        private const byte VegaPacketOwnedSuccessPreludeCode = 68;
+        private const byte VegaPacketOwnedSuccessTerminalCode = 69;
+        private const byte VegaPacketOwnedFailPreludeCode = 73;
+        private const byte VegaPacketOwnedFailTerminalCode = 71;
+        private const string VegaResultLoopSoundKey = "PacketOwnedSound:Sound/UI.img/EnchantDelay:VegaLoop";
         private ActiveVegaModifierSelectionState _activeVegaModifierSelection;
         private bool _vegaExclusiveRequestSent;
+        private bool _vegaResultLoopSoundActive;
+        private string _vegaResultLoopSoundInstanceKey = string.Empty;
         private int _vegaExclusiveRequestSentTick = int.MinValue;
         private PendingVegaLaunchState _pendingVegaLaunchState;
         private PendingVegaCastState _pendingVegaCastState;
@@ -60,6 +67,9 @@ namespace HaCreator.MapSimulator
             public ItemUpgradeUI.ItemUpgradeAttemptResult Result { get; set; }
             public byte PrimaryResultCode { get; init; }
             public byte SecondaryResultCode { get; init; }
+            public byte? PacketOwnedPreludeCode { get; set; }
+            public byte? PacketOwnedTerminalCode { get; set; }
+            public bool PacketOwnedResultObserved { get; set; }
         }
 
         private sealed class PendingVegaPromptState
@@ -79,6 +89,7 @@ namespace HaCreator.MapSimulator
             vegaSpellWindow.ValidationFailed = HandleVegaSpellValidationFailed;
             vegaSpellWindow.ResultAcknowledged = HandleVegaSpellResultAcknowledged;
             vegaSpellWindow.ResultPreludeStarted = HandleVegaSpellResultPreludeStarted;
+            vegaSpellWindow.ResultPopupStarted = HandleVegaSpellResultPopupStarted;
         }
 
         private void QueueVegaSpellWindowLaunch(int itemId, InventoryType inventoryType, int slotIndex, string source)
@@ -253,9 +264,12 @@ namespace HaCreator.MapSimulator
 
         private void HandleVegaSpellResultPreludeStarted()
         {
-            TryPlaySharedProductionEnhancementSound(
-                VegaResultPreludeLoopSoundStringPoolId,
-                VegaResultPreludeLoopSoundFallback);
+            EnsureVegaResultLoopSoundPlaying();
+        }
+
+        private void HandleVegaSpellResultPopupStarted()
+        {
+            StopVegaResultLoopSound();
         }
 
         private void HandleVegaSpellResultAcknowledged()
@@ -263,6 +277,7 @@ namespace HaCreator.MapSimulator
             _pendingVegaCastState = null;
             _pendingVegaPromptState = null;
             ClearVegaExclusiveRequestState(currTickCount);
+            StopVegaResultLoopSound();
         }
 
         private void ShowVegaWhiteScrollPrompt(VegaSpellUI.VegaOwnerRequest request)
@@ -416,7 +431,8 @@ namespace HaCreator.MapSimulator
             string body,
             string footer,
             Action onConfirm,
-            Action onCancel)
+            Action onCancel,
+            InGameConfirmDialogPresentation presentation = null)
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is not InGameConfirmDialogWindow confirmDialogWindow)
             {
@@ -426,7 +442,7 @@ namespace HaCreator.MapSimulator
 
             _inGameConfirmAcceptedAction = onConfirm;
             _inGameConfirmCancelledAction = onCancel;
-            confirmDialogWindow.Configure(title, body, footer);
+            confirmDialogWindow.Configure(title, body, footer, presentation);
         }
 
         private void ClearInGameConfirmDialogActions()
@@ -501,6 +517,84 @@ namespace HaCreator.MapSimulator
             return string.IsNullOrWhiteSpace(localMessage)
                 ? dispatchSummary
                 : $"{localMessage} {dispatchSummary}";
+        }
+
+        private bool TryApplyPacketOwnedVegaLaunchPayload(byte[] payload, out string message)
+        {
+            message = null;
+
+            if (!TryDecodeVegaLaunchPayload(
+                    payload,
+                    _activeVegaModifierSelection?.ModifierItemId ?? 0,
+                    _activeVegaModifierSelection?.InventoryType ?? InventoryType.NONE,
+                    _activeVegaModifierSelection?.SlotIndex ?? -1,
+                    out VegaLaunchPayload launchPayload))
+            {
+                message = "Vega launch payload did not expose a supported modifier item.";
+                return false;
+            }
+
+            QueueVegaSpellWindowLaunch(
+                launchPayload.ModifierItemId,
+                launchPayload.InventoryType,
+                launchPayload.SlotIndex,
+                launchPayload.Source);
+            message = launchPayload.HasExplicitSlot
+                ? $"Queued packet-owned Vega launch for modifier {launchPayload.ModifierItemId} from {launchPayload.InventoryType} slot #{launchPayload.SlotIndex + 1}."
+                : $"Queued packet-owned Vega launch for modifier {launchPayload.ModifierItemId}.";
+            return true;
+        }
+
+        private bool TryApplyPacketOwnedVegaResultPayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (!TryDecodeVegaResultPayload(payload, out byte resultCode))
+            {
+                message = "Vega result payload must contain at least the leading result byte from CUIVega::OnVegaResult.";
+                return false;
+            }
+
+            if (_pendingVegaCastState == null)
+            {
+                message = $"Vega result code {resultCode} arrived without a pending Vega request.";
+                return false;
+            }
+
+            if (TryMapPacketOwnedVegaPreludeCode(resultCode, out bool success))
+            {
+                if (!TryApplyPendingVegaPacketOwnedResult(success, out ItemUpgradeUI.ItemUpgradeAttemptResult result, out string error))
+                {
+                    message = error;
+                    return false;
+                }
+
+                result = RewriteVegaOwnerResultMessage(result, _pendingVegaCastState.UseWhiteScroll);
+                _pendingVegaCastState.PacketOwnedPreludeCode = resultCode;
+                _pendingVegaCastState.PacketOwnedResultObserved = true;
+                _pendingVegaCastState.ResultApplied = true;
+                _pendingVegaCastState.Result = result;
+                _pendingVegaCastState.ResultReadyAtTick = currTickCount;
+                if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI vegaSpellWindow)
+                {
+                    vegaSpellWindow.ApplyPacketOwnedResultPrelude(result);
+                }
+
+                EnsureVegaResultLoopSoundPlaying();
+                message = $"Applied packet-owned Vega prelude result code {resultCode} through CUIVega::OnVegaResult ownership.";
+                return true;
+            }
+
+            if (TryMapPacketOwnedVegaTerminalCode(resultCode, out bool terminalSuccess))
+            {
+                _pendingVegaCastState.PacketOwnedTerminalCode = resultCode;
+                _pendingVegaCastState.PacketOwnedResultObserved = true;
+                message = $"Observed packet-owned Vega terminal result code {resultCode} ({(terminalSuccess ? "success" : "failure")}).";
+                return true;
+            }
+
+            ShowUtilityFeedbackMessage(VegaOwnerStringPoolText.FormatUnknownResultNotice(resultCode));
+            message = $"Observed unknown packet-owned Vega result code {resultCode}.";
+            return true;
         }
 
         private bool TryResolveVegaRequestContext(
@@ -661,7 +755,9 @@ namespace HaCreator.MapSimulator
 
         private static (byte PrimaryCode, byte SecondaryCode) ResolveVegaResultCodes(bool success)
         {
-            return success ? ((byte)68, (byte)69) : ((byte)73, (byte)71);
+            return success
+                ? (VegaPacketOwnedSuccessPreludeCode, VegaPacketOwnedSuccessTerminalCode)
+                : (VegaPacketOwnedFailPreludeCode, VegaPacketOwnedFailTerminalCode);
         }
 
         internal static byte[] BuildVegaRequestPayloadForTests(
@@ -690,6 +786,34 @@ namespace HaCreator.MapSimulator
             return ResolveVegaResultCodes(success);
         }
 
+        internal static bool TryDecodeVegaLaunchPayloadForTests(
+            byte[] payload,
+            int fallbackModifierItemId,
+            InventoryType fallbackInventoryType,
+            int fallbackSlotIndex,
+            out int modifierItemId,
+            out InventoryType inventoryType,
+            out int slotIndex,
+            out bool hasExplicitSlot)
+        {
+            bool decoded = TryDecodeVegaLaunchPayload(
+                payload,
+                fallbackModifierItemId,
+                fallbackInventoryType,
+                fallbackSlotIndex,
+                out VegaLaunchPayload launchPayload);
+            modifierItemId = launchPayload.ModifierItemId;
+            inventoryType = launchPayload.InventoryType;
+            slotIndex = launchPayload.SlotIndex;
+            hasExplicitSlot = launchPayload.HasExplicitSlot;
+            return decoded;
+        }
+
+        internal static bool TryDecodeVegaResultPayloadForTests(byte[] payload, out byte resultCode)
+        {
+            return TryDecodeVegaResultPayload(payload, out resultCode);
+        }
+
         internal static bool IsVegaExclusiveRequestBlockedForTests(bool requestSent, int lastRequestTick, int currentTick)
         {
             return IsVegaExclusiveRequestBlocked(requestSent, lastRequestTick, currentTick);
@@ -712,5 +836,200 @@ namespace HaCreator.MapSimulator
             int ModifierSlotIndex,
             InventoryType ScrollInventoryType,
             int ScrollSlotIndex);
+
+        private readonly record struct VegaLaunchPayload(
+            int ModifierItemId,
+            InventoryType InventoryType,
+            int SlotIndex,
+            bool HasExplicitSlot,
+            string Source);
+
+        private bool TryApplyPendingVegaPacketOwnedResult(
+            bool success,
+            out ItemUpgradeUI.ItemUpgradeAttemptResult result,
+            out string message)
+        {
+            result = default;
+            message = null;
+
+            if (_pendingVegaCastState == null)
+            {
+                message = "No pending Vega request is available for packet-owned result application.";
+                return false;
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is not ItemUpgradeUI itemUpgradeWindow)
+            {
+                message = "Item-upgrade backend is unavailable for packet-owned Vega result application.";
+                return false;
+            }
+
+            itemUpgradeWindow.PrepareEquipmentSelection(_pendingVegaCastState.Request.Slot);
+            itemUpgradeWindow.PrepareConsumableSelection(_pendingVegaCastState.Request.ModifierItemId);
+            result = itemUpgradeWindow.TryApplyPreparedUpgradeAtSlots(
+                _pendingVegaCastState.ScrollInventoryType,
+                _pendingVegaCastState.ScrollSlotIndex,
+                _pendingVegaCastState.ModifierInventoryType,
+                _pendingVegaCastState.ModifierSlotIndex);
+            if (!result.Success.HasValue)
+            {
+                message = VegaOwnerStringPoolText.GetUnexpectedResultNotice();
+                return false;
+            }
+
+            if (result.Success.Value != success)
+            {
+                result = new ItemUpgradeUI.ItemUpgradeAttemptResult(
+                    success,
+                    success
+                        ? "Packet-owned Vega result promoted a success outcome."
+                        : "Packet-owned Vega result promoted a failure outcome.",
+                    result.ConsumableItemId,
+                    result.ModifierItemId);
+            }
+
+            return true;
+        }
+
+        private void EnsureVegaResultLoopSoundPlaying()
+        {
+            if (_vegaResultLoopSoundActive || _soundManager == null)
+            {
+                return;
+            }
+
+            string descriptor = VegaOwnerStringPoolText.GetResultLoopSoundDescriptor();
+            if (string.IsNullOrWhiteSpace(descriptor))
+            {
+                descriptor = VegaResultPreludeLoopSoundFallback;
+            }
+
+            if (!TryResolvePacketOwnedWzSound(descriptor, "UI.img", out MapleLib.WzLib.WzProperties.WzBinaryProperty soundProperty, out string resolvedDescriptor))
+            {
+                return;
+            }
+
+            string soundKey = $"{VegaResultLoopSoundKey}:{resolvedDescriptor}";
+            _soundManager.RegisterSound(soundKey, soundProperty);
+            _soundManager.PlayLoopingSound(soundKey);
+            _vegaResultLoopSoundActive = true;
+            _vegaResultLoopSoundInstanceKey = soundKey;
+        }
+
+        private void StopVegaResultLoopSound()
+        {
+            if (!_vegaResultLoopSoundActive || _soundManager == null)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_vegaResultLoopSoundInstanceKey))
+            {
+                _soundManager.StopLoopingSound(_vegaResultLoopSoundInstanceKey);
+            }
+
+            _vegaResultLoopSoundActive = false;
+            _vegaResultLoopSoundInstanceKey = string.Empty;
+        }
+
+        private static bool TryDecodeVegaResultPayload(byte[] payload, out byte resultCode)
+        {
+            resultCode = 0;
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            resultCode = payload[0];
+            return true;
+        }
+
+        private static bool TryDecodeVegaLaunchPayload(
+            byte[] payload,
+            int fallbackModifierItemId,
+            InventoryType fallbackInventoryType,
+            int fallbackSlotIndex,
+            out VegaLaunchPayload launchPayload)
+        {
+            launchPayload = new VegaLaunchPayload(0, InventoryType.NONE, -1, false, "packet-owned launch");
+
+            int modifierItemId = 0;
+            int modifierOffset = -1;
+            if (payload != null)
+            {
+                for (int offset = 0; offset <= payload.Length - sizeof(int); offset++)
+                {
+                    int candidate = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+                    if (ItemUpgradeUI.IsVegaSpellConsumable(candidate))
+                    {
+                        modifierItemId = candidate;
+                        modifierOffset = offset;
+                        break;
+                    }
+                }
+            }
+
+            if (!ItemUpgradeUI.IsVegaSpellConsumable(modifierItemId))
+            {
+                modifierItemId = fallbackModifierItemId;
+            }
+
+            if (!ItemUpgradeUI.IsVegaSpellConsumable(modifierItemId))
+            {
+                return false;
+            }
+
+            InventoryType inventoryType = fallbackInventoryType;
+            int slotIndex = fallbackSlotIndex;
+            bool hasExplicitSlot = false;
+            if (payload != null && modifierOffset >= 0)
+            {
+                int nextOffset = modifierOffset + sizeof(int);
+                if (payload.Length >= nextOffset + (sizeof(int) * 2))
+                {
+                    int encodedInventoryType = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(nextOffset, sizeof(int)));
+                    int encodedSlotIndex = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(nextOffset + sizeof(int), sizeof(int)));
+                    if (Enum.IsDefined(typeof(InventoryType), encodedInventoryType))
+                    {
+                        inventoryType = (InventoryType)encodedInventoryType;
+                    }
+
+                    if (encodedSlotIndex >= 0)
+                    {
+                        slotIndex = encodedSlotIndex;
+                        hasExplicitSlot = true;
+                    }
+                }
+                else if (payload.Length >= nextOffset + sizeof(short))
+                {
+                    short encodedSlotIndex = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(nextOffset, sizeof(short)));
+                    if (encodedSlotIndex >= 0)
+                    {
+                        slotIndex = encodedSlotIndex;
+                        hasExplicitSlot = true;
+                    }
+                }
+            }
+
+            launchPayload = new VegaLaunchPayload(
+                modifierItemId,
+                inventoryType,
+                slotIndex,
+                hasExplicitSlot,
+                "packet-owned launch");
+            return true;
+        }
+
+        private static bool TryMapPacketOwnedVegaPreludeCode(byte resultCode, out bool success)
+        {
+            success = resultCode == VegaPacketOwnedSuccessPreludeCode;
+            return resultCode == VegaPacketOwnedSuccessPreludeCode || resultCode == VegaPacketOwnedFailPreludeCode;
+        }
+
+        private static bool TryMapPacketOwnedVegaTerminalCode(byte resultCode, out bool success)
+        {
+            success = resultCode == VegaPacketOwnedSuccessTerminalCode;
+            return resultCode == VegaPacketOwnedSuccessTerminalCode || resultCode == VegaPacketOwnedFailTerminalCode;
+        }
     }
 }

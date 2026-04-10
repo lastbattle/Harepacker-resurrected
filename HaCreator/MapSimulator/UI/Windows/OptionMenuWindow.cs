@@ -237,6 +237,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<OptionRow, bool> _stagedOptionValues = new();
         private JoypadSessionSnapshot _originalJoypadSession;
         private JoypadSessionSnapshot _stagedJoypadSession;
+        private int _selectedOptionRowIndex = -1;
         private int _selectedJoypadRowIndex = -1;
         private InputAction? _armedJoypadBindingAction;
         private PlayerIndex? _captureStateGamepadIndex;
@@ -246,6 +247,8 @@ namespace HaCreator.MapSimulator.UI
         private GamePadState _previousConfirmGamepadState;
         private KeyboardState _previousJoypadNavigationKeyboardState;
         private GamePadState _previousJoypadNavigationGamepadState;
+        private KeyboardState _previousOptionNavigationKeyboardState;
+        private GamePadState _previousOptionNavigationGamepadState;
         private bool _previousLeftMouseDown;
         private bool _previousRightMouseDown;
         private int _activeJoypadSliderRowIndex = -1;
@@ -325,6 +328,7 @@ namespace HaCreator.MapSimulator.UI
             _statusMessage = string.IsNullOrWhiteSpace(_launchSource)
                 ? baseStatus
                 : $"{baseStatus} Launch source: {_launchSource}.";
+            SelectDefaultOptionRow();
         }
 
         public void SetLaunchSource(string source)
@@ -352,6 +356,7 @@ namespace HaCreator.MapSimulator.UI
         public override void Show()
         {
             BeginSession();
+            SelectDefaultOptionRow();
             base.Show();
         }
 
@@ -359,8 +364,14 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Update(gameTime);
 
-            if (!IsVisible || _mode != OptionMenuMode.Joypad)
+            if (!IsVisible)
             {
+                return;
+            }
+
+            if (_mode != OptionMenuMode.Joypad)
+            {
+                HandleStandardOptionInput();
                 return;
             }
 
@@ -573,11 +584,12 @@ namespace HaCreator.MapSimulator.UI
                     }
 
                     OptionRow row = rows[i];
+                    _selectedOptionRowIndex = i;
                     if (row.GetValue != null)
                     {
                         bool nextValue = !GetOptionValue(row);
                         _stagedOptionValues[row] = nextValue;
-                        _statusMessage = $"{row.Label}: {(nextValue ? "On" : "Off")}";
+                        _statusMessage = BuildOptionRowStatus(row, nextValue);
                     }
 
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
@@ -707,6 +719,169 @@ namespace HaCreator.MapSimulator.UI
 
             int rowWidth = Math.Max(220, (CurrentFrame?.Width ?? 283) - 30);
             return new Rectangle(Position.X + 12, Position.Y + 72 + (index * 84), rowWidth, 72);
+        }
+
+        private IReadOnlyList<OptionRow> GetActiveOptionRows()
+        {
+            return _rows.TryGetValue(_mode, out List<OptionRow> rows) && rows != null
+                ? rows
+                : Array.Empty<OptionRow>();
+        }
+
+        private void SelectDefaultOptionRow()
+        {
+            if (_mode == OptionMenuMode.Joypad)
+            {
+                _selectedOptionRowIndex = -1;
+                return;
+            }
+
+            IReadOnlyList<OptionRow> rows = GetActiveOptionRows();
+            _selectedOptionRowIndex = rows.Count > 0 ? 0 : -1;
+        }
+
+        private void HandleStandardOptionInput()
+        {
+            IReadOnlyList<OptionRow> rows = GetActiveOptionRows();
+            if (rows.Count == 0)
+            {
+                _selectedOptionRowIndex = -1;
+                return;
+            }
+
+            if (_selectedOptionRowIndex < 0 || _selectedOptionRowIndex >= rows.Count)
+            {
+                _selectedOptionRowIndex = 0;
+            }
+
+            KeyboardState keyboard = Keyboard.GetState();
+            GamePadState gamepad = GetPrimaryNavigationGamePadState();
+            bool moveUp = IsNewKeyPress(keyboard, _previousOptionNavigationKeyboardState, Keys.Up)
+                || IsNewKeyPress(keyboard, _previousOptionNavigationKeyboardState, Keys.NumPad8)
+                || IsNewButtonPress(gamepad, _previousOptionNavigationGamepadState, Buttons.DPadUp)
+                || IsNewButtonPress(gamepad, _previousOptionNavigationGamepadState, Buttons.LeftThumbstickUp);
+            bool moveDown = IsNewKeyPress(keyboard, _previousOptionNavigationKeyboardState, Keys.Down)
+                || IsNewKeyPress(keyboard, _previousOptionNavigationKeyboardState, Keys.NumPad2)
+                || IsNewButtonPress(gamepad, _previousOptionNavigationGamepadState, Buttons.DPadDown)
+                || IsNewButtonPress(gamepad, _previousOptionNavigationGamepadState, Buttons.LeftThumbstickDown);
+            bool toggle = IsNewKeyPress(keyboard, _previousOptionNavigationKeyboardState, Keys.Left)
+                || IsNewKeyPress(keyboard, _previousOptionNavigationKeyboardState, Keys.Right)
+                || IsNewKeyPress(keyboard, _previousOptionNavigationKeyboardState, Keys.Enter)
+                || IsNewKeyPress(keyboard, _previousOptionNavigationKeyboardState, Keys.Space)
+                || IsNewButtonPress(gamepad, _previousOptionNavigationGamepadState, Buttons.A)
+                || IsNewButtonPress(gamepad, _previousOptionNavigationGamepadState, Buttons.X);
+            bool commit = IsNewButtonPress(gamepad, _previousOptionNavigationGamepadState, Buttons.Start);
+            bool discard = IsNewKeyPress(keyboard, _previousOptionNavigationKeyboardState, Keys.Escape)
+                || IsNewButtonPress(gamepad, _previousOptionNavigationGamepadState, Buttons.B)
+                || IsNewButtonPress(gamepad, _previousOptionNavigationGamepadState, Buttons.Back);
+
+            _previousOptionNavigationKeyboardState = keyboard;
+            _previousOptionNavigationGamepadState = gamepad;
+
+            if (moveUp)
+            {
+                MoveSelectedOptionRow(-1, rows.Count);
+                return;
+            }
+
+            if (moveDown)
+            {
+                MoveSelectedOptionRow(1, rows.Count);
+                return;
+            }
+
+            if (toggle)
+            {
+                ToggleSelectedOptionRow(rows);
+                return;
+            }
+
+            if (commit)
+            {
+                CommitAndHide();
+                return;
+            }
+
+            if (discard)
+            {
+                DiscardAndHide();
+            }
+        }
+
+        private void MoveSelectedOptionRow(int direction, int rowCount)
+        {
+            if (rowCount <= 0)
+            {
+                _selectedOptionRowIndex = -1;
+                return;
+            }
+
+            _selectedOptionRowIndex += direction < 0 ? -1 : 1;
+            if (_selectedOptionRowIndex < 0)
+            {
+                _selectedOptionRowIndex = rowCount - 1;
+            }
+            else if (_selectedOptionRowIndex >= rowCount)
+            {
+                _selectedOptionRowIndex = 0;
+            }
+
+            IReadOnlyList<OptionRow> rows = GetActiveOptionRows();
+            if ((uint)_selectedOptionRowIndex < (uint)rows.Count)
+            {
+                OptionRow row = rows[_selectedOptionRowIndex];
+                _statusMessage = $"{row.Label}: {(GetOptionValue(row) ? "On" : "Off")}. Use Left/Right, Enter, Space, or A to toggle; Start commits and Escape/Back cancels.";
+            }
+        }
+
+        private void ToggleSelectedOptionRow(IReadOnlyList<OptionRow> rows)
+        {
+            if ((uint)_selectedOptionRowIndex >= (uint)rows.Count)
+            {
+                return;
+            }
+
+            OptionRow row = rows[_selectedOptionRowIndex];
+            if (row.GetValue == null)
+            {
+                return;
+            }
+
+            bool nextValue = !GetOptionValue(row);
+            _stagedOptionValues[row] = nextValue;
+            _statusMessage = BuildOptionRowStatus(row, nextValue);
+        }
+
+        private static GamePadState GetPrimaryNavigationGamePadState()
+        {
+            PlayerIndex[] indices =
+            {
+                PlayerIndex.One,
+                PlayerIndex.Two,
+                PlayerIndex.Three,
+                PlayerIndex.Four,
+            };
+
+            for (int i = 0; i < indices.Length; i++)
+            {
+                GamePadState state = GamePad.GetState(indices[i]);
+                if (state.IsConnected)
+                {
+                    return state;
+                }
+            }
+
+            return default;
+        }
+
+        private static string BuildOptionRowStatus(OptionRow row, bool enabled)
+        {
+            if (row == null)
+            {
+                return string.Empty;
+            }
+
+            return $"{row.Label}: {(enabled ? "On" : "Off")}. {row.Description}";
         }
 
         private Rectangle GetJoypadRowBounds(int index)
@@ -932,7 +1107,8 @@ namespace HaCreator.MapSimulator.UI
         private void DrawClientOptionRow(SpriteBatch sprite, OptionRow row, Rectangle bounds)
         {
             bool enabled = GetOptionValue(row);
-            sprite.Draw(_highlightTexture, bounds, new Color(36, 46, 62, 180));
+            bool selected = IsSelectedOptionRow(row);
+            sprite.Draw(_highlightTexture, bounds, selected ? new Color(92, 120, 190, 200) : new Color(36, 46, 62, 180));
             if (enabled && _checkTexture != null)
             {
                 sprite.Draw(_checkTexture, new Vector2(bounds.X + 8, bounds.Y + 5), Color.White);
@@ -955,7 +1131,8 @@ namespace HaCreator.MapSimulator.UI
         private void DrawSimulatorOptionRow(SpriteBatch sprite, OptionRow row, Rectangle bounds)
         {
             bool enabled = GetOptionValue(row);
-            sprite.Draw(_highlightTexture, bounds, new Color(36, 46, 62, 210));
+            bool selected = IsSelectedOptionRow(row);
+            sprite.Draw(_highlightTexture, bounds, selected ? new Color(92, 120, 190, 220) : new Color(36, 46, 62, 210));
 
             if (enabled && _checkTexture != null)
             {
@@ -964,6 +1141,18 @@ namespace HaCreator.MapSimulator.UI
 
             DrawWindowText(sprite, row.Label, new Vector2(bounds.X + 24, bounds.Y + 4), Color.White);
             DrawWrappedText(sprite, row.Description, bounds.X + 24, bounds.Y + 22, bounds.Width - 30, new Color(204, 204, 204));
+        }
+
+        private bool IsSelectedOptionRow(OptionRow row)
+        {
+            if (row == null || _mode == OptionMenuMode.Joypad)
+            {
+                return false;
+            }
+
+            IReadOnlyList<OptionRow> rows = GetActiveOptionRows();
+            return (uint)_selectedOptionRowIndex < (uint)rows.Count
+                && ReferenceEquals(rows[_selectedOptionRowIndex], row);
         }
 
         private static Buttons GetSteppedValue(IReadOnlyList<Buttons> values, Buttons current, int direction)
@@ -1204,6 +1393,7 @@ namespace HaCreator.MapSimulator.UI
         private void BeginSession()
         {
             _stagedOptionValues.Clear();
+            _selectedOptionRowIndex = -1;
             _selectedJoypadRowIndex = _joypadRows.Count > 0 ? 0 : -1;
             _armedJoypadBindingAction = null;
             _activeJoypadSliderRowIndex = -1;
@@ -1232,10 +1422,12 @@ namespace HaCreator.MapSimulator.UI
             ResetJoypadCaptureState(_stagedJoypadSession);
             _previousKeyboardState = Keyboard.GetState();
             _previousJoypadNavigationKeyboardState = _previousKeyboardState;
+            _previousOptionNavigationKeyboardState = _previousKeyboardState;
             _previousConfirmGamepadState = _stagedJoypadSession != null
                 ? GamePad.GetState(_stagedJoypadSession.GamepadIndex)
                 : default;
             _previousJoypadNavigationGamepadState = _previousConfirmGamepadState;
+            _previousOptionNavigationGamepadState = GetPrimaryNavigationGamePadState();
             MouseState mouseState = Mouse.GetState();
             _previousLeftMouseDown = mouseState.LeftButton == ButtonState.Pressed;
             _previousRightMouseDown = mouseState.RightButton == ButtonState.Pressed;

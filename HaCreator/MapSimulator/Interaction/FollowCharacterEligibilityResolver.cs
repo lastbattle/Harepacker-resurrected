@@ -57,9 +57,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return BattleshipTamingMobItemId;
             }
 
-            if (explicitMountedVehicleId == MechanicTamingMobItemId
-                || ClientOwnedVehicleSkillClassifier.IsExplicitMechanicVehiclePresentationSkillId(mechanicMode)
-                || ClientOwnedVehicleSkillClassifier.IsOwnerlessMechanicVehicleInferenceActionName(
+            if ((explicitMountedVehicleId == MechanicTamingMobItemId
+                 || ClientOwnedVehicleSkillClassifier.IsExplicitMechanicVehiclePresentationSkillId(mechanicMode))
+                && ClientOwnedVehicleSkillClassifier.SupportsExplicitMechanicVehiclePresentationCurrentAction(actionName))
+            {
+                return MechanicTamingMobItemId;
+            }
+
+            if (ClientOwnedVehicleSkillClassifier.IsOwnerlessMechanicVehicleInferenceActionName(
                     actionName,
                     includeTransformStates: true))
             {

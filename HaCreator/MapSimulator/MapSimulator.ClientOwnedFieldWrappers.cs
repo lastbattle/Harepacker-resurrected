@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Wz;
 using MapleLib.WzLib.WzStructure;
@@ -743,6 +744,25 @@ namespace HaCreator.MapSimulator
             }
 
             _limitedViewField.SetClientOwnedFocusWorldPosition(playerX, playerY);
+            _limitedViewField.SetClientOwnedRemoteFocusWorldPositions(EnumerateClientOwnedLimitedViewRemoteFocusWorldPositions());
+        }
+
+        private IEnumerable<Vector2> EnumerateClientOwnedLimitedViewRemoteFocusWorldPositions()
+        {
+            if (_remoteUserPool == null)
+            {
+                yield break;
+            }
+
+            foreach (RemoteUserActor actor in _remoteUserPool.Actors)
+            {
+                if (actor == null || !actor.IsVisibleInWorld || actor.HiddenLikeClient)
+                {
+                    continue;
+                }
+
+                yield return actor.Position;
+            }
         }
 
         private void ConfigureDynamicFootholdFieldWrapper(MapInfo mapInfo)

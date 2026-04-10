@@ -1545,25 +1545,30 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 IReadOnlyList<PacketCharacterDataSkillRecord> skillRecordEntries = null;
                 IReadOnlyDictionary<int, int> skillRecords = null;
+                IReadOnlyDictionary<int, int> skillMasterLevels = null;
                 IReadOnlyDictionary<int, long> skillExpirations = null;
                 IReadOnlyDictionary<int, int> skillCooldowns = null;
                 int skillRecordCount = 0;
                 int skillExpirationRecordCount = 0;
                 int skillCooldownRecordCount = 0;
+                int skillMasterLevelRecordCount = 0;
 
                 if ((characterDataFlags & CharacterDataSkillRecordFlag) != 0)
                 {
                     ReadCharacterDataSkillRecordSection(
                         reader,
                         out skillRecordEntries,
-                        out skillRecords);
+                        out skillRecords,
+                        out skillMasterLevels);
                     skillRecordCount = skillRecordEntries?.Count ?? 0;
+                    skillMasterLevelRecordCount = skillMasterLevels?.Count ?? 0;
                 }
 
                 if ((characterDataFlags & CharacterDataSkillExpirationFlag) != 0)
                 {
                     skillExpirations = ReadCharacterDataSkillExpirationRecords(reader);
                     skillExpirationRecordCount = skillExpirations.Count;
+                    skillRecordEntries = MergeSkillRecordExpirations(skillRecordEntries, skillExpirations);
                 }
 
                 if ((characterDataFlags & CharacterDataSkillCooldownFlag) != 0)
@@ -1581,8 +1586,8 @@ namespace HaCreator.MapSimulator.Interaction
                     SkillExpirationFileTimes = skillExpirations,
                     SkillCooldownRemainingSecondsBySkillId = skillCooldowns,
                     SkillRecordEntries = skillRecordEntries,
-                    SkillMasterLevelRecordCount = 0,
-                    SkillMasterLevels = null,
+                    SkillMasterLevelRecordCount = skillMasterLevelRecordCount,
+                    SkillMasterLevels = skillMasterLevels,
                     Int16ValueRecordCount = 0,
                     Int16ValueRecords = null,
                     QuestRecordCount = 0,
@@ -1603,24 +1608,35 @@ namespace HaCreator.MapSimulator.Interaction
         private static void ReadCharacterDataSkillRecordSection(
             BinaryReader reader,
             out IReadOnlyList<PacketCharacterDataSkillRecord> skillRecordEntries,
-            out IReadOnlyDictionary<int, int> skillRecords)
+            out IReadOnlyDictionary<int, int> skillRecords,
+            out IReadOnlyDictionary<int, int> skillMasterLevels)
         {
             ushort count = reader.ReadUInt16();
             List<PacketCharacterDataSkillRecord> entries = new(count);
             Dictionary<int, int> levelsBySkillId = new(count);
+            Dictionary<int, int> masterLevelsBySkillId = new(count);
             for (int i = 0; i < count; i++)
             {
                 int skillId = reader.ReadInt32();
                 int skillLevel = reader.ReadInt32();
+                int masterLevel = IsSkillNeedMasterLevel(skillId)
+                    ? Math.Max(0, reader.ReadInt32())
+                    : 0;
                 if (skillId > 0)
                 {
-                    entries.Add(new PacketCharacterDataSkillRecord(skillId, Math.Max(0, skillLevel), 0));
-                    levelsBySkillId[skillId] = Math.Max(0, skillLevel);
+                    int normalizedSkillLevel = Math.Max(0, skillLevel);
+                    entries.Add(new PacketCharacterDataSkillRecord(skillId, normalizedSkillLevel, 0, masterLevel));
+                    levelsBySkillId[skillId] = normalizedSkillLevel;
+                    if (masterLevel > 0)
+                    {
+                        masterLevelsBySkillId[skillId] = masterLevel;
+                    }
                 }
             }
 
             skillRecordEntries = entries;
             skillRecords = levelsBySkillId;
+            skillMasterLevels = masterLevelsBySkillId;
         }
 
         private static IReadOnlyDictionary<int, long> ReadCharacterDataSkillExpirationRecords(BinaryReader reader)
@@ -1739,6 +1755,107 @@ namespace HaCreator.MapSimulator.Interaction
                 (byte)(rawMode / 10),
                 (byte)(rawMode % 10),
                 capturedMobIds);
+        }
+
+        private static IReadOnlyList<PacketCharacterDataSkillRecord> MergeSkillRecordExpirations(
+            IReadOnlyList<PacketCharacterDataSkillRecord> skillRecordEntries,
+            IReadOnlyDictionary<int, long> skillExpirations)
+        {
+            if (skillRecordEntries == null || skillRecordEntries.Count == 0 || skillExpirations == null || skillExpirations.Count == 0)
+            {
+                return skillRecordEntries;
+            }
+
+            List<PacketCharacterDataSkillRecord> merged = new(skillRecordEntries.Count);
+            foreach (PacketCharacterDataSkillRecord entry in skillRecordEntries)
+            {
+                long expirationFileTime = skillExpirations.TryGetValue(entry.SkillId, out long resolvedFileTime)
+                    ? resolvedFileTime
+                    : entry.ExpirationFileTime;
+                merged.Add(entry with
+                {
+                    ExpirationFileTime = expirationFileTime
+                });
+            }
+
+            return merged;
+        }
+
+        private static int GetJobLevel(int jobId)
+        {
+            if (jobId % 100 == 0 || jobId == 2001)
+            {
+                return 1;
+            }
+
+            int branchLevel = jobId / 10 == 43
+                ? (jobId - 430) / 2
+                : jobId % 10;
+            int resolvedLevel = branchLevel + 2;
+            return resolvedLevel >= 2 && (resolvedLevel <= 4 || (resolvedLevel <= 10 && IsEvanJob(jobId)))
+                ? resolvedLevel
+                : 0;
+        }
+
+        private static bool IsEvanJob(int jobId)
+        {
+            return jobId / 100 == 22 || jobId == 2001;
+        }
+
+        private static bool IsIgnoreMasterLevelForCommon(int skillId)
+        {
+            return skillId is 1120012
+                or 1220013
+                or 1320011
+                or 2120009
+                or 2220009
+                or 2320010
+                or 3120010
+                or 3120011
+                or 3220009
+                or 3220010
+                or 4120010
+                or 4220009
+                or 4220010
+                or 4220011
+                or 32120009
+                or 33120010;
+        }
+
+        private static bool IsSkillNeedMasterLevel(int skillId)
+        {
+            if (skillId <= 0 || IsIgnoreMasterLevelForCommon(skillId))
+            {
+                return false;
+            }
+
+            int jobId = skillId / 10000;
+            if (jobId / 100 == 22 || jobId == 2001)
+            {
+                int jobLevel = GetJobLevel(jobId);
+                return jobLevel == 9 ||
+                       jobLevel == 10 ||
+                       skillId == 22111001 ||
+                       skillId == 22141002 ||
+                       skillId == 22140000;
+            }
+
+            if (jobId / 10 == 43)
+            {
+                int jobLevel = GetJobLevel(jobId);
+                return jobLevel == 4 ||
+                       skillId == 4341002 ||
+                       skillId == 4341009 ||
+                       skillId == 4341011 ||
+                       skillId == 4341012;
+            }
+
+            if (jobId == 100 * (jobId / 100))
+            {
+                return false;
+            }
+
+            return jobId % 10 == 2;
         }
 
         private static PacketCharacterDataSnapshot DecodeCharacterDataLeadingTailSections(
@@ -2093,7 +2210,7 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal readonly record struct PacketCharacterDataTransferHead(int FieldId, byte PortalIndex, int Hp);
 
-    internal readonly record struct PacketCharacterDataSkillRecord(int SkillId, int SkillLevel, long ExpirationFileTime);
+    internal readonly record struct PacketCharacterDataSkillRecord(int SkillId, int SkillLevel, long ExpirationFileTime, int MasterLevel = 0);
 
     internal readonly record struct PacketCharacterDataNewYearCardRecord(
         int SerialNumber,
@@ -2106,13 +2223,45 @@ namespace HaCreator.MapSimulator.Interaction
         bool ReceiverDiscarded,
         bool ReceiverReceived,
         long ReceivedFileTime,
-        string Content);
+        string Content)
+    {
+        internal const string ClientDiscardStateKept = "X";
+        internal const string ClientDiscardStateDiscarded = "O";
+        internal const string ClientDeliveryStateGoing = "Going";
+        internal const string ClientDeliveryStateDelivered = "Delivered";
+
+        internal string SenderDiscardStateText => SenderDiscarded
+            ? ClientDiscardStateDiscarded
+            : ClientDiscardStateKept;
+
+        internal string ReceiverDiscardStateText => ReceiverDiscarded
+            ? ClientDiscardStateDiscarded
+            : ClientDiscardStateKept;
+
+        internal string DeliveryStateText => ReceiverReceived
+            ? ClientDeliveryStateDelivered
+            : ClientDeliveryStateGoing;
+
+        internal string ClientSummaryLine =>
+            $"[{SerialNumber}:{DeliveryStateText}] {SenderName}:{SenderDiscardStateText} -> {ReceiverName}:{ReceiverDiscardStateText}  [{Content}]";
+    }
 
     internal readonly record struct PacketCharacterDataWildHunterInfo(
         byte RawMode,
         byte ModeHighDigit,
         byte ModeLowDigit,
-        IReadOnlyList<int> CapturedMobIds);
+        IReadOnlyList<int> CapturedMobIds)
+    {
+        internal int ActiveCapturedMobIndex =>
+            ModeLowDigit < (CapturedMobIds?.Count ?? 0)
+                ? ModeLowDigit
+                : -1;
+
+        internal int ActiveCapturedMobId =>
+            ActiveCapturedMobIndex >= 0
+                ? CapturedMobIds[ActiveCapturedMobIndex]
+                : 0;
+    }
 
     internal sealed record PacketCharacterDataSnapshot(
         int CharacterId,
@@ -2156,7 +2305,7 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyDictionary<int, int> SkillCooldownRemainingSecondsBySkillId = null,
         IReadOnlyList<PacketCharacterDataSkillRecord> SkillRecordEntries = null,
         int SkillMasterLevelRecordCount = 0,
-        IReadOnlyList<int> SkillMasterLevels = null,
+        IReadOnlyDictionary<int, int> SkillMasterLevels = null,
         int Int16ValueRecordCount = 0,
         IReadOnlyDictionary<int, int> Int16ValueRecords = null,
         int QuestRecordCount = 0,

@@ -116,6 +116,7 @@ namespace HaCreator.MapSimulator.Interaction
             BoundCharacterId = resolvedCharacterId;
             ApspReceiveContextToken = resolvedCharacterId;
             ApspSendContextToken = resolvedCharacterId;
+            ResetRadioCreateLayerState(resolvedCharacterId);
             ClearChairContext();
         }
 
@@ -243,9 +244,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             int resolvedCharacterId = NormalizeRuntimeCharacterId(runtimeCharacterId);
             ObserveRadioCreateLayerRuntimeCharacterId(resolvedCharacterId);
-            RadioCreateLayerBoundCharacterId = resolvedCharacterId;
-            HasRadioCreateLayerLeftContextValue = false;
-            RadioCreateLayerLeftContextValue = false;
+            ResetRadioCreateLayerState(resolvedCharacterId);
             RecordRadioCreateLayerMutation("runtime-character-reset", int.MinValue);
         }
 
@@ -504,6 +503,17 @@ namespace HaCreator.MapSimulator.Interaction
         private static int NormalizeContextToken(int contextToken, int fallbackCharacterId)
         {
             return contextToken > 0 ? contextToken : NormalizeCharacterId(fallbackCharacterId);
+        }
+
+        private void ResetRadioCreateLayerState(int boundCharacterId)
+        {
+            RadioCreateLayerBoundCharacterId = boundCharacterId;
+            HasRadioCreateLayerLeftContextValue = false;
+            RadioCreateLayerLeftContextValue = false;
+            RadioCreateLayerMutationSequence = 0;
+            RadioCreateLayerLastMutationTick = int.MinValue;
+            RadioCreateLayerLastMutationSource = "fallback";
+            _recentRadioCreateLayerMutations.Clear();
         }
 
         private void RecordRadioCreateLayerMutation(string source, int currentTick)

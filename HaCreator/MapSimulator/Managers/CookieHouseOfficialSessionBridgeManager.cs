@@ -685,7 +685,11 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            int point = Math.Max(0, BitConverter.ToInt32(payload, 0));
+            if (!CookieHousePointInboxManager.TryDecodeClientContextPoint(payload, out int point, out error))
+            {
+                return false;
+            }
+
             message = new CookieHousePointInboxMessage(
                 point,
                 string.IsNullOrWhiteSpace(source) ? "official-session:unknown-remote" : source,
@@ -841,7 +845,11 @@ namespace HaCreator.MapSimulator.Managers
                     continue;
                 }
 
-                int point = Math.Max(0, BitConverter.ToInt32(payload, 0));
+                if (!CookieHousePointInboxManager.TryDecodeClientContextPoint(payload, out int point, out _))
+                {
+                    continue;
+                }
+
                 if (!candidates.TryGetValue(opcode, out InboundPointOpcodeCandidateAccumulator candidate))
                 {
                     candidate = new InboundPointOpcodeCandidateAccumulator(opcode);

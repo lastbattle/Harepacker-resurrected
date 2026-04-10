@@ -771,6 +771,156 @@ namespace HaCreator.MapSimulator
                     out result);
             }
 
+            if (packetType == (int)RemoteUserPacketType.UserMoveOfficial
+                && RemoteUserPacketCodec.TryParseMove(payload, currentTime, out RemoteUserMovePacket officialMovePacket, out _))
+            {
+                bool moved = _remoteUserPool.TryApplyMoveSnapshot(officialMovePacket.CharacterId, officialMovePacket.Snapshot, officialMovePacket.MoveAction, currentTime, out string moveMessage);
+                result = moved
+                    ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {officialMovePacket.CharacterId}."
+                    : moveMessage;
+                if (moved)
+                {
+                    Vector2 observationPosition = ResolveRemoteTownPortalMoveObservationPositionForTesting(
+                        officialMovePacket.Snapshot,
+                        _remoteUserPool.TryGetActor(officialMovePacket.CharacterId, out RemoteUserActor movedActor)
+                            ? movedActor.Position
+                            : null);
+                    RememberRemoteTownPortalOwnerFieldObservation(
+                        (uint)officialMovePacket.CharacterId,
+                        observationPosition,
+                        TemporaryPortalField.RemoteTownPortalObservationSource.MovementSnapshot);
+                }
+
+                return moved;
+            }
+
+            if (IsOfficialRemoteAttackPacketType(packetType)
+                && RemoteUserPacketCodec.TryParseMeleeAttack(payload, out RemoteUserMeleeAttackPacket officialAttackPacket, out _))
+            {
+                bool meleeApplied = _remoteUserPool.TryRegisterMeleeAfterImage(
+                    officialAttackPacket.CharacterId,
+                    officialAttackPacket.SkillId,
+                    officialAttackPacket.ActionName,
+                    officialAttackPacket.ActionCode,
+                    officialAttackPacket.MasteryPercent,
+                    officialAttackPacket.ChargeSkillId,
+                    officialAttackPacket.ActionSpeed,
+                    officialAttackPacket.PreparedSkillReleaseFollowUpValue,
+                    officialAttackPacket.FacingRight,
+                    currentTime,
+                    out string meleeMessage);
+                result = meleeApplied
+                    ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {officialAttackPacket.CharacterId}."
+                    : meleeMessage;
+                return meleeApplied;
+            }
+
+            if (packetType == (int)RemoteUserPacketType.UserPreparedSkillOfficial
+                && RemoteUserPacketCodec.TryParsePreparedSkill(payload, out RemoteUserPreparedSkillPacket officialPreparePacket, out _))
+            {
+                PreparedSkillHudRules.PreparedSkillHudProfile hudProfile = PreparedSkillHudRules.ResolveProfile(officialPreparePacket.SkillId);
+                bool resolvedIsKeydownSkill = PreparedSkillHudRules.ResolveKeyDownSkillState(
+                    officialPreparePacket.SkillId,
+                    officialPreparePacket.IsKeydownSkill);
+                PreparedSkillHudRules.ResolveRemotePreparedSkillPhases(
+                    officialPreparePacket.SkillId,
+                    resolvedIsKeydownSkill,
+                    officialPreparePacket.IsHolding,
+                    officialPreparePacket.DurationMs,
+                    officialPreparePacket.MaxHoldDurationMs,
+                    officialPreparePacket.AutoEnterHold,
+                    out int activeDurationMs,
+                    out int prepareDurationMs,
+                    out bool autoEnterHold);
+                bool preparedApplied = _remoteUserPool.TrySetPreparedSkill(
+                    officialPreparePacket.CharacterId,
+                    officialPreparePacket.SkillId,
+                    officialPreparePacket.SkillName,
+                    activeDurationMs,
+                    string.IsNullOrWhiteSpace(officialPreparePacket.SkinKey) ? hudProfile.SkinKey : officialPreparePacket.SkinKey,
+                    resolvedIsKeydownSkill,
+                    officialPreparePacket.IsHolding,
+                    PreparedSkillHudRules.ResolvePreparedGaugeDuration(
+                        officialPreparePacket.SkillId,
+                        officialPreparePacket.GaugeDurationMs,
+                        officialPreparePacket.DurationMs),
+                    Math.Max(0, officialPreparePacket.MaxHoldDurationMs),
+                    PreparedSkillHudRules.ResolveTextVariant(officialPreparePacket.SkillId),
+                    officialPreparePacket.ShowText && hudProfile.ShowText,
+                    currentTime,
+                    out string prepareMessage,
+                    prepareDurationMs: prepareDurationMs,
+                    autoEnterHold: autoEnterHold);
+                result = preparedApplied
+                    ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {officialPreparePacket.CharacterId}."
+                    : prepareMessage;
+                return preparedApplied;
+            }
+
+            if (packetType == (int)RemoteUserPacketType.UserPreparedSkillClearOfficial)
+            {
+                if (!RemoteUserPacketCodec.TryParsePreparedSkillClear(payload, out RemoteUserPreparedSkillClearPacket officialClearPacket, out string clearError))
+                {
+                    result = clearError;
+                    return false;
+                }
+
+                bool cleared = _remoteUserPool.TryClearPreparedSkill(officialClearPacket.CharacterId, out string clearMessage);
+                result = cleared
+                    ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {officialClearPacket.CharacterId}."
+                    : clearMessage;
+                return cleared;
+            }
+
+            if (packetType == (int)RemoteUserPacketType.UserEmotionOfficial)
+            {
+                if (!RemoteUserPacketCodec.TryParseEmotion(payload, out RemoteUserEmotionPacket emotionPacket, out string emotionError))
+                {
+                    result = emotionError;
+                    return false;
+                }
+
+                bool emotionApplied = _remoteUserPool.TryApplyEmotion(emotionPacket, currentTime, out string emotionMessage);
+                result = emotionApplied
+                    ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {emotionPacket.CharacterId}."
+                    : emotionMessage;
+                return emotionApplied;
+            }
+
+            if (packetType == (int)RemoteUserPacketType.UserActiveEffectItemOfficial)
+            {
+                if (!RemoteUserPacketCodec.TryParseActiveEffectItem(payload, out RemoteUserActiveEffectItemPacket activeEffectPacket, out string activeEffectError))
+                {
+                    result = activeEffectError;
+                    return false;
+                }
+
+                bool activeEffectApplied = _remoteUserPool.TryApplyActiveEffectItem(activeEffectPacket, currentTime, out string activeEffectMessage);
+                result = activeEffectApplied
+                    ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {activeEffectPacket.CharacterId}."
+                    : activeEffectMessage;
+                return activeEffectApplied;
+            }
+
+            if (packetType == (int)RemoteUserPacketType.UserPortableChairOfficial)
+            {
+                if (!RemoteUserPacketCodec.TryParsePortableChair(payload, out RemoteUserPortableChairPacket officialChairPacket, out string chairError))
+                {
+                    result = chairError;
+                    return false;
+                }
+
+                bool chairApplied = _remoteUserPool.TrySetPortableChair(
+                    officialChairPacket.CharacterId,
+                    officialChairPacket.ChairItemId,
+                    out string chairMessage,
+                    officialChairPacket.PairCharacterId);
+                result = chairApplied
+                    ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {officialChairPacket.CharacterId}."
+                    : chairMessage;
+                return chairApplied;
+            }
+
             switch ((RemoteUserPacketType)packetType)
             {
                 case RemoteUserPacketType.UserEnterField:
@@ -1497,8 +1647,17 @@ namespace HaCreator.MapSimulator
                 (int)RemoteUserPacketType.UserAvatarModified => "remote user remote avatar-modified packet",
                 (int)RemoteUserPacketType.UserTemporaryStatSet => "remote user remote temporary-stat set packet",
                 (int)RemoteUserPacketType.UserTemporaryStatReset => "remote user remote temporary-stat reset packet",
+                (int)RemoteUserPacketType.UserEmotionOfficial => "remote user official emotion packet",
+                (int)RemoteUserPacketType.UserActiveEffectItemOfficial => "remote user official active-effect-item packet",
+                (int)RemoteUserPacketType.UserPortableChairOfficial => "remote user official portable-chair packet",
                 _ => $"remote user packet {packetType}"
             };
+        }
+
+        private static bool IsOfficialRemoteAttackPacketType(int packetType)
+        {
+            return packetType >= (int)RemoteUserPacketType.UserAttackOfficial1
+                && packetType <= (int)RemoteUserPacketType.UserAttackOfficial4;
         }
     }
 }

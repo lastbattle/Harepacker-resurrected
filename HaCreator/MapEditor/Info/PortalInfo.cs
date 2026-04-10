@@ -92,9 +92,47 @@ namespace HaCreator.MapEditor.Info
             }
         }
 
-        public PortalInstance CreateInstance(Board board, int x, int y, string pn, string tn, int tm, string script, int? delay, MapleBool hideTooltip, MapleBool onlyOnce, int? horizontalImpact, int? verticalImpact, string image, int? hRange, int? vRange)
+        public PortalInstance CreateInstance(
+            Board board,
+            int x,
+            int y,
+            string pn,
+            string tn,
+            int tm,
+            string script,
+            int? delay,
+            MapleBool hideTooltip,
+            MapleBool onlyOnce,
+            int? horizontalImpact,
+            int? verticalImpact,
+            string image,
+            int? hRange,
+            int? vRange,
+            string reactorName = null,
+            string sessionValueKey = null,
+            string sessionValue = null)
         {
-            return new PortalInstance(this, board, x, y, pn, type, tn, tm, script, delay, hideTooltip, onlyOnce, horizontalImpact, verticalImpact, image, hRange, vRange);
+            return new PortalInstance(
+                this,
+                board,
+                x,
+                y,
+                pn,
+                type,
+                tn,
+                tm,
+                script,
+                delay,
+                hideTooltip,
+                onlyOnce,
+                horizontalImpact,
+                verticalImpact,
+                image,
+                hRange,
+                vRange,
+                reactorName,
+                sessionValueKey,
+                sessionValue);
         }
 
         public PortalType Type

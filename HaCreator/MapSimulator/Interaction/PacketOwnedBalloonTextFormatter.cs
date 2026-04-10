@@ -15,12 +15,22 @@ namespace HaCreator.MapSimulator.Interaction
         public Func<string> ResolveJobNameText { get; init; }
     }
 
+    internal enum PacketOwnedBalloonFontControlKind
+    {
+        None = 0,
+        FontName,
+        FontSize,
+        FontTable
+    }
+
     internal static class PacketOwnedBalloonTextFormatter
     {
         private const string ItemIconMarkerPrefix = "{{ITEMICON:";
         private const string ItemIconMarkerSuffix = "}}";
         private const string UiCanvasMarkerPrefix = "{{UICANVAS:";
         private const string UiCanvasMarkerSuffix = "}}";
+        private const string FontControlMarkerPrefix = "{{FONTCTRL:";
+        private const string FontControlMarkerSuffix = "}}";
 
         private static readonly Regex ItemCountRegex = new(@"#c(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PlayerNameRegex = new(@"#h\d*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -79,12 +89,59 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = ItemIconRegex.Replace(formatted, static match => BuildItemIconMarker(match.Groups[1].Value));
             formatted = UiCanvasRegex.Replace(formatted, static match => BuildUiCanvasMarker(match.Groups[1].Value));
             formatted = RewardCategoryRegex.Replace(formatted, string.Empty);
-            formatted = FontNameRegex.Replace(formatted, string.Empty);
-            formatted = FontSizeRegex.Replace(formatted, string.Empty);
-            formatted = FontTableRegex.Replace(formatted, string.Empty);
+            formatted = FontNameRegex.Replace(formatted, static match => BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontName, match.Value.Length > 3 ? match.Value[3..^1] : string.Empty));
+            formatted = FontSizeRegex.Replace(formatted, static match => BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontSize, match.Value.Length > 3 ? match.Value[3..^1] : string.Empty));
+            formatted = FontTableRegex.Replace(formatted, static match =>
+            {
+                string value = match.Value.Length > 2 && match.Value[^1] == '#'
+                    ? match.Value[2..^1]
+                    : string.Empty;
+                return BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontTable, value);
+            });
             formatted = ClientPromptTagRegex.Replace(formatted, string.Empty);
             formatted = PluralSuffixRegex.Replace(formatted, "s");
             return formatted;
+        }
+
+        internal static bool TryParseFontControlMarker(
+            string text,
+            int startIndex,
+            out PacketOwnedBalloonFontControlKind kind,
+            out string value,
+            out int markerLength)
+        {
+            kind = PacketOwnedBalloonFontControlKind.None;
+            value = string.Empty;
+            markerLength = 0;
+            if (string.IsNullOrEmpty(text)
+                || startIndex < 0
+                || startIndex >= text.Length
+                || !text.AsSpan(startIndex).StartsWith(FontControlMarkerPrefix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            int payloadStart = startIndex + FontControlMarkerPrefix.Length;
+            int suffixIndex = text.IndexOf(FontControlMarkerSuffix, payloadStart, StringComparison.Ordinal);
+            if (suffixIndex <= payloadStart)
+            {
+                return false;
+            }
+
+            string payload = text.Substring(payloadStart, suffixIndex - payloadStart);
+            int separatorIndex = payload.IndexOf(':');
+            string kindText = separatorIndex >= 0 ? payload[..separatorIndex] : payload;
+            value = separatorIndex >= 0 ? payload[(separatorIndex + 1)..] : string.Empty;
+            if (!Enum.TryParse(kindText, ignoreCase: true, out kind)
+                || kind == PacketOwnedBalloonFontControlKind.None)
+            {
+                kind = PacketOwnedBalloonFontControlKind.None;
+                value = string.Empty;
+                return false;
+            }
+
+            markerLength = (suffixIndex - startIndex) + FontControlMarkerSuffix.Length;
+            return true;
         }
 
         private static string StripInlineSelections(string text)
@@ -160,6 +217,13 @@ namespace HaCreator.MapSimulator.Interaction
             return string.IsNullOrWhiteSpace(normalizedPath)
                 ? string.Empty
                 : $"{UiCanvasMarkerPrefix}{normalizedPath}{UiCanvasMarkerSuffix}";
+        }
+
+        private static string BuildFontControlMarker(PacketOwnedBalloonFontControlKind kind, string value)
+        {
+            return kind == PacketOwnedBalloonFontControlKind.None
+                ? string.Empty
+                : $"{FontControlMarkerPrefix}{kind}:{value ?? string.Empty}{FontControlMarkerSuffix}";
         }
 
         private static string ResolveQuestName(string questIdText)

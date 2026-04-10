@@ -799,6 +799,8 @@ namespace HaCreator.MapSimulator.Effects
             return pendingTransferMapId;
         }
 
+        public bool HasPendingTransfer => _pendingTransferMapId > 0;
+
 
         private void EnsureAssetsLoaded()
         {

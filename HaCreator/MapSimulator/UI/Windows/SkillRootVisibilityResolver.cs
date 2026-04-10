@@ -13,6 +13,7 @@ namespace HaCreator.MapSimulator.UI
         private const int CygnusMobilityHiddenSkillId = 10001015;
         private const int DualBladeBornHiddenSkillIdA = 4000001;
         private const int DualBladeBornHiddenSkillIdB = 4001344;
+        private const int DualBladeRogueSkillRootId = 400;
 
         public static bool IsSkillVisible(SkillDisplayData skill, int currentJobId, int currentSubJob)
         {
@@ -53,12 +54,7 @@ namespace HaCreator.MapSimulator.UI
             if (availableRoots.Count == 0)
                 return Array.Empty<int>();
 
-            var visibleRoots = new HashSet<int>();
-            foreach (int skillRootId in availableRoots)
-            {
-                if (IsCurrentJobVisibleRoot(currentJobId, skillRootId))
-                    visibleRoots.Add(skillRootId);
-            }
+            var visibleRoots = ResolveCurrentLineageVisibleRoots(currentJobId, availableRoots);
 
             if (learnedSkillIds != null)
             {
@@ -92,6 +88,28 @@ namespace HaCreator.MapSimulator.UI
                 : skillId / SkillRootDivisor;
         }
 
+        private static HashSet<int> ResolveCurrentLineageVisibleRoots(int currentJobId, HashSet<int> availableRoots)
+        {
+            var visibleRoots = new HashSet<int>();
+            if (availableRoots.Contains(BeginnerSkillRootId))
+                visibleRoots.Add(BeginnerSkillRootId);
+
+            int currentSkillRootId = Math.Max(0, currentJobId);
+            var visitedRoots = new HashSet<int>();
+            while (currentSkillRootId > BeginnerSkillRootId && visitedRoots.Add(currentSkillRootId))
+            {
+                if (availableRoots.Contains(currentSkillRootId))
+                    visibleRoots.Add(currentSkillRootId);
+
+                if (!TryGetParentSkillRootId(currentSkillRootId, out int parentSkillRootId))
+                    break;
+
+                currentSkillRootId = parentSkillRootId;
+            }
+
+            return visibleRoots;
+        }
+
         private static bool IsAlwaysHiddenSkill(int skillId)
         {
             return skillId == MechanicSiegeHiddenSkillId ||
@@ -99,95 +117,124 @@ namespace HaCreator.MapSimulator.UI
                    skillId == CygnusMobilityHiddenSkillId;
         }
 
-        private static bool IsCurrentJobVisibleRoot(int currentJobId, int skillRootId)
+        private static bool TryGetParentSkillRootId(int skillRootId, out int parentSkillRootId)
         {
-            int normalizedJobId = Math.Max(0, currentJobId);
-            int normalizedSkillRootId = Math.Max(0, skillRootId);
-            if (normalizedSkillRootId == BeginnerSkillRootId)
-                return true;
-
-            if (normalizedJobId <= 0)
+            parentSkillRootId = BeginnerSkillRootId;
+            if (skillRootId <= BeginnerSkillRootId)
                 return false;
 
-            if (normalizedSkillRootId == normalizedJobId)
+            if (TryGetSpecialParentSkillRootId(skillRootId, out parentSkillRootId))
                 return true;
 
-            if (IsDualBladeRoot(normalizedJobId) || IsDualBladeRoot(normalizedSkillRootId))
+            if (skillRootId >= 800 && skillRootId < 1000)
+                return false;
+
+            int jobTier = skillRootId % 10;
+            if (jobTier == 1 || jobTier == 2)
             {
-                return normalizedJobId >= 430 &&
-                       normalizedJobId <= 434 &&
-                       normalizedSkillRootId >= 400 &&
-                       normalizedSkillRootId <= normalizedJobId;
+                parentSkillRootId = skillRootId - 1;
+                return true;
             }
 
-            if (normalizedJobId >= 800 && normalizedJobId < 1000)
-                return normalizedSkillRootId == normalizedJobId;
-
-            if (TryResolveSpecialLineage(normalizedJobId, out IReadOnlyList<int> lineage))
-                return lineage.Contains(normalizedSkillRootId);
-
-            return IsStandardLineageRoot(normalizedJobId, normalizedSkillRootId);
-        }
-
-        private static bool IsStandardLineageRoot(int currentJobId, int skillRootId)
-        {
-            int firstJob = (currentJobId / 100) * 100;
-            if (skillRootId == firstJob)
-                return true;
-
-            int secondJob = (currentJobId / 10) * 10;
-            if (secondJob > firstJob && skillRootId == secondJob)
-                return true;
-
-            int thirdJob = secondJob + (currentJobId % 10 > 0 ? 1 : 0);
-            return thirdJob > secondJob && thirdJob < currentJobId && skillRootId == thirdJob;
-        }
-
-        private static bool TryResolveSpecialLineage(int jobId, out IReadOnlyList<int> lineage)
-        {
-            lineage = jobId switch
+            if (skillRootId % 100 != 0)
             {
-                2000 or >= 2100 and <= 2112 => BuildLineage(jobId, 2000, 2100, 2110, 2111, 2112),
-                2001 or >= 2200 and <= 2218 => BuildLineage(jobId, 2001, 2200, 2210, 2211, 2212, 2213, 2214, 2215, 2216, 2217, 2218),
-                2002 or >= 2300 and <= 2312 => BuildLineage(jobId, 2002, 2300, 2310, 2311, 2312),
-                2003 or >= 2400 and <= 2412 => BuildLineage(jobId, 2003, 2400, 2410, 2411, 2412),
-                2004 or >= 2700 and <= 2712 => BuildLineage(jobId, 2004, 2700, 2710, 2711, 2712),
-                2005 or >= 2500 and <= 2512 => BuildLineage(jobId, 2005, 2500, 2510, 2511, 2512),
-                1000 or >= 1100 and <= 1112 => BuildLineage(jobId, 1000, 1100, 1110, 1111, 1112),
-                >= 1200 and <= 1212 => BuildLineage(jobId, 1000, 1200, 1210, 1211, 1212),
-                >= 1300 and <= 1312 => BuildLineage(jobId, 1000, 1300, 1310, 1311, 1312),
-                >= 1400 and <= 1412 => BuildLineage(jobId, 1000, 1400, 1410, 1411, 1412),
-                >= 1500 and <= 1512 => BuildLineage(jobId, 1000, 1500, 1510, 1511, 1512),
-                3000 or >= 3200 and <= 3212 => BuildLineage(jobId, 3000, 3200, 3210, 3211, 3212),
-                >= 3300 and <= 3312 => BuildLineage(jobId, 3000, 3300, 3310, 3311, 3312),
-                >= 3500 and <= 3512 => BuildLineage(jobId, 3000, 3500, 3510, 3511, 3512),
-                3001 or >= 3100 and <= 3112 => BuildLineage(jobId, 3001, 3100, 3110, 3111, 3112),
-                3002 or >= 3600 and <= 3612 => BuildLineage(jobId, 3000, 3002, 3600, 3610, 3611, 3612),
-                4001 or >= 4100 and <= 4112 => BuildLineage(jobId, 4001, 4100, 4110, 4111, 4112),
-                4002 or >= 4200 and <= 4212 => BuildLineage(jobId, 4002, 4200, 4210, 4211, 4212),
-                5000 or >= 5100 and <= 5112 => BuildLineage(jobId, 5000, 5100, 5110, 5111, 5112),
-                6000 or >= 6100 and <= 6112 => BuildLineage(jobId, 6000, 6100, 6110, 6111, 6112),
-                6001 or >= 6500 and <= 6512 => BuildLineage(jobId, 6001, 6500, 6510, 6511, 6512),
-                _ => null
-            };
-
-            return lineage != null;
-        }
-
-        private static IReadOnlyList<int> BuildLineage(int currentJobId, params int[] lineage)
-        {
-            var visibleLineage = new List<int>(lineage.Length);
-            foreach (int skillRootId in lineage)
-            {
-                visibleLineage.Add(skillRootId);
-                if (skillRootId == currentJobId)
-                    break;
+                parentSkillRootId = (skillRootId / 100) * 100;
+                return true;
             }
 
-            if (!visibleLineage.Contains(currentJobId))
-                visibleLineage.Add(currentJobId);
+            return false;
+        }
 
-            return visibleLineage;
+        private static bool TryGetSpecialParentSkillRootId(int skillRootId, out int parentSkillRootId)
+        {
+            switch (skillRootId)
+            {
+                case DualBladeRogueSkillRootId:
+                    parentSkillRootId = BeginnerSkillRootId;
+                    return true;
+                case 430:
+                    parentSkillRootId = DualBladeRogueSkillRootId;
+                    return true;
+                case 431:
+                case 432:
+                case 433:
+                case 434:
+                    parentSkillRootId = skillRootId - 1;
+                    return true;
+                case 1000:
+                case 2000:
+                case 2001:
+                case 2002:
+                case 2003:
+                case 2004:
+                case 2005:
+                case 3000:
+                case 3001:
+                case 4001:
+                case 4002:
+                case 5000:
+                case 6000:
+                case 6001:
+                    parentSkillRootId = BeginnerSkillRootId;
+                    return true;
+                case >= 1100 and <= 1500 when skillRootId % 100 == 0:
+                    parentSkillRootId = 1000;
+                    return true;
+                case 2100:
+                    parentSkillRootId = 2000;
+                    return true;
+                case 2200:
+                    parentSkillRootId = 2001;
+                    return true;
+                case 2300:
+                    parentSkillRootId = 2002;
+                    return true;
+                case 2400:
+                    parentSkillRootId = 2003;
+                    return true;
+                case 2500:
+                    parentSkillRootId = 2005;
+                    return true;
+                case 2700:
+                    parentSkillRootId = 2004;
+                    return true;
+                case >= 2211 and <= 2218:
+                    parentSkillRootId = skillRootId - 1;
+                    return true;
+                case 2210:
+                    parentSkillRootId = 2200;
+                    return true;
+                case >= 3200 and <= 3500 when skillRootId % 100 == 0:
+                    parentSkillRootId = 3000;
+                    return true;
+                case 3100:
+                    parentSkillRootId = 3001;
+                    return true;
+                case 3002:
+                    parentSkillRootId = 3000;
+                    return true;
+                case 3600:
+                    parentSkillRootId = 3002;
+                    return true;
+                case 4100:
+                    parentSkillRootId = 4001;
+                    return true;
+                case 4200:
+                    parentSkillRootId = 4002;
+                    return true;
+                case 5100:
+                    parentSkillRootId = 5000;
+                    return true;
+                case 6100:
+                    parentSkillRootId = 6000;
+                    return true;
+                case 6500:
+                    parentSkillRootId = 6001;
+                    return true;
+                default:
+                    parentSkillRootId = BeginnerSkillRootId;
+                    return false;
+            }
         }
 
         private static int GetSkillRootSortKey(int skillRootId)
@@ -223,7 +270,7 @@ namespace HaCreator.MapSimulator.UI
 
         private static bool IsDualBladeRoot(int skillRootId)
         {
-            return skillRootId >= 430 && skillRootId <= 434;
+            return skillRootId == DualBladeRogueSkillRootId || (skillRootId >= 430 && skillRootId <= 434);
         }
 
         private static bool IsDualBladeBorn(int currentJobId, int currentSubJob)

@@ -213,8 +213,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
-            point = Math.Max(0, BitConverter.ToInt32(bytes, 0));
-            return true;
+            return TryDecodeClientContextPoint(bytes, out point, out error);
         }
 
         private static bool TryParseOpcodeFramedRawContextPoint(
@@ -238,7 +237,30 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            point = Math.Max(0, BitConverter.ToInt32(bytes, ClientPacketOpcodeByteLength));
+            byte[] payload = new byte[ClientContextPointByteLength];
+            Buffer.BlockCopy(bytes, ClientPacketOpcodeByteLength, payload, 0, payload.Length);
+            return TryDecodeClientContextPoint(payload, out point, out error);
+        }
+
+        internal static bool TryDecodeClientContextPoint(byte[] payload, out int point, out string error)
+        {
+            point = 0;
+            error = null;
+
+            if (payload == null || payload.Length != ClientContextPointByteLength)
+            {
+                error = $"Cookie House raw payload must be exactly {ClientContextPointByteLength} bytes for CWvsContext+0x{ClientContextPointOffset:X}.";
+                return false;
+            }
+
+            int decodedPoint = BitConverter.ToInt32(payload, 0);
+            if (decodedPoint < 0)
+            {
+                error = $"Cookie House point payload decodes to an invalid negative score ({decodedPoint}).";
+                return false;
+            }
+
+            point = decodedPoint;
             return true;
         }
 

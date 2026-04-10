@@ -355,6 +355,8 @@ namespace HaCreator.MapSimulator
 
         private string DescribePacketOwnedAntiMacroStatus(int currentTickCount)
         {
+            _packetOwnedAntiMacroCurrentRemainingMs = ResolvePacketOwnedAntiMacroCurrentRemainingMs(currentTickCount);
+
             string ownerState;
             if (TryGetActivePacketOwnedAntiMacroWindow(out AntiMacroChallengeWindow window))
             {
@@ -413,6 +415,16 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
             _lastPacketOwnedAntiMacroSummary = "Closed packet-owned anti-macro owner.";
             return _lastPacketOwnedAntiMacroSummary;
+        }
+
+        private int ResolvePacketOwnedAntiMacroCurrentRemainingMs(int currentTickCount)
+        {
+            if (TryGetActivePacketOwnedAntiMacroWindow(out AntiMacroChallengeWindow window))
+            {
+                return Math.Max(0, window.ExpiresAt - currentTickCount);
+            }
+
+            return Math.Max(0, _packetOwnedAntiMacroCurrentRemainingMs);
         }
 
         private void SetPacketOwnedAntiMacroComboHold(bool held)
@@ -933,6 +945,7 @@ namespace HaCreator.MapSimulator
                 using BinaryReader reader = new(stream);
                 int mode = reader.ReadByte();
                 int antiMacroType = reader.ReadByte();
+                _packetOwnedAntiMacroCurrentRemainingMs = ResolvePacketOwnedAntiMacroCurrentRemainingMs(Environment.TickCount);
 
                 _lastPacketOwnedAntiMacroMode = mode;
                 _lastPacketOwnedAntiMacroType = antiMacroType;

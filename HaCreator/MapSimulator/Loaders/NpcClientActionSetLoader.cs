@@ -29,6 +29,11 @@ namespace HaCreator.MapSimulator.Loaders
             Animation.AnimationKeys.Stand
         };
 
+        private static readonly string[] ActionTwoClientActionCandidates =
+        {
+            "say"
+        };
+
         internal const int AutomaticClientActionSetIndex = -2;
         internal const int RootClientActionSetIndex = -1;
         internal const int DefaultNpcFrameDelay = 180;
@@ -201,6 +206,10 @@ namespace HaCreator.MapSimulator.Loaders
                 // CActionMan::LoadNpcAction indexes the static NPC action-name table before WZ lookup.
                 // Shop-style UI owners default to action 1, and WZ shop NPCs publish only `stand` for that path.
                 1 => ActionOneClientActionCandidates,
+                // CUIQuestInfoDetail::SetNPC and CUIMedalQuestInfoDetail::SetNPC switch to action 2
+                // when the authored NPC template exposes more than two acts, and WZ quest-preview NPCs
+                // in this data set commonly publish that branch as `say`.
+                2 => ActionTwoClientActionCandidates,
                 _ => Array.Empty<string>()
             };
 

@@ -156,7 +156,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return _statusMessage;
             }
 
-            _leavingEntries.Add(LeavingMessageBoxEntry.FromEntry(entry, currentTick));
+            Texture2D leaveSnapshotTexture = null;
+            Point leaveSnapshotOrigin = Point.Zero;
+            TryCreateLeaveSnapshot(entry, out leaveSnapshotTexture, out leaveSnapshotOrigin);
+
+            _leavingEntries.Add(LeavingMessageBoxEntry.FromEntry(entry, leaveSnapshotTexture, leaveSnapshotOrigin, currentTick));
             _statusMessage = $"{entry.Source.GetLabel()} field message-box {messageBoxId} began its client leave-field fade.";
             return _statusMessage;
         }
@@ -491,7 +495,13 @@ namespace HaCreator.MapSimulator.Interaction
 
             return iconTexture == null
                 ? null
-                : new MessageBoxVisual(Array.Empty<Texture2D>(), Array.Empty<Point>(), Array.Empty<int>(), iconTexture, MessageBoxTextLayout.Default);
+                : new MessageBoxVisual(
+                    Array.Empty<Texture2D>(),
+                    Array.Empty<Point>(),
+                    Array.Empty<int>(),
+                    Array.Empty<MessageBoxTextLayout>(),
+                    iconTexture,
+                    MessageBoxTextLayout.Default);
         }
 
         private bool TryLoadClientMessageBoxVisual(
@@ -784,10 +794,10 @@ namespace HaCreator.MapSimulator.Interaction
                     out List<Texture2D> textures,
                     out List<Point> origins,
                     out List<int> delays,
-                    out _,
+                    out List<MessageBoxTextLayout> textLayouts,
                     out MessageBoxTextLayout textLayout))
             {
-                visual = new MessageBoxVisual(textures, origins, delays, null, textLayout);
+                visual = new MessageBoxVisual(textures, origins, delays, textLayouts, null, textLayout);
                 return true;
             }
 
@@ -816,10 +826,10 @@ namespace HaCreator.MapSimulator.Interaction
                         out List<Texture2D> nestedTextures,
                         out List<Point> nestedOrigins,
                         out List<int> nestedDelays,
-                        out _,
+                        out List<MessageBoxTextLayout> nestedTextLayouts,
                         out MessageBoxTextLayout nestedLayout))
                 {
-                    visual = new MessageBoxVisual(nestedTextures, nestedOrigins, nestedDelays, null, nestedLayout);
+                    visual = new MessageBoxVisual(nestedTextures, nestedOrigins, nestedDelays, nestedTextLayouts, null, nestedLayout);
                     return true;
                 }
 
@@ -850,7 +860,7 @@ namespace HaCreator.MapSimulator.Interaction
             Point origin = ResolveCanvasOrigin(canvas, texture);
             int delay = ResolveCanvasDelay(canvas, null);
             MessageBoxTextLayout textLayout = ResolveTextLayout(propertyName, texture, sourceProperty);
-            visual = new MessageBoxVisual(new[] { texture }, new[] { origin }, new[] { delay }, null, textLayout);
+            visual = new MessageBoxVisual(new[] { texture }, new[] { origin }, new[] { delay }, new[] { textLayout }, null, textLayout);
             return true;
         }
 
@@ -922,7 +932,13 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             MessageBoxTextLayout textLayout = BuildUiBoardTextLayout(width, height, centerTexture, topTexture.Height, bottomTexture.Height);
-            visual = new MessageBoxVisual(new[] { (Texture2D)boardTexture }, new[] { new Point(width / 2, height) }, new[] { DefaultFrameDelayMs }, null, textLayout);
+            visual = new MessageBoxVisual(
+                new[] { (Texture2D)boardTexture },
+                new[] { new Point(width / 2, height) },
+                new[] { DefaultFrameDelayMs },
+                new[] { textLayout },
+                null,
+                textLayout);
             return true;
         }
 
@@ -1474,7 +1490,7 @@ namespace HaCreator.MapSimulator.Interaction
                 messageText: "test",
                 layerPosition: Point.Zero,
                 visual: null,
-                leaveTexture: null,
+                leaveTexture: new Texture2D(GraphicsDeviceServiceForTests.Instance, 1, 1),
                 leaveOrigin: Point.Zero,
                 leaveStartedAt: 100,
                 source: MessageBoxEntrySource.LocalCommand);
@@ -1485,6 +1501,55 @@ namespace HaCreator.MapSimulator.Interaction
             float alphaAtHalfFade = entry.GetAlpha(600);
             bool shouldRemoveAtFadeDuration = entry.ShouldRemove(1100);
             return (alphaBeforeUpdate, alphaAfterUpdate, alphaAtHalfFade, shouldRemoveAtFadeDuration, entry.ShouldDrawText);
+        }
+
+        internal static ((int PaddingLeft, int PaddingTop, int PaddingRight, int PaddingBottom) FirstFrame, (int PaddingLeft, int PaddingTop, int PaddingRight, int PaddingBottom) SecondFrame) ComputeAnimatedFrameTextLayoutsForTest(
+            int textureWidth,
+            int textureHeight,
+            Rectangle firstRect,
+            Rectangle secondRect)
+        {
+            using Texture2D texture = new Texture2D(GraphicsDeviceServiceForTests.Instance, textureWidth, textureHeight);
+
+            WzSubProperty root = new(ClientMessageBoxPropertyName);
+            root.AddProperty(CreateFrameProperty("0", firstRect));
+            root.AddProperty(CreateFrameProperty("1", secondRect));
+
+            FieldMessageBoxRuntime runtime = new();
+            runtime.Initialize(GraphicsDeviceServiceForTests.Instance);
+            bool loaded = runtime.TryCollectFrames(
+                root,
+                ClientMessageBoxPropertyName,
+                metadataFallbackProperty: null,
+                out _,
+                out _,
+                out _,
+                out List<MessageBoxTextLayout> textLayouts,
+                out _);
+
+            if (!loaded || textLayouts.Count < 2)
+            {
+                return (default, default);
+            }
+
+            MessageBoxTextLayout first = textLayouts[0];
+            MessageBoxTextLayout second = textLayouts[1];
+            return (
+                (first.PaddingLeft, first.PaddingTop, first.PaddingRight, first.PaddingBottom),
+                (second.PaddingLeft, second.PaddingTop, second.PaddingRight, second.PaddingBottom));
+        }
+
+        private static WzCanvasProperty CreateFrameProperty(string name, Rectangle textRect)
+        {
+            WzCanvasProperty canvas = new(name);
+            System.Drawing.Bitmap bitmap = new(Math.Max(1, textRect.Right), Math.Max(1, textRect.Bottom));
+            canvas.PngProperty = new WzPngProperty { PNG = bitmap };
+
+            WzSubProperty text = new(TextPropertyName);
+            text.AddProperty(new WzVectorProperty("lt", textRect.Left, textRect.Top));
+            text.AddProperty(new WzVectorProperty("rb", textRect.Right, textRect.Bottom));
+            canvas.AddProperty(text);
+            return canvas;
         }
 
         internal static (int PaddingLeft, int PaddingTop, int PaddingRight, int PaddingBottom, int MaxLineCount) ComputeUiBoardTextLayoutForTest(
@@ -1822,10 +1887,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return Visual?.GetFrameOrigin(_frameIndex) ?? Point.Zero;
             }
 
-            public MessageBoxTextLayout GetDisplayTextLayout()
-            {
-                return Visual?.TextLayout ?? MessageBoxTextLayout.Default;
-            }
+            public MessageBoxTextLayout GetDisplayTextLayout() => Visual?.GetFrameTextLayout(_frameIndex) ?? MessageBoxTextLayout.Default;
         }
 
         private sealed class LeavingMessageBoxEntry : IMessageBoxDrawableEntry
@@ -1854,7 +1916,7 @@ namespace HaCreator.MapSimulator.Interaction
             public Point LayerPosition { get; }
             public MessageBoxVisual Visual { get; }
             public MessageBoxEntrySource Source { get; }
-            public bool ShouldDrawText => _canvasState == LeaveCanvasState.ReinsertedFade;
+            public bool ShouldDrawText => _canvasState == LeaveCanvasState.ReinsertedFade && _leaveTexture == null;
 
             public void Update(int currentTick)
             {
@@ -1866,15 +1928,15 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            public static LeavingMessageBoxEntry FromEntry(FieldMessageBoxEntry entry, int currentTick)
+            public static LeavingMessageBoxEntry FromEntry(FieldMessageBoxEntry entry, Texture2D leaveTexture, Point leaveOrigin, int currentTick)
             {
                 return new LeavingMessageBoxEntry(
                     entry.Id,
                     entry.MessageText,
                     entry.LayerPosition,
                     entry.Visual,
-                    entry.GetDisplayTexture(),
-                    entry.GetDisplayOrigin(),
+                    leaveTexture ?? entry.GetDisplayTexture(),
+                    leaveTexture == null ? entry.GetDisplayOrigin() : leaveOrigin,
                     currentTick,
                     entry.Source);
             }
@@ -1897,10 +1959,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return _leaveOrigin;
             }
 
-            public MessageBoxTextLayout GetDisplayTextLayout()
-            {
-                return Visual?.TextLayout ?? MessageBoxTextLayout.Default;
-            }
+            public MessageBoxTextLayout GetDisplayTextLayout() => Visual?.GetFrameTextLayout(0) ?? MessageBoxTextLayout.Default;
 
             public float GetAlpha(int currentTick)
             {
@@ -1922,6 +1981,7 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<Texture2D> Frames,
             IReadOnlyList<Point> Origins,
             IReadOnlyList<int> Delays,
+            IReadOnlyList<MessageBoxTextLayout> TextLayouts,
             Texture2D IconTexture,
             MessageBoxTextLayout TextLayout)
         {
@@ -1958,6 +2018,17 @@ namespace HaCreator.MapSimulator.Interaction
 
                 int index = Math.Clamp(frameIndex, 0, Delays.Count - 1);
                 return Math.Max(30, Delays[index]);
+            }
+
+            public MessageBoxTextLayout GetFrameTextLayout(int frameIndex)
+            {
+                if (TextLayouts == null || TextLayouts.Count == 0)
+                {
+                    return TextLayout;
+                }
+
+                int index = Math.Clamp(frameIndex, 0, TextLayouts.Count - 1);
+                return TextLayouts[index];
             }
         }
 

@@ -65,12 +65,16 @@ namespace HaCreator.MapSimulator.Companions
         private readonly record struct PetActionCacheKey(int PetItemId, int PetWearItemId, string ActionName);
         private sealed class PetImageEntry
         {
-            internal PetImageEntry(WzImage imageRoot, WzImageProperty propertyRoot)
+            internal PetImageEntry(int templateId, string sourcePath, WzImage imageRoot, WzImageProperty propertyRoot)
             {
+                TemplateId = Math.Max(0, templateId);
+                SourcePath = sourcePath ?? string.Empty;
                 ImageRoot = imageRoot;
                 PropertyRoot = propertyRoot;
             }
 
+            internal int TemplateId { get; }
+            internal string SourcePath { get; }
             internal WzImage ImageRoot { get; }
             internal WzImageProperty PropertyRoot { get; }
 
@@ -123,13 +127,13 @@ namespace HaCreator.MapSimulator.Companions
                 return cached;
             }
 
-            WzImage petImage = global::HaCreator.Program.FindImage("Item", $"Pet/{petItemId}.img");
+            PetImageEntry petImgEntry = ResolvePetImgEntry(petItemId);
+            WzImage petImage = petImgEntry?.ImageRoot;
             if (petImage == null)
             {
                 return null;
             }
 
-            petImage.ParseImage();
             Dictionary<string, string> dialogStrings = LoadPetDialogStrings(petItemId);
 
             PetAnimationSet animations = LoadAnimationSet(petItemId);
@@ -218,14 +222,15 @@ namespace HaCreator.MapSimulator.Companions
 
         private static PetImageEntry ResolvePetTemplateImgEntry(int petItemId)
         {
-            WzImage petImage = global::HaCreator.Program.FindImage("Item", $"Pet/{petItemId}.img");
+            string petImagePath = FormatPetImagePath(petItemId);
+            WzImage petImage = global::HaCreator.Program.FindImage("Item", petImagePath);
             if (petImage == null)
             {
                 return null;
             }
 
             petImage.ParseImage();
-            return new PetImageEntry(petImage, null);
+            return new PetImageEntry(petItemId, petImagePath, petImage, null);
         }
 
         private static PetImageEntry ResolveBasicPetEffectImgEntry()
@@ -238,8 +243,13 @@ namespace HaCreator.MapSimulator.Companions
 
             effectImage.ParseImage();
             return effectImage["Basic"] is WzImageProperty basicRoot
-                ? new PetImageEntry(null, basicRoot)
+                ? new PetImageEntry(0, "Effect/PetEff.img/Basic", null, basicRoot)
                 : null;
+        }
+
+        private static string FormatPetImagePath(int petItemId)
+        {
+            return $"Pet/{Math.Max(0, petItemId)}.img";
         }
 
         private string LoadPetName(int petItemId)

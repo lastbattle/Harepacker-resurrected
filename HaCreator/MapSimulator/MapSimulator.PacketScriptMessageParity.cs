@@ -11,6 +11,8 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private IReadOnlyDictionary<long, PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate> _packetScriptSelectablePetsBySerial =
+            new Dictionary<long, PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate>();
         private bool _packetScriptOfficialSessionBridgeEnabled;
         private bool _packetScriptOfficialSessionBridgeUseDiscovery;
         private int _packetScriptOfficialSessionBridgeConfiguredListenPort = PacketScriptOfficialSessionBridgeManager.DefaultListenPort;
@@ -57,32 +59,48 @@ namespace HaCreator.MapSimulator
         private PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate ResolvePacketScriptSelectablePet(long petSerialNumber)
         {
             IReadOnlyList<PetRuntime> activePets = _playerManager?.Pets?.ActivePets;
-            if (petSerialNumber <= 0 || activePets == null)
+            if (petSerialNumber <= 0)
             {
                 return null;
             }
 
-            for (int i = 0; i < activePets.Count; i++)
+            if (activePets != null)
             {
-                PetRuntime pet = activePets[i];
-                if (pet == null)
+                for (int i = 0; i < activePets.Count; i++)
                 {
-                    continue;
-                }
+                    PetRuntime pet = activePets[i];
+                    if (pet == null)
+                    {
+                        continue;
+                    }
 
-                if (ResolvePacketScriptPetSerial(pet) != petSerialNumber)
-                {
-                    continue;
-                }
+                    if (ResolvePacketScriptPetSerial(pet) != petSerialNumber)
+                    {
+                        continue;
+                    }
 
-                return new PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate(
-                    petSerialNumber,
-                    pet.SlotIndex,
-                    pet.ItemId,
-                    string.IsNullOrWhiteSpace(pet.Name) ? $"Pet {pet.SlotIndex + 1}" : pet.Name);
+                    return new PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate(
+                        petSerialNumber,
+                        pet.SlotIndex,
+                        pet.ItemId,
+                        string.IsNullOrWhiteSpace(pet.Name) ? $"Pet {pet.SlotIndex + 1}" : pet.Name,
+                        PacketScriptPetSelectionSource.ActivePetRuntime);
+                }
             }
 
-            return null;
+            return _packetScriptSelectablePetsBySerial.TryGetValue(petSerialNumber, out PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate candidate)
+                ? candidate
+                : null;
+        }
+
+        private void SyncPacketOwnedScriptSelectablePetsFromCharacterData(PacketCharacterDataSnapshot snapshot)
+        {
+            _packetScriptSelectablePetsBySerial = PacketScriptPetSelectionSnapshotResolver.BuildCandidates(snapshot);
+        }
+
+        private void ClearPacketOwnedScriptSelectablePets()
+        {
+            _packetScriptSelectablePetsBySerial = new Dictionary<long, PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate>();
         }
 
         private static long ResolvePacketScriptPetSerial(PetRuntime pet)

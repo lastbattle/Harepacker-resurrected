@@ -695,6 +695,18 @@ namespace HaCreator.MapSimulator
                 });
             for (int i = 0; i < sanitized.Length; i++)
             {
+                if (PacketOwnedBalloonTextFormatter.TryParseFontControlMarker(
+                        sanitized,
+                        i,
+                        out PacketOwnedBalloonFontControlKind fontControlKind,
+                        out string fontControlValue,
+                        out int fontControlMarkerLength))
+                {
+                    ApplyPacketOwnedBalloonFontControl(fontControlKind, fontControlValue, baseColor, ref style);
+                    i += fontControlMarkerLength - 1;
+                    continue;
+                }
+
                 if (TryParsePacketOwnedBalloonItemIconMarker(sanitized, i, out int itemIconId, out int iconMarkerLength))
                 {
                     glyphs.Add(new PacketOwnedBalloonGlyph('\0', style, itemIconId));
@@ -733,6 +745,35 @@ namespace HaCreator.MapSimulator
             return glyphs.Count == 0
                 ? Array.Empty<PacketOwnedBalloonGlyph>()
                 : glyphs.ToArray();
+        }
+
+        private static void ApplyPacketOwnedBalloonFontControl(
+            PacketOwnedBalloonFontControlKind kind,
+            string value,
+            Color baseColor,
+            ref PacketOwnedBalloonTextStyle style)
+        {
+            switch (kind)
+            {
+                case PacketOwnedBalloonFontControlKind.FontSize:
+                    if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int fontSize))
+                    {
+                        style = style with { Emphasis = fontSize > 0 };
+                    }
+                    return;
+
+                case PacketOwnedBalloonFontControlKind.FontTable:
+                    if (string.IsNullOrWhiteSpace(value)
+                        || value == "0")
+                    {
+                        style = new PacketOwnedBalloonTextStyle(baseColor, false);
+                    }
+                    return;
+
+                case PacketOwnedBalloonFontControlKind.FontName:
+                default:
+                    return;
+            }
         }
 
         private static bool TryParsePacketOwnedBalloonItemIconMarker(string text, int startIndex, out int itemId, out int markerLength)
@@ -2698,11 +2739,28 @@ namespace HaCreator.MapSimulator
                 }
 
                 case FieldHazardPetConsumeInboundResultKind.Acknowledged:
-                    ClearFieldHazardPendingInventoryRequest();
                     _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
-                    _pendingFieldHazardPetAutoConsumeRequest = null;
                     {
-                        string detail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} was acknowledged by the packet-owned pet-consume result path for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.{resultDetailSuffix}";
+                        FieldHazardPetAutoConsumeRequest acknowledgedRequest = request with
+                        {
+                            ResolutionMode = ResolveFieldHazardPetConsumeResolutionModeAfterInboundResult(
+                                result.Kind,
+                                request.ResolutionMode),
+                            DispatchState = ResolveFieldHazardPetConsumeDispatchStateAfterInboundResult(
+                                result.Kind,
+                                request.DispatchState),
+                            AckAt = currentTickCount,
+                            ResultAt = currentTickCount + FieldHazardPetAutoConsumeSyntheticResultDelayMs,
+                            RemoteResultDeadlineAt = currentTickCount + ResolveFieldHazardRemoteObservationWindowMs(
+                                externalObserved: true,
+                                deferredQueued: false),
+                            Acknowledged = true,
+                            TransportDisposition = string.IsNullOrWhiteSpace(result.Detail)
+                                ? request.TransportDisposition
+                                : result.Detail.Trim()
+                        };
+                        _pendingFieldHazardPetAutoConsumeRequest = acknowledgedRequest;
+                        string detail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} was acknowledged by the packet-owned pet-consume result path for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} and remains under remote result observation.{resultDetailSuffix}";
                         _localOverlayRuntime.SetFieldHazardFollowUp(detail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
                         return detail;
                     }
@@ -3124,6 +3182,39 @@ namespace HaCreator.MapSimulator
                 FieldHazardPetConsumeTransportPath.DeferredPacketOutbox => "deferred-outbox",
                 _ => "simulator"
             };
+        }
+
+        private static FieldHazardPetConsumeResolutionMode ResolveFieldHazardPetConsumeResolutionModeAfterInboundResult(
+            FieldHazardPetConsumeInboundResultKind kind,
+            FieldHazardPetConsumeResolutionMode currentMode)
+        {
+            return kind switch
+            {
+                FieldHazardPetConsumeInboundResultKind.Acknowledged => FieldHazardPetConsumeResolutionMode.ExternalObserved,
+                FieldHazardPetConsumeInboundResultKind.Dispatched => FieldHazardPetConsumeResolutionMode.ExternalObserved,
+                FieldHazardPetConsumeInboundResultKind.Deferred => FieldHazardPetConsumeResolutionMode.ExternalObserved,
+                _ => currentMode
+            };
+        }
+
+        private static FieldHazardPetConsumeDispatchState ResolveFieldHazardPetConsumeDispatchStateAfterInboundResult(
+            FieldHazardPetConsumeInboundResultKind kind,
+            FieldHazardPetConsumeDispatchState currentState)
+        {
+            return kind switch
+            {
+                FieldHazardPetConsumeInboundResultKind.Acknowledged => FieldHazardPetConsumeDispatchState.Dispatched,
+                FieldHazardPetConsumeInboundResultKind.Dispatched => FieldHazardPetConsumeDispatchState.Dispatched,
+                FieldHazardPetConsumeInboundResultKind.Deferred => FieldHazardPetConsumeDispatchState.DeferredQueued,
+                _ => currentState
+            };
+        }
+
+        internal static bool ShouldRetainFieldHazardPetConsumePendingRequest(FieldHazardPetConsumeInboundResultKind kind)
+        {
+            return kind == FieldHazardPetConsumeInboundResultKind.Acknowledged
+                || kind == FieldHazardPetConsumeInboundResultKind.Dispatched
+                || kind == FieldHazardPetConsumeInboundResultKind.Deferred;
         }
 
         internal static int ResolveFieldHazardSyntheticAckDelayMs(

@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator.Animation
         private List<IDXObject> _vegaArrowFrames;
         private List<IDXObject> _vegaSuccessFrames;
         private List<IDXObject> _vegaFailureFrames;
+        private readonly Dictionary<ItemUpgradeUI.VisualThemeKind, CubeAnimationTheme> _cubeThemes = new();
 
         public AnimationDisplayerWindowOverlayOwner Owner => _owner;
 
@@ -83,6 +84,17 @@ namespace HaCreator.MapSimulator.Animation
             _vegaFailureFrames = failureFrames;
         }
 
+        public void ConfigureCube(ItemUpgradeUI.VisualThemeKind themeKind, List<IDXObject> effectFrames, Point offset)
+        {
+            if (effectFrames == null || effectFrames.Count == 0)
+            {
+                _cubeThemes.Remove(themeKind);
+                return;
+            }
+
+            _cubeThemes[themeKind] = new CubeAnimationTheme(effectFrames, offset);
+        }
+
         public void PlayItemMakeResult(bool success, int currentTimeMs)
         {
             _owner.RegisterOneTime(
@@ -104,6 +116,22 @@ namespace HaCreator.MapSimulator.Animation
                 AnimationDisplayerWindowOverlayPass.Overlay,
                 currentTimeMs,
                 enchantSkillBranch ? ItemUpgradeEnchantSkillDelayMs : 0);
+        }
+
+        public void PlayCubeResult(ItemUpgradeUI.VisualThemeKind themeKind, int currentTimeMs)
+        {
+            if (!_cubeThemes.TryGetValue(themeKind, out CubeAnimationTheme theme))
+            {
+                return;
+            }
+
+            _owner.RegisterOneTime(
+                MapSimulatorWindowNames.ItemUpgrade,
+                $"cube:{themeKind}",
+                theme.Frames,
+                theme.Offset,
+                AnimationDisplayerWindowOverlayPass.Overlay,
+                currentTimeMs);
         }
 
         public void PlayViciousHammerResult(int currentTimeMs)
@@ -200,6 +228,19 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             _owner.ClearWindow(windowName);
+        }
+
+        private readonly struct CubeAnimationTheme
+        {
+            public CubeAnimationTheme(List<IDXObject> frames, Point offset)
+            {
+                Frames = frames ?? throw new ArgumentNullException(nameof(frames));
+                Offset = offset;
+            }
+
+            public List<IDXObject> Frames { get; }
+
+            public Point Offset { get; }
         }
     }
 }

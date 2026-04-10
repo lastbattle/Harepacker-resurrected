@@ -21,7 +21,7 @@ namespace HaCreator.MapSimulator.Interaction
         int GuildLevel,
         string GuildRoleLabel,
         bool CanManageSkills,
-        int GuildPoints);
+        int? GuildPoints);
 
     internal sealed class GuildSkillRuntime
     {
@@ -127,7 +127,7 @@ namespace HaCreator.MapSimulator.Interaction
                 hasGuildMembership ? ResolveLocalFallbackGuildLevel(GetSavedGuildState(NormalizeGuildStateKey(build?.GuildName))?.GuildLevel ?? 0) : 0,
                 guildRoleLabel,
                 canManageSkills,
-                0));
+                null));
         }
 
         internal void SetSkills(IEnumerable<SkillDisplayData> skills)
@@ -208,6 +208,7 @@ namespace HaCreator.MapSimulator.Interaction
                     GuildFundMeso = _guildFundMeso,
                     GuildPoints = _guildPoints,
                     IconTexture = skill.IconTexture,
+                    MouseOverIconTexture = skill.IconMouseOverTexture,
                     DisabledIconTexture = skill.IconDisabledTexture,
                     IsRecommended = _isInGuild && skill.SkillId == _recommendedSkillId,
                     PendingActionLabel = _pendingRequest?.SkillId == skill.SkillId ? _pendingRequest.ActionLabel : string.Empty,
@@ -1146,11 +1147,11 @@ namespace HaCreator.MapSimulator.Interaction
             return ResolveLocalFallbackGuildLevel(savedGuildLevel);
         }
 
-        private static int ResolveGuildPoints(int requestedGuildPoints, int savedGuildPoints)
+        private static int ResolveGuildPoints(int? requestedGuildPoints, int savedGuildPoints)
         {
-            if (requestedGuildPoints > 0)
+            if (requestedGuildPoints.HasValue)
             {
-                return Math.Max(0, requestedGuildPoints);
+                return Math.Max(0, requestedGuildPoints.Value);
             }
 
             return Math.Max(0, savedGuildPoints);
@@ -1306,6 +1307,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int GuildFundMeso { get; init; }
         public int GuildPoints { get; init; }
         public Microsoft.Xna.Framework.Graphics.Texture2D IconTexture { get; init; }
+        public Microsoft.Xna.Framework.Graphics.Texture2D MouseOverIconTexture { get; init; }
         public Microsoft.Xna.Framework.Graphics.Texture2D DisabledIconTexture { get; init; }
         public bool IsRecommended { get; init; }
         public string PendingActionLabel { get; init; } = string.Empty;

@@ -7998,7 +7998,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "family",
                 "Drive the family chart UI and packet-shaped family roster synchronization",
-                "/family [open|tree|status|reset|select <memberId>|precept <text>|packet <clear|seed|name <familyName>|precept <text>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>]",
+                "/family [open|tree|status|reset|select <memberId>|precept <text>|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -8035,7 +8035,7 @@ namespace HaCreator.MapSimulator
                         case "packet":
                             if (args.Length < 2)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /family packet <clear|seed|name <familyName>|precept <text>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /family packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>");
                             }
 
 
@@ -8053,10 +8053,18 @@ namespace HaCreator.MapSimulator
                                                 : string.Empty));
                                 case "precept":
                                     return ChatCommandHandler.CommandResult.Ok(
-                                        _familyChartRuntime.SetPrecept(
+                                        _familyChartRuntime.SetPreceptFromPacket(
                                             args.Length >= 3
                                                 ? string.Join(" ", args.Skip(2))
                                                 : string.Empty));
+                                case "authority":
+                                    if (args.Length < 3)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /family packet authority <local|session|readonly|privilegeonly|manageonly>");
+                                    }
+
+                                    return ChatCommandHandler.CommandResult.Ok(
+                                        _familyChartRuntime.SetAuthorityProfileFromPacket(args[2]));
                                 case "remove":
                                     if (args.Length < 3 || !int.TryParse(args[2], out int removedMemberId))
                                     {
@@ -8142,10 +8150,10 @@ namespace HaCreator.MapSimulator
                                             currentReputation,
                                             todayReputation));
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /family packet <clear|seed|name <familyName>|precept <text>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /family packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>");
                             }
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /family [open|tree|status|reset|select <memberId>|precept <text>|packet <clear|seed|name <familyName>|precept <text>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /family [open|tree|status|reset|select <memberId>|precept <text>|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>]");
                     }
                 });
 
@@ -8156,12 +8164,12 @@ namespace HaCreator.MapSimulator
 
                 "Drive Messenger state, invite, claim, and remote social lifecycle flows",
 
-                "/messenger [open|status|invite [name]|claim|leave|state <max|min|min2|next|prev>|presence <name> <online|offline>|packet <seed|clear|remove <name>|upsert <name>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member> <payloadhex=..|payloadb64=..>>|packetraw <invite|accept|reject|leave|room|whisper|member> <hex>|remote <invite|accept|reject|leave|room|whisper> ...]",
+                "/messenger [open|status|invite [name]|claim|leave|state <max|min|min2|next|prev>|presence <name> <online|offline>|packet <seed|clear|remove <name>|upsert <name>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|dispatch <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <payloadhex=..|payloadb64=..>>|packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex>|remote <invite|accept|reject|leave|room|whisper> ...]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
-                        return ChatCommandHandler.CommandResult.Info(_messengerRuntime.DescribeStatus());
+                        return ChatCommandHandler.CommandResult.Info(GetPacketOwnedSocialUtilityDialogDispatcher().DescribeMessengerStatus());
                     }
 
 
@@ -8222,21 +8230,34 @@ namespace HaCreator.MapSimulator
                                 args,
                                 _messengerRuntime,
                                 TryParseBinaryPayloadArgument,
-                                (packetType, payload) => ChatCommandHandler.CommandResult.Ok(_messengerRuntime.ApplyPacketPayload(packetType, payload)),
-                                payload => ChatCommandHandler.CommandResult.Ok(_messengerRuntime.ApplyPacketDispatchPayload(payload)));
+                                (packetType, payload) => TryApplyPacketOwnedMessengerPacket(packetType, payload, out string packetMessage)
+                                    ? ChatCommandHandler.CommandResult.Ok(packetMessage)
+                                    : ChatCommandHandler.CommandResult.Error(packetMessage),
+                                payload => TryApplyPacketOwnedMessengerDispatchPayload(payload, out string dispatchMessage)
+                                    ? ChatCommandHandler.CommandResult.Ok(dispatchMessage)
+                                    : ChatCommandHandler.CommandResult.Error(dispatchMessage));
                         case "packetraw":
                             return MessengerCommandRouter.HandlePacketRawCommand(
                                 args,
                                 _messengerRuntime,
                                 TryDecodeHexBytes,
-                                (packetType, payload) => ChatCommandHandler.CommandResult.Ok(_messengerRuntime.ApplyPacketPayload(packetType, payload)),
-                                payload => ChatCommandHandler.CommandResult.Ok(_messengerRuntime.ApplyPacketDispatchPayload(payload)));
+                                (packetType, payload) => TryApplyPacketOwnedMessengerPacket(packetType, payload, out string packetMessage)
+                                    ? ChatCommandHandler.CommandResult.Ok(packetMessage)
+                                    : ChatCommandHandler.CommandResult.Error(packetMessage),
+                                payload => TryApplyPacketOwnedMessengerDispatchPayload(payload, out string dispatchMessage)
+                                    ? ChatCommandHandler.CommandResult.Ok(dispatchMessage)
+                                    : ChatCommandHandler.CommandResult.Error(dispatchMessage));
                         case "remote":
-                            return MessengerCommandRouter.HandleRemoteCommand(args, _messengerRuntime);
+                            return MessengerCommandRouter.HandleRemoteCommand(
+                                args,
+                                _messengerRuntime,
+                                (packetType, payload) => TryApplyPacketOwnedMessengerPacket(packetType, payload, out string packetMessage)
+                                    ? ChatCommandHandler.CommandResult.Ok(packetMessage)
+                                    : ChatCommandHandler.CommandResult.Error(packetMessage));
 
                         default:
 
-                            return ChatCommandHandler.CommandResult.Error("/messenger [open|status|invite [name]|claim|leave|state <max|min|min2|next|prev>|presence <name> <online|offline>|packet <seed|clear|remove <name>|upsert <name>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member> <payloadhex=..|payloadb64=..>>|packetraw <invite|accept|reject|leave|room|whisper|member> <hex>|remote <invite|accept|reject|leave|room|whisper> ...]");
+                            return ChatCommandHandler.CommandResult.Error("/messenger [open|status|invite [name]|claim|leave|state <max|min|min2|next|prev>|presence <name> <online|offline>|packet <seed|clear|remove <name>|upsert <name>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|dispatch <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <payloadhex=..|payloadb64=..>>|packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex>|remote <invite|accept|reject|leave|room|whisper> ...]");
                     }
 
                 });
@@ -8612,7 +8633,7 @@ namespace HaCreator.MapSimulator
                     if (args.Length == 0)
                     {
                         ShowMapleTvWindow();
-                        return ChatCommandHandler.CommandResult.Info(_mapleTvRuntime.DescribeStatus(currTickCount));
+                        return ChatCommandHandler.CommandResult.Info(GetPacketOwnedSocialUtilityDialogDispatcher().DescribeMapleTvStatus(currTickCount));
                     }
 
 
@@ -8621,12 +8642,12 @@ namespace HaCreator.MapSimulator
                     {
                         case "open":
                             ShowMapleTvWindow();
-                            return ChatCommandHandler.CommandResult.Ok(_mapleTvRuntime.DescribeStatus(currTickCount));
+                            return ChatCommandHandler.CommandResult.Ok(GetPacketOwnedSocialUtilityDialogDispatcher().DescribeMapleTvStatus(currTickCount));
 
 
                         case "status":
 
-                            return ChatCommandHandler.CommandResult.Info(_mapleTvRuntime.DescribeStatus(currTickCount));
+                            return ChatCommandHandler.CommandResult.Info(GetPacketOwnedSocialUtilityDialogDispatcher().DescribeMapleTvStatus(currTickCount));
 
 
 

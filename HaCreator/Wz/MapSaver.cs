@@ -357,6 +357,9 @@ namespace HaCreator.Wz
                 portal["hRange"] = InfoTool.SetOptionalInt(portalInst.hRange);
                 portal["vRange"] = InfoTool.SetOptionalInt(portalInst.vRange);
                 portal["delay"] = InfoTool.SetOptionalInt(portalInst.delay);
+                portal["reactorName"] = InfoTool.SetOptionalString(portalInst.reactorName);
+                portal["sessionValueKey"] = InfoTool.SetOptionalString(portalInst.sessionValueKey);
+                portal["sessionValue"] = InfoTool.SetOptionalString(portalInst.sessionValue);
                 portal["hideTooltip"] = InfoTool.SetOptionalBool(portalInst.hideTooltip);
                 portal["onlyOnce"] = InfoTool.SetOptionalBool(portalInst.onlyOnce);
 

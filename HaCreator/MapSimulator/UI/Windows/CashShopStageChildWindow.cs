@@ -76,6 +76,7 @@ namespace HaCreator.MapSimulator.UI
             public long PrepaidCashBalance { get; init; }
             public int ChargeParam { get; init; }
             public string StatusMessage { get; init; } = string.Empty;
+            public IReadOnlyList<string> DetailSummaries { get; init; } = Array.Empty<string>();
         }
 
         public sealed class OneADayOwnerState
@@ -111,6 +112,7 @@ namespace HaCreator.MapSimulator.UI
             public int Hour { get; init; }
             public int Minute { get; init; }
             public int Second { get; init; }
+            public string PacketStateSignature { get; init; } = string.Empty;
             public IReadOnlyList<HistoryEntryState> HistoryEntries { get; init; } = Array.Empty<HistoryEntryState>();
             public IReadOnlyList<string> RecentPackets { get; init; } = Array.Empty<string>();
         }
@@ -180,6 +182,7 @@ namespace HaCreator.MapSimulator.UI
         private int _oneADayCountdownDeadlineTick = int.MinValue;
         private string _oneADaySessionState = "Reward session idle.";
         private bool _oneADayRuntimeSeeded;
+        private string _oneADayPacketStateSignature = string.Empty;
 
         public CashShopStageChildWindow(IDXObject frame, string windowName, string title)
             : base(frame)
@@ -621,6 +624,15 @@ namespace HaCreator.MapSimulator.UI
 
             DrawWrapped(sprite, _statusActionState, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, accentColor);
             DrawWrapped(sprite, state.StatusMessage, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+            foreach (string detailSummary in state.DetailSummaries.Take(3))
+            {
+                if (string.IsNullOrWhiteSpace(detailSummary))
+                {
+                    continue;
+                }
+
+                DrawWrapped(sprite, detailSummary, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+            }
         }
 
         private void DrawOneADayOwner(SpriteBatch sprite, Rectangle contentBounds, Vector2 titleOrigin)
@@ -1624,19 +1636,22 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int nextRemainingSeconds = Math.Max(0, (state.Hour * 3600) + (state.Minute * 60) + state.Second);
+            string nextPacketStateSignature = state.PacketStateSignature ?? string.Empty;
             bool pendingChanged = !_oneADayRuntimeSeeded || state.IsPending != _oneADayPending;
             bool countdownRestarted = _oneADayRuntimeSeeded
                 && state.IsPending
                 && nextRemainingSeconds > 0
                 && (nextRemainingSeconds > (_oneADayRemainingSeconds + 1) || _oneADayCountdownDeadlineTick == int.MinValue);
             bool selectorReseedRequested = force || !_oneADayRuntimeSeeded;
+            bool packetStateChanged = !string.Equals(_oneADayPacketStateSignature, nextPacketStateSignature, StringComparison.Ordinal);
 
-            if (!pendingChanged && !countdownRestarted && !selectorReseedRequested)
+            if (!pendingChanged && !countdownRestarted && !selectorReseedRequested && !packetStateChanged)
             {
                 return;
             }
 
             _oneADayPending = state.IsPending;
+            _oneADayPacketStateSignature = nextPacketStateSignature;
             if (selectorReseedRequested)
             {
                 _oneADaySelectorIndex = Math.Clamp(state.SelectorIndex, 0, Math.Max(0, state.SelectorCount - 1));

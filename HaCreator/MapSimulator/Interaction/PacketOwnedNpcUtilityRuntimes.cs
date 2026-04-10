@@ -19,6 +19,7 @@ namespace HaCreator.MapSimulator.Interaction
         int ClientStock,
         int Quantity,
         InventoryType InventoryType,
+        InventoryType PacketGroupInventoryType,
         bool HasCashSerialNumber,
         long ItemSerialNumber,
         long CashSerialNumber,
@@ -33,6 +34,7 @@ namespace HaCreator.MapSimulator.Interaction
         int OwnerRowIndex,
         int PacketGroupRowIndex,
         InventoryType InventoryType,
+        InventoryType PacketGroupInventoryType,
         int ItemId,
         int ClientStock,
         string PrimaryText,
@@ -1174,6 +1176,13 @@ namespace HaCreator.MapSimulator.Interaction
                     $"row {item.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)}"
                 };
 
+                if (item.PacketGroupInventoryType != item.InventoryType)
+                {
+                    secondaryParts.Add($"group {item.PacketGroupInventoryType}");
+                }
+
+                secondaryParts.Add(ResolveSlotTypeLabel(item));
+
                 if (item.IsRechargeBundle)
                 {
                     secondaryParts.Add("recharge");
@@ -1198,6 +1207,7 @@ namespace HaCreator.MapSimulator.Interaction
                     i,
                     item.PacketGroupRowIndex,
                     item.InventoryType,
+                    item.PacketGroupInventoryType,
                     item.ItemId,
                     item.ClientStock,
                     primaryText,
@@ -1658,6 +1668,11 @@ namespace HaCreator.MapSimulator.Interaction
                 $"client stock {item.ClientStock.ToString(CultureInfo.InvariantCulture)}"
             };
 
+            if (item.PacketGroupInventoryType != item.InventoryType)
+            {
+                parts.Add($"group {item.PacketGroupInventoryType}");
+            }
+
             if (item.Quantity > 1)
             {
                 parts.Add($"qty {item.Quantity.ToString(CultureInfo.InvariantCulture)}");
@@ -1691,6 +1706,12 @@ namespace HaCreator.MapSimulator.Interaction
             if (item.EncodedByteLength > 0)
             {
                 parts.Add($"decodeBytes {item.EncodedByteLength.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            string baseExpiration = FormatFileTime(item.BaseExpirationTime);
+            if (!string.IsNullOrWhiteSpace(baseExpiration))
+            {
+                parts.Add($"baseExpire {baseExpiration}");
             }
 
             if (item.WasRetainedFromPreviousSnapshot)
@@ -1809,6 +1830,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (item.EquipData != null)
             {
+                if (item.EquipData.Attribute != 0)
+                {
+                    parts.Add($"EquipAttr 0x{(ushort)item.EquipData.Attribute:X4}");
+                }
+
                 if (item.EquipData.NonCashSerialNumber.HasValue && item.EquipData.NonCashSerialNumber.Value > 0)
                 {
                     parts.Add($"EquipSN {item.EquipData.NonCashSerialNumber.Value.ToString(CultureInfo.InvariantCulture)}");
@@ -1826,9 +1852,17 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            if (item.BundleData != null && item.BundleData.RechargeableSerialNumber > 0)
+            if (item.BundleData != null)
             {
-                parts.Add($"RechargeSN {item.BundleData.RechargeableSerialNumber.ToString(CultureInfo.InvariantCulture)}");
+                if (item.BundleData.Attribute != 0)
+                {
+                    parts.Add($"BundleAttr 0x{(ushort)item.BundleData.Attribute:X4}");
+                }
+
+                if (item.BundleData.RechargeableSerialNumber > 0)
+                {
+                    parts.Add($"RechargeSN {item.BundleData.RechargeableSerialNumber.ToString(CultureInfo.InvariantCulture)}");
+                }
             }
 
             if (item.PetData != null)
@@ -1837,6 +1871,21 @@ namespace HaCreator.MapSimulator.Interaction
                 if (!string.IsNullOrWhiteSpace(dateDead))
                 {
                     parts.Add($"PetDead {dateDead}");
+                }
+
+                if (item.PetData.Skill > 0)
+                {
+                    parts.Add($"PetSkill {item.PetData.Skill.ToString(CultureInfo.InvariantCulture)}");
+                }
+
+                if (item.PetData.RemainingLife > 0)
+                {
+                    parts.Add($"PetLife {item.PetData.RemainingLife.ToString(CultureInfo.InvariantCulture)}");
+                }
+
+                if (item.PetData.Fatigue > 0)
+                {
+                    parts.Add($"PetFatigue {item.PetData.Fatigue.ToString(CultureInfo.InvariantCulture)}");
                 }
             }
 
@@ -1856,8 +1905,10 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            return item.ItemId / 1000000 is 2 or 3 or 4
-                || item.InventoryType == InventoryType.CASH;
+            return item.PacketGroupInventoryType is InventoryType.USE
+                or InventoryType.SETUP
+                or InventoryType.ETC
+                or InventoryType.CASH;
         }
 
         private static bool IsCashItem(StoreBankItemEntry item)
@@ -1867,7 +1918,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string FormatFileTime(long value)
         {
-            if (value <= 0)
+            if (value <= 0 || value == long.MaxValue)
             {
                 return string.Empty;
             }
@@ -2045,6 +2096,7 @@ namespace HaCreator.MapSimulator.Interaction
                 entry.ClientStock,
                 entry.Quantity,
                 entry.InventoryType,
+                entry.PacketGroupInventoryType,
                 entry.HasCashSerialNumber,
                 entry.ItemSerialNumber,
                 entry.CashSerialNumber,

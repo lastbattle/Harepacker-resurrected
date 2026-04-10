@@ -229,12 +229,45 @@ namespace HaCreator.MapSimulator.UI
                 : false;
         }
 
+        public static bool IsPetPickupBlocked(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            return HasPetPickupRestriction(
+                itemProperty?["spec"] as WzSubProperty,
+                itemProperty?["specEx"] as WzSubProperty);
+        }
+
+        internal static bool HasPetPickupRestriction(WzSubProperty specProperty, WzSubProperty specExProperty)
+        {
+            return GetIntValue(specProperty?["notPickupByPet"]) == 1
+                || GetIntValue(specExProperty?["notPickupByPet"]) == 1;
+        }
+
         public static bool TryResolveSkillBookUseMetadata(int itemId, out SkillBookUseMetadata metadata)
         {
             metadata = default;
 
             WzSubProperty itemProperty = LoadItemProperty(itemId);
             if (itemProperty?["info"] is not WzSubProperty infoProperty)
+            {
+                return false;
+            }
+
+            return TryResolveSkillBookUseMetadata(infoProperty, TryResolveItemDescription(itemId, out string description) ? description : null, out metadata);
+        }
+
+        internal static bool TryResolveSkillBookUseMetadata(
+            WzSubProperty infoProperty,
+            string description,
+            out SkillBookUseMetadata metadata)
+        {
+            metadata = default;
+            if (infoProperty == null)
             {
                 return false;
             }
@@ -262,9 +295,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int requiredSkillLevel = GetIntValue(infoProperty["reqSkillLevel"]);
-            int successRatePercent = TryResolveItemDescription(itemId, out string description)
-                ? TryResolveSkillBookSuccessRate(description)
-                : 100;
+            int successRatePercent = TryResolveSkillBookSuccessRate(infoProperty, description);
             metadata = new SkillBookUseMetadata(
                 masterLevel,
                 requiredSkillLevel,
@@ -705,6 +736,16 @@ namespace HaCreator.MapSimulator.UI
             itemImage.ParseImage();
             string itemNodeName = category == "Character" ? itemId.ToString("D8") : itemId.ToString("D7");
             return itemImage[itemNodeName] as WzSubProperty;
+        }
+
+        private static int TryResolveSkillBookSuccessRate(WzSubProperty infoProperty, string description)
+        {
+            if (infoProperty?["success"] != null)
+            {
+                return Math.Clamp(GetIntValue(infoProperty["success"]), 0, 100);
+            }
+
+            return TryResolveSkillBookSuccessRate(description);
         }
 
         private static int TryResolveSkillBookSuccessRate(string description)
@@ -2220,6 +2261,11 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add("Cannot be dropped");
             }
 
+            if (GetIntValue(infoProperty["pickUpBlock"]) == 1)
+            {
+                metadataLines.Add("Cannot be picked up");
+            }
+
             if (GetIntValue(infoProperty["noMoveToLocker"]) == 1)
             {
                 metadataLines.Add("Cannot be moved to locker");
@@ -2298,6 +2344,30 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            int petLifeDays = GetIntOrStringValue(infoProperty["life"]);
+            if (petLifeDays > 0)
+            {
+                metadataLines.Add($"Pet Lifespan: {FormatDayCount(petLifeDays)}");
+            }
+
+            int hunger = GetIntOrStringValue(infoProperty["hungry"]);
+            if (hunger > 0)
+            {
+                metadataLines.Add($"Pet Hunger: {hunger.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            int chatBalloonStyle = GetIntOrStringValue(infoProperty["chatBalloon"]);
+            if (chatBalloonStyle > 0)
+            {
+                metadataLines.Add($"Pet Chat Balloon Style: {chatBalloonStyle.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            int nameTagStyle = GetIntOrStringValue(infoProperty["nameTag"]);
+            if (nameTagStyle > 0)
+            {
+                metadataLines.Add($"Pet Name Tag Style: {nameTagStyle.ToString(CultureInfo.InvariantCulture)}");
+            }
+
             if (GetIntValue(infoProperty["pickupItem"]) == 1)
             {
                 metadataLines.Add("Automatically loots items");
@@ -2316,6 +2386,11 @@ namespace HaCreator.MapSimulator.UI
             if (GetIntValue(infoProperty["sweepForDrop"]) == 1)
             {
                 metadataLines.Add("Sweeps nearby drops");
+            }
+
+            if (GetIntValue(infoProperty["longRange"]) == 1)
+            {
+                metadataLines.Add("Extended pet pickup range");
             }
 
             if (GetIntValue(infoProperty["consumeHP"]) == 1)

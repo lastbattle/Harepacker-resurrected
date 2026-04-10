@@ -141,7 +141,8 @@ namespace HaCreator.MapSimulator.Interaction
             int ownerItemId,
             int qrData,
             int maxDropCount,
-            QuestRewardRaiseWindowMode windowMode)
+            QuestRewardRaiseWindowMode windowMode,
+            QuestRewardRaiseWindowMode? displayMode = null)
         {
             questId = Math.Max(0, questId);
             if (questId <= 0)
@@ -153,31 +154,34 @@ namespace HaCreator.MapSimulator.Interaction
             maxDropCount = Math.Max(1, maxDropCount);
 
             _ownerSnapshotsByQuestId.TryGetValue(questId, out QuestRewardRaiseOwnerSnapshot snapshot);
+            bool isActiveQuest = ActiveRaise?.Prompt?.QuestId == questId;
+            QuestRewardRaiseWindowMode resolvedDisplayMode = displayMode
+                ?? (isActiveQuest
+                    ? ActiveRaise.DisplayMode
+                    : snapshot?.DisplayMode ?? windowMode);
             _ownerSnapshotsByQuestId[questId] = new QuestRewardRaiseOwnerSnapshot(
-                ActiveRaise?.Prompt?.QuestId == questId
+                isActiveQuest
                     ? ActiveRaise.ManagerSessionId
                     : snapshot?.ManagerSessionId ?? 0,
-                ActiveRaise?.Prompt?.QuestId == questId
+                isActiveQuest
                     ? ActiveRaise.RequestId
                     : snapshot?.OwnerRequestId ?? 0,
                 ownerItemId,
                 qrData,
                 maxDropCount,
                 windowMode,
-                ActiveRaise?.Prompt?.QuestId == questId
-                    ? ActiveRaise.DisplayMode
-                    : snapshot?.DisplayMode ?? windowMode,
-                ActiveRaise?.Prompt?.QuestId == questId
+                resolvedDisplayMode,
+                isActiveQuest
                     ? ActiveRaise.AwaitingConfirmAck
                     : snapshot?.AwaitingConfirmAck ?? false,
-                ActiveRaise?.Prompt?.QuestId == questId
+                isActiveQuest
                     ? ActiveRaise.AwaitingOwnerDestroyAck
                     : snapshot?.AwaitingOwnerDestroyAck ?? false,
-                ActiveRaise?.Prompt?.QuestId == questId
+                isActiveQuest
                     ? ActiveRaise.LastInboundSummary ?? string.Empty
                     : snapshot?.LastInboundSummary ?? string.Empty);
 
-            if (ActiveRaise?.Prompt?.QuestId != questId)
+            if (!isActiveQuest)
             {
                 return;
             }
@@ -186,7 +190,7 @@ namespace HaCreator.MapSimulator.Interaction
             ActiveRaise.QrData = qrData;
             ActiveRaise.MaxDropCount = maxDropCount;
             ActiveRaise.WindowMode = windowMode;
-            ActiveRaise.DisplayMode = windowMode;
+            ActiveRaise.DisplayMode = resolvedDisplayMode;
         }
 
         public void RememberState(QuestRewardRaiseState state)

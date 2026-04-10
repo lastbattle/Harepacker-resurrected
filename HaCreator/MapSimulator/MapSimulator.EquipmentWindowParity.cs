@@ -739,11 +739,6 @@ namespace HaCreator.MapSimulator
                 return EquipmentChangeResult.Reject("No target equipment slot was selected.");
             }
 
-            if (request.SourceInventoryType != InventoryType.EQUIP)
-            {
-                return EquipmentChangeResult.Reject("Only equipment inventory entries can be equipped here.");
-            }
-
             if (uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
             {
                 return EquipmentChangeResult.Reject("Inventory runtime is unavailable.");
@@ -780,6 +775,14 @@ namespace HaCreator.MapSimulator
                     ? $"Item #{request.ItemId}"
                     : request.ItemName;
                 return EquipmentChangeResult.Reject($"Unable to load {itemName} as an equipment item.");
+            }
+
+            if (EquipmentChangeClientParity.TryGetCharacterEquipmentSourceRejectReason(
+                    request.SourceInventoryType,
+                    part,
+                    out string sourceInventoryRejectReason))
+            {
+                return EquipmentChangeResult.Reject(sourceInventoryRejectReason);
             }
 
             if (!EquipUIBigBang.CanDisplayPartInSlot(part, request.TargetEquipSlot.Value))
@@ -866,21 +869,22 @@ namespace HaCreator.MapSimulator
                 return EquipmentChangeResult.Reject("Inventory runtime is unavailable.");
             }
 
-            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(request.ItemId);
-            if (inventoryType != InventoryType.EQUIP)
-            {
-                return EquipmentChangeResult.Reject("Only equipment items can return to the equipment inventory.");
-            }
-
-            if (!inventoryWindow.CanAcceptItem(inventoryType, request.ItemId, 1, maxStackSize: 1))
-            {
-                return EquipmentChangeResult.Reject("There is no free equipment inventory slot for this item.");
-            }
-
             CharacterPart liveSourcePart = EquipSlotStateResolver.ResolveDisplayedPart(build, request.SourceEquipSlot.Value);
             if (liveSourcePart == null || liveSourcePart.ItemId != request.ItemId)
             {
                 return EquipmentChangeResult.Reject("The equipped item changed before the unequip request was accepted.");
+            }
+
+            InventoryType inventoryType = EquipmentChangeClientParity.ResolveCharacterEquipmentInventoryType(liveSourcePart);
+            if (!EquipmentChangeClientParity.IsSupportedCharacterEquipmentSourceInventory(inventoryType))
+            {
+                return EquipmentChangeResult.Reject("Only equipment items can return to inventory.");
+            }
+
+            if (!inventoryWindow.CanAcceptItem(inventoryType, request.ItemId, 1, maxStackSize: 1))
+            {
+                string inventoryLabel = inventoryType == InventoryType.CASH ? "cash" : "equipment";
+                return EquipmentChangeResult.Reject($"There is no free {inventoryLabel} inventory slot for this item.");
             }
 
             if (EquipmentChangeRequestValidator.TryGetCharacterUnequipRejectReason(

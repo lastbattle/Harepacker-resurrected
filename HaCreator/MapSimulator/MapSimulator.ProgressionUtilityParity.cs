@@ -183,13 +183,16 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            string footer = $"Recovered CUIFadeYesNo::CreateMSMInvite seam. type={state.InviteType}, sequence={state.InviteSequence}.";
             ConfigureInGameConfirmDialog(
-                "Messenger",
+                string.IsNullOrWhiteSpace(state.TitleText) ? "Messenger" : state.TitleText,
                 state.PromptText,
-                footer,
+                string.Empty,
                 onConfirm: AcceptMessengerIncomingInvitePrompt,
-                onCancel: RejectMessengerIncomingInvitePrompt);
+                onCancel: RejectMessengerIncomingInvitePrompt,
+                presentation: new InGameConfirmDialogPresentation(
+                    InGameConfirmDialogAnchorMode.BottomLeft,
+                    389,
+                    113));
             _messengerInvitePromptOwnedDialogActive = true;
             ShowWindow(
                 MapSimulatorWindowNames.InGameConfirmDialog,
@@ -348,6 +351,42 @@ namespace HaCreator.MapSimulator
             List<EventEntrySnapshot> entries = new();
             AppendPacketOwnedEventAlarmEntries(entries, currentTick);
             int nextSortOrder = entries.Count;
+
+            if (_packetOwnedEventAlarmLines.Count > 0)
+            {
+                entries.Add(new EventEntrySnapshot
+                {
+                    Title = "Event Alarm Text Feed",
+                    Detail = string.IsNullOrWhiteSpace(_lastPacketOwnedEventAlarmSummary)
+                        ? $"Packet-authored CUIEventAlarm::m_aCT feed is carrying {_packetOwnedEventAlarmLines.Count.ToString(CultureInfo.InvariantCulture)} explicit line(s)."
+                        : _lastPacketOwnedEventAlarmSummary,
+                    StatusText = "Running",
+                    Status = EventEntryStatus.InProgress,
+                    ScheduledAt = DateTime.Today,
+                    SourceTick = _lastPacketOwnedEventAlarmTick,
+                    SortPriority = EventEntrySortPriorityPrimary,
+                    SortOrder = nextSortOrder++
+                });
+            }
+
+            if (_packetOwnedEventCalendarEntries.Count > 0)
+            {
+                for (int i = 0; i < _packetOwnedEventCalendarEntries.Count; i++)
+                {
+                    EventEntrySnapshot entry = _packetOwnedEventCalendarEntries[i];
+                    entries.Add(new EventEntrySnapshot
+                    {
+                        Title = entry.Title,
+                        Detail = entry.Detail,
+                        StatusText = entry.StatusText,
+                        Status = entry.Status,
+                        ScheduledAt = entry.ScheduledAt,
+                        SourceTick = entry.SourceTick,
+                        SortPriority = entry.SortPriority,
+                        SortOrder = nextSortOrder++
+                    });
+                }
+            }
 
             if (_lastEventOpenTick != int.MinValue)
             {
@@ -509,7 +548,7 @@ namespace HaCreator.MapSimulator
                 });
             }
 
-            if (!entries.Any(entry => entry.Status == EventEntryStatus.Upcoming))
+            if (_packetOwnedEventCalendarEntries.Count == 0 && !entries.Any(entry => entry.Status == EventEntryStatus.Upcoming))
             {
                 entries.Add(new EventEntrySnapshot
                 {
@@ -526,8 +565,8 @@ namespace HaCreator.MapSimulator
             return new EventWindowSnapshot
             {
                 Title = "Event",
-                Subtitle = "EventList row, slot, icon, and calendar art now surface simulator runtime entries plus the latest packet-owned alarm text, tutor, radio, logout-gift, and sound state through an event owner that auto-dismisses like CUIEventAlarm until the user interacts with its WZ-backed controls. The recovered 198 px alarm strip now stays blank when no packet/runtime text is active instead of rendering a simulator-only placeholder sentence.",
-                StatusText = "BtEvent now exposes packet-owned utility, quest, overlay, tutor, radio, logout-gift, and sound activity through the client event owner, keeps the recovered top text strip empty until real alarm text arrives, and uses the WZ-backed filter and calendar surfaces instead of text-only fallbacks. Official attendance, calendar packets, and live network event feeds still remain outside this window.",
+                Subtitle = "EventList row, slot, icon, and calendar art now surface simulator runtime entries plus packet-authored alarm text and calendar rows through an event owner that auto-dismisses like CUIEventAlarm until the user interacts with its WZ-backed controls. The recovered 198 px alarm strip now stays blank when no packet/runtime text is active instead of rendering a simulator-only placeholder sentence.",
+                StatusText = "BtEvent now exposes packet-owned utility, quest, overlay, tutor, radio, logout-gift, sound, direct event-alarm CT text, and injected calendar rows through the client event owner while keeping the WZ-backed filter and calendar surfaces intact. Exact live attendance packet formats and the native server-fed attendance/calendar model still remain outside this window.",
                 AutoDismissDelayMs = 8000,
                 AlarmLines = BuildEventAlarmOwnerLines(currentTick),
                 Entries = entries
@@ -737,6 +776,20 @@ namespace HaCreator.MapSimulator
 
         private IReadOnlyList<EventAlarmLineSnapshot> BuildEventAlarmOwnerLines(int currentTick)
         {
+            if (_packetOwnedEventAlarmLines.Count > 0)
+            {
+                return _packetOwnedEventAlarmLines
+                    .Take(EventAlarmOwnerMaxVisibleLines)
+                    .Select(line => new EventAlarmLineSnapshot
+                    {
+                        Text = line.Text,
+                        Left = Math.Max(0, line.Left),
+                        Top = Math.Max(0, line.Top),
+                        IsHighlighted = line.IsHighlighted
+                    })
+                    .ToArray();
+            }
+
             List<(string Text, int Tick, bool Highlight, bool IsActive)> candidates = new();
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedNoticeMessage))

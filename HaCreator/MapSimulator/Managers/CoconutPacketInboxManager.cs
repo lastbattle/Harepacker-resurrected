@@ -557,6 +557,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             return packetType switch
             {
+                0 => "Coconut local-team update",
                 PacketTypeHit => "Coconut hit packet (342)",
                 PacketTypeScore => "Coconut score packet (343)",
                 _ => $"Coconut packet {packetType}"

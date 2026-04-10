@@ -106,6 +106,12 @@ namespace HaCreator.MapSimulator.UI
             set;
         }
 
+        public Action ResultPopupStarted
+        {
+            get;
+            set;
+        }
+
         public override void SetFont(SpriteFont font)
         {
             _font = font;
@@ -261,6 +267,27 @@ namespace HaCreator.MapSimulator.UI
         {
             _pendingResult = result;
             PromotePendingResultIfReady();
+            UpdateButtonStates();
+        }
+
+        public void ApplyPacketOwnedResultPrelude(ItemUpgradeUI.ItemUpgradeAttemptResult result)
+        {
+            if (!result.Success.HasValue)
+            {
+                return;
+            }
+
+            _pendingResult = result;
+            _state = VegaAnimationState.ResultPrelude;
+            _stateElapsedMs = 0;
+            _statusMessage = result.StatusMessage;
+            if (!_sharedResultPreludeStarted)
+            {
+                _sharedResultPreludeStarted = true;
+                ResultPreludeStarted?.Invoke();
+                _productionEnhancementAnimationDisplayer?.PlayVegaResultPrelude(Environment.TickCount);
+            }
+
             UpdateButtonStates();
         }
 
@@ -807,6 +834,7 @@ namespace HaCreator.MapSimulator.UI
             if (!_sharedResultPopupStarted)
             {
                 _sharedResultPopupStarted = true;
+                ResultPopupStarted?.Invoke();
                 _productionEnhancementAnimationDisplayer?.PlayVegaResultPopup(_pendingResult.Success == true, Environment.TickCount);
             }
         }

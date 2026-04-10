@@ -20,6 +20,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int InvalidCharacterNameStringPoolId = 0x337;
         internal const int TypingSuffixStringPoolId = 0x338;
         internal const int ExitChatRoomPromptStringPoolId = 0xE21;
+        internal const int InvitePromptTitleStringPoolId = 0x538;
 
         private const string InviteSentFallback = "- You have sent the invite to '{0}'.";
         private const string ContactNotFoundFallback = "- '{0}' can't be found.";
@@ -37,6 +38,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const string InvalidCharacterNameFallback = "- The character name is invalid.";
         private const string TypingSuffixFallback = " is typing.";
         private const string ExitChatRoomPromptFallback = "Will you exit this chat room?";
+        private const string InvitePromptTitleFallback = "Messenger";
 
         public static string FormatInviteSent(string name) => FormatSingleArgument(InviteSentStringPoolId, InviteSentFallback, name);
 
@@ -101,6 +103,15 @@ namespace HaCreator.MapSimulator.Interaction
             return MapleStoryStringPool.GetOrFallback(
                 ExitChatRoomPromptStringPoolId,
                 ExitChatRoomPromptFallback,
+                appendFallbackSuffix: false,
+                minimumHexWidth: 3);
+        }
+
+        public static string GetInvitePromptTitle()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                InvitePromptTitleStringPoolId,
+                InvitePromptTitleFallback,
                 appendFallbackSuffix: false,
                 minimumHexWidth: 3);
         }

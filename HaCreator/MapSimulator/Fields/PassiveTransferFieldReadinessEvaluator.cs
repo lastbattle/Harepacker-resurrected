@@ -1,11 +1,17 @@
 namespace HaCreator.MapSimulator.Fields
 {
+    public readonly record struct PassiveTransferFieldInterfaceState(
+        bool HasLiveFieldInterface,
+        bool AllowsTransferField,
+        bool HasPendingSpecialTransfer);
+
     public static class PassiveTransferFieldReadinessEvaluator
     {
-        public static bool CanRetryFromLiveFieldInterface(long fieldLimit, bool hasLiveFieldInterface)
+        public static bool CanRetryFromLiveFieldInterface(PassiveTransferFieldInterfaceState state)
         {
-            return hasLiveFieldInterface
-                   && FieldInteractionRestrictionEvaluator.CanTransferField(fieldLimit);
+            return state.HasLiveFieldInterface
+                   && state.AllowsTransferField
+                   && !state.HasPendingSpecialTransfer;
         }
     }
 }

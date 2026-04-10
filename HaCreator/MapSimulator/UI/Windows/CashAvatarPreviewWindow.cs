@@ -147,6 +147,7 @@ namespace HaCreator.MapSimulator.UI
             _selectionSignature = string.Empty;
             SyncPreviewBuild(forceReset: true);
             RefreshSelectionState(force: true);
+            UpdateButtonStates();
         }
 
         public override void Update(GameTime gameTime)
@@ -261,6 +262,7 @@ namespace HaCreator.MapSimulator.UI
             if (CharacterBuild == null)
             {
                 _statusMessage = "CCSWnd_Char::OnDefaultAvatar is unavailable without a live character build.";
+                UpdateButtonStates();
                 return;
             }
 
@@ -271,6 +273,7 @@ namespace HaCreator.MapSimulator.UI
             _buyAvatarButton?.SetEnabled(true);
             _previewMutationState = "Default-avatar snapshot restored.";
             _statusMessage = "CCSWnd_Char::OnDefaultAvatar restored the avatar-look snapshot, pet/riding state, and preview objects.";
+            UpdateButtonStates();
         }
 
         private void HandleTakeoffAvatar()
@@ -279,6 +282,7 @@ namespace HaCreator.MapSimulator.UI
             if (_previewBuild == null || (!_lastPreviewedSlot.HasValue && !_lastPreviewedPet))
             {
                 _statusMessage = "CCSWnd_Char::OnTakeoffAvatar has no previewed cash equip to remove.";
+                UpdateButtonStates();
                 return;
             }
 
@@ -293,6 +297,7 @@ namespace HaCreator.MapSimulator.UI
                 _previewOwnerState = "CUserPreview kept the avatar-preview layer active after the pet takeoff mutation.";
                 _previewMutationState = "Takeoff mutation restored the original pet runtime.";
                 RefreshPreviewRuntimeState();
+                UpdateButtonStates();
                 return;
             }
 
@@ -320,6 +325,7 @@ namespace HaCreator.MapSimulator.UI
                 : $"Takeoff mutation cleared {removedPart.Slot}.";
             ClearPreviewWearInfo(removedPart?.Slot ?? EquipSlot.None);
             RefreshPreviewRuntimeState();
+            UpdateButtonStates();
         }
 
         private bool TryExecuteServiceAction(out string message)
@@ -401,12 +407,15 @@ namespace HaCreator.MapSimulator.UI
             _currentSelection = selection;
             if (selection == null)
             {
+                RestorePreviewAvatarSnapshot();
                 _statusMessage = "CCSWnd_Char preview waiting for a Cash Shop row.";
                 _lastPreviewedSlot = null;
+                UpdateButtonStates();
                 return;
             }
 
             ApplySelectionPreview(selection);
+            UpdateButtonStates();
         }
 
         private void ApplySelectionPreview(AdminShopAvatarPreviewSelection selection)
@@ -415,6 +424,7 @@ namespace HaCreator.MapSimulator.UI
             if (_previewBuild == null)
             {
                 _statusMessage = "CCSWnd_Char preview has no character build to render.";
+                UpdateButtonStates();
                 return;
             }
 
@@ -434,20 +444,24 @@ namespace HaCreator.MapSimulator.UI
                     _statusMessage = $"CCSWnd_Char kept the current avatar while highlighting {selection.Title}.";
                 }
 
+                UpdateButtonStates();
                 return;
             }
 
             CharacterPart loadedPart = _equipmentLoader(selection.RewardItemId)?.Clone();
             if (loadedPart == null)
             {
+                RestorePreviewAvatarSnapshot();
                 _lastPreviewedSlot = null;
                 _lastPreviewedWeaponSticker = false;
                 _lastPreviewedPet = false;
                 _statusMessage = $"CCSWnd_Char could not resolve an equip preview for {selection.Title}.";
+                UpdateButtonStates();
                 return;
             }
 
             ApplyWearPreview(selection, loadedPart);
+            UpdateButtonStates();
         }
 
         private void SyncPreviewBuild(bool forceReset = false)
@@ -457,6 +471,7 @@ namespace HaCreator.MapSimulator.UI
                 _previewSourceBuild = null;
                 _previewBuild = null;
                 _previewAssembler = null;
+                UpdateButtonStates();
                 return;
             }
 
@@ -659,8 +674,10 @@ namespace HaCreator.MapSimulator.UI
             if (loadedPart.Slot == EquipSlot.Shield
                 && EquipSlotStateResolver.ResolveVisualState(_previewBuild, EquipSlot.Shield).Reason == EquipSlotDisableReason.TwoHandedWeapon)
             {
+                RestorePreviewAvatarSnapshot();
                 _previewOwnerState = "CUserPreview rejected the shield preview because the base avatar still owns a two-handed weapon.";
                 _statusMessage = $"CCSWnd_Char::OnWear blocked {selection.Title} while a two-handed weapon is active.";
+                UpdateButtonStates();
                 return;
             }
 
@@ -718,6 +735,17 @@ namespace HaCreator.MapSimulator.UI
             RecordPreviewWearInfo(EquipSlot.Weapon, selection.RewardItemId);
             RefreshPreviewRuntimeState();
             _statusMessage = $"CCSWnd_Char::OnWear previewed weapon sticker {selection.Title}.";
+        }
+
+        private void UpdateButtonStates()
+        {
+            bool hasCharacter = CharacterBuild != null;
+            bool hasSelection = _currentSelection != null;
+            bool hasTakeoffMutation = _lastPreviewedSlot.HasValue || _lastPreviewedPet;
+
+            _buyAvatarButton?.SetEnabled(hasCharacter && hasSelection);
+            _defaultAvatarButton?.SetEnabled(hasCharacter);
+            _takeoffAvatarButton?.SetEnabled(hasCharacter && hasTakeoffMutation);
         }
 
         private void RestorePreviewAvatarSnapshot()

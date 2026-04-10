@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.UI;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
@@ -169,10 +170,10 @@ namespace HaCreator.MapSimulator
             bool openedModal = presentation.ModalPages.Count > 0 &&
                                _npcInteractionOverlay != null;
             bool deferredNoticeUntilDialogClose = false;
+            PacketQuestResultNoticeRouting noticeRouting = default;
             if (!string.IsNullOrWhiteSpace(presentation.NoticeText))
             {
-                PacketQuestResultNoticeRouting noticeRouting =
-                    PacketQuestResultClientSemantics.ResolveNoticeRouting(resultType: 10, openedModal);
+                noticeRouting = PacketQuestResultClientSemantics.ResolveNoticeRouting(resultType: 10, openedModal);
                 deferredNoticeUntilDialogClose = noticeRouting.Stage == PacketQuestResultNoticeDispatchStage.AfterDialog;
                 if (deferredNoticeUntilDialogClose)
                 {
@@ -228,7 +229,19 @@ namespace HaCreator.MapSimulator
                             $"{resultSummary} Cleared the packet-owned quest fade window owner before consuming the trailing follow-up quest id.";
                     }
 
-                    followUpStatus = ApplyPacketOwnedQuestResultFollowUpQuest(followUpQuestId, speakerNpcId, followUpQuestName);
+                    bool blocksFollowUpUntilNoticeClose = showedNotice
+                                                          && noticeRouting.Surface == PacketQuestResultNoticeSurface.UtilDialogNotice;
+                    if (blocksFollowUpUntilNoticeClose)
+                    {
+                        QueuePendingPacketOwnedQuestResultFollowUp(followUpQuestId, speakerNpcId, followUpQuestName);
+                        _pendingPacketOwnedQuestResultFollowUpReady = true;
+                        followUpStatus =
+                            $"Queued packet-owned StartQuest continuation for {followUpQuestName} until the client-shaped quest notice closes.";
+                    }
+                    else
+                    {
+                        followUpStatus = ApplyPacketOwnedQuestResultFollowUpQuest(followUpQuestId, speakerNpcId, followUpQuestName);
+                    }
                 }
             }
             else if (!openedModal)
@@ -468,7 +481,8 @@ namespace HaCreator.MapSimulator
             if (!_pendingPacketOwnedQuestResultFollowUpQuestId.HasValue ||
                 _pendingPacketOwnedQuestResultFollowUpQuestId.Value <= 0 ||
                 !_pendingPacketOwnedQuestResultFollowUpReady ||
-                _npcInteractionOverlay?.IsVisible == true)
+                _npcInteractionOverlay?.IsVisible == true ||
+                IsPacketOwnedQuestResultNoticeVisible())
             {
                 return;
             }
@@ -506,6 +520,12 @@ namespace HaCreator.MapSimulator
             _pendingPacketOwnedQuestResultDeferredNoticeSurface = PacketQuestResultNoticeSurface.Chat;
         }
 
+        private bool IsPacketOwnedQuestResultNoticeVisible()
+        {
+            return uiWindowManager?.GetWindow(MapSimulatorWindowNames.PacketOwnedRewardResultNotice) is PacketOwnedRewardNoticeWindow noticeWindow
+                   && noticeWindow.IsVisible;
+        }
+
         private string ApplyPacketOwnedQuestResultFollowUpQuest(int followUpQuestId, int speakerNpcId, string followUpQuestName)
         {
             if (followUpQuestId <= 0)
@@ -513,6 +533,7 @@ namespace HaCreator.MapSimulator
                 return string.Empty;
             }
 
+            IReadOnlyList<int> availableQuestIdsBeforeFollowUp = _questRuntime.CaptureAvailableQuestIds(_playerManager?.Player?.Build);
             QuestWindowActionResult result = _questRuntime.TryAcceptFromQuestWindow(followUpQuestId, _playerManager?.Player?.Build);
             HandleQuestWindowActionResult(result);
 
@@ -521,9 +542,12 @@ namespace HaCreator.MapSimulator
                 : followUpQuestName;
             bool started = result?.StateChanged == true;
             string speakerLabel = ResolvePacketOwnedQuestResultSpeakerName(speakerNpcId, resolvedQuestName);
-            return started
+            string status = started
                 ? $"Packet-owned StartQuest accepted {resolvedQuestName} from {speakerLabel}."
                 : $"Packet-owned StartQuest for {resolvedQuestName} did not change quest state.";
+
+            AppendPacketOwnedQuestAvailabilityRefreshSummary(ref status, availableQuestIdsBeforeFollowUp);
+            return status;
         }
 
         private void RegisterPendingQuestDeliveryQuestResult(

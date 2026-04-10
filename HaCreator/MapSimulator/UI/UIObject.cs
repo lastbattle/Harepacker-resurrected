@@ -308,18 +308,7 @@ namespace HaCreator.MapSimulator.UI
             if (lastFrameDrawn == null)
                 return false;
          */
-            // The position of the button relative to the minimap
-            int buttonRelativeX = -(containerParentX) - X/* - lastFrameDrawn.X*/; // Left to right
-            int buttonRelativeY = -(containerParentY) - Y/* - lastFrameDrawn.Y*/; // Top to bottom
-
-            int buttonPositionXToMap = shiftCenteredX - buttonRelativeX;
-            int buttonPositionYToMap = shiftCenteredY - buttonRelativeY;
-
-            // The position of the mouse relative to the game
-            Rectangle rect = new Rectangle(
-                buttonPositionXToMap - (shiftCenteredX),
-                buttonPositionYToMap - (shiftCenteredY),
-                CanvasSnapshotWidth, CanvasSnapshotHeight);
+            Rectangle rect = ResolveInteractionBounds(containerParentX, containerParentY);
 
             //System.Diagnostics.Debug.WriteLine("Button rect: " + rect.ToString());
             //System.Diagnostics.Debug.WriteLine("Mouse X: " + mouseState.X + ", Y: " + mouseState.Y);
@@ -360,6 +349,20 @@ namespace HaCreator.MapSimulator.UI
                 SetButtonState(UIObjectState.Normal);
             }
             return false;
+        }
+
+        public Rectangle ResolveInteractionBounds(int containerParentX, int containerParentY, UIObjectState state = UIObjectState.Null)
+        {
+            Point drawPosition = GetDrawPositionByState(state);
+            BaseDXDrawableItem drawable = GetBaseDXDrawableItemByState(state);
+            IDXObject snapshotFrame = drawable?.LastFrameDrawn ?? drawable?.Frame0;
+            int width = Math.Max(1, snapshotFrame?.Width ?? CanvasSnapshotWidth);
+            int height = Math.Max(1, snapshotFrame?.Height ?? CanvasSnapshotHeight);
+            return new Rectangle(
+                containerParentX + drawPosition.X,
+                containerParentY + drawPosition.Y,
+                width,
+                height);
         }
 
         /// <summary>

@@ -6,6 +6,9 @@ namespace HaCreator.MapSimulator.Interaction
 {
     public sealed partial class SocialRoomRuntime
     {
+        public bool HasPendingTradingRoomAutoCrcResponse =>
+            Kind == SocialRoomKind.TradingRoom && _tradeAutoCrcReplyPending;
+
         public bool TryBuildTradingRoomCrcResponseRawPacket(out byte[] rawPacket, out string message)
         {
             rawPacket = Array.Empty<byte>();
@@ -37,6 +40,16 @@ namespace HaCreator.MapSimulator.Interaction
             rawPacket = stream.ToArray();
             message = $"Built trading-room subtype {TradingRoomItemCrcPacketType} CRC reply with {entries.Count} entr{(entries.Count == 1 ? "y" : "ies")} for outbound opcode 144.";
             return true;
+        }
+
+        public void MarkTradingRoomAutoCrcResponseSent()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            _tradeAutoCrcReplyPending = false;
         }
     }
 }

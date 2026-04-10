@@ -363,6 +363,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || ContainsActionName(MechanicClientOwnedVehicleMountedMoveActions, actionName);
         }
 
+        internal static bool SupportsExplicitMechanicVehiclePresentationCurrentAction(string actionName)
+        {
+            return string.IsNullOrWhiteSpace(actionName)
+                   || IsMechanicVehicleOwnedCurrentActionName(actionName, includeTransformStates: true);
+        }
+
         internal static bool IsDistinctMechanicVehicleActionName(string actionName, bool includeTransformStates = false)
         {
             if (!IsMechanicVehicleActionName(actionName, includeTransformStates))

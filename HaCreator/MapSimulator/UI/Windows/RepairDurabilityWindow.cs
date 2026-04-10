@@ -1765,7 +1765,7 @@ namespace HaCreator.MapSimulator.UI
                 rect.Height);
         }
 
-        internal static Rectangle ResolveHoverTooltipRect(
+        private static Rectangle ResolveHoverTooltipRect(
             Point anchorPoint,
             int tooltipWidth,
             int tooltipHeight,
@@ -1773,52 +1773,16 @@ namespace HaCreator.MapSimulator.UI
             int renderHeight,
             out int tooltipFrameIndex)
         {
-            Rectangle[] candidates =
-            {
-                new Rectangle(anchorPoint.X, anchorPoint.Y, tooltipWidth, tooltipHeight),
-                new Rectangle(anchorPoint.X - tooltipWidth, anchorPoint.Y, tooltipWidth, tooltipHeight),
-                new Rectangle(anchorPoint.X, anchorPoint.Y - tooltipHeight - HoverTooltipCursorGap, tooltipWidth, tooltipHeight),
-                new Rectangle(anchorPoint.X - tooltipWidth, anchorPoint.Y - tooltipHeight - HoverTooltipCursorGap, tooltipWidth, tooltipHeight)
-            };
-
-            Rectangle bestRect = candidates[0];
-            int bestFrame = ResolveHoverTooltipFrameIndex(anchorPoint, bestRect);
-            int bestOverflow = int.MaxValue;
-
-            for (int i = 0; i < candidates.Length; i++)
-            {
-                Rectangle candidate = candidates[i];
-                int overflow = ComputeTooltipOverflow(candidate, renderWidth, renderHeight);
-                int frameIndex = ResolveHoverTooltipFrameIndex(anchorPoint, candidate);
-                if (overflow == 0)
-                {
-                    tooltipFrameIndex = frameIndex;
-                    return candidate;
-                }
-
-                if (overflow < bestOverflow)
-                {
-                    bestOverflow = overflow;
-                    bestRect = candidate;
-                    bestFrame = frameIndex;
-                }
-            }
-
-            tooltipFrameIndex = bestFrame;
-            return ClampTooltipRect(bestRect, renderWidth, renderHeight);
-        }
-
-        private static int ResolveHoverTooltipFrameIndex(Point anchorPoint, Rectangle rect)
-        {
-            bool drawsLeftOfAnchor = rect.X < anchorPoint.X;
-            bool drawsBelowAnchor = rect.Y >= anchorPoint.Y;
-
-            if (drawsLeftOfAnchor)
-            {
-                return drawsBelowAnchor ? 2 : 0;
-            }
-
-            return 1;
+            RepairDurabilityClientParity.HoverTooltipPlacement placement = RepairDurabilityClientParity.ResolveHoverTooltipPlacement(
+                anchorPoint,
+                tooltipWidth,
+                tooltipHeight,
+                renderWidth,
+                renderHeight,
+                TooltipPadding,
+                HoverTooltipCursorGap);
+            tooltipFrameIndex = placement.FrameIndex;
+            return placement.Bounds;
         }
 
         private Rectangle ResolveTooltipRect(

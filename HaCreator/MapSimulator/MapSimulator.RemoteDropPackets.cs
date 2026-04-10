@@ -24,13 +24,25 @@ namespace HaCreator.MapSimulator
                         _playerManager?.Player?.Build?.Id ?? 0,
                         ResolveRemoteDropPacketActorName,
                         ResolveRemoteDropPacketTargetPosition,
-                        ResolveRemoteDropPacketPetActorId),
+                        ResolveRemoteDropPacketPetActorId,
+                        HandlePacketOwnedLocalPetPickup),
                     out string result))
             {
                 return ChatCommandHandler.CommandResult.Error(result ?? $"Failed to apply remote drop packet {packetType}.");
             }
 
             return ChatCommandHandler.CommandResult.Ok($"{result} {DescribeRemoteDropStatus()}");
+        }
+
+        private void HandlePacketOwnedLocalPetPickup(RemoteDropLeavePacket packet)
+        {
+            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+            if (packet.Reason != PacketDropLeaveReason.PetPickup || packet.ActorId != localCharacterId)
+            {
+                return;
+            }
+
+            PlayPacketOwnedLocalPetPickupSound();
         }
 
         private string DescribeRemoteDropStatus()

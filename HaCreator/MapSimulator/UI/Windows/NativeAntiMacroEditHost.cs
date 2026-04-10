@@ -42,6 +42,7 @@ namespace HaCreator.MapSimulator.UI
         private const int EmSetSel = 0x00B1;
         private const int EmReplaceSel = 0x00C2;
         private const int EmLimitText = 0x00C5;
+        private const int EmCharFromPos = 0x00D7;
         private const int EmSetMargins = 0x00D3;
         private const int EmPosFromChar = 0x00D6;
         private const int EcLeftMargin = 0x0001;
@@ -75,6 +76,8 @@ namespace HaCreator.MapSimulator.UI
         private IntPtr _fontHandle;
         private Rectangle _currentBounds;
         private string _lastKnownText = string.Empty;
+        private bool _mouseSelecting;
+        private int _mouseSelectionAnchor = -1;
 
         public NativeAntiMacroEditHost(int maxLength)
         {
@@ -84,6 +87,7 @@ namespace HaCreator.MapSimulator.UI
 
         public bool IsAttached => _editHandle != IntPtr.Zero && IsWindow(_editHandle);
         public bool HasFocus => IsAttached && GetFocus() == _editHandle;
+        public bool IsSelectingWithMouse => _mouseSelecting;
         public string Text => IsAttached ? GetControlText() : string.Empty;
 
         public event Action<string> TextChanged;
@@ -209,6 +213,8 @@ namespace HaCreator.MapSimulator.UI
 
             SetWindowText(_editHandle, string.Empty);
             SendMessage(_editHandle, EmSetSel, IntPtr.Zero, IntPtr.Zero);
+            _mouseSelecting = false;
+            _mouseSelectionAnchor = -1;
             SynchronizeState();
             UpdateImePlacement();
         }
@@ -233,7 +239,42 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            _mouseSelecting = false;
+            _mouseSelectionAnchor = -1;
             SetFocus(_parentHandle);
+        }
+
+        public void BeginSelectionAtPoint(Point pointInParentClientCoordinates)
+        {
+            if (!IsAttached)
+            {
+                return;
+            }
+
+            int caretIndex = ResolveCaretIndexFromPoint(pointInParentClientCoordinates);
+            _mouseSelectionAnchor = caretIndex;
+            _mouseSelecting = true;
+            SetFocus(_editHandle);
+            SendMessage(_editHandle, EmSetSel, new IntPtr(caretIndex), new IntPtr(caretIndex));
+            UpdateImePlacement();
+        }
+
+        public void UpdateSelectionAtPoint(Point pointInParentClientCoordinates)
+        {
+            if (!IsAttached || !_mouseSelecting)
+            {
+                return;
+            }
+
+            int caretIndex = ResolveCaretIndexFromPoint(pointInParentClientCoordinates);
+            int anchorIndex = Math.Max(0, _mouseSelectionAnchor);
+            SendMessage(_editHandle, EmSetSel, new IntPtr(anchorIndex), new IntPtr(caretIndex));
+            UpdateImePlacement();
+        }
+
+        public void EndMouseSelection()
+        {
+            _mouseSelecting = false;
         }
 
         public bool TryInsertCharacter(char character)
@@ -516,6 +557,25 @@ namespace HaCreator.MapSimulator.UI
         {
             GetSelection(out _, out int selectionEnd);
             return Math.Max(0, selectionEnd);
+        }
+
+        private int ResolveCaretIndexFromPoint(Point pointInParentClientCoordinates)
+        {
+            if (!IsAttached)
+            {
+                return 0;
+            }
+
+            int localX = Math.Clamp(pointInParentClientCoordinates.X - _currentBounds.X, 0, Math.Max(0, _currentBounds.Width - 1));
+            int localY = Math.Clamp(pointInParentClientCoordinates.Y - _currentBounds.Y, 0, Math.Max(0, _currentBounds.Height - 1));
+            int packedPoint = (localY << 16) | (localX & 0xFFFF);
+            int caretIndex = SendMessageInt(_editHandle, EmCharFromPos, IntPtr.Zero, new IntPtr(packedPoint));
+            if (caretIndex < 0)
+            {
+                return GetWindowTextLength(_editHandle);
+            }
+
+            return Math.Clamp(caretIndex, 0, GetWindowTextLength(_editHandle));
         }
 
         private IntPtr SubclassWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)

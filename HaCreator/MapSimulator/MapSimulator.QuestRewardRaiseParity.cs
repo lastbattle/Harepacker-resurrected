@@ -580,8 +580,9 @@ namespace HaCreator.MapSimulator
                     decodedPayload.QuestId,
                     decodedPayload.OwnerItemId,
                     decodedPayload.QrData,
-                    Math.Max(1, activeRaise?.MaxDropCount ?? 1),
-                    decodedPayload.WindowMode);
+                    Math.Max(1, Math.Max(activeRaise?.MaxDropCount ?? 1, decodedPayload.PlacedPieceCount)),
+                    decodedPayload.WindowMode,
+                    decodedPayload.DisplayMode);
             }
 
             if (activeRaise == null
@@ -769,7 +770,8 @@ namespace HaCreator.MapSimulator
                 activeRaise.OwnerItemId,
                 qrData,
                 activeRaise.MaxDropCount,
-                activeRaise.WindowMode);
+                activeRaise.WindowMode,
+                activeRaise.DisplayMode);
         }
 
         private static bool TryParseQuestRewardRaiseQrData(string text, out int qrData)

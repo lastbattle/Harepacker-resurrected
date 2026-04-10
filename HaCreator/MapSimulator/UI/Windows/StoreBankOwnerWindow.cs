@@ -15,10 +15,12 @@ namespace HaCreator.MapSimulator.UI
     internal sealed class StoreBankOwnerWindow : UIWindowBase
     {
         private const int VisibleRowCount = 5;
-        private const int RowX = 11;
+        private const int RowX = 10;
         private const int RowY = 93;
         private const int RowWidth = 178;
         private const int RowHeight = 35;
+        private const int RowPitch = 42;
+        private const int RowHitHeight = 42;
         private const int RowClientStockX = 10;
         private const int RowCashIconRightX = 42;
         private const int RowPrimaryTextX = 53;
@@ -97,14 +99,18 @@ namespace HaCreator.MapSimulator.UI
             if (exitButton != null)
             {
                 AddButton(exitButton);
-                exitButton.ButtonClickReleased += _ => Hide();
+                exitButton.ButtonClickReleased += _ =>
+                {
+                    _runtime?.Close();
+                    Hide();
+                };
             }
 
             for (int i = 0; i < VisibleRowCount; i++)
             {
-                UIObject rowButton = CreateTransparentButton(device, RowWidth, RowHeight);
+                UIObject rowButton = CreateTransparentButton(device, RowWidth, RowHitHeight);
                 rowButton.X = RowX;
-                rowButton.Y = RowY + (i * RowHeight);
+                rowButton.Y = RowY + (i * RowPitch);
                 int visibleRowIndex = i;
                 rowButton.ButtonClickReleased += _ => SelectVisibleRow(visibleRowIndex);
                 AddButton(rowButton);
@@ -280,7 +286,7 @@ namespace HaCreator.MapSimulator.UI
                 int rowIndex = _scrollOffset + i;
                 StoreBankOwnerRowSnapshot row = rows[rowIndex];
                 int drawX = Position.X + RowX;
-                int drawY = Position.Y + RowY + (i * RowHeight);
+                int drawY = Position.Y + RowY + (i * RowPitch);
 
                 if (_rowTexture != null)
                 {
@@ -412,10 +418,19 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            IReadOnlyList<StoreBankOwnerRowSnapshot> rows = GetRows();
             string footer = _footerProvider?.Invoke();
+            if (_runtime != null
+                && !_runtime.HasPendingGetAllRequest
+                && !_runtime.HasPendingFeeCalculationRequest
+                && _selectedRowIndex >= 0
+                && _selectedRowIndex < rows.Count)
+            {
+                footer = rows[_selectedRowIndex].SelectionSummary;
+            }
+
             if (string.IsNullOrWhiteSpace(footer))
             {
-                IReadOnlyList<StoreBankOwnerRowSnapshot> rows = GetRows();
                 footer = rows.Count == 0
                     ? "No packet-authored store-bank rows are staged."
                     : _selectedRowIndex >= 0 && _selectedRowIndex < rows.Count
@@ -546,7 +561,7 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetListBounds()
         {
-            return new Rectangle(Position.X + RowX, Position.Y + RowY, RowWidth, VisibleRowCount * RowHeight);
+            return new Rectangle(Position.X + RowX, Position.Y + RowY, RowWidth, VisibleRowCount * RowPitch);
         }
 
         private Rectangle GetScrollBarBounds()

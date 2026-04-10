@@ -1197,7 +1197,12 @@ namespace HaCreator.MapSimulator.Interaction
             string name = string.IsNullOrWhiteSpace(pet.DisplayName)
                 ? $"Pet {index + 1}"
                 : pet.DisplayName.Trim();
-            string slotText = pet.SlotIndex >= 0 ? $"slot {pet.SlotIndex + 1}" : "slot ?";
+            string slotText = pet.Source switch
+            {
+                PacketScriptPetSelectionSource.AuthoritativeCharacterData when pet.InventoryPosition > 0 => $"cash slot {pet.InventoryPosition}",
+                PacketScriptPetSelectionSource.AuthoritativeCharacterData => "cash slot ?",
+                _ => pet.SlotIndex >= 0 ? $"slot {pet.SlotIndex + 1}" : "slot ?"
+            };
             return $"{name} ({slotText}, SN {pet.PetSerialNumber})";
         }
 
@@ -1212,7 +1217,12 @@ namespace HaCreator.MapSimulator.Interaction
                 ? $"Pet option {index + 1}"
                 : pet.DisplayName.Trim();
             string itemText = pet.ItemId > 0 ? $"item {pet.ItemId}" : "unknown item";
-            string slotText = pet.SlotIndex >= 0 ? $"slot {pet.SlotIndex + 1}" : "unknown slot";
+            string slotText = pet.Source switch
+            {
+                PacketScriptPetSelectionSource.AuthoritativeCharacterData when pet.InventoryPosition > 0 => $"cash slot {pet.InventoryPosition}",
+                PacketScriptPetSelectionSource.AuthoritativeCharacterData => "unknown cash slot",
+                _ => pet.SlotIndex >= 0 ? $"slot {pet.SlotIndex + 1}" : "unknown slot"
+            };
             return $"{name} on {slotText} with cash serial {pet.PetSerialNumber} ({itemText}).";
         }
 
@@ -1537,7 +1547,9 @@ namespace HaCreator.MapSimulator.Interaction
             long PetSerialNumber,
             int SlotIndex,
             int ItemId,
-            string DisplayName);
+            string DisplayName,
+            PacketScriptPetSelectionSource Source,
+            short InventoryPosition = 0);
         private sealed record PacketScriptDecodeResult(
             NpcInteractionEntry Entry,
             PacketScriptResponsePacket AutoResponse = null,

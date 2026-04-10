@@ -2412,7 +2412,7 @@ namespace HaCreator.MapSimulator.Effects
         }
 
 
-        private Vector2 GetBlessEffectScreenCenter(int mapShiftX, int mapShiftY, int centerX, int centerY, int screenWidth, int screenHeight)
+        private Vector2? TryGetBlessEffectScreenCenter(int mapShiftX, int mapShiftY, int centerX, int centerY)
         {
             Vector2? worldCenter = TryGetBlessEffectWorldCenter();
             if (worldCenter.HasValue)
@@ -2422,9 +2422,7 @@ namespace HaCreator.MapSimulator.Effects
                     worldCenter.Value.Y - mapShiftY + centerY);
             }
 
-
-            return new Vector2(screenWidth * 0.5f, screenHeight * 0.5f - 20f);
-
+            return null;
         }
 
         #endregion
@@ -2440,6 +2438,11 @@ namespace HaCreator.MapSimulator.Effects
             if (!_isActive) return;
             UpdateRemoteParticipantMovementSnapshots(currentTimeMs);
             AdvanceExternalRemoteActorLoadLifecycle(currentTimeMs);
+
+            if (_blessEffectActive && !TryGetBlessEffectWorldCenter().HasValue)
+            {
+                SetBlessEffect(false, currentTimeMs);
+            }
 
 
             float overlayTargetAlpha = _ceremonyTextOverlayActive ? 1f : 0f;
@@ -2522,9 +2525,11 @@ namespace HaCreator.MapSimulator.Effects
             // Draw bless effect sparkles
             if (_blessEffectActive && _blessEffectAlpha > 0)
             {
-                int screenWidth = spriteBatch.GraphicsDevice.Viewport.Width;
-                int screenHeight = spriteBatch.GraphicsDevice.Viewport.Height;
-                Vector2 blessCenter = GetBlessEffectScreenCenter(mapShiftX, mapShiftY, centerX, centerY, screenWidth, screenHeight);
+                Vector2? blessCenter = TryGetBlessEffectScreenCenter(mapShiftX, mapShiftY, centerX, centerY);
+                if (!blessCenter.HasValue)
+                {
+                    return;
+                }
 
 
                 if (_blessFrames != null && _blessFrames.Count > 0)
@@ -2536,8 +2541,8 @@ namespace HaCreator.MapSimulator.Effects
                             spriteBatch,
                             skeletonMeshRenderer,
                             gameTime,
-                            (int)blessCenter.X + currentBlessFrame.X,
-                            (int)blessCenter.Y + currentBlessFrame.Y,
+                            (int)blessCenter.Value.X + currentBlessFrame.X,
+                            (int)blessCenter.Value.Y + currentBlessFrame.Y,
                             Color.White,
                             false,
                             null);
@@ -2550,8 +2555,8 @@ namespace HaCreator.MapSimulator.Effects
                         if (sparkle.Alpha <= 0) continue;
 
 
-                        int x = (int)(blessCenter.X + sparkle.X);
-                        int y = (int)(blessCenter.Y + sparkle.Y);
+                        int x = (int)(blessCenter.Value.X + sparkle.X);
+                        int y = (int)(blessCenter.Value.Y + sparkle.Y);
                         int size = (int)(8 * sparkle.Scale);
                         byte alpha = (byte)(sparkle.Alpha * _blessEffectAlpha * 255);
 
@@ -2838,13 +2843,11 @@ namespace HaCreator.MapSimulator.Effects
 
 
 
-            Vector2 coupleCenter = GetBlessEffectScreenCenter(
+            Vector2? coupleCenter = TryGetBlessEffectScreenCenter(
                 mapShiftX,
                 mapShiftY,
                 centerX,
-                centerY,
-                viewport.Width,
-                viewport.Height);
+                centerY);
             DrawSceneParticles(spriteBatch, _ceremonyHearts, _ceremonyHeartFrames, coupleCenter, viewport, currentTimeMs);
         }
 
@@ -3337,10 +3340,10 @@ namespace HaCreator.MapSimulator.Effects
             }
         }
 
-        private static IReadOnlyList<string> WrapDialogMessage(SpriteFont font, string text, float maxWidth)
+        internal static IReadOnlyList<string> WrapDialogMessageForMeasurement(Func<string, float> measureTextWidth, string text, float maxWidth)
         {
             List<string> lines = new();
-            if (font == null || string.IsNullOrWhiteSpace(text) || maxWidth <= 0f)
+            if (measureTextWidth == null || string.IsNullOrWhiteSpace(text) || maxWidth <= 0f)
             {
                 return lines;
             }
@@ -3356,17 +3359,20 @@ namespace HaCreator.MapSimulator.Effects
                 string currentLine = string.Empty;
                 foreach (string word in paragraph.Split(' ', StringSplitOptions.RemoveEmptyEntries))
                 {
-                    string candidate = string.IsNullOrEmpty(currentLine)
-                        ? word
-                        : $"{currentLine} {word}";
-                    if (!string.IsNullOrEmpty(currentLine) && font.MeasureString(candidate).X > maxWidth)
+                    foreach (string chunk in SplitMeasuredWord(word, maxWidth, measureTextWidth))
                     {
-                        lines.Add(currentLine);
-                        currentLine = word;
-                        continue;
-                    }
+                        string candidate = string.IsNullOrEmpty(currentLine)
+                            ? chunk
+                            : $"{currentLine} {chunk}";
+                        if (!string.IsNullOrEmpty(currentLine) && measureTextWidth(candidate) > maxWidth)
+                        {
+                            lines.Add(currentLine);
+                            currentLine = chunk;
+                            continue;
+                        }
 
-                    currentLine = candidate;
+                        currentLine = candidate;
+                    }
                 }
 
                 if (!string.IsNullOrEmpty(currentLine))
@@ -3376,6 +3382,55 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             return lines;
+        }
+
+        private static IReadOnlyList<string> WrapDialogMessage(SpriteFont font, string text, float maxWidth)
+        {
+            if (font == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            return WrapDialogMessageForMeasurement(
+                value => font.MeasureString(value).X,
+                text,
+                maxWidth);
+        }
+
+        private static IEnumerable<string> SplitMeasuredWord(string word, float maxWidth, Func<string, float> measureTextWidth)
+        {
+            if (string.IsNullOrEmpty(word))
+            {
+                yield break;
+            }
+
+            if (measureTextWidth(word) <= maxWidth)
+            {
+                yield return word;
+                yield break;
+            }
+
+            int start = 0;
+            while (start < word.Length)
+            {
+                int length = 1;
+                int bestLength = 1;
+                while (start + length <= word.Length)
+                {
+                    string candidate = word.Substring(start, length);
+                    if (measureTextWidth(candidate) <= maxWidth)
+                    {
+                        bestLength = length;
+                        length++;
+                        continue;
+                    }
+
+                    break;
+                }
+
+                yield return word.Substring(start, bestLength);
+                start += bestLength;
+            }
         }
 
 

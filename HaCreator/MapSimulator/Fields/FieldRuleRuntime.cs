@@ -81,6 +81,15 @@ namespace HaCreator.MapSimulator.Fields
             _entryScripts.Count > 0 ||
             _consumeItemCoolTimeSeconds > 0;
 
+        /// <summary>
+        /// Passive transfer-field retry now reads through the live field-runtime seam
+        /// rather than re-querying map info inline. Time-expired fields also stop
+        /// advertising retry readiness once they have taken over transfer ownership.
+        /// </summary>
+        public bool CanTransferField =>
+            !_timeExpired &&
+            FieldInteractionRestrictionEvaluator.CanTransferField(_fieldLimit);
+
         public IReadOnlyList<string> Reset(int currentTimeMs)
         {
             _enteredAt = currentTimeMs;

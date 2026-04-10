@@ -19,7 +19,6 @@ namespace HaCreator.MapSimulator.UI
     {
         private const int MaxVisibleEntries = 5;
         private const int DeleteButtonSize = 11;
-        private const int RowDoubleClickWindowMs = 450;
         private const int DefaultQuestButtonAnimationDelayMs = 120;
         private const int HeaderActionMargin = 6;
         private const int HeaderActionSpacing = 4;
@@ -88,8 +87,6 @@ namespace HaCreator.MapSimulator.UI
         private int _hoveredDeleteQuestId = -1;
         private int _pressedDeleteQuestId = -1;
         private bool _pressedDeleteAll;
-        private int _lastRowClickQuestId = -1;
-        private long _lastRowClickTick;
         private int _scrollOffset;
         private Rectangle _deleteAllBounds = Rectangle.Empty;
 
@@ -544,18 +541,12 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < _rowLayouts.Count; i++)
             {
                 RowLayout row = _rowLayouts[i];
-                if (!row.Bounds.Contains(mouseX, mouseY) || row.DeleteBounds.Contains(mouseX, mouseY))
+                if (!row.TitleBounds.Contains(mouseX, mouseY) || row.DeleteBounds.Contains(mouseX, mouseY))
                 {
                     continue;
                 }
 
-                bool repeatedClick = row.QuestId == _selectedQuestId
-                    && row.QuestId == _lastRowClickQuestId
-                    && Environment.TickCount64 - _lastRowClickTick <= RowDoubleClickWindowMs;
-
                 _selectedQuestId = row.QuestId;
-                _lastRowClickQuestId = row.QuestId;
-                _lastRowClickTick = Environment.TickCount64;
                 EnsureSelectionVisible(snapshot);
                 UpdateButtonStates();
 
@@ -572,10 +563,7 @@ namespace HaCreator.MapSimulator.UI
                     UpdateButtonStates();
                 }
 
-                if (repeatedClick)
-                {
-                    QuestRequested?.Invoke(row.QuestId);
-                }
+                QuestRequested?.Invoke(row.QuestId);
 
                 return;
             }
@@ -1184,9 +1172,17 @@ namespace HaCreator.MapSimulator.UI
 
         private static string ResolveTitleTooltipText(QuestAlarmEntrySnapshot entry)
         {
-            return entry?.IsRecentlyUpdated == true
-                ? QuestAlarmOwnerStringPoolText.GetRecentUpdateTooltip()
-                : string.Empty;
+            if (entry == null)
+            {
+                return string.Empty;
+            }
+
+            if (entry.IsRecentlyUpdated)
+            {
+                return QuestAlarmOwnerStringPoolText.GetRecentUpdateTooltip();
+            }
+
+            return entry.TooltipText ?? string.Empty;
         }
 
         private int GetDeleteQuestIdAtPoint(int mouseX, int mouseY)
@@ -1724,8 +1720,6 @@ namespace HaCreator.MapSimulator.UI
         private void ResetSelectionAfterMutation()
         {
             _selectedQuestId = -1;
-            _lastRowClickQuestId = -1;
-            _lastRowClickTick = 0;
             _hoveredDeleteQuestId = -1;
             _pressedDeleteQuestId = -1;
             _pressedDeleteAll = false;

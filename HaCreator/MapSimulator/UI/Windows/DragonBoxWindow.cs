@@ -17,7 +17,6 @@ namespace HaCreator.MapSimulator.UI
         private readonly Point _summonableBackgroundOffset;
         private UIObject _summonButton;
         private Func<DragonBoxWindowSnapshot> _snapshotProvider;
-        private Func<bool> _summonEnabledProvider;
         private Action _summonRequested;
 
         internal DragonBoxWindow(
@@ -65,15 +64,10 @@ namespace HaCreator.MapSimulator.UI
             _summonRequested = summonRequested;
         }
 
-        internal void SetSummonEnabledProvider(Func<bool> summonEnabledProvider)
-        {
-            _summonEnabledProvider = summonEnabledProvider;
-        }
-
         public override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
-            _summonButton?.SetEnabled(_summonEnabledProvider?.Invoke() != false);
+            _summonButton?.SetEnabled(true);
         }
 
         protected override void DrawContents(
@@ -132,11 +126,6 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleSummonButtonReleased(UIObject button)
         {
-            if (_summonEnabledProvider?.Invoke() == false)
-            {
-                return;
-            }
-
             _summonRequested?.Invoke();
         }
     }

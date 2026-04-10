@@ -134,6 +134,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            SyncPacketOwnedScriptSelectablePetsFromCharacterData(snapshot);
             ApplyPacketOwnedCharacterInventorySnapshot(snapshot);
             ApplyPacketOwnedCharacterSkillSnapshot(snapshot);
             CharacterBuild activeBuild = _playerManager?.Player?.Build;
@@ -276,6 +277,12 @@ namespace HaCreator.MapSimulator
                 _playerManager.Skills.ApplyAuthoritativeSkillRecordSnapshot(skillRecords);
             }
 
+            IReadOnlyDictionary<int, int> masterLevels = snapshot.SkillMasterLevels;
+            if (masterLevels != null)
+            {
+                _playerManager.Skills.ApplyAuthoritativeSkillMasterLevelSnapshot(masterLevels);
+            }
+
             IReadOnlyDictionary<int, int> cooldowns = snapshot.SkillCooldownRemainingSecondsBySkillId;
             if (cooldowns != null)
             {
@@ -337,6 +344,7 @@ namespace HaCreator.MapSimulator
             _packetStageTransitionObjectVisibility.Clear();
             RestorePacketOwnedBackEffect();
             _packetStageTransitionRuntime.Clear();
+            ClearPacketOwnedScriptSelectablePets();
         }
 
         private void UpdatePacketOwnedStageTransitionState(int currentTick)

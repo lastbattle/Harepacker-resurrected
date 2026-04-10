@@ -77,9 +77,21 @@ namespace HaCreator.MapSimulator.Character
                 ["iceTempest"] = new[] { "icemanAttack" },
                 ["iceChop"] = new[] { "icemanAttack" },
                 ["icePanic"] = new[] { "icemanAttack" },
+                // Client raw morph requests still surface the broader pirate gun-family
+                // names, while Morph/1000.img, 1001.img, 1100.img, and 1101.img only
+                // publish the authored gun branch as `doublefire`.
+                ["handgun"] = new[] { "doublefire" },
                 // The client raw action table includes `triplefire`, while pirate
                 // Morph/*.img publishes the same gun-family surface as `doublefire`.
-                ["triplefire"] = new[] { "doublefire" }
+                ["triplefire"] = new[] { "doublefire" },
+                ["airstrike"] = new[] { "doublefire" },
+                ["shot"] = new[] { "doublefire", "windshot" },
+                ["fireburner"] = new[] { "doublefire" },
+                ["coolingeffect"] = new[] { "doublefire" },
+                ["homing"] = new[] { "doublefire" },
+                ["rapidfire"] = new[] { "doublefire" },
+                ["cannon"] = new[] { "doublefire" },
+                ["torpedo"] = new[] { "doublefire" }
             };
 
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedGenericMorphFallbackAliases =

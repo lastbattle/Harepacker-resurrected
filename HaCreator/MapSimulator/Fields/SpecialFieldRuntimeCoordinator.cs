@@ -101,6 +101,9 @@ namespace HaCreator.MapSimulator.Fields
         public MinigameFields Minigames => _minigames;
         public CookieHouseField CookieHouse => _cookieHouse;
         public PartyRaidField PartyRaid => _partyRaid;
+        public bool HasPendingTransfer =>
+            _specialEffects.Battlefield.HasPendingTransfer
+            || _specialEffects.Dojo.PendingTransferMapId > 0;
         public bool HasBlockingScriptedSequence =>
             _specialEffects.HasBlockingScriptedSequence
             || _minigames.MemoryGame.IsVisible
@@ -242,6 +245,20 @@ namespace HaCreator.MapSimulator.Fields
         public bool TryDispatchCurrentWrapperPacket(int packetType, byte[] payload, int currentTimeMs, out string message)
         {
             return TryDispatchCurrentWrapperPacketCore(packetType, payload, currentTimeMs, out message);
+        }
+
+        public static byte[] BuildCurrentWrapperRelayPayload(int packetType, byte[] payload)
+        {
+            payload ??= Array.Empty<byte>();
+
+            byte[] relayPayload = new byte[sizeof(ushort) + payload.Length];
+            BinaryPrimitives.WriteUInt16LittleEndian(relayPayload.AsSpan(0, sizeof(ushort)), (ushort)packetType);
+            if (payload.Length > 0)
+            {
+                Buffer.BlockCopy(payload, 0, relayPayload, sizeof(ushort), payload.Length);
+            }
+
+            return relayPayload;
         }
 
         internal static bool TryDecodeCurrentWrapperRelayPayload(byte[] relayPayload, out int packetType, out byte[] wrapperPayload, out string error)

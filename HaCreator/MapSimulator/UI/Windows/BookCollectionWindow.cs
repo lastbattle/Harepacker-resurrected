@@ -927,6 +927,7 @@ namespace HaCreator.MapSimulator.UI
         void ISoftKeyboardHost.OnSoftKeyboardClosed()
         {
             _softKeyboardActive = false;
+            UpdateImePresentationPlacement();
         }
 
         private void BeginSearchSelectionDrag(int mouseX, KeyboardState keyboard)
@@ -2756,7 +2757,10 @@ namespace HaCreator.MapSimulator.UI
                 x -= GetScaledLineHeight() + 4;
             }
 
-            return new Point(x, bounds.Bottom + 1);
+            // `CCtrlEdit::CreateIMECandWnd` drops the fallback candidate owner from the edit's
+            // absolute top plus the active font height, not from the full owner rect height.
+            int y = bounds.Y + GetScaledLineHeight() + 1;
+            return new Point(x, y);
         }
 
         private bool TryResolveCandidateWindowOriginFromWindowForm(Viewport viewport, int width, int height, out Point origin)
@@ -2955,8 +2959,7 @@ namespace HaCreator.MapSimulator.UI
             if (!CapturesKeyboardInput
                 || !_searchMode
                 || _font == null
-                || ResolveImeWindowHandle == null
-                || (_compositionText.Length == 0 && !_candidateListState.HasCandidates))
+                || ResolveImeWindowHandle == null)
             {
                 return;
             }

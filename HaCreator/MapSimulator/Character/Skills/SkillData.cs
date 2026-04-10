@@ -390,10 +390,14 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         public int SkillId { get; set; }
         public SkillAnimation Animation { get; set; }
+        public string AnimationPath { get; set; }
         public SkillAnimation HitAnimation { get; set; }
         public List<SkillAnimation> VariantAnimations { get; set; } = new();
+        public List<string> VariantAnimationPaths { get; set; } = new();
         public SortedDictionary<int, List<SkillAnimation>> CharacterLevelVariantAnimations { get; set; } = new();
+        public SortedDictionary<int, List<string>> CharacterLevelVariantAnimationPaths { get; set; } = new();
         public Dictionary<int, List<SkillAnimation>> LevelVariantAnimations { get; set; } = new();
+        public Dictionary<int, List<string>> LevelVariantAnimationPaths { get; set; } = new();
 
         public ProjectileBehavior Behavior { get; set; } = ProjectileBehavior.Straight;
         public float Speed { get; set; } = 400f;
@@ -454,6 +458,60 @@ namespace HaCreator.MapSimulator.Character.Skills
             return ResolveAnimationVariant(skillLevel, maxLevel);
         }
 
+        public string ResolveGetBallLikeAnimationPath(int skillLevel, int characterLevel, int maxLevel = 0)
+        {
+            if (CharacterLevelVariantAnimations != null && CharacterLevelVariantAnimations.Count > 0)
+            {
+                List<SkillAnimation> characterLevelVariants = null;
+                List<string> characterLevelVariantPaths = null;
+                foreach ((int requiredLevel, List<SkillAnimation> variants) in CharacterLevelVariantAnimations)
+                {
+                    if (requiredLevel > characterLevel)
+                    {
+                        break;
+                    }
+
+                    characterLevelVariants = variants;
+                    if (CharacterLevelVariantAnimationPaths != null)
+                    {
+                        CharacterLevelVariantAnimationPaths.TryGetValue(requiredLevel, out characterLevelVariantPaths);
+                    }
+                }
+
+                string characterLevelAnimationPath = ResolveAnimationVariantPath(
+                    characterLevelVariants,
+                    characterLevelVariantPaths,
+                    skillLevel,
+                    maxLevel);
+                if (!string.IsNullOrWhiteSpace(characterLevelAnimationPath))
+                {
+                    return characterLevelAnimationPath;
+                }
+            }
+
+            if (skillLevel > 0
+                && LevelVariantAnimations != null
+                && LevelVariantAnimations.TryGetValue(skillLevel, out List<SkillAnimation> levelVariants))
+            {
+                List<string> levelVariantPaths = null;
+                if (LevelVariantAnimationPaths != null)
+                {
+                    LevelVariantAnimationPaths.TryGetValue(skillLevel, out levelVariantPaths);
+                }
+                string levelAnimationPath = ResolveAnimationVariantPath(
+                    levelVariants,
+                    levelVariantPaths,
+                    skillLevel,
+                    maxLevel);
+                if (!string.IsNullOrWhiteSpace(levelAnimationPath))
+                {
+                    return levelAnimationPath;
+                }
+            }
+
+            return ResolveAnimationVariantPath(VariantAnimations, VariantAnimationPaths, skillLevel, maxLevel, AnimationPath);
+        }
+
         private static SkillAnimation ResolveAnimationVariant(
             IReadOnlyList<SkillAnimation> variants,
             int level,
@@ -488,6 +546,62 @@ namespace HaCreator.MapSimulator.Character.Skills
                 renderableVariants.Count - 1);
             return renderableVariants[variantIndex];
         }
+
+        private static string ResolveAnimationVariantPath(
+            IReadOnlyList<SkillAnimation> variants,
+            IReadOnlyList<string> paths,
+            int level,
+            int maxLevel = 0,
+            string fallback = null)
+        {
+            int? resolvedIndex = ResolveRenderableVariantIndex(variants, level, maxLevel);
+            if (!resolvedIndex.HasValue
+                || paths == null
+                || resolvedIndex.Value < 0
+                || resolvedIndex.Value >= paths.Count)
+            {
+                return fallback;
+            }
+
+            string resolvedPath = paths[resolvedIndex.Value];
+            return string.IsNullOrWhiteSpace(resolvedPath) ? fallback : resolvedPath;
+        }
+
+        private static int? ResolveRenderableVariantIndex(
+            IReadOnlyList<SkillAnimation> variants,
+            int level,
+            int maxLevel = 0)
+        {
+            if (variants == null || variants.Count == 0)
+            {
+                return null;
+            }
+
+            List<int> renderableIndexes = variants
+                .Select((animation, index) => new { animation, index })
+                .Where(static entry => entry.animation?.Frames.Count > 0)
+                .Select(static entry => entry.index)
+                .ToList();
+            if (renderableIndexes.Count == 0)
+            {
+                return null;
+            }
+
+            if (renderableIndexes.Count == 1)
+            {
+                return renderableIndexes[0];
+            }
+
+            int resolvedLevel = Math.Max(1, level);
+            int resolvedMaxLevel = maxLevel > 0
+                ? maxLevel
+                : Math.Max(resolvedLevel, renderableIndexes.Count);
+            int renderableIndex = Math.Clamp(
+                ((resolvedLevel - 1) * renderableIndexes.Count) / Math.Max(1, resolvedMaxLevel),
+                0,
+                renderableIndexes.Count - 1);
+            return renderableIndexes[renderableIndex];
+        }
     }
 
     /// <summary>
@@ -496,9 +610,13 @@ namespace HaCreator.MapSimulator.Character.Skills
     public class ZoneEffectData
     {
         public SkillAnimation Animation { get; set; }
+        public string AnimationPath { get; set; }
         public List<SkillAnimation> VariantAnimations { get; set; } = new();
+        public List<string> VariantAnimationPaths { get; set; } = new();
         public SortedDictionary<int, List<SkillAnimation>> CharacterLevelVariantAnimations { get; set; } = new();
+        public SortedDictionary<int, List<string>> CharacterLevelVariantAnimationPaths { get; set; } = new();
         public Dictionary<int, List<SkillAnimation>> LevelVariantAnimations { get; set; } = new();
+        public Dictionary<int, List<string>> LevelVariantAnimationPaths { get; set; } = new();
         public SortedDictionary<int, int> CharacterLevelEffectDistances { get; set; } = new();
         public Dictionary<int, int> LevelEffectDistances { get; set; } = new();
         public int EffectDistance { get; set; }
@@ -594,6 +712,60 @@ namespace HaCreator.MapSimulator.Character.Skills
             return EffectDistance;
         }
 
+        public string ResolveAnimationVariantPath(int skillLevel, int characterLevel, int maxLevel = 0)
+        {
+            if (CharacterLevelVariantAnimations != null && CharacterLevelVariantAnimations.Count > 0)
+            {
+                List<SkillAnimation> characterLevelVariants = null;
+                List<string> characterLevelVariantPaths = null;
+                foreach ((int requiredLevel, List<SkillAnimation> variants) in CharacterLevelVariantAnimations)
+                {
+                    if (requiredLevel > characterLevel)
+                    {
+                        break;
+                    }
+
+                    characterLevelVariants = variants;
+                    if (CharacterLevelVariantAnimationPaths != null)
+                    {
+                        CharacterLevelVariantAnimationPaths.TryGetValue(requiredLevel, out characterLevelVariantPaths);
+                    }
+                }
+
+                string characterLevelAnimationPath = ResolveAnimationVariantPath(
+                    characterLevelVariants,
+                    characterLevelVariantPaths,
+                    skillLevel,
+                    maxLevel);
+                if (!string.IsNullOrWhiteSpace(characterLevelAnimationPath))
+                {
+                    return characterLevelAnimationPath;
+                }
+            }
+
+            if (skillLevel > 0
+                && LevelVariantAnimations != null
+                && LevelVariantAnimations.TryGetValue(skillLevel, out List<SkillAnimation> levelVariants))
+            {
+                List<string> levelVariantPaths = null;
+                if (LevelVariantAnimationPaths != null)
+                {
+                    LevelVariantAnimationPaths.TryGetValue(skillLevel, out levelVariantPaths);
+                }
+                string levelAnimationPath = ResolveAnimationVariantPath(
+                    levelVariants,
+                    levelVariantPaths,
+                    skillLevel,
+                    maxLevel);
+                if (!string.IsNullOrWhiteSpace(levelAnimationPath))
+                {
+                    return levelAnimationPath;
+                }
+            }
+
+            return ResolveAnimationVariantPath(VariantAnimations, VariantAnimationPaths, skillLevel, maxLevel, AnimationPath);
+        }
+
         private static SkillAnimation ResolveAnimationVariant(
             IReadOnlyList<SkillAnimation> variants,
             int level,
@@ -627,6 +799,62 @@ namespace HaCreator.MapSimulator.Character.Skills
                 0,
                 renderableVariants.Count - 1);
             return renderableVariants[variantIndex];
+        }
+
+        private static string ResolveAnimationVariantPath(
+            IReadOnlyList<SkillAnimation> variants,
+            IReadOnlyList<string> paths,
+            int level,
+            int maxLevel = 0,
+            string fallback = null)
+        {
+            int? resolvedIndex = ResolveRenderableVariantIndex(variants, level, maxLevel);
+            if (!resolvedIndex.HasValue
+                || paths == null
+                || resolvedIndex.Value < 0
+                || resolvedIndex.Value >= paths.Count)
+            {
+                return fallback;
+            }
+
+            string resolvedPath = paths[resolvedIndex.Value];
+            return string.IsNullOrWhiteSpace(resolvedPath) ? fallback : resolvedPath;
+        }
+
+        private static int? ResolveRenderableVariantIndex(
+            IReadOnlyList<SkillAnimation> variants,
+            int level,
+            int maxLevel = 0)
+        {
+            if (variants == null || variants.Count == 0)
+            {
+                return null;
+            }
+
+            List<int> renderableIndexes = variants
+                .Select((animation, index) => new { animation, index })
+                .Where(static entry => entry.animation?.Frames.Count > 0)
+                .Select(static entry => entry.index)
+                .ToList();
+            if (renderableIndexes.Count == 0)
+            {
+                return null;
+            }
+
+            if (renderableIndexes.Count == 1)
+            {
+                return renderableIndexes[0];
+            }
+
+            int resolvedLevel = Math.Max(1, level);
+            int resolvedMaxLevel = maxLevel > 0
+                ? maxLevel
+                : Math.Max(resolvedLevel, renderableIndexes.Count);
+            int renderableIndex = Math.Clamp(
+                ((resolvedLevel - 1) * renderableIndexes.Count) / Math.Max(1, resolvedMaxLevel),
+                0,
+                renderableIndexes.Count - 1);
+            return renderableIndexes[renderableIndex];
         }
     }
 
@@ -786,6 +1014,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool IsPassiveSkillData { get; set; }
         public int AffectedSkillId { get; set; }
         public int[] AffectedSkillIds { get; set; } = Array.Empty<int>();
+        public int[] PassiveLinkedSkillIds { get; set; } = Array.Empty<int>();
         public string AffectedSkillEffect { get; set; }
         public string DotType { get; set; }
         public bool IsMagicDamageSkill { get; set; }
@@ -1540,6 +1769,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public float VelocityX { get; set; }
         public float VelocityY { get; set; }
         public bool FacingRight { get; set; }
+        public bool? QueuedFacingRight { get; set; }
 
         // State
         public int SpawnTime { get; set; }
@@ -1557,6 +1787,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int? PreferredTargetMobId { get; set; }
         public Vector2? PreferredTargetPosition { get; set; }
         public bool PreferStoredTargetPosition { get; set; }
+        public bool UsesAuthoredShootPoint { get; set; }
+        public bool HasExplicitAttackOriginOverride { get; set; }
         public ShootAmmoSelection ResolvedShootAmmoSelection { get; set; }
         public int ResolvedShootWeaponCode { get; set; }
         public int ResolvedShootWeaponItemId { get; set; }

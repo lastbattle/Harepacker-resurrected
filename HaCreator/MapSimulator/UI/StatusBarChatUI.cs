@@ -211,6 +211,8 @@ namespace HaCreator.MapSimulator.UI
         public Action<int> WhisperTargetPickerSelectionDeltaRequested { get; set; }
         public Action WhisperTargetPickerConfirmRequested { get; set; }
         public Action WhisperTargetPickerCancelRequested { get; set; }
+        public Action WhisperTargetPickerModalButtonFocusRequested { get; set; }
+        public Action WhisperTargetPickerModalComboFocusRequested { get; set; }
 
         private enum WhisperPickerButtonAction
         {
@@ -1034,7 +1036,8 @@ namespace HaCreator.MapSimulator.UI
                 buttonY,
                 modalWidth,
                 buttonRowHeight,
-                chatState.WhisperTargetPickerModalButtonFocus);
+                chatState.WhisperTargetPickerModalButtonFocus,
+                chatState.WhisperTargetPickerModalFocusTarget);
         }
 
         private void DrawWhisperPickerRow(
@@ -1157,7 +1160,8 @@ namespace HaCreator.MapSimulator.UI
             int buttonY,
             int modalWidth,
             int buttonRowHeight,
-            MapSimulatorChat.WhisperTargetPickerModalButtonFocus focusedButton)
+            MapSimulatorChat.WhisperTargetPickerModalButtonFocus focusedButton,
+            MapSimulatorChat.WhisperTargetPickerModalFocusTarget focusTarget)
         {
             WhisperPickerButtonVisuals[] visuals =
             {
@@ -1193,6 +1197,7 @@ namespace HaCreator.MapSimulator.UI
                     pressed);
                 bool keyFocused = !hovered
                     && !pressed
+                    && focusTarget == MapSimulatorChat.WhisperTargetPickerModalFocusTarget.FooterButtons
                     && IsWhisperPickerModalButtonFocused(actions[i], focusedButton);
                 Texture2D texture = visuals[i].ResolveTexture(state, keyFocused);
                 Rectangle buttonBounds = slotBounds;
@@ -1616,6 +1621,15 @@ namespace HaCreator.MapSimulator.UI
             {
                 _pressedWhisperTarget = hoveredRegion?.WhisperTarget ?? hoveredPickerRegion?.WhisperTarget;
                 _pressedWhisperPickerButtonAction = hoveredButtonRegion?.Action;
+                if (hoveredButtonRegion != null)
+                {
+                    WhisperTargetPickerModalButtonFocusRequested?.Invoke();
+                }
+                else if (hoveredRegion != null || hoveredPickerRegion != null || promptHovered)
+                {
+                    WhisperTargetPickerModalComboFocusRequested?.Invoke();
+                }
+
                 return hoveredRegion != null || hoveredPickerRegion != null || hoveredButtonRegion != null || promptHovered;
             }
 
@@ -1628,6 +1642,7 @@ namespace HaCreator.MapSimulator.UI
             if (promptHovered && string.IsNullOrWhiteSpace(_pressedWhisperTarget))
             {
                 _pressedWhisperPickerButtonAction = null;
+                WhisperTargetPickerModalComboFocusRequested?.Invoke();
                 WhisperTargetPickerRequested?.Invoke();
                 return true;
             }
@@ -1638,6 +1653,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 _pressedWhisperTarget = null;
                 _pressedWhisperPickerButtonAction = null;
+                WhisperTargetPickerModalButtonFocusRequested?.Invoke();
                 InvokeWhisperPickerButtonAction(hoveredButtonRegion.Action);
                 return true;
             }
@@ -1647,6 +1663,7 @@ namespace HaCreator.MapSimulator.UI
                 && string.Equals(_pressedWhisperTarget, hoveredPickerRegion.WhisperTarget, StringComparison.OrdinalIgnoreCase))
             {
                 _pressedWhisperTarget = null;
+                WhisperTargetPickerModalComboFocusRequested?.Invoke();
                 WhisperTargetPickerCandidateRequested?.Invoke(hoveredPickerRegion.WhisperTarget);
                 return true;
             }
@@ -1744,6 +1761,7 @@ namespace HaCreator.MapSimulator.UI
             int steps = Math.Max(1, Math.Abs(scrollDelta) / 120);
             if (_whisperPickerBounds?.Contains(mouseState.X, mouseState.Y) == true)
             {
+                WhisperTargetPickerModalComboFocusRequested?.Invoke();
                 WhisperTargetPickerSelectionDeltaRequested?.Invoke(scrollDelta > 0 ? -steps : steps);
                 return;
             }

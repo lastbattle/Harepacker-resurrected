@@ -561,11 +561,32 @@ namespace HaCreator.Wz
                 int? hRange = InfoTool.GetOptionalInt(portal["hRange"]);
                 int? vRange = InfoTool.GetOptionalInt(portal["vRange"]);
                 int? delay = InfoTool.GetOptionalInt(portal["delay"]);
+                string reactorName = InfoTool.GetOptionalString(portal["reactorName"]);
+                string sessionValueKey = InfoTool.GetOptionalString(portal["sessionValueKey"]);
+                string sessionValue = InfoTool.GetOptionalString(portal["sessionValue"]);
                 MapleBool hideTooltip = InfoTool.GetOptionalBool(portal["hideTooltip"]);
                 MapleBool onlyOnce = InfoTool.GetOptionalBool(portal["onlyOnce"]);
 
                 mapBoard.BoardItems.Portals.Add(
-                    PortalInfo.GetPortalInfoByType(pt).CreateInstance(mapBoard, x, y, pn, tn, tm, script, delay, hideTooltip, onlyOnce, horizontalImpact, verticalImpact, image, hRange, vRange));
+                    PortalInfo.GetPortalInfoByType(pt).CreateInstance(
+                        mapBoard,
+                        x,
+                        y,
+                        pn,
+                        tn,
+                        tm,
+                        script,
+                        delay,
+                        hideTooltip,
+                        onlyOnce,
+                        horizontalImpact,
+                        verticalImpact,
+                        image,
+                        hRange,
+                        vRange,
+                        reactorName,
+                        sessionValueKey,
+                        sessionValue));
             }
         }
 

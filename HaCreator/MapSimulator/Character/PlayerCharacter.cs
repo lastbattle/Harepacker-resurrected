@@ -118,7 +118,13 @@ namespace HaCreator.MapSimulator.Character
         internal readonly record struct SkillAvatarTransformResolutionForTesting(
             IReadOnlyList<string> StandActionNames,
             IReadOnlyList<string> WalkActionNames,
+            IReadOnlyList<string> JumpActionNames,
             IReadOnlyList<string> AttackActionNames,
+            IReadOnlyList<string> LadderActionNames,
+            IReadOnlyList<string> RopeActionNames,
+            IReadOnlyList<string> FlyActionNames,
+            IReadOnlyList<string> SwimActionNames,
+            IReadOnlyList<string> HitActionNames,
             IReadOnlyList<string> ProneActionNames,
             string ExitActionName,
             bool LocksMovement);
@@ -2509,12 +2515,17 @@ namespace HaCreator.MapSimulator.Character
                     animationTime,
                     out MeleeAfterimagePlaybackResolver.Snapshot snapshot))
             {
-                _activeMeleeAfterImage.LastFrameIndex = snapshot.FrameIndex;
-                if (snapshot.Frame != null)
-                {
-                    _activeMeleeAfterImage.LastResolvedFrame = snapshot.Frame;
-                    _activeMeleeAfterImage.LastResolvedAlpha = snapshot.Alpha;
-                }
+                int lastFrameIndex = _activeMeleeAfterImage.LastFrameIndex;
+                SkillFrame lastResolvedFrame = _activeMeleeAfterImage.LastResolvedFrame;
+                float lastResolvedAlpha = _activeMeleeAfterImage.LastResolvedAlpha;
+                MeleeAfterimagePlaybackResolver.ApplySnapshotToCache(
+                    snapshot,
+                    ref lastFrameIndex,
+                    ref lastResolvedFrame,
+                    ref lastResolvedAlpha);
+                _activeMeleeAfterImage.LastFrameIndex = lastFrameIndex;
+                _activeMeleeAfterImage.LastResolvedFrame = lastResolvedFrame;
+                _activeMeleeAfterImage.LastResolvedAlpha = lastResolvedAlpha;
             }
 
             _activeMeleeAfterImage.FadeStartTime = currentTime;
@@ -3705,7 +3716,7 @@ namespace HaCreator.MapSimulator.Character
             if (_portableChairPairAssembler == null
                 || string.IsNullOrWhiteSpace(_portableChairPairActionName)
                 || Build?.ActivePortableChair?.IsCoupleChair != true
-                || _portableChairExternalPairRequested
+                || ShouldUsePortableChairExternalPair(_portableChairExternalPairRequested, _portableChairHasExternalPair)
                 || !ShouldDrawPortableChairPairPreview())
             {
                 return;
@@ -4054,18 +4065,25 @@ namespace HaCreator.MapSimulator.Character
                 int animationTime = Math.Max(0, currentTime - _activeMeleeAfterImage.AnimationStartTime);
                 if (Assembler?.TryGetFrameTimingAtTime(_activeMeleeAfterImage.ActionName, animationTime, out int resolvedFrameIndex, out int frameElapsedMs) == true)
                 {
-                    frameIndex = resolvedFrameIndex;
-                    _activeMeleeAfterImage.LastFrameIndex = frameIndex;
-                    frame = MeleeAfterimagePlaybackResolver.ResolveFrame(
+                    MeleeAfterimagePlaybackResolver.TryResolveFrameSnapshot(
                         _activeMeleeAfterImage.AfterImageAction,
-                        frameIndex,
-                        frameElapsedMs);
-                    if (frame != null)
-                    {
-                        _activeMeleeAfterImage.LastResolvedFrame = frame;
-                        alpha = MeleeAfterimagePlaybackResolver.ResolveFrameAlpha(frame, frameElapsedMs);
-                        _activeMeleeAfterImage.LastResolvedAlpha = alpha;
-                    }
+                        resolvedFrameIndex,
+                        frameElapsedMs,
+                        out MeleeAfterimagePlaybackResolver.Snapshot snapshot);
+                    int lastFrameIndex = _activeMeleeAfterImage.LastFrameIndex;
+                    SkillFrame lastResolvedFrame = _activeMeleeAfterImage.LastResolvedFrame;
+                    float lastResolvedAlpha = _activeMeleeAfterImage.LastResolvedAlpha;
+                    MeleeAfterimagePlaybackResolver.ApplySnapshotToCache(
+                        snapshot,
+                        ref lastFrameIndex,
+                        ref lastResolvedFrame,
+                        ref lastResolvedAlpha);
+                    _activeMeleeAfterImage.LastFrameIndex = lastFrameIndex;
+                    _activeMeleeAfterImage.LastResolvedFrame = lastResolvedFrame;
+                    _activeMeleeAfterImage.LastResolvedAlpha = lastResolvedAlpha;
+                    frameIndex = _activeMeleeAfterImage.LastFrameIndex;
+                    frame = _activeMeleeAfterImage.LastResolvedFrame;
+                    alpha = _activeMeleeAfterImage.LastResolvedAlpha;
                 }
             }
             else if (_activeMeleeAfterImage.FadeStartTime >= 0)
@@ -4184,6 +4202,14 @@ namespace HaCreator.MapSimulator.Character
             int currentTime)
         {
             if (_activeShadowPartner?.ActionAnimations == null)
+            {
+                return;
+            }
+
+            int? rawActionCode = TryGetCurrentClientRawActionCode(out int resolvedRawActionCode)
+                ? resolvedRawActionCode
+                : null;
+            if (!ShadowPartnerClientActionResolver.ShouldRenderClientShadowPartner(_activeShadowPartner.SkillId, rawActionCode))
             {
                 return;
             }
@@ -4819,6 +4845,11 @@ namespace HaCreator.MapSimulator.Character
             Rectangle preparedBounds,
             Rectangle liveBounds)
         {
+            if (!preparedBounds.IsEmpty)
+            {
+                return preparedBounds;
+            }
+
             if (!liveBounds.IsEmpty)
             {
                 return liveBounds;
@@ -6091,14 +6122,8 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            if (_portableChairExternalPairRequested)
+            if (ShouldUsePortableChairExternalPair(_portableChairExternalPairRequested, _portableChairHasExternalPair))
             {
-                if (!_portableChairHasExternalPair)
-                {
-                    chair = null;
-                    return false;
-                }
-
                 return IsPortableChairActualPairActive(
                     chair,
                     FacingRight,
@@ -6146,14 +6171,8 @@ namespace HaCreator.MapSimulator.Character
                 && chair.CoupleMidpointLayers != null
                 && chair.CoupleMidpointLayers.Count > 0)
             {
-                if (_portableChairExternalPairRequested)
+                if (ShouldUsePortableChairExternalPair(_portableChairExternalPairRequested, _portableChairHasExternalPair))
                 {
-                    if (!_portableChairHasExternalPair)
-                    {
-                        chair = null;
-                        return false;
-                    }
-
                     partnerX = _portableChairExternalPairPosition.X;
                     partnerY = _portableChairExternalPairPosition.Y;
                     return true;
@@ -6194,6 +6213,11 @@ namespace HaCreator.MapSimulator.Character
             int distanceY = chair.CoupleDistanceY ?? 0;
             int directionSign = ResolvePortableChairPairDirectionSign(chair, facingRight);
             return new Point(directionSign * distanceX, distanceY);
+        }
+
+        internal static bool ShouldUsePortableChairExternalPair(bool externalPairRequested, bool hasExternalPair)
+        {
+            return externalPairRequested && hasExternalPair;
         }
 
         internal static bool IsPortableChairRidingChairMountItemId(int itemId)
@@ -7759,7 +7783,13 @@ namespace HaCreator.MapSimulator.Character
             resolution = new SkillAvatarTransformResolutionForTesting(
                 transform.StandActionNames ?? Array.Empty<string>(),
                 transform.WalkActionNames ?? Array.Empty<string>(),
+                transform.JumpActionNames ?? Array.Empty<string>(),
                 transform.AttackActionNames ?? Array.Empty<string>(),
+                transform.LadderActionNames ?? Array.Empty<string>(),
+                transform.RopeActionNames ?? Array.Empty<string>(),
+                transform.FlyActionNames ?? Array.Empty<string>(),
+                transform.SwimActionNames ?? Array.Empty<string>(),
+                transform.HitActionNames ?? Array.Empty<string>(),
                 transform.ProneActionNames ?? Array.Empty<string>(),
                 transform.ExitActionName,
                 transform.LocksMovement);

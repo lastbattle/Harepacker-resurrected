@@ -152,7 +152,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (TryResolvePendingCrossMapTeleportPortalIndex(target, out int portalIndex))
+            if (TryResolvePendingCrossMapTeleportPortalIndex(_portalPool, target, out int portalIndex))
             {
                 if (_portalPool.GetPortal(portalIndex)?.PortalInstance != null)
                 {
@@ -441,39 +441,27 @@ namespace HaCreator.MapSimulator
             return TryResolvePacketOwnedTeleportPortalByPosition(_portalPool, targetX, targetY, out portalIndex, out portalInstance);
         }
 
-        private bool TryResolvePendingCrossMapTeleportPortalIndex(PendingCrossMapTeleportTarget target, out int portalIndex)
+        internal static bool TryResolvePendingCrossMapTeleportPortalIndex(
+            PortalPool portalPool,
+            PendingCrossMapTeleportTarget target,
+            out int portalIndex)
         {
             portalIndex = -1;
-            if (target == null || _portalPool == null)
+            if (target == null || portalPool == null)
             {
                 return false;
             }
 
-            if (TryResolvePacketOwnedTeleportPortalIndexByNameAndPosition(
-                _portalPool,
+            if (TryResolvePacketOwnedTeleportPortalIndexByName(
+                portalPool,
                 target.TargetPortalName,
-                target.FallbackX,
-                target.FallbackY,
                 out portalIndex))
             {
                 return true;
             }
 
-            if (TryResolvePacketOwnedTeleportUniqueCandidatePortalName(
-                target.TargetPortalNameCandidates,
-                out string uniqueCandidatePortalName)
-                && TryResolvePacketOwnedTeleportPortalIndexByNameAndPosition(
-                    _portalPool,
-                    uniqueCandidatePortalName,
-                    target.FallbackX,
-                    target.FallbackY,
-                    out portalIndex))
-            {
-                return true;
-            }
-
             if (TryResolvePacketOwnedTeleportPortalIndexByCandidateNames(
-                _portalPool,
+                portalPool,
                 target.TargetPortalNameCandidates,
                 out portalIndex))
             {
@@ -482,7 +470,7 @@ namespace HaCreator.MapSimulator
 
             if (target.HasFallbackCoordinates
                 && TryResolvePacketOwnedTeleportPortalIndexByCandidateNamesAndPosition(
-                    _portalPool,
+                    portalPool,
                     target.TargetPortalNameCandidates,
                     target.FallbackX.Value,
                     target.FallbackY.Value,
@@ -493,6 +481,7 @@ namespace HaCreator.MapSimulator
 
             if (target.HasFallbackCoordinates
                 && TryResolvePacketOwnedTeleportPortalByPosition(
+                    portalPool,
                     target.FallbackX.Value,
                     target.FallbackY.Value,
                     out portalIndex,

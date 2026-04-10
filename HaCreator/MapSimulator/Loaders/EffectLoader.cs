@@ -70,6 +70,17 @@ namespace HaCreator.MapSimulator.Loaders
             if (stateFrames.Count == 0)
                 return null;
 
+            List<IDXObject> LoadExactReactorFrames(WzImageProperty property)
+            {
+                return LoadReactorFramesForProperty(
+                    texturePool,
+                    property,
+                    reactorInstance.X,
+                    reactorInstance.Y,
+                    device,
+                    usedProps);
+            }
+
             return new ReactorItem(
                 reactorInstance,
                 stateFrames,
@@ -79,7 +90,8 @@ namespace HaCreator.MapSimulator.Loaders
                 stateLayerProperties,
                 stateHitProperties,
                 stateIndexedHitProperties,
-                rootHitProperty);
+                rootHitProperty,
+                LoadExactReactorFrames);
         }
 
         internal static WzImageProperty ResolveReactorFrameSourceProperty(WzImageProperty property)

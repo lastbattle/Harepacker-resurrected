@@ -10,6 +10,7 @@ using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Companions;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Loaders;
+using HaCreator.MapSimulator.Physics;
 using HaSharedLibrary.Wz;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Animation;
@@ -664,6 +665,7 @@ namespace HaCreator.MapSimulator
         private int _packetOwnedTeleportRequestCompletedAt = int.MinValue;
         private int _lastPacketOwnedTeleportPortalRequestTick = int.MinValue;
         private int _lastPacketOwnedTeleportPortalIndex = -1;
+        private int _lastPortalCollisionSourcePortalIndex = -1;
         private string _lastPacketOwnedTeleportSourcePortalName;
         private string _lastPacketOwnedTeleportTargetPortalName;
         private int _lastPacketOwnedTeleportRegistrationTick = int.MinValue;
@@ -3531,6 +3533,7 @@ namespace HaCreator.MapSimulator
                 eventWindow.SetSnapshotProvider(BuildUtilityEventSnapshot);
             }
 
+            WireDragonBoxWindow();
             WireAccountMoreInfoWindow();
 
             ApplyUtilityAudioSettings();
@@ -12952,13 +12955,12 @@ namespace HaCreator.MapSimulator
             string currentPrecept = _familyChartRuntime.BuildChartSnapshot().Precept ?? string.Empty;
 
             ShowLoginUtilityDialog(
-                "Family Precept",
+                string.Empty,
                 prompt,
                 LoginUtilityDialogButtonLayout.YesNo,
                 LoginUtilityDialogAction.SetFamilyPrecept,
                 primaryLabel: "OK",
                 secondaryLabel: "Cancel",
-                inputLabel: "Precept",
                 inputPlaceholder: prompt,
                 inputMaxLength: ClientFamilyPreceptInputMaxLength,
                 inputValue: currentPrecept,
@@ -14286,7 +14288,8 @@ namespace HaCreator.MapSimulator
                 softKeyboardType: prompt.SoftKeyboardType,
                 visualStyle: prompt.VisualStyle,
                 frameVariant: prompt.FrameVariant,
-                inputBoundsOverride: prompt.InputBoundsOverride);
+                inputBoundsOverride: prompt.InputBoundsOverride,
+                trackDirectionModeOwner: prompt.TrackDirectionModeOwner);
         }
 
 
@@ -14530,6 +14533,7 @@ namespace HaCreator.MapSimulator
             return new LoginPacketDialogPromptConfiguration
             {
                 Owner = overridePrompt.HasExplicitOwner ? overridePrompt.Owner : basePrompt.Owner,
+                TrackDirectionModeOwner = overridePrompt.TrackDirectionModeOwner || basePrompt.TrackDirectionModeOwner,
                 HasExplicitOwner = overridePrompt.HasExplicitOwner || basePrompt.HasExplicitOwner,
                 Title = string.IsNullOrWhiteSpace(overridePrompt.Title) ? basePrompt.Title : overridePrompt.Title,
                 Body = string.IsNullOrWhiteSpace(overridePrompt.Body) ? basePrompt.Body : overridePrompt.Body,
@@ -19149,6 +19153,78 @@ namespace HaCreator.MapSimulator
 
 
 
+        private void HandleQuestFieldEnterRuntime(int currentTickCount)
+        {
+            IReadOnlyList<QuestRuntimeManager.QuestFieldEnterEvent> events =
+                _questRuntime?.PollFieldEnterActions(_playerManager?.Player?.Build);
+            if (events == null || events.Count == 0)
+            {
+                return;
+            }
+
+
+            bool openedModal = false;
+            for (int i = 0; i < events.Count; i++)
+            {
+                QuestRuntimeManager.QuestFieldEnterEvent fieldEnterEvent = events[i];
+                if (fieldEnterEvent == null)
+                {
+                    continue;
+                }
+
+
+                if (fieldEnterEvent.Messages.Count > 0)
+                {
+                    if (fieldEnterEvent.SpeakerNpcId > 0 &&
+                        _npcQuestFeedback.Enqueue(fieldEnterEvent.SpeakerNpcId, fieldEnterEvent.Messages, currentTickCount))
+                    {
+                        ApplyNpcQuestFeedbackAnimation(currentTickCount);
+                    }
+                    else
+                    {
+                        foreach (string message in fieldEnterEvent.Messages)
+                        {
+                            if (!string.IsNullOrWhiteSpace(message))
+                            {
+                                _chat?.AddSystemMessage(message, currentTickCount);
+                            }
+                        }
+                    }
+                }
+
+
+                if (!openedModal &&
+                    fieldEnterEvent.ModalPages.Count > 0)
+                {
+                    OpenPacketOwnedQuestResultModal(
+                        fieldEnterEvent.SpeakerNpcId,
+                        new PacketQuestResultPresentation
+                        {
+                            QuestId = fieldEnterEvent.QuestId,
+                            QuestName = fieldEnterEvent.QuestName,
+                            NoticeText = fieldEnterEvent.NoticeText,
+                            ModalPages = fieldEnterEvent.ModalPages
+                        });
+                    openedModal = true;
+
+                    if (!string.IsNullOrWhiteSpace(fieldEnterEvent.NoticeText))
+                    {
+                        _chat?.AddSystemMessage(fieldEnterEvent.NoticeText, currentTickCount);
+                    }
+
+                    continue;
+                }
+
+
+                if (!string.IsNullOrWhiteSpace(fieldEnterEvent.NoticeText))
+                {
+                    ShowPacketOwnedRewardResultNotice(fieldEnterEvent.NoticeText);
+                }
+            }
+        }
+
+
+
         private void UpdateNpcQuestFeedbackState(int currentTickCount)
         {
             if (!_npcQuestFeedback.Update(currentTickCount))
@@ -21018,9 +21094,7 @@ namespace HaCreator.MapSimulator
             }
 
 
-            WzSubProperty itemProperty = LoadInventoryItemProperty(itemId);
-            WzSubProperty specProperty = itemProperty?["spec"] as WzSubProperty;
-            return GetWzIntValue(specProperty?["notPickupByPet"]) > 0;
+            return InventoryItemMetadataResolver.IsPetPickupBlocked(itemId);
         }
 
 
@@ -22189,25 +22263,12 @@ namespace HaCreator.MapSimulator
         }
 
 
-        private static string ResolvePickupItemTypeName(int itemId, InventoryType inventoryType)
+        internal static string ResolvePickupItemTypeName(int itemId, InventoryType inventoryType)
         {
-            if (Program.InfoManager?.ItemNameCache != null
-                && Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
-                && !string.IsNullOrWhiteSpace(itemInfo.Item1))
-            {
-                return itemInfo.Item1;
-            }
-
-
-            return inventoryType switch
-            {
-                InventoryType.EQUIP => "equipment item",
-                InventoryType.USE => "use item",
-                InventoryType.SETUP => "setup item",
-                InventoryType.ETC => "etc item",
-                InventoryType.CASH => "cash item",
-                _ => "item"
-            };
+            _ = inventoryType;
+            return InventoryItemMetadataResolver.TryResolveItemTypeName(itemId, out string itemTypeName)
+                ? itemTypeName
+                : null;
         }
 
 
@@ -23431,6 +23492,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (HasVisibleRemoteTrackedUserActor(occupantName))
+            {
+                return true;
+            }
+
             if (hasDedicatedFieldActorMarker
                 && IsTraderOccupantRepresentedByFieldActor(kind, runtime, occupant))
             {
@@ -23459,6 +23525,15 @@ namespace HaCreator.MapSimulator
                 SocialRoomKind.EntrustedShop => occupant.Role is SocialRoomOccupantRole.Owner or SocialRoomOccupantRole.Merchant or SocialRoomOccupantRole.Buyer or SocialRoomOccupantRole.Visitor,
                 _ => false
             };
+        }
+
+        private bool HasVisibleRemoteTrackedUserActor(string occupantName)
+        {
+            return !string.IsNullOrWhiteSpace(occupantName)
+                && _remoteUserPool.TryGetActorByName(occupantName, out RemoteUserActor actor)
+                && actor != null
+                && actor.IsVisibleInWorld
+                && !actor.HiddenLikeClient;
         }
 
         private static bool IsTraderOccupantRepresentedByFieldActor(
@@ -24296,6 +24371,13 @@ namespace HaCreator.MapSimulator
                 int reactorIndex = spawnedIndices[0];
                 _monsterCarnivalGuardianSlotToReactorIndex[placementEntry.Key] = reactorIndex;
                 _monsterCarnivalGuardianReactorIndexToSlot[reactorIndex] = placementEntry.Key;
+                ReactorRuntimeData runtimeData = _reactorPool.GetReactorData(reactorIndex);
+                if (runtimeData != null)
+                {
+                    runtimeData.RequiredHits = Math.Max(1, placement.ReactorRequiredHits);
+                    runtimeData.HitCount = Math.Clamp(placement.ReactorHitCount, 0, runtimeData.RequiredHits);
+                }
+
                 RegisterDynamicReactorForRendering(reactorIndex);
             }
         }
@@ -24337,6 +24419,49 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private void ResolveMonsterCarnivalGuardianHitProgress(
+            MonsterCarnivalField carnivalField,
+            int slotIndex,
+            int reactorIndex,
+            bool destroyingPlacement,
+            out int hitCount,
+            out int requiredHits)
+        {
+            hitCount = destroyingPlacement ? 1 : 0;
+            requiredHits = 1;
+
+            MonsterCarnivalGuardianPlacement placement = null;
+            if (carnivalField?.GuardianPlacements != null)
+            {
+                carnivalField.GuardianPlacements.TryGetValue(slotIndex, out placement);
+            }
+
+            if (placement != null)
+            {
+                requiredHits = Math.Max(1, placement.ReactorRequiredHits);
+                hitCount = destroyingPlacement
+                    ? Math.Max(requiredHits, placement.ReactorHitCount)
+                    : Math.Max(1, placement.ReactorHitCount + 1);
+            }
+
+            ReactorRuntimeData runtimeData = reactorIndex >= 0 ? _reactorPool?.GetReactorData(reactorIndex) : null;
+            if (runtimeData != null)
+            {
+                requiredHits = Math.Max(requiredHits, runtimeData.RequiredHits);
+                if (destroyingPlacement)
+                {
+                    hitCount = Math.Max(requiredHits, Math.Max(hitCount, runtimeData.HitCount));
+                }
+                else if (runtimeData.HitCount > 0)
+                {
+                    hitCount = runtimeData.HitCount;
+                }
+            }
+
+            requiredHits = Math.Max(1, requiredHits);
+            hitCount = Math.Clamp(hitCount, 1, requiredHits);
         }
 
         private bool TryUseConsumableInventoryItemAtSlot(int itemId, InventoryType inventoryType, int slotIndex, int currentTime)
@@ -25221,10 +25346,11 @@ namespace HaCreator.MapSimulator
 
         private bool ResolvePassiveTransferFieldReadyState()
         {
-            long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
             return PassiveTransferFieldReadinessEvaluator.CanRetryFromLiveFieldInterface(
-                fieldLimit,
-                HasPassiveTransferFieldInterface());
+                new PassiveTransferFieldInterfaceState(
+                    HasLiveFieldInterface: HasPassiveTransferFieldInterface(),
+                    AllowsTransferField: ResolvePassiveTransferFieldRuntimeTransferAllowance(),
+                    HasPendingSpecialTransfer: _specialFieldRuntime.HasPendingTransfer));
         }
 
         private bool HasPassiveTransferFieldInterface()
@@ -25232,6 +25358,17 @@ namespace HaCreator.MapSimulator
             return _mapBoard?.MapInfo != null
                    && _playerManager?.Player?.Physics != null
                    && !_gameState.PendingMapChange;
+        }
+
+        private bool ResolvePassiveTransferFieldRuntimeTransferAllowance()
+        {
+            if (_fieldRuleRuntime != null)
+            {
+                return _fieldRuleRuntime.CanTransferField;
+            }
+
+            long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
+            return FieldInteractionRestrictionEvaluator.CanTransferField(fieldLimit);
         }
 
         private bool CanProcessPassiveTransferFieldRequest(int currentTime)
@@ -25265,6 +25402,9 @@ namespace HaCreator.MapSimulator
 
         private bool TryHandlePortalInteractCore(int currentTime)
         {
+            // Central local owner for portal collision parity. This mirrors
+            // the client seam where `CUserLocal::CheckPortal_Collision`
+            // resolves the colliding portal first and then branches by portal type.
             // Get player position
             var playerPos = _playerManager.GetPlayerPosition();
             float playerX = playerPos.X;
@@ -25440,187 +25580,236 @@ namespace HaCreator.MapSimulator
 
 
 
-            // Portal interaction range (in pixels)
-
-            const int PORTAL_INTERACT_RANGE_X = 40; // Horizontal range
-
-            const int PORTAL_INTERACT_RANGE_Y = 60; // Vertical range (player hitbox height consideration)
-
-
-
-            // First check visible portals
-
-            PortalItem nearestPortal = null;
-
-            float nearestDistance = float.MaxValue;
-
-
-
-            for (int i = 0; i < _portalsArray.Length; i++)
+            PortalCollisionResult? collision = ResolvePortalCollisionAtLocalUserPosition();
+            if (!collision.HasValue || collision.Value.Portal?.PortalInstance == null)
             {
-                PortalItem portal = _portalsArray[i];
-                PortalInstance instance = portal.PortalInstance;
-
-
-                // Skip portals without valid destinations
-
-                if (instance.tm <= 0 || instance.tm == MapConstants.MaxMap)
-
-                    continue;
-
-
-
-                // Check if player is within range of portal
-
-                float dx = Math.Abs(playerX - instance.X);
-
-                float dy = Math.Abs(playerY - instance.Y);
-
-
-
-                if (dx <= PORTAL_INTERACT_RANGE_X && dy <= PORTAL_INTERACT_RANGE_Y)
-                {
-                    float distance = dx + dy; // Manhattan distance for simplicity
-                    if (distance < nearestDistance)
-                    {
-                        nearestDistance = distance;
-                        nearestPortal = portal;
-                    }
-                }
+                return false;
             }
 
+            return TryHandlePortalCollisionByType(
+                collision.Value.Portal.PortalInstance,
+                collision.Value.PortalIndex,
+                currentTime,
+                fieldLimit);
 
-            // If a visible portal is found, teleport to it
-            if (nearestPortal != null)
+        }
+
+        private PortalCollisionResult? ResolvePortalCollisionAtLocalUserPosition()
+        {
+            if (_portalPool == null)
             {
-                string transferRestrictionMessage = FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(fieldLimit);
-                if (!string.IsNullOrWhiteSpace(transferRestrictionMessage))
-                {
-                    ShowFieldRestrictionMessage(transferRestrictionMessage);
-                    return true;
-                }
+                return null;
+            }
 
-                if (!CanQueueKnownCrossMapTransfer(nearestPortal.PortalInstance.tm, showFailureMessage: true))
-                {
-                    return true;
-                }
+            PlayerCharacter player = _playerManager?.Player;
+            if (player?.Physics == null)
+            {
+                return null;
+            }
 
+            Vector2 position = player.Physics.GetPosition();
+            return _portalPool.FindPortalCollision(position.X, position.Y);
+        }
 
-                PlayPortalSE();
-                _playerManager?.ForceStand();
-                PublishDynamicObjectTagStatesForPortal(nearestPortal?.PortalInstance, currentTime);
-                RecordPacketOwnedTeleportPortalRequest(nearestPortal.PortalInstance);
+        private bool TryHandlePortalCollisionByType(
+            PortalInstance portal,
+            int portalIndex,
+            int currentTime,
+            long fieldLimit)
+        {
+            if (portal == null)
+            {
+                return false;
+            }
 
-                if (TryStartPacketOwnedPortalTeleport(nearestPortal.PortalInstance, currentTime))
-                {
-                    return true;
-                }
+            return portal.pt switch
+            {
+                PortalType.CollisionScript => TryHandleCollisionScriptPortal(portal, portalIndex, currentTime, fieldLimit),
+                PortalType.CollisionVerticalJump => TryHandleVerticalJumpPortal(portal),
+                PortalType.CollisionCustomImpact => TryHandleCustomImpactPortal(portal, currentTime),
+                _ => TryHandleTransferPortalCollision(portal, portalIndex, currentTime, fieldLimit)
+            };
+        }
 
-                TryResolvePacketOwnedPendingCrossMapPortalNames(
-                    nearestPortal.PortalInstance,
-                    out string visibleTargetPortalName,
-                    out string[] visibleTargetPortalNameCandidates);
-                StagePendingCrossMapTeleport(
-                    nearestPortal.PortalInstance.tm,
-                    sourcePortalName: nearestPortal.PortalInstance.pn,
-                    targetPortalName: visibleTargetPortalName,
-                    targetPortalNameCandidates: visibleTargetPortalNameCandidates);
-                        _gameState.PendingMapChange = true;
-                        _gameState.PendingMapId = nearestPortal.PortalInstance.tm;
-                        _gameState.PendingPortalName = visibleTargetPortalName;
-                        _gameState.PendingPortalNameCandidates = visibleTargetPortalNameCandidates ?? Array.Empty<string>();
-                        _gameState.PendingPortalIndex = -1;
+        private bool TryHandleCollisionScriptPortal(
+            PortalInstance portal,
+            int portalIndex,
+            int currentTime,
+            long fieldLimit)
+        {
+            if (!CanSendCollisionScriptPortalRequest(portal, portalIndex, currentTime))
+            {
                 return true;
             }
 
+            return TryHandleTransferPortalCollision(portal, portalIndex, currentTime, fieldLimit);
+        }
 
-            // No visible portal found - check hidden portals from _mapBoard.BoardItems.Portals
-
-            PortalInstance nearestHiddenPortal = null;
-
-            nearestDistance = float.MaxValue;
-
-
-
-            foreach (var portal in _mapBoard.BoardItems.Portals)
+        private bool CanSendCollisionScriptPortalRequest(PortalInstance portal, int portalIndex, int currentTime)
+        {
+            if (portal == null || _packetOwnedTeleportRequestActive)
             {
-                // Only consider portals with valid map destinations
-                if (portal.tm <= 0 || portal.tm == MapConstants.MaxMap)
-                    continue;
-
-
-                // Check if player is within range of portal (use portal's range if available)
-
-                int rangeX = portal.hRange ?? PORTAL_INTERACT_RANGE_X;
-
-                int rangeY = portal.vRange ?? PORTAL_INTERACT_RANGE_Y;
-
-
-
-                float dx = Math.Abs(playerX - portal.X);
-
-                float dy = Math.Abs(playerY - portal.Y);
-
-
-
-                if (dx <= rangeX && dy <= rangeY)
-                {
-                    float distance = dx + dy;
-                    if (distance < nearestDistance)
-                    {
-                        nearestDistance = distance;
-                        nearestHiddenPortal = portal;
-                    }
-                }
+                return false;
             }
 
-
-            // If a hidden portal is found, teleport to it
-            if (nearestHiddenPortal != null)
+            int delayMs = Math.Max(0, portal.delay ?? 0);
+            if (_lastPacketOwnedTeleportPortalRequestTick != int.MinValue
+                && unchecked(currentTime - _lastPacketOwnedTeleportPortalRequestTick) < delayMs)
             {
-                string transferRestrictionMessage = FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(fieldLimit);
-                if (!string.IsNullOrWhiteSpace(transferRestrictionMessage))
-                {
-                    ShowFieldRestrictionMessage(transferRestrictionMessage);
-                    return true;
-                }
+                return false;
+            }
 
-                if (!CanQueueKnownCrossMapTransfer(nearestHiddenPortal.tm, showFailureMessage: true))
-                {
-                    return true;
-                }
+            return portal.onlyOnce != MapleBool.True || portalIndex != _lastPortalCollisionSourcePortalIndex;
+        }
 
+        private bool TryHandleVerticalJumpPortal(PortalInstance portal)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (player?.Physics == null)
+            {
+                return false;
+            }
 
-                PlayPortalSE();
-                _playerManager?.ForceStand();
-                PublishDynamicObjectTagStatesForPortal(nearestHiddenPortal, currentTime);
-                RecordPacketOwnedTeleportPortalRequest(nearestHiddenPortal);
+            double horizontalImpact = portal.horizontalImpact ?? 0;
+            double verticalImpact = -(portal.verticalImpact ?? (int)CVecCtrl.JumpVelocity);
+            player.Physics.Impact(horizontalImpact, verticalImpact);
+            _ = ClearPacketOwnedTeleportPassengerLink();
+            return true;
+        }
 
-                if (TryStartPacketOwnedPortalTeleport(nearestHiddenPortal, currentTime))
-                {
-                    return true;
-                }
+        private bool TryHandleCustomImpactPortal(PortalInstance portal, int currentTime)
+        {
+            if (portal == null)
+            {
+                return false;
+            }
 
-                TryResolvePacketOwnedPendingCrossMapPortalNames(
-                    nearestHiddenPortal,
-                    out string hiddenTargetPortalName,
-                    out string[] hiddenTargetPortalNameCandidates);
-                StagePendingCrossMapTeleport(
-                    nearestHiddenPortal.tm,
-                    sourcePortalName: nearestHiddenPortal.pn,
-                    targetPortalName: hiddenTargetPortalName,
-                    targetPortalNameCandidates: hiddenTargetPortalNameCandidates);
-                        _gameState.PendingMapChange = true;
-                        _gameState.PendingMapId = nearestHiddenPortal.tm;
-                        _gameState.PendingPortalName = hiddenTargetPortalName;
-                        _gameState.PendingPortalNameCandidates = hiddenTargetPortalNameCandidates ?? Array.Empty<string>();
-                        _gameState.PendingPortalIndex = -1;
+            if (!CanApplyCustomImpactPortalFromReactor(portal))
+            {
                 return true;
             }
 
+            if (!string.IsNullOrWhiteSpace(portal.sessionValueKey)
+                && TryApplyPortalSessionValueImpact(portal))
+            {
+                _ = ClearPacketOwnedTeleportPassengerLink();
+                return true;
+            }
+
+            PlayerCharacter player = _playerManager?.Player;
+            if (player?.Physics == null)
+            {
+                return false;
+            }
+
+            player.Physics.Impact(
+                portal.horizontalImpact ?? 0,
+                -(portal.verticalImpact ?? 0));
+            _ = ClearPacketOwnedTeleportPassengerLink();
+            return true;
+        }
+
+        private bool CanApplyCustomImpactPortalFromReactor(PortalInstance portal)
+        {
+            if (portal == null
+                || string.IsNullOrWhiteSpace(portal.reactorName)
+                || _reactorPool == null)
+            {
+                return true;
+            }
+
+            if (!_reactorPool.TryGetReactorStatesByName(portal.reactorName, out int state, out int visualState))
+            {
+                return true;
+            }
+
+            return state == (int)ReactorState.Activated
+                && visualState != 1
+                && visualState != 2;
+        }
+
+        private bool TryApplyPortalSessionValueImpact(PortalInstance portal)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (player?.Physics == null)
+            {
+                return false;
+            }
+
+            if (_specialFieldRuntime?.PartyRaid?.IsActive == true
+                && _specialFieldRuntime.PartyRaid.OnSessionValue(
+                    portal.sessionValueKey,
+                    string.IsNullOrWhiteSpace(portal.sessionValue) ? "0" : portal.sessionValue))
+            {
+                player.Physics.SetImpactNext(
+                    portal.horizontalImpact ?? 0,
+                    -(portal.verticalImpact ?? 0));
+                return true;
+            }
 
             return false;
+        }
 
+        private bool TryHandleTransferPortalCollision(
+            PortalInstance portal,
+            int portalIndex,
+            int currentTime,
+            long fieldLimit)
+        {
+            if (portal == null || portal.tm <= 0 || portal.tm == MapConstants.MaxMap)
+            {
+                return false;
+            }
+
+            if (portal.tm != (_mapBoard?.MapInfo?.id ?? -1))
+            {
+                string transferRestrictionMessage =
+                    FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(fieldLimit);
+                if (!string.IsNullOrWhiteSpace(transferRestrictionMessage))
+                {
+                    ShowFieldRestrictionMessage(transferRestrictionMessage);
+                    return true;
+                }
+
+                if (!CanQueueKnownCrossMapTransfer(portal.tm, showFailureMessage: true))
+                {
+                    return true;
+                }
+            }
+
+            _playerManager?.ForceStand();
+            PublishDynamicObjectTagStatesForPortal(portal, currentTime);
+            RecordPacketOwnedTeleportPortalRequest(portal);
+
+            if (TryStartPacketOwnedPortalTeleport(portal, currentTime))
+            {
+                RegisterPortalCollisionRequestSource(portalIndex);
+                PlayPortalSE();
+                return true;
+            }
+
+            TryResolvePacketOwnedPendingCrossMapPortalNames(
+                portal,
+                out string targetPortalName,
+                out string[] targetPortalNameCandidates);
+            StagePendingCrossMapTeleport(
+                portal.tm,
+                sourcePortalName: portal.pn,
+                targetPortalName: targetPortalName,
+                targetPortalNameCandidates: targetPortalNameCandidates);
+            _gameState.PendingMapChange = true;
+            _gameState.PendingMapId = portal.tm;
+            _gameState.PendingPortalName = targetPortalName;
+            _gameState.PendingPortalNameCandidates = targetPortalNameCandidates ?? Array.Empty<string>();
+            _gameState.PendingPortalIndex = -1;
+            RegisterPortalCollisionRequestSource(portalIndex);
+            PlayPortalSE();
+            return true;
+        }
+
+        private void RegisterPortalCollisionRequestSource(int portalIndex)
+        {
+            _lastPortalCollisionSourcePortalIndex = portalIndex;
         }
 
 
@@ -26200,7 +26389,17 @@ namespace HaCreator.MapSimulator
                     return;
                 }
 
-                if (carnivalField.TryApplyGuardianReactorHit(slotIndex, hitCount: 1, requiredHits: 1, destroyPlacement: false, tickCount: Environment.TickCount, out _))
+                int reactorIndex = _monsterCarnivalGuardianSlotToReactorIndex.TryGetValue(slotIndex, out int trackedReactorIndex)
+                    ? trackedReactorIndex
+                    : -1;
+                ResolveMonsterCarnivalGuardianHitProgress(
+                    carnivalField,
+                    slotIndex,
+                    reactorIndex,
+                    destroyingPlacement: false,
+                    out int hitCount,
+                    out int requiredHits);
+                if (carnivalField.TryApplyGuardianReactorHit(slotIndex, hitCount, requiredHits, destroyPlacement: false, tickCount: Environment.TickCount, out _))
                 {
                     _chat?.AddMessage(carnivalField.CurrentStatusMessage, new Color(255, 228, 151), Environment.TickCount);
                 }
@@ -26226,9 +26425,19 @@ namespace HaCreator.MapSimulator
 
                 MonsterCarnivalField carnivalField = _specialFieldRuntime?.Minigames?.MonsterCarnival;
                 if (carnivalField?.IsVisible == true
-                    && carnivalField.TryApplyGuardianReactorHit(slotIndex, hitCount: 1, requiredHits: 1, destroyPlacement: true, tickCount: Environment.TickCount, out _))
+                    && carnivalField.GuardianPlacements.ContainsKey(slotIndex))
                 {
-                    _chat?.AddMessage(carnivalField.CurrentStatusMessage, new Color(255, 228, 151), Environment.TickCount);
+                    ResolveMonsterCarnivalGuardianHitProgress(
+                        carnivalField,
+                        slotIndex,
+                        reactorIndex: -1,
+                        destroyingPlacement: true,
+                        out int hitCount,
+                        out int requiredHits);
+                    if (carnivalField.TryApplyGuardianReactorHit(slotIndex, hitCount, requiredHits, destroyPlacement: true, tickCount: Environment.TickCount, out _))
+                    {
+                        _chat?.AddMessage(carnivalField.CurrentStatusMessage, new Color(255, 228, 151), Environment.TickCount);
+                    }
                 }
             });
             _reactorPool.SetOnReactorScriptStateChanged((reactor, scriptNames, isEnabled, currentTick) =>
@@ -27460,6 +27669,8 @@ namespace HaCreator.MapSimulator
 
 
             _playerManager.Skills.OnSkillCast = HandlePlayerSkillCast;
+            _playerManager.Skills.OnBuffApplied = HandleAnimationDisplayerBuffApplied;
+            _playerManager.Skills.OnClientSkillEffectRequested = HandleAnimationDisplayerClientSkillEffectRequested;
             _playerManager.Skills.OnFieldSkillCastRejected = HandleFieldSkillCastRejected;
             _playerManager.Skills.OnSkillCooldownStarted = HandleSkillCooldownStarted;
             _playerManager.Skills.OnSkillCooldownBlocked = HandleSkillCooldownBlocked;
@@ -27789,6 +28000,14 @@ namespace HaCreator.MapSimulator
         {
             if (questId <= 0 || uiWindowManager == null)
             {
+                return;
+            }
+
+            if (_activeQuestDetailQuestId == questId && uiWindowManager.QuestDetailWindow?.IsVisible == true)
+            {
+                _activeQuestDetailQuestId = 0;
+                uiWindowManager.QuestDetailWindow.SetDetailState(null, -1, 0);
+                uiWindowManager.QuestDetailWindow.Hide();
                 return;
             }
 
@@ -28306,9 +28525,9 @@ namespace HaCreator.MapSimulator
                     out deliveryClientSlotIndex);
             }
 
-            string deliveryMessage = localHandoff?.Invoke() ?? "Opened the local quest-delivery handoff.";
             if (cashItemId <= 0)
             {
+                string deliveryMessage = localHandoff?.Invoke() ?? "Opened the local quest-delivery handoff.";
                 RegisterPendingQuestDeliveryQuestResult(
                     questId,
                     completionPhase,
@@ -28338,6 +28557,15 @@ namespace HaCreator.MapSimulator
                         cashItemId,
                         commoditySn: 0,
                         sourceContext);
+                    string deliveryMessage = localHandoff?.Invoke() ?? "Opened the local quest-delivery handoff.";
+                    return new QuestWindowActionResult
+                    {
+                        QuestId = questId,
+                        Messages = new[]
+                        {
+                            $"{deliveryMessage} Consumed {cashItemName} from {deliveryInventoryType} slot #{deliveryClientSlotIndex} through the client-shaped delivery-item seam and routed the {sourceContext} for {targetItemName} into the packet-owned delivery handoff."
+                        }
+                    };
                 }
 
                 return new QuestWindowActionResult
@@ -28345,11 +28573,9 @@ namespace HaCreator.MapSimulator
                     QuestId = questId,
                     Messages = new[]
                     {
-                        consumedCashItem
-                            ? $"{deliveryMessage} Consumed {cashItemName} from {deliveryInventoryType} slot #{deliveryClientSlotIndex} through the client-shaped delivery-item seam and routed the {sourceContext} for {targetItemName} into the packet-owned delivery handoff."
-                            : resolvedCashSlot
-                                ? $"{deliveryMessage} Routed from the {sourceContext} for {targetItemName}, but the simulator could not consume {cashItemName} from {deliveryInventoryType} slot #{deliveryClientSlotIndex}."
-                                : $"{deliveryMessage} Routed from the {sourceContext} for {targetItemName}, but no live inventory slot for {cashItemName} could be resolved."
+                        resolvedCashSlot
+                            ? $"{sourceContext} could not consume {cashItemName} from {deliveryInventoryType} slot #{deliveryClientSlotIndex}, so the packet-owned delivery handoff stayed blocked before the created-NPC interaction could open for {targetItemName}."
+                            : $"{sourceContext} could not resolve a live inventory slot for {cashItemName}, so the packet-owned delivery handoff stayed blocked before the created-NPC interaction could open for {targetItemName}."
                     }
                 };
             }
@@ -32185,6 +32411,17 @@ namespace HaCreator.MapSimulator
         {
             while (_coconutPacketInbox.TryDequeue(out CoconutPacketInboxMessage message))
             {
+                if (TryApplyCoconutInboxLocalTeamUpdate(message, _specialFieldRuntime?.Minigames?.Coconut, out string localTeamMessage))
+                {
+                    ApplyClientOwnedFieldWrappers();
+                    _coconutPacketInbox.RecordDispatchResult(
+                        message.Source,
+                        message.PacketType,
+                        success: true,
+                        localTeamMessage);
+                    continue;
+                }
+
                 bool applied = TryDispatchCurrentWrapperPacketIngress(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
                 _coconutPacketInbox.RecordDispatchResult(
                     message.Source,
@@ -32194,6 +32431,17 @@ namespace HaCreator.MapSimulator
             }
             while (_coconutOfficialSessionBridge.TryDequeue(out CoconutPacketInboxMessage bridgeMessage))
             {
+                if (TryApplyCoconutInboxLocalTeamUpdate(bridgeMessage, _specialFieldRuntime?.Minigames?.Coconut, out string localTeamMessage))
+                {
+                    ApplyClientOwnedFieldWrappers();
+                    _coconutOfficialSessionBridge.RecordDispatchResult(
+                        bridgeMessage.Source,
+                        bridgeMessage.PacketType,
+                        success: true,
+                        localTeamMessage);
+                    continue;
+                }
+
                 bool applied = TryDispatchCurrentWrapperPacketIngress(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
                 _coconutOfficialSessionBridge.RecordDispatchResult(
                     bridgeMessage.Source,
@@ -32201,6 +32449,22 @@ namespace HaCreator.MapSimulator
                     applied,
                     bridgeErrorMessage);
             }
+        }
+
+        internal static bool TryApplyCoconutInboxLocalTeamUpdate(
+            CoconutPacketInboxMessage message,
+            CoconutField field,
+            out string statusMessage)
+        {
+            statusMessage = null;
+            if (message?.IsLocalTeamUpdate != true || field?.IsActive != true)
+            {
+                return false;
+            }
+
+            field.SetLocalTeam(message.LocalTeam.GetValueOrDefault());
+            statusMessage = $"localTeam={(field.LocalTeam == 1 ? "Story" : "Maple")}";
+            return true;
         }
 
 

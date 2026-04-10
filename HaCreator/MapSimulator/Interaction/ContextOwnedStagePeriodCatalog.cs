@@ -76,11 +76,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
-            if (TryLoadImage(stageKeywordPath, out WzImage stageKeywordImage))
+            if (!TryLoadImage(stageKeywordPath, out WzImage stageKeywordImage))
             {
-                stageKeywordImage.ParseImage();
-                ApplyStageKeywordAugmentations(themes, stageKeywordImage.WzProperties.OfType<WzImageProperty>());
+                error = $"Context-owned stage-period validation could not load {stageKeywordPath}, so the simulator cannot mirror CStageSystem::BuildCacheData acceptance yet.";
+                return null;
             }
+
+            stageKeywordImage.ParseImage();
+            ApplyStageKeywordAugmentations(themes, stageKeywordImage.WzProperties.OfType<WzImageProperty>());
 
             Dictionary<int, IReadOnlyList<ContextOwnedStageAffectedMapEntry>> affectedMapsByFieldId = new();
             if (TryLoadImage(stageAffectedMapPath, out WzImage stageAffectedMapImage))
@@ -95,20 +98,42 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static ContextOwnedStageSystemCatalog BuildForTesting(
             WzImageProperty stageSystemRoot,
+            out string error,
             WzImageProperty stageKeywordRoot = null,
             WzImageProperty stageAffectedMapRoot = null)
         {
+            error = null;
             Dictionary<string, ContextOwnedStageThemeCatalogEntry> themes = BuildThemes(stageSystemRoot?.WzProperties.OfType<WzImageProperty>());
-            if (stageKeywordRoot != null)
+            if (themes.Count == 0)
             {
-                ApplyStageKeywordAugmentations(themes, stageKeywordRoot.WzProperties.OfType<WzImageProperty>());
+                error = "Context-owned stage-period validation could not discover any concrete theme periods from the supplied StageSystem root.";
+                return null;
             }
+
+            if (stageKeywordRoot == null)
+            {
+                error = "Context-owned stage-period validation requires a StageKeyword root to mirror CStageSystem::BuildCacheData acceptance.";
+                return null;
+            }
+
+            ApplyStageKeywordAugmentations(themes, stageKeywordRoot.WzProperties.OfType<WzImageProperty>());
 
             Dictionary<int, IReadOnlyList<ContextOwnedStageAffectedMapEntry>> affectedMapsByFieldId = stageAffectedMapRoot != null
                 ? BuildAffectedMapCatalog(stageAffectedMapRoot.WzProperties.OfType<WzImageProperty>())
                 : new Dictionary<int, IReadOnlyList<ContextOwnedStageAffectedMapEntry>>();
             ApplyAffectedMapAugmentations(themes, affectedMapsByFieldId);
             return new ContextOwnedStageSystemCatalog(themes, affectedMapsByFieldId);
+        }
+
+        internal IEnumerable<ContextOwnedStagePeriodCatalogEntry> EnumeratePeriods()
+        {
+            foreach (ContextOwnedStageThemeCatalogEntry theme in _themes.Values)
+            {
+                foreach (ContextOwnedStagePeriodCatalogEntry period in theme.Periods)
+                {
+                    yield return period;
+                }
+            }
         }
 
         private static Dictionary<string, ContextOwnedStageThemeCatalogEntry> BuildThemes(IEnumerable<WzImageProperty> themeProperties)
@@ -156,12 +181,17 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static IEnumerable<WzImageProperty> EnumeratePeriodNodes(WzImageProperty themeProperty)
         {
-            foreach (WzImageProperty child in themeProperty.WzProperties.OfType<WzImageProperty>())
+            if (themeProperty["stage"] is WzImageProperty stageProperty)
             {
-                if (byte.TryParse(child.Name, NumberStyles.None, CultureInfo.InvariantCulture, out _))
+                foreach (WzImageProperty child in stageProperty.WzProperties.OfType<WzImageProperty>())
                 {
-                    yield return child;
+                    if (byte.TryParse(child.Name, NumberStyles.None, CultureInfo.InvariantCulture, out _))
+                    {
+                        yield return child;
+                    }
                 }
+
+                yield break;
             }
 
             if (themeProperty["stageList"] is WzImageProperty stageList)
@@ -172,6 +202,16 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         yield return child;
                     }
+                }
+
+                yield break;
+            }
+
+            foreach (WzImageProperty child in themeProperty.WzProperties.OfType<WzImageProperty>())
+            {
+                if (byte.TryParse(child.Name, NumberStyles.None, CultureInfo.InvariantCulture, out _))
+                {
+                    yield return child;
                 }
             }
         }

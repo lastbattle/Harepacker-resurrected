@@ -322,10 +322,12 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (!packet.SkipBlacklistAutoReject && IsBlacklistedName?.Invoke(contact.Name) == true)
             {
+                string localPlayerName = GetLocalParticipant()?.Name ?? "Player";
+                byte[] autoRejectPacket = MessengerPacketCodec.BuildBlockedAutoRejectOutPacket(contact.Name, localPlayerName);
                 _lastActionSummary = $"Automatically rejected Messenger invite from {contact.Name} through the blacklist seam.";
                 AddSystemLog(_lastActionSummary);
                 RecordPacketSummary(
-                    $"CUIMessenger::OnInvite auto-rejected {contact.Name} through the blacklist branch and emitted blocked subtype 5 with the local sender name.");
+                    $"CUIMessenger::OnInvite auto-rejected {contact.Name} through the blacklist branch and emitted 0x8F/5 blocked payload ({autoRejectPacket.Length} bytes) with local sender {localPlayerName}.");
                 NotifyIncomingInvitePromptChanged();
                 return _lastActionSummary;
             }
@@ -1304,6 +1306,7 @@ namespace HaCreator.MapSimulator.Interaction
                     true,
                     _incomingInvite.ContactName,
                     MessengerClientParityText.FormatIncomingInvitePrompt(_incomingInvite.ContactName),
+                    MessengerClientParityText.GetInvitePromptTitle(),
                     _incomingInvite.InviteType,
                     _incomingInvite.InviteSequence,
                     _incomingInvite.SkipBlacklistAutoReject));
@@ -1453,11 +1456,6 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (!CanDestroyMessengerWindow())
             {
-                CollapseSessionToLocalProfileAfterDeleteRequest();
-                CompleteDeleteRequest(
-                    tickCount,
-                    "Messenger close gate completed after the deferred CWvsContext-owned session state cleared.",
-                    "Simulated Messenger TryDelete destroy after the deferred session gate expired without a live socket ack.");
                 return;
             }
 
@@ -1465,34 +1463,6 @@ namespace HaCreator.MapSimulator.Interaction
                 tickCount,
                 "Messenger close gate passed after the deferred room-state timer elapsed.",
                 "Simulated Messenger TryDelete destroy after the deferred local-only gate elapsed.");
-        }
-
-        private void CollapseSessionToLocalProfileAfterDeleteRequest()
-        {
-            MessengerParticipantState localPlayer = GetLocalParticipant();
-            if (localPlayer == null)
-            {
-                UpdateLocalContext("Player", "Field", 1);
-                localPlayer = GetLocalParticipant();
-            }
-
-            _participants.Clear();
-            if (localPlayer != null)
-            {
-                _participants.Add(localPlayer with
-                {
-                    SlotIndex = 0,
-                    IsLocalPlayer = true,
-                    BubbleText = string.Empty,
-                    BubbleStartTick = 0,
-                    BubbleExpireTick = 0
-                });
-            }
-
-            _pendingInvite = null;
-            _incomingInvite = null;
-            _selectedSlot = 0;
-            NotifyIncomingInvitePromptChanged();
         }
 
         private void ApplyPacketProfile(string name, bool isOnline, int channel, int level, string jobName, string locationSummary, string statusText)
@@ -2255,12 +2225,13 @@ namespace HaCreator.MapSimulator.Interaction
         bool IsVisible,
         string ContactName,
         string PromptText,
+        string TitleText,
         byte InviteType,
         int InviteSequence,
         bool SkipBlacklistAutoReject)
     {
         public static MessengerIncomingInvitePromptState Hidden { get; } =
-            new(false, string.Empty, string.Empty, 0, 0, false);
+            new(false, string.Empty, string.Empty, string.Empty, 0, 0, false);
     }
 
     internal sealed class MessengerParticipantSnapshot

@@ -1548,6 +1548,39 @@ namespace HaCreator.MapSimulator.Managers
                 && source.StartsWith(OfficialSessionTraceSourcePrefix, StringComparison.OrdinalIgnoreCase);
         }
 
+        private static int GetSg88TemplateResolutionRank(string resolutionSource)
+        {
+            if (string.IsNullOrWhiteSpace(resolutionSource))
+            {
+                return 0;
+            }
+
+            return resolutionSource.Trim() switch
+            {
+                "1021-confirm" => 4,
+                "0x119-target-cover" => 3,
+                "expired" => 2,
+                "superseded" => 1,
+                _ => 1
+            };
+        }
+
+        private static string PreferSg88TemplateResolutionSource(string candidateResolutionSource, string existingResolutionSource)
+        {
+            int candidateRank = GetSg88TemplateResolutionRank(candidateResolutionSource);
+            int existingRank = GetSg88TemplateResolutionRank(existingResolutionSource);
+            if (candidateRank != existingRank)
+            {
+                return candidateRank >= existingRank
+                    ? candidateResolutionSource
+                    : existingResolutionSource;
+            }
+
+            return string.IsNullOrWhiteSpace(candidateResolutionSource)
+                ? existingResolutionSource
+                : candidateResolutionSource;
+        }
+
         private void PromoteLearnedSg88ManualAttackTemplate(
             Sg88ManualAttackCapture capture,
             OutboundPacketTrace trace,
@@ -1582,12 +1615,16 @@ namespace HaCreator.MapSimulator.Managers
                 _learnedSg88ManualAttackTemplates[targetCount] = templates;
             }
 
+            string preferredResolutionSource = capture.ResolutionSource;
             int existingIndex = templates.FindIndex(candidate =>
                 candidate.PrimaryTargetMobId == capture.PrimaryTargetMobId
                 && candidate.TargetMobIds.SequenceEqual(capture.TargetMobIds));
             if (existingIndex >= 0)
             {
                 LearnedSg88ManualAttackTemplate existingTemplate = templates[existingIndex];
+                preferredResolutionSource = PreferSg88TemplateResolutionSource(
+                    capture.ResolutionSource,
+                    existingTemplate.ResolutionSource);
                 if (existingTemplate.ObservedAt > trace.ObservedAt
                     || (existingTemplate.ObservedAt == trace.ObservedAt
                         && string.CompareOrdinal(existingTemplate.Evidence, binding.Evidence) >= 0))
@@ -1607,7 +1644,7 @@ namespace HaCreator.MapSimulator.Managers
                 Evidence = binding.Evidence,
                 PrimaryTargetMobId = capture.PrimaryTargetMobId,
                 TargetMobIds = (int[])capture.TargetMobIds.Clone(),
-                ResolutionSource = capture.ResolutionSource
+                ResolutionSource = preferredResolutionSource
             });
             templates.Sort((left, right) =>
             {
@@ -1615,6 +1652,13 @@ namespace HaCreator.MapSimulator.Managers
                 if (observedCompare != 0)
                 {
                     return observedCompare;
+                }
+
+                int resolutionCompare = GetSg88TemplateResolutionRank(right.ResolutionSource)
+                    .CompareTo(GetSg88TemplateResolutionRank(left.ResolutionSource));
+                if (resolutionCompare != 0)
+                {
+                    return resolutionCompare;
                 }
 
                 return string.CompareOrdinal(right.Evidence, left.Evidence);

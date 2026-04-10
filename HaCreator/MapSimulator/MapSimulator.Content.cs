@@ -673,6 +673,7 @@ namespace HaCreator.MapSimulator
             SyncGuildBossTransportState();
             SyncPartyRaidPacketInboxState();
             SyncTournamentPacketInboxState();
+            SyncRockPaperScissorsPacketInboxState();
 
             SyncCookieHousePointInboxState();
 
@@ -853,6 +854,8 @@ namespace HaCreator.MapSimulator
                 statusBarChatUI.WhisperTargetPickerSelectionDeltaRequested = delta => _chat.OffsetWhisperTargetPickerSelection(delta);
                 statusBarChatUI.WhisperTargetPickerConfirmRequested = () => _chat.ConfirmWhisperTargetPicker(Environment.TickCount);
                 statusBarChatUI.WhisperTargetPickerCancelRequested = () => _chat.CancelActiveWhisperTargetPicker();
+                statusBarChatUI.WhisperTargetPickerModalButtonFocusRequested = () => _chat.ActivateWhisperTargetPickerModalButtonFocus();
+                statusBarChatUI.WhisperTargetPickerModalComboFocusRequested = () => _chat.ActivateWhisperTargetPickerModalComboFocus();
             }
 
 
@@ -1121,6 +1124,7 @@ namespace HaCreator.MapSimulator
 
             _escortFollow.Clear();
             _localFollowRuntime.Clear();
+            HidePacketOwnedFollowCharacterPrompt();
             ClearPacketOwnedPassiveMoveState();
             _fieldRuleRuntime = null;
             _lastFieldRestrictionMessageTime = int.MinValue;

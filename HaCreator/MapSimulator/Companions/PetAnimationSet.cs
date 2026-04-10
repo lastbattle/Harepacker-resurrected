@@ -191,6 +191,19 @@ namespace HaCreator.MapSimulator.Companions
         {
             return ClientBaseActionNames;
         }
+
+        internal static string NormalizeActionName(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return string.Empty;
+            }
+
+            return new string(actionName
+                .Where(char.IsLetterOrDigit)
+                .Select(char.ToLowerInvariant)
+                .ToArray());
+        }
     }
 
     internal sealed class PetAnimationSet : AnimationSetBase
@@ -240,6 +253,11 @@ namespace HaCreator.MapSimulator.Companions
                 }
             }
 
+            if (TryGetNormalizedFrames(requestedAction, out frames))
+            {
+                return true;
+            }
+
             return TryGetFrames("stand1", out frames) || TryGetFrames("stand0", out frames);
         }
 
@@ -247,6 +265,38 @@ namespace HaCreator.MapSimulator.Companions
         {
             frames = null;
             return action != null && _animations.TryGetValue(action, out frames) && frames?.Count > 0;
+        }
+
+        private bool TryGetNormalizedFrames(string requestedAction, out List<IDXObject> frames)
+        {
+            frames = null;
+
+            string normalizedRequestedAction = PetActionAliases.NormalizeActionName(requestedAction);
+            if (string.IsNullOrWhiteSpace(normalizedRequestedAction))
+            {
+                return false;
+            }
+
+            foreach ((string actionName, List<IDXObject> candidateFrames) in _animations)
+            {
+                if (candidateFrames?.Count <= 0)
+                {
+                    continue;
+                }
+
+                if (!string.Equals(
+                        PetActionAliases.NormalizeActionName(actionName),
+                        normalizedRequestedAction,
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                frames = candidateFrames;
+                return true;
+            }
+
+            return false;
         }
     }
 }

@@ -487,6 +487,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.DebuffMessageToken = GetString(infoNode, "mes");
                 skill.AffectedSkillIds = ParseLinkedSkillIds(GetString(infoNode, "affectedSkill"));
                 skill.AffectedSkillId = skill.AffectedSkillIds.FirstOrDefault();
+                skill.PassiveLinkedSkillIds = ParseLinkedSkillIds(skillNode["psdSkill"]);
                 skill.AffectedSkillEffect = GetString(infoNode, "affectedSkillEffect");
                 skill.DotType = GetString(infoNode, "dotType");
                 skill.IsMagicDamageSkill = GetInt(infoNode, "magicDamage") == 1;
@@ -2086,11 +2087,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return Array.Empty<WzImageProperty>();
             }
 
-            List<(int Index, WzImageProperty Property)> orderedFrames = new();
+            List<WzImageProperty> orderedFrames = new();
             foreach (WzImageProperty child in actionNode.WzProperties)
             {
-                if (child == null
-                    || !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int frameIndex))
+                if (child == null)
                 {
                     continue;
                 }
@@ -2100,7 +2100,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                orderedFrames.Add((frameIndex, child));
+                orderedFrames.Add(child);
             }
 
             if (orderedFrames.Count == 0)
@@ -2108,8 +2108,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return Array.Empty<WzImageProperty>();
             }
 
-            orderedFrames.Sort(static (left, right) => left.Index.CompareTo(right.Index));
-            return orderedFrames.Select(static entry => entry.Property).ToArray();
+            return orderedFrames;
         }
 
         internal static string ResolveShadowPartnerActionStorageKey(string sourceActionKey)
@@ -2379,7 +2378,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             var zoneEffect = new ZoneEffectData
             {
                 Animation = LoadZoneAnimation(tileNode),
+                AnimationPath = LoadZoneAnimationPath(tileNode),
                 VariantAnimations = LoadSummonIndexedAnimations(tileNode, "tile"),
+                VariantAnimationPaths = LoadSummonIndexedAnimationPaths(tileNode),
                 EffectDistance = GetInt(tileNode, "effectDistance")
             };
 
@@ -2711,6 +2712,33 @@ namespace HaCreator.MapSimulator.Character.Skills
             return null;
         }
 
+        private string LoadZoneAnimationPath(WzImageProperty tileNode)
+        {
+            if (tileNode == null)
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty child in tileNode.WzProperties)
+            {
+                if (!int.TryParse(child.Name, out _))
+                {
+                    continue;
+                }
+
+                SkillAnimation animation = LoadSkillAnimation(child, $"tile/{child.Name}");
+                if (animation?.Frames.Count > 0)
+                {
+                    return NormalizeSkillAssetPath(child);
+                }
+            }
+
+            SkillAnimation fallbackAnimation = LoadSkillAnimation(tileNode, "tile");
+            return fallbackAnimation?.Frames.Count > 0
+                ? NormalizeSkillAssetPath(tileNode)
+                : null;
+        }
+
         private void PopulateZoneCharacterLevelVariants(ZoneEffectData zoneEffect, WzImageProperty charLevelNode)
         {
             if (zoneEffect == null || charLevelNode == null)
@@ -2737,6 +2765,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (variants.Count > 0)
                 {
                     zoneEffect.CharacterLevelVariantAnimations[requiredLevel] = variants;
+                    zoneEffect.CharacterLevelVariantAnimationPaths[requiredLevel] = LoadSummonIndexedAnimationPaths(tileVariantNode);
                     zoneEffect.CharacterLevelEffectDistances[requiredLevel] = GetInt(tileVariantNode, "effectDistance");
                 }
             }
@@ -2768,6 +2797,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (variants.Count > 0)
                 {
                     zoneEffect.LevelVariantAnimations[skillLevel] = variants;
+                    zoneEffect.LevelVariantAnimationPaths[skillLevel] = LoadSummonIndexedAnimationPaths(tileVariantNode);
                     zoneEffect.LevelEffectDistances[skillLevel] = GetInt(tileVariantNode, "effectDistance");
                 }
             }
@@ -3536,6 +3566,44 @@ namespace HaCreator.MapSimulator.Character.Skills
             return animations;
         }
 
+        private List<string> LoadSummonIndexedAnimationPaths(WzImageProperty rootNode)
+        {
+            var paths = new List<string>();
+            if (rootNode == null)
+            {
+                return paths;
+            }
+
+            if (rootNode.WzProperties.OfType<WzCanvasProperty>().Any())
+            {
+                SkillAnimation directAnimation = LoadSkillAnimation(rootNode, rootNode.Name);
+                if (directAnimation?.Frames.Count > 0)
+                {
+                    paths.Add(NormalizeSkillAssetPath(rootNode));
+                }
+
+                return paths;
+            }
+
+            foreach (WzImageProperty child in rootNode.WzProperties)
+            {
+                if (child == null || !int.TryParse(child.Name, out _))
+                {
+                    continue;
+                }
+
+                SkillAnimation animation = LoadSkillAnimation(child, child.Name);
+                if (animation?.Frames.Count <= 0)
+                {
+                    continue;
+                }
+
+                paths.Add(NormalizeSkillAssetPath(child));
+            }
+
+            return paths;
+        }
+
         private static void AppendSummonImpactPresentations(List<SummonImpactPresentation> destination, IEnumerable<SummonImpactPresentation> source)
         {
             if (destination == null || source == null)
@@ -3700,6 +3768,27 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .Select(int.Parse)
                 .Distinct()
                 .ToArray();
+        }
+
+        internal static int[] ParseLinkedSkillIds(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return Array.Empty<int>();
+            }
+
+            HashSet<int> linkedSkillIds = new();
+            foreach (WzImageProperty child in property.WzProperties)
+            {
+                if (child != null && int.TryParse(child.Name, out int linkedSkillId) && linkedSkillId > 0)
+                {
+                    linkedSkillIds.Add(linkedSkillId);
+                }
+            }
+
+            return linkedSkillIds.Count == 0
+                ? Array.Empty<int>()
+                : linkedSkillIds.OrderBy(id => id).ToArray();
         }
 
         public static string SelectPreferredSummonAttackBranch(IEnumerable<string> branchNames)
@@ -4308,10 +4397,14 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             // Load ball animation
             projectile.Animation = LoadSkillAnimation(ballNode, "ball");
+            projectile.AnimationPath = NormalizeSkillAssetPath(ballNode);
             projectile.VariantAnimations = LoadSummonIndexedAnimations(ballNode, "ball");
+            projectile.VariantAnimationPaths = LoadSummonIndexedAnimationPaths(ballNode);
             if (projectile.Animation?.Frames.Count <= 0)
             {
                 projectile.Animation = projectile.ResolveAnimationVariant(level: 1);
+                projectile.AnimationPath = projectile.VariantAnimationPaths.FirstOrDefault(path => !string.IsNullOrWhiteSpace(path))
+                    ?? projectile.AnimationPath;
             }
 
             PopulateProjectileCharacterLevelVariants(projectile, skillNode?["CharLevel"]);
@@ -4385,6 +4478,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (variants.Count > 0)
                 {
                     projectile.CharacterLevelVariantAnimations[requiredLevel] = variants;
+                    projectile.CharacterLevelVariantAnimationPaths[requiredLevel] = LoadSummonIndexedAnimationPaths(ballVariantNode);
                 }
             }
         }
@@ -4415,8 +4509,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (variants.Count > 0)
                 {
                     projectile.LevelVariantAnimations[skillLevel] = variants;
+                    projectile.LevelVariantAnimationPaths[skillLevel] = LoadSummonIndexedAnimationPaths(ballVariantNode);
                 }
             }
+        }
+
+        private static string NormalizeSkillAssetPath(WzImageProperty property)
+        {
+            string fullPath = property?.FullPath;
+            if (string.IsNullOrWhiteSpace(fullPath))
+            {
+                return null;
+            }
+
+            string normalizedPath = fullPath.Replace('\\', '/').TrimStart('/');
+            return normalizedPath.StartsWith("Skill/", StringComparison.OrdinalIgnoreCase)
+                ? normalizedPath
+                : $"Skill/{normalizedPath}";
         }
 
         private void LoadSkillIcon(SkillData skill, WzImageProperty skillNode)

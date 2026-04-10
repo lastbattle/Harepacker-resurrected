@@ -46,6 +46,7 @@ namespace HaCreator.MapSimulator
         private string _lastPacketOwnedLogoutGiftSummary = "Packet-owned logout gift idle.";
         private string _lastPacketOwnedLogoutGiftLaunchSource = string.Empty;
         private PacketOwnedLogoutGiftContinuation _packetOwnedLogoutGiftPendingContinuation;
+        private bool _packetOwnedLogoutGiftOwnerInstantiated;
         private Texture2D _packetOwnedLogoutGiftFrameTexture;
 
         private void RegisterPacketOwnedLogoutGiftWindow()
@@ -204,30 +205,6 @@ namespace HaCreator.MapSimulator
             RegisterPacketOwnedLogoutGiftWindow();
             _lastPacketOwnedLogoutGiftRefreshTick = Environment.TickCount;
 
-            if (!_packetOwnedLogoutGiftHasConfig)
-            {
-                message = "CWvsContext::OnLogoutGift routed, but no logout-gift commodity cache is available from the current SetField state.";
-                _lastPacketOwnedLogoutGiftSummary = message;
-                NotifyEventAlarmOwnerActivity("packet-owned logout gift");
-                return false;
-            }
-
-            if (!ShouldShowPacketOwnedLogoutGiftOwner())
-            {
-                uiWindowManager?.HideWindow(MapSimulatorWindowNames.LogoutGift);
-                string ignoredPayloadSuffix = payload != null && payload.Length > 0
-                    ? $" Ignored {payload.Length.ToString(CultureInfo.InvariantCulture)} unexpected payload byte(s) because the client bridge only refreshes the existing owner."
-                    : string.Empty;
-                string preservedTrailingSuffix = _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
-                    ? $" Preserved {DescribePacketOwnedLogoutGiftLeadingTail()} ahead of the client 12-byte logout-gift cache."
-                    : string.Empty;
-                message =
-                    $"CWvsContext::OnLogoutGift arrived, but `CUILogoutGift::TryShowLogoutGiftDialog` would keep the owner closed because CWvsContext::m_bPredictQuit is false while the cached commodity SNs remain {FormatPacketOwnedLogoutGiftCommodityList()}.{preservedTrailingSuffix}{ignoredPayloadSuffix}";
-                _lastPacketOwnedLogoutGiftSummary = message;
-                NotifyEventAlarmOwnerActivity("packet-owned logout gift");
-                return true;
-            }
-
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LogoutGift) is not LogoutGiftWindow window)
             {
                 message = "CWvsContext::OnLogoutGift routed, but the simulator logout-gift owner is unavailable.";
@@ -236,16 +213,59 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!window.IsVisible)
+            PacketOwnedLogoutGiftRefreshDisposition refreshDisposition = ResolvePacketOwnedLogoutGiftRefreshDisposition(
+                _packetOwnedLogoutGiftHasConfig,
+                IsPacketOwnedLogoutGiftOwnerSingletonPresent(_packetOwnedLogoutGiftOwnerInstantiated, window.IsVisible),
+                window.IsVisible,
+                ShouldShowPacketOwnedLogoutGiftOwner());
+
+            switch (refreshDisposition)
             {
-                string hiddenWindowPayloadSuffix = payload != null && payload.Length > 0
-                    ? $" Ignored {payload.Length.ToString(CultureInfo.InvariantCulture)} unexpected payload byte(s) because `CWvsContext::OnLogoutGift` only calls `CUILogoutGift::Update(1)` on an existing instance."
-                    : string.Empty;
-                message =
-                    $"CWvsContext::OnLogoutGift refreshed the cached commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()}, but no active CUILogoutGift owner exists to update. The simulator keeps the cache staged for the next TryShowLogoutGiftDialog-owned launch instead of surfacing the owner directly from packet 432.{hiddenWindowPayloadSuffix}";
-                _lastPacketOwnedLogoutGiftSummary = message;
-                NotifyEventAlarmOwnerActivity("packet-owned logout gift");
-                return true;
+                case PacketOwnedLogoutGiftRefreshDisposition.MissingConfig:
+                    message = "CWvsContext::OnLogoutGift routed, but no logout-gift commodity cache is available from the current SetField state.";
+                    _lastPacketOwnedLogoutGiftSummary = message;
+                    NotifyEventAlarmOwnerActivity("packet-owned logout gift");
+                    return false;
+                case PacketOwnedLogoutGiftRefreshDisposition.NoInstantiatedOwner:
+                {
+                    string hiddenWindowPayloadSuffix = payload != null && payload.Length > 0
+                        ? $" Ignored {payload.Length.ToString(CultureInfo.InvariantCulture)} unexpected payload byte(s) because `CWvsContext::OnLogoutGift` only calls `CUILogoutGift::Update(1)` on an existing instance."
+                        : string.Empty;
+                    message =
+                        $"CWvsContext::OnLogoutGift refreshed the cached commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()}, but no instantiated CUILogoutGift singleton exists to update. The simulator keeps the cache staged for the next TryShowLogoutGiftDialog-owned launch instead of surfacing the owner directly from packet 432.{hiddenWindowPayloadSuffix}";
+                    _lastPacketOwnedLogoutGiftSummary = message;
+                    NotifyEventAlarmOwnerActivity("packet-owned logout gift");
+                    return true;
+                }
+                case PacketOwnedLogoutGiftRefreshDisposition.NoOwnerAllowed:
+                {
+                    uiWindowManager?.HideWindow(MapSimulatorWindowNames.LogoutGift);
+                    string ignoredPayloadSuffix = payload != null && payload.Length > 0
+                        ? $" Ignored {payload.Length.ToString(CultureInfo.InvariantCulture)} unexpected payload byte(s) because the client bridge only refreshes the existing owner."
+                        : string.Empty;
+                    string preservedTrailingSuffix = _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
+                        ? $" Preserved {DescribePacketOwnedLogoutGiftLeadingTail()} ahead of the client 12-byte logout-gift cache."
+                        : string.Empty;
+                    message =
+                        $"CWvsContext::OnLogoutGift arrived, but `CUILogoutGift::TryShowLogoutGiftDialog` would keep the owner closed because CWvsContext::m_bPredictQuit is false while the cached commodity SNs remain {FormatPacketOwnedLogoutGiftCommodityList()}.{preservedTrailingSuffix}{ignoredPayloadSuffix}";
+                    _lastPacketOwnedLogoutGiftSummary = message;
+                    NotifyEventAlarmOwnerActivity("packet-owned logout gift");
+                    return true;
+                }
+                case PacketOwnedLogoutGiftRefreshDisposition.RefreshHiddenInstantiatedOwner:
+                {
+                    string hiddenPayloadSuffix = payload != null && payload.Length > 0
+                        ? $" Ignored {payload.Length.ToString(CultureInfo.InvariantCulture)} unexpected payload byte(s) because the client bridge only refreshes the existing owner."
+                        : string.Empty;
+                    string hiddenTrailingSuffix = _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
+                        ? $" Preserved {DescribePacketOwnedLogoutGiftLeadingTail()} ahead of the client 12-byte logout-gift cache."
+                        : string.Empty;
+                    message =
+                        $"CWvsContext::OnLogoutGift refreshed the instantiated logout-gift singleton using cached commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()} while the visible chooser remained closed behind the StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)} completion dialog.{hiddenTrailingSuffix}{hiddenPayloadSuffix}";
+                    _lastPacketOwnedLogoutGiftSummary = message;
+                    NotifyEventAlarmOwnerActivity("packet-owned logout gift");
+                    return true;
+                }
             }
 
             window.Position = ResolvePacketOwnedLogoutGiftWindowPosition(window);
@@ -266,6 +286,14 @@ namespace HaCreator.MapSimulator
         private bool TryShowPacketOwnedLogoutGiftDialog(PacketOwnedLogoutGiftContinuation continuation, string launchSource, out string message)
         {
             RegisterPacketOwnedLogoutGiftWindow();
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LogoutGift) is LogoutGiftWindow existingWindow
+                && IsPacketOwnedLogoutGiftOwnerSingletonPresent(_packetOwnedLogoutGiftOwnerInstantiated, existingWindow.IsVisible))
+            {
+                message = "CUILogoutGift::TryShowLogoutGiftDialog skipped because the logout-gift singleton is already instantiated.";
+                _lastPacketOwnedLogoutGiftSummary = message;
+                return false;
+            }
+
             if (!_packetOwnedLogoutGiftHasConfig)
             {
                 message = "CUILogoutGift::TryShowLogoutGiftDialog skipped because the current SetField state has not cached logout-gift commodity serial numbers.";
@@ -287,15 +315,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (window.IsVisible)
-            {
-                message = "CUILogoutGift::TryShowLogoutGiftDialog skipped because a logout-gift modal owner is already instantiated.";
-                _lastPacketOwnedLogoutGiftSummary = message;
-                return false;
-            }
-
             _packetOwnedLogoutGiftPendingContinuation = continuation;
             _lastPacketOwnedLogoutGiftLaunchSource = string.IsNullOrWhiteSpace(launchSource) ? "simulator" : launchSource.Trim();
+            _packetOwnedLogoutGiftOwnerInstantiated = true;
             window.Position = ResolvePacketOwnedLogoutGiftWindowPosition(window);
             ShowWindow(
                 MapSimulatorWindowNames.LogoutGift,
@@ -409,6 +431,7 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedLogoutGiftSelectionRequestIndex = -1;
                 _lastPacketOwnedLogoutGiftSelectionTick = int.MinValue;
                 _lastPacketOwnedLogoutGiftLaunchSource = string.Empty;
+                _packetOwnedLogoutGiftOwnerInstantiated = false;
                 _packetOwnedLogoutGiftPendingContinuation = PacketOwnedLogoutGiftContinuation.None;
             }
 
@@ -623,16 +646,18 @@ namespace HaCreator.MapSimulator
             }
 
             string continuationSuffix = CompletePacketOwnedLogoutGiftContinuation();
+            DestroyPacketOwnedLogoutGiftOwnerSingleton();
             return
                 $"Client follow-up util dialog owner was unavailable, so the simulator kept StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)} local: {completionMessage}{continuationSuffix}";
         }
 
         private void HandlePacketOwnedLogoutGiftCompletionDialogDismissed()
         {
+            DestroyPacketOwnedLogoutGiftOwnerSingleton();
             string continuationSuffix = CompletePacketOwnedLogoutGiftContinuation();
             _lastPacketOwnedLogoutGiftSummary = string.IsNullOrWhiteSpace(continuationSuffix)
-                ? $"Dismissed the logout-gift completion util dialog (StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)})."
-                : $"Dismissed the logout-gift completion util dialog (StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)}).{continuationSuffix}";
+                ? $"Dismissed the logout-gift completion util dialog (StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)}) and destroyed the instantiated logout-gift singleton."
+                : $"Dismissed the logout-gift completion util dialog (StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)}) and destroyed the instantiated logout-gift singleton.{continuationSuffix}";
             NotifyEventAlarmOwnerActivity("packet-owned logout gift");
 
             if (string.IsNullOrWhiteSpace(continuationSuffix))
@@ -673,6 +698,34 @@ namespace HaCreator.MapSimulator
         internal static byte[] BuildPacketOwnedLogoutGiftSelectionPayload(int index)
         {
             return BitConverter.GetBytes(index);
+        }
+
+        internal static bool IsPacketOwnedLogoutGiftOwnerSingletonPresent(bool ownerInstantiated, bool ownerVisible)
+        {
+            return ownerInstantiated || ownerVisible;
+        }
+
+        internal static PacketOwnedLogoutGiftRefreshDisposition ResolvePacketOwnedLogoutGiftRefreshDisposition(
+            bool hasConfig,
+            bool ownerSingletonPresent,
+            bool ownerVisible,
+            bool shouldShowOwner)
+        {
+            if (!hasConfig)
+            {
+                return PacketOwnedLogoutGiftRefreshDisposition.MissingConfig;
+            }
+
+            if (ownerSingletonPresent)
+            {
+                return ownerVisible
+                    ? PacketOwnedLogoutGiftRefreshDisposition.RefreshVisibleOwner
+                    : PacketOwnedLogoutGiftRefreshDisposition.RefreshHiddenInstantiatedOwner;
+            }
+
+            return shouldShowOwner
+                ? PacketOwnedLogoutGiftRefreshDisposition.NoInstantiatedOwner
+                : PacketOwnedLogoutGiftRefreshDisposition.NoOwnerAllowed;
         }
 
         internal static PacketOwnedLogoutGiftContextField[] DecodePacketOwnedLogoutGiftLeadingContextFields(int[] leadingOpaqueInt32Values)
@@ -811,6 +864,11 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        private void DestroyPacketOwnedLogoutGiftOwnerSingleton()
+        {
+            _packetOwnedLogoutGiftOwnerInstantiated = false;
+        }
+
         private string CompletePacketOwnedLogoutGiftContinuation()
         {
             PacketOwnedLogoutGiftContinuation continuation = _packetOwnedLogoutGiftPendingContinuation;
@@ -828,6 +886,15 @@ namespace HaCreator.MapSimulator
     }
 
     internal readonly record struct PacketOwnedLogoutGiftContextField(int DwordIndex, int ByteOffset, int Value, string SemanticName = null);
+    internal enum PacketOwnedLogoutGiftRefreshDisposition
+    {
+        MissingConfig = 0,
+        NoOwnerAllowed = 1,
+        NoInstantiatedOwner = 2,
+        RefreshVisibleOwner = 3,
+        RefreshHiddenInstantiatedOwner = 4,
+    }
+
     internal enum PacketOwnedLogoutGiftContinuation
     {
         None = 0,

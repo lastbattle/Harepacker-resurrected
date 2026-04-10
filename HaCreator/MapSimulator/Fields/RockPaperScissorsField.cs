@@ -85,6 +85,7 @@ namespace HaCreator.MapSimulator.Fields
         public const int LoseRetryTipStringPoolId = 0xE8A;
         public const int DialogWidth = 310;
         public const int DialogHeight = 358;
+        internal const int TipViewportWidth = 270;
         public const int MainButtonX = 108;
         public const int MainButtonY = 202;
         public const int ExitButtonX = 242;
@@ -143,6 +144,8 @@ namespace HaCreator.MapSimulator.Fields
         private int _tipPosition;
         private uint _lastTipOption = uint.MaxValue;
         private string _lastMinigameSound = string.Empty;
+        private bool _tipLayoutDirty = true;
+        private int _lastTimerSoundSecond = int.MinValue;
 
         public bool IsVisible => _isVisible;
         public bool ChoiceButtonsEnabled => _choiceButtonsEnabled;
@@ -213,6 +216,16 @@ namespace HaCreator.MapSimulator.Fields
                 CurrentStatusMessage = "RPS round reached the 30000 ms limit, sent client opcode 160 subtype 2, and is waiting for a server-owned follow-up.";
                 LastPacketSummary = "client timeout -> opcode=160 subtype=2";
             }
+            else if (_choiceButtonsEnabled && _roundDeadlineTick > currentTick)
+            {
+                int remainingMs = _roundDeadlineTick - currentTick;
+                int remainingSeconds = (remainingMs + 999) / 1000;
+                if (remainingMs < 10000 && remainingSeconds != _lastTimerSoundSecond)
+                {
+                    _lastTimerSoundSecond = remainingSeconds;
+                    PlayMinigameSound(TimerSoundStringPoolId);
+                }
+            }
 
             if (_resultRevealTick > 0 && currentTick >= _resultRevealTick && _resultType != RockPaperScissorsResultType.None)
             {
@@ -245,6 +258,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             UpdateTipText(currentTick);
+            AdvanceTipScroll();
         }
 
         public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
@@ -344,7 +358,8 @@ namespace HaCreator.MapSimulator.Fields
 
             string stateText = $"main={_mainButtonType} | streak={StraightVictoryCount} | choice={DescribeChoice(_playerChoice)} | npc={DescribeChoice(_npcChoice)}";
             DrawShadowedText(spriteBatch, font, stateText, new Vector2(panelX + 12, panelY + 82), Color.Silver, 0.78f);
-            DrawShadowedText(spriteBatch, font, TrimForDisplay(_tipText, 46), new Vector2(panelX + 20 + Math.Max(0, Math.Min(_tipPosition, 270)), panelY + 294), Color.Black, 0.76f);
+            RefreshTipLayout(font);
+            DrawShadowedText(spriteBatch, font, _tipText, new Vector2(panelX + 20 + _tipPosition, panelY + 294), Color.Black, 0.76f);
         }
 
         public static bool TryParsePacketType(string token, out int packetType)
@@ -617,6 +632,8 @@ namespace HaCreator.MapSimulator.Fields
             _tipPosition = 0;
             _lastTipOption = uint.MaxValue;
             _lastMinigameSound = string.Empty;
+            _tipLayoutDirty = true;
+            _lastTimerSoundSecond = int.MinValue;
         }
 
         private bool TryApplyOpenPacket(byte[] payload, int currentTimeMs, out string errorMessage)
@@ -829,6 +846,7 @@ namespace HaCreator.MapSimulator.Fields
             _resultRevealTick = 0;
             _resultExpireTick = 0;
             _resultLayerVisible = false;
+            _lastTimerSoundSecond = int.MinValue;
             UpdateTipText(currentTimeMs);
         }
 
@@ -1150,8 +1168,7 @@ namespace HaCreator.MapSimulator.Fields
             else if (_choiceButtonsEnabled && _roundDeadlineTick > currentTick)
             {
                 int remainingSeconds = Math.Max(0, (_roundDeadlineTick - currentTick + 999) / 1000);
-                string baseTip = MapleStoryStringPool.GetOrFallback(TimeLeftTipStringPoolId, "Time left");
-                nextTip = $"{baseTip}: {remainingSeconds}s";
+                nextTip = FormatTipStringPoolText(TimeLeftTipStringPoolId, "Time left: {0}s", remainingSeconds);
                 optionKey = 1;
             }
             else if (_resultType == RockPaperScissorsResultType.Win)
@@ -1167,7 +1184,7 @@ namespace HaCreator.MapSimulator.Fields
             }
             else if (_mainButtonType == RockPaperScissorsMainButtonType.Continue)
             {
-                nextTip = MapleStoryStringPool.GetOrFallback(ContinueTipStringPoolId, "Continue.");
+                nextTip = FormatTipStringPoolText(ContinueTipStringPoolId, "Continue to round {0}.", StraightVictoryCount + 1);
                 optionKey = 5;
             }
             else if (_mainButtonType == RockPaperScissorsMainButtonType.Retry)
@@ -1183,12 +1200,90 @@ namespace HaCreator.MapSimulator.Fields
 
             if (_lastTipOption != optionKey)
             {
-                _tipPosition = 0;
                 _lastTipOption = optionKey;
+                _tipLayoutDirty = true;
+            }
+
+            if (!string.Equals(_tipText, nextTip ?? string.Empty, StringComparison.Ordinal))
+            {
+                _tipLayoutDirty = true;
             }
 
             _tipText = nextTip ?? string.Empty;
-            _tipTextLength = _tipText.Length;
+            if (_tipLayoutDirty && string.IsNullOrWhiteSpace(_tipText))
+            {
+                _tipTextLength = 0;
+                _tipPosition = 0;
+            }
+        }
+
+        internal static int ResolveTipStartPosition(int tipWidth)
+        {
+            return tipWidth <= TipViewportWidth
+                ? (TipViewportWidth - Math.Max(0, tipWidth)) / 2
+                : TipViewportWidth / 2;
+        }
+
+        internal static int AdvanceTipScrollPosition(int tipWidth, int currentPosition)
+        {
+            if (tipWidth <= TipViewportWidth)
+            {
+                return ResolveTipStartPosition(tipWidth);
+            }
+
+            int nextPosition = currentPosition - 1;
+            return tipWidth + nextPosition < 0
+                ? TipViewportWidth
+                : nextPosition;
+        }
+
+        internal static string FormatTipStringPoolText(int stringPoolId, string fallbackFormat, params object[] args)
+        {
+            string template = MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackFormat) ?? fallbackFormat ?? string.Empty;
+            string compositeFormat = template
+                .Replace("%d", "{0}", StringComparison.Ordinal)
+                .Replace("%ld", "{0}", StringComparison.Ordinal)
+                .Replace("%s", "{0}", StringComparison.Ordinal);
+
+            if (args == null || args.Length == 0 || !compositeFormat.Contains("{0}", StringComparison.Ordinal))
+            {
+                return compositeFormat;
+            }
+
+            try
+            {
+                return string.Format(CultureInfo.InvariantCulture, compositeFormat, args);
+            }
+            catch (FormatException)
+            {
+                return fallbackFormat != null
+                    ? string.Format(CultureInfo.InvariantCulture, fallbackFormat, args)
+                    : compositeFormat;
+            }
+        }
+
+        private void AdvanceTipScroll()
+        {
+            if (_tipLayoutDirty)
+            {
+                return;
+            }
+
+            _tipPosition = AdvanceTipScrollPosition(_tipTextLength, _tipPosition);
+        }
+
+        private void RefreshTipLayout(SpriteFont font)
+        {
+            if (!_tipLayoutDirty || font == null)
+            {
+                return;
+            }
+
+            _tipTextLength = string.IsNullOrWhiteSpace(_tipText)
+                ? 0
+                : (int)Math.Ceiling(font.MeasureString(_tipText).X);
+            _tipPosition = ResolveTipStartPosition(_tipTextLength);
+            _tipLayoutDirty = false;
         }
     }
 }

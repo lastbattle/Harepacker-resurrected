@@ -27,6 +27,9 @@ namespace HaCreator.MapEditor.Instance
         private string _image;
         private int? _hRange;
         private int? _vRange;
+        private string _reactorName;
+        private string _sessionValueKey;
+        private string _sessionValue;
 
         /// <summary>
         /// 
@@ -48,7 +51,27 @@ namespace HaCreator.MapEditor.Instance
         /// <param name="image"></param>
         /// <param name="hRange"></param>
         /// <param name="vRange"></param>
-        public PortalInstance(PortalInfo baseInfo, Board board, int x, int y, string pn, PortalType pt, string tn, int tm, string script, int? delay, MapleBool hideTooltip, MapleBool onlyOnce, int? horizontalImpact, int? verticalImpact, string image, int? hRange, int? vRange)
+        public PortalInstance(
+            PortalInfo baseInfo,
+            Board board,
+            int x,
+            int y,
+            string pn,
+            PortalType pt,
+            string tn,
+            int tm,
+            string script,
+            int? delay,
+            MapleBool hideTooltip,
+            MapleBool onlyOnce,
+            int? horizontalImpact,
+            int? verticalImpact,
+            string image,
+            int? hRange,
+            int? vRange,
+            string reactorName = null,
+            string sessionValueKey = null,
+            string sessionValue = null)
             : base(board, x, y, -1)
         {
             this.baseInfo = baseInfo;
@@ -65,6 +88,9 @@ namespace HaCreator.MapEditor.Instance
             this._image = image;
             this._hRange = hRange;
             this._vRange = vRange;
+            this._reactorName = reactorName;
+            this._sessionValueKey = sessionValueKey;
+            this._sessionValue = sessionValue;
         }
 
         public override void Draw(SpriteBatch sprite, XNA.Color color, int xShift, int yShift)
@@ -268,6 +294,24 @@ namespace HaCreator.MapEditor.Instance
             set { _vRange = value; }
         }
 
+        public string reactorName
+        {
+            get { return _reactorName; }
+            set { _reactorName = value; }
+        }
+
+        public string sessionValueKey
+        {
+            get { return _sessionValueKey; }
+            set { _sessionValueKey = value; }
+        }
+
+        public string sessionValue
+        {
+            get { return _sessionValue; }
+            set { _sessionValue = value; }
+        }
+
         public new class SerializationForm : BoardItem.SerializationForm
         {
             public string pn, pt, tn;
@@ -276,7 +320,7 @@ namespace HaCreator.MapEditor.Instance
             public int? delay;
             public MapleBool hidett, onlyonce;
             public int? himpact, vimpact;
-            public string image;
+            public string image, reactorname, sessionvaluekey, sessionvalue;
             public int? hrange, vrange;
         }
 
@@ -303,6 +347,9 @@ namespace HaCreator.MapEditor.Instance
             result.image = _image;
             result.hrange = _hRange;
             result.vrange = _vRange;
+            result.reactorname = _reactorName;
+            result.sessionvaluekey = _sessionValueKey;
+            result.sessionvalue = _sessionValue;
         }
 
         public PortalInstance(Board board, SerializationForm json)
@@ -321,6 +368,9 @@ namespace HaCreator.MapEditor.Instance
             _image = json.image;
             _hRange = json.hrange;
             _vRange = json.vrange;
+            _reactorName = json.reactorname;
+            _sessionValueKey = json.sessionvaluekey;
+            _sessionValue = json.sessionvalue;
             baseInfo = PortalInfo.GetPortalInfoByType(pt);
         }
     }

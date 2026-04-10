@@ -5,6 +5,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Linq;
+using HaCreator.MapSimulator.Fields;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -185,14 +187,21 @@ namespace HaCreator.MapSimulator.Managers
             try
             {
                 byte[] rawPacket = Convert.FromHexString(compactHex);
-                if (!TournamentOfficialSessionBridgeManager.TryDecodeInboundTournamentPacket(rawPacket, "tournament-inbox", out TournamentPacketInboxMessage message))
+                if (rawPacket.Length < sizeof(ushort))
                 {
                     error = "Tournament packetraw payload does not contain a supported opcode 374-378 packet.";
                     return false;
                 }
 
-                packetType = message.PacketType;
-                payload = message.Payload;
+                int opcode = BitConverter.ToUInt16(rawPacket, 0);
+                if (opcode < (int)TournamentPacketType.Tournament || opcode > (int)TournamentPacketType.NoOp)
+                {
+                    error = "Tournament packetraw payload does not contain a supported opcode 374-378 packet.";
+                    return false;
+                }
+
+                packetType = opcode;
+                payload = rawPacket.Skip(sizeof(ushort)).ToArray();
                 return true;
             }
             catch (FormatException)

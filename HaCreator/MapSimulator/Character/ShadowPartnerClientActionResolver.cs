@@ -637,6 +637,16 @@ namespace HaCreator.MapSimulator.Character
                 (int)Math.Round(MathHelper.Lerp(startOffset.Y, targetOffset.Y, progress)));
         }
 
+        public static bool ShouldRenderClientShadowPartner(int? skillId, int? rawActionCode)
+        {
+            if (skillId == SkillData.MirrorImageSkillId)
+            {
+                return false;
+            }
+
+            return rawActionCode != 47;
+        }
+
         public static int ResolveAttackDelayMs(
             IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
             string actionName,

@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
+using HaCreator.MapSimulator.Companions;
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Loaders;
@@ -1633,6 +1634,34 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        public bool TryApplyEmotion(RemoteUserEmotionPacket packet, int currentTime, out string message)
+        {
+            message = null;
+            if (!_actorsById.TryGetValue(packet.CharacterId, out RemoteUserActor actor))
+            {
+                message = $"Remote user {packet.CharacterId} is not active.";
+                return false;
+            }
+
+            if (!PacketOwnedAvatarEmotionResolver.TryResolveEmotionName(packet.EmotionId, out string emotionName))
+            {
+                message = $"Remote user {packet.CharacterId} emotion id {packet.EmotionId} is not supported by the shared avatar-emotion owner.";
+                return false;
+            }
+
+            ApplyRemoteEmotionState(
+                actor,
+                itemId: 0,
+                packet.EmotionId,
+                emotionName,
+                packet.ByItemOption,
+                currentTime,
+                packet.DurationMs,
+                loadEffectAnimation: false);
+            message = $"Remote user {packet.CharacterId} emotion '{emotionName}' ({packet.EmotionId}) applied for {Math.Max(0, packet.DurationMs)} ms.";
+            return true;
+        }
+
         public bool TryClearPreparedSkill(int characterId, out string message)
         {
             message = null;
@@ -2008,10 +2037,22 @@ namespace HaCreator.MapSimulator.Pools
                 ? actor.Position.Y - ownerFrame.FeetOffset
                 : actor.Position.Y;
 
-            string dragonActionName = ResolveRemoteDragonActionName(prepared, isHolding, actor.ActionName, metadata);
+            string dragonActionName = ResolveRemoteDragonActionName(
+                prepared,
+                isHolding,
+                actor.ActionName,
+                actor.BaseActionRawCode,
+                metadata);
             int dragonActionElapsedMs = ResolveRemoteDragonActionElapsedMs(prepared, currentTime, dragonActionName, isHolding);
             int dragonFrameHeight = metadata.ResolveFrameHeight(dragonActionName, dragonActionElapsedMs);
-            Vector2 dragonAnchor = ResolveRemoteDragonAnchor(actor, actor.ActionName, ownerBodyOriginY, dragonActionName, metadata);
+            Vector2 dragonAnchor = ResolveRemoteDragonAnchor(
+                actor,
+                ownerFrame,
+                actor.ActionName,
+                actor.BaseActionRawCode,
+                ownerBodyOriginY,
+                dragonActionName,
+                metadata);
             anchor = new Vector2(
                 dragonAnchor.X - RemoteDragonKeyDownBarHalfWidth,
                 dragonAnchor.Y - dragonFrameHeight - RemoteDragonKeyDownBarVerticalGap);
@@ -2020,7 +2061,9 @@ namespace HaCreator.MapSimulator.Pools
 
         private static Vector2 ResolveRemoteDragonAnchor(
             RemoteUserActor actor,
+            AssembledFrame ownerFrame,
             string ownerActionName,
+            int? ownerRawActionCode,
             float ownerBodyOriginY,
             string dragonActionName,
             RemoteDragonHudMetadata metadata)
@@ -2028,7 +2071,7 @@ namespace HaCreator.MapSimulator.Pools
             float side = actor.FacingRight ? -1f : 1f;
             int originX = metadata.ResolveOriginX(dragonActionName);
 
-            if (UsesRemoteDragonLadderAnchor(ownerActionName))
+            if (UsesRemoteDragonLadderAnchor(ownerActionName, ownerRawActionCode))
             {
                 float ladderHorizontalOffset = Math.Max(RemoteDragonLadderSideOffset, originX * 0.45f);
                 return new Vector2(
@@ -2037,6 +2080,15 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             float groundHorizontalOffset = Math.Max(RemoteDragonGroundSideOffset, originX * 0.55f);
+            if (ownerFrame != null && !ownerFrame.Bounds.IsEmpty)
+            {
+                Rectangle bounds = ownerFrame.Bounds;
+                float anchorX = actor.FacingRight
+                    ? actor.Position.X + bounds.Left + side * groundHorizontalOffset
+                    : actor.Position.X + bounds.Right + side * groundHorizontalOffset;
+                return new Vector2(anchorX, actor.Position.Y + RemoteDragonGroundVerticalOffset);
+            }
+
             return new Vector2(
                 actor.Position.X + (side * groundHorizontalOffset),
                 ownerBodyOriginY + RemoteDragonGroundVerticalOffset);
@@ -2168,11 +2220,17 @@ namespace HaCreator.MapSimulator.Pools
             RemotePreparedSkillState prepared,
             bool isHolding,
             string ownerActionName,
+            int? ownerRawActionCode,
             RemoteDragonHudMetadata metadata)
         {
+            if (TryResolveRemoteExplicitDragonActionName(ownerActionName, ownerRawActionCode, metadata, out string explicitActionName))
+            {
+                return explicitActionName;
+            }
+
             if (isHolding)
             {
-                if (ShouldUseRemoteDragonMoveAction(ownerActionName)
+                if (ShouldUseRemoteDragonMoveAction(ownerActionName, ownerRawActionCode)
                     && metadata.HasAction("move"))
                 {
                     return "move";
@@ -2189,9 +2247,42 @@ namespace HaCreator.MapSimulator.Pools
             };
         }
 
-        internal static bool ShouldUseRemoteDragonMoveAction(string ownerActionName)
+        internal static bool TryResolveRemoteExplicitDragonActionName(
+            string ownerActionName,
+            int? ownerRawActionCode,
+            RemoteDragonHudMetadata metadata,
+            out string actionName)
         {
-            string normalized = NormalizeActionName(ownerActionName, allowSitFallback: false);
+            actionName = null;
+            if (metadata.ActionTimelines == null || metadata.ActionTimelines.Count == 0)
+            {
+                return false;
+            }
+
+            if (ownerRawActionCode.HasValue
+                && DragonActionLoader.TryGetClientActionNameFromRawActionCode(ownerRawActionCode.Value, out string rawActionName)
+                && IsExplicitRemoteDragonAction(rawActionName)
+                && metadata.HasAction(rawActionName))
+            {
+                actionName = rawActionName;
+                return true;
+            }
+
+            foreach (string candidate in EnumerateRemoteDragonActionCandidates(ownerActionName))
+            {
+                if (IsExplicitRemoteDragonAction(candidate) && metadata.HasAction(candidate))
+                {
+                    actionName = candidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static bool ShouldUseRemoteDragonMoveAction(string ownerActionName, int? ownerRawActionCode = null)
+        {
+            string normalized = ResolveRemoteDragonOwnerActionName(ownerActionName, ownerRawActionCode);
             if (string.IsNullOrWhiteSpace(normalized))
             {
                 return false;
@@ -2206,11 +2297,64 @@ namespace HaCreator.MapSimulator.Pools
                 || normalized.StartsWith("fly", StringComparison.OrdinalIgnoreCase);
         }
 
-        internal static bool UsesRemoteDragonLadderAnchor(string ownerActionName)
+        internal static bool UsesRemoteDragonLadderAnchor(string ownerActionName, int? ownerRawActionCode = null)
         {
-            string normalized = NormalizeActionName(ownerActionName, allowSitFallback: false);
+            string normalized = ResolveRemoteDragonOwnerActionName(ownerActionName, ownerRawActionCode);
             return string.Equals(normalized, "ladder", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalized, "rope", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string ResolveRemoteDragonOwnerActionName(string ownerActionName, int? ownerRawActionCode)
+        {
+            if (ownerRawActionCode.HasValue
+                && CharacterPart.TryGetActionStringFromCode(ownerRawActionCode.Value, out string rawActionName)
+                && !string.IsNullOrWhiteSpace(rawActionName))
+            {
+                return NormalizeActionName(rawActionName, allowSitFallback: false);
+            }
+
+            return NormalizeActionName(ownerActionName, allowSitFallback: false);
+        }
+
+        private static IEnumerable<string> EnumerateRemoteDragonActionCandidates(string ownerActionName)
+        {
+            if (string.IsNullOrWhiteSpace(ownerActionName))
+            {
+                yield break;
+            }
+
+            string normalized = NormalizeActionName(ownerActionName, allowSitFallback: false);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                yield break;
+            }
+
+            yield return normalized;
+
+            if (string.Equals(normalized, "stand1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "stand2", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "alert", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return "stand";
+                yield break;
+            }
+
+            if (string.Equals(normalized, "walk1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "walk2", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "jump", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "fly", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "ladder", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "rope", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return "move";
+            }
+        }
+
+        private static bool IsExplicitRemoteDragonAction(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                && !string.Equals(actionName, "stand", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(actionName, "move", StringComparison.OrdinalIgnoreCase);
         }
 
         internal static int ResolveRemoteDragonActionElapsedMs(
@@ -2554,7 +2698,10 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int midpointScreenX = (int)Math.Round((actor.Position.X + partnerActor.Position.X) * 0.5f) - mapShiftX + centerX;
-            int midpointScreenY = (int)Math.Round((actor.Position.Y + partnerActor.Position.Y) * 0.5f) - mapShiftY + centerY;
+            int midpointScreenY = (int)Math.Round((actor.Position.Y + partnerActor.Position.Y) * 0.5f)
+                - mapShiftY
+                + centerY
+                + PlayerCharacter.PortableChairCoupleMidpointScreenYOffset;
             int animationTime = currentTime;
             for (int i = 0; i < chair.CoupleMidpointLayers.Count; i++)
             {
@@ -3188,20 +3335,46 @@ namespace HaCreator.MapSimulator.Pools
             bool byItemOption,
             int currentTime)
         {
+            ApplyRemoteEmotionState(
+                actor,
+                itemId,
+                selection.EmotionId,
+                selection.EmotionName,
+                byItemOption,
+                currentTime,
+                durationMs: 0,
+                loadEffectAnimation: true);
+        }
+
+        private void ApplyRemoteEmotionState(
+            RemoteUserActor actor,
+            int itemId,
+            int emotionId,
+            string emotionName,
+            bool byItemOption,
+            int currentTime,
+            int durationMs,
+            bool loadEffectAnimation)
+        {
             if (actor == null)
             {
                 return;
             }
 
-            SkillAnimation effectAnimation = _loader?.LoadPacketOwnedEmotionEffectAnimation(selection.EmotionName);
-            int expireTime = effectAnimation?.TotalDuration > 0
-                ? currentTime + effectAnimation.TotalDuration
+            SkillAnimation effectAnimation = loadEffectAnimation
+                ? _loader?.LoadPacketOwnedEmotionEffectAnimation(emotionName)
+                : null;
+            int expireDuration = effectAnimation?.TotalDuration > 0
+                ? effectAnimation.TotalDuration
+                : Math.Max(0, durationMs);
+            int expireTime = expireDuration > 0
+                ? currentTime + expireDuration
                 : 0;
             actor.PacketOwnedEmotion = new RemotePacketOwnedEmotionState
             {
                 ItemId = itemId,
-                EmotionId = selection.EmotionId,
-                EmotionName = selection.EmotionName,
+                EmotionId = emotionId,
+                EmotionName = emotionName,
                 ByItemOption = byItemOption,
                 EffectAnimation = effectAnimation,
                 AnimationStartTime = currentTime,
@@ -3210,7 +3383,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (actor.Assembler != null)
             {
-                actor.Assembler.FaceExpressionName = selection.EmotionName;
+                actor.Assembler.FaceExpressionName = emotionName;
             }
         }
 
@@ -4515,7 +4688,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            if (TryResolveMechanicTamingMobOverrideItemId(knownState, out int mechanicTamingMobItemId))
+            if (TryResolveMechanicTamingMobOverrideItemId(knownState, actor.BaseActionName, out int mechanicTamingMobItemId))
             {
                 overrideTamingMobPart = _loader?.LoadEquipment(mechanicTamingMobItemId);
                 if (overrideTamingMobPart?.Slot != EquipSlot.TamingMob)
@@ -4695,10 +4868,16 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static bool TryResolveMechanicTamingMobOverrideItemId(
             RemoteUserTemporaryStatKnownState knownState,
+            string baseActionName,
             out int tamingMobItemId)
         {
             tamingMobItemId = 0;
             if (!ClientOwnedVehicleSkillClassifier.IsExplicitMechanicVehiclePresentationSkillId(knownState.MechanicMode))
+            {
+                return false;
+            }
+
+            if (!ClientOwnedVehicleSkillClassifier.SupportsExplicitMechanicVehiclePresentationCurrentAction(baseActionName))
             {
                 return false;
             }
@@ -5429,12 +5608,29 @@ namespace HaCreator.MapSimulator.Pools
             return PlayerState.Standing;
         }
 
-        private static bool ShouldDrawRemoteShadowPartner(RemoteUserActor actor)
+        internal static bool ShouldDrawRemoteShadowPartnerForTesting(
+            bool hasShadowPartnerActionAnimations,
+            bool hiddenLikeClient,
+            bool hasMorphTemplate,
+            bool hasMechanicMode,
+            int? skillId,
+            int? rawActionCode)
         {
-            return actor?.TemporaryStatShadowPartnerSkill?.HasShadowPartnerActionAnimations == true
-                && !actor.HiddenLikeClient
-                && !actor.HasMorphTemplate
-                && !actor.TemporaryStats.KnownState.MechanicMode.HasValue;
+            return hasShadowPartnerActionAnimations
+                && !hiddenLikeClient
+                && !hasMechanicMode
+                && ShadowPartnerClientActionResolver.ShouldRenderClientShadowPartner(skillId, rawActionCode);
+        }
+
+        private static bool ShouldDrawRemoteShadowPartner(RemoteUserActor actor, int? rawActionCode = null)
+        {
+            return ShouldDrawRemoteShadowPartnerForTesting(
+                actor?.TemporaryStatShadowPartnerSkill?.HasShadowPartnerActionAnimations == true,
+                actor?.HiddenLikeClient == true,
+                actor?.HasMorphTemplate == true,
+                actor?.TemporaryStats.KnownState.MechanicMode.HasValue == true,
+                actor?.TemporaryStatShadowPartnerSkillId,
+                rawActionCode);
         }
 
         private static void DrawRemoteTemporaryStatAvatarEffects(
@@ -5786,15 +5982,16 @@ namespace HaCreator.MapSimulator.Pools
             int screenY,
             int currentTime)
         {
-            if (!ShouldDrawRemoteShadowPartner(actor))
-            {
-                return;
-            }
-
             string baseActionName = string.IsNullOrWhiteSpace(actor.BaseActionName)
                 ? ResolveActionName(actor, MoveActionFromRaw(actor.LastMoveActionRaw))
                 : actor.BaseActionName;
             PlayerState state = ResolveRemoteShadowPartnerState(baseActionName);
+            int? rawActionCode = ResolveRemoteShadowPartnerObservedRawActionCode(actor, state, baseActionName);
+            if (!ShouldDrawRemoteShadowPartner(actor, rawActionCode))
+            {
+                return;
+            }
+
             UpdateRemoteShadowPartnerPresentation(actor, baseActionName, state, currentTime);
             if (actor.ShadowPartnerPresentation?.CurrentPlaybackAnimation?.TryGetFrameAtTime(
                     Math.Max(0, currentTime - actor.ShadowPartnerPresentation.CurrentActionStartTime),
@@ -5812,7 +6009,7 @@ namespace HaCreator.MapSimulator.Pools
                 baseActionName,
                 state,
                 actor.FacingRight,
-                actor.ShadowPartnerPresentation.ObservedRawActionCode,
+                rawActionCode,
                 currentTime);
             int horizontalOffsetPx = ShadowPartnerClientActionResolver.ResolveHorizontalOffsetPx(
                 actor.ShadowPartnerPresentation.CurrentPlaybackAnimation,
@@ -5858,14 +6055,14 @@ namespace HaCreator.MapSimulator.Pools
             PlayerState state,
             int currentTime)
         {
-            if (!ShouldDrawRemoteShadowPartner(actor))
+            int? rawActionCode = ResolveRemoteShadowPartnerObservedRawActionCode(actor, state, observedPlayerActionName);
+            if (!ShouldDrawRemoteShadowPartner(actor, rawActionCode))
             {
                 return;
             }
 
             actor.ShadowPartnerPresentation ??= new RemoteShadowPartnerPresentationState();
             RemoteShadowPartnerPresentationState presentation = actor.ShadowPartnerPresentation;
-            int? rawActionCode = ResolveRemoteShadowPartnerObservedRawActionCode(actor, state, observedPlayerActionName);
             int playbackRawActionCode = ResolveRemoteShadowPartnerPlaybackRawActionCode(actor, rawActionCode);
             int actionTriggerTime = ResolveRemoteShadowPartnerObservedActionTriggerTime(actor, state);
             string fallbackActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
@@ -6824,18 +7021,25 @@ namespace HaCreator.MapSimulator.Pools
                 int animationTime = Math.Max(0, currentTime - state.AnimationStartTime);
                 if (actor.Assembler.TryGetFrameTimingAtTime(state.ActionName, animationTime, out int resolvedFrameIndex, out int frameElapsedMs))
                 {
-                    frameIndex = resolvedFrameIndex;
-                    state.LastFrameIndex = frameIndex;
-                    frame = MeleeAfterimagePlaybackResolver.ResolveFrame(
+                    MeleeAfterimagePlaybackResolver.TryResolveFrameSnapshot(
                         state.AfterImageAction,
-                        frameIndex,
-                        frameElapsedMs);
-                    if (frame != null)
-                    {
-                        state.LastResolvedFrame = frame;
-                        alpha = MeleeAfterimagePlaybackResolver.ResolveFrameAlpha(frame, frameElapsedMs);
-                        state.LastResolvedAlpha = alpha;
-                    }
+                        resolvedFrameIndex,
+                        frameElapsedMs,
+                        out MeleeAfterimagePlaybackResolver.Snapshot snapshot);
+                    int lastFrameIndex = state.LastFrameIndex;
+                    SkillFrame lastResolvedFrame = state.LastResolvedFrame;
+                    float lastResolvedAlpha = state.LastResolvedAlpha;
+                    MeleeAfterimagePlaybackResolver.ApplySnapshotToCache(
+                        snapshot,
+                        ref lastFrameIndex,
+                        ref lastResolvedFrame,
+                        ref lastResolvedAlpha);
+                    state.LastFrameIndex = lastFrameIndex;
+                    state.LastResolvedFrame = lastResolvedFrame;
+                    state.LastResolvedAlpha = lastResolvedAlpha;
+                    frameIndex = state.LastFrameIndex;
+                    frame = state.LastResolvedFrame;
+                    alpha = state.LastResolvedAlpha;
                 }
             }
             else if (state.FadeStartTime >= 0)
@@ -7205,12 +7409,17 @@ namespace HaCreator.MapSimulator.Pools
                     Math.Max(0, currentTime - MeleeAfterImage.AnimationStartTime),
                     out MeleeAfterimagePlaybackResolver.Snapshot snapshot))
             {
-                MeleeAfterImage.LastFrameIndex = snapshot.FrameIndex;
-                if (snapshot.Frame != null)
-                {
-                    MeleeAfterImage.LastResolvedFrame = snapshot.Frame;
-                    MeleeAfterImage.LastResolvedAlpha = snapshot.Alpha;
-                }
+                int lastFrameIndex = MeleeAfterImage.LastFrameIndex;
+                SkillFrame lastResolvedFrame = MeleeAfterImage.LastResolvedFrame;
+                float lastResolvedAlpha = MeleeAfterImage.LastResolvedAlpha;
+                MeleeAfterimagePlaybackResolver.ApplySnapshotToCache(
+                    snapshot,
+                    ref lastFrameIndex,
+                    ref lastResolvedFrame,
+                    ref lastResolvedAlpha);
+                MeleeAfterImage.LastFrameIndex = lastFrameIndex;
+                MeleeAfterImage.LastResolvedFrame = lastResolvedFrame;
+                MeleeAfterImage.LastResolvedAlpha = lastResolvedAlpha;
             }
 
             MeleeAfterImage.FadeStartTime = currentTime;

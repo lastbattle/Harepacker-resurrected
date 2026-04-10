@@ -26,7 +26,8 @@ namespace HaCreator.MapSimulator.Companions
         {
             None = 0,
             SnappedToTarget = 1 << 0,
-            PassiveSettleEffect = 1 << 1
+            PassiveSettleEffect = 1 << 1,
+            SnapEffect = 1 << 2
         }
 
         private sealed class DragonAnimationSet
@@ -140,7 +141,6 @@ namespace HaCreator.MapSimulator.Companions
         private const float ActiveFollowDistanceX = 5f;
         private const float ActiveFollowStepX = 7f;
         private const float ActiveFollowVerticalCheckDistance = 30f;
-        private const float ActiveFollowVerticalStartDistance = 100f;
         private const float ActiveFollowVerticalStepDivisor = 10f;
         private const float ActiveFollowVerticalStepCap = 17f;
         private const int ActiveFollowVerticalCheckFrames = 5;
@@ -235,6 +235,10 @@ namespace HaCreator.MapSimulator.Companions
             UpdateFollowState(owner);
             FollowUpdateFlags followUpdate = UpdateVisualAnchor(deltaSeconds);
             if ((followUpdate & FollowUpdateFlags.PassiveSettleEffect) != 0)
+            {
+                TriggerBlink(owner, currentTime);
+            }
+            else if ((followUpdate & FollowUpdateFlags.SnapEffect) != 0)
             {
                 TriggerBlink(owner, currentTime);
             }
@@ -779,7 +783,7 @@ namespace HaCreator.MapSimulator.Companions
                 _activeVerticalCheckCount = 0;
                 velocityX = 0d;
                 velocityY = 0d;
-                return FollowUpdateFlags.SnappedToTarget;
+                return FollowUpdateFlags.SnappedToTarget | FollowUpdateFlags.SnapEffect;
             }
 
             float nextX = _visualAnchor.X;
@@ -798,7 +802,6 @@ namespace HaCreator.MapSimulator.Companions
                 velocityX = 0d;
             }
 
-            float nextY = _visualAnchor.Y;
             float absoluteDeltaY = Math.Abs(deltaY);
             if (_activeVerticalFollowState == 0)
             {
@@ -820,7 +823,8 @@ namespace HaCreator.MapSimulator.Companions
                 _activeVerticalCheckCount = 0;
             }
 
-            bool shouldMoveVertically = _activeVerticalFollowState != 0 || absoluteDeltaY > ActiveFollowVerticalStartDistance;
+            float nextY = _visualAnchor.Y;
+            bool shouldMoveVertically = _activeVerticalFollowState != 0;
             if (deltaY >= 0f)
             {
                 if (shouldMoveVertically)
@@ -838,7 +842,7 @@ namespace HaCreator.MapSimulator.Companions
 
                     velocityY = 1d;
                 }
-                else if (deltaY > 0f)
+                else
                 {
                     velocityY = 0d;
                 }

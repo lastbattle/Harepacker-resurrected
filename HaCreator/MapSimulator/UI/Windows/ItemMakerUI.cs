@@ -63,6 +63,7 @@ namespace HaCreator.MapSimulator.UI
             public int CatalystItemId { get; init; }
             public bool UsesRandomReward { get; init; }
             public int SourceSlotIndex { get; init; } = -1;
+            public int RequiredEmptyEtcSlots { get; init; } = 1;
             public ItemMakerMaterial[] Materials { get; init; } = Array.Empty<ItemMakerMaterial>();
             public ItemMakerReward[] RandomRewards { get; init; } = Array.Empty<ItemMakerReward>();
             public ItemMakerQuestRequirement[] RequiredQuestStates { get; init; } = Array.Empty<ItemMakerQuestRequirement>();
@@ -911,6 +912,16 @@ namespace HaCreator.MapSimulator.UI
 
             if (hasSelection)
             {
+                int availableEtcSlots = GetAvailableSlotCount(InventoryType.ETC);
+                int requiredEtcSlots = Math.Max(1, recipe.RequiredEmptyEtcSlots);
+                y = DrawSectionHeader(sprite, "Required Slots", detailOrigin, y);
+                y = DrawTextRequirementRow(
+                    sprite,
+                    detailOrigin,
+                    y,
+                    $"Etc: {Math.Min(availableEtcSlots, requiredEtcSlots)}/{requiredEtcSlots} empty slot(s)",
+                    availableEtcSlots >= requiredEtcSlots);
+
                 string slotText = $"Target {sourceSlot.ItemName ?? GetItemName(sourceSlot.ItemId)} x1";
                 sprite.DrawString(_font, slotText, new Vector2(detailOrigin.X, y), new Color(255, 223, 153));
             }
@@ -1432,6 +1443,18 @@ namespace HaCreator.MapSimulator.UI
                     return false;
                 }
 
+                int requiredEtcSlots = Math.Max(1, recipe.RequiredEmptyEtcSlots);
+                int availableEtcSlots = GetAvailableSlotCount(InventoryType.ETC);
+                if (availableEtcSlots < requiredEtcSlots)
+                {
+                    failureReason = string.Format(
+                        CultureInfo.InvariantCulture,
+                        "{0} Need {1} empty Etc slot(s).",
+                        PacketOwnedItemMakerResultRuntime.BuildNoEmptySlotNotice(InventoryType.ETC, disassemblyMode: true),
+                        requiredEtcSlots);
+                    return false;
+                }
+
                 failureReason = $"Ready to disassemble {slotData.ItemName ?? GetItemName(slotData.ItemId)}.";
                 return true;
             }
@@ -1843,6 +1866,26 @@ namespace HaCreator.MapSimulator.UI
             _pendingPacketOwnedDisassemblyItemId = 0;
         }
 
+        private int GetAvailableSlotCount(InventoryType inventoryType)
+        {
+            if (_inventory == null || inventoryType == InventoryType.NONE)
+            {
+                return 0;
+            }
+
+            IReadOnlyList<InventorySlotData> slots = _inventory.GetSlots(inventoryType);
+            int occupiedCount = 0;
+            for (int i = 0; i < slots.Count; i++)
+            {
+                if (slots[i] != null)
+                {
+                    occupiedCount++;
+                }
+            }
+
+            return Math.Max(0, _inventory.GetSlotLimit(inventoryType) - occupiedCount);
+        }
+
         private ItemMakerRecipe ResolvePendingPacketOwnedCraftRecipe()
         {
             if (!string.IsNullOrWhiteSpace(_pendingPacketOwnedRecipeKey))
@@ -2075,6 +2118,28 @@ namespace HaCreator.MapSimulator.UI
         private static string CreateDisassemblyDescription(int itemId)
         {
             return $"Packet-owned Item Maker disassembly target for {GetItemName(itemId)}.";
+        }
+
+        internal static int ResolveClientDisassemblyRequiredEtcSlotCount(
+            int itemId,
+            IEnumerable<(int OutputItemId, int MaterialCount)> recipeMaterialCounts)
+        {
+            if (itemId <= 0 || recipeMaterialCounts == null)
+            {
+                return 1;
+            }
+
+            foreach ((int outputItemId, int materialCount) in recipeMaterialCounts)
+            {
+                if (outputItemId != itemId)
+                {
+                    continue;
+                }
+
+                return Math.Max(1, materialCount);
+            }
+
+            return 1;
         }
 
         internal static string FormatResultSummary(
@@ -2510,11 +2575,21 @@ namespace HaCreator.MapSimulator.UI
                     OutputInventoryType = InventoryType.EQUIP,
                     OutputItemId = slot.ItemId,
                     OutputQuantity = 1,
+                    RequiredEmptyEtcSlots = ResolveDisassemblyRequiredEtcSlotCount(slot.ItemId),
                     SourceSlotIndex = slotIndex
                 });
             }
 
             return recipes;
+        }
+
+        private int ResolveDisassemblyRequiredEtcSlotCount(int itemId)
+        {
+            return ResolveClientDisassemblyRequiredEtcSlotCount(
+                itemId,
+                _allRecipes
+                    .Where(recipe => recipe.Mode == ItemMakerRecipeMode.Craft)
+                    .Select(recipe => (recipe.OutputItemId, recipe.Materials?.Length ?? 0)));
         }
 
         internal static List<(int SlotIndex, int ItemId)> ResolveAuthoritativeDisassemblyTargets(

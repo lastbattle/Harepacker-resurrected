@@ -1027,18 +1027,22 @@ namespace HaCreator.MapSimulator.Effects
 
         private int GetPulleyHitAnimationDurationMs()
         {
-            if (_pulleyFrames == null || _pulleyFrames.Count == 0)
-            {
-                return PulleyHitFallbackAnimationMs;
-            }
+            return ComputePulleyHitAnimationDurationMs(_pulleyFrames?.Select(frame => frame?.Delay ?? 0), PulleyHitFallbackAnimationMs);
+        }
 
+
+        internal static int ComputePulleyHitAnimationDurationMs(IEnumerable<int> frameDelays, int fallbackDurationMs)
+        {
             int durationMs = 0;
-            foreach (GuildBossSpriteFrame frame in _pulleyFrames)
+            if (frameDelays != null)
             {
-                durationMs += Math.Max(0, frame.Delay);
+                foreach (int frameDelay in frameDelays)
+                {
+                    durationMs += Math.Max(0, frameDelay);
+                }
             }
 
-            return durationMs > 0 ? durationMs : PulleyHitFallbackAnimationMs;
+            return durationMs > 0 ? durationMs : Math.Max(1, fallbackDurationMs);
         }
 
 

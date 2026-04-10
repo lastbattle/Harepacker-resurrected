@@ -58,32 +58,36 @@ namespace HaCreator.MapSimulator.Interaction
                         return ChatCommandHandler.CommandResult.Error(InviteUsage);
                     }
 
-                    return ChatCommandHandler.CommandResult.Ok(runtime.ReceiveInvitePacket(string.Join(" ", args.Skip(2))));
+                    return applyPacket(MessengerPacketType.Invite, MessengerPacketCodec.BuildInvitePayload(string.Join(" ", args.Skip(2))));
                 case "accept":
-                    return ChatCommandHandler.CommandResult.Ok(runtime.ResolvePendingInvitePacket(args.Length >= 3 ? string.Join(" ", args.Skip(2)) : null, accepted: true));
+                    return args.Length >= 3
+                        ? applyPacket(MessengerPacketType.InviteAccept, MessengerPacketCodec.BuildInvitePayload(string.Join(" ", args.Skip(2))))
+                        : ChatCommandHandler.CommandResult.Ok(runtime.ResolvePendingInvitePacket(null, accepted: true));
                 case "reject":
-                    return ChatCommandHandler.CommandResult.Ok(runtime.ResolvePendingInvitePacket(args.Length >= 3 ? string.Join(" ", args.Skip(2)) : null, accepted: false));
+                    return args.Length >= 3
+                        ? applyPacket(MessengerPacketType.InviteReject, MessengerPacketCodec.BuildInvitePayload(string.Join(" ", args.Skip(2))))
+                        : ChatCommandHandler.CommandResult.Ok(runtime.ResolvePendingInvitePacket(null, accepted: false));
                 case "leave":
                     if (args.Length < 3)
                     {
                         return ChatCommandHandler.CommandResult.Error(LeaveUsage);
                     }
 
-                    return ChatCommandHandler.CommandResult.Ok(runtime.RemoveParticipant(string.Join(" ", args.Skip(2)), rejectedInvite: false));
+                    return applyPacket(MessengerPacketType.Leave, MessengerPacketCodec.BuildInvitePayload(string.Join(" ", args.Skip(2))));
                 case "room":
                     if (args.Length < 4)
                     {
                         return ChatCommandHandler.CommandResult.Error(RoomUsage);
                     }
 
-                    return ChatCommandHandler.CommandResult.Ok(runtime.ReceiveRoomMessage(args[2], string.Join(" ", args.Skip(3))));
+                    return applyPacket(MessengerPacketType.RoomChat, MessengerPacketCodec.BuildChatPayload(args[2], string.Join(" ", args.Skip(3))));
                 case "whisper":
                     if (args.Length < 4)
                     {
                         return ChatCommandHandler.CommandResult.Error(WhisperUsage);
                     }
 
-                    return ChatCommandHandler.CommandResult.Ok(runtime.ReceiveRemoteWhisper(args[2], string.Join(" ", args.Skip(3))));
+                    return applyPacket(MessengerPacketType.Whisper, MessengerPacketCodec.BuildChatPayload(args[2], string.Join(" ", args.Skip(3))));
                 case "member":
                 case "memberinfo":
                 case "presence":
@@ -154,7 +158,10 @@ namespace HaCreator.MapSimulator.Interaction
             return applyPacket(packetType, payload);
         }
 
-        internal static ChatCommandHandler.CommandResult HandleRemoteCommand(string[] args, MessengerRuntime runtime)
+        internal static ChatCommandHandler.CommandResult HandleRemoteCommand(
+            string[] args,
+            MessengerRuntime runtime,
+            MessengerPacketCommandApplier applyPacket)
         {
             if (args.Length < 2)
             {
@@ -169,13 +176,13 @@ namespace HaCreator.MapSimulator.Interaction
                         return ChatCommandHandler.CommandResult.Error("Usage: /messenger remote invite <name>");
                     }
 
-                    return ChatCommandHandler.CommandResult.Ok(runtime.ReceiveInvitePacket(string.Join(" ", args.Skip(2))));
+                    return applyPacket(MessengerPacketType.Invite, MessengerPacketCodec.BuildInvitePayload(string.Join(" ", args.Skip(2))));
                 case "accept":
                     return ChatCommandHandler.CommandResult.Ok(runtime.ResolvePendingInvite(true, packetDriven: true));
                 case "reject":
                     if (args.Length >= 3)
                     {
-                        return ChatCommandHandler.CommandResult.Ok(runtime.RemoveParticipant(string.Join(" ", args.Skip(2)), rejectedInvite: true));
+                        return applyPacket(MessengerPacketType.InviteReject, MessengerPacketCodec.BuildInvitePayload(string.Join(" ", args.Skip(2))));
                     }
 
                     return ChatCommandHandler.CommandResult.Ok(runtime.ResolvePendingInvite(false, packetDriven: true));
@@ -185,21 +192,21 @@ namespace HaCreator.MapSimulator.Interaction
                         return ChatCommandHandler.CommandResult.Error("Usage: /messenger remote leave <name>");
                     }
 
-                    return ChatCommandHandler.CommandResult.Ok(runtime.RemoveParticipant(string.Join(" ", args.Skip(2)), rejectedInvite: false));
+                    return applyPacket(MessengerPacketType.Leave, MessengerPacketCodec.BuildInvitePayload(string.Join(" ", args.Skip(2))));
                 case "room":
                     if (args.Length < 4)
                     {
                         return ChatCommandHandler.CommandResult.Error("Usage: /messenger remote room <name> <message>");
                     }
 
-                    return ChatCommandHandler.CommandResult.Ok(runtime.ReceiveRoomMessage(args[2], string.Join(" ", args.Skip(3))));
+                    return applyPacket(MessengerPacketType.RoomChat, MessengerPacketCodec.BuildChatPayload(args[2], string.Join(" ", args.Skip(3))));
                 case "whisper":
                     if (args.Length < 4)
                     {
                         return ChatCommandHandler.CommandResult.Error("Usage: /messenger remote whisper <name> <message>");
                     }
 
-                    return ChatCommandHandler.CommandResult.Ok(runtime.ReceiveRemoteWhisper(args[2], string.Join(" ", args.Skip(3))));
+                    return applyPacket(MessengerPacketType.Whisper, MessengerPacketCodec.BuildChatPayload(args[2], string.Join(" ", args.Skip(3))));
                 default:
                     return ChatCommandHandler.CommandResult.Error(RemoteUsage);
             }

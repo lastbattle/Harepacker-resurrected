@@ -1050,6 +1050,23 @@ namespace HaCreator.MapSimulator.Animation
         Point EndOffset);
 
     /// <summary>
+    /// Native layer position recovered from CAnimationDisplayer::Effect_HP.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredPositionSettings(
+        int Left,
+        int Top);
+
+    /// <summary>
+    /// Native InsertCanvas call shape recovered from CAnimationDisplayer::Effect_HP.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredInsertCommand(
+        AnimationCanvasLayerContent Content,
+        Point Offset,
+        int StartDelayMs,
+        CanvasLayerRecoveredInsertCanvasSettings InsertCanvasSettings,
+        CanvasLayerRecoveredMoveSettings MoveSettings);
+
+    /// <summary>
     /// Recovered native layer values from CAnimationDisplayer::Effect_HP.
     /// The simulator preserves these as parity metadata even though it does not instantiate the client COM graph.
     /// </summary>
@@ -1062,6 +1079,14 @@ namespace HaCreator.MapSimulator.Animation
     internal readonly record struct CanvasLayerRegistration(
         CanvasLayerInsertDescriptor[] InsertDescriptors,
         CanvasLayerRecoveredLayerSettings RecoveredLayerSettings);
+
+    /// <summary>
+    /// Full recovered registration trace for the managed canvas-layer analogue.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredRegistrationTrace(
+        CanvasLayerRecoveredLayerSettings LayerSettings,
+        CanvasLayerRecoveredPositionSettings Position,
+        CanvasLayerRecoveredInsertCommand[] InsertCommands);
 
     /// <summary>
     /// One-shot canvas-backed animation that mirrors RegisterOneTimeAnimation ownership.
@@ -1088,6 +1113,7 @@ namespace HaCreator.MapSimulator.Animation
             _insertOperations,
             static operation => operation.Descriptor);
         internal CanvasLayerRecoveredLayerSettings RecoveredLayerSettings { get; private set; }
+        internal CanvasLayerRecoveredRegistrationTrace RecoveredRegistrationTrace { get; private set; }
 
         internal static CanvasLayerInsertDescriptor[] BuildInsertDescriptors(
             int holdDurationMs,
@@ -1195,6 +1221,7 @@ namespace HaCreator.MapSimulator.Animation
             _insertOperations = BuildInsertOperations(insertDescriptors);
             Owner = owner;
             RecoveredLayerSettings = recoveredLayerSettings;
+            RecoveredRegistrationTrace = BuildRecoveredRegistrationTrace(left, top, insertDescriptors, recoveredLayerSettings);
         }
 
         public bool Update(int currentTimeMs)
@@ -1244,6 +1271,41 @@ namespace HaCreator.MapSimulator.Animation
             _insertOperations = Array.Empty<CanvasLayerInsertOperation>();
             Owner = AnimationCanvasLayerOwner.Generic;
             RecoveredLayerSettings = default;
+            RecoveredRegistrationTrace = default;
+        }
+
+        internal static CanvasLayerRecoveredRegistrationTrace BuildRecoveredRegistrationTrace(
+            float left,
+            float top,
+            IReadOnlyList<CanvasLayerInsertDescriptor> insertDescriptors,
+            CanvasLayerRecoveredLayerSettings recoveredLayerSettings)
+        {
+            CanvasLayerRecoveredInsertCommand[] recoveredInsertCommands;
+            if (insertDescriptors == null || insertDescriptors.Count == 0)
+            {
+                recoveredInsertCommands = Array.Empty<CanvasLayerRecoveredInsertCommand>();
+            }
+            else
+            {
+                recoveredInsertCommands = new CanvasLayerRecoveredInsertCommand[insertDescriptors.Count];
+                for (int i = 0; i < insertDescriptors.Count; i++)
+                {
+                    CanvasLayerInsertDescriptor descriptor = insertDescriptors[i];
+                    recoveredInsertCommands[i] = new CanvasLayerRecoveredInsertCommand(
+                        descriptor.Content,
+                        descriptor.Offset,
+                        descriptor.StartDelayMs,
+                        descriptor.RecoveredInsertCanvasSettings,
+                        descriptor.RecoveredMoveSettings);
+                }
+            }
+
+            return new CanvasLayerRecoveredRegistrationTrace(
+                recoveredLayerSettings,
+                new CanvasLayerRecoveredPositionSettings(
+                    (int)Math.Round(left, MidpointRounding.AwayFromZero),
+                    (int)Math.Round(top, MidpointRounding.AwayFromZero)),
+                recoveredInsertCommands);
         }
 
         private CanvasLayerInsertOperation[] BuildInsertOperations(IReadOnlyList<CanvasLayerInsertDescriptor> insertDescriptors)

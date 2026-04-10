@@ -251,12 +251,15 @@ namespace HaCreator.MapSimulator
 
             DrainPartyRaidPacketInbox(currTickCount);
             DrainTournamentPacketInbox(currTickCount);
+            DrainRockPaperScissorsPacketInbox(currTickCount);
+            DrainRockPaperScissorsPendingClientPackets();
 
             DrainCookieHousePointInbox();
             EnsureEngagementProposalInboxState(shouldRun: true);
             DrainEngagementProposalInbox();
 
             _specialFieldRuntime.Update(gameTime, currTickCount);
+            DrainRockPaperScissorsPendingClientPackets();
             EnsureTradingRoomPacketInboxState(shouldRun: true);
             DrainTradingRoomPacketInbox(currTickCount);
             SyncWeddingRemoteActorsToSharedPool(_specialFieldRuntime.SpecialEffects.Wedding);
@@ -337,6 +340,7 @@ namespace HaCreator.MapSimulator
             UpdateVegaSpellOwnerState();
             UpdatePacketOwnedRadioSchedule(currTickCount);
             UpdateUtilityAudioMix(currTickCount);
+            DrainRockPaperScissorsPendingClientPackets();
 
 
             if (isWindowActive)
@@ -461,6 +465,8 @@ namespace HaCreator.MapSimulator
             {
                 return;
             }
+
+            HandleQuestFieldEnterRuntime(currTickCount);
 
 
             // Handle chat input (returns true if chat consumed the input)

@@ -7,6 +7,7 @@ using HaCreator.MapSimulator.Companions;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Pools;
+using HaCreator.MapSimulator.UI;
 using MapleLib.ClientLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -65,6 +66,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class QuestRuntimeManager
     {
         private static readonly DateTime QuestDeliveryWorthlessOpenEndDateUtc = new(2079, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        private static readonly char[] QuestRecordTokenDelimiters = { ';', ',', '|', '\r', '\n' };
         private const int DragonNpcId = 1013000;
         private const int MateNameHeaderQuestId = 4451;
         private const int DragonQuestIdSkipMin = 1200;
@@ -229,6 +231,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int ActionRepeatIntervalMinutes { get; set; }
             public bool FieldEnterAction { get; set; }
             public string NpcActionName { get; set; } = string.Empty;
+            public List<int> FieldEnterMapIds { get; } = new();
             public List<int> BuffItemMapIds { get; } = new();
             public List<QuestStateMutation> QuestMutations { get; } = new();
             public List<QuestTraitReward> TraitRewards { get; } = new();
@@ -274,6 +277,7 @@ namespace HaCreator.MapSimulator.Interaction
             public bool HasFieldEnterAutoStart { get; init; }
             public bool HasEquipOnAutoStart { get; init; }
             public int StartRepeatIntervalMinutes { get; init; }
+            public IReadOnlyList<int> StartFieldEnterMapIds { get; init; } = Array.Empty<int>();
             public int? StartNpcId { get; init; }
             public int? EndNpcId { get; init; }
             public int? MinLevel { get; init; }
@@ -335,7 +339,19 @@ namespace HaCreator.MapSimulator.Interaction
         {
             public QuestStateType State { get; set; }
             public DateTime StartedAtUtc { get; set; }
+            public DateTime LastStartActionAtUtc { get; set; }
+            public DateTime LastEndActionAtUtc { get; set; }
             public Dictionary<int, int> MobKills { get; } = new();
+        }
+
+        internal sealed class QuestFieldEnterEvent
+        {
+            public int QuestId { get; init; }
+            public string QuestName { get; init; } = string.Empty;
+            public int SpeakerNpcId { get; init; }
+            public string NoticeText { get; init; } = string.Empty;
+            public IReadOnlyList<NpcInteractionPage> ModalPages { get; init; } = Array.Empty<NpcInteractionPage>();
+            public IReadOnlyList<string> Messages { get; init; } = Array.Empty<string>();
         }
 
         private readonly Dictionary<int, QuestDefinition> _definitions = new();
@@ -347,6 +363,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, string> _questMateNames = new();
         private readonly HashSet<int> _packetOwnedAutoStartQuestRegistrations = new();
         private int _recentlyViewedQuestId;
+        private int _lastObservedFieldEnterMapId;
         private Func<long> _mesoCountProvider;
         private Func<long, bool> _consumeMeso;
         private Action<long> _addMeso;
@@ -374,7 +391,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int QuestDeliveryAcceptCashItemId = 5660000;
         private const int QuestDeliveryCompleteCashItemId = 5660001;
 
-        private NpcDialogueFormattingContext CreateDialogueFormattingContext(CharacterBuild build = null)
+        internal NpcDialogueFormattingContext BuildDialogueFormattingContext(CharacterBuild build = null, int questId = 0)
         {
             return new NpcDialogueFormattingContext
             {
@@ -383,8 +400,14 @@ namespace HaCreator.MapSimulator.Interaction
                 ResolveQuestStateText = questId => FormatQuestStateForDialogue(GetQuestState(questId)),
                 ResolveJobNameText = () => ResolveCurrentJobNameForDialogue(build),
                 ResolveCurrentMapNameText = ResolveCurrentMapNameForDialogue,
-                ResolveQuestRecordText = ResolveQuestRecordTextForDialogue
+                ResolveQuestRecordText = ResolveQuestRecordTextForDialogue,
+                ResolveQuestDetailRecordText = token => ResolveQuestDetailRecordTextForDialogue(questId, token)
             };
+        }
+
+        private NpcDialogueFormattingContext CreateDialogueFormattingContext(CharacterBuild build = null, int questId = 0)
+        {
+            return BuildDialogueFormattingContext(build, questId);
         }
 
         private static string ResolveCurrentPlayerNameForDialogue(CharacterBuild build)
@@ -432,6 +455,80 @@ namespace HaCreator.MapSimulator.Interaction
                    !string.IsNullOrWhiteSpace(recordValue)
                 ? recordValue
                 : "0";
+        }
+
+        internal static bool TryResolveQuestDetailRecordTokenValue(string recordValue, string token, out string value)
+        {
+            static bool IsEntryDelimiter(char ch)
+            {
+                return ch == ';' || ch == ',' || ch == '|' || ch == '\r' || ch == '\n';
+            }
+
+            value = string.Empty;
+            string normalizedToken = token?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedToken) || string.IsNullOrWhiteSpace(recordValue))
+            {
+                return false;
+            }
+
+            ReadOnlySpan<char> remaining = recordValue.AsSpan();
+            while (!remaining.IsEmpty)
+            {
+                int delimiterIndex = remaining.IndexOfAny(QuestRecordTokenDelimiters);
+                ReadOnlySpan<char> entry = delimiterIndex >= 0
+                    ? remaining[..delimiterIndex]
+                    : remaining;
+                remaining = delimiterIndex >= 0
+                    ? remaining[(delimiterIndex + 1)..]
+                    : ReadOnlySpan<char>.Empty;
+
+                entry = entry.Trim();
+                if (entry.IsEmpty)
+                {
+                    continue;
+                }
+
+                int separatorIndex = entry.IndexOf('=');
+                if (separatorIndex < 0)
+                {
+                    separatorIndex = entry.IndexOf(':');
+                }
+
+                if (separatorIndex <= 0)
+                {
+                    continue;
+                }
+
+                ReadOnlySpan<char> key = entry[..separatorIndex].Trim();
+                if (!key.Equals(normalizedToken.AsSpan(), StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                ReadOnlySpan<char> parsedValue = entry[(separatorIndex + 1)..].Trim();
+                int trailingDelimiterIndex = parsedValue.IndexOfAny(QuestRecordTokenDelimiters);
+                if (trailingDelimiterIndex >= 0)
+                {
+                    parsedValue = parsedValue[..trailingDelimiterIndex].TrimEnd();
+                }
+
+                value = parsedValue.ToString();
+                return true;
+            }
+
+            return false;
+        }
+
+        private string ResolveQuestDetailRecordTextForDialogue(int questId, string token)
+        {
+            if (questId <= 0 ||
+                !TryGetQuestRecordValue(questId, out string recordValue) ||
+                !TryResolveQuestDetailRecordTokenValue(recordValue, token, out string value))
+            {
+                return null;
+            }
+
+            return value;
         }
 
         public void ConfigureMesoRuntime(Func<long> mesoCountProvider, Func<long, bool> consumeMeso, Action<long> addMeso)
@@ -650,7 +747,7 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     QuestId = definition.QuestId,
                     Title = definition.Name,
-                    Summary = NpcDialogueTextFormatter.Format(summary, CreateDialogueFormattingContext()),
+                    Summary = NpcDialogueTextFormatter.Format(summary, CreateDialogueFormattingContext(questId: definition.QuestId)),
                     State = state,
                     CurrentProgress = currentProgress,
                     TotalProgress = totalProgress
@@ -679,16 +776,16 @@ namespace HaCreator.MapSimulator.Interaction
 
             string summaryText = state switch
             {
-                QuestStateType.Not_Started => JoinQuestSections(definition.Summary, definition.StartDescription, definition.DemandSummary),
-                QuestStateType.Started => JoinQuestSections(definition.Summary, definition.ProgressDescription, definition.CompletionDescription),
-                QuestStateType.Completed => JoinQuestSections(definition.Summary, definition.CompletionDescription),
+                QuestStateType.Not_Started => JoinQuestSections(definition.QuestId, definition.Summary, definition.StartDescription, definition.DemandSummary),
+                QuestStateType.Started => JoinQuestSections(definition.QuestId, definition.Summary, definition.ProgressDescription, definition.CompletionDescription),
+                QuestStateType.Completed => JoinQuestSections(definition.QuestId, definition.Summary, definition.CompletionDescription),
                 _ => definition.Summary
             };
 
             string requirementText = state switch
             {
-                QuestStateType.Not_Started => NpcDialogueTextFormatter.FormatPreservingQuestDetailMarkers(definition.DemandSummary, CreateDialogueFormattingContext()),
-                QuestStateType.Started => NpcDialogueTextFormatter.FormatPreservingQuestDetailMarkers(definition.DemandSummary, CreateDialogueFormattingContext()),
+                QuestStateType.Not_Started => NpcDialogueTextFormatter.FormatPreservingQuestDetailMarkers(definition.DemandSummary, CreateDialogueFormattingContext(questId: definition.QuestId)),
+                QuestStateType.Started => NpcDialogueTextFormatter.FormatPreservingQuestDetailMarkers(definition.DemandSummary, CreateDialogueFormattingContext(questId: definition.QuestId)),
                 QuestStateType.Completed => string.Empty,
                 _ => string.Empty
             };
@@ -718,7 +815,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Title = definition.Name,
                 HeaderNoteText = headerNoteText,
                 State = state,
-                SummaryText = NpcDialogueTextFormatter.FormatPreservingQuestDetailMarkers(summaryText, CreateDialogueFormattingContext()),
+                SummaryText = NpcDialogueTextFormatter.FormatPreservingQuestDetailMarkers(summaryText, CreateDialogueFormattingContext(questId: definition.QuestId)),
                 RequirementText = requirementText,
                 RewardText = rewardText,
                 HintText = hintText,
@@ -1514,6 +1611,7 @@ namespace HaCreator.MapSimulator.Interaction
             QuestProgress progress = GetOrCreateProgress(questId);
             progress.State = QuestStateType.Started;
             progress.StartedAtUtc = DateTime.UtcNow;
+            RecordQuestActionExecution(progress, completionPhase: false);
             progress.MobKills.Clear();
             MarkQuestAlarmUpdated(questId);
 
@@ -1674,6 +1772,7 @@ namespace HaCreator.MapSimulator.Interaction
             QuestProgress progress = GetOrCreateProgress(questId);
             progress.State = QuestStateType.Completed;
             progress.StartedAtUtc = DateTime.MinValue;
+            RecordQuestActionExecution(progress, completionPhase: true);
             MarkQuestAlarmUpdated(questId);
 
             return new QuestWindowActionResult
@@ -1752,6 +1851,9 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         QuestId = item.Definition.QuestId,
                         Title = item.Definition.Name,
+                        TooltipText = QuestAlarmTextLayout.BuildTitleTooltipText(
+                            NpcDialogueTextFormatter.Format(item.Definition.DemandSummary, CreateDialogueFormattingContext(questId: item.Definition.QuestId)),
+                            issues),
                         StatusText = issues.Count == 0 ? "Ready" : "In progress",
                         CurrentProgress = currentProgress,
                         TotalProgress = totalProgress,
@@ -1762,7 +1864,7 @@ namespace HaCreator.MapSimulator.Interaction
                         IsRecentlyUpdated = IsQuestAlarmRecentlyUpdated(item.Definition.QuestId),
                         RequirementLines = BuildRequirementLines(item.Definition, build, QuestStateType.Started),
                         IssueLines = issues,
-                        DemandText = NpcDialogueTextFormatter.Format(item.Definition.DemandSummary, CreateDialogueFormattingContext())
+                        DemandText = NpcDialogueTextFormatter.Format(item.Definition.DemandSummary, CreateDialogueFormattingContext(questId: item.Definition.QuestId))
                     };
                 })
                 .OrderByDescending(entry => entry.IsReadyToComplete)
@@ -1831,7 +1933,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             QuestStateType state = ResolvePacketQuestResultState(definition.QuestId, textKind);
-            NpcDialogueFormattingContext formattingContext = CreateDialogueFormattingContext(build);
+            NpcDialogueFormattingContext formattingContext = BuildDialogueFormattingContext(build, 0);
             string noticeText = BuildPacketQuestResultNoticeText(definition, build, state, textKind, formattingContext);
             IReadOnlyList<NpcInteractionPage> modalPages = BuildPacketQuestResultModalPages(definition, build, state, textKind, formattingContext);
             presentation = new PacketQuestResultPresentation
@@ -1858,7 +1960,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             QuestStateType clientState = hasQuestRecord ? QuestStateType.Started : QuestStateType.Not_Started;
-            NpcDialogueFormattingContext formattingContext = CreateDialogueFormattingContext(build);
+            NpcDialogueFormattingContext formattingContext = BuildDialogueFormattingContext(build, 0);
             string noticeText = BuildClientPacketQuestResultActNotice(definition, build, clientState, formattingContext);
             IReadOnlyList<NpcInteractionPage> modalPages = BuildPacketQuestResultModalPages(definition, build, clientState, PacketQuestResultTextKind.Auto, formattingContext);
             presentation = new PacketQuestResultPresentation
@@ -2186,10 +2288,11 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     Text = NpcDialogueTextFormatter.Format(
                         JoinQuestSections(
+                            definition.QuestId,
                             definition.Summary,
                             completionPhase ? definition.ProgressDescription : definition.StartDescription,
                             definition.DemandSummary),
-                        CreateDialogueFormattingContext())
+                        CreateDialogueFormattingContext(questId: definition.QuestId))
                 }
             };
 
@@ -2385,6 +2488,8 @@ namespace HaCreator.MapSimulator.Interaction
 
                 QuestProgress progress = GetOrCreateProgress(questId);
                 progress.State = QuestStateType.Started;
+                progress.StartedAtUtc = DateTime.UtcNow;
+                RecordQuestActionExecution(progress, completionPhase: false);
                 progress.MobKills.Clear();
                 MarkQuestAlarmUpdated(questId);
 
@@ -2482,6 +2587,8 @@ namespace HaCreator.MapSimulator.Interaction
 
                 QuestProgress progress = GetOrCreateProgress(questId);
                 progress.State = QuestStateType.Completed;
+                progress.StartedAtUtc = DateTime.MinValue;
+                RecordQuestActionExecution(progress, completionPhase: true);
                 MarkQuestAlarmUpdated(questId);
                 return new QuestActionResult
                 {
@@ -2497,6 +2604,137 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 Messages = new[] { $"{definition.Name} has already been completed." }
             };
+        }
+
+        internal IReadOnlyList<QuestFieldEnterEvent> PollFieldEnterActions(CharacterBuild build)
+        {
+            int currentMapId = Math.Max(0, _currentMapIdProvider?.Invoke() ?? 0);
+            if (currentMapId <= 0 || currentMapId == _lastObservedFieldEnterMapId)
+            {
+                return Array.Empty<QuestFieldEnterEvent>();
+            }
+
+            _lastObservedFieldEnterMapId = currentMapId;
+            return HandleFieldEnterActions(currentMapId, build);
+        }
+
+        private IReadOnlyList<QuestFieldEnterEvent> HandleFieldEnterActions(int currentMapId, CharacterBuild build)
+        {
+            EnsureDefinitionsLoaded();
+
+            var events = new List<QuestFieldEnterEvent>();
+            foreach (QuestDefinition definition in _definitions.Values.OrderBy(static definition => definition.QuestId))
+            {
+                if (definition == null)
+                {
+                    continue;
+                }
+
+                if (GetQuestState(definition.QuestId) == QuestStateType.Not_Started &&
+                    definition.HasFieldEnterAutoStart &&
+                    MatchesFieldEnterMap(definition.StartFieldEnterMapIds, currentMapId))
+                {
+                    QuestWindowActionResult acceptResult = TryAcceptFromQuestWindow(definition.QuestId, build);
+                    if (acceptResult?.StateChanged == true && acceptResult.Messages.Count > 0)
+                    {
+                        events.Add(new QuestFieldEnterEvent
+                        {
+                            QuestId = definition.QuestId,
+                            QuestName = definition.Name,
+                            SpeakerNpcId = definition.StartActions?.ActionNpcId ?? definition.StartNpcId ?? 0,
+                            Messages = acceptResult.Messages
+                        });
+                    }
+
+                    if (GetQuestState(definition.QuestId) == QuestStateType.Started &&
+                        MatchesFieldEnterMap(definition.StartActions?.FieldEnterMapIds, currentMapId))
+                    {
+                        QuestFieldEnterEvent startActionEvent = BuildFieldEnterActionEvent(
+                            definition,
+                            definition.StartActions,
+                            build,
+                            completionPhase: false);
+                        if (startActionEvent != null)
+                        {
+                            events.Add(startActionEvent);
+                        }
+                    }
+                }
+
+                QuestStateType state = GetQuestState(definition.QuestId);
+                bool completionPhase = state == QuestStateType.Started;
+                QuestActionBundle actions = completionPhase ? definition.EndActions : definition.StartActions;
+                if (!MatchesFieldEnterMap(actions?.FieldEnterMapIds, currentMapId))
+                {
+                    continue;
+                }
+
+                List<string> issues = completionPhase
+                    ? EvaluateCompletionIssues(definition, build)
+                    : EvaluateStartIssues(definition, build);
+                if (issues.Count > 0)
+                {
+                    continue;
+                }
+
+                QuestProgress progress = GetOrCreateProgress(definition.QuestId);
+                RecordQuestActionExecution(progress, completionPhase);
+                QuestFieldEnterEvent fieldEnterEvent = BuildFieldEnterActionEvent(definition, actions, build, completionPhase);
+                if (fieldEnterEvent != null)
+                {
+                    events.Add(fieldEnterEvent);
+                }
+            }
+
+            return events;
+        }
+
+        private QuestFieldEnterEvent BuildFieldEnterActionEvent(
+            QuestDefinition definition,
+            QuestActionBundle actions,
+            CharacterBuild build,
+            bool completionPhase)
+        {
+            if (definition == null || actions == null)
+            {
+                return null;
+            }
+
+            NpcDialogueFormattingContext formattingContext = CreateDialogueFormattingContext(build, definition.QuestId);
+            string noticeText = BuildClientPacketQuestResultActionNoticeText(actions, build);
+            IReadOnlyList<NpcInteractionPage> fallbackPages = ResolveConversationPages(
+                definition,
+                completionPhase ? QuestStateType.Started : QuestStateType.Not_Started,
+                build,
+                completionPhase
+                    ? definition.EndNpcId ?? definition.StartNpcId ?? 0
+                    : definition.StartNpcId ?? definition.EndNpcId ?? 0);
+            IReadOnlyList<NpcInteractionPage> modalPages = GetDisplayConversationPages(
+                    GetPacketQuestResultConversationPages(actions, fallbackPages),
+                    formattingContext)
+                .Where(ShouldDisplayConversationPage)
+                .ToArray();
+            if (string.IsNullOrWhiteSpace(noticeText) && modalPages.Count == 0)
+            {
+                return null;
+            }
+
+            return new QuestFieldEnterEvent
+            {
+                QuestId = definition.QuestId,
+                QuestName = definition.Name,
+                SpeakerNpcId = actions.ActionNpcId ?? (completionPhase ? definition.EndNpcId : definition.StartNpcId) ?? 0,
+                NoticeText = noticeText,
+                ModalPages = modalPages
+            };
+        }
+
+        private static bool MatchesFieldEnterMap(IReadOnlyList<int> mapIds, int currentMapId)
+        {
+            return currentMapId > 0 &&
+                   mapIds != null &&
+                   mapIds.Count > 0 &&
+                   mapIds.Contains(currentMapId);
         }
 
         public NpcInteractionEntryKind? GetNpcQuestAlertKind(NpcItem npc, CharacterBuild build)
@@ -2716,7 +2954,7 @@ namespace HaCreator.MapSimulator.Interaction
             bool isCompletionNpc)
         {
             var pages = new List<NpcInteractionPage>();
-            NpcDialogueFormattingContext formattingContext = CreateDialogueFormattingContext(build);
+            NpcDialogueFormattingContext formattingContext = BuildDialogueFormattingContext(build, 0);
 
             string summary = definition.Name;
             if (!string.IsNullOrWhiteSpace(definition.Summary))
@@ -3472,6 +3710,26 @@ namespace HaCreator.MapSimulator.Interaction
                     });
                 }
             }
+
+            if (actions.ActionRepeatIntervalMinutes > 0)
+            {
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Repeat",
+                    Text = $"Action interval: {actions.ActionRepeatIntervalMinutes} minute(s)",
+                    IsComplete = true
+                });
+            }
+
+            if (actions.FieldEnterAction)
+            {
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Action",
+                    Text = BuildFieldEnterActionText(actions.FieldEnterMapIds),
+                    IsComplete = true
+                });
+            }
         }
 
         private void AppendAvailabilityRequirementLines(
@@ -3795,7 +4053,7 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add(new QuestLogLineSnapshot
                 {
                     Label = "Action",
-                    Text = "Field-enter action",
+                    Text = BuildFieldEnterActionText(actions.FieldEnterMapIds),
                     IsComplete = true
                 });
             }
@@ -3841,7 +4099,7 @@ namespace HaCreator.MapSimulator.Interaction
                 definition.StartAllowedDays,
                 issues,
                 "start");
-            AppendActionMetadataIssues(definition.StartActions, build, issues, "start");
+            AppendActionMetadataIssues(definition, definition.StartActions, build, issues, "start", completionPhase: false);
             AppendTraitIssues(definition.StartTraitRequirements, build, issues);
             AppendQuestStateIssues(definition.StartQuestRequirements, issues);
             AppendItemIssues(definition.StartItemRequirements, issues);
@@ -3900,7 +4158,7 @@ namespace HaCreator.MapSimulator.Interaction
                 definition.EndAllowedDays,
                 issues,
                 "complete");
-            AppendActionMetadataIssues(definition.EndActions, build, issues, "complete");
+            AppendActionMetadataIssues(definition, definition.EndActions, build, issues, "complete", completionPhase: true);
             AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
             issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(definition.EndActions.RewardItems, build, messages: null)));
 
@@ -3912,11 +4170,13 @@ namespace HaCreator.MapSimulator.Interaction
             return issues;
         }
 
-        private static void AppendActionMetadataIssues(
+        private void AppendActionMetadataIssues(
+            QuestDefinition definition,
             QuestActionBundle actions,
             CharacterBuild build,
             ICollection<string> issues,
-            string actionLabel)
+            string actionLabel,
+            bool completionPhase)
         {
             if (actions == null || issues == null)
             {
@@ -3942,6 +4202,51 @@ namespace HaCreator.MapSimulator.Interaction
                 Array.Empty<DayOfWeek>(),
                 issues,
                 actionLabel);
+            AppendActionRepeatIntervalIssues(definition, actions, issues, actionLabel, completionPhase);
+        }
+
+        internal static TimeSpan GetQuestActionRepeatRemaining(
+            DateTime nowUtc,
+            DateTime lastActionUtc,
+            int repeatIntervalMinutes)
+        {
+            if (repeatIntervalMinutes <= 0 || lastActionUtc == DateTime.MinValue)
+            {
+                return TimeSpan.Zero;
+            }
+
+            DateTime normalizedLastActionUtc = lastActionUtc.Kind == DateTimeKind.Utc
+                ? lastActionUtc
+                : lastActionUtc.ToUniversalTime();
+            DateTime nextAllowedUtc = normalizedLastActionUtc.AddMinutes(repeatIntervalMinutes);
+            return nextAllowedUtc > nowUtc
+                ? nextAllowedUtc - nowUtc
+                : TimeSpan.Zero;
+        }
+
+        private void AppendActionRepeatIntervalIssues(
+            QuestDefinition definition,
+            QuestActionBundle actions,
+            ICollection<string> issues,
+            string actionLabel,
+            bool completionPhase)
+        {
+            if (definition == null || actions == null || issues == null || actions.ActionRepeatIntervalMinutes <= 0)
+            {
+                return;
+            }
+
+            QuestProgress progress = GetProgress(definition.QuestId);
+            DateTime lastActionUtc = completionPhase
+                ? progress?.LastEndActionAtUtc ?? DateTime.MinValue
+                : progress?.LastStartActionAtUtc ?? DateTime.MinValue;
+            TimeSpan remaining = GetQuestActionRepeatRemaining(DateTime.UtcNow, lastActionUtc, actions.ActionRepeatIntervalMinutes);
+            if (remaining <= TimeSpan.Zero)
+            {
+                return;
+            }
+
+            issues.Add($"This quest action can only be {actionLabel}ed again after {FormatRepeatIntervalRemaining(remaining)}.");
         }
 
         private static void AppendAvailabilityIssues(
@@ -5213,6 +5518,29 @@ namespace HaCreator.MapSimulator.Interaction
             return progress;
         }
 
+        private QuestProgress GetProgress(int questId)
+        {
+            _progress.TryGetValue(questId, out QuestProgress progress);
+            return progress;
+        }
+
+        private static void RecordQuestActionExecution(QuestProgress progress, bool completionPhase)
+        {
+            if (progress == null)
+            {
+                return;
+            }
+
+            DateTime nowUtc = DateTime.UtcNow;
+            if (completionPhase)
+            {
+                progress.LastEndActionAtUtc = nowUtc;
+                return;
+            }
+
+            progress.LastStartActionAtUtc = nowUtc;
+        }
+
         private QuestStateType GetQuestState(int questId)
         {
             return _progress.TryGetValue(questId, out QuestProgress progress)
@@ -5725,6 +6053,7 @@ namespace HaCreator.MapSimulator.Interaction
                 HasFieldEnterAutoStart = startCheck?["fieldEnter"] != null,
                 HasEquipOnAutoStart = HasEquipOnAutoStart(startCheck),
                 StartRepeatIntervalMinutes = ParsePositiveInt(startCheck?["interval"]).GetValueOrDefault(),
+                StartFieldEnterMapIds = ParseQuestMapIdList(startCheck?["fieldEnter"]),
                 StartNpcId = ParseNpcId(startCheck?["npc"]),
                 EndNpcId = ParseNpcId(endCheck?["npc"]),
                 MinLevel = ParseInt(startCheck?["lvmin"]),
@@ -6043,17 +6372,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return Array.Empty<string>();
             }
 
-            if (property is WzStringProperty stringProperty)
-            {
-                return ParseDelimitedStrings(stringProperty.Value);
-            }
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            AddParsedScriptNames(names, property.GetString());
 
             if (property.WzProperties == null || property.WzProperties.Count == 0)
             {
-                return ParseDelimitedStrings((property as WzStringProperty)?.Value);
+                return names.Count == 0 ? Array.Empty<string>() : names.ToArray();
             }
 
-            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < property.WzProperties.Count; i++)
             {
                 IReadOnlyList<string> childNames = ParseScriptNames(property.WzProperties[i]);
@@ -6064,6 +6390,20 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return names.Count == 0 ? Array.Empty<string>() : names.ToArray();
+        }
+
+        private static void AddParsedScriptNames(ISet<string> names, string value)
+        {
+            if (names == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<string> parsedNames = ParseDelimitedStrings(value);
+            for (int i = 0; i < parsedNames.Count; i++)
+            {
+                names.Add(parsedNames[i]);
+            }
         }
 
         internal static IReadOnlyList<string> ParseScriptNames(string value)
@@ -6346,7 +6686,9 @@ namespace HaCreator.MapSimulator.Interaction
                         actions.ActionRepeatIntervalMinutes = ParsePositiveInt(child).GetValueOrDefault();
                         break;
                     case "fieldEnter":
-                        actions.FieldEnterAction = ParsePositiveInt(child).GetValueOrDefault() > 0;
+                        AppendDistinctMapIds(actions.FieldEnterMapIds, ParseQuestMapIdList(child));
+                        actions.FieldEnterAction = actions.FieldEnterMapIds.Count > 0
+                                                   || ParsePositiveInt(child).GetValueOrDefault() > 0;
                         break;
                     case "npcAct":
                         actions.NpcActionName = ParseString(child)?.Trim() ?? string.Empty;
@@ -6459,6 +6801,48 @@ namespace HaCreator.MapSimulator.Interaction
 
             actions.ConversationPages = ParseConversationPages(property);
             return actions;
+        }
+
+        internal static IReadOnlyList<int> ParseQuestMapIdList(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return Array.Empty<int>();
+            }
+
+            if (property.WzProperties == null || property.WzProperties.Count == 0)
+            {
+                int singleMapId = ParsePositiveInt(property).GetValueOrDefault();
+                return singleMapId > 0 ? new[] { singleMapId } : Array.Empty<int>();
+            }
+
+            var mapIds = new List<int>(property.WzProperties.Count);
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                int mapId = ParsePositiveInt(property.WzProperties[i]).GetValueOrDefault();
+                if (mapId > 0 && !mapIds.Contains(mapId))
+                {
+                    mapIds.Add(mapId);
+                }
+            }
+
+            return mapIds;
+        }
+
+        private static void AppendDistinctMapIds(ICollection<int> destination, IEnumerable<int> mapIds)
+        {
+            if (destination == null || mapIds == null)
+            {
+                return;
+            }
+
+            foreach (int mapId in mapIds)
+            {
+                if (mapId > 0 && !destination.Contains(mapId))
+                {
+                    destination.Add(mapId);
+                }
+            }
         }
 
         private static void AppendSkillRewards(QuestActionBundle actions, WzImageProperty property)
@@ -8563,12 +8947,12 @@ namespace HaCreator.MapSimulator.Interaction
                    func.IndexOf("cube", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        private string JoinQuestSections(params string[] sections)
+        private string JoinQuestSections(int questId, params string[] sections)
         {
             var builder = new StringBuilder();
             for (int i = 0; i < sections.Length; i++)
             {
-                string formatted = NpcDialogueTextFormatter.Format(sections[i], CreateDialogueFormattingContext());
+                string formatted = NpcDialogueTextFormatter.Format(sections[i], CreateDialogueFormattingContext(questId: questId));
                 if (string.IsNullOrWhiteSpace(formatted))
                 {
                     continue;
@@ -8634,7 +9018,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (!string.IsNullOrWhiteSpace(definition.DemandSummary))
             {
-                lines.Add(NpcDialogueTextFormatter.Format(definition.DemandSummary, CreateDialogueFormattingContext()));
+                lines.Add(NpcDialogueTextFormatter.Format(definition.DemandSummary, CreateDialogueFormattingContext(questId: definition.QuestId)));
             }
 
             if (issues != null && issues.Count > 0)
@@ -8671,7 +9055,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (!string.IsNullOrWhiteSpace(definition.DemandSummary))
             {
-                lines.Add(NpcDialogueTextFormatter.Format(definition.DemandSummary, CreateDialogueFormattingContext()));
+                lines.Add(NpcDialogueTextFormatter.Format(definition.DemandSummary, CreateDialogueFormattingContext(questId: definition.QuestId)));
             }
 
             if (issues != null && issues.Count > 0)
@@ -8802,8 +9186,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 rewards.Add(
                     preserveQuestDetailMarkers
-                        ? NpcDialogueTextFormatter.FormatPreservingQuestDetailMarkers(definition.RewardSummary, CreateDialogueFormattingContext())
-                        : NpcDialogueTextFormatter.Format(definition.RewardSummary, CreateDialogueFormattingContext()));
+                        ? NpcDialogueTextFormatter.FormatPreservingQuestDetailMarkers(definition.RewardSummary, CreateDialogueFormattingContext(questId: definition.QuestId))
+                        : NpcDialogueTextFormatter.Format(definition.RewardSummary, CreateDialogueFormattingContext(questId: definition.QuestId)));
             }
 
             rewards.AddRange(BuildVisibleQuestActionLines(definition.EndActions, build, includeSelectionTag: true));
@@ -9055,7 +9439,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return lines;
             }
 
-            NpcDialogueFormattingContext formattingContext = CreateDialogueFormattingContext(build);
+            NpcDialogueFormattingContext formattingContext = BuildDialogueFormattingContext(build, 0);
 
             if (actions.ExpReward > 0)
             {
@@ -9195,10 +9579,17 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (actions.FieldEnterAction)
             {
-                lines.Add("Field-enter action");
+                lines.Add(BuildFieldEnterActionText(actions.FieldEnterMapIds));
             }
 
             return lines;
+        }
+
+        private static string BuildFieldEnterActionText(IReadOnlyList<int> mapIds)
+        {
+            return mapIds != null && mapIds.Count > 0
+                ? $"Field-enter action: {string.Join(", ", mapIds)}"
+                : "Field-enter action";
         }
 
         internal static string DescribeClientPacketQuestResultItemCategories(IEnumerable<int> itemIds)
@@ -9266,7 +9657,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return lines;
             }
 
-            NpcDialogueFormattingContext formattingContext = CreateDialogueFormattingContext(build);
+            NpcDialogueFormattingContext formattingContext = BuildDialogueFormattingContext(build, 0);
 
             if (actions.ExpReward > 0)
             {
@@ -9747,6 +10138,22 @@ namespace HaCreator.MapSimulator.Interaction
             return hours > 0
                 ? $"{hours}:{minutes:D2}:{seconds:D2}"
                 : $"{minutes}:{seconds:D2}";
+        }
+
+        private static string FormatRepeatIntervalRemaining(TimeSpan remaining)
+        {
+            TimeSpan clamped = remaining < TimeSpan.Zero ? TimeSpan.Zero : remaining;
+            if (clamped.TotalHours >= 1d)
+            {
+                return $"{Math.Max(1, (int)Math.Ceiling(clamped.TotalHours))} hour(s)";
+            }
+
+            if (clamped.TotalMinutes >= 1d)
+            {
+                return $"{Math.Max(1, (int)Math.Ceiling(clamped.TotalMinutes))} minute(s)";
+            }
+
+            return $"{Math.Max(1, (int)Math.Ceiling(clamped.TotalSeconds))} second(s)";
         }
 
         private static int GetRemainingTimeSeconds(QuestDefinition definition, QuestProgress progress)

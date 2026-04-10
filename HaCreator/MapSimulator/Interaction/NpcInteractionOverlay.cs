@@ -681,7 +681,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            WzImage npcImage = global::HaCreator.Program.FindImage("Npc", $"{speakerTemplateId:D7}.img");
+            WzImage npcImage = NpcImgEntryResolver.Resolve(speakerTemplateId);
             EnsureParsed(npcImage);
             LoadPacketQuestResultSpeakerFrames(npcImage);
             _packetQuestResultSpeakerTexture = _packetQuestResultSpeakerFrames.Count == 0

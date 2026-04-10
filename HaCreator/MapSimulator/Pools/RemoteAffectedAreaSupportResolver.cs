@@ -152,6 +152,17 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
+            if (skill.PassiveLinkedSkillIds != null)
+            {
+                foreach (int linkedSkillId in skill.PassiveLinkedSkillIds)
+                {
+                    if (linkedSkillId > 0)
+                    {
+                        yield return linkedSkillId;
+                    }
+                }
+            }
+
             if (skill.DummySkillParents == null)
             {
                 yield break;

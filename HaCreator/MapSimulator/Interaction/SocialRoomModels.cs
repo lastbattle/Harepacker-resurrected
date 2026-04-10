@@ -414,7 +414,8 @@ namespace HaCreator.MapSimulator.Interaction
             string MetadataSummary,
             long? NonCashSerialNumber,
             long? ExpirationTime,
-            int? TailValue);
+            int? TailValue,
+            string TailMetadataSummary);
         private readonly record struct MiniRoomBaseEnterResultPayload(int RoomType, int ResultCode, int MaxUsers, int MyPosition, int OccupantCount);
         private readonly record struct OmokMoveHistoryEntry(int X, int Y, int StoneValue, int SeatIndex);
         private readonly record struct TradeVerificationEntry(int ItemId, uint Checksum);
@@ -472,6 +473,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _tradeVerificationPending;
         private bool _tradeLocalVerificationReady;
         private bool _tradeRemoteVerificationReady;
+        private bool _tradeAutoCrcReplyPending;
         private DateTime? _entrustedPermitExpiresAtUtc;
         private EntrustedShopChildDialogKind? _entrustedChildDialogKind;
         private int _entrustedVisitListSelectedIndex = -1;
@@ -1788,12 +1790,14 @@ namespace HaCreator.MapSimulator.Interaction
                 _tradeLocalVerificationEntries.Clear();
                 _tradeLocalVerificationEntries.AddRange(BuildTradeVerificationEntries(isLocalParty: true));
                 _tradeLocalVerificationReady = _tradeLocalVerificationEntries.Count > 0;
+                _tradeAutoCrcReplyPending = _tradeLocalVerificationEntries.Count > 0;
                 RoomState = "CRC verification";
                 StatusMessage = $"Trading-room packet requested CRC verification. Prepared {_tradeLocalVerificationEntries.Count} local item checksum entr{(_tradeLocalVerificationEntries.Count == 1 ? "y" : "ies")} for subtype {TradingRoomItemCrcPacketType}.";
             }
             else
             {
                 _tradeLocalAccepted = false;
+                _tradeAutoCrcReplyPending = false;
                 RoomState = "Negotiating";
                 StatusMessage = $"{ResolveRemoteTraderName()} locked the trade and requested CRC verification.";
             }
@@ -1839,6 +1843,7 @@ namespace HaCreator.MapSimulator.Interaction
             _tradeVerificationPending = _tradeLocalVerificationEntries.Count == 0
                 || _tradeRemoteVerificationEntries.Count == 0
                 || !remoteVerificationMatched;
+            _tradeAutoCrcReplyPending = false;
             RoomState = _tradeVerificationPending
                 ? remoteVerificationMatched ? "CRC verification" : "CRC mismatch"
                 : "Locked";
@@ -1859,6 +1864,7 @@ namespace HaCreator.MapSimulator.Interaction
             _tradeLocalAccepted = false;
             _tradeRemoteAccepted = false;
             _tradeVerificationPending = false;
+            _tradeAutoCrcReplyPending = false;
             _tradeLocalVerificationReady = false;
             _tradeRemoteVerificationReady = false;
             _tradeLocalVerificationEntries.Clear();
@@ -1973,7 +1979,8 @@ namespace HaCreator.MapSimulator.Interaction
                 out string metadataSummary,
                 out long? nonCashSerialNumber,
                 out long? expirationTime,
-                out int? tailValue))
+                out int? tailValue,
+                out string tailMetadataSummary))
             {
                 error = "Trading-room item payload did not contain a recognizable MapleStory item row.";
                 return false;
@@ -1998,7 +2005,8 @@ namespace HaCreator.MapSimulator.Interaction
                 metadataSummary,
                 nonCashSerialNumber,
                 expirationTime,
-                tailValue);
+                tailValue,
+                tailMetadataSummary);
             return true;
         }
 
@@ -2014,7 +2022,8 @@ namespace HaCreator.MapSimulator.Interaction
             out string metadataSummary,
             out long? nonCashSerialNumber,
             out long? expirationTime,
-            out int? tailValue)
+            out int? tailValue,
+            out string tailMetadataSummary)
         {
             serialNumber = 0;
             itemId = 0;
@@ -2026,6 +2035,7 @@ namespace HaCreator.MapSimulator.Interaction
             nonCashSerialNumber = null;
             expirationTime = null;
             tailValue = null;
+            tailMetadataSummary = string.Empty;
 
             using MemoryStream stream = new MemoryStream(payload.ToArray(), writable: false);
             using BinaryReader reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: false);
@@ -2059,9 +2069,9 @@ namespace HaCreator.MapSimulator.Interaction
             serialNumber = reader.ReadInt64();
             return slotType switch
             {
-                1 => TryDecodePacketOwnedEquipBody(reader, hasCashSerialNumber, out title, out metadataSummary, out nonCashSerialNumber, out expirationTime, out tailValue),
-                2 => TryDecodePacketOwnedBundleBody(reader, itemId, out quantity, out title, out metadataSummary),
-                3 => TryDecodePacketOwnedPetBody(reader, out title, out metadataSummary, out expirationTime),
+                1 => TryDecodePacketOwnedEquipBody(reader, hasCashSerialNumber, out title, out metadataSummary, out nonCashSerialNumber, out expirationTime, out tailValue, out tailMetadataSummary),
+                2 => TryDecodePacketOwnedBundleBody(reader, itemId, out quantity, out title, out metadataSummary, out tailMetadataSummary),
+                3 => TryDecodePacketOwnedPetBody(reader, out title, out metadataSummary, out expirationTime, out tailMetadataSummary),
                 _ => false
             };
         }
@@ -2085,7 +2095,10 @@ namespace HaCreator.MapSimulator.Interaction
             string tailText = item.TailValue.HasValue && item.TailValue.Value != 0
                 ? $" | Tail {item.TailValue.Value}"
                 : string.Empty;
-            return $"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}{serialText}{cashText}{titleText}{metadataText}{nonCashText}{expirationText}{tailText}";
+            string tailMetadataText = string.IsNullOrWhiteSpace(item.TailMetadataSummary)
+                ? string.Empty
+                : $" | {item.TailMetadataSummary}";
+            return $"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}{serialText}{cashText}{titleText}{metadataText}{nonCashText}{expirationText}{tailText}{tailMetadataText}";
         }
 
         private static bool TryDecodePacketOwnedEquipBody(
@@ -2095,13 +2108,15 @@ namespace HaCreator.MapSimulator.Interaction
             out string metadataSummary,
             out long? nonCashSerialNumber,
             out long? expirationTime,
-            out int? tailValue)
+            out int? tailValue,
+            out string tailMetadataSummary)
         {
             title = string.Empty;
             metadataSummary = string.Empty;
             nonCashSerialNumber = null;
             expirationTime = null;
             tailValue = null;
+            tailMetadataSummary = string.Empty;
             Stream stream = reader.BaseStream;
             const int equipStatsByteLength = (sizeof(byte) * 2) + (sizeof(short) * 15);
             if (stream.Length - stream.Position < equipStatsByteLength)
@@ -2195,14 +2210,16 @@ namespace HaCreator.MapSimulator.Interaction
                 socket2,
                 expirationTime,
                 tailValue);
+            tailMetadataSummary = BuildResidualTradePacketSummary(reader, "EquipTail");
             return true;
         }
 
-        private static bool TryDecodePacketOwnedBundleBody(BinaryReader reader, int itemId, out int quantity, out string title, out string metadataSummary)
+        private static bool TryDecodePacketOwnedBundleBody(BinaryReader reader, int itemId, out int quantity, out string title, out string metadataSummary, out string tailMetadataSummary)
         {
             quantity = 1;
             title = string.Empty;
             metadataSummary = string.Empty;
+            tailMetadataSummary = string.Empty;
             Stream stream = reader.BaseStream;
             if (stream.Length - stream.Position < sizeof(ushort))
             {
@@ -2233,14 +2250,16 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             metadataSummary = BuildBundleTradeMetadataSummary(attribute, rechargeableSerialNumber);
+            tailMetadataSummary = BuildResidualTradePacketSummary(reader, "BundleTail");
             return true;
         }
 
-        private static bool TryDecodePacketOwnedPetBody(BinaryReader reader, out string title, out string metadataSummary, out long? expirationTime)
+        private static bool TryDecodePacketOwnedPetBody(BinaryReader reader, out string title, out string metadataSummary, out long? expirationTime, out string tailMetadataSummary)
         {
             title = string.Empty;
             metadataSummary = string.Empty;
             expirationTime = null;
+            tailMetadataSummary = string.Empty;
             Stream stream = reader.BaseStream;
             const int petNameLength = 13;
             const int petTailLength = sizeof(byte) + sizeof(short) + sizeof(byte) + sizeof(long) + sizeof(short) + sizeof(ushort) + sizeof(int) + sizeof(short);
@@ -2259,7 +2278,35 @@ namespace HaCreator.MapSimulator.Interaction
             int remainingLife = reader.ReadInt32();
             short fatigue = reader.ReadInt16();
             metadataSummary = BuildPetTradeMetadataSummary(level, closeness, fullness, attribute, skill, remainingLife, fatigue, expirationTime);
+            tailMetadataSummary = BuildResidualTradePacketSummary(reader, "PetTail");
             return true;
+        }
+
+        private static string BuildResidualTradePacketSummary(BinaryReader reader, string label)
+        {
+            if (reader?.BaseStream == null)
+            {
+                return string.Empty;
+            }
+
+            Stream stream = reader.BaseStream;
+            long remaining = stream.Length - stream.Position;
+            if (remaining <= 0)
+            {
+                return string.Empty;
+            }
+
+            byte[] leftover = reader.ReadBytes((int)remaining);
+            if (leftover.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            const int previewByteCount = 24;
+            string preview = BitConverter.ToString(leftover, 0, Math.Min(previewByteCount, leftover.Length));
+            return leftover.Length > previewByteCount
+                ? $"{label} {leftover.Length}B {preview}..."
+                : $"{label} {leftover.Length}B {preview}";
         }
 
         private static string BuildEquipTradeMetadataSummary(
@@ -3080,10 +3127,18 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            byte[] nestedPayload = reader.ReadBytes(reader.Remaining);
+            if (nestedPayload.Length == 0)
+            {
+                message = "Mini-room base update packet did not include a nested room payload.";
+                return false;
+            }
+
+            PacketReader nestedReader = new(nestedPayload);
             byte nestedPacketType;
             try
             {
-                nestedPacketType = reader.ReadByte();
+                nestedPacketType = nestedReader.ReadByte();
             }
             catch (EndOfStreamException)
             {
@@ -3098,10 +3153,10 @@ namespace HaCreator.MapSimulator.Interaction
 
             bool handled = Kind switch
             {
-                SocialRoomKind.PersonalShop => TryDispatchPersonalShopPacket(reader, nestedPacketType, out message),
-                SocialRoomKind.EntrustedShop => TryDispatchEntrustedShopPacket(reader, nestedPacketType, out message),
-                SocialRoomKind.TradingRoom => TryDispatchTradingRoomPacket(Array.Empty<byte>(), reader, nestedPacketType, out message),
-                SocialRoomKind.MiniRoom => TryDispatchMiniRoomPacket(reader, nestedPacketType, tickCount: 0, out message),
+                SocialRoomKind.PersonalShop => TryDispatchPersonalShopPacket(nestedReader, nestedPacketType, out message),
+                SocialRoomKind.EntrustedShop => TryDispatchEntrustedShopPacket(nestedReader, nestedPacketType, out message),
+                SocialRoomKind.TradingRoom => TryDispatchTradingRoomPacket(nestedPayload, nestedReader, nestedPacketType, out message),
+                SocialRoomKind.MiniRoom => TryDispatchMiniRoomPacket(nestedReader, nestedPacketType, tickCount: 0, out message),
                 _ => false
             };
 
@@ -3114,9 +3169,10 @@ namespace HaCreator.MapSimulator.Interaction
                 _ => "room-specific owner"
             };
 
+            string payloadPreview = BuildPacketHexPreview(nestedPayload);
             string detail = handled
-                ? $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded nested packet {nestedPacketType} into {ownerName}. {message}"
-                : $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded nested packet {nestedPacketType} into {ownerName}, but it was not modeled. {message}";
+                ? $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded nested packet {nestedPacketType} into {ownerName}. {message} | payload={payloadPreview} | remaining={nestedReader.Remaining}"
+                : $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded nested packet {nestedPacketType} into {ownerName}, but it was not modeled. {message} | payload={payloadPreview} | remaining={nestedReader.Remaining}";
             message = detail;
             return handled;
         }
@@ -5682,6 +5738,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _tradeVerificationPending = false;
+            _tradeAutoCrcReplyPending = false;
             RoomState = _tradeLocalAccepted && _tradeRemoteAccepted ? "Awaiting settlement" : "Locked";
             RefreshTradeOccupantsAndRows();
             string actor = remoteParty ? ResolveRemoteTraderName() : OwnerName;
@@ -5715,6 +5772,7 @@ namespace HaCreator.MapSimulator.Interaction
             _tradeLocalAccepted = false;
             _tradeRemoteAccepted = false;
             _tradeVerificationPending = false;
+            _tradeAutoCrcReplyPending = false;
             _tradeLocalVerificationReady = false;
             _tradeRemoteVerificationReady = false;
             _tradeLocalVerificationEntries.Clear();
@@ -5817,6 +5875,7 @@ namespace HaCreator.MapSimulator.Interaction
             _tradeLocalAccepted = true;
             _tradeRemoteAccepted = true;
             _tradeVerificationPending = false;
+            _tradeAutoCrcReplyPending = false;
             _tradeLocalVerificationReady = false;
             _tradeRemoteVerificationReady = false;
             _tradeLocalVerificationEntries.Clear();
@@ -6510,11 +6569,26 @@ namespace HaCreator.MapSimulator.Interaction
             _tradeLocalAccepted = false;
             _tradeRemoteAccepted = false;
             _tradeVerificationPending = false;
+            _tradeAutoCrcReplyPending = false;
             _tradeLocalVerificationReady = false;
             _tradeRemoteVerificationReady = false;
             _tradeLocalVerificationEntries.Clear();
             _tradeRemoteVerificationEntries.Clear();
             RefreshTradeOccupantsAndRows();
+        }
+
+        private static string BuildPacketHexPreview(byte[] payload, int previewByteCount = 24)
+        {
+            if (payload == null || payload.Length == 0)
+            {
+                return "empty";
+            }
+
+            int count = Math.Min(previewByteCount, payload.Length);
+            string preview = BitConverter.ToString(payload, 0, count);
+            return payload.Length > count
+                ? $"{preview}..."
+                : preview;
         }
 
         private void RefreshTradeOccupantsAndRows()

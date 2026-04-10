@@ -266,6 +266,38 @@ namespace HaCreator.MapSimulator.Pools
                    ?? 0;
         }
 
+        internal static string ResolveClientOwnedTileOverlayAnimationPath(
+            ActiveSummon summon,
+            int skillLevel,
+            int ownerCharacterLevel)
+        {
+            SkillData skill = summon?.SkillData;
+            return skill?.ZoneEffect?.ResolveAnimationVariantPath(
+                skillLevel > 0 ? skillLevel : summon?.Level ?? 1,
+                Math.Max(1, ownerCharacterLevel),
+                skill?.MaxLevel ?? 0);
+        }
+
+        internal static string ResolveClientOwnedReactiveAttackChainAnimationPath(
+            ActiveSummon summon,
+            int ownerCharacterLevel = 1)
+        {
+            SkillData skill = summon?.SkillData;
+            if (summon?.SkillId == 4111007)
+            {
+                string resolvedBallAnimationPath = skill?.Projectile?.ResolveGetBallLikeAnimationPath(
+                    summon.Level,
+                    Math.Max(1, ownerCharacterLevel),
+                    skill?.MaxLevel ?? 0);
+                if (!string.IsNullOrWhiteSpace(resolvedBallAnimationPath))
+                {
+                    return resolvedBallAnimationPath;
+                }
+            }
+
+            return skill?.Projectile?.AnimationPath;
+        }
+
         internal static Vector2 ResolvePacketOwnedMobAttackHitAnchor(
             Rectangle hitbox,
             Vector2 summonPosition,

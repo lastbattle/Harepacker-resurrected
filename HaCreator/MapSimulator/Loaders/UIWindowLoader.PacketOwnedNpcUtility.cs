@@ -108,6 +108,7 @@ namespace HaCreator.MapSimulator.Loaders
             Point position)
         {
             WzSubProperty storeBankProperty = uiWindow2Image?["StoreBank"] as WzSubProperty;
+            WzImage cashShopImage = global::HaCreator.Program.FindImage("ui", "CashShop.img");
             Texture2D frameTexture = LoadCanvasTexture(storeBankProperty, "backgrnd", device)
                 ?? CreatePlaceholderWindowTexture(device, 210, 330, "Store Bank");
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
@@ -121,8 +122,8 @@ namespace HaCreator.MapSimulator.Loaders
                 getButton,
                 exitButton,
                 LoadCanvasTexture(storeBankProperty, "en", device),
-                null,
-                null,
+                LoadDigitTextures(basicImage?["ItemNo"] as WzSubProperty, device),
+                LoadCanvasTexture(cashShopImage?["CashItem"] as WzSubProperty, "0", device),
                 LoadVerticalScrollbarSkin(basicImage?["VScr9"] as WzSubProperty, device),
                 device)
             {

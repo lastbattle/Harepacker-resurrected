@@ -1832,6 +1832,7 @@ namespace HaCreator.MapSimulator.UI
         void ISoftKeyboardHost.OnSoftKeyboardClosed()
         {
             _softKeyboardActive = false;
+            UpdateImePresentationPlacement();
         }
 
         private static string GetDraftFieldValue(MemoMailboxDraftSnapshot snapshot, ComposeInputField field)
@@ -2065,8 +2066,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (!CapturesKeyboardInput
                 || _font == null
-                || ResolveImeWindowHandle == null
-                || (_compositionText.Length == 0 && !_candidateListState.HasCandidates))
+                || ResolveImeWindowHandle == null)
             {
                 return;
             }

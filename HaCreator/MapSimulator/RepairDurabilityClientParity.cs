@@ -272,7 +272,17 @@ namespace HaCreator.MapSimulator
 
             int offset = 0;
             short? operationCode = null;
-            if (payload[0] == 130 || payload[0] == 131)
+            if (payload.Length >= sizeof(short))
+            {
+                short shortOperationCode = BinaryPrimitives.ReadInt16LittleEndian(payload);
+                if (shortOperationCode == 130 || shortOperationCode == 131)
+                {
+                    operationCode = shortOperationCode;
+                    offset += sizeof(short);
+                }
+            }
+
+            if (!operationCode.HasValue && (payload[0] == 130 || payload[0] == 131))
             {
                 operationCode = payload[0];
                 offset++;
@@ -281,7 +291,7 @@ namespace HaCreator.MapSimulator
             int remainingLength = payload.Length - offset;
             if (remainingLength != 1 && remainingLength < 1 + sizeof(int))
             {
-                error = "Repair-result payload must be empty, [result], [result+reason], [opcode+result], or [opcode+result+reason(+text)].";
+                error = "Repair-result payload must be empty, [result], [result+reason], [opcode+result], [opcode16+result], or [opcode+result+reason(+text)].";
                 return false;
             }
 

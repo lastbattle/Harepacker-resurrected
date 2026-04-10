@@ -309,7 +309,7 @@ namespace HaCreator.MapSimulator.UI
                 {
                     if (UsingNativeEditHost)
                     {
-                        _nativeEditHost.Focus();
+                        _nativeEditHost.BeginSelectionAtPoint(mouseState.Position);
                         _softKeyboardActive = false;
                     }
                     else
@@ -334,9 +334,18 @@ namespace HaCreator.MapSimulator.UI
                     _softKeyboardActive = false;
                 }
             }
+            else if (UsingNativeEditHost && leftHeld && _nativeEditHost.IsSelectingWithMouse)
+            {
+                _nativeEditHost.UpdateSelectionAtPoint(mouseState.Position);
+            }
             else if (!UsingNativeEditHost && leftHeld && _editControl.IsSelectingWithMouse)
             {
                 _editControl.UpdateSelectionAtMouseX(mouseState.X, ownerBounds);
+            }
+
+            if (UsingNativeEditHost && leftJustReleased)
+            {
+                _nativeEditHost.EndMouseSelection();
             }
 
             if (!UsingNativeEditHost && leftJustReleased)

@@ -35,6 +35,17 @@ namespace HaCreator.MapSimulator
 
                 if (applied)
                 {
+                    if (runtime.HasPendingTradingRoomAutoCrcResponse
+                        && runtime.TryBuildTradingRoomCrcResponseRawPacket(out byte[] crcReplyPacket, out string crcReplyStatus)
+                        && _tradingRoomOfficialSessionBridge.TrySendOutboundRawPacket(crcReplyPacket, out string injectedStatus))
+                    {
+                        runtime.MarkTradingRoomAutoCrcResponseSent();
+                        _tradingRoomOfficialSessionBridge.RecordDispatchResult(
+                            message.Source,
+                            success: true,
+                            $"{runtime.DescribePacketOwnerStatus()} | {runtime.DescribeStatus()} | {crcReplyStatus} | {injectedStatus}");
+                    }
+
                     ShowSocialRoomWindow(SocialRoomKind.TradingRoom);
                 }
             }

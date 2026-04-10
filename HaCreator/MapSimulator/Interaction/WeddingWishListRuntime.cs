@@ -386,6 +386,7 @@ namespace HaCreator.MapSimulator.Interaction
             RefreshCandidateEntries();
             ClampSelections();
             _statusMessage = $"Claimed {ResolveItemLabel(selected)} from the wedding gift list and marked the request pending until the dialog refreshes.";
+            NotifySocialChatObserved(ResolveItemLabel(selected));
             return _statusMessage;
         }
 
@@ -575,6 +576,7 @@ namespace HaCreator.MapSimulator.Interaction
             ClearTransientActionState();
             ClampSelections();
             _statusMessage = $"Removed {ResolveItemLabel(removed)} from the wedding wish list.";
+            NotifySocialChatObserved(ResolveItemLabel(removed));
             return _statusMessage;
         }
 
@@ -607,6 +609,7 @@ namespace HaCreator.MapSimulator.Interaction
             _isOpen = false;
             _inputConfirmationArmed = false;
             _statusMessage = $"Confirmed {_wishListEntries.Count} wedding wish-list item(s) through the dedicated OK/SetRet owner path. Downstream packet or script handoff is still not modeled.";
+            NotifySocialChatObserved(_wishListEntries.Select(ResolveItemLabel));
             return _statusMessage;
         }
 
@@ -1285,6 +1288,7 @@ namespace HaCreator.MapSimulator.Interaction
             RefreshCandidateEntries();
             ClampSelections();
             _statusMessage = $"Queued {ResolveItemLabel(gifted)} x{gifted.Quantity} for {ResolveItemLabel(selectedWish)} and marked the request pending until the dialog refreshes.";
+            NotifySocialChatObserved(ResolveItemLabel(gifted), ResolveItemLabel(selectedWish));
             return _statusMessage;
         }
 
@@ -1391,6 +1395,43 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             SocialChatObserved?.Invoke(message.Trim(), Environment.TickCount);
+        }
+
+        private void NotifySocialChatObserved(IEnumerable<string> messages)
+        {
+            if (messages == null)
+            {
+                return;
+            }
+
+            int tickCount = Environment.TickCount;
+            HashSet<string> seen = null;
+            foreach (string message in messages)
+            {
+                if (string.IsNullOrWhiteSpace(message))
+                {
+                    continue;
+                }
+
+                string normalized = message.Trim();
+                if (normalized.Length == 0)
+                {
+                    continue;
+                }
+
+                seen ??= new HashSet<string>(StringComparer.Ordinal);
+                if (!seen.Add(normalized))
+                {
+                    continue;
+                }
+
+                SocialChatObserved?.Invoke(normalized, tickCount);
+            }
+        }
+
+        private void NotifySocialChatObserved(params string[] messages)
+        {
+            NotifySocialChatObserved((IEnumerable<string>)messages);
         }
 
         private void ApplyInputPaneFocusBehavior()

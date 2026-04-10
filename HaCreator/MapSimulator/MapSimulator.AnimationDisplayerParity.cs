@@ -325,20 +325,164 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!TryGetAnimationDisplayerFrames("userstate:generic", AnimationDisplayerGenericUserStateEffectUol, out List<IDXObject> repeatFrames))
+            if (!TryResolveAnimationDisplayerUserStateFrames(
+                    ownerCharacterId,
+                    out List<IDXObject> startFrames,
+                    out List<IDXObject> repeatFrames,
+                    out List<IDXObject> endFrames))
             {
                 return false;
             }
 
             return _animationEffects.RegisterUserState(
                        ownerCharacterId,
-                       startFrames: null,
+                       startFrames,
                        repeatFrames,
-                       endFrames: null,
+                       endFrames,
                        getPosition,
                        offsetX: 0f,
                        offsetY: AnimationDisplayerUserStateOffsetY,
                        currTickCount) >= 0;
+        }
+
+        private bool TryResolveAnimationDisplayerUserStateFrames(
+            int ownerCharacterId,
+            out List<IDXObject> startFrames,
+            out List<IDXObject> repeatFrames,
+            out List<IDXObject> endFrames)
+        {
+            startFrames = null;
+            repeatFrames = null;
+            endFrames = null;
+
+            if (_remoteUserPool?.TryGetActor(ownerCharacterId, out RemoteUserActor actor) == true
+                && actor != null
+                && TryResolveAnimationDisplayerSpecificUserStateFrames(
+                    BuildAnimationDisplayerSpecificUserStateCandidates(actor),
+                    out _,
+                    out startFrames,
+                    out repeatFrames,
+                    out endFrames))
+            {
+                return true;
+            }
+
+            return TryGetAnimationDisplayerFrames("userstate:generic", AnimationDisplayerGenericUserStateEffectUol, out repeatFrames);
+        }
+
+        internal static IReadOnlyList<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState> BuildAnimationDisplayerSpecificUserStateCandidates(
+            RemoteUserActor actor)
+        {
+            var candidates = new List<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState>(8);
+            AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatBarrierEffect);
+            AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatBlessingArmorEffect);
+            AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatRepeatEffect);
+            AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatAuraEffect);
+            AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatMagicShieldEffect);
+            AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatSoulArrowEffect);
+            AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatWeaponChargeEffect);
+            AddAnimationDisplayerSpecificUserStateCandidate(candidates, actor?.TemporaryStatFinalCutEffect);
+            return candidates;
+        }
+
+        internal static bool TryResolveAnimationDisplayerSpecificUserStateFrames(
+            IReadOnlyList<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState> candidateStates,
+            out int resolvedSkillId,
+            out List<IDXObject> startFrames,
+            out List<IDXObject> repeatFrames,
+            out List<IDXObject> endFrames)
+        {
+            resolvedSkillId = 0;
+            startFrames = null;
+            repeatFrames = null;
+            endFrames = null;
+
+            if (candidateStates == null || candidateStates.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < candidateStates.Count; i++)
+            {
+                RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState state = candidateStates[i];
+                if (!TryBuildAnimationDisplayerSpecificUserStateFrames(
+                        state,
+                        out List<IDXObject> candidateStartFrames,
+                        out List<IDXObject> candidateRepeatFrames,
+                        out List<IDXObject> candidateEndFrames))
+                {
+                    continue;
+                }
+
+                resolvedSkillId = state.SkillId;
+                startFrames = candidateStartFrames;
+                repeatFrames = candidateRepeatFrames;
+                endFrames = candidateEndFrames;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static void AddAnimationDisplayerSpecificUserStateCandidate(
+            List<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState> candidates,
+            RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState candidate)
+        {
+            if (candidate != null)
+            {
+                candidates.Add(candidate);
+            }
+        }
+
+        private static bool TryBuildAnimationDisplayerSpecificUserStateFrames(
+            RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState state,
+            out List<IDXObject> startFrames,
+            out List<IDXObject> repeatFrames,
+            out List<IDXObject> endFrames)
+        {
+            startFrames = BuildAnimationDisplayerFramesFromSkillAnimation(
+                state?.Skill?.AffectedEffect
+                ?? state?.Skill?.AffectedSecondaryEffect
+                ?? state?.Skill?.Effect
+                ?? state?.Skill?.EffectSecondary);
+            repeatFrames = BuildAnimationDisplayerFramesFromSkillAnimation(
+                state?.Skill?.RepeatEffect
+                ?? state?.Skill?.RepeatSecondaryEffect
+                ?? state?.OverlayAnimation
+                ?? state?.OverlaySecondaryAnimation
+                ?? state?.UnderFaceAnimation
+                ?? state?.UnderFaceSecondaryAnimation);
+            endFrames = null;
+
+            if (!Animation.AnimationEffects.HasFrames(repeatFrames)
+                && Animation.AnimationEffects.HasFrames(startFrames))
+            {
+                repeatFrames = startFrames;
+            }
+
+            return Animation.AnimationEffects.HasFrames(startFrames)
+                || Animation.AnimationEffects.HasFrames(repeatFrames)
+                || Animation.AnimationEffects.HasFrames(endFrames);
+        }
+
+        internal static List<IDXObject> BuildAnimationDisplayerFramesFromSkillAnimation(SkillAnimation animation)
+        {
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return null;
+            }
+
+            var frames = new List<IDXObject>(animation.Frames.Count);
+            for (int i = 0; i < animation.Frames.Count; i++)
+            {
+                IDXObject texture = animation.Frames[i]?.Texture;
+                if (texture != null)
+                {
+                    frames.Add(texture);
+                }
+            }
+
+            return frames.Count > 0 ? frames : null;
         }
 
         private bool TryRegisterAnimationDisplayerFollow(int ownerCharacterId, Func<Vector2> getPosition, bool relativeEmission = true)
@@ -597,7 +741,7 @@ namespace HaCreator.MapSimulator
 
         private void TryRegisterAnimationDisplayerSkillUse(SkillCastInfo castInfo)
         {
-            if (castInfo?.SkillData == null
+            if (castInfo == null
                 || _animationEffects == null
                 || castInfo.SuppressEffectAnimation)
             {
@@ -605,6 +749,11 @@ namespace HaCreator.MapSimulator
             }
 
             int skillId = castInfo.SkillId;
+            if (skillId <= 0)
+            {
+                return;
+            }
+
             int delayRate = ResolveAnimationDisplayerSkillUseDelayRate(castInfo);
             TryResolveAnimationDisplayerSkillUseOwner(
                 castInfo.CasterId,
@@ -647,6 +796,67 @@ namespace HaCreator.MapSimulator
             {
                 castInfo.SuppressEffectAnimation = true;
             }
+        }
+
+        private void HandleAnimationDisplayerBuffApplied(ActiveBuff buff)
+        {
+            if (buff?.SkillData == null)
+            {
+                return;
+            }
+
+            SkillCastInfo castInfo = BuildAnimationDisplayerLocalSkillUseRequest(
+                buff.SkillData.SkillId,
+                buff.SkillData,
+                buff.StartTime,
+                buff.SkillData.AffectedEffect,
+                buff.SkillData.AffectedSecondaryEffect);
+            TryRegisterAnimationDisplayerSkillUse(castInfo);
+        }
+
+        private void HandleAnimationDisplayerClientSkillEffectRequested(int effectSkillId, int sourceSkillId)
+        {
+            if (effectSkillId <= 0)
+            {
+                return;
+            }
+
+            SkillData effectSkill = _playerManager?.Skills?.GetSkillData(effectSkillId)
+                                   ?? _playerManager?.Skills?.GetSkillData(sourceSkillId);
+            SkillCastInfo castInfo = BuildAnimationDisplayerLocalSkillUseRequest(
+                effectSkillId,
+                effectSkill,
+                currTickCount,
+                effectSkill?.Effect,
+                effectSkill?.EffectSecondary);
+            TryRegisterAnimationDisplayerSkillUse(castInfo);
+        }
+
+        private SkillCastInfo BuildAnimationDisplayerLocalSkillUseRequest(
+            int skillId,
+            SkillData skillData,
+            int currentTime,
+            SkillAnimation effectAnimation,
+            SkillAnimation secondaryEffectAnimation)
+        {
+            PlayerCharacter localPlayer = _playerManager?.Player;
+            int localCharacterId = localPlayer?.Build?.Id ?? 0;
+            float casterX = localPlayer?.X ?? 0f;
+            float casterY = localPlayer?.Y ?? 0f;
+            bool facingRight = localPlayer?.FacingRight ?? true;
+
+            return new SkillCastInfo
+            {
+                SkillId = skillId,
+                SkillData = skillData,
+                CastTime = currentTime,
+                CasterId = localCharacterId,
+                CasterX = casterX,
+                CasterY = casterY,
+                FacingRight = facingRight,
+                EffectAnimation = effectAnimation,
+                SecondaryEffectAnimation = secondaryEffectAnimation
+            };
         }
 
         private void HandleRemoteAnimationDisplayerSkillUse(RemoteUserActorPool.RemoteSkillUsePresentation presentation)

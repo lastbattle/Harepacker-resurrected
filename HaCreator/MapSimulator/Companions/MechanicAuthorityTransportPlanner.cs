@@ -64,18 +64,19 @@ namespace HaCreator.MapSimulator.Companions
                     $"Queued mechanic authority request {requestId} for deferred official-session injection as opcode {opcode} [{payloadHex}] after the live bridge and generic outbox paths were unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {deferredBridgeStatus}");
             }
 
-            if (tryQueueOutbox != null && tryQueueOutbox.Invoke(opcode, payload, out string queuedOutboxStatus))
+            string deferredOutboxStatus = "Generic local-utility deferred outbox is unavailable.";
+            if (tryQueueOutbox != null && tryQueueOutbox.Invoke(opcode, payload, out deferredOutboxStatus))
             {
                 return new MechanicAuthorityTransportOutcome(
                     true,
                     MechanicAuthorityTransportRoute.DeferredGenericOutbox,
-                    $"Queued mechanic authority request {requestId} for deferred generic local-utility delivery as opcode {opcode} [{payloadHex}] after the live bridge and generic outbox paths were unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred official bridge: {deferredBridgeStatus} Deferred outbox: {queuedOutboxStatus}");
+                    $"Queued mechanic authority request {requestId} for deferred generic local-utility delivery as opcode {opcode} [{payloadHex}] after the live bridge and generic outbox paths were unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred official bridge: {deferredBridgeStatus} Deferred outbox: {deferredOutboxStatus}");
             }
 
             return new MechanicAuthorityTransportOutcome(
                 false,
                 MechanicAuthorityTransportRoute.None,
-                $"Neither the live local-utility bridge nor the generic outbox accepted mechanic authority request {requestId} as opcode {opcode} [{payloadHex}]. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred official bridge: {deferredBridgeStatus}");
+                $"Neither the live local-utility bridge nor the generic outbox accepted mechanic authority request {requestId} as opcode {opcode} [{payloadHex}]. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred official bridge: {deferredBridgeStatus} Deferred outbox: {deferredOutboxStatus}");
         }
     }
 }

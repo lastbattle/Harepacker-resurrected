@@ -203,36 +203,56 @@ namespace HaCreator.MapSimulator.UI
 
             if (!snapshot.IsShowingMessage)
             {
-                MapleTvAnimationFrame idleFrame = SelectFrame(_visualAssets.OffFrames.Count > 0 ? _visualAssets.OffFrames : _visualAssets.BasicFrames, tickCount);
+                IReadOnlyList<MapleTvAnimationFrame> idleFrames = _visualAssets.OffFrames.Count > 0
+                    ? _visualAssets.OffFrames
+                    : _visualAssets.BasicFrames;
+                MapleTvAnimationFrame idleFrame = SelectFrame(idleFrames, tickCount);
                 Point idleOverlayOrigin = ResolveTopAnchoredSurfaceOrigin(
                     renderWidth,
                     WorldOverlayTopMargin,
-                    240,
-                    90,
-                    idleFrame);
+                    ResolveCompositeBounds(240, 90, idleFrames));
                 DrawAnimationFrame(sprite, idleFrame, idleOverlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
                 return;
             }
 
-            MapleTvAnimationFrame mediaFrame = SelectFrame(_visualAssets.GetMediaFrames(snapshot.ResolvedMediaIndex), tickCount);
+            IReadOnlyList<MapleTvAnimationFrame> mediaFrames = _visualAssets.GetMediaFrames(snapshot.ResolvedMediaIndex);
+            IReadOnlyList<MapleTvAnimationFrame> onFrames = _visualAssets.OnFrames.Count > 0
+                ? _visualAssets.OnFrames
+                : _visualAssets.BasicFrames;
+            IReadOnlyList<MapleTvAnimationFrame> chatFrames = _visualAssets.GetChatFrames(snapshot.ResolvedMediaIndex);
+            MapleTvAnimationFrame mediaFrame = SelectFrame(mediaFrames, tickCount);
             MapleTvAnimationFrame onFrame = SelectFrame(
-                _visualAssets.OnFrames.Count > 0 ? _visualAssets.OnFrames : _visualAssets.BasicFrames,
+                onFrames,
                 tickCount);
-            MapleTvAnimationFrame chatFrame = SelectFrame(_visualAssets.GetChatFrames(snapshot.ResolvedMediaIndex), tickCount);
+            MapleTvAnimationFrame chatFrame = SelectFrame(chatFrames, tickCount);
             Point overlayOrigin = ResolveCompositeSurfaceOrigin(
                 renderWidth,
                 WorldOverlayTopMargin,
-                240,
-                180,
-                mediaFrame,
-                onFrame,
-                chatFrame);
+                ResolveCompositeBounds(
+                    240,
+                    180,
+                    mediaFrames,
+                    onFrames,
+                    chatFrames));
             DrawAnimationFrame(sprite, mediaFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawAnimationFrame(sprite, onFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawAnimationFrame(sprite, chatFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
 
-            DrawOverlayAvatars(sprite, skeletonMeshRenderer, tickCount, overlayOrigin, snapshot);
-            DrawChatText(sprite, snapshot.DisplayLines, overlayOrigin, ResolveChatBounds(snapshot.ResolvedMediaIndex), Color.White, 0.39f, 4, 28);
+            DrawOverlayAvatars(
+                sprite,
+                skeletonMeshRenderer,
+                tickCount,
+                ResolveFamilyTopLeft(overlayOrigin, ResolveCompositeBounds(240, 180, mediaFrames)),
+                snapshot);
+            DrawChatText(
+                sprite,
+                snapshot.DisplayLines,
+                ResolveFamilyTopLeft(overlayOrigin, ResolveCompositeBounds(240, 90, chatFrames)),
+                ResolveChatBounds(snapshot.ResolvedMediaIndex),
+                Color.White,
+                0.39f,
+                4,
+                28);
         }
 
         private void ConfigureButton(UIObject button, Action action)
@@ -355,28 +375,33 @@ namespace HaCreator.MapSimulator.UI
 
             if (snapshot.IsShowingMessage)
             {
+                IReadOnlyList<MapleTvAnimationFrame> mediaFrames = _visualAssets.GetMediaFrames(snapshot.ResolvedMediaIndex);
+                IReadOnlyList<MapleTvAnimationFrame> onFrames = _visualAssets.OnFrames.Count > 0
+                    ? _visualAssets.OnFrames
+                    : _visualAssets.BasicFrames;
+                IReadOnlyList<MapleTvAnimationFrame> chatFrames = _visualAssets.GetChatFrames(snapshot.ResolvedMediaIndex);
                 MapleTvAnimationFrame mediaFrame = SelectFrame(
-                    _visualAssets.GetMediaFrames(snapshot.ResolvedMediaIndex),
+                    mediaFrames,
                     tickCount);
                 DrawAnimationFrame(sprite, mediaFrame, previewOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
                 MapleTvAnimationFrame onFrame = SelectFrame(
-                    _visualAssets.OnFrames.Count > 0 ? _visualAssets.OnFrames : _visualAssets.BasicFrames,
+                    onFrames,
                     tickCount);
                 DrawAnimationFrame(sprite, onFrame, previewOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
                 MapleTvAnimationFrame chatFrame = SelectFrame(
-                    _visualAssets.GetChatFrames(snapshot.ResolvedMediaIndex),
+                    chatFrames,
                     tickCount);
                 DrawAnimationFrame(sprite, chatFrame, previewOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
                 DrawPreviewAvatars(
                     sprite,
                     skeletonMeshRenderer,
                     tickCount,
-                    ResolveFrameTopLeft(previewOrigin, mediaFrame),
+                    ResolveFamilyTopLeft(previewOrigin, ResolveCompositeBounds(240, 180, mediaFrames)),
                     snapshot);
                 DrawChatText(
                     sprite,
                     snapshot.DisplayLines,
-                    ResolveFrameTopLeft(previewOrigin, chatFrame),
+                    ResolveFamilyTopLeft(previewOrigin, ResolveCompositeBounds(240, 90, chatFrames)),
                     ResolveChatBounds(snapshot.ResolvedMediaIndex),
                     Color.White,
                     0.4f,
@@ -505,71 +530,80 @@ namespace HaCreator.MapSimulator.UI
                 drawReflectionInfo);
         }
 
-        private static Point ResolveFrameTopLeft(Point origin, MapleTvAnimationFrame frame)
-        {
-            return frame == null
-                ? origin
-                : new Point(origin.X + frame.Offset.X, origin.Y + frame.Offset.Y);
-        }
-
         internal static Point ResolveTopAnchoredSurfaceOrigin(
             int renderWidth,
             int topMargin,
-            int fallbackWidth,
-            int fallbackHeight,
-            MapleTvAnimationFrame anchorFrame)
+            Rectangle surfaceBounds)
         {
-            int surfaceWidth = Math.Max(1, anchorFrame?.Width ?? fallbackWidth);
-            int surfaceHeight = Math.Max(1, anchorFrame?.Height ?? fallbackHeight);
-            Point anchorOffset = anchorFrame?.Offset ?? new Point(0, -surfaceHeight);
-            int desiredLeft = Math.Max(0, (renderWidth - surfaceWidth) / 2);
+            Rectangle normalizedBounds = NormalizeBounds(surfaceBounds);
+            int desiredLeft = Math.Max(0, (renderWidth - normalizedBounds.Width) / 2);
             int desiredTop = Math.Max(0, topMargin);
-            return new Point(desiredLeft - anchorOffset.X, desiredTop - anchorOffset.Y);
+            return new Point(desiredLeft - normalizedBounds.Left, desiredTop - normalizedBounds.Top);
         }
 
         internal static Point ResolveCompositeSurfaceOrigin(
             int renderWidth,
             int topMargin,
-            int fallbackWidth,
-            int fallbackHeight,
-            params MapleTvAnimationFrame[] frames)
+            Rectangle compositeBounds)
         {
-            Rectangle compositeBounds = ResolveCompositeBounds(fallbackWidth, fallbackHeight, frames);
-            int desiredLeft = Math.Max(0, (renderWidth - compositeBounds.Width) / 2);
+            Rectangle normalizedBounds = NormalizeBounds(compositeBounds);
+            int desiredLeft = Math.Max(0, (renderWidth - normalizedBounds.Width) / 2);
             int desiredTop = Math.Max(0, topMargin);
-            return new Point(desiredLeft - compositeBounds.Left, desiredTop - compositeBounds.Top);
+            return new Point(desiredLeft - normalizedBounds.Left, desiredTop - normalizedBounds.Top);
         }
 
-        private static Rectangle ResolveCompositeBounds(
+        internal static Rectangle ResolveCompositeBounds(
             int fallbackWidth,
             int fallbackHeight,
-            IReadOnlyList<MapleTvAnimationFrame> frames)
+            params IReadOnlyList<MapleTvAnimationFrame>[] frameGroups)
         {
             Rectangle bounds = new(0, 0, Math.Max(1, fallbackWidth), Math.Max(1, fallbackHeight));
             bool hasFrameBounds = false;
-            if (frames == null)
+            if (frameGroups == null)
             {
                 return bounds;
             }
 
-            for (int i = 0; i < frames.Count; i++)
+            for (int groupIndex = 0; groupIndex < frameGroups.Length; groupIndex++)
             {
-                MapleTvAnimationFrame frame = frames[i];
-                if (frame == null)
+                IReadOnlyList<MapleTvAnimationFrame> frames = frameGroups[groupIndex];
+                if (frames == null)
                 {
                     continue;
                 }
 
-                Rectangle frameBounds = new(
-                    frame.Offset.X,
-                    frame.Offset.Y,
-                    Math.Max(1, frame.Width),
-                    Math.Max(1, frame.Height));
-                bounds = hasFrameBounds ? Rectangle.Union(bounds, frameBounds) : frameBounds;
-                hasFrameBounds = true;
+                for (int i = 0; i < frames.Count; i++)
+                {
+                    MapleTvAnimationFrame frame = frames[i];
+                    if (frame == null)
+                    {
+                        continue;
+                    }
+
+                    Rectangle frameBounds = new(
+                        frame.Offset.X,
+                        frame.Offset.Y,
+                        Math.Max(1, frame.Width),
+                        Math.Max(1, frame.Height));
+                    bounds = hasFrameBounds ? Rectangle.Union(bounds, frameBounds) : frameBounds;
+                    hasFrameBounds = true;
+                }
             }
 
             return bounds;
+        }
+
+        internal static Point ResolveFamilyTopLeft(Point origin, Rectangle familyBounds)
+        {
+            Rectangle normalizedBounds = NormalizeBounds(familyBounds);
+            return new Point(origin.X + normalizedBounds.Left, origin.Y + normalizedBounds.Top);
+        }
+
+        private static Rectangle NormalizeBounds(Rectangle bounds)
+        {
+            return bounds.Width <= 0 || bounds.Height <= 0
+                ? new Rectangle(bounds.Left, bounds.Top, Math.Max(1, bounds.Width), Math.Max(1, bounds.Height))
+                : bounds;
         }
 
         private void DrawChatText(

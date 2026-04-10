@@ -45,6 +45,7 @@ namespace HaCreator.MapSimulator.Interaction
                 existingEntry.IsLeader || localEntry.IsLeader,
                 existingEntry.IsBlocked || localEntry.IsBlocked)
             {
+                MemberId = existingEntry.MemberId ?? localEntry.MemberId,
                 IsLocalPlayer = true
             };
         }

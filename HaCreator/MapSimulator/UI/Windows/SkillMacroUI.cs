@@ -1105,8 +1105,12 @@ namespace HaCreator.MapSimulator.UI
         {
             SetNameFieldFocus(true);
             _softKeyboardActive = true;
-            _softKeyboardVisible = false;
-            _softKeyboardMinimized = false;
+            if (resetDismissedState || !_softKeyboardVisible)
+            {
+                _softKeyboardVisible = true;
+                _softKeyboardMinimized = false;
+            }
+
             ResetSoftKeyboardTransientState();
         }
 
@@ -2092,6 +2096,7 @@ namespace HaCreator.MapSimulator.UI
         {
             _softKeyboardActive = false;
             ResetSoftKeyboardTransientState();
+            UpdateImePresentationPlacement();
         }
 
         void ISoftKeyboardHost.SetSoftKeyboardCompositionText(string text)
@@ -2784,8 +2789,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (!CapturesKeyboardInput
                 || _font == null
-                || ResolveImeWindowHandle == null
-                || (_compositionText.Length == 0 && !_candidateListState.HasCandidates))
+                || ResolveImeWindowHandle == null)
             {
                 return;
             }

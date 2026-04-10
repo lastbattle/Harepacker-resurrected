@@ -3971,6 +3971,11 @@ namespace HaCreator.MapSimulator.UI
                 targetSlots.Add(EquipSlot.FaceAccessory);
             }
 
+            if (normalized.IndexOf("mask", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.FaceAccessory);
+            }
+
             if (normalized.IndexOf("face eqp", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 normalized.IndexOf("face equipment", StringComparison.OrdinalIgnoreCase) >= 0)
             {
@@ -3978,6 +3983,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (normalized.IndexOf("eye accessory", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.EyeAccessory);
+            }
+
+            if (normalized.IndexOf("glasses", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 targetSlots.Add(EquipSlot.EyeAccessory);
             }
@@ -4086,6 +4096,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (normalized.IndexOf("helmet", StringComparison.OrdinalIgnoreCase) >= 0 || normalized.IndexOf("cap", StringComparison.OrdinalIgnoreCase) >= 0 || normalized.IndexOf("hat", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Cap);
+            }
+
+            if (normalized.IndexOf("circlet", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 targetSlots.Add(EquipSlot.Cap);
             }

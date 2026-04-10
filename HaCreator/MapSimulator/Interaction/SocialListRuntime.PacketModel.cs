@@ -626,6 +626,11 @@ namespace HaCreator.MapSimulator.Interaction
             return Math.Max(0, _packetGuildPoints);
         }
 
+        internal int? TryGetEffectiveGuildPoints()
+        {
+            return _packetGuildUiState.HasValue ? Math.Max(0, _packetGuildPoints) : null;
+        }
+
         private void SyncPacketGuildUiStateFromRoster(SocialListTab tab)
         {
             if (tab != SocialListTab.Guild || !IsPacketOwned(tab))

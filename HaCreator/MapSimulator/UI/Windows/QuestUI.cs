@@ -1192,7 +1192,7 @@ namespace HaCreator.MapSimulator.UI
                 float labelScale = 0.38f;
                 string countText = slot.Entry.Count.ToString();
                 float countScale = 0.38f;
-                Vector2 countMeasure = ClientTextDrawing.Measure((GraphicsDevice)null, countText, countScale, _font);
+                Vector2 countMeasure = MeasureClientText(countText, countScale);
                 Color labelColor = enabled ? new Color(70, 45, 24) : new Color(106, 98, 88);
                 Color countColor = enabled ? new Color(108, 76, 42) : new Color(128, 120, 108);
                 Color leaderColor = enabled ? new Color(153, 121, 80) : new Color(156, 148, 136);
@@ -1204,7 +1204,7 @@ namespace HaCreator.MapSimulator.UI
                 int countLeft = (int)MathF.Floor(countRight - countMeasure.X);
                 int availableLabelWidth = Math.Max(0, countLeft - textX - 6);
                 string labelText = FitSingleLineText(slot.Entry.AreaName, availableLabelWidth, labelScale);
-                Vector2 labelMeasure = ClientTextDrawing.Measure((GraphicsDevice)null, labelText, labelScale, _font);
+                Vector2 labelMeasure = MeasureClientText(labelText, labelScale);
 
                 ClientTextDrawing.Draw(sprite, labelText, new Vector2(textX, textY), labelColor, labelScale, _font);
                 DrawCategoryLeaderText(
@@ -1242,7 +1242,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             const string leaderUnit = ".";
-            float unitWidth = ClientTextDrawing.Measure((GraphicsDevice)null, leaderUnit, scale, _font).X;
+            float unitWidth = MeasureClientText(leaderUnit, scale).X;
             if (unitWidth <= 0f)
             {
                 return string.Empty;
@@ -1530,13 +1530,13 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string trimmed = text.Trim();
-            if (ClientTextDrawing.Measure((GraphicsDevice)null, trimmed, scale, _font).X <= maxWidth)
+            if (MeasureClientText(trimmed, scale).X <= maxWidth)
             {
                 return trimmed;
             }
 
             const string ellipsis = "...";
-            float ellipsisWidth = ClientTextDrawing.Measure((GraphicsDevice)null, ellipsis, scale, _font).X;
+            float ellipsisWidth = MeasureClientText(ellipsis, scale).X;
             if (ellipsisWidth >= maxWidth)
             {
                 return string.Empty;
@@ -1550,7 +1550,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                if (ClientTextDrawing.Measure((GraphicsDevice)null, candidate, scale, _font).X + ellipsisWidth <= maxWidth)
+                if (MeasureClientText(candidate, scale).X + ellipsisWidth <= maxWidth)
                 {
                     return candidate + ellipsis;
                 }
@@ -1877,7 +1877,7 @@ namespace HaCreator.MapSimulator.UI
                 while (!string.IsNullOrEmpty(remaining))
                 {
                     int length = remaining.Length;
-                    while (length > 1 && ClientTextDrawing.Measure((GraphicsDevice)null, remaining[..length], scale, _font).X > maxWidth)
+                    while (length > 1 && MeasureClientText(remaining[..length], scale).X > maxWidth)
                     {
                         int previousSpace = remaining.LastIndexOf(' ', length - 1, length - 1);
                         length = previousSpace > 0 ? previousSpace : length - 1;
@@ -1945,7 +1945,7 @@ namespace HaCreator.MapSimulator.UI
                 foreach (string word in paragraph.Split(' ', StringSplitOptions.RemoveEmptyEntries))
                 {
                     string candidate = string.IsNullOrEmpty(current) ? word : $"{current} {word}";
-                    if (ClientTextDrawing.Measure((GraphicsDevice)null, candidate, scale, _font).X <= maxWidth)
+                    if (MeasureClientText(candidate, scale).X <= maxWidth)
                     {
                         current = candidate;
                     }
@@ -1973,6 +1973,11 @@ namespace HaCreator.MapSimulator.UI
         {
             string wrapped = WrapText(text, maxWidth, scale);
             return Math.Max(1, wrapped.Split('\n').Length);
+        }
+
+        private Vector2 MeasureClientText(string text, float scale)
+        {
+            return ClientTextDrawing.Measure(_graphicsDevice, text, scale, _font);
         }
 
         private string Truncate(string text, int maxChars)

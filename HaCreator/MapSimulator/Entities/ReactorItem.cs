@@ -78,6 +78,8 @@ namespace HaCreator.MapSimulator.Entities
         private readonly Dictionary<(int State, int ProperEventIndex), WzImageProperty> _stateIndexedHitProperties;
         private readonly Dictionary<int, bool> _stateRepeatModes;
         private readonly Dictionary<int, AuthoredStateTransition[]> _stateTransitions;
+        private readonly Dictionary<WzImageProperty, IDXObject[]> _lazySourceFrameCache;
+        private readonly Func<WzImageProperty, List<IDXObject>> _lazySourceFrameLoader;
         private readonly HashSet<int> _authoredStates;
         private readonly int[] _availableStates;
         private readonly int _rootHitDuration;
@@ -130,6 +132,8 @@ namespace HaCreator.MapSimulator.Entities
             _stateIndexedHitProperties = new Dictionary<(int State, int ProperEventIndex), WzImageProperty>();
             _stateRepeatModes = new Dictionary<int, bool>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
+            _lazySourceFrameCache = new Dictionary<WzImageProperty, IDXObject[]>();
+            _lazySourceFrameLoader = null;
             _authoredStates = new HashSet<int>();
             _availableStates = Array.Empty<int>();
             _rootHitDuration = 0;
@@ -152,7 +156,8 @@ namespace HaCreator.MapSimulator.Entities
             Dictionary<int, WzImageProperty> stateLayerProperties = null,
             Dictionary<int, WzImageProperty> stateHitProperties = null,
             Dictionary<(int State, int ProperEventIndex), WzImageProperty> stateIndexedHitProperties = null,
-            WzImageProperty rootHitProperty = null)
+            WzImageProperty rootHitProperty = null,
+            Func<WzImageProperty, List<IDXObject>> lazySourceFrameLoader = null)
             : base(GetDefaultFrames(stateFrames), reactorInstance.Flip)
         {
             _reactorInstance = reactorInstance;
@@ -172,6 +177,8 @@ namespace HaCreator.MapSimulator.Entities
                 : new Dictionary<(int State, int ProperEventIndex), WzImageProperty>();
             _stateRepeatModes = LoadStateRepeatModes(reactorInstance);
             _stateTransitions = LoadStateTransitions(reactorInstance);
+            _lazySourceFrameCache = new Dictionary<WzImageProperty, IDXObject[]>();
+            _lazySourceFrameLoader = lazySourceFrameLoader;
             _authoredStates = LoadAuthoredStates(reactorInstance);
             _rootHitDuration = LoadRootHitDuration(reactorInstance);
             _rootHitFrames = rootHitFrames?.Count > 0 ? rootHitFrames.ToArray() : Array.Empty<IDXObject>();
@@ -212,6 +219,8 @@ namespace HaCreator.MapSimulator.Entities
             _stateIndexedHitProperties = new Dictionary<(int State, int ProperEventIndex), WzImageProperty>();
             _stateRepeatModes = new Dictionary<int, bool>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
+            _lazySourceFrameCache = new Dictionary<WzImageProperty, IDXObject[]>();
+            _lazySourceFrameLoader = null;
             _authoredStates = new HashSet<int>();
             _availableStates = Array.Empty<int>();
             _rootHitDuration = 0;
@@ -572,6 +581,20 @@ namespace HaCreator.MapSimulator.Entities
                 && properEventIndex < transitions.Length;
         }
 
+        internal IReadOnlyList<int> GetAuthoredEventTypes(int currentState)
+        {
+            int resolvedState = ResolveState(currentState);
+            if (!_stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
+                || transitions.Length == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            return transitions
+                .Select(static transition => transition.EventType)
+                .ToArray();
+        }
+
         private bool TryResolveHitAnimationDuration(int state, int properEventIndex, out int duration)
         {
             return TryResolveHitAnimation(state, properEventIndex, out _, out duration);
@@ -610,7 +633,7 @@ namespace HaCreator.MapSimulator.Entities
                 return false;
             }
 
-            frames = ResolveHitAnimationFrames(sourceKind, state, properEventIndex);
+            frames = ResolveHitAnimationFrames(sourceKind, state, properEventIndex, sourceProperty);
             duration = ResolveHitAnimationDuration(sourceKind, state, properEventIndex, sourceProperty);
             return duration > 0;
         }
@@ -668,9 +691,13 @@ namespace HaCreator.MapSimulator.Entities
             return false;
         }
 
-        private IDXObject[] ResolveHitAnimationFrames(HitAnimationSourceKind sourceKind, int state, int properEventIndex)
+        private IDXObject[] ResolveHitAnimationFrames(
+            HitAnimationSourceKind sourceKind,
+            int state,
+            int properEventIndex,
+            WzImageProperty sourceProperty)
         {
-            return sourceKind switch
+            IDXObject[] frames = sourceKind switch
             {
                 HitAnimationSourceKind.StateLayer => _stateFrames.TryGetValue(state, out IDXObject[] stateFrames)
                     ? stateFrames
@@ -684,6 +711,31 @@ namespace HaCreator.MapSimulator.Entities
                 HitAnimationSourceKind.RootHit => _rootHitFrames,
                 _ => Array.Empty<IDXObject>()
             };
+
+            if (frames.Length > 0 || sourceProperty == null)
+            {
+                return frames;
+            }
+
+            return TryLoadFramesFromSourceProperty(sourceProperty);
+        }
+
+        private IDXObject[] TryLoadFramesFromSourceProperty(WzImageProperty sourceProperty)
+        {
+            if (sourceProperty == null)
+            {
+                return Array.Empty<IDXObject>();
+            }
+
+            if (_lazySourceFrameCache.TryGetValue(sourceProperty, out IDXObject[] cachedFrames))
+            {
+                return cachedFrames;
+            }
+
+            IDXObject[] loadedFrames = _lazySourceFrameLoader?.Invoke(sourceProperty)?.ToArray()
+                ?? Array.Empty<IDXObject>();
+            _lazySourceFrameCache[sourceProperty] = loadedFrames;
+            return loadedFrames;
         }
 
         private int ResolveHitAnimationDuration(

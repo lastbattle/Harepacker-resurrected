@@ -342,9 +342,13 @@ namespace HaCreator.MapSimulator.UI
                     sprite.Draw(_recommendTexture, new Vector2(rowBounds.X + 40, rowBounds.Y), Color.White);
                 }
 
-                Texture2D icon = entry.CanLevelUp || entry.CurrentLevel > 0
-                    ? entry.IconTexture
-                    : entry.DisabledIconTexture ?? entry.IconTexture;
+                bool disabledIcon = !entry.CanLevelUp && entry.CurrentLevel <= 0;
+                bool hovered = absoluteIndex == _hoveredIndex;
+                Texture2D icon = disabledIcon
+                    ? entry.DisabledIconTexture ?? entry.IconTexture
+                    : hovered
+                        ? entry.MouseOverIconTexture ?? entry.IconTexture
+                        : entry.IconTexture;
                 if (icon != null)
                 {
                     sprite.Draw(icon, new Rectangle(rowBounds.X + 4, rowBounds.Y + 3, 32, 32), Color.White);

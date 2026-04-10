@@ -2722,8 +2722,7 @@ namespace HaCreator.MapSimulator.UI
             if (!CapturesKeyboardInput
                 || !_searchMode
                 || _font == null
-                || ResolveImeWindowHandle == null
-                || (_compositionText.Length == 0 && !_candidateListState.HasCandidates))
+                || ResolveImeWindowHandle == null)
             {
                 return;
             }
@@ -3276,6 +3275,7 @@ namespace HaCreator.MapSimulator.UI
         void ISoftKeyboardHost.OnSoftKeyboardClosed()
         {
             _softKeyboardActive = false;
+            UpdateImePresentationPlacement();
         }
 
         private void UpdateHoveredSearchResult(MouseState mouseState)

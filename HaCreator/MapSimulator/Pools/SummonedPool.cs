@@ -190,6 +190,7 @@ namespace HaCreator.MapSimulator.Pools
             public int ExecuteTime { get; init; }
             public int DurationMs { get; init; }
             public SkillAnimation Animation { get; init; }
+            public string AnimationPath { get; init; }
             public bool FacingRight { get; init; }
         }
 
@@ -200,6 +201,7 @@ namespace HaCreator.MapSimulator.Pools
             public int StartTime { get; init; }
             public int EndTime { get; init; }
             public SkillAnimation Animation { get; init; }
+            public string AnimationPath { get; init; }
             public bool FacingRight { get; init; }
 
             public bool IsExpired(int currentTime)
@@ -841,11 +843,37 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     return namedAnimation;
                 }
+
+                SkillAnimation retryAnimation = ResolveEmptyActionRetryAnimation(state.Summon);
+                if (retryAnimation?.Frames.Count > 0)
+                {
+                    return retryAnimation;
+                }
             }
 
             return isSkillAction
                 ? ResolvePacketPendingRemovalActionAnimation(state.Summon)
                 : ResolveAttackAnimation(state.Summon);
+        }
+
+        private static SkillAnimation ResolveEmptyActionRetryAnimation(ActiveSummon summon)
+        {
+            SkillData skill = summon?.SkillData;
+            if (skill?.SummonActionAnimations == null || skill.SummonActionAnimations.Count == 0)
+            {
+                return null;
+            }
+
+            string retryBranchName = SummonRuntimeRules.ResolveEmptyActionRetryBranch(skill);
+            if (string.IsNullOrWhiteSpace(retryBranchName))
+            {
+                return null;
+            }
+
+            return skill.SummonActionAnimations.TryGetValue(retryBranchName, out SkillAnimation retryAnimation)
+                   && retryAnimation?.Frames.Count > 0
+                ? retryAnimation
+                : null;
         }
 
         private static void ClearPacketOwnedOneTimeAction(PacketOwnedSummonState state)
@@ -964,6 +992,10 @@ namespace HaCreator.MapSimulator.Pools
             _summonTileEffects.Add(new PacketOwnedSummonTileEffectDisplay
             {
                 Animation = zoneAnimation,
+                AnimationPath = PacketOwnedSummonUpdateRules.ResolveClientOwnedTileOverlayAnimationPath(
+                    state.Summon,
+                    resolvedSkillLevel,
+                    resolvedOwnerCharacterLevel),
                 Area = area,
                 EffectDistance = PacketOwnedSummonUpdateRules.ResolveClientOwnedTileOverlayEffectDistance(
                     state.Summon,
@@ -1051,6 +1083,7 @@ namespace HaCreator.MapSimulator.Pools
                             StartTime = scheduledEffect.ExecuteTime,
                             EndTime = scheduledEffect.ExecuteTime + Math.Max(1, scheduledEffect.DurationMs),
                             Animation = scheduledEffect.Animation,
+                            AnimationPath = scheduledEffect.AnimationPath,
                             FacingRight = scheduledEffect.FacingRight
                         });
                     }
@@ -1929,10 +1962,7 @@ namespace HaCreator.MapSimulator.Pools
 
         private static bool ShouldClearPacketOwnedSupportSuspend(PacketOwnedSummonState state, int currentTime)
         {
-            return SummonRuntimeRules.ShouldClearHealingRobotSupportSuspend(
-                state?.Summon,
-                currentTime,
-                HealingRobotSkillId);
+            return SummonRuntimeRules.ShouldClearSupportSuspend(state?.Summon, currentTime);
         }
 
         private static void AdvanceSummonHitPeriod(ActiveSummon summon, int currentTime)
@@ -2614,6 +2644,7 @@ namespace HaCreator.MapSimulator.Pools
         private sealed class PacketOwnedSummonTileEffectDisplay
         {
             public SkillAnimation Animation { get; init; }
+            public string AnimationPath { get; init; }
             public Rectangle Area { get; init; }
             public int EffectDistance { get; init; }
             public int StartTime { get; init; }
@@ -3352,11 +3383,21 @@ namespace HaCreator.MapSimulator.Pools
             Vector2 summonPosition = new(summon.PositionX, summon.PositionY);
             bool facingRight = facingRightOverride ?? summon.FacingRight;
             string attackBranchName = summon.CurrentAnimationBranchName;
+            string selfDestructFinalBranch = summon.SkillData.SelfDestructMinion
+                ? SummonRuntimeRules.ResolveSelfDestructFinalBranch(summon.SkillData, summon.AssistType)
+                : null;
             Rectangle localHitbox = summon.AssistType == SummonAssistType.Support
-                ? SummonRuntimeRules.ResolveSupportOwnedRange(
-                    summon.SkillData,
-                    facingRight,
-                    attackBranchName)
+                ? summon.SkillData.SelfDestructMinion
+                  && !string.IsNullOrWhiteSpace(selfDestructFinalBranch)
+                  && string.Equals(attackBranchName, selfDestructFinalBranch, StringComparison.OrdinalIgnoreCase)
+                    ? SummonRuntimeRules.ResolveSupportOwnedExpiryRange(
+                        summon.SkillData,
+                        facingRight,
+                        selfDestructFinalBranch)
+                    : SummonRuntimeRules.ResolveSupportOwnedRange(
+                        summon.SkillData,
+                        facingRight,
+                        attackBranchName)
                 : summon.SkillData.TryGetSummonAttackRange(
                     facingRight,
                     attackBranchName,
@@ -3680,6 +3721,9 @@ namespace HaCreator.MapSimulator.Pools
             SkillAnimation chainAnimation = ResolveClientOwnedReactiveAttackChainAnimation(
                 summon,
                 state?.OwnerCharacterLevel ?? 1);
+            string chainAnimationPath = PacketOwnedSummonUpdateRules.ResolveClientOwnedReactiveAttackChainAnimationPath(
+                summon,
+                state?.OwnerCharacterLevel ?? 1);
             bool canRenderChain = chainAnimation?.Frames.Count > 0 || _animationEffects != null;
             if (!canRenderChain)
             {
@@ -3709,6 +3753,7 @@ namespace HaCreator.MapSimulator.Pools
                     ExecuteTime = executeTime,
                     DurationMs = chainDurationMs,
                     Animation = chainAnimation,
+                    AnimationPath = chainAnimationPath,
                     FacingRight = chainTarget.X >= source.X
                 });
             }

@@ -181,6 +181,10 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientCollectionStandardRuleBaseOffset = 19;
         private const int ClientCollectionTextLaneLeft = 0;
         private const int ClientCollectionTextLaneWidthInt = 190;
+        private const int ClientCollectionValueLaneWidth = 72;
+        private const int ClientCollectionValueLaneLeft = ClientCollectionTextLaneWidthInt - ClientCollectionValueLaneWidth;
+        private const int ClientCollectionLabelLaneLeft = ClientCollectionTextLaneLeft;
+        private const int ClientCollectionLabelLaneWidth = ClientCollectionValueLaneLeft - ClientCollectionLabelLaneLeft - 6;
         private const int BookFontObjectStringPoolId = 0x5AF;
         private const int BookFontFamilyStringPoolId = 0x1A25;
         private const int BookFontStyleStringPoolId = 0x5B0;
@@ -557,7 +561,7 @@ namespace HaCreator.MapSimulator.UI
                 return top + ClientCollectionOverviewIdentityEntryBaseHeight;
             }
 
-            records.Add(CreateTextRecord(BuildEntryHeadline(entry), ClientCollectionTextLaneLeft, top, ClientCollectionTextLaneWidthInt, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
+            AddEntryHeadlineRecords(records, entry, top);
             AddWrappedTextRecords(records, entry.Detail, ClientCollectionTextLaneLeft, top + 10, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
             int detailLineCount = GetWrappedCollectionLineCount(entry.Detail, ClientCollectionTextLaneWidthInt, 10, measureTextWidth);
             int ruleTop = top + 23 + ((detailLineCount - 1) * ClientCollectionDetailLineStep);
@@ -572,7 +576,7 @@ namespace HaCreator.MapSimulator.UI
                 return top + ClientCollectionOverviewMetricEntryBaseHeight;
             }
 
-            records.Add(CreateTextRecord(BuildEntryHeadline(entry), ClientCollectionTextLaneLeft, top, ClientCollectionTextLaneWidthInt, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
+            AddEntryHeadlineRecords(records, entry, top);
             AddWrappedTextRecords(records, entry.Detail, ClientCollectionTextLaneLeft, top + 9, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
             int detailLineCount = GetWrappedCollectionLineCount(entry.Detail, ClientCollectionTextLaneWidthInt, 10, measureTextWidth);
             int ruleTop = top + 16 + ((detailLineCount - 1) * ClientCollectionDetailLineStep);
@@ -587,8 +591,66 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            records.Add(CreateTextRecord(BuildEntryHeadline(entry), ClientCollectionTextLaneLeft, top, ClientCollectionTextLaneWidthInt, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
+            AddEntryHeadlineRecords(records, entry, top);
             AddWrappedTextRecords(records, entry.Detail, ClientCollectionTextLaneLeft, top + 10, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
+        }
+
+        private static void AddEntryHeadlineRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top)
+        {
+            if (records == null || entry == null)
+            {
+                return;
+            }
+
+            int styleIndex = ResolveEntryStyleIndex(entry.Tone);
+            string label = entry.Label?.Trim() ?? string.Empty;
+            string value = entry.Value?.Trim() ?? string.Empty;
+            bool hasLabel = !string.IsNullOrWhiteSpace(label);
+            bool hasValue = !string.IsNullOrWhiteSpace(value);
+
+            if (hasLabel && hasValue)
+            {
+                records.Add(CreateTextRecord(
+                    label,
+                    ClientCollectionLabelLaneLeft,
+                    top,
+                    ClientCollectionLabelLaneWidth,
+                    styleIndex,
+                    CollectionBookTextAlignment.Left,
+                    CollectionBookRecordRole.Label));
+                records.Add(CreateTextRecord(
+                    value,
+                    ClientCollectionValueLaneLeft,
+                    top,
+                    ClientCollectionValueLaneWidth,
+                    styleIndex,
+                    CollectionBookTextAlignment.Right,
+                    CollectionBookRecordRole.Value));
+                return;
+            }
+
+            if (hasLabel)
+            {
+                records.Add(CreateTextRecord(
+                    label,
+                    ClientCollectionTextLaneLeft,
+                    top,
+                    ClientCollectionTextLaneWidthInt,
+                    styleIndex,
+                    CollectionBookTextAlignment.Left,
+                    CollectionBookRecordRole.Label));
+            }
+            else if (hasValue)
+            {
+                records.Add(CreateTextRecord(
+                    value,
+                    ClientCollectionTextLaneLeft,
+                    top,
+                    ClientCollectionTextLaneWidthInt,
+                    styleIndex,
+                    CollectionBookTextAlignment.Right,
+                    CollectionBookRecordRole.Value));
+            }
         }
 
         private static IReadOnlyList<IReadOnlyList<CollectionBookEntrySnapshot>> PaginateStandardEntries(IReadOnlyList<CollectionBookEntrySnapshot> entries, Func<string, int, float> measureTextWidth = null)
@@ -718,23 +780,6 @@ namespace HaCreator.MapSimulator.UI
                 StyleIndex = styleIndex,
                 Alignment = alignment
             };
-        }
-
-        private static string BuildEntryHeadline(CollectionBookEntrySnapshot entry)
-        {
-            if (entry == null)
-            {
-                return string.Empty;
-            }
-
-            bool hasLabel = !string.IsNullOrWhiteSpace(entry.Label);
-            bool hasValue = !string.IsNullOrWhiteSpace(entry.Value);
-            if (hasLabel && hasValue)
-            {
-                return $"{entry.Label.Trim()}  {entry.Value.Trim()}";
-            }
-
-            return hasLabel ? entry.Label.Trim() : entry.Value?.Trim() ?? string.Empty;
         }
 
         private static CollectionBookRecordSnapshot CreateRuleRecord(int left, int top, int width)

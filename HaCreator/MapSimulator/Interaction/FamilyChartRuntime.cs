@@ -53,6 +53,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string _locationSummary = "Maple Island";
         private string _remotePreviewRequestSummary;
         private FamilyPrivilegeState _activePrivilege;
+        private FamilyAuthorityState _authorityState = FamilyAuthorityState.CreateSimulatorLocal();
 
         private int FamilyHeadId => _familyHeadId;
 
@@ -151,6 +152,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EntitlementIndex = (int)_entitlementType,
                 EntitlementDescription = BuildEntitlementDescription(localPlayer, activePrivilege),
                 DetailLines = BuildDetailLines(localPlayer, activePrivilege),
+                CanEditPrecept = CanEditPrecept(),
                 CanPageBackward = FamilyEntitlementCount > 1,
                 CanPageForward = FamilyEntitlementCount > 1,
                 CanAddJunior = CanAddJunior(localPlayer),
@@ -267,6 +269,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal string AddJunior()
         {
             FamilyMemberState selectedMember = GetSelectedMember();
+            if (!CanRegisterJunior())
+            {
+                return BuildAuthorityBlockedMessage("register another junior");
+            }
+
             if (!CanAddJunior(selectedMember))
             {
                 return selectedMember == null
@@ -303,6 +310,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal string RemoveSelectedMember()
         {
             FamilyMemberState selectedMember = GetSelectedMember();
+            if (!CanRemoveMembers())
+            {
+                return BuildAuthorityBlockedMessage("remove family members");
+            }
+
             if (!CanRemoveSelected(selectedMember))
             {
                 return selectedMember == null
@@ -339,6 +351,28 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SetPrecept(string precept)
         {
+            if (!CanEditPrecept())
+            {
+                return BuildAuthorityBlockedMessage("edit the family precept");
+            }
+
+            return SetPreceptCore(precept, packetAuthored: false);
+        }
+
+        internal string SetPreceptFromPacket(string precept)
+        {
+            return SetPreceptCore(precept, packetAuthored: true);
+        }
+
+        internal string SetAuthorityProfileFromPacket(string profile)
+        {
+            FamilyAuthorityState authorityState = ResolveAuthorityProfile(profile, out string resolvedProfile);
+            _authorityState = authorityState;
+            return $"Family authority now follows the {resolvedProfile} profile ({authorityState.SourceLabel}).";
+        }
+
+        private string SetPreceptCore(string precept, bool packetAuthored)
+        {
             string resolvedPrecept = string.IsNullOrWhiteSpace(precept)
                 ? string.Empty
                 : precept.Trim();
@@ -348,8 +382,15 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _familyPrecept = resolvedPrecept;
-            return string.IsNullOrWhiteSpace(_familyPrecept)
-                ? "Cleared the simulator family precept."
+            if (string.IsNullOrWhiteSpace(_familyPrecept))
+            {
+                return packetAuthored
+                    ? "Cleared the packet-authored family precept."
+                    : "Cleared the simulator family precept.";
+            }
+
+            return packetAuthored
+                ? $"Set the packet-authored family precept to: {_familyPrecept}"
                 : $"Set the simulator family precept to: {_familyPrecept}";
         }
 
@@ -372,6 +413,11 @@ namespace HaCreator.MapSimulator.Interaction
             int specialCost = GetSpecialReputationCost(localPlayer);
             int specialUseCount = GetEntitlementUseCount(_entitlementType);
             int specialUseLimit = GetEntitlementDailyLimit(_entitlementType);
+            if (!CanUsePrivileges())
+            {
+                return new FamilyEntitlementUseResult(BuildAuthorityBlockedMessage("use family privileges"));
+            }
+
             if (!CanUseCompactEntitlement(localPlayer, specialCost, specialUseCount, specialUseLimit))
             {
                 if (string.IsNullOrWhiteSpace(_familyName))
@@ -410,9 +456,14 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     bool sameField = IsSameField(localLocation, selectedLocation);
-                    if (!sameField)
+                    if (!sameField && !CanResolveCrossMapPrivileges())
                     {
                         return new FamilyEntitlementUseResult($"Prepared a move request to {selectedMember.Name}, but cross-map transfer still remains outside the simulator field seam.");
+                    }
+
+                    if (!sameField && localPlayer != null)
+                    {
+                        localPlayer.LocationSummary = selectedLocation;
                     }
 
                     ConsumeEntitlementUse(localPlayer, specialCost);
@@ -460,7 +511,8 @@ namespace HaCreator.MapSimulator.Interaction
             int useCount = GetEntitlementUseCount(_entitlementType);
             int useLimit = GetEntitlementDailyLimit(_entitlementType);
             string precept = string.IsNullOrWhiteSpace(_familyPrecept) ? "(unset)" : _familyPrecept;
-            return $"Family roster: {_members.Count} members, family {familyName}, precept {precept}, head {headName} (#{_familyHeadId}), selected {selectedName} (#{selectedMember?.Id ?? 0}), entitlement {useCount}/{useLimit} uses on {GetEntitlementLabel(_entitlementType)}.";
+            string crossMapResolution = CanResolveCrossMapPrivileges() ? "enabled" : "local-only";
+            return $"Family roster: {_members.Count} members, family {familyName}, precept {precept}, head {headName} (#{_familyHeadId}), selected {selectedName} (#{selectedMember?.Id ?? 0}), entitlement {useCount}/{useLimit} uses on {GetEntitlementLabel(_entitlementType)}, authority {_authorityState.SourceLabel}, cross-map privilege resolution {crossMapResolution}.";
         }
 
         internal string ResetToSeedFamily()
@@ -597,6 +649,7 @@ namespace HaCreator.MapSimulator.Interaction
             _familyPrecept = string.Empty;
             _activePrivilege = null;
             _selectedEmptyTreeSlot = -1;
+            _authorityState = FamilyAuthorityState.CreateSimulatorLocal();
         }
 
         private void SeedDefaultFamily()
@@ -867,6 +920,11 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add($"Precept: {_familyPrecept}");
             }
 
+            lines.Add($"Authority: {_authorityState.SourceLabel}.");
+            lines.Add(CanResolveCrossMapPrivileges()
+                ? "Cross-map family privilege resolution is enabled in this runtime profile."
+                : "Cross-map family privilege resolution remains local-field only.");
+
             if (activePrivilege != null)
             {
                 TimeSpan remaining = TimeSpan.FromMilliseconds(Math.Max(0, activePrivilege.ExpiresAtTick - Environment.TickCount));
@@ -898,12 +956,15 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanAddJunior(FamilyMemberState selectedMember)
         {
-            return selectedMember != null && selectedMember.Id != RemotePreviewMemberId && selectedMember.Children.Count < 2;
+            return CanRegisterJunior()
+                && selectedMember != null
+                && selectedMember.Id != RemotePreviewMemberId
+                && selectedMember.Children.Count < 2;
         }
 
         private bool CanRemoveSelected(FamilyMemberState selectedMember)
         {
-            if (selectedMember == null || selectedMember.Id == FamilyHeadId || selectedMember.Id == LocalPlayerId)
+            if (!CanRemoveMembers() || selectedMember == null || selectedMember.Id == FamilyHeadId || selectedMember.Id == LocalPlayerId)
             {
                 return false;
             }
@@ -922,10 +983,41 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanUseCompactEntitlement(FamilyMemberState selectedMember, int specialCost, int specialUseCount, int specialUseLimit)
         {
-            return selectedMember != null
+            return CanUsePrivileges()
+                && selectedMember != null
                 && !string.IsNullOrWhiteSpace(_familyName)
                 && specialUseCount < specialUseLimit
                 && selectedMember.CurrentReputation >= specialCost;
+        }
+
+        private bool CanEditPrecept()
+        {
+            return _authorityState.CanEditPrecept;
+        }
+
+        private bool CanRegisterJunior()
+        {
+            return _authorityState.CanRegisterJunior;
+        }
+
+        private bool CanRemoveMembers()
+        {
+            return _authorityState.CanRemoveMembers;
+        }
+
+        private bool CanUsePrivileges()
+        {
+            return _authorityState.CanUsePrivileges;
+        }
+
+        private bool CanResolveCrossMapPrivileges()
+        {
+            return _authorityState.CanResolveCrossMapPrivileges;
+        }
+
+        private string BuildAuthorityBlockedMessage(string action)
+        {
+            return $"Family authority does not permit this client seam to {action}. Current profile: {_authorityState.SourceLabel}.";
         }
 
         private void CollectBranchMemberIds(int memberId, List<int> results)
@@ -1066,6 +1158,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string BuildEntitlementDescription(FamilyMemberState localPlayer, FamilyPrivilegeState activePrivilege)
         {
+            if (!CanUsePrivileges())
+            {
+                return $"Packet/session family authority has not enabled privilege use. Current profile: {_authorityState.SourceLabel}.";
+            }
+
             string description = _entitlementType switch
             {
                 FamilyEntitlementType.MoveToMember => "Move to the selected family member's location when both members share the current field seam.",
@@ -1223,6 +1320,34 @@ namespace HaCreator.MapSimulator.Interaction
             return (FamilyEntitlementType)nextIndex;
         }
 
+        private static FamilyAuthorityState ResolveAuthorityProfile(string profile, out string resolvedProfile)
+        {
+            switch ((profile ?? string.Empty).Trim().ToLowerInvariant())
+            {
+                case "session":
+                case "remote":
+                    resolvedProfile = "session";
+                    return FamilyAuthorityState.CreatePacketSession();
+                case "readonly":
+                case "read":
+                    resolvedProfile = "readonly";
+                    return FamilyAuthorityState.CreateReadOnlyPacket();
+                case "privilege":
+                case "privilegeonly":
+                    resolvedProfile = "privilegeonly";
+                    return FamilyAuthorityState.CreatePrivilegeOnlyPacket();
+                case "manage":
+                case "manageonly":
+                    resolvedProfile = "manageonly";
+                    return FamilyAuthorityState.CreateManageOnlyPacket();
+                case "local":
+                case "simulator":
+                default:
+                    resolvedProfile = "local";
+                    return FamilyAuthorityState.CreateSimulatorLocal();
+            }
+        }
+
         private sealed class FamilyMemberState
         {
             public FamilyMemberState(
@@ -1274,6 +1399,72 @@ namespace HaCreator.MapSimulator.Interaction
             public int ExpiresAtTick { get; }
         }
 
+        private sealed class FamilyAuthorityState
+        {
+            private FamilyAuthorityState(
+                string sourceLabel,
+                bool canEditPrecept,
+                bool canRegisterJunior,
+                bool canRemoveMembers,
+                bool canUsePrivileges,
+                bool canResolveCrossMapPrivileges)
+            {
+                SourceLabel = sourceLabel;
+                CanEditPrecept = canEditPrecept;
+                CanRegisterJunior = canRegisterJunior;
+                CanRemoveMembers = canRemoveMembers;
+                CanUsePrivileges = canUsePrivileges;
+                CanResolveCrossMapPrivileges = canResolveCrossMapPrivileges;
+            }
+
+            public string SourceLabel { get; }
+            public bool CanEditPrecept { get; }
+            public bool CanRegisterJunior { get; }
+            public bool CanRemoveMembers { get; }
+            public bool CanUsePrivileges { get; }
+            public bool CanResolveCrossMapPrivileges { get; }
+
+            public static FamilyAuthorityState CreateSimulatorLocal() => new(
+                "simulator-local",
+                canEditPrecept: true,
+                canRegisterJunior: true,
+                canRemoveMembers: true,
+                canUsePrivileges: true,
+                canResolveCrossMapPrivileges: false);
+
+            public static FamilyAuthorityState CreatePacketSession() => new(
+                "packet/session-backed",
+                canEditPrecept: true,
+                canRegisterJunior: true,
+                canRemoveMembers: true,
+                canUsePrivileges: true,
+                canResolveCrossMapPrivileges: true);
+
+            public static FamilyAuthorityState CreateReadOnlyPacket() => new(
+                "packet read-only",
+                canEditPrecept: false,
+                canRegisterJunior: false,
+                canRemoveMembers: false,
+                canUsePrivileges: false,
+                canResolveCrossMapPrivileges: false);
+
+            public static FamilyAuthorityState CreatePrivilegeOnlyPacket() => new(
+                "packet privilege-only",
+                canEditPrecept: false,
+                canRegisterJunior: false,
+                canRemoveMembers: false,
+                canUsePrivileges: true,
+                canResolveCrossMapPrivileges: true);
+
+            public static FamilyAuthorityState CreateManageOnlyPacket() => new(
+                "packet management-only",
+                canEditPrecept: true,
+                canRegisterJunior: true,
+                canRemoveMembers: true,
+                canUsePrivileges: false,
+                canResolveCrossMapPrivileges: false);
+        }
+
         private readonly record struct FamilyRecruitSeed(
             string Name,
             string JobName,
@@ -1308,6 +1499,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string EntitlementDescription { get; init; } = string.Empty;
         public int EntitlementIndex { get; init; }
         public IReadOnlyList<string> DetailLines { get; init; } = Array.Empty<string>();
+        public bool CanEditPrecept { get; init; }
         public bool CanPageBackward { get; init; }
         public bool CanPageForward { get; init; }
         public bool CanAddJunior { get; init; }

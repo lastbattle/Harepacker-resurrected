@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator
     {
         private readonly PacketFieldFeedbackRuntime _packetFieldFeedbackRuntime = new();
         private readonly Dictionary<string, List<IDXObject>> _packetFieldFeedbackAnimationCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, IReadOnlyList<PacketOwnedCachedUiLayer>> _packetFieldFeedbackUiLayerCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<PacketOwnedUiAnimation> _packetFieldFeedbackUiAnimations = new();
         private IReadOnlyList<PacketFieldSwindleWarningEntry> _packetFieldSwindleWarnings;
         private readonly Texture2D[] _packetFieldBossTimerDigits = new Texture2D[10];
@@ -241,12 +242,19 @@ namespace HaCreator.MapSimulator
             }
 
             string cacheKey = $"screen:{descriptor.Trim()}";
-            if (!TryGetOrCreatePacketOwnedAnimationFrames(cacheKey, () => ResolvePacketOwnedScreenEffectFrames(descriptor), out List<IDXObject> frames))
+            if (!TryGetOrCreatePacketOwnedUiLayers(cacheKey, () => ResolvePacketOwnedScreenEffectLayers(descriptor), out IReadOnlyList<PacketOwnedCachedUiLayer> layers))
             {
                 return false;
             }
 
-            EnqueuePacketOwnedUiAnimation(frames, ResolvePacketOwnedScreenEffectRegistration(_renderParams.RenderWidth, Height), currTickCount);
+            foreach (PacketOwnedCachedUiLayer layer in layers)
+            {
+                EnqueuePacketOwnedUiAnimation(
+                    layer.Frames,
+                    ResolvePacketOwnedScreenEffectRegistration(_renderParams.RenderWidth, Height, layer.LayerOrder),
+                    currTickCount);
+            }
+
             return true;
         }
 
@@ -521,6 +529,7 @@ namespace HaCreator.MapSimulator
 
             foreach (PacketOwnedUiAnimation animation in _packetFieldFeedbackUiAnimations
                 .OrderBy(static animation => animation.DrawOrder)
+                .ThenBy(static animation => animation.LayerOrder)
                 .ThenBy(static animation => animation.StartedAtTick))
             {
                 IDXObject frame = animation.ResolveFrame(currentTickCount);
@@ -534,7 +543,7 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private void EnqueuePacketOwnedUiAnimation(List<IDXObject> frames, PacketOwnedUiRegistration registration, int currentTickCount)
+        private void EnqueuePacketOwnedUiAnimation(IReadOnlyList<IDXObject> frames, PacketOwnedUiRegistration registration, int currentTickCount)
         {
             if (frames == null || frames.Count == 0)
             {
@@ -569,6 +578,24 @@ namespace HaCreator.MapSimulator
             }
 
             _packetFieldFeedbackAnimationCache[cacheKey] = frames;
+            return true;
+        }
+
+        private bool TryGetOrCreatePacketOwnedUiLayers(string cacheKey, Func<IReadOnlyList<PacketOwnedCachedUiLayer>> loader, out IReadOnlyList<PacketOwnedCachedUiLayer> layers)
+        {
+            if (_packetFieldFeedbackUiLayerCache.TryGetValue(cacheKey, out layers) && layers?.Count > 0)
+            {
+                return true;
+            }
+
+            layers = loader?.Invoke();
+            if (layers == null || layers.Count == 0)
+            {
+                layers = null;
+                return false;
+            }
+
+            _packetFieldFeedbackUiLayerCache[cacheKey] = layers;
             return true;
         }
 
@@ -608,6 +635,22 @@ namespace HaCreator.MapSimulator
                 if (frames?.Count > 0)
                 {
                     return frames;
+                }
+            }
+
+            return null;
+        }
+
+        private IReadOnlyList<PacketOwnedCachedUiLayer> ResolvePacketOwnedScreenEffectLayers(string descriptor)
+        {
+            foreach ((string categoryName, string imageName, string propertyPath) in EnumeratePacketOwnedScreenEffectCandidates(descriptor))
+            {
+                WzImage image = Program.FindImage(categoryName, imageName);
+                IReadOnlyList<PacketOwnedCachedUiLayer> layers = LoadPacketOwnedAnimationLayers(
+                    ResolvePacketOwnedPropertyPath(image, propertyPath));
+                if (layers?.Count > 0)
+                {
+                    return layers;
                 }
             }
 
@@ -709,6 +752,59 @@ namespace HaCreator.MapSimulator
             }
 
             return frames.Count > 0 ? frames : null;
+        }
+
+        private IReadOnlyList<PacketOwnedCachedUiLayer> LoadPacketOwnedAnimationLayers(WzImageProperty sourceProperty, int fallbackDelay = 90)
+        {
+            sourceProperty = sourceProperty?.GetLinkedWzImageProperty() ?? sourceProperty;
+            if (sourceProperty == null)
+            {
+                return null;
+            }
+
+            List<PacketOwnedCachedUiLayer> layers = new();
+            CollectPacketOwnedAnimationLayers(sourceProperty, fallbackDelay, depth: 0, discoveryOrder: 0, layers);
+            return layers.Count > 0
+                ? layers
+                    .OrderBy(static layer => layer.LayerOrder)
+                    .ToArray()
+                : null;
+        }
+
+        private void CollectPacketOwnedAnimationLayers(
+            WzImageProperty sourceProperty,
+            int fallbackDelay,
+            int depth,
+            int discoveryOrder,
+            ICollection<PacketOwnedCachedUiLayer> layers)
+        {
+            sourceProperty = sourceProperty?.GetLinkedWzImageProperty() ?? sourceProperty;
+            if (sourceProperty == null || depth > 8)
+            {
+                return;
+            }
+
+            List<IDXObject> directFrames = LoadPacketOwnedAnimationFrames(sourceProperty, fallbackDelay);
+            if (directFrames?.Count > 0)
+            {
+                layers.Add(new PacketOwnedCachedUiLayer(
+                    directFrames,
+                    ComposePacketOwnedUiLayerOrder(ResolvePacketOwnedAnimationLayerZ(sourceProperty), discoveryOrder)));
+                return;
+            }
+
+            int childIndex = 0;
+            foreach (WzImageProperty child in sourceProperty.WzProperties)
+            {
+                if (IsPacketOwnedAnimationMetadataProperty(child))
+                {
+                    continue;
+                }
+
+                int nextDiscoveryOrder = checked((discoveryOrder * 32) + childIndex + 1);
+                CollectPacketOwnedAnimationLayers(child, fallbackDelay, depth + 1, nextDiscoveryOrder, layers);
+                childIndex++;
+            }
         }
 
         private List<IDXObject> LoadPacketOwnedCanvasFrame(WzCanvasProperty canvasProperty, int fallbackDelay)
@@ -1262,7 +1358,7 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private static PacketOwnedUiRegistration ResolvePacketOwnedScreenEffectRegistration(int renderWidth, int renderHeight)
+        private static PacketOwnedUiRegistration ResolvePacketOwnedScreenEffectRegistration(int renderWidth, int renderHeight, int layerOrder = 0)
         {
             return new PacketOwnedUiRegistration(
                 PacketOwnedUiAnchorMode.WindowCenter,
@@ -1270,7 +1366,8 @@ namespace HaCreator.MapSimulator
                 ScalePacketOwnedUiOffset(PacketOwnedScreenEffectYOffset, renderHeight, PacketOwnedUiReferenceHeight),
                 string.Empty,
                 PacketOwnedUiDrawOrder.ScreenEffect,
-                PacketOwnedUiClientAlpha);
+                PacketOwnedUiClientAlpha,
+                layerOrder);
         }
 
         private static PacketOwnedUiRegistration ResolvePacketOwnedRewardRouletteRegistration(
@@ -1295,7 +1392,8 @@ namespace HaCreator.MapSimulator
                     PacketOwnedRewardRouletteLayerRole.Part => PacketOwnedUiDrawOrder.RewardRoulettePart,
                     _ => PacketOwnedUiDrawOrder.RewardRouletteLevel
                 },
-                PacketOwnedUiClientAlpha);
+                PacketOwnedUiClientAlpha,
+                LayerOrder: 0);
         }
 
         private static int ScalePacketOwnedUiOffset(int referenceOffset, int actualSize, int referenceSize)
@@ -1314,6 +1412,11 @@ namespace HaCreator.MapSimulator
         {
             PacketOwnedUiRegistration registration = ResolvePacketOwnedScreenEffectRegistration(renderWidth, renderHeight);
             return (registration.AnchorMode, registration.OffsetX, registration.OffsetY, registration.DrawOrder, registration.Alpha);
+        }
+
+        internal static int GetPacketOwnedUiLayerOrderForTest(int? zHint, int discoveryOrder)
+        {
+            return ComposePacketOwnedUiLayerOrder(zHint, discoveryOrder);
         }
 
         internal static (PacketOwnedUiAnchorMode AnchorMode, int OffsetX, int OffsetY, PacketOwnedUiDrawOrder DrawOrder, byte Alpha) GetPacketOwnedRewardRouletteRegistrationForTest(
@@ -1597,7 +1700,12 @@ namespace HaCreator.MapSimulator
             int OffsetY,
             string Key,
             PacketOwnedUiDrawOrder DrawOrder,
-            byte Alpha);
+            byte Alpha,
+            int LayerOrder);
+
+        private readonly record struct PacketOwnedCachedUiLayer(
+            IReadOnlyList<IDXObject> Frames,
+            int LayerOrder);
 
         private enum PacketOwnedRewardRouletteLayerRole
         {
@@ -1635,6 +1743,7 @@ namespace HaCreator.MapSimulator
             public int StartedAtTick { get; }
             public string Key => _registration.Key ?? string.Empty;
             public PacketOwnedUiDrawOrder DrawOrder => _registration.DrawOrder;
+            public int LayerOrder => _registration.LayerOrder;
 
             public bool IsComplete(int currentTickCount)
             {
@@ -1684,6 +1793,77 @@ namespace HaCreator.MapSimulator
             {
                 return new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, _registration.Alpha);
             }
+        }
+
+        private static bool IsPacketOwnedAnimationMetadataProperty(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return true;
+            }
+
+            if (int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            {
+                return false;
+            }
+
+            return property.Name switch
+            {
+                "origin" => true,
+                "delay" => true,
+                "z" => true,
+                "a0" => true,
+                "a1" => true,
+                "alpha" => true,
+                "blend" => true,
+                "repeat" => true,
+                _ => false
+            };
+        }
+
+        private static int? ResolvePacketOwnedAnimationLayerZ(WzImageProperty sourceProperty)
+        {
+            sourceProperty = sourceProperty?.GetLinkedWzImageProperty() ?? sourceProperty;
+            if (sourceProperty == null)
+            {
+                return null;
+            }
+
+            int? directZ = sourceProperty["z"]?.GetInt();
+            if (directZ.HasValue)
+            {
+                return directZ.Value;
+            }
+
+            if (sourceProperty is WzCanvasProperty)
+            {
+                return null;
+            }
+
+            for (int i = 0; ; i++)
+            {
+                if (sourceProperty[i.ToString(CultureInfo.InvariantCulture)] is not WzCanvasProperty frameCanvas)
+                {
+                    break;
+                }
+
+                int? frameZ = frameCanvas["z"]?.GetInt();
+                if (frameZ.HasValue)
+                {
+                    return frameZ.Value;
+                }
+            }
+
+            return null;
+        }
+
+        private static int ComposePacketOwnedUiLayerOrder(int? zHint, int discoveryOrder)
+        {
+            const int ZBias = 2048;
+            const int DiscoveryBucketSize = 4096;
+            int normalizedZ = Math.Clamp(zHint.GetValueOrDefault(), -ZBias, ZBias - 1) + ZBias;
+            int normalizedDiscoveryOrder = Math.Clamp(discoveryOrder, 0, DiscoveryBucketSize - 1);
+            return checked((normalizedZ * DiscoveryBucketSize) + normalizedDiscoveryOrder);
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackJukeboxCommand(string[] args)

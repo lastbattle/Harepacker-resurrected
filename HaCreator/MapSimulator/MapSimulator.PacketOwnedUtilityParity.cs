@@ -28,6 +28,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 
 namespace HaCreator.MapSimulator
 {
@@ -82,7 +83,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedTimeBombInvincibilityOptionType = 52;
         private const string PacketOwnedTimeBombInvincibilityDurationTemplate = "Invincible for #time more seconds after getting attacked.";
         private const string PacketOwnedTimeBombInvincibilityChanceTemplate = "#prop% chance to become invincible for #time seconds when attacked.";
-        private static readonly int[] PacketOwnedFallbackTimeBombInvincibilityOptionIds = { 20366, 30366, 30371 };
+        private static readonly int[] PacketOwnedFallbackTimeBombInvincibilityOptionIds = { 20366, 30366, 30371, 40366, 40371 };
         private const string PacketOwnedApspPromptPrimaryLabel = "OK";
         private const string PacketOwnedApspPromptSecondaryLabel = "Cancel";
         private const int PacketOwnedTutorBalloonScreenMargin = 6;
@@ -151,6 +152,13 @@ namespace HaCreator.MapSimulator
             Miss
         }
 
+        internal enum PacketOwnedFollowPromptOwnerKind
+        {
+            None = 0,
+            InGameConfirmDialog,
+            LoginUtilityDialog
+        }
+
         internal sealed class PacketOwnedTimeBombInvincibilityOptionDefinition
         {
             public string DisplayTemplate { get; init; } = string.Empty;
@@ -211,6 +219,12 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedNoticeTick = int.MinValue;
         private string _lastPacketOwnedChatMessage;
         private int _lastPacketOwnedChatTick = int.MinValue;
+        private readonly List<EventAlarmLineSnapshot> _packetOwnedEventAlarmLines = new();
+        private string _lastPacketOwnedEventAlarmSummary = string.Empty;
+        private int _lastPacketOwnedEventAlarmTick = int.MinValue;
+        private readonly List<EventEntrySnapshot> _packetOwnedEventCalendarEntries = new();
+        private string _lastPacketOwnedEventCalendarSummary = string.Empty;
+        private int _lastPacketOwnedEventCalendarTick = int.MinValue;
         private string _lastPacketOwnedBuffzoneMessage;
         private int _lastPacketOwnedBuffzoneTick = int.MinValue;
         private string _lastPacketOwnedAskApspMessage;
@@ -230,6 +244,8 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedStandAloneTick = int.MinValue;
         private bool _lastPacketOwnedStandAloneEnabled;
         private int _lastPacketOwnedSkillGuideGrade;
+        private bool _packetOwnedFollowPromptActive;
+        private PacketOwnedFollowPromptOwnerKind _packetOwnedFollowPromptOwner;
         private bool _packetOwnedApspPromptActive;
         private int _packetOwnedApspPromptContextToken;
         private int _packetOwnedApspPromptEventType;
@@ -1853,22 +1869,28 @@ namespace HaCreator.MapSimulator
                     return TryApplyPacketOwnedMessengerDispatchPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.OpenUiPacketType:
+                    return TryApplyPacketOwnedOpenUiPayload(payload, requireExactClientPayload: false, out message);
+
                 case LocalUtilityPacketInboxManager.OpenUiClientPacketType:
-                    return TryApplyPacketOwnedOpenUiPayload(payload, out message);
+                    return TryApplyPacketOwnedOpenUiPayload(payload, requireExactClientPayload: true, out message);
 
                 case LocalUtilityPacketInboxManager.OpenUiWithOptionPacketType:
+                    return TryApplyPacketOwnedOpenUiWithOptionPayload(payload, requireExactClientPayload: false, out message);
+
                 case LocalUtilityPacketInboxManager.OpenUiWithOptionClientPacketType:
-                    return TryApplyPacketOwnedOpenUiWithOptionPayload(payload, out message);
+                    return TryApplyPacketOwnedOpenUiWithOptionPayload(payload, requireExactClientPayload: true, out message);
 
                 case LocalUtilityPacketInboxManager.HireTutorClientPacketType:
-                    return TryApplyPacketOwnedTutorHirePayload(payload, out message);
+                    return TryApplyPacketOwnedTutorHirePayload(payload, requireExactClientPayload: true, out message);
 
                 case LocalUtilityPacketInboxManager.TutorMsgClientPacketType:
-                    return TryApplyPacketOwnedTutorMessagePayload(payload, out message);
+                    return TryApplyPacketOwnedTutorMessagePayload(payload, requireExactClientPayload: true, out message);
 
                 case LocalUtilityPacketInboxManager.GoToCommoditySnPacketType:
+                    return TryApplyPacketOwnedCommodityPayload(payload, requireExactClientPayload: false, out message);
+
                 case LocalUtilityPacketInboxManager.GoToCommoditySnClientPacketType:
-                    return TryApplyPacketOwnedCommodityPayload(payload, out message);
+                    return TryApplyPacketOwnedCommodityPayload(payload, requireExactClientPayload: true, out message);
 
                 case LocalUtilityPacketInboxManager.NoticeMsgPacketType:
                 case LocalUtilityPacketInboxManager.NoticeMsgClientPacketType:
@@ -1877,6 +1899,9 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.ChatMsgPacketType:
                 case LocalUtilityPacketInboxManager.ChatMsgClientPacketType:
                     return TryApplyPacketOwnedChatPayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.EventCalendarEntriesPacketType:
+                    return TryApplyPacketOwnedEventCalendarEntriesPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.BuffzoneEffectPacketType:
                 case LocalUtilityPacketInboxManager.BuffzoneEffectClientPacketType:
@@ -2019,6 +2044,17 @@ namespace HaCreator.MapSimulator
 
                 case LocalUtilityPacketInboxManager.RepairDurabilityResultPacketType:
                     return TryApplyRepairDurabilityResultPayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.VegaLaunchPacketType:
+                    if (TryApplyPacketOwnedEventAlarmTextPayload(payload, out message))
+                    {
+                        return true;
+                    }
+
+                    return TryApplyPacketOwnedVegaLaunchPayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.VegaResultClientPacketType:
+                    return TryApplyPacketOwnedVegaResultPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.QuestRewardRaiseOwnerSyncPacketType:
                     if (ShouldHandlePacketOwned1026AsPetConsumeResult(payload))
@@ -3267,14 +3303,17 @@ namespace HaCreator.MapSimulator
             string passiveMoveStatus = _lastPacketOwnedPassiveMoveTick == int.MinValue
                 ? string.Empty
                 : $" PassiveMove269@{_lastPacketOwnedPassiveMoveTick}.";
+            string followPromptStatus = _packetOwnedFollowPromptActive
+                ? $" Follow prompt: {_packetOwnedFollowPromptOwner} requester {_localFollowRuntime.IncomingRequesterId}."
+                : string.Empty;
             string followStatus = string.IsNullOrWhiteSpace(_lastPacketOwnedFollowFailureMessage)
-                ? localFollowStatus
+                ? $"{localFollowStatus}{followPromptStatus}"
                 : _lastPacketOwnedFollowFailureReason.HasValue
-                    ? $"{localFollowStatus}{passiveMoveStatus} Follow failure: reason {_lastPacketOwnedFollowFailureReason.Value}, driver {_lastPacketOwnedFollowFailureDriverId}, cleared={_lastPacketOwnedFollowFailureClearedPending}. {TruncatePacketOwnedUtilityText(_lastPacketOwnedFollowFailureMessage)}"
-                    : $"{localFollowStatus}{passiveMoveStatus} Follow failure: {TruncatePacketOwnedUtilityText(_lastPacketOwnedFollowFailureMessage)}";
+                    ? $"{localFollowStatus}{followPromptStatus}{passiveMoveStatus} Follow failure: reason {_lastPacketOwnedFollowFailureReason.Value}, driver {_lastPacketOwnedFollowFailureDriverId}, cleared={_lastPacketOwnedFollowFailureClearedPending}. {TruncatePacketOwnedUtilityText(_lastPacketOwnedFollowFailureMessage)}"
+                    : $"{localFollowStatus}{followPromptStatus}{passiveMoveStatus} Follow failure: {TruncatePacketOwnedUtilityText(_lastPacketOwnedFollowFailureMessage)}";
             if (string.IsNullOrWhiteSpace(_lastPacketOwnedFollowFailureMessage) && !string.IsNullOrWhiteSpace(passiveMoveStatus))
             {
-                followStatus = $"{localFollowStatus}{passiveMoveStatus}";
+                followStatus = $"{localFollowStatus}{followPromptStatus}{passiveMoveStatus}";
             }
             string localControlStatus = DescribePacketOwnedLocalControlStatus(currentTickCount);
             string soundStatus = string.IsNullOrWhiteSpace(_lastPacketOwnedEventSoundDescriptor) && string.IsNullOrWhiteSpace(_lastPacketOwnedMinigameSoundDescriptor)
@@ -3357,6 +3396,17 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedMessengerDispatchPayload(byte[] payload, out string message)
         {
             bool applied = GetPacketOwnedSocialUtilityDialogDispatcher().TryApplyMessengerDispatchPacket(payload, out message);
+            if (applied)
+            {
+                ShowMessengerWindow();
+            }
+
+            return applied;
+        }
+
+        private bool TryApplyPacketOwnedMessengerPacket(MessengerPacketType packetType, byte[] payload, out string message)
+        {
+            bool applied = GetPacketOwnedSocialUtilityDialogDispatcher().TryApplyMessengerPacket(packetType, payload, out message);
             if (applied)
             {
                 ShowMessengerWindow();
@@ -5084,10 +5134,36 @@ namespace HaCreator.MapSimulator
             return _lastPacketOwnedAskApspMessage;
         }
 
-        private string ApplyPacketOwnedTutorHire(bool enabled)
+        private string ApplyPacketOwnedTutorHire(bool enabled, int targetCharacterId = 0)
         {
             StampPacketOwnedUtilityRequestState();
             SyncPacketOwnedTutorLifecycle(currTickCount);
+            int runtimeCharacterId = ResolvePacketOwnedTutorRuntimeCharacterId();
+            int resolvedTargetCharacterId = Math.Max(0, targetCharacterId);
+            bool targetsSharedOwner = resolvedTargetCharacterId > 0
+                && resolvedTargetCharacterId != runtimeCharacterId;
+
+            if (targetsSharedOwner)
+            {
+                int skillId = ResolvePacketOwnedTutorSkillIdForCharacter(resolvedTargetCharacterId);
+                int actorHeight = ResolvePacketOwnedTutorActorHeight(skillId);
+                if (!enabled)
+                {
+                    _packetOwnedTutorRuntime.ApplySharedRemovalRequestForCharacter(skillId, currTickCount, resolvedTargetCharacterId);
+                    SyncPacketOwnedTutorSummonState(currTickCount);
+                    string removalMessage = $"Removed packet-owned shared {DescribePacketOwnedTutorVariant(skillId)} tutor ownership for character {resolvedTargetCharacterId}.";
+                    NotifyEventAlarmOwnerActivity("packet-owned tutor alarm");
+                    ShowUtilityFeedbackMessage(removalMessage);
+                    return removalMessage;
+                }
+
+                _packetOwnedTutorRuntime.ApplySharedHireRequestForCharacter(skillId, actorHeight, currTickCount, resolvedTargetCharacterId);
+                SyncPacketOwnedTutorSummonState(currTickCount);
+                string sharedMessage = $"Activated packet-owned shared {DescribePacketOwnedTutorVariant(skillId)} tutor ownership for character {resolvedTargetCharacterId} at height {actorHeight}.";
+                NotifyEventAlarmOwnerActivity("packet-owned tutor alarm");
+                ShowUtilityFeedbackMessage(sharedMessage);
+                return sharedMessage;
+            }
 
             if (!enabled)
             {
@@ -5105,22 +5181,49 @@ namespace HaCreator.MapSimulator
             // Client evidence: CUserLocal::OnHireTutor removes the prior tutor owner
             // before allocating and initializing the next one.
             RemovePacketOwnedTutorSummon();
-            int skillId = ResolvePacketOwnedTutorSkillId();
-            int actorHeight = ResolvePacketOwnedTutorActorHeight(skillId);
-            _packetOwnedTutorRuntime.ApplyHireRequest(skillId, actorHeight, currTickCount, ResolvePacketOwnedTutorRuntimeCharacterId());
+            int tutorSkillId = ResolvePacketOwnedTutorSkillId();
+            int tutorActorHeight = ResolvePacketOwnedTutorActorHeight(tutorSkillId);
+            _packetOwnedTutorRuntime.ApplyHireRequest(tutorSkillId, tutorActorHeight, currTickCount, ResolvePacketOwnedTutorRuntimeCharacterId());
             string summonDetail = EnsurePacketOwnedTutorSummon(currTickCount);
             string message = string.IsNullOrWhiteSpace(summonDetail)
-                ? $"Activated packet-owned {DescribePacketOwnedTutorVariant(skillId)} tutor ownership at height {actorHeight}."
-                : $"Activated packet-owned {DescribePacketOwnedTutorVariant(skillId)} tutor ownership at height {actorHeight}. {summonDetail}";
+                ? $"Activated packet-owned {DescribePacketOwnedTutorVariant(tutorSkillId)} tutor ownership at height {tutorActorHeight}."
+                : $"Activated packet-owned {DescribePacketOwnedTutorVariant(tutorSkillId)} tutor ownership at height {tutorActorHeight}. {summonDetail}";
             NotifyEventAlarmOwnerActivity("packet-owned tutor alarm");
             ShowUtilityFeedbackMessage(message);
             return message;
         }
 
-        private string ApplyPacketOwnedTutorIndexedMessage(int messageIndex, int durationMs)
+        private string ApplyPacketOwnedTutorIndexedMessage(int messageIndex, int durationMs, int targetCharacterId = 0)
         {
             StampPacketOwnedUtilityRequestState();
             SyncPacketOwnedTutorLifecycle(currTickCount);
+            int runtimeCharacterId = ResolvePacketOwnedTutorRuntimeCharacterId();
+            int resolvedTargetCharacterId = Math.Max(0, targetCharacterId);
+            bool targetsSharedOwner = resolvedTargetCharacterId > 0
+                && resolvedTargetCharacterId != runtimeCharacterId;
+
+            if (targetsSharedOwner)
+            {
+                if (!_packetOwnedTutorRuntime.TryGetSharedActiveVariantForCharacter(resolvedTargetCharacterId, out TutorVariantSnapshot sharedVariant))
+                {
+                    string inactiveSharedMessage = $"Ignored packet-owned tutor indexed message because no shared tutor actor is active for character {resolvedTargetCharacterId}.";
+                    ShowUtilityFeedbackMessage(inactiveSharedMessage);
+                    return inactiveSharedMessage;
+                }
+
+                _packetOwnedTutorRuntime.ApplySharedIndexedMessageForCharacter(
+                    sharedVariant.SkillId,
+                    messageIndex,
+                    durationMs,
+                    currTickCount,
+                    resolvedTargetCharacterId);
+                SyncPacketOwnedTutorSummonState(currTickCount);
+                string sharedMessage = $"Applied packet-owned tutor cue #{Math.Max(0, messageIndex)} ({Math.Max(0, durationMs)}) for character {resolvedTargetCharacterId}.";
+                NotifyEventAlarmOwnerActivity("packet-owned tutor alarm");
+                ShowUtilityFeedbackMessage(sharedMessage);
+                return sharedMessage;
+            }
+
             if (!_packetOwnedTutorRuntime.IsActive)
             {
                 const string inactiveMessage = "Ignored packet-owned tutor indexed message because no tutor actor is active.";
@@ -5135,10 +5238,42 @@ namespace HaCreator.MapSimulator
             return message;
         }
 
-        private string ApplyPacketOwnedTutorTextMessage(string text, int width, int durationMs)
+        private string ApplyPacketOwnedTutorTextMessage(string text, int width, int durationMs, int targetCharacterId = 0)
         {
             StampPacketOwnedUtilityRequestState();
             SyncPacketOwnedTutorLifecycle(currTickCount);
+            int runtimeCharacterId = ResolvePacketOwnedTutorRuntimeCharacterId();
+            int resolvedTargetCharacterId = Math.Max(0, targetCharacterId);
+            bool targetsSharedOwner = resolvedTargetCharacterId > 0
+                && resolvedTargetCharacterId != runtimeCharacterId;
+
+            if (targetsSharedOwner)
+            {
+                if (!_packetOwnedTutorRuntime.TryGetSharedActiveVariantForCharacter(resolvedTargetCharacterId, out TutorVariantSnapshot sharedVariant))
+                {
+                    string inactiveSharedMessage = $"Ignored packet-owned tutor text message because no shared tutor actor is active for character {resolvedTargetCharacterId}.";
+                    ShowUtilityFeedbackMessage(inactiveSharedMessage);
+                    return inactiveSharedMessage;
+                }
+
+                _packetOwnedTutorRuntime.ApplySharedTextMessageForCharacter(
+                    sharedVariant.SkillId,
+                    text,
+                    width,
+                    durationMs,
+                    currTickCount,
+                    resolvedTargetCharacterId);
+                SyncPacketOwnedTutorSummonState(currTickCount);
+                string sharedText = string.IsNullOrWhiteSpace(text) ? string.Empty : text.Trim();
+                if (!string.IsNullOrWhiteSpace(sharedText))
+                {
+                    NotifyEventAlarmOwnerActivity("packet-owned tutor alarm");
+                    ShowUtilityFeedbackMessage($"Tutor[{resolvedTargetCharacterId}]: {sharedText}");
+                }
+
+                return $"Applied packet-owned tutor text message for character {resolvedTargetCharacterId} ({Math.Clamp(width <= 0 ? TutorRuntime.DefaultTextWidth : width, TutorRuntime.MinTextWidth, TutorRuntime.MaxTextWidth)}px, {Math.Clamp(durationMs <= 0 ? TutorRuntime.DefaultIndexedDurationMs : durationMs, TutorRuntime.MinMessageDurationMs, TutorRuntime.MaxMessageDurationMs)} ms).";
+            }
+
             if (!_packetOwnedTutorRuntime.IsActive)
             {
                 const string inactiveMessage = "Ignored packet-owned tutor text message because no tutor actor is active.";
@@ -5586,14 +5721,43 @@ namespace HaCreator.MapSimulator
         private int ResolvePacketOwnedTutorSkillId()
         {
             int jobId = _playerManager?.Player?.Build?.Job ?? 0;
-            int jobFamily = jobId / 1000;
+            return ResolvePacketOwnedTutorSkillIdFromJob(jobId, _packetOwnedTutorRuntime.ActiveSkillId);
+        }
+
+        private int ResolvePacketOwnedTutorSkillIdForCharacter(int characterId)
+        {
+            if (characterId > 0)
+            {
+                if (_playerManager?.Player?.Build?.Id == characterId)
+                {
+                    return ResolvePacketOwnedTutorSkillId();
+                }
+
+                if (_remoteUserPool != null && _remoteUserPool.TryGetActor(characterId, out RemoteUserActor actor))
+                {
+                    int remoteFallbackSkillId = _packetOwnedTutorRuntime.TryGetSharedActiveVariantForCharacter(characterId, out TutorVariantSnapshot activeVariant)
+                        ? activeVariant.SkillId
+                        : 0;
+                    return ResolvePacketOwnedTutorSkillIdFromJob(actor.Build?.Job ?? 0, remoteFallbackSkillId);
+                }
+
+                if (_packetOwnedTutorRuntime.TryGetSharedActiveVariantForCharacter(characterId, out TutorVariantSnapshot variant))
+                {
+                    return variant.SkillId;
+                }
+            }
+
+            return ResolvePacketOwnedTutorSkillId();
+        }
+
+        private static int ResolvePacketOwnedTutorSkillIdFromJob(int jobId, int fallbackSkillId)
+        {
+            int jobFamily = Math.Max(0, jobId) / 1000;
             return jobFamily switch
             {
                 1 => TutorRuntime.CygnusTutorSkillId,
                 2 => TutorRuntime.AranTutorSkillId,
-                _ => _packetOwnedTutorRuntime.ActiveSkillId > 0
-                    ? _packetOwnedTutorRuntime.ActiveSkillId
-                    : TutorRuntime.AranTutorSkillId
+                _ => fallbackSkillId > 0 ? fallbackSkillId : TutorRuntime.AranTutorSkillId
             };
         }
 
@@ -6422,6 +6586,47 @@ namespace HaCreator.MapSimulator
             return promptText.Replace("%s", displayName, StringComparison.Ordinal);
         }
 
+        private static PacketOwnedFollowPromptOwnerKind ResolvePacketOwnedFollowPromptOwnerKind(bool hasInGameConfirmDialogWindow)
+        {
+            return hasInGameConfirmDialogWindow
+                ? PacketOwnedFollowPromptOwnerKind.InGameConfirmDialog
+                : PacketOwnedFollowPromptOwnerKind.LoginUtilityDialog;
+        }
+
+        internal static PacketOwnedFollowPromptOwnerKind ResolvePacketOwnedFollowPromptOwnerKindForTest(bool hasInGameConfirmDialogWindow)
+        {
+            return ResolvePacketOwnedFollowPromptOwnerKind(hasInGameConfirmDialogWindow);
+        }
+
+        internal static bool ShouldDismissPacketOwnedFollowPromptForRemovedCharacterForTest(
+            bool promptActive,
+            int incomingRequesterId,
+            int removedCharacterId)
+        {
+            return promptActive
+                && incomingRequesterId > 0
+                && incomingRequesterId == removedCharacterId;
+        }
+
+        private void HidePacketOwnedFollowCharacterPrompt()
+        {
+            if (_packetOwnedFollowPromptOwner == PacketOwnedFollowPromptOwnerKind.InGameConfirmDialog
+                && uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is InGameConfirmDialogWindow confirmDialogWindow)
+            {
+                confirmDialogWindow.Hide();
+                ClearInGameConfirmDialogActions();
+            }
+
+            if (_packetOwnedFollowPromptOwner == PacketOwnedFollowPromptOwnerKind.LoginUtilityDialog
+                && _loginUtilityDialogAction == LoginUtilityDialogAction.ConfirmFollowCharacterRequest)
+            {
+                HideLoginUtilityDialog();
+            }
+
+            _packetOwnedFollowPromptActive = false;
+            _packetOwnedFollowPromptOwner = PacketOwnedFollowPromptOwnerKind.None;
+        }
+
         private bool TryMirrorPacketOwnedFollowRequestToOfficialSession(int driverId, bool autoRequest, bool keyInput, out string status)
         {
             status = null;
@@ -6454,14 +6659,14 @@ namespace HaCreator.MapSimulator
         {
             if (_localFollowRuntime.IncomingRequesterId <= 0)
             {
-                HideLoginUtilityDialog();
+                HidePacketOwnedFollowCharacterPrompt();
                 return;
             }
 
             if (!TryResolvePacketOwnedRemoteCharacterSnapshot(_localFollowRuntime.IncomingRequesterId, out LocalFollowUserSnapshot requester))
             {
                 ShowUtilityFeedbackMessage("Incoming follow request could not be accepted because the requester is no longer available.");
-                HideLoginUtilityDialog();
+                HidePacketOwnedFollowCharacterPrompt();
                 return;
             }
 
@@ -6469,7 +6674,7 @@ namespace HaCreator.MapSimulator
             if (localCharacterId <= 0)
             {
                 ShowUtilityFeedbackMessage("Incoming follow request could not be accepted because the local player is not fully initialized.");
-                HideLoginUtilityDialog();
+                HidePacketOwnedFollowCharacterPrompt();
                 return;
             }
 
@@ -6484,7 +6689,7 @@ namespace HaCreator.MapSimulator
                     out string followMessage))
             {
                 ShowUtilityFeedbackMessage(followMessage);
-                HideLoginUtilityDialog();
+                HidePacketOwnedFollowCharacterPrompt();
                 return;
             }
 
@@ -6503,11 +6708,11 @@ namespace HaCreator.MapSimulator
                 }
 
                 ShowUtilityFeedbackMessage(message);
-                HideLoginUtilityDialog();
+                HidePacketOwnedFollowCharacterPrompt();
                 return;
             }
 
-            HideLoginUtilityDialog();
+            HidePacketOwnedFollowCharacterPrompt();
             if (!TryMirrorPacketOwnedFollowRequestToOfficialSession(0, autoRequest: false, keyInput: true, out string bridgeStatus))
             {
                 message = $"{message} {bridgeStatus}".Trim();
@@ -6535,11 +6740,34 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            string promptBody = BuildPacketOwnedFollowPromptBody(requester.Name, requester.CharacterId);
+            PacketOwnedFollowPromptOwnerKind promptOwner = ResolvePacketOwnedFollowPromptOwnerKind(
+                uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is InGameConfirmDialogWindow);
+            _packetOwnedFollowPromptActive = true;
+            _packetOwnedFollowPromptOwner = promptOwner;
+
+            if (promptOwner == PacketOwnedFollowPromptOwnerKind.InGameConfirmDialog
+                && uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is InGameConfirmDialogWindow confirmDialogWindow)
+            {
+                ConfigureInGameConfirmDialog(
+                    "Follow Request",
+                    promptBody,
+                    $"Recovered packet-owned in-field FadeYesNo follow prompt for requester {requester.CharacterId}.",
+                    onConfirm: AcceptPacketOwnedFollowCharacterPrompt,
+                    onCancel: DeclinePacketOwnedFollowCharacterPrompt);
+                ShowWindow(
+                    MapSimulatorWindowNames.InGameConfirmDialog,
+                    confirmDialogWindow,
+                    trackDirectionModeOwner: true);
+                return true;
+            }
+
             ShowLoginUtilityDialog(
                 "Follow Request",
-                BuildPacketOwnedFollowPromptBody(requester.Name, requester.CharacterId),
+                promptBody,
                 LoginUtilityDialogButtonLayout.YesNo,
                 LoginUtilityDialogAction.ConfirmFollowCharacterRequest,
+                frameVariant: LoginUtilityDialogFrameVariant.InGameFadeYesNo,
                 trackDirectionModeOwner: true);
             return true;
         }
@@ -6595,7 +6823,7 @@ namespace HaCreator.MapSimulator
             string message = TryResolvePacketOwnedRemoteCharacterSnapshot(_localFollowRuntime.IncomingRequesterId, out LocalFollowUserSnapshot requester)
                 ? _localFollowRuntime.DeclineIncomingRequest(requester)
                 : _localFollowRuntime.DeclineIncomingRequest(LocalFollowUserSnapshot.Missing(_localFollowRuntime.IncomingRequesterId));
-            HideLoginUtilityDialog();
+            HidePacketOwnedFollowCharacterPrompt();
             if (!TryMirrorPacketOwnedFollowWithdrawToOfficialSession(out string bridgeStatus))
             {
                 message = $"{message} {bridgeStatus}".Trim();
@@ -7777,16 +8005,38 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private bool TryApplyPacketOwnedOpenUiPayload(byte[] payload, out string message)
+        private bool TryApplyPacketOwnedOpenUiPayload(byte[] payload, bool requireExactClientPayload, out string message)
         {
-            message = null;
-            if (payload == null || payload.Length < 1)
+            if (!TryDecodePacketOwnedOpenUiPayload(payload, requireExactClientPayload, out byte uiId, out message))
             {
-                message = "OpenUI payload must contain the raw UI id byte.";
                 return false;
             }
 
-            message = ApplyPacketOwnedOpenUi(payload[0]);
+            message = ApplyPacketOwnedOpenUi(uiId);
+            return true;
+        }
+
+        internal static bool TryDecodePacketOwnedOpenUiPayload(
+            byte[] payload,
+            bool requireExactClientPayload,
+            out byte uiId,
+            out string message)
+        {
+            uiId = 0;
+            message = "OpenUI payload must contain the raw UI id byte.";
+            if (payload == null || payload.Length < 1)
+            {
+                return false;
+            }
+
+            uiId = payload[0];
+            if (requireExactClientPayload && payload.Length != 1)
+            {
+                message = "OpenUI client payload must match CUserLocal::OnOpenUI: exactly one raw UI id byte.";
+                return false;
+            }
+
+            message = "Decoded packet-owned OpenUI payload.";
             return true;
         }
 
@@ -7797,18 +8047,114 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyPacketOwnedTutorHirePayload(byte[] payload, out string message)
         {
+            return TryApplyPacketOwnedTutorHirePayload(payload, requireExactClientPayload: false, out message);
+        }
+
+        private bool TryApplyPacketOwnedTutorHirePayload(byte[] payload, bool requireExactClientPayload, out string message)
+        {
+            if (!TryDecodePacketOwnedTutorHirePayload(payload, requireExactClientPayload, out bool enabled, out int targetCharacterId, out message))
+            {
+                return false;
+            }
+
+            message = ApplyPacketOwnedTutorHire(enabled, targetCharacterId);
+            return true;
+        }
+
+        internal static bool TryDecodePacketOwnedTutorHirePayload(
+            byte[] payload,
+            bool requireExactClientPayload,
+            out bool enabled,
+            out int targetCharacterId,
+            out string message)
+        {
+            enabled = false;
+            targetCharacterId = 0;
             message = "Hire-tutor payload is missing.";
             if (payload == null || payload.Length == 0)
             {
                 return false;
             }
 
-            message = ApplyPacketOwnedTutorHire(payload[0] != 0);
+            enabled = payload[0] != 0;
+            if (requireExactClientPayload && payload.Length != 1)
+            {
+                message = "Hire-tutor client payload must match CUserLocal::OnHireTutor: exactly one enable byte.";
+                return false;
+            }
+
+            if (!requireExactClientPayload)
+            {
+                if (payload.Length == 1)
+                {
+                    message = "Decoded packet-owned hire-tutor payload.";
+                    return true;
+                }
+
+                if (payload.Length != 1 + sizeof(int))
+                {
+                    message = "Tutor pseudo-packet payload must contain one enable byte and an optional trailing Int32 owner character id.";
+                    return false;
+                }
+
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                enabled = reader.ReadByte() != 0;
+                targetCharacterId = Math.Max(0, reader.ReadInt32());
+                message = targetCharacterId > 0
+                    ? $"Decoded packet-owned hire-tutor payload for character {targetCharacterId}."
+                    : "Decoded packet-owned hire-tutor payload.";
+                return true;
+            }
+
+            message = "Decoded packet-owned hire-tutor payload.";
             return true;
         }
 
         private bool TryApplyPacketOwnedTutorMessagePayload(byte[] payload, out string message)
         {
+            return TryApplyPacketOwnedTutorMessagePayload(payload, requireExactClientPayload: false, out message);
+        }
+
+        private bool TryApplyPacketOwnedTutorMessagePayload(byte[] payload, bool requireExactClientPayload, out string message)
+        {
+            if (!TryDecodePacketOwnedTutorMessagePayload(
+                    payload,
+                    requireExactClientPayload,
+                    out bool indexedPayload,
+                    out int messageIndex,
+                    out int durationMs,
+                    out string text,
+                    out int width,
+                    out int targetCharacterId,
+                    out message))
+            {
+                return false;
+            }
+
+            message = indexedPayload
+                ? ApplyPacketOwnedTutorIndexedMessage(messageIndex, durationMs, targetCharacterId)
+                : ApplyPacketOwnedTutorTextMessage(text, width, durationMs, targetCharacterId);
+            return true;
+        }
+
+        internal static bool TryDecodePacketOwnedTutorMessagePayload(
+            byte[] payload,
+            bool requireExactClientPayload,
+            out bool indexedPayload,
+            out int messageIndex,
+            out int durationMs,
+            out string text,
+            out int width,
+            out int targetCharacterId,
+            out string message)
+        {
+            indexedPayload = false;
+            messageIndex = 0;
+            durationMs = 0;
+            text = null;
+            width = 0;
+            targetCharacterId = 0;
             message = "Tutor message payload is missing.";
             if (payload == null || payload.Length < 1)
             {
@@ -7819,7 +8165,7 @@ namespace HaCreator.MapSimulator
             {
                 using MemoryStream stream = new(payload, writable: false);
                 using BinaryReader reader = new(stream);
-                bool indexedPayload = reader.ReadByte() != 0;
+                indexedPayload = reader.ReadByte() != 0;
                 if (indexedPayload)
                 {
                     if (reader.BaseStream.Length - reader.BaseStream.Position < sizeof(int) * 2)
@@ -7828,14 +8174,60 @@ namespace HaCreator.MapSimulator
                         return false;
                     }
 
-                    message = ApplyPacketOwnedTutorIndexedMessage(reader.ReadInt32(), reader.ReadInt32());
+                    messageIndex = reader.ReadInt32();
+                    durationMs = reader.ReadInt32();
+                    if (requireExactClientPayload && reader.BaseStream.Position != reader.BaseStream.Length)
+                    {
+                        message = "Tutor indexed client payload contained trailing bytes after flag, message index, and duration.";
+                        return false;
+                    }
+
+                    if (!requireExactClientPayload && reader.BaseStream.Position != reader.BaseStream.Length)
+                    {
+                        if (reader.BaseStream.Length - reader.BaseStream.Position != sizeof(int))
+                        {
+                            message = "Tutor indexed pseudo-packet payload may only append a trailing Int32 owner character id after the client fields.";
+                            return false;
+                        }
+
+                        targetCharacterId = Math.Max(0, reader.ReadInt32());
+                    }
+
+                    message = targetCharacterId > 0
+                        ? $"Decoded packet-owned tutor indexed payload for character {targetCharacterId}."
+                        : "Decoded packet-owned tutor indexed payload.";
                     return true;
                 }
 
-                string text = ReadPacketOwnedMapleString(reader);
-                int width = reader.ReadInt32();
-                int durationMs = reader.ReadInt32();
-                message = ApplyPacketOwnedTutorTextMessage(text, width, durationMs);
+                text = ReadPacketOwnedMapleString(reader);
+                if (reader.BaseStream.Length - reader.BaseStream.Position < sizeof(int) * 2)
+                {
+                    message = "Tutor text payload must contain MapleString text followed by width and duration Int32 values.";
+                    return false;
+                }
+
+                width = reader.ReadInt32();
+                durationMs = reader.ReadInt32();
+                if (requireExactClientPayload && reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    message = "Tutor text client payload contained trailing bytes after flag, text, width, and duration.";
+                    return false;
+                }
+
+                if (!requireExactClientPayload && reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    if (reader.BaseStream.Length - reader.BaseStream.Position != sizeof(int))
+                    {
+                        message = "Tutor text pseudo-packet payload may only append a trailing Int32 owner character id after the client fields.";
+                        return false;
+                    }
+
+                    targetCharacterId = Math.Max(0, reader.ReadInt32());
+                }
+
+                message = targetCharacterId > 0
+                    ? $"Decoded packet-owned tutor text payload for character {targetCharacterId}."
+                    : "Decoded packet-owned tutor text payload.";
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException or IOException)
@@ -7890,42 +8282,34 @@ namespace HaCreator.MapSimulator
             return TryApplyPacketOwnedStringPayload(payload, value => ApplyPacketOwnedChatMessage(value), "Chat payload is missing.", out message);
         }
 
-        private bool TryApplyPacketOwnedOpenUiWithOptionPayload(byte[] payload, out string message)
+        private bool TryApplyPacketOwnedOpenUiWithOptionPayload(byte[] payload, bool requireExactClientPayload, out string message)
         {
-            message = null;
-            if (payload == null || payload.Length < 8)
+            if (!TryDecodePacketOwnedOpenUiWithOptionPayload(
+                    payload,
+                    requireExactClientPayload,
+                    out int uiType,
+                    out int option,
+                    out message))
             {
-                message = "OpenUIWithOption payload must contain uiType and option Int32 values.";
                 return false;
             }
 
-            using MemoryStream stream = new(payload, writable: false);
-            using BinaryReader reader = new(stream);
-            message = ApplyPacketOwnedOpenUiWithOption(reader.ReadInt32(), reader.ReadInt32());
+            message = ApplyPacketOwnedOpenUiWithOption(uiType, option);
             return true;
         }
 
-        private bool TryApplyPacketOwnedCommodityPayload(byte[] payload, out string message)
+        internal static bool TryDecodePacketOwnedOpenUiWithOptionPayload(
+            byte[] payload,
+            bool requireExactClientPayload,
+            out int uiType,
+            out int option,
+            out string message)
         {
-            message = null;
-            if (payload == null || payload.Length < 4)
+            uiType = 0;
+            option = 0;
+            message = "OpenUIWithOption payload must contain uiType and option Int32 values.";
+            if (payload == null || payload.Length < sizeof(int) * 2)
             {
-                message = "Commodity payload must contain the commodity serial number Int32 value.";
-                return false;
-            }
-
-            using MemoryStream stream = new(payload, writable: false);
-            using BinaryReader reader = new(stream);
-            message = ApplyPacketOwnedGoToCommoditySn(reader.ReadInt32());
-            return true;
-        }
-
-        private bool TryApplyPacketOwnedSkillCooltimePayload(byte[] payload, out string message)
-        {
-            message = null;
-            if (payload == null || payload.Length < 6)
-            {
-                message = "Skill-cooltime payload must contain skillId Int32 and remainSec UInt16 values.";
                 return false;
             }
 
@@ -7933,12 +8317,114 @@ namespace HaCreator.MapSimulator
             {
                 using MemoryStream stream = new(payload, writable: false);
                 using BinaryReader reader = new(stream);
-                int skillId = reader.ReadInt32();
-                int remainSeconds = reader.ReadUInt16();
-                message = ApplyPacketOwnedSkillCooltime(skillId, remainSeconds);
+                uiType = reader.ReadInt32();
+                option = reader.ReadInt32();
+                if (requireExactClientPayload && reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    message = "OpenUIWithOption client payload contained trailing bytes after uiType and option Int32 values.";
+                    return false;
+                }
+
+                message = "Decoded packet-owned OpenUIWithOption payload.";
                 return true;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is EndOfStreamException or IOException)
+            {
+                message = $"OpenUIWithOption payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        private bool TryApplyPacketOwnedCommodityPayload(byte[] payload, bool requireExactClientPayload, out string message)
+        {
+            if (!TryDecodePacketOwnedCommodityPayload(
+                    payload,
+                    requireExactClientPayload,
+                    out int commoditySerialNumber,
+                    out message))
+            {
+                return false;
+            }
+
+            message = ApplyPacketOwnedGoToCommoditySn(commoditySerialNumber);
+            return true;
+        }
+
+        internal static bool TryDecodePacketOwnedCommodityPayload(
+            byte[] payload,
+            bool requireExactClientPayload,
+            out int commoditySerialNumber,
+            out string message)
+        {
+            commoditySerialNumber = 0;
+            message = "Commodity payload must contain the commodity serial number Int32 value.";
+            if (payload == null || payload.Length < sizeof(int))
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                commoditySerialNumber = reader.ReadInt32();
+                if (requireExactClientPayload && reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    message = "Commodity client payload contained trailing bytes after the commodity serial number Int32 value.";
+                    return false;
+                }
+
+                message = "Decoded packet-owned commodity payload.";
+                return true;
+            }
+            catch (Exception ex) when (ex is EndOfStreamException or IOException)
+            {
+                message = $"Commodity payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        private bool TryApplyPacketOwnedSkillCooltimePayload(byte[] payload, out string message)
+        {
+            if (!TryDecodePacketOwnedSkillCooltimePayload(payload, out int skillId, out int remainSeconds, out message))
+            {
+                return false;
+            }
+
+            message = ApplyPacketOwnedSkillCooltime(skillId, remainSeconds);
+            return true;
+        }
+
+        internal static bool TryDecodePacketOwnedSkillCooltimePayload(
+            byte[] payload,
+            out int skillId,
+            out int remainSeconds,
+            out string message)
+        {
+            skillId = 0;
+            remainSeconds = 0;
+            message = "Skill-cooltime payload must contain skillId Int32 and remainSec UInt16 values.";
+            if (payload == null || payload.Length < sizeof(int) + sizeof(ushort))
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                skillId = reader.ReadInt32();
+                remainSeconds = reader.ReadUInt16();
+                if (reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    message = "Skill-cooltime payload contained trailing bytes after skillId Int32 and remainSec UInt16 values.";
+                    return false;
+                }
+
+                message = "Decoded packet-owned skill-cooltime payload.";
+                return true;
+            }
+            catch (Exception ex) when (ex is EndOfStreamException or IOException)
             {
                 message = $"Skill-cooltime payload could not be decoded: {ex.Message}";
                 return false;
@@ -8670,6 +9156,643 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        private bool TryApplyPacketOwnedEventAlarmTextPayload(byte[] payload, out string message)
+        {
+            if (!TryDecodePacketOwnedEventAlarmTextPayload(
+                    payload,
+                    out bool clearRequested,
+                    out EventAlarmLineSnapshot[] lines,
+                    out string summary,
+                    out string decodeMessage))
+            {
+                message = decodeMessage ?? "Event-alarm text payload could not be decoded.";
+                return false;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+            _packetOwnedEventAlarmLines.Clear();
+            if (!clearRequested)
+            {
+                _packetOwnedEventAlarmLines.AddRange(lines ?? Array.Empty<EventAlarmLineSnapshot>());
+            }
+
+            _lastPacketOwnedEventAlarmTick = Environment.TickCount;
+            _lastPacketOwnedEventAlarmSummary = string.IsNullOrWhiteSpace(summary)
+                ? clearRequested
+                    ? "Packet-authored event-alarm CT lines cleared."
+                    : $"Packet-authored event-alarm feed now carries {_packetOwnedEventAlarmLines.Count.ToString(CultureInfo.InvariantCulture)} CT line(s)."
+                : summary;
+            NotifyEventAlarmOwnerActivity("packet-owned event alarm");
+            message = _lastPacketOwnedEventAlarmSummary;
+            return true;
+        }
+
+        private bool TryApplyPacketOwnedEventCalendarEntriesPayload(byte[] payload, out string message)
+        {
+            if (!TryDecodePacketOwnedEventCalendarEntriesPayload(
+                    payload,
+                    out bool clearRequested,
+                    out bool replaceExistingEntries,
+                    out EventEntrySnapshot[] entries,
+                    out string summary,
+                    out string decodeMessage))
+            {
+                message = decodeMessage ?? "Event-calendar payload could not be decoded.";
+                return false;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+            if (clearRequested || replaceExistingEntries)
+            {
+                _packetOwnedEventCalendarEntries.Clear();
+            }
+
+            int now = Environment.TickCount;
+            int sortOrder = _packetOwnedEventCalendarEntries.Count;
+            foreach (EventEntrySnapshot entry in entries ?? Array.Empty<EventEntrySnapshot>())
+            {
+                _packetOwnedEventCalendarEntries.Add(new EventEntrySnapshot
+                {
+                    Title = entry.Title,
+                    Detail = entry.Detail,
+                    StatusText = entry.StatusText,
+                    Status = entry.Status,
+                    ScheduledAt = entry.ScheduledAt.Date,
+                    SourceTick = entry.SourceTick == int.MinValue ? now : entry.SourceTick,
+                    SortPriority = entry.SortPriority,
+                    SortOrder = sortOrder++
+                });
+            }
+
+            _lastPacketOwnedEventCalendarTick = now;
+            _lastPacketOwnedEventCalendarSummary = string.IsNullOrWhiteSpace(summary)
+                ? clearRequested
+                    ? "Packet-authored event-calendar entries cleared."
+                    : $"Packet-authored event-calendar feed now carries {_packetOwnedEventCalendarEntries.Count.ToString(CultureInfo.InvariantCulture)} owner row(s)."
+                : summary;
+            NotifyEventAlarmOwnerActivity("packet-owned event calendar");
+            message = _lastPacketOwnedEventCalendarSummary;
+            return true;
+        }
+
+        private static bool TryDecodePacketOwnedEventAlarmTextPayload(
+            byte[] payload,
+            out bool clearRequested,
+            out EventAlarmLineSnapshot[] lines,
+            out string summary,
+            out string message)
+        {
+            clearRequested = false;
+            lines = Array.Empty<EventAlarmLineSnapshot>();
+            summary = string.Empty;
+            message = "Event-alarm text payload is missing.";
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (!TryDecodePacketOwnedStringPayload(payload, out string decodedText))
+            {
+                message = "Event-alarm text payload must decode to MapleString, UTF-8 text, or a JSON text body.";
+                return false;
+            }
+
+            if (TryDecodePacketOwnedEventAlarmTextJsonPayload(decodedText, out clearRequested, out lines, out summary, out message))
+            {
+                return clearRequested || lines.Length > 0;
+            }
+
+            string normalizedText = decodedText.Trim();
+            if (string.Equals(normalizedText, "clear", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedText, "reset", StringComparison.OrdinalIgnoreCase))
+            {
+                clearRequested = true;
+                summary = "Cleared packet-authored event-alarm CT lines.";
+                message = summary;
+                return true;
+            }
+
+            string[] textLines = normalizedText.Split(
+                new[] { "\r\n", "\n" },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (textLines.Length == 0)
+            {
+                message = "Event-alarm text payload did not contain any usable line text.";
+                return false;
+            }
+
+            lines = textLines
+                .Select((line, index) => CreateEventAlarmLine(line, index))
+                .ToArray();
+            summary = $"Applied packet-authored event-alarm text with {lines.Length.ToString(CultureInfo.InvariantCulture)} CT line(s).";
+            message = summary;
+            return true;
+        }
+
+        internal static bool TryDecodePacketOwnedEventAlarmTextPayloadForTests(
+            byte[] payload,
+            out bool clearRequested,
+            out EventAlarmLineSnapshot[] lines,
+            out string summary,
+            out string message)
+        {
+            return TryDecodePacketOwnedEventAlarmTextPayload(payload, out clearRequested, out lines, out summary, out message);
+        }
+
+        private static bool TryDecodePacketOwnedEventAlarmTextJsonPayload(
+            string payloadText,
+            out bool clearRequested,
+            out EventAlarmLineSnapshot[] lines,
+            out string summary,
+            out string message)
+        {
+            clearRequested = false;
+            lines = Array.Empty<EventAlarmLineSnapshot>();
+            summary = string.Empty;
+            message = "Event-alarm JSON payload did not contain any usable CT line data.";
+            if (string.IsNullOrWhiteSpace(payloadText))
+            {
+                return false;
+            }
+
+            string trimmed = payloadText.Trim();
+            if (!trimmed.StartsWith("{", StringComparison.Ordinal)
+                && !trimmed.StartsWith("[", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(trimmed);
+                JsonElement root = document.RootElement;
+                List<EventAlarmLineSnapshot> parsedLines = new();
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    if (TryGetJsonBoolean(root, "clear", out bool parsedClear))
+                    {
+                        clearRequested = parsedClear;
+                    }
+
+                    if (TryGetJsonString(root, "summary", out string parsedSummary))
+                    {
+                        summary = parsedSummary;
+                    }
+
+                    if (root.TryGetProperty("lines", out JsonElement lineArray))
+                    {
+                        AppendPacketOwnedEventAlarmJsonLines(lineArray, parsedLines);
+                    }
+                }
+                else if (root.ValueKind == JsonValueKind.Array)
+                {
+                    AppendPacketOwnedEventAlarmJsonLines(root, parsedLines);
+                }
+
+                lines = parsedLines.ToArray();
+                if (string.IsNullOrWhiteSpace(summary))
+                {
+                    summary = clearRequested
+                        ? "Cleared packet-authored event-alarm CT lines."
+                        : lines.Length > 0
+                            ? $"Applied packet-authored event-alarm JSON payload with {lines.Length.ToString(CultureInfo.InvariantCulture)} CT line(s)."
+                            : string.Empty;
+                }
+
+                message = summary;
+                return clearRequested || lines.Length > 0;
+            }
+            catch (JsonException ex)
+            {
+                message = $"Event-alarm JSON payload could not be parsed: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static void AppendPacketOwnedEventAlarmJsonLines(JsonElement element, ICollection<EventAlarmLineSnapshot> destination)
+        {
+            if (destination == null || element.ValueKind != JsonValueKind.Array)
+            {
+                return;
+            }
+
+            int index = destination.Count;
+            foreach (JsonElement item in element.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String)
+                {
+                    string text = item.GetString()?.Trim();
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        destination.Add(CreateEventAlarmLine(text, index++));
+                    }
+
+                    continue;
+                }
+
+                if (item.ValueKind != JsonValueKind.Object
+                    || !TryGetJsonString(item, "text", out string lineText)
+                    || string.IsNullOrWhiteSpace(lineText))
+                {
+                    continue;
+                }
+
+                destination.Add(new EventAlarmLineSnapshot
+                {
+                    Text = lineText.Trim(),
+                    Left = TryGetJsonInt32(item, "left", out int left) ? Math.Max(0, left) : 0,
+                    Top = TryGetJsonInt32(item, "top", out int top) ? Math.Max(0, top) : index * 13,
+                    IsHighlighted = TryGetJsonBoolean(item, "highlight", out bool highlight) && highlight
+                });
+                index++;
+            }
+        }
+
+        private static bool TryDecodePacketOwnedEventCalendarEntriesPayload(
+            byte[] payload,
+            out bool clearRequested,
+            out bool replaceExistingEntries,
+            out EventEntrySnapshot[] entries,
+            out string summary,
+            out string message)
+        {
+            clearRequested = false;
+            replaceExistingEntries = true;
+            entries = Array.Empty<EventEntrySnapshot>();
+            summary = string.Empty;
+            message = "Event-calendar payload is missing.";
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (!TryDecodePacketOwnedStringPayload(payload, out string decodedText))
+            {
+                message = "Event-calendar payload must decode to MapleString, UTF-8 text, or a JSON text body.";
+                return false;
+            }
+
+            if (TryDecodePacketOwnedEventCalendarJsonPayload(decodedText, out clearRequested, out replaceExistingEntries, out entries, out summary, out message))
+            {
+                return clearRequested || entries.Length > 0;
+            }
+
+            string normalizedText = decodedText.Trim();
+            if (string.Equals(normalizedText, "clear", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedText, "reset", StringComparison.OrdinalIgnoreCase))
+            {
+                clearRequested = true;
+                summary = "Cleared packet-authored event-calendar entries.";
+                message = summary;
+                return true;
+            }
+
+            List<EventEntrySnapshot> parsedEntries = new();
+            string[] entryLines = normalizedText.Split(
+                new[] { "\r\n", "\n" },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (int i = 0; i < entryLines.Length; i++)
+            {
+                if (TryParsePacketOwnedEventCalendarTextEntry(entryLines[i], i, out EventEntrySnapshot parsedEntry))
+                {
+                    parsedEntries.Add(parsedEntry);
+                }
+            }
+
+            if (parsedEntries.Count == 0)
+            {
+                message = "Event-calendar payload did not contain any usable event rows.";
+                return false;
+            }
+
+            entries = parsedEntries.ToArray();
+            summary = $"Applied packet-authored event-calendar payload with {entries.Length.ToString(CultureInfo.InvariantCulture)} owner row(s).";
+            message = summary;
+            return true;
+        }
+
+        internal static bool TryDecodePacketOwnedEventCalendarEntriesPayloadForTests(
+            byte[] payload,
+            out bool clearRequested,
+            out bool replaceExistingEntries,
+            out EventEntrySnapshot[] entries,
+            out string summary,
+            out string message)
+        {
+            return TryDecodePacketOwnedEventCalendarEntriesPayload(payload, out clearRequested, out replaceExistingEntries, out entries, out summary, out message);
+        }
+
+        private static bool TryDecodePacketOwnedEventCalendarJsonPayload(
+            string payloadText,
+            out bool clearRequested,
+            out bool replaceExistingEntries,
+            out EventEntrySnapshot[] entries,
+            out string summary,
+            out string message)
+        {
+            clearRequested = false;
+            replaceExistingEntries = true;
+            entries = Array.Empty<EventEntrySnapshot>();
+            summary = string.Empty;
+            message = "Event-calendar JSON payload did not contain any usable owner rows.";
+            if (string.IsNullOrWhiteSpace(payloadText))
+            {
+                return false;
+            }
+
+            string trimmed = payloadText.Trim();
+            if (!trimmed.StartsWith("{", StringComparison.Ordinal)
+                && !trimmed.StartsWith("[", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(trimmed);
+                JsonElement root = document.RootElement;
+                List<EventEntrySnapshot> parsedEntries = new();
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    if (TryGetJsonBoolean(root, "clear", out bool parsedClear))
+                    {
+                        clearRequested = parsedClear;
+                    }
+
+                    if (TryGetJsonBoolean(root, "replace", out bool parsedReplace))
+                    {
+                        replaceExistingEntries = parsedReplace;
+                    }
+
+                    if (TryGetJsonString(root, "summary", out string parsedSummary))
+                    {
+                        summary = parsedSummary;
+                    }
+
+                    if (root.TryGetProperty("entries", out JsonElement entryArray))
+                    {
+                        AppendPacketOwnedEventCalendarJsonEntries(entryArray, parsedEntries);
+                    }
+                }
+                else if (root.ValueKind == JsonValueKind.Array)
+                {
+                    AppendPacketOwnedEventCalendarJsonEntries(root, parsedEntries);
+                }
+
+                entries = parsedEntries.ToArray();
+                if (string.IsNullOrWhiteSpace(summary))
+                {
+                    summary = clearRequested
+                        ? "Cleared packet-authored event-calendar entries."
+                        : entries.Length > 0
+                            ? $"Applied packet-authored event-calendar JSON payload with {entries.Length.ToString(CultureInfo.InvariantCulture)} owner row(s)."
+                            : string.Empty;
+                }
+
+                message = summary;
+                return clearRequested || entries.Length > 0;
+            }
+            catch (JsonException ex)
+            {
+                message = $"Event-calendar JSON payload could not be parsed: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static void AppendPacketOwnedEventCalendarJsonEntries(JsonElement element, ICollection<EventEntrySnapshot> destination)
+        {
+            if (destination == null || element.ValueKind != JsonValueKind.Array)
+            {
+                return;
+            }
+
+            int index = destination.Count;
+            foreach (JsonElement item in element.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String)
+                {
+                    string stringTitle = item.GetString()?.Trim();
+                    if (!string.IsNullOrWhiteSpace(stringTitle))
+                    {
+                        destination.Add(CreatePacketOwnedEventCalendarEntry(DateTime.Today, stringTitle, string.Empty, EventEntryStatus.Upcoming, "Will", int.MinValue, index++));
+                    }
+
+                    continue;
+                }
+
+                if (item.ValueKind != JsonValueKind.Object
+                    || !TryGetJsonString(item, "title", out string title)
+                    || string.IsNullOrWhiteSpace(title))
+                {
+                    continue;
+                }
+
+                DateTime scheduledAt = TryGetJsonString(item, "scheduledAt", out string scheduledToken)
+                    && TryParsePacketOwnedEventDate(scheduledToken, out DateTime parsedScheduledAt)
+                    ? parsedScheduledAt
+                    : TryGetJsonString(item, "date", out string dateToken)
+                        && TryParsePacketOwnedEventDate(dateToken, out DateTime parsedDate)
+                        ? parsedDate
+                        : DateTime.Today;
+                string detail = TryGetJsonString(item, "detail", out string parsedDetail) ? parsedDetail : string.Empty;
+                EventEntryStatus status = TryGetJsonString(item, "status", out string parsedStatusToken)
+                    && TryParsePacketOwnedEventEntryStatus(parsedStatusToken, out EventEntryStatus parsedStatus)
+                    ? parsedStatus
+                    : EventEntryStatus.Upcoming;
+                string statusText = TryGetJsonString(item, "statusText", out string parsedStatusText)
+                    ? parsedStatusText
+                    : GetDefaultPacketOwnedEventStatusText(status);
+                int sourceTick = TryGetJsonInt32(item, "sourceTick", out int parsedSourceTick)
+                    ? parsedSourceTick
+                    : int.MinValue;
+                destination.Add(CreatePacketOwnedEventCalendarEntry(scheduledAt, title.Trim(), detail, status, statusText, sourceTick, index++));
+            }
+        }
+
+        private static bool TryParsePacketOwnedEventCalendarTextEntry(string line, int sortOrder, out EventEntrySnapshot entry)
+        {
+            entry = new EventEntrySnapshot();
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                return false;
+            }
+
+            string[] tokens = line.Split('|');
+            if (tokens.Length == 0)
+            {
+                return false;
+            }
+
+            int tokenIndex = 0;
+            DateTime scheduledAt = DateTime.Today;
+            if (TryParsePacketOwnedEventDate(tokens[0], out DateTime parsedDate))
+            {
+                scheduledAt = parsedDate;
+                tokenIndex = 1;
+            }
+
+            if (tokenIndex >= tokens.Length)
+            {
+                return false;
+            }
+
+            string title = tokens[tokenIndex++].Trim();
+            if (string.IsNullOrWhiteSpace(title))
+            {
+                return false;
+            }
+
+            string detail = tokenIndex < tokens.Length ? tokens[tokenIndex++].Trim() : string.Empty;
+            EventEntryStatus status = tokenIndex < tokens.Length
+                && TryParsePacketOwnedEventEntryStatus(tokens[tokenIndex], out EventEntryStatus parsedStatus)
+                ? parsedStatus
+                : EventEntryStatus.Upcoming;
+            entry = CreatePacketOwnedEventCalendarEntry(
+                scheduledAt,
+                title,
+                detail,
+                status,
+                GetDefaultPacketOwnedEventStatusText(status),
+                int.MinValue,
+                sortOrder);
+            return true;
+        }
+
+        private static EventEntrySnapshot CreatePacketOwnedEventCalendarEntry(
+            DateTime scheduledAt,
+            string title,
+            string detail,
+            EventEntryStatus status,
+            string statusText,
+            int sourceTick,
+            int sortOrder)
+        {
+            return new EventEntrySnapshot
+            {
+                Title = title ?? string.Empty,
+                Detail = detail ?? string.Empty,
+                StatusText = string.IsNullOrWhiteSpace(statusText) ? GetDefaultPacketOwnedEventStatusText(status) : statusText.Trim(),
+                Status = status,
+                ScheduledAt = scheduledAt.Date,
+                SourceTick = sourceTick,
+                SortPriority = ResolvePacketOwnedEventEntrySortPriority(status),
+                SortOrder = Math.Max(0, sortOrder)
+            };
+        }
+
+        internal static int ResolvePacketOwnedEventEntrySortPriority(EventEntryStatus status)
+        {
+            return status switch
+            {
+                EventEntryStatus.Start or EventEntryStatus.InProgress => EventEntrySortPriorityPrimary,
+                EventEntryStatus.Clear => EventEntrySortPrioritySecondary,
+                EventEntryStatus.Upcoming => EventEntrySortPriorityFallback,
+                _ => EventEntrySortPriorityRuntime
+            };
+        }
+
+        private static string GetDefaultPacketOwnedEventStatusText(EventEntryStatus status)
+        {
+            return status switch
+            {
+                EventEntryStatus.Start => "Start",
+                EventEntryStatus.InProgress => "Running",
+                EventEntryStatus.Clear => "Clear",
+                EventEntryStatus.Upcoming => "Will",
+                _ => string.Empty
+            };
+        }
+
+        private static bool TryParsePacketOwnedEventEntryStatus(string token, out EventEntryStatus status)
+        {
+            status = EventEntryStatus.Upcoming;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            switch (token.Trim().ToLowerInvariant())
+            {
+                case "start":
+                    status = EventEntryStatus.Start;
+                    return true;
+                case "running":
+                case "inprogress":
+                case "ing":
+                    status = EventEntryStatus.InProgress;
+                    return true;
+                case "clear":
+                case "complete":
+                case "completed":
+                    status = EventEntryStatus.Clear;
+                    return true;
+                case "will":
+                case "upcoming":
+                case "none":
+                    status = EventEntryStatus.Upcoming;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryParsePacketOwnedEventDate(string token, out DateTime date)
+        {
+            if (DateTime.TryParse(
+                    token?.Trim(),
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeLocal,
+                    out date))
+            {
+                date = date.Date;
+                return true;
+            }
+
+            date = default;
+            return false;
+        }
+
+        private static bool TryGetJsonString(JsonElement element, string propertyName, out string value)
+        {
+            value = string.Empty;
+            if (!element.TryGetProperty(propertyName, out JsonElement property)
+                || property.ValueKind != JsonValueKind.String)
+            {
+                return false;
+            }
+
+            value = property.GetString() ?? string.Empty;
+            return true;
+        }
+
+        private static bool TryGetJsonBoolean(JsonElement element, string propertyName, out bool value)
+        {
+            value = false;
+            if (!element.TryGetProperty(propertyName, out JsonElement property))
+            {
+                return false;
+            }
+
+            if (property.ValueKind == JsonValueKind.True || property.ValueKind == JsonValueKind.False)
+            {
+                value = property.GetBoolean();
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryGetJsonInt32(JsonElement element, string propertyName, out int value)
+        {
+            value = 0;
+            if (!element.TryGetProperty(propertyName, out JsonElement property))
+            {
+                return false;
+            }
+
+            return property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out value);
+        }
+
         private ChatCommandHandler.CommandResult HandlePacketOwnedUtilityCommand(string[] args)
         {
             int currentTickCount = Environment.TickCount;
@@ -9165,13 +10288,13 @@ namespace HaCreator.MapSimulator
             switch (args[1].ToLowerInvariant())
             {
                 case "openui":
-                    applied = TryApplyPacketOwnedOpenUiPayload(payload, out message);
+                    applied = TryApplyPacketOwnedOpenUiPayload(payload, requireExactClientPayload: false, out message);
                     break;
                 case "openuiwithoption":
-                    applied = TryApplyPacketOwnedOpenUiWithOptionPayload(payload, out message);
+                    applied = TryApplyPacketOwnedOpenUiWithOptionPayload(payload, requireExactClientPayload: false, out message);
                     break;
                 case "commodity":
-                    applied = TryApplyPacketOwnedCommodityPayload(payload, out message);
+                    applied = TryApplyPacketOwnedCommodityPayload(payload, requireExactClientPayload: false, out message);
                     break;
                 case "fade":
                     applied = TryApplyPacketOwnedFieldFadePayload(payload, out message);
@@ -9224,6 +10347,17 @@ namespace HaCreator.MapSimulator
                     break;
                 case "chat":
                     applied = TryApplyPacketOwnedChatPayload(payload, out message);
+                    break;
+                case "eventalarm":
+                case "eventalarmtext":
+                case "eventct":
+                    applied = TryApplyPacketOwnedEventAlarmTextPayload(payload, out message);
+                    break;
+                case "eventcalendar":
+                case "eventcalendarentries":
+                case "attendancecalendar":
+                case "eventlistentries":
+                    applied = TryApplyPacketOwnedEventCalendarEntriesPayload(payload, out message);
                     break;
                 case "buffzone":
                     applied = TryApplyPacketOwnedStringPayload(payload, ApplyPacketOwnedBuffzoneEffect, "Buff-zone payload is missing.", out message);
@@ -9316,8 +10450,8 @@ namespace HaCreator.MapSimulator
                 default:
                     return ChatCommandHandler.CommandResult.Error(
                         rawHex
-                ? "Usage: /localutility packetraw <sitresult|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|231|232|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025> <hex>"
-                : "Usage: /localutility packet <sitresult|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|231|232|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025> [payloadhex=..|payloadb64=..]");
+                ? "Usage: /localutility packetraw <sitresult|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|eventalarm|eventcalendar|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|231|232|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025|1031|1032> <hex>"
+                : "Usage: /localutility packet <sitresult|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|eventalarm|eventcalendar|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|231|232|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025|1031|1032> [payloadhex=..|payloadb64=..]");
             }
 
             return applied
@@ -9753,9 +10887,10 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            bool shouldDismissFollowPrompt =
-                _loginUtilityDialogAction == LoginUtilityDialogAction.ConfirmFollowCharacterRequest
-                && _localFollowRuntime.IncomingRequesterId == characterId;
+            bool shouldDismissFollowPrompt = ShouldDismissPacketOwnedFollowPromptForRemovedCharacterForTest(
+                _packetOwnedFollowPromptActive,
+                _localFollowRuntime.IncomingRequesterId,
+                characterId);
             Func<int, string> nameResolver = removedId =>
                 removedId == characterId ? removedName : ResolvePacketOwnedRemoteCharacterName(removedId);
             if (!_localFollowRuntime.TryClearMissingRemoteCharacter(characterId, nameResolver, out string message))
@@ -9766,7 +10901,7 @@ namespace HaCreator.MapSimulator
             StampPacketOwnedUtilityRequestState();
             if (shouldDismissFollowPrompt)
             {
-                HideLoginUtilityDialog();
+                HidePacketOwnedFollowCharacterPrompt();
             }
 
             ShowUtilityFeedbackMessage(message);

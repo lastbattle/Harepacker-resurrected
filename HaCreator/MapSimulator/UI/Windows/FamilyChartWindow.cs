@@ -245,7 +245,7 @@ namespace HaCreator.MapSimulator.UI
         private void UpdateButtonStates(FamilyChartSnapshot snapshot)
         {
             _treeButton?.SetEnabled(true);
-            _preceptButton?.SetEnabled(true);
+            _preceptButton?.SetEnabled(snapshot.CanEditPrecept);
             _juniorButton?.SetEnabled(snapshot.CanAddJunior);
             _leftButton?.SetEnabled(snapshot.CanPageBackward);
             _rightButton?.SetEnabled(snapshot.CanPageForward);

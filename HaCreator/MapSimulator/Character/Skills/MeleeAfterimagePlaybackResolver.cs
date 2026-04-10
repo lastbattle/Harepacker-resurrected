@@ -9,6 +9,19 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         internal readonly record struct Snapshot(int FrameIndex, SkillFrame Frame, float Alpha);
 
+        internal static void ApplySnapshotToCache(
+            in Snapshot snapshot,
+            ref int frameIndex,
+            ref SkillFrame frame,
+            ref float alpha)
+        {
+            frameIndex = snapshot.FrameIndex;
+            frame = snapshot.Frame;
+            alpha = snapshot.Frame != null
+                ? snapshot.Alpha
+                : 0f;
+        }
+
         internal static bool TryResolveSnapshot(
             CharacterAssembler assembler,
             string actionName,

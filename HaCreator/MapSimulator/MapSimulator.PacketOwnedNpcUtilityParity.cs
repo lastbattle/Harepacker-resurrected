@@ -244,6 +244,13 @@ namespace HaCreator.MapSimulator
                 int itemCount = BitConverter.ToUInt16(payload, sizeof(int));
                 if (itemCount > 0)
                 {
+                    string blockingOwner = GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.CashShop);
+                    if (!string.IsNullOrWhiteSpace(blockingOwner))
+                    {
+                        message = adminShopWindow.ApplyPacketOwnedAdminShopBlockedByUniqueModelessOwner(blockingOwner, npcTemplateId, itemCount);
+                        return true;
+                    }
+
                     if (!adminShopWindow.TryBeginPacketOwnedAdminShopSession(payload, out message))
                     {
                         return false;

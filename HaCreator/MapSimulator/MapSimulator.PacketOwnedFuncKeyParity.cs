@@ -104,6 +104,19 @@ namespace HaCreator.MapSimulator
             public int SlotIndex { get; }
         }
 
+        internal enum PacketOwnedRawFunctionOwner
+        {
+            None = 0,
+            SocialListFriend = 1,
+            WorldMap = 2,
+            Messenger = 3,
+            SocialListGuild = 4,
+            SocialListParty = 5,
+            SocialSearch = 6,
+            ItemMaker = 7,
+            EventWindow = 8,
+        }
+
         [DllImport("user32.dll", EntryPoint = "MapVirtualKeyW", ExactSpelling = true)]
         private static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
@@ -686,41 +699,71 @@ namespace HaCreator.MapSimulator
 
         private KeyConfigWindow.ShortcutVisualState ResolvePacketOwnedKeyConfigShortcutVisualState(InputAction action)
         {
-            if (_playerManager?.Skills == null
-                || !TryResolvePacketOwnedBindableHotkeySlotIndex(action, out int slotIndex)
+            if (!TryResolvePacketOwnedBindableHotkeySlotIndex(action, out int slotIndex)
                 || slotIndex < 0)
             {
                 return default;
             }
 
-            int skillId = _playerManager.Skills.GetHotkeySkill(slotIndex);
-            if (skillId > 0)
+            SkillManager skillManager = _playerManager?.Skills;
+            if (skillManager != null)
             {
-                return BuildPacketOwnedKeyConfigSkillShortcutVisualState(skillId);
+                int skillId = skillManager.GetHotkeySkill(slotIndex);
+                if (skillId > 0)
+                {
+                    return BuildPacketOwnedKeyConfigSkillShortcutVisualState(skillId, fromLiveHotkeySlot: true);
+                }
+
+                int itemId = skillManager.GetHotkeyItem(slotIndex);
+                if (itemId > 0)
+                {
+                    InventoryType inventoryType = skillManager.GetHotkeyItemInventoryType(slotIndex);
+                    int itemCount = skillManager.GetHotkeyItemCount(slotIndex);
+                    byte packetEntryType = TryResolvePacketOwnedCastEntryForBindableHotkeyAction(action, out PacketOwnedFuncKeyMappedEntry liveEntry, out _)
+                        && liveEntry.Id == itemId
+                            ? liveEntry.Type
+                            : PacketOwnedFuncKeyItemType;
+                    return BuildPacketOwnedKeyConfigItemShortcutVisualState(itemId, inventoryType, itemCount, packetEntryType, fromLiveHotkeySlot: true);
+                }
+
+                int macroIndex = skillManager.GetHotkeyMacroIndex(slotIndex);
+                if (macroIndex >= 0)
+                {
+                    return BuildPacketOwnedKeyConfigMacroShortcutVisualState(macroIndex, packetMacroId: macroIndex + 1, fromLiveHotkeySlot: true);
+                }
             }
 
-            int itemId = _playerManager.Skills.GetHotkeyItem(slotIndex);
-            if (itemId > 0)
-            {
-                InventoryType inventoryType = _playerManager.Skills.GetHotkeyItemInventoryType(slotIndex);
-                int itemCount = _playerManager.Skills.GetHotkeyItemCount(slotIndex);
-                byte packetEntryType = TryResolvePacketOwnedCastEntryForBindableHotkeyAction(action, out PacketOwnedFuncKeyMappedEntry entry, out _)
-                    && entry.Id == itemId
-                        ? entry.Type
-                        : PacketOwnedFuncKeyItemType;
-                return BuildPacketOwnedKeyConfigItemShortcutVisualState(itemId, inventoryType, itemCount, packetEntryType);
-            }
-
-            int macroIndex = _playerManager.Skills.GetHotkeyMacroIndex(slotIndex);
-            if (macroIndex >= 0)
-            {
-                return BuildPacketOwnedKeyConfigMacroShortcutVisualState(macroIndex);
-            }
-
-            return default;
+            return TryResolvePacketOwnedCastEntryForBindableHotkeyAction(action, out PacketOwnedFuncKeyMappedEntry entry, out _)
+                ? BuildPacketOwnedKeyConfigShortcutVisualStateFromPacketEntry(entry)
+                : default;
         }
 
-        private KeyConfigWindow.ShortcutVisualState BuildPacketOwnedKeyConfigSkillShortcutVisualState(int skillId)
+        private KeyConfigWindow.ShortcutVisualState BuildPacketOwnedKeyConfigShortcutVisualStateFromPacketEntry(PacketOwnedFuncKeyMappedEntry entry)
+        {
+            if (entry.Id <= 0)
+            {
+                return default;
+            }
+
+            return entry.Type switch
+            {
+                PacketOwnedFuncKeySkillType => BuildPacketOwnedKeyConfigSkillShortcutVisualState(entry.Id, fromLiveHotkeySlot: false),
+                PacketOwnedFuncKeyItemType or PacketOwnedFuncKeyItemTypeAlt or PacketOwnedFuncKeyItemTypeCash
+                    => BuildPacketOwnedKeyConfigItemShortcutVisualState(
+                        entry.Id,
+                        ResolvePacketOwnedHotkeyInventoryType(entry.Id),
+                        ResolvePacketOwnedKeyConfigItemCount(entry.Id),
+                        entry.Type,
+                        fromLiveHotkeySlot: false),
+                PacketOwnedFuncKeyMacroType => BuildPacketOwnedKeyConfigMacroShortcutVisualState(
+                    ResolvePacketOwnedMacroIndex(entry.Id),
+                    entry.Id,
+                    fromLiveHotkeySlot: false),
+                _ => default,
+            };
+        }
+
+        private KeyConfigWindow.ShortcutVisualState BuildPacketOwnedKeyConfigSkillShortcutVisualState(int skillId, bool fromLiveHotkeySlot)
         {
             SkillData skill = _playerManager?.SkillLoader?.LoadSkill(skillId);
             string title = !string.IsNullOrWhiteSpace(skill?.Name)
@@ -728,8 +771,12 @@ namespace HaCreator.MapSimulator
                 : $"Skill {skillId}";
             int skillLevel = Math.Max(0, _playerManager?.Skills?.GetSkillLevel(skillId) ?? 0);
             string detail = skillLevel > 0
-                ? $"Packet-owned skill entry {skillId} is staged through the live hotkey map at level {skillLevel}."
-                : $"Packet-owned skill entry {skillId} is staged through the live hotkey map.";
+                ? fromLiveHotkeySlot
+                    ? $"Packet-owned skill entry {skillId} is staged through the live hotkey map at level {skillLevel}."
+                    : $"Packet-owned skill entry {skillId} currently falls through to a direct footer visual at level {skillLevel} while the full live palette owner stays unresolved."
+                : fromLiveHotkeySlot
+                    ? $"Packet-owned skill entry {skillId} is staged through the live hotkey map."
+                    : $"Packet-owned skill entry {skillId} currently falls through to a direct footer visual while the full live palette owner stays unresolved.";
             string badgeText = skillLevel > 0
                 ? $"Lv{skillLevel}"
                 : "SKILL";
@@ -744,7 +791,8 @@ namespace HaCreator.MapSimulator
             int itemId,
             InventoryType inventoryType,
             int itemCount,
-            byte packetEntryType)
+            byte packetEntryType,
+            bool fromLiveHotkeySlot)
         {
             string title = InventoryItemMetadataResolver.TryResolveItemName(itemId, out string itemName)
                 && !string.IsNullOrWhiteSpace(itemName)
@@ -764,8 +812,12 @@ namespace HaCreator.MapSimulator
                 _ => "client item icon layer",
             };
             string detail = drawsUnavailableOverlay
-                ? $"Packet-owned {inventoryLabel.ToLowerInvariant()} item entry {itemId} is mapped through the {clientLayer}, but the live inventory count is empty."
-                : $"Packet-owned {inventoryLabel.ToLowerInvariant()} item entry {itemId} is staged through the {clientLayer}.";
+                ? fromLiveHotkeySlot
+                    ? $"Packet-owned {inventoryLabel.ToLowerInvariant()} item entry {itemId} is mapped through the {clientLayer}, but the live inventory count is empty."
+                    : $"Packet-owned {inventoryLabel.ToLowerInvariant()} item entry {itemId} falls through to a direct footer visual through the {clientLayer}, but the live inventory count is empty."
+                : fromLiveHotkeySlot
+                    ? $"Packet-owned {inventoryLabel.ToLowerInvariant()} item entry {itemId} is staged through the {clientLayer}."
+                    : $"Packet-owned {inventoryLabel.ToLowerInvariant()} item entry {itemId} currently falls through to a direct footer visual through the {clientLayer}.";
             string badgeText = isCashItemEntry || inventoryType == InventoryType.CASH
                 ? "CASH"
                 : "ITEM";
@@ -792,9 +844,11 @@ namespace HaCreator.MapSimulator
             return LoadInventoryItemIcon(itemId);
         }
 
-        private KeyConfigWindow.ShortcutVisualState BuildPacketOwnedKeyConfigMacroShortcutVisualState(int macroIndex)
+        private KeyConfigWindow.ShortcutVisualState BuildPacketOwnedKeyConfigMacroShortcutVisualState(int macroIndex, int packetMacroId, bool fromLiveHotkeySlot)
         {
-            SkillMacro macro = uiWindowManager?.SkillMacroWindow?.GetMacro(macroIndex);
+            SkillMacro macro = macroIndex >= 0
+                ? uiWindowManager?.SkillMacroWindow?.GetMacro(macroIndex)
+                : null;
             int displaySkillId = ResolvePacketOwnedMacroDisplaySkillId(macro);
             SkillData displaySkill = displaySkillId > 0
                 ? _playerManager?.SkillLoader?.LoadSkill(displaySkillId)
@@ -802,18 +856,59 @@ namespace HaCreator.MapSimulator
             int configuredSkillCount = CountPacketOwnedConfiguredMacroSkills(macro);
             string title = !string.IsNullOrWhiteSpace(macro?.Name)
                 ? macro.Name
-                : $"Macro {macroIndex + 1}";
+                : $"Macro {packetMacroId}";
             string detail = configuredSkillCount > 0
-                ? $"Packet-owned macro entry {macroIndex + 1} is staged through the live hotkey map with {configuredSkillCount} configured skill step{(configuredSkillCount == 1 ? string.Empty : "s")}."
-                : $"Packet-owned macro entry {macroIndex + 1} is staged through the live hotkey map, but the macro is still empty.";
+                ? fromLiveHotkeySlot
+                    ? $"Packet-owned macro entry {packetMacroId} is staged through the live hotkey map with {configuredSkillCount} configured skill step{(configuredSkillCount == 1 ? string.Empty : "s")}."
+                    : $"Packet-owned macro entry {packetMacroId} currently falls through to a direct footer visual with {configuredSkillCount} configured skill step{(configuredSkillCount == 1 ? string.Empty : "s")}."
+                : fromLiveHotkeySlot
+                    ? $"Packet-owned macro entry {packetMacroId} is staged through the live hotkey map, but the macro is still empty."
+                    : $"Packet-owned macro entry {packetMacroId} currently falls through to a direct footer visual, but the macro is still empty.";
             bool unavailable = macro == null || !macro.IsEnabled || configuredSkillCount <= 0;
             return new KeyConfigWindow.ShortcutVisualState(
-                uiWindowManager?.SkillMacroWindow?.GetMacroIconTexture(macroIndex, enabled: macro?.IsEnabled == true)
+                (macroIndex >= 0
+                    ? uiWindowManager?.SkillMacroWindow?.GetMacroIconTexture(macroIndex, enabled: macro?.IsEnabled == true)
+                    : null)
                     ?? displaySkill?.IconTexture,
                 title,
                 detail,
-                badgeText: $"M{macroIndex + 1}",
+                badgeText: $"M{packetMacroId}",
                 unavailable: unavailable);
+        }
+
+        private int ResolvePacketOwnedKeyConfigItemCount(int itemId)
+        {
+            IInventoryRuntime inventory = uiWindowManager?.InventoryWindow as IInventoryRuntime;
+            if (inventory == null || itemId <= 0)
+            {
+                return 0;
+            }
+
+            int totalCount = 0;
+            InventoryType preferredType = ResolvePacketOwnedHotkeyInventoryType(itemId);
+            if (preferredType != InventoryType.NONE)
+            {
+                totalCount += Math.Max(0, inventory.GetItemCount(preferredType, itemId));
+            }
+
+            if (preferredType != InventoryType.USE)
+            {
+                totalCount += Math.Max(0, inventory.GetItemCount(InventoryType.USE, itemId));
+            }
+
+            if (preferredType != InventoryType.CASH)
+            {
+                totalCount += Math.Max(0, inventory.GetItemCount(InventoryType.CASH, itemId));
+            }
+
+            return totalCount;
+        }
+
+        private static int ResolvePacketOwnedMacroIndex(int packetMacroId)
+        {
+            return packetMacroId > 0
+                ? packetMacroId - 1
+                : -1;
         }
 
         private bool TryResolvePacketOwnedCastEntryForBindableHotkeyAction(
@@ -1054,6 +1149,20 @@ namespace HaCreator.MapSimulator
 
             foreach ((int scanCode, PacketOwnedFuncKeyMappedEntry entry) in EnumeratePacketOwnedCurrentMappedEntries())
             {
+                if (entry.Type == PacketOwnedFuncKeyFunctionType
+                    && entry.Id >= 0
+                    && !TryResolvePacketOwnedKnownFunctionBinding((InputAction)entry.Id, out _))
+                {
+                    Keys functionKey = ResolvePacketOwnedScanCodeKey(scanCode);
+                    if (functionKey != Keys.None
+                        && WasPacketOwnedFuncKeyPressed(keyboardState, previousKeyboardState, functionKey))
+                    {
+                        TryDispatchPacketOwnedRawFunctionEntry(entry.Id);
+                    }
+
+                    continue;
+                }
+
                 if (!IsPacketOwnedCastEntryType(entry.Type)
                     || entry.Id <= 0)
                 {
@@ -1094,11 +1203,64 @@ namespace HaCreator.MapSimulator
             };
         }
 
+        private bool TryDispatchPacketOwnedRawFunctionEntry(int clientFunctionId)
+        {
+            switch (ResolvePacketOwnedRawFunctionOwner(clientFunctionId))
+            {
+                case PacketOwnedRawFunctionOwner.SocialListFriend:
+                    _socialListRuntime.SelectTab(SocialListTab.Friend);
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialList);
+                    return true;
+                case PacketOwnedRawFunctionOwner.WorldMap:
+                    HandleMinimapWorldMapRequested();
+                    return true;
+                case PacketOwnedRawFunctionOwner.Messenger:
+                    ShowMessengerWindow();
+                    return true;
+                case PacketOwnedRawFunctionOwner.SocialListGuild:
+                    _socialListRuntime.SelectTab(SocialListTab.Guild);
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialList);
+                    return true;
+                case PacketOwnedRawFunctionOwner.SocialListParty:
+                    _socialListRuntime.SelectTab(SocialListTab.Party);
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialList);
+                    return true;
+                case PacketOwnedRawFunctionOwner.SocialSearch:
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialSearch);
+                    return true;
+                case PacketOwnedRawFunctionOwner.ItemMaker:
+                    ShowPacketOwnedProfessionWindow();
+                    return true;
+                case PacketOwnedRawFunctionOwner.EventWindow:
+                    ShowUtilityWindow(MapSimulatorWindowNames.Event, "packet-owned-funckey:31");
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         private bool TryUsePacketOwnedFuncKeyItem(int itemId, int currentTime)
         {
             InventoryType inventoryType = ResolvePacketOwnedHotkeyInventoryType(itemId);
             return inventoryType != InventoryType.NONE
                 && TryUseConsumableInventoryItem(itemId, inventoryType, currentTime);
+        }
+
+        private void ShowPacketOwnedProfessionWindow()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemMaker) is ItemMakerUI itemMakerWindow)
+            {
+                itemMakerWindow.SetCraftingState(
+                    _playerManager?.Player?.Level ?? 1,
+                    _playerManager?.Player?.Build?.TraitCraft ?? 0,
+                    _playerManager?.Player?.Build?.Job ?? 0,
+                    GetActiveItemMakerProgression(),
+                    HasItemMakerRequiredEquip,
+                    MatchesItemMakerQuestRequirement);
+                itemMakerWindow.ApplyLaunchContext("Packet-owned profession key");
+            }
+
+            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.ItemMaker);
         }
 
         private static bool WasPacketOwnedFuncKeyPressed(KeyboardState keyboardState, KeyboardState previousKeyboardState, Keys key)
@@ -1135,6 +1297,22 @@ namespace HaCreator.MapSimulator
 
             clientFunctionId = -1;
             return false;
+        }
+
+        internal static PacketOwnedRawFunctionOwner ResolvePacketOwnedRawFunctionOwner(int clientFunctionId)
+        {
+            return clientFunctionId switch
+            {
+                4 => PacketOwnedRawFunctionOwner.SocialListFriend,
+                5 => PacketOwnedRawFunctionOwner.WorldMap,
+                6 => PacketOwnedRawFunctionOwner.Messenger,
+                17 => PacketOwnedRawFunctionOwner.SocialListGuild,
+                19 => PacketOwnedRawFunctionOwner.SocialListParty,
+                24 => PacketOwnedRawFunctionOwner.SocialSearch,
+                29 => PacketOwnedRawFunctionOwner.ItemMaker,
+                31 => PacketOwnedRawFunctionOwner.EventWindow,
+                _ => PacketOwnedRawFunctionOwner.None,
+            };
         }
 
         private static int ComposePacketOwnedFuncKeyInputToken(int scanCode)

@@ -299,6 +299,7 @@ namespace HaCreator.MapSimulator.UI
         private int _nextCompanionInventoryRequestId = 1;
         private int _equipmentRequestSessionId = 1;
         private int _lastEquipmentExclusiveRequestTick = int.MinValue;
+        private bool _androidPaneAvailable = true;
         #endregion
 
         #region Properties
@@ -337,9 +338,10 @@ namespace HaCreator.MapSimulator.UI
             get => _currentTab;
             set
             {
-                if (value >= TAB_CHARACTER && value <= TAB_ANDROID)
+                int normalizedTab = NormalizeRequestedTab(value, _androidPaneAvailable);
+                if (normalizedTab >= TAB_CHARACTER && normalizedTab <= TAB_ANDROID)
                 {
-                    _currentTab = value;
+                    _currentTab = normalizedTab;
                     UpdateTabButtonStates();
                 }
             }
@@ -640,6 +642,7 @@ namespace HaCreator.MapSimulator.UI
 
         public void SetAndroidPaneAvailable(bool available)
         {
+            _androidPaneAvailable = available;
             if (!available && _currentTab == TAB_ANDROID)
             {
                 CurrentTab = TAB_CHARACTER;
@@ -649,6 +652,16 @@ namespace HaCreator.MapSimulator.UI
             {
                 _btnAndroid.ButtonVisible = available;
             }
+        }
+
+        internal static int NormalizeRequestedTab(int requestedTab, bool androidPaneAvailable)
+        {
+            if (requestedTab == TAB_ANDROID && !androidPaneAvailable)
+            {
+                return TAB_CHARACTER;
+            }
+
+            return requestedTab;
         }
         #endregion
 

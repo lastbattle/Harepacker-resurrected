@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int MaxTitleLength = 25;
         private const int MaxThreadBodyLength = 600;
         private const int MaxReplyBodyLength = 25;
+        private const int EnterTextStringPoolId = 0xEB1;
 
         private sealed class GuildBbsCommentState
         {
@@ -416,12 +417,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Guild BBS write mode is not active.";
             }
 
-            string resolvedTitle = string.IsNullOrWhiteSpace(_compose.Title)
-                ? $"Guild update {_draftCounter}"
-                : _compose.Title.Trim();
-            string resolvedBody = string.IsNullOrWhiteSpace(_compose.Body)
-                ? $"Posting from {_locationSummary} for {_guildName} parity checks."
-                : _compose.Body.Trim();
+            string resolvedTitle = _compose.Title?.Trim() ?? string.Empty;
+            string resolvedBody = _compose.Body?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(resolvedTitle) || string.IsNullOrWhiteSpace(resolvedBody))
+            {
+                return GetEnterTextNotice();
+            }
 
             if (_compose.IsNotice)
             {
@@ -519,9 +520,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Guild BBS replies are locked for the current simulator guild role.";
             }
 
-            string replyBody = string.IsNullOrWhiteSpace(_replyDraft.Body)
-                ? $"Checked in from {_locationSummary}."
-                : _replyDraft.Body.Trim();
+            string replyBody = _replyDraft.Body?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(replyBody))
+            {
+                return GetEnterTextNotice();
+            }
+
             selectedThread.Comments.Add(new GuildBbsCommentState
             {
                 CommentId = _nextCommentId++,
@@ -1246,6 +1250,15 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return false;
+        }
+
+        private static string GetEnterTextNotice()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                EnterTextStringPoolId,
+                "Please enter the text.",
+                appendFallbackSuffix: false,
+                minimumHexWidth: 0);
         }
 
         private void SeedDefaultThreads()

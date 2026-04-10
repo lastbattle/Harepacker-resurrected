@@ -333,7 +333,9 @@ namespace HaCreator.MapSimulator.Companions
             if (image[actionName] is WzSubProperty directActionNode
                 && HasRenderableFrames(directActionNode))
             {
-                return new ActionNodeResolution(directActionNode, directActionNode);
+                return TryFindSkillActionMetadataNode(image, actionName, out WzSubProperty metadataNode)
+                    ? new ActionNodeResolution(metadataNode, directActionNode)
+                    : new ActionNodeResolution(directActionNode, directActionNode);
             }
 
             if (image["skill"] is not WzSubProperty skillRoot)
@@ -350,6 +352,26 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return null;
+        }
+
+        private static bool TryFindSkillActionMetadataNode(WzImage image, string actionName, out WzSubProperty metadataNode)
+        {
+            metadataNode = null;
+            if (image?["skill"] is not WzSubProperty skillRoot
+                || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            foreach (WzSubProperty skillNode in skillRoot.WzProperties.OfType<WzSubProperty>())
+            {
+                if (TryFindSkillActionMetadataNode(skillNode, actionName, out metadataNode))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool HasRenderableActionNode(WzImage image, string actionName)
@@ -476,6 +498,28 @@ namespace HaCreator.MapSimulator.Companions
                 }
 
                 resolution = new ActionNodeResolution(metadataNode, frameSourceNode);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryFindSkillActionMetadataNode(WzSubProperty skillNode, string actionName, out WzSubProperty metadataNode)
+        {
+            metadataNode = null;
+            if (skillNode == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            foreach ((string candidateActionName, WzSubProperty candidateMetadataNode) in EnumerateSkillActionEntries(skillNode))
+            {
+                if (!string.Equals(candidateActionName, actionName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                metadataNode = candidateMetadataNode;
                 return true;
             }
 

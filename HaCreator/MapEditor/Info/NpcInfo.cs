@@ -1,5 +1,6 @@
 ﻿using HaCreator.GUI;
 using HaCreator.MapEditor.Instance;
+using HaCreator.MapSimulator.Loaders;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
@@ -135,21 +136,7 @@ namespace HaCreator.MapEditor.Info
             get {
                 if (_LinkedWzImage == null)
                 {
-                    string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
-                    WzImage npcImage = Program.FindImage("Npc", imgName);
-
-                    WzStringProperty link = (WzStringProperty)npcImage?["info"]?["link"];
-                    if (link != null)
-                    {
-                        string linkImgName = WzInfoTools.AddLeadingZeros(link.Value, 7) + ".img";
-                        WzImage linkedImage = Program.FindImage("Npc", linkImgName);
-
-                        _LinkedWzImage = linkedImage ?? npcImage; // fallback to npcImage if null
-                    }
-                    else
-                    {
-                        _LinkedWzImage = npcImage;
-                    }
+                    _LinkedWzImage = NpcImgEntryResolver.Resolve(this);
                 }
                 return _LinkedWzImage;
             }

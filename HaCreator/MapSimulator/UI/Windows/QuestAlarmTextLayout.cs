@@ -44,6 +44,28 @@ namespace HaCreator.MapSimulator.UI
                 : $"{registrationSentence}.";
         }
 
+        internal static string BuildTitleTooltipText(string demandText, IReadOnlyList<string> issues)
+        {
+            List<string> lines = new();
+            AppendTooltipLines(lines, demandText);
+            for (int i = 0; i < (issues?.Count ?? 0); i++)
+            {
+                AppendTooltipLines(lines, issues[i]);
+            }
+
+            if (lines.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            const int maxLines = 3;
+            return string.Join(
+                "\n",
+                lines
+                    .Distinct(StringComparer.Ordinal)
+                    .Take(maxLines));
+        }
+
         internal static IReadOnlyList<string> WrapText(string text, float maxWidth, Func<string, float> measureWidth)
         {
             if (string.IsNullOrWhiteSpace(text) || measureWidth == null || maxWidth <= 0f)
@@ -238,6 +260,25 @@ namespace HaCreator.MapSimulator.UI
             if (current.Length > 0)
             {
                 yield return current.ToString();
+            }
+        }
+
+        private static void AppendTooltipLines(ICollection<string> lines, string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            string normalized = text
+                .Replace("\r", "\n", StringComparison.Ordinal)
+                .Trim();
+            foreach (string line in normalized.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (!string.IsNullOrWhiteSpace(line))
+                {
+                    lines.Add(line);
+                }
             }
         }
 

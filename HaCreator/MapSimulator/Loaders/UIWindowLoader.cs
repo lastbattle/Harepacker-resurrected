@@ -715,6 +715,21 @@ namespace HaCreator.MapSimulator.Loaders
             int width = 312,
             int height = 132)
         {
+            Texture2D noticeTexture = LoadCanvasTexture(utilDialogProperty, "notice", device);
+            if (noticeTexture != null
+                && width == noticeTexture.Width)
+            {
+                if (height == noticeTexture.Height)
+                {
+                    return noticeTexture;
+                }
+
+                if (height > noticeTexture.Height)
+                {
+                    return CreateExtendedUtilDlgNoticeFrameTexture(noticeTexture, height, device);
+                }
+            }
+
             Texture2D topTexture = LoadCanvasTexture(utilDialogProperty, "t", device);
             Texture2D centerTexture = LoadCanvasTexture(utilDialogProperty, "c", device);
             Texture2D bottomTexture = LoadCanvasTexture(utilDialogProperty, "s", device);
@@ -722,14 +737,6 @@ namespace HaCreator.MapSimulator.Loaders
             if (topTexture != null && centerTexture != null && bottomTexture != null)
             {
                 return CreateStitchedUtilDlgFrameTexture(topTexture, centerTexture, bottomTexture, width, height, device);
-            }
-
-            Texture2D noticeTexture = LoadCanvasTexture(utilDialogProperty, "notice", device);
-            if (noticeTexture != null
-                && width == noticeTexture.Width
-                && height >= noticeTexture.Height)
-            {
-                return CreateExtendedUtilDlgNoticeFrameTexture(noticeTexture, height, device);
             }
 
             return noticeTexture;
@@ -2313,7 +2320,7 @@ namespace HaCreator.MapSimulator.Loaders
             RegisterMemoMailboxWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 7), y + (cascade * 4)));
             RegisterQuestTimerWindows(manager, device);
-            RegisterPacketOwnedRewardResultNoticeWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
+            RegisterPacketOwnedRewardResultNoticeWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 6), y + (cascade * 2)));
             RegisterRandomMesoBagWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 7), y + (cascade * 2)));
@@ -3487,6 +3494,7 @@ namespace HaCreator.MapSimulator.Loaders
 
         private static void RegisterPacketOwnedRewardResultNoticeWindow(
             UIWindowManager manager,
+            WzImage uiWindowImage,
             WzImage uiWindow2Image,
             WzImage basicImage,
             WzImage soundUIImage,
@@ -3498,7 +3506,7 @@ namespace HaCreator.MapSimulator.Loaders
                 return;
             }
 
-            UIWindowBase window = CreatePacketOwnedRewardResultNoticeWindow(uiWindow2Image, basicImage, soundUIImage, device, position);
+            UIWindowBase window = CreatePacketOwnedRewardResultNoticeWindow(uiWindowImage, uiWindow2Image, basicImage, soundUIImage, device, position);
             if (window != null)
             {
                 manager.RegisterCustomWindow(window);
@@ -7426,6 +7434,7 @@ namespace HaCreator.MapSimulator.Loaders
                     cashEmoticonProperty,
                     Math.Min(GetPropertyChildCount(cashEmoticonProperty, GuildBbsRuntime.ClientCashEmoticonCount), GuildBbsRuntime.ClientCashEmoticonCount),
                     device),
+                LoadVerticalScrollbarSkin(basicImage?["VScr9"] as WzSubProperty, device),
                 device)
             {
                 Position = position
@@ -8339,6 +8348,12 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 Position = position
             };
+            window.SetOwnerChrome(
+                LoadTextureFromClientUiPath("UI/Basic.img/ComboBox/normal/0", basicImage, uiWindow1Image, device),
+                LoadTextureFromClientUiPath("UI/Basic.img/ComboBox/normal/1", basicImage, uiWindow1Image, device),
+                LoadTextureFromClientUiPath("UI/Basic.img/ComboBox/normal/2", basicImage, uiWindow1Image, device),
+                LoadTextureFromClientUiPath("UI/Basic.img/CheckBox/0", basicImage, uiWindow1Image, device),
+                LoadTextureFromClientUiPath("UI/Basic.img/CheckBox/1", basicImage, uiWindow1Image, device));
 
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
@@ -8350,6 +8365,22 @@ namespace HaCreator.MapSimulator.Loaders
 
             return window;
         }
+
+        private static Texture2D LoadTextureFromClientUiPath(
+            string clientUiPath,
+            WzImage primaryImage,
+            WzImage secondaryImage,
+            GraphicsDevice device)
+        {
+            if (string.IsNullOrWhiteSpace(clientUiPath) || device == null)
+            {
+                return null;
+            }
+
+            WzCanvasProperty canvas = ResolveCanvasFromClientUiPath(clientUiPath, primaryImage, secondaryImage);
+            return canvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+        }
+
         private static PlaceholderUtilityWindow CreateWzPlaceholderUtilityWindow(
             WzSubProperty sourceProperty,
             WzImage basicImage,
@@ -8691,13 +8722,15 @@ namespace HaCreator.MapSimulator.Loaders
         }
 
         private static UIWindowBase CreatePacketOwnedRewardResultNoticeWindow(
+            WzImage uiWindowImage,
             WzImage uiWindow2Image,
             WzImage basicImage,
             WzImage soundUIImage,
             GraphicsDevice device,
             Point position)
         {
-            WzSubProperty utilDialogProperty = uiWindow2Image?["UtilDlgEx"] as WzSubProperty;
+            WzSubProperty utilDialogProperty = uiWindow2Image?["UtilDlgEx"] as WzSubProperty
+                ?? uiWindowImage?["UtilDlgEx"] as WzSubProperty;
             Dictionary<int, IDXObject> framesByLineCount = new();
             for (int lineCount = 1; lineCount <= 8; lineCount++)
             {

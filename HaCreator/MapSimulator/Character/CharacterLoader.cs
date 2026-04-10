@@ -4211,18 +4211,45 @@ namespace HaCreator.MapSimulator.Character
         {
             if (activeTamingMobPart?.Slot != EquipSlot.TamingMob
                 || activeTamingMobPart.ItemId / 10000 != 190
-                || equipment == null
-                || !equipment.TryGetValue(EquipSlot.Saddle, out CharacterPart saddlePart)
-                || saddlePart?.TamingMobActionOverlayResolver == null)
+                || equipment == null)
+            {
+                return activeTamingMobPart;
+            }
+
+            CharacterPart[] overlayParts = EnumerateTamingMobActionOverlayParts(activeTamingMobPart, equipment);
+            if (overlayParts.Length == 0)
             {
                 return activeTamingMobPart;
             }
 
             CharacterPart mergedMountPart = MergeTamingMobActionOverlayParts(
                 activeTamingMobPart,
-                new[] { saddlePart });
-            equipment.Remove(EquipSlot.Saddle);
+                overlayParts);
+
+            foreach (CharacterPart overlayPart in overlayParts)
+            {
+                equipment.Remove(overlayPart.Slot);
+            }
+
             return mergedMountPart;
+        }
+
+        internal static CharacterPart[] EnumerateTamingMobActionOverlayParts(
+            CharacterPart activeTamingMobPart,
+            IDictionary<EquipSlot, CharacterPart> equipment)
+        {
+            if (activeTamingMobPart?.Slot != EquipSlot.TamingMob || equipment == null)
+            {
+                return Array.Empty<CharacterPart>();
+            }
+
+            return equipment.Values
+                .Where(static part => part?.TamingMobActionOverlayResolver != null)
+                .Where(part => !ReferenceEquals(part, activeTamingMobPart))
+                .Where(part => part.Slot != EquipSlot.TamingMob)
+                .OrderBy(part => part.Slot == EquipSlot.Saddle ? 0 : 1)
+                .ThenBy(part => (int)part.Slot)
+                .ToArray();
         }
 
         internal static CharacterPart MergeTamingMobActionOverlayParts(

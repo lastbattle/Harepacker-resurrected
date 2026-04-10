@@ -589,7 +589,15 @@ namespace HaCreator.MapSimulator.Loaders
 
             for (int level = 1; level <= maxLevel; level++)
             {
+                WzImageProperty levelNode = skillEntry["level"]?[level.ToString(CultureInfo.InvariantCulture)];
                 string explicitLevelText = GetStringValue(stringEntry, $"h{level}");
+                if (string.IsNullOrWhiteSpace(explicitLevelText))
+                {
+                    string authoredLevelAlias = GetStringValue(levelNode, "hs");
+                    if (!string.IsNullOrWhiteSpace(authoredLevelAlias))
+                        explicitLevelText = GetStringValue(stringEntry, authoredLevelAlias);
+                }
+
                 string resolved = explicitLevelText;
 
                 if (string.IsNullOrWhiteSpace(resolved) && !string.IsNullOrWhiteSpace(sharedTemplate))

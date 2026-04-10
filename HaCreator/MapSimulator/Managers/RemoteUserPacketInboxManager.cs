@@ -185,6 +185,9 @@ namespace HaCreator.MapSimulator.Managers
                 "mount" => (int)RemoteUserPacketType.UserMount,
                 "prepare" => (int)RemoteUserPacketType.UserPreparedSkill,
                 "preparedclear" => (int)RemoteUserPacketType.UserPreparedSkillClear,
+                "emotion" => (int)RemoteUserPacketType.UserEmotionOfficial,
+                "activeeffect" or "activeeffectitem" or "setactiveeffectitem" => (int)RemoteUserPacketType.UserActiveEffectItemOfficial,
+                "officialchair" or "setactiveportablechair" => (int)RemoteUserPacketType.UserPortableChairOfficial,
                 "pickup" or "droppickup" => (int)RemoteUserPacketType.UserDropPickup,
                 "melee" or "attack" or "meleeattack" => (int)RemoteUserPacketType.UserMeleeAttack,
                 "effect" or "itemeffect" or "ringeffect" => (int)RemoteUserPacketType.UserItemEffect,
@@ -199,9 +202,15 @@ namespace HaCreator.MapSimulator.Managers
 
         public static string DescribePacketType(int packetType)
         {
-            return Enum.IsDefined(typeof(RemoteUserPacketType), packetType)
-                ? $"{(RemoteUserPacketType)packetType} (0x{packetType:X})"
-                : $"packet {packetType}";
+            return packetType switch
+            {
+                (int)RemoteUserPacketType.UserEmotionOfficial => $"UserEmotionOfficial (0x{packetType:X})",
+                (int)RemoteUserPacketType.UserActiveEffectItemOfficial => $"UserActiveEffectItemOfficial (0x{packetType:X})",
+                (int)RemoteUserPacketType.UserPortableChairOfficial => $"UserPortableChairOfficial (0x{packetType:X})",
+                _ => Enum.IsDefined(typeof(RemoteUserPacketType), packetType)
+                    ? $"{(RemoteUserPacketType)packetType} (0x{packetType:X})"
+                    : $"packet {packetType}"
+            };
         }
 
         public static byte[] BuildDropPickupPayload(int dropId, int actorId, DropPickupActorKind actorKind, string actorName)

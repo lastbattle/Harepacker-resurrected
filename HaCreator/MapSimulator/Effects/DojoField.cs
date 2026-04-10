@@ -148,6 +148,8 @@ namespace HaCreator.MapSimulator.Effects
         public bool IsTimeOverResultActive => _resultEffect == DojoResultEffect.TimeOver;
         public int NextFloorMapId => ResolveNextFloorMapId();
         public string NextFloorPortalName => ResolveNextFloorPortalName() ?? string.Empty;
+        public int ClearTransferMapId => ResolveClearTransferMapId();
+        public string ClearTransferPortalName => ResolveClearTransferPortalName() ?? string.Empty;
         public int ExitMapId => ResolveExitMapId();
         public bool HasLiveTimer => _timeOverTick != int.MinValue && _timeOverTick > Environment.TickCount;
         public bool IsTimerExpired => _timeOverTick != int.MinValue && _timeOverTick != 0 && _timeOverTick <= Environment.TickCount;
@@ -692,6 +694,26 @@ namespace HaCreator.MapSimulator.Effects
             return _nextFloorMapId > 0 && !string.IsNullOrWhiteSpace(_nextFloorPortalName)
                 ? _nextFloorPortalName
                 : null;
+        }
+        private int ResolveClearTransferMapId()
+        {
+            if (_resultEffect == DojoResultEffect.Clear && _pendingTransferMapId > 0)
+            {
+                return _pendingTransferMapId;
+            }
+
+            return ResolveNextFloorMapId();
+        }
+        private string ResolveClearTransferPortalName()
+        {
+            if (_resultEffect == DojoResultEffect.Clear
+                && _pendingTransferMapId > 0
+                && !string.IsNullOrWhiteSpace(_pendingTransferPortalName))
+            {
+                return _pendingTransferPortalName;
+            }
+
+            return ResolveNextFloorPortalName();
         }
         private static (int MapId, string PortalName) ResolveNextFloorDestinationFromPortals(IEnumerable<PortalInstance> portals)
         {
