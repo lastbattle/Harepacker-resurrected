@@ -78,6 +78,8 @@ namespace HaCreator.MapSimulator
                 packet.Flip,
                 packet.Name,
                 currentTick,
+                _playerManager?.Player?.Position.X,
+                _playerManager?.Player?.Position.Y,
                 out int reactorIndex,
                 out string detail);
             if (entered && reactorIndex >= 0)

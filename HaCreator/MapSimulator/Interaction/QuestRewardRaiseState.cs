@@ -29,6 +29,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string LastInboundSummary { get; set; } = string.Empty;
         public bool AwaitingConfirmAck { get; set; }
         public bool AwaitingOwnerDestroyAck { get; set; }
+        public bool IsWindowDismissedLocally { get; set; }
         public Dictionary<int, int> SelectedItemsByGroup { get; } = new Dictionary<int, int>();
         public List<QuestRewardRaisePlacedPiece> PlacedPieces { get; } = new List<QuestRewardRaisePlacedPiece>();
 
@@ -50,7 +51,8 @@ namespace HaCreator.MapSimulator.Interaction
                 OpenDispatchSummary = OpenDispatchSummary,
                 LastInboundSummary = LastInboundSummary,
                 AwaitingConfirmAck = AwaitingConfirmAck,
-                AwaitingOwnerDestroyAck = AwaitingOwnerDestroyAck
+                AwaitingOwnerDestroyAck = AwaitingOwnerDestroyAck,
+                IsWindowDismissedLocally = IsWindowDismissedLocally
             };
 
             foreach (KeyValuePair<int, int> selectedItem in SelectedItemsByGroup)

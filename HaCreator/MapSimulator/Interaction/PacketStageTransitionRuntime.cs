@@ -180,6 +180,11 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyDictionary<byte, int> hiddenEquipmentByBodyPart = null,
             int weaponStickerItemId = 0,
             ulong additionalCharacterDataFlags = 0,
+            byte combatOrders = 0,
+            bool useBackwardUpdatePrelude = false,
+            byte backwardUpdateSubtype = 0,
+            IReadOnlyList<long> backwardUpdatePrimaryRemovedSerialNumbers = null,
+            IReadOnlyList<long> backwardUpdateSecondaryRemovedSerialNumbers = null,
             byte[] characterDataTail = null,
             byte[] logoutGiftConfigPayload = null,
             long serverFileTime = 0)
@@ -215,8 +220,17 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 writer.Write(characterDataFlags | additionalCharacterDataFlags);
-                writer.Write((byte)0); // nCombatOrders
-                writer.Write((byte)0); // bBackwardUpdate
+                writer.Write(combatOrders);
+                writer.Write(useBackwardUpdatePrelude ? (byte)1 : (byte)0);
+                if (useBackwardUpdatePrelude)
+                {
+                    WriteCharacterDataBackwardUpdatePrelude(
+                        writer,
+                        backwardUpdateSubtype,
+                        backwardUpdatePrimaryRemovedSerialNumbers,
+                        backwardUpdateSecondaryRemovedSerialNumbers);
+                }
+
                 WriteCharacterDataStatAndTrailer(
                     writer,
                     mapId,
@@ -318,6 +332,28 @@ namespace HaCreator.MapSimulator.Interaction
             writer.Write(serverFileTime);
             writer.Flush();
             return stream.ToArray();
+        }
+
+        private static void WriteCharacterDataBackwardUpdatePrelude(
+            BinaryWriter writer,
+            byte backwardUpdateSubtype,
+            IReadOnlyList<long> primaryRemovedSerialNumbers,
+            IReadOnlyList<long> secondaryRemovedSerialNumbers)
+        {
+            IReadOnlyList<long> primary = primaryRemovedSerialNumbers ?? Array.Empty<long>();
+            IReadOnlyList<long> secondary = secondaryRemovedSerialNumbers ?? Array.Empty<long>();
+            writer.Write(backwardUpdateSubtype);
+            writer.Write(primary.Count);
+            foreach (long serialNumber in primary)
+            {
+                writer.Write(serialNumber);
+            }
+
+            writer.Write(secondary.Count);
+            foreach (long serialNumber in secondary)
+            {
+                writer.Write(serialNumber);
+            }
         }
 
         internal static bool TryDecodeTrailingLogoutGiftConfigPayload(
@@ -941,21 +977,21 @@ namespace HaCreator.MapSimulator.Interaction
             try
             {
                 characterDataFlags = reader.ReadUInt64();
-                _ = reader.ReadByte(); // nCombatOrders
+                byte combatOrders = reader.ReadByte();
                 bool hasBackwardUpdate = reader.ReadByte() != 0;
+                byte backwardUpdateSubtype = 0;
+                IReadOnlyList<long> backwardUpdatePrimaryRemovedSerialNumbers = Array.Empty<long>();
+                IReadOnlyList<long> backwardUpdateSecondaryRemovedSerialNumbers = Array.Empty<long>();
                 if (hasBackwardUpdate)
                 {
-                    _ = reader.ReadByte(); // update subtype
+                    backwardUpdateSubtype = reader.ReadByte();
                     int removedSnCount = reader.ReadInt32();
                     if (removedSnCount < 0)
                     {
                         return false;
                     }
 
-                    checked
-                    {
-                        reader.BaseStream.Position += removedSnCount * sizeof(long);
-                    }
+                    backwardUpdatePrimaryRemovedSerialNumbers = ReadCharacterDataInt64Array(reader, removedSnCount);
 
                     int removedCashCount = reader.ReadInt32();
                     if (removedCashCount < 0)
@@ -963,10 +999,7 @@ namespace HaCreator.MapSimulator.Interaction
                         return false;
                     }
 
-                    checked
-                    {
-                        reader.BaseStream.Position += removedCashCount * sizeof(long);
-                    }
+                    backwardUpdateSecondaryRemovedSerialNumbers = ReadCharacterDataInt64Array(reader, removedCashCount);
                 }
 
                 if ((characterDataFlags & 0x1UL) == 0)
@@ -979,6 +1012,17 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     snapshot = decoratedSnapshot;
                 }
+
+                snapshot = snapshot with
+                {
+                    CombatOrders = combatOrders,
+                    HasBackwardUpdate = hasBackwardUpdate,
+                    BackwardUpdateSubtype = backwardUpdateSubtype,
+                    BackwardUpdatePrimaryRemovedSerialNumberCount = backwardUpdatePrimaryRemovedSerialNumbers.Count,
+                    BackwardUpdatePrimaryRemovedSerialNumbers = backwardUpdatePrimaryRemovedSerialNumbers,
+                    BackwardUpdateSecondaryRemovedSerialNumberCount = backwardUpdateSecondaryRemovedSerialNumbers.Count,
+                    BackwardUpdateSecondaryRemovedSerialNumbers = backwardUpdateSecondaryRemovedSerialNumbers
+                };
 
                 snapshot = DecodeCharacterDataOwnedPreludeSections(reader, characterDataFlags, snapshot);
                 if (TryDecodeCharacterDataInventorySections(reader, characterDataFlags, snapshot, out PacketCharacterDataSnapshot inventoryDecoratedSnapshot))
@@ -1656,6 +1700,22 @@ namespace HaCreator.MapSimulator.Interaction
             return records;
         }
 
+        private static IReadOnlyList<long> ReadCharacterDataInt64Array(BinaryReader reader, int count)
+        {
+            if (count <= 0)
+            {
+                return Array.Empty<long>();
+            }
+
+            long[] values = new long[count];
+            for (int i = 0; i < count; i++)
+            {
+                values[i] = reader.ReadInt64();
+            }
+
+            return values;
+        }
+
         private static IReadOnlyDictionary<int, int> ReadCharacterDataInt16ValueRecords(BinaryReader reader)
         {
             ushort count = reader.ReadUInt16();
@@ -2312,6 +2372,13 @@ namespace HaCreator.MapSimulator.Interaction
         short SubJob,
         byte FriendMax,
         string LinkedCharacterName,
+        byte CombatOrders = 0,
+        bool HasBackwardUpdate = false,
+        byte BackwardUpdateSubtype = 0,
+        int BackwardUpdatePrimaryRemovedSerialNumberCount = 0,
+        IReadOnlyList<long> BackwardUpdatePrimaryRemovedSerialNumbers = null,
+        int BackwardUpdateSecondaryRemovedSerialNumberCount = 0,
+        IReadOnlyList<long> BackwardUpdateSecondaryRemovedSerialNumbers = null,
         int? Meso = null,
         IReadOnlyDictionary<InventoryType, int> InventorySlotLimits = null,
         IReadOnlyDictionary<InventoryType, IReadOnlyList<PacketCharacterDataItemSlot>> InventoryItemsByType = null,

@@ -29,6 +29,11 @@ namespace HaCreator.MapSimulator.UI
         public const string CashShopList = "CashShopList";
         public const string CashShopStatus = "CashShopStatus";
         public const string CashShopOneADay = "CashShopOneADay";
+        public const string CashCouponDialog = "CashCouponDialog";
+        public const string CashPurchaseConfirmDialog = "CashPurchaseConfirmDialog";
+        public const string CashReceiveGiftDialog = "CashReceiveGiftDialog";
+        public const string CashNameChangeLicenseDialog = "CashNameChangeLicenseDialog";
+        public const string CashTransferWorldLicenseDialog = "CashTransferWorldLicenseDialog";
         public const string Mts = "MTS";
         public const string MtsStatus = "MtsStatus";
         public const string ItcCharacter = "ItcCharacter";

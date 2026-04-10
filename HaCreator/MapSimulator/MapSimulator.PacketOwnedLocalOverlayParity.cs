@@ -3611,8 +3611,18 @@ namespace HaCreator.MapSimulator
                     buffSkillRequest));
         }
 
-        private bool TryApplyPacketOwnedFieldFadePayload(byte[] payload, out string message)
+        internal static bool TryDecodePacketOwnedFieldFadePayload(
+            byte[] payload,
+            out int fadeInMs,
+            out int holdMs,
+            out int fadeOutMs,
+            out int startingAlpha,
+            out string message)
         {
+            fadeInMs = 0;
+            holdMs = 0;
+            fadeOutMs = 0;
+            startingAlpha = 0;
             message = null;
             if (payload == null || payload.Length < 16)
             {
@@ -3624,11 +3634,16 @@ namespace HaCreator.MapSimulator
             {
                 using var stream = new MemoryStream(payload, writable: false);
                 using var reader = new BinaryReader(stream, Encoding.Default, leaveOpen: false);
-                int fadeInMs = reader.ReadInt32();
-                int holdMs = reader.ReadInt32();
-                int fadeOutMs = reader.ReadInt32();
-                int startingAlpha = reader.ReadInt32();
-                message = ApplyPacketOwnedFieldFade(fadeInMs, holdMs, fadeOutMs, startingAlpha, currTickCount);
+                fadeInMs = reader.ReadInt32();
+                holdMs = reader.ReadInt32();
+                fadeOutMs = reader.ReadInt32();
+                startingAlpha = reader.ReadInt32();
+                if (stream.Position != stream.Length)
+                {
+                    message = $"Field-fade payload has {stream.Length - stream.Position} trailing byte(s).";
+                    return false;
+                }
+
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException or IOException)
@@ -3638,8 +3653,37 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private bool TryApplyPacketOwnedBalloonPayload(byte[] payload, out string message)
+        private bool TryApplyPacketOwnedFieldFadePayload(byte[] payload, out string message)
         {
+            if (!TryDecodePacketOwnedFieldFadePayload(
+                    payload,
+                    out int fadeInMs,
+                    out int holdMs,
+                    out int fadeOutMs,
+                    out int startingAlpha,
+                    out message))
+            {
+                return false;
+            }
+
+            message = ApplyPacketOwnedFieldFade(fadeInMs, holdMs, fadeOutMs, startingAlpha, currTickCount);
+            return true;
+        }
+
+        internal static bool TryDecodePacketOwnedBalloonPayload(
+            byte[] payload,
+            out string text,
+            out int width,
+            out int lifetimeMs,
+            out bool attachToAvatar,
+            out Point worldAnchor,
+            out string message)
+        {
+            text = null;
+            width = 0;
+            lifetimeMs = 0;
+            attachToAvatar = false;
+            worldAnchor = Point.Zero;
             message = null;
             if (payload == null)
             {
@@ -3651,17 +3695,21 @@ namespace HaCreator.MapSimulator
             {
                 using var stream = new MemoryStream(payload, writable: false);
                 using var reader = new BinaryReader(stream, Encoding.Default, leaveOpen: false);
-                string text = ReadPacketOwnedMapleString(reader);
-                int width = reader.ReadUInt16();
-                int lifetimeMs = reader.ReadUInt16() * 1000;
-                bool attachToAvatar = reader.ReadByte() != 0;
-                Point worldAnchor = Point.Zero;
+                text = ReadPacketOwnedMapleString(reader);
+                width = reader.ReadUInt16();
+                lifetimeMs = reader.ReadUInt16() * 1000;
+                attachToAvatar = reader.ReadByte() != 0;
                 if (!attachToAvatar)
                 {
                     worldAnchor = new Point(reader.ReadInt32(), reader.ReadInt32());
                 }
 
-                message = ShowPacketOwnedBalloon(text, width, lifetimeMs, attachToAvatar, worldAnchor, currTickCount);
+                if (stream.Position != stream.Length)
+                {
+                    message = $"Balloon payload has {stream.Length - stream.Position} trailing byte(s).";
+                    return false;
+                }
+
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException or IOException)
@@ -3669,6 +3717,24 @@ namespace HaCreator.MapSimulator
                 message = $"Balloon payload could not be decoded: {ex.Message}";
                 return false;
             }
+        }
+
+        private bool TryApplyPacketOwnedBalloonPayload(byte[] payload, out string message)
+        {
+            if (!TryDecodePacketOwnedBalloonPayload(
+                    payload,
+                    out string text,
+                    out int width,
+                    out int lifetimeMs,
+                    out bool attachToAvatar,
+                    out Point worldAnchor,
+                    out message))
+            {
+                return false;
+            }
+
+            message = ShowPacketOwnedBalloon(text, width, lifetimeMs, attachToAvatar, worldAnchor, currTickCount);
+            return true;
         }
 
         private bool TryApplyPacketOwnedDamageMeterPayload(byte[] payload, out string message)

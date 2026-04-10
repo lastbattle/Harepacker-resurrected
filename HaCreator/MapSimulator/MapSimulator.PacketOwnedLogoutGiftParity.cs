@@ -167,8 +167,9 @@ namespace HaCreator.MapSimulator
                 : " The cached slot is empty, but the client still emits the slot index.";
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.LogoutGift);
             string followUpMessage = ShowPacketOwnedLogoutGiftCompletionDialog();
+            int buttonId = LogoutGiftWindow.GetClientSelectButtonId(index);
             _lastPacketOwnedLogoutGiftSummary =
-                $"Simulated CUILogoutGift::OnButtonClicked outpacket {PacketOwnedLogoutGiftSelectionOpcode} with slot index {index.ToString(CultureInfo.InvariantCulture)} (button {1000 + index}).{commoditySuffix} {DispatchPacketOwnedLogoutGiftSelectionRequest(index)} {followUpMessage}";
+                $"Simulated CUILogoutGift::OnButtonClicked outpacket {PacketOwnedLogoutGiftSelectionOpcode} with slot index {index.ToString(CultureInfo.InvariantCulture)} (button {buttonId.ToString(CultureInfo.InvariantCulture)}).{commoditySuffix} {DispatchPacketOwnedLogoutGiftSelectionRequest(index)} {followUpMessage}";
             NotifyEventAlarmOwnerActivity("packet-owned logout gift");
             return _lastPacketOwnedLogoutGiftSummary;
         }
@@ -327,7 +328,7 @@ namespace HaCreator.MapSimulator
             ShowWindow(
                 MapSimulatorWindowNames.LogoutGift,
                 window,
-                trackDirectionModeOwner: ShouldTrackInheritedDirectionModeOwner());
+                trackDirectionModeOwner: true);
             uiWindowManager?.BringToFront(window);
 
             message = $"CUILogoutGift::TryShowLogoutGiftDialog presented the dedicated owner from {_lastPacketOwnedLogoutGiftLaunchSource} using cached commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()}.";

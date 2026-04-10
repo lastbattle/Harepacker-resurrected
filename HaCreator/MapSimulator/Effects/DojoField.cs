@@ -237,6 +237,27 @@ namespace HaCreator.MapSimulator.Effects
             int clearMapIdHint,
             string clearPortalNameHint,
             int exitMapIdHint,
+            int pendingTransferMapIdHint,
+            string pendingTransferPortalNameHint,
+            out int packetType,
+            out string reason,
+            out bool isStableInference)
+        {
+            return TryInferPacketType(
+                payload,
+                clearMapIdHint,
+                clearPortalNameHint,
+                exitMapIdHint,
+                out packetType,
+                out reason,
+                out isStableInference);
+        }
+
+        public static bool TryInferPacketType(
+            byte[] payload,
+            int clearMapIdHint,
+            string clearPortalNameHint,
+            int exitMapIdHint,
             out int packetType,
             out string reason,
             out bool isStableInference)

@@ -15,6 +15,10 @@ namespace HaCreator.MapSimulator.Interaction
             [0x012F] = "You have gained mesos (+%d)",
             [0x0130] = "Internet Cafe Meso Bonus (+%d)",
             [0x0134] = "You can't get anymore items.",
+            // Recovered from MapleStory.exe v95 `format_string`, which
+            // `CWvsContext::OnDropPickUpMessage` uses before formatting
+            // long item names into StringPool[0x1542]/[0x1543].
+            [0x08B8] = "..",
             [0x0BD2] = "Your inventory is full.",
             [0x1491] = "Your pet has picked up some mesos.",
             [0x14D3] = "You cannot acquire any items because the game file has been damaged. Please try again after reinstalling the game.",
@@ -103,10 +107,11 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0FF3] = "Effect/BasicEff.img/SkillBook/Failure/0",
             [0x0FF4] = "Effect/BasicEff.img/SkillBook/Failure/1",
             // Recovered from MapleStory.exe v95 `CUIAccountMoreInfo::LoadCountryName`
-            // and `CUIAccountMoreInfo::OnSaveAccountMoreInfoResult`. The generated
+            // `CUIAccountMoreInfo::OnDestroy`, and `CUIAccountMoreInfo::OnSaveAccountMoreInfoResult`. The generated
             // table drifts in this block, so keep these account-more-info owner
             // literals explicit instead of resolving unrelated FriendRecommendations
             // resource paths.
+            [0x16B6] = "Please fill in your information later. If not, you may not receive friend recommendations.",
             [0x16B7] = "Fail. Please try again later.",
             [0x16B8] = "Select",
             // Recovered from MapleStory.exe v95 `CDragon::UpdateQuestInfo`. The generated table
@@ -353,6 +358,13 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return $"{fallbackText} ({FormatFallbackLabel(stringPoolId, minimumHexWidth)} fallback)";
+        }
+
+        public static string GetOrNull(int stringPoolId)
+        {
+            return TryGet(stringPoolId, out string resolvedText)
+                ? resolvedText
+                : null;
         }
 
         public static string GetCompositeFormatOrFallback(

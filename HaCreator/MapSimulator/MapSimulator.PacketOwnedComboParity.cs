@@ -407,7 +407,8 @@ namespace HaCreator.MapSimulator
             }
 
             WzImage basicEffectImage = Program.FindImage("Effect", "BasicEff.img");
-            List<IDXObject> frames = LoadPacketOwnedAnimationFrames(ResolvePacketOwnedPropertyPath(basicEffectImage, propertyPath), fallbackDelay: 120);
+            List<IDXObject> frames = ExtractPacketOwnedFrameSprites(
+                LoadPacketOwnedAnimationFrames(ResolvePacketOwnedPropertyPath(basicEffectImage, propertyPath), fallbackDelay: 120));
             if (frames?.Count > 0)
             {
                 _packetOwnedComboAnimationCache[propertyPath] = frames;

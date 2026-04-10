@@ -461,7 +461,7 @@ namespace HaCreator.MapSimulator
             ShowWindow(
                 windowName,
                 challengeWindow,
-                trackDirectionModeOwner: ShouldTrackInheritedDirectionModeOwner());
+                trackDirectionModeOwner: true);
 
             SetPacketOwnedAntiMacroComboHold(true);
             _packetOwnedAntiMacroCurrentRemainingMs = remainingMs;
@@ -514,7 +514,7 @@ namespace HaCreator.MapSimulator
                 ShowWindow(
                     MapSimulatorWindowNames.AntiMacroNotice,
                     noticeWindow,
-                    trackDirectionModeOwner: ShouldTrackInheritedDirectionModeOwner());
+                    trackDirectionModeOwner: true);
             }
 
             _lastPacketOwnedAntiMacroSummary = $"Opened anti-macro notice owner for type {noticeType} / mode {antiMacroType}.";

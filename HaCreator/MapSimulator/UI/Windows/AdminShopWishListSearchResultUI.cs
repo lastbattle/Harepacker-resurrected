@@ -34,6 +34,7 @@ namespace HaCreator.MapSimulator.UI
         private const int DetailWidth = 142;
         private const int DetailLineHeight = 18;
         private const int FooterY = 392;
+        private const int FooterLineHeight = 16;
         private const int IconX = 375;
         private const int IconY = 296;
         private const int IconSize = 32;
@@ -373,9 +374,26 @@ namespace HaCreator.MapSimulator.UI
             string status = string.IsNullOrWhiteSpace(_statusMessage)
                 ? _owner?.GetStatusMessage() ?? string.Empty
                 : _statusMessage;
+            IReadOnlyList<string> serviceStateDetails = _owner?.GetWishlistSearchServiceStateDetailLines() ?? Array.Empty<string>();
             if (!string.IsNullOrWhiteSpace(serviceState))
             {
-                sprite.DrawString(_font, TrimToWidth(serviceState, 404f), new Vector2(bounds.X + HeaderX, bounds.Y + FooterY - 18), new Color(214, 223, 236));
+                sprite.DrawString(_font, TrimToWidth(serviceState, 404f), new Vector2(bounds.X + HeaderX, bounds.Y + FooterY - (FooterLineHeight * 2)), new Color(214, 223, 236));
+            }
+
+            int detailLineCount = Math.Min(2, serviceStateDetails.Count);
+            for (int i = 0; i < detailLineCount; i++)
+            {
+                string detailLine = serviceStateDetails[i];
+                if (string.IsNullOrWhiteSpace(detailLine))
+                {
+                    continue;
+                }
+
+                sprite.DrawString(
+                    _font,
+                    TrimToWidth(detailLine, 404f),
+                    new Vector2(bounds.X + HeaderX, bounds.Y + FooterY - FooterLineHeight + (i * FooterLineHeight)),
+                    new Color(198, 208, 224));
             }
 
             sprite.DrawString(_font, TrimToWidth(status, 404f), new Vector2(bounds.X + HeaderX, bounds.Y + FooterY), new Color(255, 233, 160));

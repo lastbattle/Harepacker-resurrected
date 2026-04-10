@@ -104,7 +104,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Regex VegaModifierRegex = new Regex(@"enables\s+a\s+(\d+)\s*%\s+success\s+rate\s+on\s+a\s+(\d+)\s*%\s+scroll", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex ScrollTargetRegex = new Regex(@"Scroll\s+for\s+(.+?)\s+for\s", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex PercentChanceRegex = new Regex(@"(\d+)\s*%\s+chance", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex DestroyChanceRegex = new Regex(@"(?:chance\s+of\s+being\s+destroyed|destroyed\s+(?:in|at)\s+(?:a\s+)?)\s*(\d+)\s*%\s*(?:[-\s]*chance|rate)?|(\d+)\s*%\s*(?:[-\s]*chance\s+of\s+being\s+destroyed|chance\s+of\s+being\s+destroyed)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex DestroyChanceRegex = new Regex(@"(?:chance\s+(?:of\s+being|to\s+be)\s+(?:completely\s+)?destroyed|destroyed\s+(?:in|at)\s+(?:a\s+)?)\s*(\d+)\s*%\s*(?:[-\s]*chance|rate)?|(\d+)\s*%\s*(?:[-\s]*chance\s+(?:of\s+being|to\s+be)\s+(?:completely\s+)?destroyed|chance\s+(?:of\s+being|to\s+be)\s+(?:completely\s+)?destroyed)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex CompleteDestroyRegex = new Regex(@"(?:if\s+(?:it\s+)?fails?|upon\s+failure).*?(?:completely\s+destroyed|destroyed\s+completely)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex WeaponAttackBonusRegex = new Regex(@"(?:Weapon\s+Attack|Physical\s+Attack(?:\s+Power)?|Weapon\s+ATT|Physical\s+ATT|Attack\s+Power|(?<!Magic\s)(?<!Magical\s)(?<!M\.)(?<!M\.\s)(?<!M\s)(?<![A-Za-z.])ATT(?![A-Za-z]))(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex MagicAttackBonusRegex = new Regex(@"(?:Magic(?:al)?\s+Attack(?:\s+Power)?|Magical\s+Power|Magic\s+Power|Magic\s+ATT|Magical\s+ATT|M\.?\s*ATT)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -1674,8 +1674,11 @@ namespace HaCreator.MapSimulator.UI
 
         private bool TryStartThemePresentation(VisualThemeKind themeKind, ItemUpgradeAttemptResult result)
         {
+            bool useSharedCubePresentation = UsesSharedCubePresentation(themeKind);
+            WindowVisualTheme theme = null;
             bool hasLocalThemeFrames =
-                _visualThemes.TryGetValue(themeKind, out WindowVisualTheme theme) &&
+                !useSharedCubePresentation &&
+                _visualThemes.TryGetValue(themeKind, out theme) &&
                 theme.EffectFrames != null &&
                 theme.EffectFrames.Count > 0;
             int sharedDurationMs = 0;
@@ -1702,6 +1705,13 @@ namespace HaCreator.MapSimulator.UI
             _statusMessage = $"Using {ResolveConsumableName(result.ConsumableItemId)}...";
             ApplyVisualTheme(themeKind);
             return true;
+        }
+
+        private static bool UsesSharedCubePresentation(VisualThemeKind themeKind)
+        {
+            return themeKind == VisualThemeKind.MiracleCube ||
+                   themeKind == VisualThemeKind.HyperMiracleCube ||
+                   themeKind == VisualThemeKind.MapleMiracleCube;
         }
 
         private void ResetPresentationState()

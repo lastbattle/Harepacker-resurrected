@@ -971,15 +971,20 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (currentLevel > 0 && durationMinutes > 0)
             {
-                return canManageSkills ? "Inactive" : "View only";
-            }
-
-            if (!canManageSkills)
-            {
-                return "View only";
+                return "Inactive";
             }
 
             return string.Empty;
+        }
+
+        internal static string ResolveAuthorityLabel(bool inGuild, bool canManageSkills)
+        {
+            if (!inGuild || canManageSkills)
+            {
+                return string.Empty;
+            }
+
+            return "View only";
         }
 
         private static string FormatDuration(int durationMinutes)

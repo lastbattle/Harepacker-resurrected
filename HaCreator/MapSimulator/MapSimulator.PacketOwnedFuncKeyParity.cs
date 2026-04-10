@@ -112,17 +112,24 @@ namespace HaCreator.MapSimulator
             Messenger = 3,
             SocialListGuild = 4,
             SocialListParty = 5,
-            SocialSearch = 6,
-            ItemMaker = 7,
-            EventWindow = 8,
-            ChatAll = 9,
-            ChatWhisper = 10,
-            ChatParty = 11,
-            ChatFriend = 12,
-            ChatGuild = 13,
-            ChatAlliance = 14,
-            FamilyChart = 15,
-            ChatExpedition = 16,
+            SocialListAlliance = 6,
+            ShortcutMenu = 7,
+            QuestAlarm = 8,
+            CashShop = 9,
+            Ranking = 10,
+            FamilyChart = 11,
+            FamilyTree = 12,
+        }
+
+        internal enum PacketOwnedRawChatOwner
+        {
+            None = 0,
+            All = 1,
+            WhisperTargetPicker = 2,
+            Party = 3,
+            Friend = 4,
+            Guild = 5,
+            Alliance = 6,
         }
 
         [DllImport("user32.dll", EntryPoint = "MapVirtualKeyW", ExactSpelling = true)]
@@ -792,7 +799,8 @@ namespace HaCreator.MapSimulator
                 skill?.IconTexture,
                 title,
                 detail,
-                badgeText: badgeText);
+                badgeText: badgeText,
+                drawLayer: KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.Skill);
         }
 
         private KeyConfigWindow.ShortcutVisualState BuildPacketOwnedKeyConfigItemShortcutVisualState(
@@ -838,7 +846,14 @@ namespace HaCreator.MapSimulator
                 detail,
                 badgeText: badgeText,
                 quantityText: quantityText,
-                unavailable: drawsUnavailableOverlay);
+                unavailable: drawsUnavailableOverlay,
+                drawLayer: packetEntryType switch
+                {
+                    PacketOwnedFuncKeyItemType => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.ItemStack,
+                    PacketOwnedFuncKeyItemTypeAlt => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.ItemUnavailable,
+                    PacketOwnedFuncKeyItemTypeCash => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.CashItem,
+                    _ => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.ItemStack,
+                });
         }
 
         private Texture2D ResolvePacketOwnedKeyConfigItemIcon(int itemId, InventoryType inventoryType)
@@ -881,7 +896,8 @@ namespace HaCreator.MapSimulator
                 title,
                 detail,
                 badgeText: $"M{packetMacroId}",
-                unavailable: unavailable);
+                unavailable: unavailable,
+                drawLayer: KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.Macro);
         }
 
         private int ResolvePacketOwnedKeyConfigItemCount(int itemId)
@@ -1233,46 +1249,72 @@ namespace HaCreator.MapSimulator
                     _socialListRuntime.SelectTab(SocialListTab.Party);
                     ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialList);
                     return true;
-                case PacketOwnedRawFunctionOwner.SocialSearch:
-                    _socialListRuntime.OpenSearchWindow(SocialSearchTab.Party);
-                    WireSocialSearchWindowData();
-                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialSearch);
+                case PacketOwnedRawFunctionOwner.SocialListAlliance:
+                    _socialListRuntime.SelectTab(SocialListTab.Alliance);
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialList);
                     return true;
-                case PacketOwnedRawFunctionOwner.ItemMaker:
-                    ShowPacketOwnedProfessionWindow();
+                case PacketOwnedRawFunctionOwner.ShortcutMenu:
+                    ToggleStatusBarPopupWindow(MapSimulatorWindowNames.Menu, MapSimulatorWindowNames.System);
                     return true;
-                case PacketOwnedRawFunctionOwner.EventWindow:
-                    ShowUtilityWindow(MapSimulatorWindowNames.Event, "packet-owned-funckey:31");
+                case PacketOwnedRawFunctionOwner.QuestAlarm:
+                    TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.QuestAlarm, () =>
+                        ShowUtilityWindow(MapSimulatorWindowNames.QuestAlarm, "packet-owned-funckey:20"));
                     return true;
-                case PacketOwnedRawFunctionOwner.ChatAll:
+                case PacketOwnedRawFunctionOwner.CashShop:
+                    ShowCashShopWindow();
+                    return true;
+                case PacketOwnedRawFunctionOwner.Ranking:
+                    TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.Ranking, () =>
+                        ShowUtilityWindow(MapSimulatorWindowNames.Ranking, "packet-owned-funckey:25"));
+                    return true;
+                case PacketOwnedRawFunctionOwner.FamilyChart:
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyChart);
+                    return true;
+                case PacketOwnedRawFunctionOwner.FamilyTree:
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyChart);
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyTree);
+                    return true;
+                default:
+                    break;
+            }
+
+            switch (ResolvePacketOwnedRawChatOwner(clientFunctionId))
+            {
+                case PacketOwnedRawChatOwner.All:
                     _chat.ActivateTarget(MapSimulatorChatTargetType.All, currentTime);
                     return true;
-                case PacketOwnedRawFunctionOwner.ChatWhisper:
+                case PacketOwnedRawChatOwner.WhisperTargetPicker:
                     _chat.OpenWhisperTargetPicker(
                         currentTime,
                         presentation: MapSimulatorChat.WhisperTargetPickerPresentation.Modal);
                     return true;
-                case PacketOwnedRawFunctionOwner.ChatParty:
+                case PacketOwnedRawChatOwner.Party:
                     _chat.ActivateTarget(MapSimulatorChatTargetType.Party, currentTime);
                     return true;
-                case PacketOwnedRawFunctionOwner.ChatFriend:
+                case PacketOwnedRawChatOwner.Friend:
                     _chat.ActivateTarget(MapSimulatorChatTargetType.Friend, currentTime);
                     return true;
-                case PacketOwnedRawFunctionOwner.ChatGuild:
+                case PacketOwnedRawChatOwner.Guild:
                     _chat.ActivateTarget(MapSimulatorChatTargetType.Guild, currentTime);
                     return true;
-                case PacketOwnedRawFunctionOwner.ChatAlliance:
+                case PacketOwnedRawChatOwner.Alliance:
                     _chat.ActivateTarget(MapSimulatorChatTargetType.Association, currentTime);
-                    return true;
-                case PacketOwnedRawFunctionOwner.FamilyChart:
-                    ShowPacketOwnedFamilyChartWindow();
-                    return true;
-                case PacketOwnedRawFunctionOwner.ChatExpedition:
-                    _chat.ActivateTarget(MapSimulatorChatTargetType.Expedition, currentTime);
                     return true;
                 default:
                     return false;
             }
+        }
+
+        private void TogglePacketOwnedRawUtilityWindow(string windowName, Action showAction)
+        {
+            UIWindowBase window = uiWindowManager?.GetWindow(windowName);
+            if (window?.IsVisible == true)
+            {
+                uiWindowManager.HideWindow(windowName);
+                return;
+            }
+
+            showAction?.Invoke();
         }
 
         private bool TryUsePacketOwnedFuncKeyItem(int itemId, int currentTime)
@@ -1286,13 +1328,7 @@ namespace HaCreator.MapSimulator
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemMaker) is ItemMakerUI itemMakerWindow)
             {
-                itemMakerWindow.SetCraftingState(
-                    _playerManager?.Player?.Level ?? 1,
-                    _playerManager?.Player?.Build?.TraitCraft ?? 0,
-                    _playerManager?.Player?.Build?.Job ?? 0,
-                    GetActiveItemMakerProgression(),
-                    HasItemMakerRequiredEquip,
-                    MatchesItemMakerQuestRequirement);
+                ConfigureItemMakerWindow(itemMakerWindow);
                 itemMakerWindow.ApplyLaunchContext("Packet-owned profession key");
             }
 
@@ -1361,20 +1397,30 @@ namespace HaCreator.MapSimulator
                 4 => PacketOwnedRawFunctionOwner.SocialListFriend,
                 5 => PacketOwnedRawFunctionOwner.WorldMap,
                 6 => PacketOwnedRawFunctionOwner.Messenger,
-                10 => PacketOwnedRawFunctionOwner.ChatAll,
-                11 => PacketOwnedRawFunctionOwner.ChatWhisper,
-                12 => PacketOwnedRawFunctionOwner.ChatParty,
-                13 => PacketOwnedRawFunctionOwner.ChatFriend,
+                14 => PacketOwnedRawFunctionOwner.ShortcutMenu,
                 17 => PacketOwnedRawFunctionOwner.SocialListGuild,
-                18 => PacketOwnedRawFunctionOwner.ChatGuild,
                 19 => PacketOwnedRawFunctionOwner.SocialListParty,
-                23 => PacketOwnedRawFunctionOwner.ChatAlliance,
-                24 => PacketOwnedRawFunctionOwner.SocialSearch,
-                25 => PacketOwnedRawFunctionOwner.FamilyChart,
-                28 => PacketOwnedRawFunctionOwner.ChatExpedition,
-                29 => PacketOwnedRawFunctionOwner.ItemMaker,
-                31 => PacketOwnedRawFunctionOwner.EventWindow,
+                20 => PacketOwnedRawFunctionOwner.QuestAlarm,
+                23 => PacketOwnedRawFunctionOwner.CashShop,
+                25 => PacketOwnedRawFunctionOwner.Ranking,
+                26 => PacketOwnedRawFunctionOwner.FamilyChart,
+                27 => PacketOwnedRawFunctionOwner.FamilyTree,
+                28 => PacketOwnedRawFunctionOwner.SocialListAlliance,
                 _ => PacketOwnedRawFunctionOwner.None,
+            };
+        }
+
+        internal static PacketOwnedRawChatOwner ResolvePacketOwnedRawChatOwner(int clientFunctionId)
+        {
+            return clientFunctionId switch
+            {
+                10 => PacketOwnedRawChatOwner.All,
+                11 => PacketOwnedRawChatOwner.WhisperTargetPicker,
+                12 => PacketOwnedRawChatOwner.Party,
+                13 => PacketOwnedRawChatOwner.Guild,
+                18 => PacketOwnedRawChatOwner.Alliance,
+                29 => PacketOwnedRawChatOwner.Friend,
+                _ => PacketOwnedRawChatOwner.None,
             };
         }
 

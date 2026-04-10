@@ -27,6 +27,9 @@ namespace HaCreator.MapSimulator
         private readonly ContextOwnedStagePeriodRuntime _contextOwnedStagePeriodRuntime = new();
         private readonly ContextStagePeriodPacketInboxManager _contextStagePeriodPacketInbox = new();
         private ContextOwnedStageSystemCatalog _contextOwnedStageSystemCatalog;
+        private readonly Dictionary<string, ContextOwnedStageUnitEnableState> _contextOwnedStageKeywordCache = new(StringComparer.Ordinal);
+        private readonly Dictionary<int, ContextOwnedStageUnitEnableState> _contextOwnedStageQuestCache = new();
+        private readonly Dictionary<string, byte> _contextOwnedStagePeriodCache = new(StringComparer.Ordinal);
         private HashSet<string> _contextOwnedStageActiveKeywords = new(StringComparer.Ordinal);
         private HashSet<int> _contextOwnedStageActiveQuestIds = new();
         private HashSet<int> _contextOwnedStageAffectedMapIds = new();
@@ -80,10 +83,15 @@ namespace HaCreator.MapSimulator
                 return $"CWvsContext::OnStageChange decoded '{packet.StagePeriod}' mode {packet.Mode.ToString(CultureInfo.InvariantCulture)}, but the simulator could not resolve the validated period entry.";
             }
 
+            catalog.ApplyCacheData(
+                period,
+                _contextOwnedStageKeywordCache,
+                _contextOwnedStageQuestCache,
+                _contextOwnedStagePeriodCache);
             _contextOwnedStageCurrentBackColorArgb = period.ResolveActiveBackColorArgb();
             _contextOwnedStageCurrentBackImages = period.ResolveActiveBackImages();
-            _contextOwnedStageActiveKeywords = new HashSet<string>(period.Keywords, StringComparer.Ordinal);
-            _contextOwnedStageActiveQuestIds = new HashSet<int>(period.EnabledQuestIds);
+            _contextOwnedStageActiveKeywords = ContextOwnedStageSystemCatalog.CaptureEnabledKeywords(_contextOwnedStageKeywordCache);
+            _contextOwnedStageActiveQuestIds = ContextOwnedStageSystemCatalog.CaptureEnabledQuestIds(_contextOwnedStageQuestCache);
             _contextOwnedStageAffectedMapIds = catalog.ResolveAffectedMaps(period);
 
             int mapId = _mapBoard?.MapInfo?.id ?? 0;
@@ -224,7 +232,7 @@ namespace HaCreator.MapSimulator
                 ? $"0x{_contextOwnedStageCurrentBackColorArgb.Value:X8}"
                 : "none";
             int mapId = _mapBoard?.MapInfo?.id ?? 0;
-            string cacheSummary = $"stageBacks={_contextOwnedStageCurrentBackImages.Count.ToString(CultureInfo.InvariantCulture)} backColor={backColorText} keywords={_contextOwnedStageActiveKeywords.Count.ToString(CultureInfo.InvariantCulture)} quests={_contextOwnedStageActiveQuestIds.Count.ToString(CultureInfo.InvariantCulture)} affectedMaps={_contextOwnedStageAffectedMapIds.Count.ToString(CultureInfo.InvariantCulture)} applyToCurrentMap={ShouldApplyContextOwnedStageBackData(mapId)}";
+            string cacheSummary = $"stageBacks={_contextOwnedStageCurrentBackImages.Count.ToString(CultureInfo.InvariantCulture)} backColor={backColorText} keywords={_contextOwnedStageActiveKeywords.Count.ToString(CultureInfo.InvariantCulture)} quests={_contextOwnedStageActiveQuestIds.Count.ToString(CultureInfo.InvariantCulture)} affectedMaps={_contextOwnedStageAffectedMapIds.Count.ToString(CultureInfo.InvariantCulture)} themeModes={_contextOwnedStagePeriodCache.Count.ToString(CultureInfo.InvariantCulture)} applyToCurrentMap={ShouldApplyContextOwnedStageBackData(mapId)}";
             return $"{_contextOwnedStagePeriodRuntime.DescribeStatus()}{Environment.NewLine}{cacheSummary}{Environment.NewLine}{_contextStagePeriodPacketInbox.LastStatus}";
         }
 

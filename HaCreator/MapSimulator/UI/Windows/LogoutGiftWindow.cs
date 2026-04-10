@@ -18,6 +18,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientSelectButtonTop = 196;
         private const int ClientSelectButtonLeft = 21;
         private const int ClientColumnStride = 66;
+        private const int ClientSelectButtonBaseId = 1000;
         private const int ClientItemIconSize = 40;
         private const int ClientSelectButtonWidth = 52;
         private const int ClientSelectButtonHeight = 18;
@@ -344,12 +345,25 @@ namespace HaCreator.MapSimulator.UI
 
         internal static Rectangle GetClientSelectButtonBounds(Point origin, int index)
         {
+            Point buttonAnchor = GetClientSelectButtonAnchor(index);
             Point buttonSize = LogoutGiftButtonSkin.ResolveFrameSize(null);
             return new Rectangle(
-                origin.X + ClientSelectButtonLeft + (index * ClientColumnStride),
-                origin.Y + ClientSelectButtonTop,
+                origin.X + buttonAnchor.X,
+                origin.Y + buttonAnchor.Y,
                 buttonSize.X > 0 ? buttonSize.X : ClientSelectButtonWidth,
                 buttonSize.Y > 0 ? buttonSize.Y : ClientSelectButtonHeight);
+        }
+
+        internal static Point GetClientSelectButtonAnchor(int index)
+        {
+            return new Point(
+                ClientSelectButtonLeft + (index * ClientColumnStride),
+                ClientSelectButtonTop);
+        }
+
+        internal static int GetClientSelectButtonId(int index)
+        {
+            return ClientSelectButtonBaseId + index;
         }
 
         private Rectangle GetCloseBounds()

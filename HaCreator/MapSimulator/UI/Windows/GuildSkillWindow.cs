@@ -392,7 +392,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                int lineHeight = Math.Max(1, (int)Math.Ceiling(_font.LineSpacing * SummaryTextScale));
+                int lineHeight = ResolveLineHeight(SummaryTextScale);
                 int maxVisibleLines = Math.Max(1, Math.Min(2, Math.Max(1, stripBounds.Height / lineHeight)));
                 int visibleLineCount = Math.Min(maxVisibleLines, wrappedLines.Count);
                 int totalTextHeight = visibleLineCount * lineHeight;
@@ -755,7 +755,7 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 ClientTextDrawing.Draw(sprite, titleLines[i].Text, new Vector2(tooltipBounds.X + TooltipPadding, y), TooltipTitleColor, titleScale, _font);
-                y += Math.Max(lineSpacing, (int)Math.Ceiling(_font.LineSpacing * titleScale));
+                y += Math.Max(lineSpacing, ResolveLineHeight(titleScale));
             }
 
             if (bodyLines.Count == 0 && tooltipIcon == null)
@@ -789,7 +789,7 @@ namespace HaCreator.MapSimulator.UI
                     TooltipBodyColor,
                     bodyScale,
                     _font);
-                bodyY += Math.Max(lineSpacing, (int)Math.Ceiling(_font.LineSpacing * bodyScale));
+                bodyY += Math.Max(lineSpacing, ResolveLineHeight(bodyScale));
             }
         }
 
@@ -886,7 +886,7 @@ namespace HaCreator.MapSimulator.UI
             int maxWidth = isTitle
                 ? TooltipWidth - (TooltipPadding * 2)
                 : TooltipWidth - TooltipBodyX - TooltipPadding;
-            foreach (string wrappedLine in WrapText(text, maxWidth, scale, preserveBlankLines: true))
+            foreach (string wrappedLine in WrapText(text, maxWidth, scale, preserveBlankLines: true, _pixel.GraphicsDevice))
             {
                 lines.Add(new TooltipRenderLine(wrappedLine, isTitle));
             }
@@ -903,7 +903,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                height += Math.Max(lineSpacing, (int)Math.Ceiling(_font.LineSpacing * scale));
+                height += Math.Max(lineSpacing, ResolveLineHeight(scale));
             }
 
             return height;
@@ -1065,8 +1065,24 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Vector2 size = ClientTextDrawing.Measure((GraphicsDevice)null, text, scale, _font);
+            Vector2 size = ClientTextDrawing.Measure(sprite?.GraphicsDevice, text, scale, _font);
             DrawText(sprite, text, (int)Math.Round(rightX - size.X), y, color, scale);
+        }
+
+        private int ResolveLineHeight(float scale)
+        {
+            if (_font == null)
+            {
+                return 0;
+            }
+
+            float measuredHeight = ClientTextDrawing.Measure(_pixel?.GraphicsDevice, "Ag", scale, _font).Y;
+            if (measuredHeight > 0f)
+            {
+                return Math.Max(1, (int)Math.Ceiling(measuredHeight));
+            }
+
+            return Math.Max(1, (int)Math.Ceiling(_font.LineSpacing * scale));
         }
 
         private Rectangle GetSummaryStripBounds(int index)

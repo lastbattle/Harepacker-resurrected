@@ -147,6 +147,7 @@ namespace HaCreator.MapSimulator.UI
         private int _scrollbarThumbDragOffsetY;
 
         internal Func<TrunkAccountSecurityPromptKind, bool> AccountSecurityPromptRequested { get; set; }
+        internal Func<bool> CloseRequested { get; set; }
         internal Action<TrunkUI> WindowHidden { get; set; }
 
         private readonly struct TooltipSection
@@ -320,6 +321,16 @@ namespace HaCreator.MapSimulator.UI
             _draggingScrollbarPane = null;
             UpdateButtonStates();
             WindowHidden?.Invoke(this);
+        }
+
+        protected override void OnCloseButtonClicked(UIObject sender)
+        {
+            if (CloseRequested?.Invoke() == false)
+            {
+                return;
+            }
+
+            base.OnCloseButtonClicked(sender);
         }
 
         public override void SetFont(SpriteFont font)

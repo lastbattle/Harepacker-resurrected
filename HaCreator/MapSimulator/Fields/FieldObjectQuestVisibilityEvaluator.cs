@@ -34,6 +34,11 @@ namespace HaCreator.MapSimulator.Fields
                     return false;
                 }
 
+                if (!hasDynamicTags)
+                {
+                    return hasQuestInfo;
+                }
+
                 return MatchesDynamicTagState(dynamicTags, getDynamicTagState, treatUnknownAsMatch: false);
             }
 

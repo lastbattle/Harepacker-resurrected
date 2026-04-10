@@ -294,7 +294,15 @@ namespace HaCreator.MapSimulator.UI
 
             if (_receiverButton != null)
             {
-                _receiverButton.SetButtonState(snapshot.CanToggleReceiver ? UIObjectState.Normal : UIObjectState.Disabled);
+                bool showReceiverToggle = snapshot.MessageType != 1;
+                _receiverButton.SetVisible(showReceiverToggle);
+                if (showReceiverToggle)
+                {
+                    _receiverButton.SetButtonState(
+                        snapshot.CanToggleReceiver
+                            ? (snapshot.UseReceiver ? UIObjectState.Pressed : UIObjectState.Normal)
+                            : UIObjectState.Disabled);
+                }
             }
         }
 

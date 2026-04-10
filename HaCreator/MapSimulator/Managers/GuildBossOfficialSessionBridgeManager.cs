@@ -285,6 +285,11 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public bool TryRefreshFromDiscovery(int listenPort, int remotePort, string processSelector, int? localPort, out string status)
+        {
+            return TryStartFromDiscovery(listenPort, remotePort, processSelector, localPort, out status);
+        }
+
         public string DescribeDiscoveredSessions(int remotePort, string processSelector = null, int? localPort = null)
         {
             int? owningProcessId = null;

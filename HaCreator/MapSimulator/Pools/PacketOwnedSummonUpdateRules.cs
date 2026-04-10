@@ -316,8 +316,8 @@ namespace HaCreator.MapSimulator.Pools
             Random random,
             int hitFrameIndex = 0)
         {
-            bool hitAttach = attackInfo?.ResolveHitAttach(hitFrameIndex) == true;
-            bool facingAttach = attackInfo?.ResolveFacingAttach(hitFrameIndex) == true;
+            bool hitAttach = attackInfo?.ResolveHitAttachForHitAnimationFrame(hitFrameIndex) == true;
+            bool facingAttach = attackInfo?.ResolveFacingAttachForHitAnimationFrame(hitFrameIndex) == true;
             if (hitAttach)
             {
                 return ResolvePacketOwnedAttachedHitPosition(

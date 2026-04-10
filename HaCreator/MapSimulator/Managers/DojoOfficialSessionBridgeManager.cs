@@ -38,6 +38,8 @@ namespace HaCreator.MapSimulator.Managers
         private int _inferenceClearMapId = -1;
         private string _inferenceClearPortalName = string.Empty;
         private int _inferenceExitMapId = -1;
+        private int _inferencePendingTransferMapId = -1;
+        private string _inferencePendingTransferPortalName = string.Empty;
         private bool _inferenceTimerRunning;
         private bool _inferenceTimerExpired;
         private bool _inferenceClearActive;
@@ -165,6 +167,8 @@ namespace HaCreator.MapSimulator.Managers
                     _inferenceClearMapId = -1;
                     _inferenceClearPortalName = string.Empty;
                     _inferenceExitMapId = -1;
+                    _inferencePendingTransferMapId = -1;
+                    _inferencePendingTransferPortalName = string.Empty;
                     _inferenceTimerRunning = false;
                     _inferenceTimerExpired = false;
                     _inferenceClearActive = false;
@@ -176,6 +180,8 @@ namespace HaCreator.MapSimulator.Managers
                 _inferenceClearMapId = field.NextFloorMapId;
                 _inferenceClearPortalName = field.NextFloorPortalName ?? string.Empty;
                 _inferenceExitMapId = field.ExitMapId;
+                _inferencePendingTransferMapId = field.PendingTransferMapId;
+                _inferencePendingTransferPortalName = field.PendingTransferPortalName ?? string.Empty;
                 _inferenceTimerRunning = field.HasLiveTimer;
                 _inferenceTimerExpired = field.IsTimerExpired;
                 _inferenceClearActive = field.IsClearResultActive;
@@ -720,11 +726,15 @@ namespace HaCreator.MapSimulator.Managers
             bool timerExpired;
             bool clearActive;
             bool timeOverActive;
+            int pendingTransferMapId;
+            string pendingTransferPortalName;
             lock (_sync)
             {
                 clearMapIdHint = _inferenceClearMapId;
                 clearPortalNameHint = _inferenceClearPortalName;
                 exitMapIdHint = _inferenceExitMapId;
+                pendingTransferMapId = _inferencePendingTransferMapId;
+                pendingTransferPortalName = _inferencePendingTransferPortalName;
                 timerRunning = _inferenceTimerRunning;
                 timerExpired = _inferenceTimerExpired;
                 clearActive = _inferenceClearActive;
@@ -756,6 +766,8 @@ namespace HaCreator.MapSimulator.Managers
                     clearMapIdHint,
                     clearPortalNameHint,
                     exitMapIdHint,
+                    pendingTransferMapId,
+                    pendingTransferPortalName,
                     timerRunning,
                     timerExpired,
                     clearActive,
@@ -841,6 +853,8 @@ namespace HaCreator.MapSimulator.Managers
                 _inferenceClearMapId,
                 _inferenceClearPortalName,
                 _inferenceExitMapId,
+                _inferencePendingTransferMapId,
+                _inferencePendingTransferPortalName,
                 out int inferredPacketType,
                 out string inferredReason,
                 out bool isStableInference);
@@ -857,6 +871,8 @@ namespace HaCreator.MapSimulator.Managers
                     _inferenceClearMapId,
                     _inferenceClearPortalName,
                     _inferenceExitMapId,
+                    _inferencePendingTransferMapId,
+                    _inferencePendingTransferPortalName,
                     _inferenceTimerRunning,
                     _inferenceTimerExpired,
                     _inferenceClearActive,
@@ -932,6 +948,13 @@ namespace HaCreator.MapSimulator.Managers
                 string exitTarget = _inferenceExitMapId > 0
                     ? _inferenceExitMapId.ToString()
                     : "unknown";
+                string pendingTarget = _inferencePendingTransferMapId > 0
+                    ? _inferencePendingTransferMapId.ToString()
+                    : "none";
+                if (!string.IsNullOrWhiteSpace(_inferencePendingTransferPortalName))
+                {
+                    pendingTarget = $"{pendingTarget}:{_inferencePendingTransferPortalName}";
+                }
                 string state = _inferenceClearActive
                     ? "clear-active"
                     : _inferenceTimeOverActive
@@ -941,7 +964,7 @@ namespace HaCreator.MapSimulator.Managers
                             : _inferenceTimerRunning
                                 ? "timer-running"
                                 : "idle";
-                return $"clear={clearTarget}, exit={exitTarget}, state={state}";
+                return $"clear={clearTarget}, exit={exitTarget}, pending={pendingTarget}, state={state}";
             }
         }
 
@@ -962,6 +985,8 @@ namespace HaCreator.MapSimulator.Managers
             int clearMapIdHint,
             string clearPortalNameHint,
             int exitMapIdHint,
+            int pendingTransferMapId,
+            string pendingTransferPortalName,
             bool timerRunning,
             bool timerExpired,
             bool clearActive,
@@ -990,6 +1015,27 @@ namespace HaCreator.MapSimulator.Managers
             bool matchesPortal = !string.IsNullOrWhiteSpace(portalName)
                 && !string.IsNullOrWhiteSpace(clearPortalNameHint)
                 && string.Equals(portalName, clearPortalNameHint, StringComparison.OrdinalIgnoreCase);
+            bool matchesPendingTransfer = pendingTransferMapId > 0 && transferMapId == pendingTransferMapId;
+            bool matchesPendingPortal = !string.IsNullOrWhiteSpace(portalName)
+                && !string.IsNullOrWhiteSpace(pendingTransferPortalName)
+                && string.Equals(portalName, pendingTransferPortalName, StringComparison.OrdinalIgnoreCase);
+
+            if ((matchesPendingPortal || matchesPendingTransfer) && clearActive)
+            {
+                packetType = DojoField.PacketTypeClear;
+                reason = matchesPendingPortal
+                    ? $"pending clear transfer target matched preserved portal ({transferMapId}{FormatPortalSuffix(portalName)})"
+                    : $"pending clear transfer target matched preserved map ({transferMapId})";
+                return true;
+            }
+
+            if (matchesPendingTransfer && timeOverActive)
+            {
+                packetType = DojoField.PacketTypeTimeOver;
+                reason = $"pending time-over transfer target matched preserved map ({transferMapId})";
+                return true;
+            }
+
             if (matchesPortal || (matchesClear && !matchesExit))
             {
                 packetType = DojoField.PacketTypeClear;

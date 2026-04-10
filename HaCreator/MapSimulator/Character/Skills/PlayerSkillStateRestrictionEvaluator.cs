@@ -20,6 +20,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int NightLordFlashJumpSkillId = 4111006;
         private const int ShadowerFlashJumpSkillId = 4211009;
         private const int DualBladeFlashJumpSkillId = 4321003;
+        private const int NightWalkerFlashJumpSkillId = 14101004;
         private const int RocketBoosterSkillId = 35101004;
         private const int JaguarRiderSkillId = 33001001;
         private const int MechanicPrototypeSkillId = 35001002;
@@ -482,6 +483,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || skillId == NightLordFlashJumpSkillId
                    || skillId == ShadowerFlashJumpSkillId
                    || skillId == DualBladeFlashJumpSkillId
+                   || skillId == NightWalkerFlashJumpSkillId
                    || skillId == RocketBoosterSkillId;
         }
     }

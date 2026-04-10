@@ -163,8 +163,12 @@ namespace HaCreator.MapSimulator
 
         private void ClosePacketOwnedAccountMoreInfoOwner(string reason)
         {
-            _accountMoreInfoRuntime.Close(reason);
+            bool showFirstEntryCloseNotice = _accountMoreInfoRuntime.Close(reason);
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.AccountMoreInfo);
+            if (showFirstEntryCloseNotice)
+            {
+                ShowUtilityFeedbackMessage(AccountMoreInfoOwnerStringPoolText.ResolveExitWithoutInfoNotice());
+            }
         }
 
         private string DispatchPacketOwnedAccountMoreInfoClientRequest(int opcode, byte[] payload, string source)

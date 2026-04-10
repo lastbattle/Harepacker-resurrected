@@ -1611,6 +1611,10 @@ namespace HaCreator.MapSimulator.Character
         public bool HasAuthoritativeProfileMedal { get; set; } = true;
         public bool HasAuthoritativeProfileCollection { get; set; } = true;
         public string GuildName { get; set; } = string.Empty;
+        public int? GuildMarkBackgroundId { get; set; }
+        public int? GuildMarkBackgroundColor { get; set; }
+        public int? GuildMarkId { get; set; }
+        public int? GuildMarkColor { get; set; }
         public string AllianceName { get; set; } = string.Empty;
         public int Fame { get; set; } = 0;
         public int CookieHousePoint { get; set; } = 0;
@@ -2727,6 +2731,10 @@ namespace HaCreator.MapSimulator.Character
                 HasAuthoritativeProfileMedal = HasAuthoritativeProfileMedal,
                 HasAuthoritativeProfileCollection = HasAuthoritativeProfileCollection,
                 GuildName = GuildName,
+                GuildMarkBackgroundId = GuildMarkBackgroundId,
+                GuildMarkBackgroundColor = GuildMarkBackgroundColor,
+                GuildMarkId = GuildMarkId,
+                GuildMarkColor = GuildMarkColor,
                 AllianceName = AllianceName,
                 Fame = Fame,
                 CookieHousePoint = CookieHousePoint,

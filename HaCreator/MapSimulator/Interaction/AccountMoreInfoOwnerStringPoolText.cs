@@ -4,7 +4,7 @@ namespace HaCreator.MapSimulator.Interaction
     {
         internal const int OkButtonUolStringPoolId = 0x512;
         internal const int CancelButtonUolStringPoolId = 0x513;
-        internal const int ExitWithoutInfoNoticeStringPoolId = 0x16B2;
+        internal const int ExitWithoutInfoNoticeStringPoolId = 0x16B6;
         internal const int SaveFailedNoticeStringPoolId = 0x16B7;
         internal const int FirstEntryPromptStringPoolId = 0x16B5;
 

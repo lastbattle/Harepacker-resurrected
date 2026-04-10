@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
 
 namespace HaCreator.MapSimulator
@@ -12,6 +13,7 @@ namespace HaCreator.MapSimulator
             }
 
             trunkWindow.AccountSecurityPromptRequested = HandleTrunkAccountSecurityPromptRequested;
+            trunkWindow.CloseRequested = HandleTrunkCloseRequested;
             trunkWindow.WindowHidden = HandleTrunkWindowHidden;
         }
 
@@ -166,6 +168,35 @@ namespace HaCreator.MapSimulator
             {
                 HideLoginUtilityDialog();
             }
+        }
+
+        private bool HandleTrunkCloseRequested()
+        {
+            PacketOwnedSocialUtilityDialogDispatcher dispatcher = GetPacketOwnedSocialUtilityDialogDispatcher();
+            if (!dispatcher.TryBuildTrunkCloseOutboundRequest(out PacketOwnedNpcUtilityOutboundRequest request, out _))
+            {
+                return true;
+            }
+
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(request.Opcode, request.Payload, out _))
+            {
+                return true;
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(request.Opcode, request.Payload, out _))
+            {
+                return true;
+            }
+
+            if (_localUtilityOfficialSessionBridgeEnabled
+                && _localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(request.Opcode, request.Payload, out _))
+            {
+                return true;
+            }
+
+            _localUtilityPacketOutbox.TryQueueOutboundPacket(request.Opcode, request.Payload, out _);
+            return true;
         }
 
         private static bool IsTrunkAccountSecurityDialogAction(LoginUtilityDialogAction action)

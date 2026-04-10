@@ -22,6 +22,8 @@ namespace HaCreator.MapSimulator.Fields
         private const int WeddingInvitationCardItemGroup = 4211;
         private const int WeddingInvitationPremiumItemGroup = 4212;
         private const int WeddingInvitationCashCardItemId = 5090100;
+        private const int WeddingInvitationTicketStartItemId = 5251000;
+        private const int WeddingInvitationTicketEndItemId = 5251003;
         private const int WeddingInvitationTicketItemId = 5251100;
         private const int WeddingInvitationEtcCardItemId = 4150000;
         private const int NpcSummonScriptItemId = 2430011;
@@ -507,6 +509,7 @@ namespace HaCreator.MapSimulator.Fields
 
             int itemGroup = itemId / 1000;
             if (itemId is WeddingInvitationCashCardItemId or WeddingInvitationTicketItemId or WeddingInvitationEtcCardItemId
+                || (itemId >= WeddingInvitationTicketStartItemId && itemId <= WeddingInvitationTicketEndItemId)
                 || itemGroup is WeddingInvitationCardItemGroup or WeddingInvitationPremiumItemGroup
                 || itemId is 4031377 or 4031395 or 4031406 or 4031407)
             {

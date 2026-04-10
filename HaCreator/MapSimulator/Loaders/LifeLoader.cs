@@ -466,7 +466,12 @@ namespace HaCreator.MapSimulator.Loaders
                     cached.AttackMetadata[actionName] = attackInfo;
                 }
 
-                WzImageProperty hitNode = ResolveAttackHitNode(infoProperty, mobStateProperty);
+                WzImageProperty hitNode = ResolveAttackHitNode(infoProperty, mobStateProperty, out int hitAnimationSourceFrameIndex);
+                if (attackInfo != null)
+                {
+                    attackInfo.HitAnimationSourceFrameIndex = hitAnimationSourceFrameIndex;
+                }
+
                 if (hitNode != null)
                 {
                     List<IDXObject> hitFrames = MapSimulatorLoader.LoadFrames(texturePool, hitNode, 0, 0, device, usedProps);
@@ -897,7 +902,27 @@ namespace HaCreator.MapSimulator.Loaders
 
         internal static WzImageProperty ResolveAttackHitNode(WzImageProperty infoProperty, WzImageProperty attackStateProperty = null)
         {
-            return EnumerateAttackHitNodes(infoProperty, attackStateProperty).FirstOrDefault(HasRenderableHitFrames);
+            return ResolveAttackHitNode(infoProperty, attackStateProperty, out _);
+        }
+
+        internal static WzImageProperty ResolveAttackHitNode(
+            WzImageProperty infoProperty,
+            WzImageProperty attackStateProperty,
+            out int hitAnimationSourceFrameIndex)
+        {
+            foreach ((WzImageProperty hitNode, int sourceFrameIndex) in EnumerateAttackHitNodes(infoProperty, attackStateProperty))
+            {
+                if (!HasRenderableHitFrames(hitNode))
+                {
+                    continue;
+                }
+
+                hitAnimationSourceFrameIndex = sourceFrameIndex;
+                return hitNode;
+            }
+
+            hitAnimationSourceFrameIndex = 0;
+            return null;
         }
 
         internal static bool ShouldLoadAttackSupportAssetsForAction(string actionName)
@@ -950,18 +975,20 @@ namespace HaCreator.MapSimulator.Loaders
             return defaultValue;
         }
 
-        private static IEnumerable<WzImageProperty> EnumerateAttackHitNodes(WzImageProperty infoProperty, WzImageProperty attackStateProperty)
+        private static IEnumerable<(WzImageProperty HitNode, int SourceFrameIndex)> EnumerateAttackHitNodes(
+            WzImageProperty infoProperty,
+            WzImageProperty attackStateProperty)
         {
             WzSubProperty infoNode = WzInfoTools.GetRealProperty(infoProperty) as WzSubProperty;
             WzImageProperty infoHitNode = WzInfoTools.GetRealProperty(infoNode?["hit"]);
             if (infoHitNode != null)
             {
-                yield return infoHitNode;
+                yield return (infoHitNode, 0);
             }
 
-            foreach (WzImageProperty frameHitNode in EnumerateAttackFrameHitNodes(attackStateProperty))
+            foreach ((WzImageProperty frameHitNode, int sourceFrameIndex) in EnumerateAttackFrameHitNodes(attackStateProperty))
             {
-                yield return frameHitNode;
+                yield return (frameHitNode, sourceFrameIndex);
             }
         }
 
@@ -1387,7 +1414,7 @@ namespace HaCreator.MapSimulator.Loaders
             }
         }
 
-        private static IEnumerable<WzImageProperty> EnumerateAttackFrameHitNodes(WzImageProperty attackStateProperty)
+        private static IEnumerable<(WzImageProperty HitNode, int SourceFrameIndex)> EnumerateAttackFrameHitNodes(WzImageProperty attackStateProperty)
         {
             WzSubProperty attackStateNode = WzInfoTools.GetRealProperty(attackStateProperty) as WzSubProperty;
             if (attackStateNode == null)
@@ -1402,7 +1429,7 @@ namespace HaCreator.MapSimulator.Loaders
                 WzImageProperty frameHitNode = WzInfoTools.GetRealProperty(frameProperty["hit"]);
                 if (frameHitNode != null)
                 {
-                    yield return frameHitNode;
+                    yield return (frameHitNode, int.Parse(frameProperty.Name));
                 }
             }
         }

@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 using Microsoft.Xna.Framework;
@@ -9,6 +10,9 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private PendingPortalSessionValueImpact _pendingPortalSessionValueImpact;
+        private int _pendingPortalSessionValueImpactMapId = -1;
+
         private bool TryApplyPacketOwnedFieldScopedPacket(int packetType, byte[] payload, out string message)
         {
             if (TryParsePacketReactorPoolKind(packetType, out _))
@@ -119,6 +123,7 @@ namespace HaCreator.MapSimulator
                 _specialFieldRuntime.PartyRaid.IsActive &&
                 _specialFieldRuntime.PartyRaid.TryApplyFieldSpecificPair(key, value, ownerHint, currentTick, out string partyRaidOwner))
             {
+                TryApplyPendingPortalSessionValueImpact(key, value);
                 target = _specialFieldRuntime.PartyRaid.DescribeStructuredFieldSpecificTarget(partyRaidOwner);
                 return true;
             }
@@ -127,7 +132,16 @@ namespace HaCreator.MapSimulator
                 IsEscortResultWrapperMap(_mapBoard?.MapInfo) &&
                 TryApplyClientOwnedWrapperFieldValue("escortresult", key, value, currentTick, out _))
             {
+                TryApplyPendingPortalSessionValueImpact(key, value);
                 target = "escort-result wrapper";
+                return true;
+            }
+
+            if (ShouldRouteFieldSpecificPairToFieldWrappers(ownerHint) &&
+                TryApplyClientOwnedWrapperSessionValue("chaoszakum", key, value, out _))
+            {
+                TryApplyPendingPortalSessionValueImpact(key, value);
+                target = "chaos-zakum session wrapper";
                 return true;
             }
 
@@ -135,6 +149,7 @@ namespace HaCreator.MapSimulator
                 _mapBoard?.MapInfo?.fieldType == MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_HUNTINGADBALLOON &&
                 TryApplyClientOwnedWrapperFieldValue("huntingadballoon", key, value, currentTick, out _))
             {
+                TryApplyPendingPortalSessionValueImpact(key, value);
                 target = "hunting-ad-balloon wrapper";
                 return true;
             }
@@ -175,6 +190,11 @@ namespace HaCreator.MapSimulator
                 owners |= FieldSpecificStringPairOwnerMask.HuntingAdBalloon;
             }
 
+            if (IsChaosZakumPortalSessionWrapperMap(_mapBoard?.MapInfo))
+            {
+                owners |= FieldSpecificStringPairOwnerMask.ChaosZakum;
+            }
+
             return owners;
         }
 
@@ -199,7 +219,47 @@ namespace HaCreator.MapSimulator
                 names.Add("hunting-ad-balloon wrapper");
             }
 
+            if ((owners & FieldSpecificStringPairOwnerMask.ChaosZakum) != 0)
+            {
+                names.Add("chaos-zakum session wrapper");
+            }
+
             return names.Count == 0 ? "no known owner" : string.Join(", ", names);
+        }
+
+        private void QueuePendingPortalSessionValueImpact(PendingPortalSessionValueImpact pendingImpact)
+        {
+            if (pendingImpact?.IsValid != true)
+            {
+                _pendingPortalSessionValueImpact = null;
+                _pendingPortalSessionValueImpactMapId = -1;
+                return;
+            }
+
+            _pendingPortalSessionValueImpact = pendingImpact;
+            _pendingPortalSessionValueImpactMapId = _mapBoard?.MapInfo?.id ?? -1;
+        }
+
+        private void TryApplyPendingPortalSessionValueImpact(string key, string value)
+        {
+            PendingPortalSessionValueImpact pendingImpact = _pendingPortalSessionValueImpact;
+            if (pendingImpact?.IsValid != true
+                || _pendingPortalSessionValueImpactMapId != (_mapBoard?.MapInfo?.id ?? -1)
+                || !pendingImpact.Matches(key, value))
+            {
+                return;
+            }
+
+            PlayerCharacter player = _playerManager?.Player;
+            if (player?.Physics == null)
+            {
+                return;
+            }
+
+            player.Physics.SetImpactNext(pendingImpact.VelocityX, pendingImpact.VelocityY);
+            _pendingPortalSessionValueImpact = null;
+            _pendingPortalSessionValueImpactMapId = -1;
+            _ = ClearPacketOwnedTeleportPassengerLink();
         }
 
         [Flags]
@@ -208,7 +268,8 @@ namespace HaCreator.MapSimulator
             None = 0,
             PartyRaid = 1 << 0,
             EscortResult = 1 << 1,
-            HuntingAdBalloon = 1 << 2
+            HuntingAdBalloon = 1 << 2,
+            ChaosZakum = 1 << 3
         }
 
         private QuestLogSnapshot BuildQuestLogSnapshotWithPacketState(QuestLogTabType tab, bool showAllLevels)

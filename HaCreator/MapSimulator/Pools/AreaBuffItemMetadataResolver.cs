@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.Pools
                 linkedItemPropertyLoader,
                 linkedItemDescriptionLoader,
                 linkedPropertyLoader,
+                animation,
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase));
         }
 
@@ -37,6 +38,7 @@ namespace HaCreator.MapSimulator.Pools
             Func<string, WzSubProperty> linkedItemPropertyLoader,
             Func<string, string> linkedItemDescriptionLoader,
             Func<string, WzImageProperty> linkedPropertyLoader,
+            SkillAnimation animation,
             HashSet<string> visitedLinkedPaths)
         {
             int durationSeconds = ResolveDurationSeconds(itemProperty);
@@ -56,6 +58,7 @@ namespace HaCreator.MapSimulator.Pools
                     linkedItemPropertyLoader,
                     linkedItemDescriptionLoader,
                     linkedPropertyLoader,
+                    animation,
                     visitedLinkedPaths);
                 if (linkedDurationMs > 0)
                 {
@@ -76,6 +79,7 @@ namespace HaCreator.MapSimulator.Pools
                         linkedItemPropertyLoader,
                         linkedItemDescriptionLoader,
                         linkedPropertyLoader,
+                        animation,
                         visitedLinkedPaths);
                     if (linkedDurationMs > 0)
                     {
@@ -93,7 +97,12 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             durationSeconds = ResolveDurationSecondsFromDescription(itemDescription);
-            return durationSeconds > 0 ? checked(durationSeconds * 1000) : 0;
+            if (durationSeconds > 0)
+            {
+                return checked(durationSeconds * 1000);
+            }
+
+            return ResolveAnimationDurationMs(animation);
         }
 
         internal static int ResolveDurationSecondsFromDescription(string itemDescription)
@@ -142,6 +151,21 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return totalSeconds;
+        }
+
+        internal static int ResolveAnimationDurationMs(SkillAnimation animation)
+        {
+            if (animation?.Frames == null || animation.Frames.Count <= 1)
+            {
+                return 0;
+            }
+
+            if (animation.TotalDuration <= 0)
+            {
+                animation.CalculateDuration();
+            }
+
+            return Math.Max(0, animation.TotalDuration);
         }
 
         private static int ResolveDurationSeconds(WzImageProperty itemProperty)

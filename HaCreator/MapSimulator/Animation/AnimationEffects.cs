@@ -946,16 +946,22 @@ namespace HaCreator.MapSimulator.Animation
         {
             if (!useEmissionBox)
             {
-                return emissionOffset + randomOffset;
+                float travelDistance = Math.Abs(randomOffset.Y);
+                if (travelDistance <= float.Epsilon)
+                {
+                    return emissionOffset;
+                }
+
+                return emissionOffset + ResolvePolarFollowOffset(travelDistance, angleDegrees);
             }
 
-            float radialDistance = Math.Abs(randomOffset.Y);
-            if (radialDistance <= float.Epsilon)
+            float boxedTravelDistance = Math.Abs(randomOffset.Y);
+            if (boxedTravelDistance <= float.Epsilon)
             {
                 return emissionOffset;
             }
 
-            return emissionOffset + ResolvePolarFollowOffset(radialDistance, angleDegrees);
+            return emissionOffset + ResolvePolarFollowOffset(boxedTravelDistance, angleDegrees);
         }
 
         internal static Vector2 ResolveFollowParticleEndOffset(

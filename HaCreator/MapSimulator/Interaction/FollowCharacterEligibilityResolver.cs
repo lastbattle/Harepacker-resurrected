@@ -52,6 +52,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return tamingMobPart.ItemId;
             }
 
+            if (explicitMountedVehicleId > 0
+                && ClientOwnedVehicleSkillClassifier.IsKnownClientOwnedVehicleCurrentActionName(
+                    explicitMountedVehicleId,
+                    actionName))
+            {
+                return explicitMountedVehicleId;
+            }
+
             if (ClientOwnedVehicleSkillClassifier.IsBattleshipMountedActionName(actionName))
             {
                 return BattleshipTamingMobItemId;

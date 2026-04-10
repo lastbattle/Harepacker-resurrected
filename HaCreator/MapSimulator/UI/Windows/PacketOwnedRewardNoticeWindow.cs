@@ -51,9 +51,11 @@ namespace HaCreator.MapSimulator.UI
         public override bool SupportsDragging => false;
         public override bool CapturesKeyboardInput => IsVisible;
 
-        internal static float ResolveCenteredBodyLineX(float measuredWidth)
+        internal static int ResolveCenteredBodyLineX(float measuredWidth)
         {
-            return CenteredBodyAreaLeftX + ((CenteredBodyAreaWidth - measuredWidth) / 2f);
+            int availableWidth = (int)CenteredBodyAreaWidth;
+            int textWidth = Math.Max(0, (int)measuredWidth);
+            return (int)CenteredBodyAreaLeftX + Math.Max(0, (availableWidth - textWidth) / 2);
         }
 
         internal static bool ShouldDismissForKeyboard(Keys key)

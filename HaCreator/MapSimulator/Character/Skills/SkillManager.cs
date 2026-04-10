@@ -80,15 +80,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             float VerticalDistance,
             float ForwardPenalty);
 
-        private enum SkillMovementFamily
+        internal enum SkillMovementFamily
         {
             None,
             Teleport,
             Rush,
             FlyingRush,
-            JumpRush,
             Backstep,
             BoundJump
+        }
+
+        internal enum ClientDoActiveSkillExecutionLane
+        {
+            None,
+            GenericCast,
+            InvincibleZone,
+            Swallow,
+            Cyclone
         }
 
         private sealed class QueuedFollowUpAttack
@@ -271,6 +279,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             int[] TargetMobIds,
             int BaseDelayMs,
             int FollowUpDelayMs);
+        public readonly record struct TeslaCoilAttackRequest(
+            int SummonObjectId,
+            int SkillId,
+            int RequestedAt,
+            int PrimaryTargetMobId,
+            int[] TargetMobIds,
+            int BaseDelayMs);
 
         private sealed class RepeatSkillSustainState
         {
@@ -720,7 +735,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         // quick-slot items whose live family is allowed on the status-bar surface.
         private static readonly HashSet<int> QuickSlotVisibleUseItemFamilies = new()
         {
-            200, 201, 202, 205, 210, 212, 221, 226, 227, 236, 238, 245
+            200, 201, 202, 205, 212, 221, 226, 227, 236, 238, 245
         };
 
         private const int QuickSlotCashSlotItemType = 9;
@@ -803,10 +818,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Action<int, string> OnClientSkillTimerExpired;
         public Action<IReadOnlyList<ClientSkillTimerExpiration>> OnClientSkillTimersExpiredBatch;
         public Action<int, int, int> OnClientSkillCancelRequested;
-        public Action<int, int> OnClientSkillEffectRequested;
+        public Action<SkillUseEffectRequest> OnClientSkillEffectRequested;
         public Action<int, int, int> OnRepeatSkillModeEndRequested;
         public Action<SwallowAbsorbRequest> OnSwallowAbsorbRequested;
         public Action<Sg88ManualAttackRequest> OnSg88ManualAttackRequested;
+        public Action<TeslaCoilAttackRequest> OnTeslaCoilAttackRequested;
         public Action<Rectangle, int, int, int> OnAttackAreaResolved;
         public Action<string> OnMacroPartyNotifyRequested;
         public Action<int, int, int> OnExternalAreaDamageSharingApplied;
@@ -1420,13 +1436,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
 
             SkillData skill = FindKnownSkillData(skillId);
+            return CanAssignHotkeySkillForKnownState(
+                skill,
+                GetSkillLevel(skillId),
+                skill != null && IsSkillAllowedForCurrentJob(skill));
+        }
+
+        internal static bool CanAssignHotkeySkillForKnownState(
+            SkillData skill,
+            int learnedLevel,
+            bool isSkillAllowedForCurrentJob)
+        {
             if (skill == null || skill.IsPassive || skill.Invisible || skill.SuppressesStandaloneActiveCast)
                 return false;
 
-            if (!IsSkillAllowedForCurrentJob(skill))
+            if (!isSkillAllowedForCurrentJob)
                 return false;
 
-            return GetSkillLevel(skillId) > 0;
+            return learnedLevel > 0;
         }
 
         /// <summary>
@@ -4067,10 +4094,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            if (mountPart.ItemId == MECHANIC_TAMING_MOB_ID
-                && ClientOwnedVehicleSkillClassifier.IsMechanicVehicleOwnedCurrentActionName(
-                    actionName,
-                    includeTransformStates: true))
+            if (ClientOwnedVehicleSkillClassifier.IsKnownClientOwnedVehicleCurrentActionName(
+                    mountPart.ItemId,
+                    actionName))
             {
                 return true;
             }
@@ -4084,16 +4110,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool IsClientOwnedVehicleCurrentActionOwnedByMount(string actionName, int mountItemId)
         {
-            return mountItemId switch
-            {
-                BATTLESHIP_TAMING_MOB_ID => ClientOwnedVehicleSkillClassifier.IsBattleshipVehicleOwnedCurrentActionName(
-                    actionName,
-                    includeSupportActions: true),
-                MECHANIC_TAMING_MOB_ID => ClientOwnedVehicleSkillClassifier.IsMechanicVehicleOwnedCurrentActionName(
-                    actionName,
-                    includeTransformStates: true),
-                _ => false
-            };
+            return ClientOwnedVehicleSkillClassifier.IsKnownClientOwnedVehicleCurrentActionName(
+                mountItemId,
+                actionName);
         }
 
         private static CharacterPart ResolveKnownClientOwnedVehicleCurrentActionMountPart(
@@ -4115,7 +4134,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return mountPart?.Slot == EquipSlot.TamingMob
                    && NormalizeClientOwnedVehicleCurrentActionMountItemId(mountPart.ItemId) > 0
-                   && CharacterAssembler.SupportsTamingMobAction(mountPart, actionName);
+                   && (CharacterAssembler.SupportsTamingMobAction(mountPart, actionName)
+                       || ClientOwnedVehicleSkillClassifier.IsKnownClientOwnedVehicleCurrentActionName(
+                           mountPart.ItemId,
+                           actionName));
         }
 
         private void TransferSkillMountOwnership(int previousSkillId, int nextSkillId)
@@ -4499,7 +4521,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 int timeoutEffectSkillId = ResolveRepeatSkillTimeoutEffectRequestSkillId(sustain.SkillId);
                 if (timeoutEffectSkillId > 0)
                 {
-                    OnClientSkillEffectRequested?.Invoke(timeoutEffectSkillId, sustain.SkillId);
+                    OnClientSkillEffectRequested?.Invoke(new SkillUseEffectRequest
+                    {
+                        EffectSkillId = timeoutEffectSkillId,
+                        SourceSkillId = sustain.SkillId,
+                        RequestTime = currentTime
+                    });
                     PlayCastSound(GetSkillData(sustain.SkillId));
                 }
             }
@@ -4863,7 +4890,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 int timeoutEffectSkillId = ResolveRepeatSkillTimeoutEffectRequestSkillId(sustain.SkillId);
                 if (timeoutEffectSkillId > 0)
                 {
-                    OnClientSkillEffectRequested?.Invoke(timeoutEffectSkillId, sustain.SkillId);
+                    OnClientSkillEffectRequested?.Invoke(new SkillUseEffectRequest
+                    {
+                        EffectSkillId = timeoutEffectSkillId,
+                        SourceSkillId = sustain.SkillId,
+                        RequestTime = currentTime
+                    });
                     PlayCastSound(GetSkillData(sustain.SkillId));
                 }
             }
@@ -5261,34 +5293,27 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private bool TryExecuteClientSkillBranch(SkillData skill, int level, int currentTime)
         {
-            if (skill == null)
-            {
-                return false;
-            }
-
-            if (IsAttackTriggeredChainBuffSkill(skill, level))
+            if (skill != null && IsAttackTriggeredChainBuffSkill(skill, level))
             {
                 ApplyBuff(skill, level, currentTime);
                 return true;
             }
 
-            if (IsInvincibleZoneSkill(skill))
+            switch (ResolveDoActiveSkillExecutionLane(skill))
             {
-                return TryExecuteInvincibleZoneBranch(skill, level, currentTime);
-            }
+                case ClientDoActiveSkillExecutionLane.InvincibleZone:
+                    return TryExecuteInvincibleZoneBranch(skill, level, currentTime);
 
-            if (IsSwallowSkill(skill))
-            {
-                return TryExecuteSwallowBranch(skill, level, currentTime);
-            }
+                case ClientDoActiveSkillExecutionLane.Swallow:
+                    return TryExecuteSwallowBranch(skill, level, currentTime);
 
-            if (skill.SkillId == CYCLONE_SKILL_ID)
-            {
-                StartCyclone(skill, level, currentTime);
-                return true;
-            }
+                case ClientDoActiveSkillExecutionLane.Cyclone:
+                    StartCyclone(skill, level, currentTime);
+                    return true;
 
-            return false;
+                default:
+                    return false;
+            }
         }
 
         private bool TryExecuteInvincibleZoneBranch(SkillData skill, int level, int currentTime)
@@ -5828,10 +5853,29 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private int ResolveCurrentClientShootAttackVehicleId()
         {
-            return ResolveClientOwnedVehicleCurrentActionMountItemId(
+            return ResolveCurrentClientShootAttackVehicleId(
                 _player?.CurrentActionName,
                 _activeSkillMount?.MountItemId ?? 0,
-                GetEquippedTamingMobPart()?.ItemId ?? 0);
+                GetEquippedTamingMobPart()?.ItemId ?? 0,
+                _player?.GetActiveAvatarTransformSkillId() ?? 0);
+        }
+
+        internal static int ResolveCurrentClientShootAttackVehicleId(
+            string currentActionName,
+            int activeSkillMountItemId,
+            int equippedMountItemId,
+            int activeAvatarTransformSkillId)
+        {
+            int currentActionMountItemId = ResolveClientOwnedVehicleCurrentActionMountItemId(
+                currentActionName,
+                activeSkillMountItemId,
+                equippedMountItemId);
+            if (currentActionMountItemId > 0)
+            {
+                return currentActionMountItemId;
+            }
+
+            return ResolveClientOwnedVehicleAvatarTransformMountItemId(activeAvatarTransformSkillId);
         }
 
         private Vector2 ResolveDeferredMovingShootOrigin(int currentTime, bool facingRight)
@@ -7271,13 +7315,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return 0;
             }
 
-            int chargeWindowMs = prepared.Duration > 0
-                ? prepared.Duration
-                : prepared.HudGaugeDurationMs;
+            int chargeWindowMs = ResolvePreparedSkillReleaseChargeWindowMs(prepared);
             return PreparedSkillHudRules.ResolveReleaseChargeElapsedMs(
                 prepared.SkillId,
                 prepared.Elapsed(currentTime),
                 chargeWindowMs);
+        }
+
+        private static int ResolvePreparedSkillReleaseChargeWindowMs(PreparedSkill prepared)
+        {
+            if (prepared == null)
+            {
+                return 0;
+            }
+
+            return prepared.HudGaugeDurationMs > 0
+                ? prepared.HudGaugeDurationMs
+                : Math.Max(0, prepared.Duration);
         }
 
         private bool TryConsumePreparedSkillReleaseResources(PreparedSkill prepared, int currentTime)
@@ -7315,9 +7369,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return 0;
             }
 
-            int chargeWindowMs = prepared.Duration > 0
-                ? prepared.Duration
-                : prepared.HudGaugeDurationMs;
+            int chargeWindowMs = ResolvePreparedSkillReleaseChargeWindowMs(prepared);
             int releaseChargeElapsedMs = ResolvePreparedSkillReleaseChargeElapsedMs(prepared, currentTime);
             return ResolvePreparedSkillReleaseHpCost(
                 prepared.SkillData,
@@ -7383,14 +7435,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return 1f;
             }
 
-            if (prepared.IsHolding || !UsesPreparedSkillChargeDamageScaling(prepared.SkillData))
+            if (!UsesPreparedSkillChargeDamageScaling(prepared.SkillData))
             {
                 return 1f;
             }
 
-            int chargeWindowMs = prepared.Duration > 0
-                ? prepared.Duration
-                : prepared.HudGaugeDurationMs;
+            int chargeWindowMs = ResolvePreparedSkillReleaseChargeWindowMs(prepared);
             if (chargeWindowMs <= 0)
             {
                 return 1f;
@@ -7403,6 +7453,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return Math.Clamp(elapsedMs / (float)chargeWindowMs, 0f, 1f);
+        }
+
+        internal static float ResolvePreparedSkillReleaseDamageScaleForTesting(PreparedSkill prepared, int currentTime)
+        {
+            return ResolvePreparedSkillReleaseDamageScale(prepared, currentTime);
         }
 
         private static bool PreservesPrepareActionDuringHold(SkillData skill)
@@ -7664,7 +7719,32 @@ namespace HaCreator.MapSimulator.Character.Skills
             return ResolveMovementFamily(skill, movementActionName) != SkillMovementFamily.None;
         }
 
-        private static SkillMovementFamily ResolveMovementFamily(SkillData skill, string movementActionName)
+        internal static ClientDoActiveSkillExecutionLane ResolveDoActiveSkillExecutionLane(SkillData skill)
+        {
+            if (skill == null || skill.IsPassive || skill.Invisible || skill.SuppressesStandaloneActiveCast)
+            {
+                return ClientDoActiveSkillExecutionLane.None;
+            }
+
+            if (IsInvincibleZoneSkill(skill))
+            {
+                return ClientDoActiveSkillExecutionLane.InvincibleZone;
+            }
+
+            if (IsSwallowSkill(skill))
+            {
+                return ClientDoActiveSkillExecutionLane.Swallow;
+            }
+
+            if (skill.SkillId == CYCLONE_SKILL_ID)
+            {
+                return ClientDoActiveSkillExecutionLane.Cyclone;
+            }
+
+            return ClientDoActiveSkillExecutionLane.GenericCast;
+        }
+
+        internal static SkillMovementFamily ResolveMovementFamily(SkillData skill, string movementActionName)
         {
             if (skill == null)
             {
@@ -7724,7 +7804,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || SkillTextContains(skill, "jump")
                 || SkillTextContains(skill, "hop"))
             {
-                return SkillMovementFamily.JumpRush;
+                // `TryDoingFlyingRush` owns both the glide-style flying rush path and the
+                // jump-rush launch path; the launch-specific arc still resolves later from
+                // the authored jump/hop action family.
+                return SkillMovementFamily.FlyingRush;
             }
 
             return !string.IsNullOrWhiteSpace(movementActionName) || candidateActions.Length > 0
@@ -7774,7 +7857,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            bool isJumpRush = movementFamily == SkillMovementFamily.JumpRush;
+            bool isJumpRush = movementFamily == SkillMovementFamily.FlyingRush
+                              && (ActionTextContains(movementActionName, "jump")
+                                  || ActionTextContains(movementActionName, "hop"));
             bool isFlyingRush = movementFamily == SkillMovementFamily.FlyingRush;
             bool isDoubleJump = ActionTextContains(movementActionName, "doublejump")
                                 || ActionTextContains(movementActionName, "archerdoublejump");
@@ -7865,9 +7950,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             switch (skillId)
             {
                 case WildHunterJaguarJumpSkillId:
-                    // `CUserLocal::DoActiveSkill_BoundJump` uses the Wild Hunter Jaguar Jump
-                    // branch's `nSLV / 4` growth table, not the steeper flash-jump fallback.
-                    scale = effectiveLevel / 4;
+                    // `CUserLocal::DoActiveSkill_BoundJump` doubles `nSLV` before the shared
+                    // quarter-step, so Wild Hunter Jaguar Jump grows on `floor(nSLV / 2)`.
+                    scale = effectiveLevel / 2;
                     horizontalVelocity = 250f + (20f * scale);
                     upwardSpeed = 350f + (40f * scale);
                     break;
@@ -8741,7 +8826,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (!_rocketBoosterState.RecoveryEffectRequested
                     && landingRecoveryElapsed >= ROCKET_BOOSTER_LANDING_RECOVERY_MS)
                 {
-                    OnClientSkillEffectRequested?.Invoke(ROCKET_BOOSTER_RECOVERY_EFFECT_SKILL_ID, _rocketBoosterState.Skill.SkillId);
+                    OnClientSkillEffectRequested?.Invoke(new SkillUseEffectRequest
+                    {
+                        EffectSkillId = ROCKET_BOOSTER_RECOVERY_EFFECT_SKILL_ID,
+                        SourceSkillId = _rocketBoosterState.Skill.SkillId,
+                        RequestTime = currentTime
+                    });
                     _rocketBoosterState.RecoveryEffectRequested = true;
                 }
 
@@ -9140,7 +9230,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && (skill.SkillId == WindWalkSkillId
                        || skill.SkillId == NightLordFlashJumpSkillId
                        || skill.SkillId == ShadowerFlashJumpSkillId
-                       || skill.SkillId == DualBladeFlashJumpSkillId);
+                       || skill.SkillId == DualBladeFlashJumpSkillId
+                       || skill.SkillId == NightWalkerFlashJumpSkillId);
         }
 
         internal static bool RequiresAirborneBoundJumpStart(SkillData skill)
@@ -12985,6 +13076,60 @@ namespace HaCreator.MapSimulator.Character.Skills
             summon.PendingManualAttackFollowUpAt = int.MinValue;
         }
 
+        internal static void ApplyTeslaAttackRequestBookkeeping(
+            ActiveSummon summon,
+            int requestedAt,
+            IReadOnlyList<int> targetMobIds)
+        {
+            if (summon == null)
+            {
+                return;
+            }
+
+            int[] resolvedTargetMobIds = targetMobIds?
+                .Where(static mobId => mobId > 0)
+                .Distinct()
+                .ToArray() ?? Array.Empty<int>();
+
+            summon.PendingTeslaAttackRequest = resolvedTargetMobIds.Length > 0;
+            summon.PendingTeslaAttackRequestedAt = resolvedTargetMobIds.Length > 0 ? requestedAt : int.MinValue;
+            summon.PendingTeslaAttackTargetMobIds = resolvedTargetMobIds;
+            summon.PendingTeslaAttackConfirmedTargetMobIds = Array.Empty<int>();
+        }
+
+        internal static void ClearPendingTeslaAttackRequestBookkeeping(ActiveSummon summon)
+        {
+            if (summon == null)
+            {
+                return;
+            }
+
+            summon.PendingTeslaAttackRequest = false;
+            summon.PendingTeslaAttackRequestedAt = int.MinValue;
+            summon.PendingTeslaAttackTargetMobIds = Array.Empty<int>();
+            summon.PendingTeslaAttackConfirmedTargetMobIds = Array.Empty<int>();
+        }
+
+        internal static bool TryResolvePendingTeslaAttackRequestBookkeeping(
+            ActiveSummon summon,
+            int requestedAt,
+            int currentTime)
+        {
+            if (summon == null || !summon.PendingTeslaAttackRequest)
+            {
+                return false;
+            }
+
+            if (requestedAt != int.MinValue && summon.PendingTeslaAttackRequestedAt != requestedAt)
+            {
+                return false;
+            }
+
+            summon.LastTeslaAttackResolvedTime = currentTime;
+            ClearPendingTeslaAttackRequestBookkeeping(summon);
+            return true;
+        }
+
         internal static bool TryResolvePendingSg88ManualAttackRequestBookkeeping(
             ActiveSummon summon,
             int requestedAt,
@@ -14093,6 +14238,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                 : summon.SkillData.SummonAttackCountOverride > 0
                 ? summon.SkillData.SummonAttackCountOverride
                 : summon.LevelData?.AttackCount ?? 1);
+            int[] resolvedTargetMobIds = resolvedTargets
+                .Select(static target => target?.PoolId ?? 0)
+                .Where(static mobId => mobId > 0)
+                .Distinct()
+                .ToArray();
+            if (resolvedTargetMobIds.Length == 0)
+            {
+                return false;
+            }
+
+            ApplyTeslaAttackRequestBookkeeping(summon, currentTime, resolvedTargetMobIds);
 
             List<int> targetImpactDelaysMs = new(resolvedTargets.Count);
             for (int i = 0; i < resolvedTargets.Count; i++)
@@ -14140,6 +14296,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            OnTeslaCoilAttackRequested?.Invoke(new TeslaCoilAttackRequest(
+                summon.ObjectId,
+                summon.SkillId,
+                currentTime,
+                resolvedTargetMobIds[0],
+                resolvedTargetMobIds,
+                targetImpactDelaysMs.Max()));
             SpawnTeslaCoilAttackProjectiles(teslaCoils, resolvedTargets, targetImpactDelaysMs, currentTime);
 
             return true;
@@ -14386,7 +14549,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             int actionCode = SummonRuntimeRules.ResolveLocalAttackActionCode(
                 summon.SkillData,
                 summon.AssistType,
-                summon.CurrentAnimationBranchName);
+                summon.CurrentAnimationBranchName,
+                summon.ExpiryActionTriggered);
             if (actionCode <= 0)
             {
                 return;
@@ -20950,6 +21114,50 @@ namespace HaCreator.MapSimulator.Character.Skills
             return true;
         }
 
+        public bool TryResolvePendingTeslaAttackPacket(
+            int summonObjectId,
+            IReadOnlyList<int> packetTargetMobIds,
+            int currentTime)
+        {
+            return TryResolvePendingTeslaAttackPacket(
+                summonObjectId,
+                packetTargetMobIds,
+                currentTime,
+                out _);
+        }
+
+        public bool TryResolvePendingTeslaAttackPacket(
+            int summonObjectId,
+            IReadOnlyList<int> packetTargetMobIds,
+            int currentTime,
+            out int resolvedRequestedAt)
+        {
+            resolvedRequestedAt = int.MinValue;
+            ActiveSummon summon = _summons.FirstOrDefault(candidate =>
+                candidate?.ObjectId == summonObjectId
+                && candidate.SkillId == TESLA_COIL_SKILL_ID
+                && !candidate.IsPendingRemoval);
+            if (summon == null || !summon.PendingTeslaAttackRequest)
+            {
+                return false;
+            }
+
+            bool shouldResolve = TryAdvancePendingTeslaAttackPacketConfirmation(
+                summon,
+                packetTargetMobIds,
+                out int[] confirmedTargetMobIds);
+            summon.PendingTeslaAttackConfirmedTargetMobIds = confirmedTargetMobIds;
+            if (!shouldResolve)
+            {
+                return false;
+            }
+
+            summon.LastTeslaAttackResolvedTime = currentTime;
+            resolvedRequestedAt = summon.PendingTeslaAttackRequestedAt;
+            ClearPendingTeslaAttackRequestBookkeeping(summon);
+            return true;
+        }
+
         internal static bool TryAdvancePendingSg88ManualAttackPacketConfirmation(
             ActiveSummon summon,
             IReadOnlyList<int> packetTargetMobIds,
@@ -20972,6 +21180,46 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             HashSet<int> confirmedTargetSet = new(
                 summon.PendingManualAttackConfirmedTargetMobIds?
+                    .Where(static mobId => mobId > 0)
+                    .Distinct()
+                    ?? Enumerable.Empty<int>());
+
+            foreach (int mobId in packetTargetMobIds ?? Array.Empty<int>())
+            {
+                if (mobId > 0 && Array.IndexOf(expectedTargetMobIds, mobId) >= 0)
+                {
+                    confirmedTargetSet.Add(mobId);
+                }
+            }
+
+            confirmedTargetMobIds = expectedTargetMobIds
+                .Where(confirmedTargetSet.Contains)
+                .ToArray();
+            return confirmedTargetMobIds.Length == expectedTargetMobIds.Length;
+        }
+
+        internal static bool TryAdvancePendingTeslaAttackPacketConfirmation(
+            ActiveSummon summon,
+            IReadOnlyList<int> packetTargetMobIds,
+            out int[] confirmedTargetMobIds)
+        {
+            confirmedTargetMobIds = Array.Empty<int>();
+            if (summon == null || !summon.PendingTeslaAttackRequest)
+            {
+                return false;
+            }
+
+            int[] expectedTargetMobIds = summon.PendingTeslaAttackTargetMobIds?
+                .Where(static mobId => mobId > 0)
+                .Distinct()
+                .ToArray() ?? Array.Empty<int>();
+            if (expectedTargetMobIds.Length == 0)
+            {
+                return false;
+            }
+
+            HashSet<int> confirmedTargetSet = new(
+                summon.PendingTeslaAttackConfirmedTargetMobIds?
                     .Where(static mobId => mobId > 0)
                     .Distinct()
                     ?? Enumerable.Empty<int>());

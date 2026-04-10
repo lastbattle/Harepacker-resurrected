@@ -272,6 +272,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                        ?? ResolveAuthoredCustomSummonSkillBranch(skill, 0);
             }
 
+            if (normalizedAction == ClientSelfDestructAttackAction)
+            {
+                return ResolveSelfDestructFinalBranch(
+                    skill,
+                    assistType ?? ResolveAssistType(skill));
+            }
+
             if (assistType.HasValue)
             {
                 string assistOwnedBranch = ResolveAssistOwnedPacketSkillBranch(skill, assistType.Value);

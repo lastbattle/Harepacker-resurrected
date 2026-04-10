@@ -21,7 +21,7 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private readonly PacketFieldFeedbackRuntime _packetFieldFeedbackRuntime = new();
-        private readonly Dictionary<string, List<IDXObject>> _packetFieldFeedbackAnimationCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<PacketOwnedUiFrame>> _packetFieldFeedbackAnimationCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, IReadOnlyList<PacketOwnedCachedUiLayer>> _packetFieldFeedbackUiLayerCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<PacketOwnedUiAnimation> _packetFieldFeedbackUiAnimations = new();
         private IReadOnlyList<PacketFieldSwindleWarningEntry> _packetFieldSwindleWarnings;
@@ -225,12 +225,12 @@ namespace HaCreator.MapSimulator
         private bool TryShowPacketOwnedSummonEffect(byte effectId, int x, int y)
         {
             string cacheKey = $"summon:{effectId}";
-            if (!TryGetOrCreatePacketOwnedAnimationFrames(cacheKey, () => ResolvePacketOwnedSummonEffectFrames(effectId), out List<IDXObject> frames))
+            if (!TryGetOrCreatePacketOwnedAnimationFrames(cacheKey, () => ResolvePacketOwnedSummonEffectFrames(effectId), out List<PacketOwnedUiFrame> frames))
             {
                 return false;
             }
 
-            _animationEffects?.AddOneTime(frames, x, y, flip: false, currTickCount, zOrder: 1);
+            _animationEffects?.AddOneTime(frames.Select(static frame => frame.Sprite).ToList(), x, y, flip: false, currTickCount, zOrder: 1);
             return true;
         }
 
@@ -267,7 +267,7 @@ namespace HaCreator.MapSimulator
                 rewardPartIndex,
                 rewardLevelIndex))
             {
-                List<(List<IDXObject> Frames, PacketOwnedRewardRouletteLayerCandidate Candidate)> resolvedLayers = new();
+                List<(List<PacketOwnedUiFrame> Frames, PacketOwnedRewardRouletteLayerCandidate Candidate)> resolvedLayers = new();
                 foreach (PacketOwnedRewardRouletteLayerCandidate candidate in family)
                 {
                     string cacheKey = $"reward-roulette:{candidate.CategoryName}/{candidate.ImageName}:{candidate.PropertyPath}";
@@ -277,7 +277,7 @@ namespace HaCreator.MapSimulator
                             ResolvePacketOwnedPropertyPath(
                                 Program.FindImage(candidate.CategoryName, candidate.ImageName),
                                 candidate.PropertyPath)),
-                        out List<IDXObject> frames))
+                        out List<PacketOwnedUiFrame> frames))
                     {
                         resolvedLayers.Clear();
                         break;
@@ -291,7 +291,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                foreach ((List<IDXObject> frames, PacketOwnedRewardRouletteLayerCandidate candidate) in resolvedLayers)
+                foreach ((List<PacketOwnedUiFrame> frames, PacketOwnedRewardRouletteLayerCandidate candidate) in resolvedLayers)
                 {
                     EnqueuePacketOwnedUiAnimation(
                         frames,
@@ -532,18 +532,19 @@ namespace HaCreator.MapSimulator
                 .ThenBy(static animation => animation.LayerOrder)
                 .ThenBy(static animation => animation.StartedAtTick))
             {
-                IDXObject frame = animation.ResolveFrame(currentTickCount);
+                PacketOwnedUiFrameState frameState = animation.ResolveFrameState(currentTickCount);
+                IDXObject frame = frameState.Frame.Sprite;
                 if (frame?.Texture == null)
                 {
                     continue;
                 }
 
                 Vector2 position = animation.ResolveDrawPosition(frame, _renderParams.RenderWidth, Height);
-                _spriteBatch.Draw(frame.Texture, position, animation.ResolveTint());
+                _spriteBatch.Draw(frame.Texture, position, animation.ResolveTint(frameState.FrameAlpha));
             }
         }
 
-        private void EnqueuePacketOwnedUiAnimation(IReadOnlyList<IDXObject> frames, PacketOwnedUiRegistration registration, int currentTickCount)
+        private void EnqueuePacketOwnedUiAnimation(IReadOnlyList<PacketOwnedUiFrame> frames, PacketOwnedUiRegistration registration, int currentTickCount)
         {
             if (frames == null || frames.Count == 0)
             {
@@ -563,7 +564,7 @@ namespace HaCreator.MapSimulator
             _packetFieldFeedbackUiAnimations.RemoveAll(animation => string.Equals(animation.Key, key, StringComparison.Ordinal));
         }
 
-        private bool TryGetOrCreatePacketOwnedAnimationFrames(string cacheKey, Func<List<IDXObject>> loader, out List<IDXObject> frames)
+        private bool TryGetOrCreatePacketOwnedAnimationFrames(string cacheKey, Func<List<PacketOwnedUiFrame>> loader, out List<PacketOwnedUiFrame> frames)
         {
             if (_packetFieldFeedbackAnimationCache.TryGetValue(cacheKey, out frames) && frames?.Count > 0)
             {
@@ -579,6 +580,26 @@ namespace HaCreator.MapSimulator
 
             _packetFieldFeedbackAnimationCache[cacheKey] = frames;
             return true;
+        }
+
+        private static List<IDXObject> ExtractPacketOwnedFrameSprites(IReadOnlyList<PacketOwnedUiFrame> frames)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return null;
+            }
+
+            List<IDXObject> sprites = new(frames.Count);
+            for (int i = 0; i < frames.Count; i++)
+            {
+                IDXObject sprite = frames[i].Sprite;
+                if (sprite != null)
+                {
+                    sprites.Add(sprite);
+                }
+            }
+
+            return sprites.Count > 0 ? sprites : null;
         }
 
         private bool TryGetOrCreatePacketOwnedUiLayers(string cacheKey, Func<IReadOnlyList<PacketOwnedCachedUiLayer>> loader, out IReadOnlyList<PacketOwnedCachedUiLayer> layers)
@@ -599,10 +620,10 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private List<IDXObject> ResolvePacketOwnedSummonEffectFrames(byte effectId)
+        private List<PacketOwnedUiFrame> ResolvePacketOwnedSummonEffectFrames(byte effectId)
         {
             WzImage summonImage = Program.FindImage("Effect", "Summon.img");
-            List<IDXObject> frames = LoadPacketOwnedAnimationFrames(
+            List<PacketOwnedUiFrame> frames = LoadPacketOwnedAnimationFrames(
                 ResolvePacketOwnedPropertyPath(
                     summonImage,
                     ResolvePacketOwnedSummonEffectPropertyPath(effectId)));
@@ -624,21 +645,6 @@ namespace HaCreator.MapSimulator
         {
             WzImage soundImage = Program.FindImage("Sound", "Summon.img");
             return ResolvePacketOwnedPropertyPath(soundImage, effectId.ToString(CultureInfo.InvariantCulture)) != null;
-        }
-
-        private List<IDXObject> ResolvePacketOwnedScreenEffectFrames(string descriptor)
-        {
-            foreach ((string categoryName, string imageName, string propertyPath) in EnumeratePacketOwnedScreenEffectCandidates(descriptor))
-            {
-                WzImage image = Program.FindImage(categoryName, imageName);
-                List<IDXObject> frames = LoadPacketOwnedAnimationFrames(ResolvePacketOwnedPropertyPath(image, propertyPath));
-                if (frames?.Count > 0)
-                {
-                    return frames;
-                }
-            }
-
-            return null;
         }
 
         private IReadOnlyList<PacketOwnedCachedUiLayer> ResolvePacketOwnedScreenEffectLayers(string descriptor)
@@ -712,7 +718,7 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private List<IDXObject> LoadPacketOwnedAnimationFrames(WzImageProperty sourceProperty, int fallbackDelay = 90)
+        private List<PacketOwnedUiFrame> LoadPacketOwnedAnimationFrames(WzImageProperty sourceProperty, int fallbackDelay = 90)
         {
             sourceProperty = sourceProperty?.GetLinkedWzImageProperty() ?? sourceProperty;
             if (sourceProperty == null || GraphicsDevice == null)
@@ -725,8 +731,9 @@ namespace HaCreator.MapSimulator
                 return LoadPacketOwnedCanvasFrame(canvasProperty, fallbackDelay);
             }
 
-            List<IDXObject> frames = new();
+            List<PacketOwnedUiFrame> frames = new();
             int sharedDelay = sourceProperty["delay"]?.GetInt() ?? fallbackDelay;
+            PacketOwnedUiAlphaRange sharedAlphaRange = ResolvePacketOwnedUiAlphaRange(sourceProperty);
 
             for (int i = 0; ; i++)
             {
@@ -744,10 +751,14 @@ namespace HaCreator.MapSimulator
                 int delay = frameCanvas[WzCanvasProperty.AnimationDelayPropertyName]?.GetInt()
                     ?? frameCanvas["delay"]?.GetInt()
                     ?? sharedDelay;
+                PacketOwnedUiAlphaRange alphaRange = ResolvePacketOwnedUiAlphaRange(frameCanvas, sharedAlphaRange);
                 using (frameBitmap)
                 {
                     Texture2D texture = frameBitmap.ToTexture2D(GraphicsDevice);
-                    frames.Add(new DXObject(frameCanvas.GetCanvasOriginPosition(), texture, delay));
+                    frames.Add(new PacketOwnedUiFrame(
+                        new DXObject(frameCanvas.GetCanvasOriginPosition(), texture, delay),
+                        alphaRange.StartAlpha,
+                        alphaRange.EndAlpha));
                 }
             }
 
@@ -784,7 +795,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            List<IDXObject> directFrames = LoadPacketOwnedAnimationFrames(sourceProperty, fallbackDelay);
+            List<PacketOwnedUiFrame> directFrames = LoadPacketOwnedAnimationFrames(sourceProperty, fallbackDelay);
             if (directFrames?.Count > 0)
             {
                 layers.Add(new PacketOwnedCachedUiLayer(
@@ -807,7 +818,7 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private List<IDXObject> LoadPacketOwnedCanvasFrame(WzCanvasProperty canvasProperty, int fallbackDelay)
+        private List<PacketOwnedUiFrame> LoadPacketOwnedCanvasFrame(WzCanvasProperty canvasProperty, int fallbackDelay)
         {
             if (canvasProperty == null || GraphicsDevice == null)
             {
@@ -823,14 +834,48 @@ namespace HaCreator.MapSimulator
             int delay = canvasProperty[WzCanvasProperty.AnimationDelayPropertyName]?.GetInt()
                 ?? canvasProperty["delay"]?.GetInt()
                 ?? fallbackDelay;
+            PacketOwnedUiAlphaRange alphaRange = ResolvePacketOwnedUiAlphaRange(canvasProperty);
             using (frameBitmap)
             {
                 Texture2D texture = frameBitmap.ToTexture2D(GraphicsDevice);
-                return new List<IDXObject>
+                return new List<PacketOwnedUiFrame>
                 {
-                    new DXObject(canvasProperty.GetCanvasOriginPosition(), texture, delay)
+                    new(
+                        new DXObject(canvasProperty.GetCanvasOriginPosition(), texture, delay),
+                        alphaRange.StartAlpha,
+                        alphaRange.EndAlpha)
                 };
             }
+        }
+
+        private static PacketOwnedUiAlphaRange ResolvePacketOwnedUiAlphaRange(WzImageProperty sourceProperty, PacketOwnedUiAlphaRange? fallback = null)
+        {
+            sourceProperty = sourceProperty?.GetLinkedWzImageProperty() ?? sourceProperty;
+            int defaultAlpha = fallback?.StartAlpha ?? PacketOwnedUiClientAlpha;
+            int startAlpha = sourceProperty?["a0"]?.GetInt()
+                ?? sourceProperty?["alpha"]?.GetInt()
+                ?? defaultAlpha;
+            int endAlpha = sourceProperty?["a1"]?.GetInt()
+                ?? sourceProperty?["alpha"]?.GetInt()
+                ?? fallback?.EndAlpha
+                ?? startAlpha;
+            return new PacketOwnedUiAlphaRange(
+                (byte)Math.Clamp(startAlpha, byte.MinValue, byte.MaxValue),
+                (byte)Math.Clamp(endAlpha, byte.MinValue, byte.MaxValue));
+        }
+
+        internal static byte ResolvePacketOwnedUiFrameAlphaForTest(int elapsedInFrameMs, int frameDelayMs, byte registrationAlpha, byte startAlpha, byte endAlpha)
+        {
+            return ResolvePacketOwnedUiFrameAlpha(elapsedInFrameMs, frameDelayMs, registrationAlpha, startAlpha, endAlpha);
+        }
+
+        private static byte ResolvePacketOwnedUiFrameAlpha(int elapsedInFrameMs, int frameDelayMs, byte registrationAlpha, byte startAlpha, byte endAlpha)
+        {
+            int clampedDelay = Math.Max(1, frameDelayMs);
+            float progress = Math.Clamp(elapsedInFrameMs, 0, clampedDelay) / (float)clampedDelay;
+            float interpolatedAlpha = startAlpha + ((endAlpha - startAlpha) * progress);
+            float combinedAlpha = registrationAlpha * (interpolatedAlpha / byte.MaxValue);
+            return (byte)Math.Clamp((int)MathF.Round(combinedAlpha), byte.MinValue, byte.MaxValue);
         }
 
         private static WzImageProperty ResolvePacketOwnedPropertyPath(WzObject root, string propertyPath)
@@ -1703,8 +1748,21 @@ namespace HaCreator.MapSimulator
             byte Alpha,
             int LayerOrder);
 
+        private readonly record struct PacketOwnedUiAlphaRange(
+            byte StartAlpha,
+            byte EndAlpha);
+
+        private readonly record struct PacketOwnedUiFrame(
+            IDXObject Sprite,
+            byte StartAlpha,
+            byte EndAlpha);
+
+        private readonly record struct PacketOwnedUiFrameState(
+            PacketOwnedUiFrame Frame,
+            byte FrameAlpha);
+
         private readonly record struct PacketOwnedCachedUiLayer(
-            IReadOnlyList<IDXObject> Frames,
+            IReadOnlyList<PacketOwnedUiFrame> Frames,
             int LayerOrder);
 
         private enum PacketOwnedRewardRouletteLayerRole
@@ -1728,16 +1786,16 @@ namespace HaCreator.MapSimulator
 
         private sealed class PacketOwnedUiAnimation
         {
-            private readonly IReadOnlyList<IDXObject> _frames;
+            private readonly IReadOnlyList<PacketOwnedUiFrame> _frames;
             private readonly int _durationMs;
             private readonly PacketOwnedUiRegistration _registration;
 
-            public PacketOwnedUiAnimation(IReadOnlyList<IDXObject> frames, PacketOwnedUiRegistration registration, int startedAtTick)
+            public PacketOwnedUiAnimation(IReadOnlyList<PacketOwnedUiFrame> frames, PacketOwnedUiRegistration registration, int startedAtTick)
             {
-                _frames = frames ?? Array.Empty<IDXObject>();
+                _frames = frames ?? Array.Empty<PacketOwnedUiFrame>();
                 _registration = registration;
                 StartedAtTick = startedAtTick;
-                _durationMs = _frames.Sum(static frame => Math.Max(1, frame?.Delay ?? 1));
+                _durationMs = _frames.Sum(static frame => Math.Max(1, frame.Sprite?.Delay ?? 1));
             }
 
             public int StartedAtTick { get; }
@@ -1750,25 +1808,44 @@ namespace HaCreator.MapSimulator
                 return _frames.Count == 0 || currentTickCount - StartedAtTick >= _durationMs;
             }
 
-            public IDXObject ResolveFrame(int currentTickCount)
+            public PacketOwnedUiFrameState ResolveFrameState(int currentTickCount)
             {
                 if (_frames.Count == 0)
                 {
-                    return null;
+                    return default;
                 }
 
                 int elapsed = Math.Max(0, currentTickCount - StartedAtTick);
                 int cursor = 0;
-                foreach (IDXObject frame in _frames)
+                foreach (PacketOwnedUiFrame frame in _frames)
                 {
-                    cursor += Math.Max(1, frame?.Delay ?? 1);
-                    if (elapsed < cursor)
+                    int frameDelay = Math.Max(1, frame.Sprite?.Delay ?? 1);
+                    int nextCursor = cursor + frameDelay;
+                    if (elapsed < nextCursor)
                     {
-                        return frame;
+                        return new PacketOwnedUiFrameState(
+                            frame,
+                            ResolvePacketOwnedUiFrameAlpha(
+                                elapsed - cursor,
+                                frameDelay,
+                                _registration.Alpha,
+                                frame.StartAlpha,
+                                frame.EndAlpha));
                     }
+
+                    cursor = nextCursor;
                 }
 
-                return _frames[^1];
+                PacketOwnedUiFrame lastFrame = _frames[^1];
+                int lastFrameDelay = Math.Max(1, lastFrame.Sprite?.Delay ?? 1);
+                return new PacketOwnedUiFrameState(
+                    lastFrame,
+                    ResolvePacketOwnedUiFrameAlpha(
+                        lastFrameDelay,
+                        lastFrameDelay,
+                        _registration.Alpha,
+                        lastFrame.StartAlpha,
+                        lastFrame.EndAlpha));
             }
 
             public Vector2 ResolveDrawPosition(IDXObject frame, int renderWidth, int renderHeight)
@@ -1789,9 +1866,9 @@ namespace HaCreator.MapSimulator
                     anchorY + _registration.OffsetY - (frame?.Y ?? 0));
             }
 
-            public Color ResolveTint()
+            public Color ResolveTint(byte frameAlpha)
             {
-                return new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, _registration.Alpha);
+                return new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, frameAlpha);
             }
         }
 

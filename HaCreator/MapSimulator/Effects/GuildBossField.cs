@@ -150,6 +150,7 @@ namespace HaCreator.MapSimulator.Effects
         private int _pulleyFrameIndex = 0;
         private int _lastPulleyFrameTime = 0;
         private int _pulleyHitAnimationUntil = int.MinValue;
+        private int _localBasicActionOwnerUntil = int.MinValue;
         #endregion
 
 
@@ -168,6 +169,7 @@ namespace HaCreator.MapSimulator.Effects
         private const int PulleyTransportRequestTimeoutMs = 1500;
         private const int StatusCueDurationMs = 1800;
         private const int PulleyHitFallbackAnimationMs = 270;
+        private const int MinimumLocalBasicActionOwnershipWindowMs = 120;
 
 
         public bool IsActive => _isActive;
@@ -180,6 +182,7 @@ namespace HaCreator.MapSimulator.Effects
         public bool HasPulleyTransportRequestInFlight => _pulleyRequestInFlightUntil != int.MinValue;
         public bool IsPulleyHitAnimationActive => _pulleyHitAnimationUntil != int.MinValue;
         public bool IsLocalPlayerWithinPulleyArea => _pulleyEnabled && !_localPlayerHitbox.IsEmpty && _pulleyArea.Intersects(_localPlayerHitbox);
+        public bool IsLocalBasicActionOwnerActive => ResolveLocalBasicActionOwnerActive(Environment.TickCount);
         #endregion
 
 
@@ -396,6 +399,7 @@ namespace HaCreator.MapSimulator.Effects
 
 
             TriggerPulleyHitAnimation(currentTimeMs);
+            RegisterLocalBasicActionOwnership(currentTimeMs);
 
 
 
@@ -851,6 +855,7 @@ namespace HaCreator.MapSimulator.Effects
             _pulleyPacketSequence = 0;
             _statusCueExpiresAt = int.MinValue;
             _statusCueText = null;
+            _localBasicActionOwnerUntil = int.MinValue;
             _localPlayerHitbox = Rectangle.Empty;
         }
 
@@ -985,6 +990,26 @@ namespace HaCreator.MapSimulator.Effects
         {
             _statusCueText = text;
             _statusCueExpiresAt = unchecked(currentTimeMs + StatusCueDurationMs);
+        }
+
+        internal bool ResolveLocalBasicActionOwnerActive(int currentTimeMs)
+        {
+            if (!_isActive || _localBasicActionOwnerUntil == int.MinValue)
+            {
+                return false;
+            }
+
+            return unchecked(currentTimeMs - _localBasicActionOwnerUntil) < 0;
+        }
+
+        private void RegisterLocalBasicActionOwnership(int currentTimeMs)
+        {
+            // Client evidence: CField_GuildBoss::BasicActionAttack (0x5517d0) routes
+            // the local normal attack through CUserLocal::TryDoingNormalAttack before
+            // it sends the pulley packet when state == 0. Mirror that as a short local
+            // ownership window instead of treating the whole pulley area/state as owned.
+            int ownerWindowMs = Math.Max(MinimumLocalBasicActionOwnershipWindowMs, GetPulleyHitAnimationDurationMs());
+            _localBasicActionOwnerUntil = unchecked(currentTimeMs + ownerWindowMs);
         }
 
 

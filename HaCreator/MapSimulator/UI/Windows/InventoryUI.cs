@@ -597,7 +597,8 @@ namespace HaCreator.MapSimulator.UI
                 remainingQuantity = FillExistingStacks(type, slotData, remainingQuantity, maxStackSize);
             }
 
-            while (remainingQuantity > 0 && slots.Count < GetSlotLimit(type))
+            int slotLimit = GetSlotLimit(type);
+            while (remainingQuantity > 0 && TryFindNextAvailableSlotIndex(slots, slotLimit, out int targetIndex))
             {
                 int stackQuantity = IsStackable(type, maxStackSize)
                     ? Math.Min(remainingQuantity, maxStackSize)
@@ -606,7 +607,7 @@ namespace HaCreator.MapSimulator.UI
                 InventorySlotData newSlot = slotData.Clone();
                 newSlot.Quantity = stackQuantity;
                 newSlot.MaxStackSize = maxStackSize;
-                slots.Add(newSlot);
+                SetSlotAt(slots, targetIndex, newSlot, slotLimit);
                 remainingQuantity -= stackQuantity;
             }
         }
@@ -775,7 +776,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             removedSlot = slots[slotIndex]?.Clone();
-            slots.RemoveAt(slotIndex);
+            slots[slotIndex] = null;
+            TrimTrailingEmptySlots(slots);
             return removedSlot != null;
         }
 
@@ -845,7 +847,8 @@ namespace HaCreator.MapSimulator.UI
                     slot.PendingRequestId = 0;
                     slot.IsDisabled = false;
                     removedSlot = slot.Clone();
-                    slots.RemoveAt(i);
+                    slots[i] = null;
+                    TrimTrailingEmptySlots(slots);
                     return removedSlot != null;
                 }
             }
@@ -887,7 +890,7 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < slots.Count; i++)
             {
                 InventorySlotData slot = slots[i];
-                if (slot.ItemId == itemId)
+                if (slot?.ItemId == itemId)
                 {
                     total += Math.Max(1, slot.Quantity);
                 }
@@ -910,7 +913,7 @@ namespace HaCreator.MapSimulator.UI
                 for (int i = 0; i < slots.Count && remainingQuantity > 0; i++)
                 {
                     InventorySlotData slot = slots[i];
-                    if (slot.ItemId != itemId || slot.IsDisabled)
+                    if (slot == null || slot.ItemId != itemId || slot.IsDisabled)
                     {
                         continue;
                     }
@@ -929,7 +932,7 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            int freeSlotCount = GetSlotLimit(type) - slots.Count;
+            int freeSlotCount = GetSlotLimit(type) - CountOccupiedSlots(slots);
             if (freeSlotCount <= 0)
             {
                 return false;
@@ -967,7 +970,7 @@ namespace HaCreator.MapSimulator.UI
             for (int i = slots.Count - 1; i >= 0 && remaining > 0; i--)
             {
                 InventorySlotData slot = slots[i];
-                if (slot.ItemId != itemId)
+                if (slot == null || slot.ItemId != itemId)
                 {
                     continue;
                 }
@@ -976,7 +979,7 @@ namespace HaCreator.MapSimulator.UI
                 if (stackQuantity <= remaining)
                 {
                     remaining -= stackQuantity;
-                    slots.RemoveAt(i);
+                    slots[i] = null;
                 }
                 else
                 {
@@ -985,6 +988,7 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            TrimTrailingEmptySlots(slots);
             return remaining == 0;
         }
 
@@ -1025,7 +1029,8 @@ namespace HaCreator.MapSimulator.UI
 
             if (stackQuantity == quantity)
             {
-                slots.RemoveAt(slotIndex);
+                slots[slotIndex] = null;
+                TrimTrailingEmptySlots(slots);
                 return true;
             }
 
@@ -1043,7 +1048,7 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < slots.Count; i++)
             {
                 InventorySlotData slot = slots[i];
-                if (slot.ItemId == itemId && slot.ItemTexture != null)
+                if (slot?.ItemId == itemId && slot.ItemTexture != null)
                 {
                     return slot.ItemTexture;
                 }
@@ -1208,18 +1213,18 @@ namespace HaCreator.MapSimulator.UI
 
             if (targetIndex >= slots.Count)
             {
-                InventorySlotData movedSlot = sourceSlot;
-                slots.RemoveAt(sourceIndex);
-                slots.Add(movedSlot);
+                SetSlotAt(slots, targetIndex, sourceSlot, GetSlotLimit(targetType));
+                slots[sourceIndex] = null;
+                TrimTrailingEmptySlots(slots);
                 return true;
             }
 
             InventorySlotData targetSlot = slots[targetIndex];
             if (targetSlot == null)
             {
-                InventorySlotData movedSlot = sourceSlot;
-                slots.RemoveAt(sourceIndex);
-                slots.Insert(Math.Min(targetIndex, slots.Count), movedSlot);
+                slots[targetIndex] = sourceSlot;
+                slots[sourceIndex] = null;
+                TrimTrailingEmptySlots(slots);
                 return true;
             }
 
@@ -1316,6 +1321,87 @@ namespace HaCreator.MapSimulator.UI
             return remainder == 0
                 ? normalized
                 : normalized + (SLOT_EXPANSION_STEP - remainder);
+        }
+
+        private static int CountOccupiedSlots(List<InventorySlotData> slots)
+        {
+            if (slots == null || slots.Count == 0)
+            {
+                return 0;
+            }
+
+            int occupiedCount = 0;
+            for (int i = 0; i < slots.Count; i++)
+            {
+                if (slots[i] != null)
+                {
+                    occupiedCount++;
+                }
+            }
+
+            return occupiedCount;
+        }
+
+        private static bool TryFindNextAvailableSlotIndex(List<InventorySlotData> slots, int slotLimit, out int slotIndex)
+        {
+            slotIndex = -1;
+            if (slots == null || slotLimit <= 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < Math.Min(slots.Count, slotLimit); i++)
+            {
+                if (slots[i] == null)
+                {
+                    slotIndex = i;
+                    return true;
+                }
+            }
+
+            if (slots.Count >= slotLimit)
+            {
+                return false;
+            }
+
+            slotIndex = slots.Count;
+            return true;
+        }
+
+        private static void SetSlotAt(List<InventorySlotData> slots, int slotIndex, InventorySlotData slotData, int slotLimit)
+        {
+            if (slots == null || slotData == null || slotIndex < 0 || slotIndex >= slotLimit)
+            {
+                return;
+            }
+
+            while (slots.Count <= slotIndex && slots.Count < slotLimit)
+            {
+                slots.Add(null);
+            }
+
+            if (slotIndex < slots.Count)
+            {
+                slots[slotIndex] = slotData;
+            }
+        }
+
+        private static void TrimTrailingEmptySlots(List<InventorySlotData> slots)
+        {
+            if (slots == null)
+            {
+                return;
+            }
+
+            for (int i = slots.Count - 1; i >= 0; i--)
+            {
+                if (slots[i] != null)
+                {
+                    break;
+                }
+
+                slots.RemoveAt(i);
+            }
         }
         #endregion
 

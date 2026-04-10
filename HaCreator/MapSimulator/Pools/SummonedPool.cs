@@ -741,13 +741,41 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            int suspendDurationMs = SummonRuntimeRules.ResolveSupportSuspendDurationMs(
-                state.Summon.SkillData,
+            int suspendDurationMs = ResolvePacketOwnedSupportSuspendDurationMs(
+                state.Summon,
                 preferHealFirst,
-                explicitBranchName: state.Summon.CurrentAnimationBranchName);
+                HealingRobotSkillId);
             state.Summon.SupportSuspendUntilTime = suspendDurationMs > 0
                 ? currentTime + suspendDurationMs
                 : int.MinValue;
+        }
+
+        internal static int ResolvePacketOwnedSupportSuspendDurationMs(
+            ActiveSummon summon,
+            bool preferHealFirst,
+            int healingRobotSkillId)
+        {
+            if (summon?.SkillData == null)
+            {
+                return 0;
+            }
+
+            int suspendDurationMs = SummonRuntimeRules.ResolveSupportSuspendDurationMs(
+                summon.SkillData,
+                preferHealFirst,
+                explicitBranchName: summon.CurrentAnimationBranchName);
+            if (suspendDurationMs <= 0 && summon.SkillId == healingRobotSkillId)
+            {
+                suspendDurationMs = GetSkillAnimationDuration(summon.SkillData.SummonAttackAnimation)
+                    ?? summon.SkillData.SummonAttackHitDelayMs;
+            }
+
+            if (suspendDurationMs <= 0 && summon.SkillId == healingRobotSkillId)
+            {
+                suspendDurationMs = summon.SkillData.HitEffect?.TotalDuration ?? 0;
+            }
+
+            return Math.Max(0, suspendDurationMs);
         }
 
         private void BeginPacketOwnedAttackAnimation(PacketOwnedSummonState state, int currentTime)
@@ -1028,7 +1056,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 MobItem mob = mobResolver(target.MobObjectId);
-                if (mob != null)
+                if (IsMobEligibleForPacketOwnedTargeting(mob))
                 {
                     resolvedTargets.Add(mob);
                 }
@@ -3165,7 +3193,7 @@ namespace HaCreator.MapSimulator.Pools
 
             int maxTargets = ResolvePacketOwnedExpiryMaxTargetCount(summon);
             Dictionary<int, MobItem> candidatesById = _mobPool.ActiveMobs
-                .Where(static mob => mob?.PoolId > 0)
+                .Where(static mob => IsMobEligibleForPacketOwnedTargeting(mob) && mob.PoolId > 0)
                 .GroupBy(static mob => mob.PoolId)
                 .ToDictionary(static group => group.Key, static group => group.First());
 
@@ -3265,7 +3293,7 @@ namespace HaCreator.MapSimulator.Pools
                     {
                         candidate.MobObjectId,
                         DistanceSq = (deltaX * deltaX) + (deltaY * deltaY),
-                        ForwardPenalty = summon.FacingRight
+                        ForwardPenalty = fallbackFacingRight
                             ? (deltaX < 0f ? 1 : 0)
                             : (deltaX > 0f ? 1 : 0),
                         VerticalDistance = MathF.Abs(deltaY)
@@ -3380,6 +3408,13 @@ namespace HaCreator.MapSimulator.Pools
             return inRangeCount > 0
                 ? new PacketOwnedExpiryFacingScore(inRangeCount, nearestDistanceSq, nearestVerticalDistance)
                 : PacketOwnedExpiryFacingScore.Empty;
+        }
+
+        private static bool IsMobEligibleForPacketOwnedTargeting(MobItem mob)
+        {
+            return mob != null
+                   && mob.PoolId > 0
+                   && mob.AI?.IsDead != true;
         }
 
         private readonly record struct PacketOwnedExpiryFacingScore(
@@ -4138,8 +4173,8 @@ namespace HaCreator.MapSimulator.Pools
 
             MobAnimationSet.AttackInfoMetadata attackInfo = mob?.GetAttackInfo(attackAction);
             Vector2 hitPosition = ResolvePacketHitEffectPosition(summon, attackInfo, currentTime, hitFrameIndex: 0);
-            bool followSummon = attackInfo?.ResolveHitAttach(0) == true;
-            bool followSummonFacing = followSummon || attackInfo?.ResolveFacingAttach(0) == true;
+            bool followSummon = attackInfo?.ResolveHitAttachForHitAnimationFrame(0) == true;
+            bool followSummonFacing = followSummon || attackInfo?.ResolveFacingAttachForHitAnimationFrame(0) == true;
             Vector2 detachedFallbackPosition = followSummon
                 ? PacketOwnedSummonUpdateRules.ResolvePacketOwnedDetachedMobAttackHitAnchor(
                     GetSummonHitbox(summon, currentTime),
@@ -4154,7 +4189,7 @@ namespace HaCreator.MapSimulator.Pools
                 AttachedSummonObjectId = summon.ObjectId,
                 FollowSummon = followSummon,
                 FollowSummonFacing = followSummonFacing,
-                MirrorOffsetWithSummonFacing = attackInfo?.ResolveFacingAttach(0) == true,
+                MirrorOffsetWithSummonFacing = attackInfo?.ResolveFacingAttachForHitAnimationFrame(0) == true,
                 AttachedOffset = PacketOwnedSummonUpdateRules.ResolvePacketOwnedAuthoredHitOffset(attackInfo),
                 AttackInfo = attackInfo,
                 Frames = frames,
@@ -4373,7 +4408,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            return hitEffect.AttackInfo?.ResolveHitAttach(hitEffect.CurrentFrame) ?? hitEffect.FollowSummon;
+            return hitEffect.AttackInfo?.ResolveHitAttachForHitAnimationFrame(hitEffect.CurrentFrame) ?? hitEffect.FollowSummon;
         }
 
         private static bool ShouldHitEffectFollowSummonFacing(PacketOwnedMobAttackHitEffectDisplay hitEffect)
@@ -4385,8 +4420,8 @@ namespace HaCreator.MapSimulator.Pools
 
             if (hitEffect.AttackInfo != null)
             {
-                return hitEffect.AttackInfo.ResolveHitAttach(hitEffect.CurrentFrame)
-                       || hitEffect.AttackInfo.ResolveFacingAttach(hitEffect.CurrentFrame);
+                return hitEffect.AttackInfo.ResolveHitAttachForHitAnimationFrame(hitEffect.CurrentFrame)
+                       || hitEffect.AttackInfo.ResolveFacingAttachForHitAnimationFrame(hitEffect.CurrentFrame);
             }
 
             return hitEffect.FollowSummonFacing;
@@ -4399,7 +4434,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            return hitEffect.AttackInfo?.ResolveFacingAttach(hitEffect.CurrentFrame)
+            return hitEffect.AttackInfo?.ResolveFacingAttachForHitAnimationFrame(hitEffect.CurrentFrame)
                    ?? hitEffect.MirrorOffsetWithSummonFacing;
         }
 

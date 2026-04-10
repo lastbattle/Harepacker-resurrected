@@ -219,6 +219,23 @@ namespace HaCreator.MapSimulator.UI
             ClearCompositionText();
         }
 
+        public void SynchronizeExternalState(string text, bool hasFocus)
+        {
+            string sanitized = text ?? string.Empty;
+            if (GetTextElementCount(sanitized) > _maxLength)
+            {
+                sanitized = GetLeadingTextElements(sanitized, _maxLength);
+            }
+
+            _inputText = sanitized;
+            _caretIndex = _inputText.Length;
+            _caretBlinkTick = Environment.TickCount;
+            _mouseSelecting = false;
+            ClearSelection();
+            ClearCompositionText();
+            HasFocus = hasFocus;
+        }
+
         public void SetFocus(bool focused)
         {
             HasFocus = focused;

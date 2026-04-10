@@ -1597,11 +1597,6 @@ namespace HaCreator.MapSimulator.UI
 
         internal static int ResolveClientTooltipItemIndexFromWindowRelativePoint(int itemCount, int scrollOffset, int relativeX, int relativeY)
         {
-            if (relativeX >= HoverIconHitWindowRight)
-            {
-                return -1;
-            }
-
             if (itemCount <= 0)
             {
                 return -1;
@@ -1614,6 +1609,12 @@ namespace HaCreator.MapSimulator.UI
                 if (!bounds.Contains(relativeX, relativeY))
                 {
                     continue;
+                }
+
+                int rowRelativeX = relativeX - bounds.X;
+                if (rowRelativeX < 0 || rowRelativeX >= HoverIconHitWindowRight)
+                {
+                    return -1;
                 }
 
                 int index = scrollOffset + row;

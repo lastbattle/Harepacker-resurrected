@@ -370,7 +370,8 @@ namespace HaCreator.MapSimulator.Loaders
             SkillUIBigBang skillWindow,
             int jobId,
             GraphicsDevice device,
-            IEnumerable<int> learnedSkillIds = null)
+            IEnumerable<int> learnedSkillIds = null,
+            int subJob = 0)
         {
             if (skillWindow == null)
                 return;
@@ -383,7 +384,7 @@ namespace HaCreator.MapSimulator.Loaders
                 skillWindow.SetUseDualTabStrip(IsDualBladeJob(jobId));
 
 
-                var pathJobIds = GetVisibleSkillRootIdsForJob(jobId, learnedSkillIds);
+                var pathJobIds = GetVisibleSkillRootIdsForJob(jobId, subJob, learnedSkillIds);
                 var visibleTabs = new HashSet<int>();
                 foreach (int pathJobId in pathJobIds)
                 {
@@ -632,7 +633,7 @@ namespace HaCreator.MapSimulator.Loaders
         }
 
 
-        private static IReadOnlyList<int> GetVisibleSkillRootIdsForJob(int jobId, IEnumerable<int> learnedSkillIds)
+        private static IReadOnlyList<int> GetVisibleSkillRootIdsForJob(int jobId, int subJob, IEnumerable<int> learnedSkillIds)
         {
             if (ShouldLoadFocusedJobOnly(jobId))
                 return new[] { jobId };
@@ -643,13 +644,36 @@ namespace HaCreator.MapSimulator.Loaders
 
             var visibleRootIds = SkillRootVisibilityResolver.ResolveVisibleSkillRootIds(
                 jobId,
-                0,
+                subJob,
                 availableRootIds,
                 learnedSkillIds,
                 SkillDataLoader.SkillRootContainsSkill);
-            return visibleRootIds.Count > 0
-                ? visibleRootIds
-                : GetDisplayedSkillBookJobIdsForJob(jobId);
+
+            if (visibleRootIds.Count > 0)
+                return visibleRootIds;
+
+            return ResolveMetadataBackedFallbackSkillRootIds(jobId, availableRootIds);
+        }
+
+        private static IReadOnlyList<int> ResolveMetadataBackedFallbackSkillRootIds(int jobId, IReadOnlyList<int> availableRootIds)
+        {
+            if (availableRootIds == null || availableRootIds.Count == 0)
+                return GetDisplayedSkillBookJobIdsForJob(jobId);
+
+            var fallbackRootIds = new List<int>(2);
+            var availableRootSet = new HashSet<int>(availableRootIds.Where(skillRootId => skillRootId >= 0));
+
+            if (availableRootSet.Contains(0))
+                fallbackRootIds.Add(0);
+
+            int currentSkillRootId = Math.Max(0, jobId);
+            if (availableRootSet.Contains(currentSkillRootId) && !fallbackRootIds.Contains(currentSkillRootId))
+                fallbackRootIds.Add(currentSkillRootId);
+
+            if (fallbackRootIds.Count > 0)
+                return fallbackRootIds;
+
+            return new[] { availableRootIds[0] };
         }
 
 

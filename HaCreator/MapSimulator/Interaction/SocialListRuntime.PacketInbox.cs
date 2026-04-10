@@ -276,6 +276,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             List<SocialEntryState> entries = _entriesByTab[tab];
+            EnsureRosterMemberIds(tab);
             int entryIndex = entries.FindIndex(entry => entry.MemberId == gradeChange.MemberId);
             if (entryIndex < 0)
             {

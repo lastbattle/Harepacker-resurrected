@@ -57,6 +57,11 @@ namespace HaCreator.MapSimulator.UI
             _snapshotProvider = snapshotProvider;
         }
 
+        internal static bool ShouldDrawCollectedOrbIcons(DragonBoxWindowSnapshot snapshot)
+        {
+            return snapshot != null && !snapshot.CanSummon && snapshot.OrbMask != 0;
+        }
+
         internal void SetItemIconProvider(Func<int, Texture2D> itemIconProvider)
         {
             _itemIconProvider = itemIconProvider;
@@ -111,7 +116,10 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(background, new Vector2(Position.X + backgroundOffset.X, Position.Y + backgroundOffset.Y), Color.White);
             }
 
-            DrawCollectedOrbIcons(sprite, snapshot.OrbMask);
+            if (ShouldDrawCollectedOrbIcons(snapshot))
+            {
+                DrawCollectedOrbIcons(sprite, snapshot.OrbMask);
+            }
 
             if (!CanDrawWindowText)
             {

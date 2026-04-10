@@ -324,6 +324,7 @@ namespace HaCreator.MapSimulator.UI
             _isVisible = visible;
             if (!visible)
             {
+                ResetImePresentationPlacement();
                 _animationDisplayerWindowOverlayOwner?.ClearWindow(WindowName);
             }
         }
@@ -464,6 +465,10 @@ namespace HaCreator.MapSimulator.UI
         protected virtual void OnCloseButtonClicked(UIObject sender)
         {
             Hide();
+        }
+
+        protected virtual void ResetImePresentationPlacement()
+        {
         }
         #endregion
 

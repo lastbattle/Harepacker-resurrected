@@ -333,18 +333,6 @@ namespace HaCreator.MapSimulator.Physics
         /// </summary>
         public bool RequiresFlyingSkillForMap { get; set; }
 
-        /// <summary>
-        /// Passive transfer-field handoff gate owned by the live vec-ctrl seam.
-        /// Client: CUserLocal::TryPassiveTransferField reads this through the
-        /// current field interface instead of re-querying map restrictions inline.
-        /// </summary>
-        public bool IsPassiveTransferFieldReady { get; private set; }
-
-        public void SetPassiveTransferFieldReady(bool ready)
-        {
-            IsPassiveTransferFieldReady = ready;
-        }
-
         #endregion
 
         #region Float State Preservation (SaveFloatState*)
@@ -1883,7 +1871,6 @@ namespace HaCreator.MapSimulator.Physics
             IsFlyingMap = false;
             HasFlyingAbility = false;
             RequiresFlyingSkillForMap = false;
-            IsPassiveTransferFieldReady = false;
             _ladderOrRopeLookup = null;
 
             // Float state preservation

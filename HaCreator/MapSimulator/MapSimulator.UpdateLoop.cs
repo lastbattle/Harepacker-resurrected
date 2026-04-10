@@ -149,6 +149,7 @@ namespace HaCreator.MapSimulator
             {
                 RefreshQuestUiState();
                 uiWindowsHandledEsc = uiWindowManager.Update(gameTime, currTickCount, _chat.IsActive, isWindowActive);
+                SyncFriendGroupPopupWindowState();
                 ProcessPendingRepairDurabilityRequest();
             }
 
@@ -261,7 +262,10 @@ namespace HaCreator.MapSimulator
             _specialFieldRuntime.Update(gameTime, currTickCount);
             DrainRockPaperScissorsPendingClientPackets();
             EnsureTradingRoomPacketInboxState(shouldRun: true);
+            EnsureTradingRoomOfficialSessionBridgeState(shouldRun: true);
             DrainTradingRoomPacketInbox(currTickCount);
+            DrainTradingRoomOfficialSessionBridge(currTickCount);
+            TryForwardTradingRoomAutoCrcResponse();
             SyncWeddingRemoteActorsToSharedPool(_specialFieldRuntime.SpecialEffects.Wedding);
             MessengerRemoteUserSynchronizer.Sync(
                 _remoteUserPool,

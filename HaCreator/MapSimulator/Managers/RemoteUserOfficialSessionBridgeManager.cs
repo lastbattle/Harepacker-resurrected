@@ -59,6 +59,7 @@ namespace HaCreator.MapSimulator.Managers
         };
 
         private readonly ConcurrentQueue<RemoteUserOfficialSessionBridgeMessage> _pendingMessages = new();
+        private readonly Dictionary<ushort, int> _packetMap = new(DefaultPacketMap);
         private readonly object _sync = new();
 
         private TcpListener _listener;
@@ -126,6 +127,19 @@ namespace HaCreator.MapSimulator.Managers
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
             return $"Remote-user official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}. {LastStatus}";
+        }
+
+        public string DescribePacketMappings()
+        {
+            lock (_sync)
+            {
+                return string.Join(
+                    Environment.NewLine,
+                    _packetMap
+                        .OrderBy(entry => entry.Key)
+                        .Select(entry =>
+                            $"{entry.Key} -> {RemoteUserPacketInboxManager.DescribePacketType(entry.Value)}"));
+            }
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)
@@ -228,6 +242,54 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public bool TryConfigurePacketMapping(ushort opcode, int packetType, out string status)
+        {
+            if (!Enum.IsDefined(typeof(Pools.RemoteUserPacketType), packetType))
+            {
+                status = $"Remote-user official-session bridge packet type {packetType} is not supported.";
+                LastStatus = status;
+                return false;
+            }
+
+            lock (_sync)
+            {
+                _packetMap[opcode] = packetType;
+            }
+
+            status = $"Mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)}.";
+            LastStatus = status;
+            return true;
+        }
+
+        public bool RemovePacketMapping(ushort opcode, out string status)
+        {
+            bool removed;
+            lock (_sync)
+            {
+                removed = _packetMap.Remove(opcode);
+            }
+
+            status = removed
+                ? $"Removed remote-user opcode mapping for {opcode}."
+                : $"Remote-user opcode {opcode} was not mapped.";
+            LastStatus = status;
+            return removed;
+        }
+
+        public void ClearPacketMappings()
+        {
+            lock (_sync)
+            {
+                _packetMap.Clear();
+                foreach (KeyValuePair<ushort, int> entry in DefaultPacketMap)
+                {
+                    _packetMap[entry.Key] = entry.Value;
+                }
+            }
+
+            LastStatus = "Remote-user official-session bridge packet mappings restored to defaults.";
+        }
+
         public bool TryDequeue(out RemoteUserOfficialSessionBridgeMessage message)
         {
             return _pendingMessages.TryDequeue(out message);
@@ -251,7 +313,15 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private static bool TryDecodeInboundRemoteUserPacket(byte[] rawPacket, string source, out RemoteUserOfficialSessionBridgeMessage message)
+        internal bool TryDecodeInboundRemoteUserPacketForTesting(
+            byte[] rawPacket,
+            string source,
+            out RemoteUserOfficialSessionBridgeMessage message)
+        {
+            return TryDecodeInboundRemoteUserPacket(rawPacket, source, out message);
+        }
+
+        private bool TryDecodeInboundRemoteUserPacket(byte[] rawPacket, string source, out RemoteUserOfficialSessionBridgeMessage message)
         {
             message = null;
             if (rawPacket == null || rawPacket.Length < sizeof(ushort))
@@ -260,7 +330,16 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             ushort opcode = BitConverter.ToUInt16(rawPacket, 0);
-            if (!DefaultPacketMap.TryGetValue(opcode, out int packetType))
+            int packetType;
+            lock (_sync)
+            {
+                if (!_packetMap.TryGetValue(opcode, out packetType))
+                {
+                    return false;
+                }
+            }
+
+            if (!Enum.IsDefined(typeof(Pools.RemoteUserPacketType), packetType))
             {
                 return false;
             }

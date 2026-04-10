@@ -61,6 +61,7 @@ namespace HaCreator.MapSimulator.Managers
             MapSimulatorWindowNames.DragonBox,
             MapSimulatorWindowNames.AccountMoreInfo,
             MapSimulatorWindowNames.SocialList,
+            MapSimulatorWindowNames.FriendGroup,
             MapSimulatorWindowNames.SocialSearch,
             MapSimulatorWindowNames.GuildSearch,
             MapSimulatorWindowNames.GuildManage,

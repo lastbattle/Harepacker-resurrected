@@ -38,7 +38,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly Dictionary<uint, RemoteTownPortalState> _remoteTownPortals = new();
         private readonly Dictionary<RemoteOpenGateKey, RemoteOpenGateState> _remoteOpenGates = new();
         private readonly Dictionary<RemoteTownPortalOwnerTownKey, RemoteTownPortalFieldMetadata> _remoteTownPortalFieldMetadata = new();
-        private readonly Dictionary<RemoteTownPortalOwnerTownKey, Dictionary<int, RemoteTownPortalOwnerFieldObservation>> _remoteTownPortalOwnerFieldObservations = new();
+        private readonly Dictionary<RemoteTownPortalOwnerTownKey, Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalOwnerFieldObservation>>> _remoteTownPortalOwnerFieldObservations = new();
         private readonly Dictionary<uint, RemoteTownPortalRuntimePair> _remoteTownPortalRuntimes = new();
         private readonly Dictionary<RemoteOpenGateKey, RemoteOpenGateRuntime> _remoteOpenGateRuntimes = new();
         private PortalVisualSet _openGateOpeningVisuals;
@@ -1149,13 +1149,19 @@ namespace HaCreator.MapSimulator.Fields
             int recordedAt)
         {
             RemoteTownPortalOwnerTownKey key = new(ownerCharacterId, townMapId);
-            if (!_remoteTownPortalOwnerFieldObservations.TryGetValue(key, out Dictionary<int, RemoteTownPortalOwnerFieldObservation> observationsBySourceMap))
+            if (!_remoteTownPortalOwnerFieldObservations.TryGetValue(key, out Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalOwnerFieldObservation>> observationsBySourceMap))
             {
-                observationsBySourceMap = new Dictionary<int, RemoteTownPortalOwnerFieldObservation>();
+                observationsBySourceMap = new Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalOwnerFieldObservation>>();
                 _remoteTownPortalOwnerFieldObservations[key] = observationsBySourceMap;
             }
 
-            if (observationsBySourceMap.TryGetValue(sourceMapId, out RemoteTownPortalOwnerFieldObservation existingObservation)
+            if (!observationsBySourceMap.TryGetValue(sourceMapId, out Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalOwnerFieldObservation> observationsBySource))
+            {
+                observationsBySource = new Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalOwnerFieldObservation>();
+                observationsBySourceMap[sourceMapId] = observationsBySource;
+            }
+
+            if (observationsBySource.TryGetValue(observationSource, out RemoteTownPortalOwnerFieldObservation existingObservation)
                 && !ShouldReplaceRemoteTownPortalOwnerObservation(
                     existingObservation.SourceMapId,
                     existingObservation.TownMapId,
@@ -1169,7 +1175,7 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
-            observationsBySourceMap[sourceMapId] = new RemoteTownPortalOwnerFieldObservation(
+            observationsBySource[observationSource] = new RemoteTownPortalOwnerFieldObservation(
                 sourceMapId,
                 sourceX,
                 sourceY,
@@ -1209,7 +1215,7 @@ namespace HaCreator.MapSimulator.Fields
             out RemoteTownPortalOwnerFieldObservation? ownerObservation)
         {
             ownerObservation = null;
-            if (!_remoteTownPortalOwnerFieldObservations.TryGetValue(key, out Dictionary<int, RemoteTownPortalOwnerFieldObservation> observationsBySourceMap)
+            if (!_remoteTownPortalOwnerFieldObservations.TryGetValue(key, out Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalOwnerFieldObservation>> observationsBySourceMap)
                 || observationsBySourceMap.Count == 0)
             {
                 return false;
@@ -1218,7 +1224,7 @@ namespace HaCreator.MapSimulator.Fields
             ownerObservation = SelectPreferredRemoteTownPortalOwnerObservation(
                 existingState,
                 metadata,
-                observationsBySourceMap.Values);
+                observationsBySourceMap.Values.SelectMany(observationsBySource => observationsBySource.Values));
             return ownerObservation.HasValue;
         }
 
@@ -1318,8 +1324,11 @@ namespace HaCreator.MapSimulator.Fields
                 return null;
             }
 
-            List<RemoteTownPortalOwnerFieldObservation> candidates = ownerObservations.ToList();
-            if (candidates.Count == 0)
+            List<RemoteTownPortalOwnerFieldObservation[]> candidatesBySourceMap = ownerObservations
+                .GroupBy(observation => observation.SourceMapId)
+                .Select(group => group.ToArray())
+                .ToList();
+            if (candidatesBySourceMap.Count == 0)
             {
                 return null;
             }
@@ -1327,7 +1336,7 @@ namespace HaCreator.MapSimulator.Fields
             if (metadata.HasValue)
             {
                 RemoteTownPortalOwnerFieldObservation? metadataSourceObservation = SelectPreferredRemoteTownPortalOwnerObservationForSourceMap(
-                    candidates,
+                    candidatesBySourceMap,
                     metadata.Value.SourceMapId);
                 if (metadataSourceObservation.HasValue)
                 {
@@ -1338,7 +1347,7 @@ namespace HaCreator.MapSimulator.Fields
             if (existingState.HasValue && existingState.Value.Destination.HasValue)
             {
                 RemoteTownPortalOwnerFieldObservation? existingSourceObservation = SelectPreferredRemoteTownPortalOwnerObservationForSourceMap(
-                    candidates,
+                    candidatesBySourceMap,
                     existingState.Value.Destination.Value.MapId);
                 if (existingSourceObservation.HasValue)
                 {
@@ -1346,17 +1355,37 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            return SelectPreferredRemoteTownPortalOwnerObservationForSourceMap(candidates, sourceMapId: null);
+            RemoteTownPortalOwnerFieldObservation? selectedSourceObservation = SelectPreferredRemoteTownPortalOwnerObservationForSourceSelection(candidatesBySourceMap);
+            return selectedSourceObservation.HasValue
+                ? SelectPreferredRemoteTownPortalOwnerObservationForSourceMap(candidatesBySourceMap, selectedSourceObservation.Value.SourceMapId)
+                : null;
         }
 
         private static RemoteTownPortalOwnerFieldObservation? SelectPreferredRemoteTownPortalOwnerObservationForSourceMap(
-            IEnumerable<RemoteTownPortalOwnerFieldObservation> ownerObservations,
-            int? sourceMapId)
+            IEnumerable<RemoteTownPortalOwnerFieldObservation[]> ownerObservationsBySourceMap,
+            int sourceMapId)
+        {
+            foreach (RemoteTownPortalOwnerFieldObservation[] sourceObservations in ownerObservationsBySourceMap)
+            {
+                if (sourceObservations.Length == 0 || sourceObservations[0].SourceMapId != sourceMapId)
+                {
+                    continue;
+                }
+
+                return SelectPreferredRemoteTownPortalCoordinateObservation(sourceObservations);
+            }
+
+            return null;
+        }
+
+        private static RemoteTownPortalOwnerFieldObservation? SelectPreferredRemoteTownPortalOwnerObservationForSourceSelection(
+            IEnumerable<RemoteTownPortalOwnerFieldObservation[]> ownerObservationsBySourceMap)
         {
             RemoteTownPortalOwnerFieldObservation? preferredObservation = null;
-            foreach (RemoteTownPortalOwnerFieldObservation candidate in ownerObservations)
+            foreach (RemoteTownPortalOwnerFieldObservation[] sourceObservations in ownerObservationsBySourceMap)
             {
-                if (sourceMapId.HasValue && candidate.SourceMapId != sourceMapId.Value)
+                RemoteTownPortalOwnerFieldObservation? candidate = SelectPreferredRemoteTownPortalSourceSelectionObservation(sourceObservations);
+                if (!candidate.HasValue)
                 {
                     continue;
                 }
@@ -1367,10 +1396,50 @@ namespace HaCreator.MapSimulator.Fields
                         preferredObservation.Value.TownMapId,
                         preferredObservation.Value.ObservationSource,
                         preferredObservation.Value.RecordedAt,
-                        candidate.SourceMapId,
-                        candidate.TownMapId,
+                        candidate.Value.SourceMapId,
+                        candidate.Value.TownMapId,
+                        candidate.Value.ObservationSource,
+                        candidate.Value.RecordedAt))
+                {
+                    preferredObservation = candidate.Value;
+                }
+            }
+
+            return preferredObservation;
+        }
+
+        private static RemoteTownPortalOwnerFieldObservation? SelectPreferredRemoteTownPortalCoordinateObservation(
+            IEnumerable<RemoteTownPortalOwnerFieldObservation> ownerObservations)
+        {
+            RemoteTownPortalOwnerFieldObservation? preferredObservation = null;
+            foreach (RemoteTownPortalOwnerFieldObservation candidate in ownerObservations)
+            {
+                if (!preferredObservation.HasValue
+                    || CompareRemoteTownPortalSameSourceCoordinateAuthority(
+                        preferredObservation.Value.ObservationSource,
+                        preferredObservation.Value.RecordedAt,
                         candidate.ObservationSource,
-                        candidate.RecordedAt))
+                        candidate.RecordedAt) < 0)
+                {
+                    preferredObservation = candidate;
+                }
+            }
+
+            return preferredObservation;
+        }
+
+        private static RemoteTownPortalOwnerFieldObservation? SelectPreferredRemoteTownPortalSourceSelectionObservation(
+            IEnumerable<RemoteTownPortalOwnerFieldObservation> ownerObservations)
+        {
+            RemoteTownPortalOwnerFieldObservation? preferredObservation = null;
+            foreach (RemoteTownPortalOwnerFieldObservation candidate in ownerObservations)
+            {
+                if (!preferredObservation.HasValue
+                    || CompareRemoteTownPortalObservationQuality(
+                        candidate.ObservationSource,
+                        candidate.RecordedAt,
+                        preferredObservation.Value.ObservationSource,
+                        preferredObservation.Value.RecordedAt) > 0)
                 {
                     preferredObservation = candidate;
                 }

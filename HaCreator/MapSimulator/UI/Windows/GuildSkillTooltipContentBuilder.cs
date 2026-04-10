@@ -86,6 +86,12 @@ namespace HaCreator.MapSimulator.UI
                 lines.Add($"State: {stateLabel}");
             }
 
+            string authorityLabel = GuildSkillRuntime.ResolveAuthorityLabel(entry.InGuild, entry.CanManageSkills);
+            if (!string.IsNullOrWhiteSpace(authorityLabel))
+            {
+                lines.Add($"Authority: {authorityLabel}");
+            }
+
             if (entry.InGuild)
             {
                 lines.Add($"Guild points: {FormatGuildPoints(entry.GuildPoints)}");

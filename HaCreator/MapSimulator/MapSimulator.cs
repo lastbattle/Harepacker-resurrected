@@ -469,6 +469,14 @@ namespace HaCreator.MapSimulator
         private readonly TradingRoomOfficialSessionBridgeManager _tradingRoomOfficialSessionBridge = new TradingRoomOfficialSessionBridgeManager();
         private bool _tradingRoomPacketInboxEnabled = EnablePacketConnectionsByDefault;
         private int _tradingRoomPacketInboxConfiguredPort = TradingRoomPacketInboxManager.DefaultPort;
+        private bool _tradingRoomOfficialSessionBridgeEnabled;
+        private bool _tradingRoomOfficialSessionBridgeUseDiscovery;
+        private int _tradingRoomOfficialSessionBridgeConfiguredListenPort = TradingRoomOfficialSessionBridgeManager.DefaultListenPort;
+        private string _tradingRoomOfficialSessionBridgeConfiguredRemoteHost = "127.0.0.1";
+        private int _tradingRoomOfficialSessionBridgeConfiguredRemotePort;
+        private ushort _tradingRoomOfficialSessionBridgeConfiguredInboundOpcode;
+        private string _tradingRoomOfficialSessionBridgeConfiguredProcessSelector;
+        private int? _tradingRoomOfficialSessionBridgeConfiguredLocalPort;
         private readonly PacketOwnedEmployeePoolDispatcher _packetOwnedEmployeePoolDispatcher = new PacketOwnedEmployeePoolDispatcher();
         private readonly SocialRoomEmployeeActorRuntime _socialRoomEmployeeActor = new SocialRoomEmployeeActorRuntime();
         private readonly AriantArenaPacketInboxManager _ariantArenaPacketInbox = new AriantArenaPacketInboxManager();
@@ -630,7 +638,6 @@ namespace HaCreator.MapSimulator
         private const int SAME_MAP_TELEPORT_Y_OFFSET = 10;
         private const int PACKET_OWNED_TELEPORT_REGISTRATION_COOLDOWN_MS = 120;
         private const int DIRECTION_MODE_RELEASE_DELAY_MS = 300;
-        private const int PASSIVE_TRANSFER_REQUEST_DURATION_MS = 1200;
         private const int FIELD_RULE_DAMAGE_MIST_DURATION_MS = 650;
         private const int FIELD_RULE_MESSAGE_COOLDOWN_MS = 1200;
         private const int SKILL_COOLDOWN_BLOCKED_MESSAGE_COOLDOWN_MS = 600;
@@ -680,7 +687,6 @@ namespace HaCreator.MapSimulator
         private PendingMapSpawnTarget _pendingMapSpawnTarget = null;
         private bool _scriptedDirectionModeOwnerActive = false;
         private bool _passiveTransferRequestPending = false;
-        private int _passiveTransferRequestExpiresAt = int.MinValue;
         private int _lastFieldRestrictionMessageTime = int.MinValue;
         private string _lastFieldRestrictionMessage = null;
         private readonly Dictionary<int, int> _lastSkillCooldownBlockedMessageTimes = new();
@@ -742,6 +748,7 @@ namespace HaCreator.MapSimulator
         private readonly SkillMacroStore _skillMacroStore;
         private readonly QuestAlarmStore _questAlarmStore;
         private readonly ItemMakerProgressionStore _itemMakerProgressionStore;
+        private PacketOwnedItemMakerSessionState _packetOwnedItemMakerSessionState = new();
         private readonly MonsterBookManager _monsterBookManager;
         private readonly LoginCharacterAccountStore _loginCharacterAccountStore;
         private readonly SocialRoomPersistenceStore _socialRoomPersistenceStore;
@@ -2780,6 +2787,30 @@ namespace HaCreator.MapSimulator
                 onlineOnly => _socialListRuntime.SetFriendOnlineOnly(onlineOnly),
                 actionKey =>
                 {
+                    if (string.Equals(actionKey, "Friend.AddGroup", StringComparison.Ordinal))
+                    {
+                        string message = _socialListRuntime.OpenFriendGroupPopup(FriendGroupPopupMode.AddFriend);
+                        if (_socialListRuntime.HasOpenFriendGroupPopup)
+                        {
+                            WireFriendGroupWindowData();
+                            ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FriendGroup);
+                        }
+
+                        return message;
+                    }
+
+                    if (string.Equals(actionKey, "Friend.GroupWhisper", StringComparison.Ordinal))
+                    {
+                        string message = _socialListRuntime.OpenFriendGroupPopup(FriendGroupPopupMode.GroupWhisper);
+                        if (_socialListRuntime.HasOpenFriendGroupPopup)
+                        {
+                            WireFriendGroupWindowData();
+                            ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FriendGroup);
+                        }
+
+                        return message;
+                    }
+
                     if (string.Equals(actionKey, "Guild.Board", StringComparison.Ordinal))
                     {
                         ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.GuildBbs);
@@ -2954,6 +2985,62 @@ namespace HaCreator.MapSimulator
                 },
                 ShowUtilityFeedbackMessage);
             socialListWindow.SetFont(_fontChat);
+        }
+
+        private void WireFriendGroupWindowData()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.FriendGroup) is not FriendGroupWindow friendGroupWindow)
+            {
+                return;
+            }
+
+            _socialListRuntime.UpdateLocalContext(_playerManager?.Player?.Build, GetCurrentMapTransferDisplayName(), 1);
+            friendGroupWindow.SetSnapshotProvider(_socialListRuntime.BuildFriendGroupPopupSnapshot);
+            friendGroupWindow.SetHandlers(
+                visibleIndex => _socialListRuntime.ToggleFriendGroupPopupEntry(visibleIndex),
+                delta => _socialListRuntime.MoveFriendGroupPopupScroll(delta),
+                () =>
+                {
+                    string message = _socialListRuntime.ConfirmFriendGroupPopup();
+                    if (!_socialListRuntime.HasOpenFriendGroupPopup)
+                    {
+                        uiWindowManager.HideWindow(MapSimulatorWindowNames.FriendGroup);
+                    }
+
+                    return message;
+                },
+                () =>
+                {
+                    string message = _socialListRuntime.CancelFriendGroupPopup();
+                    uiWindowManager.HideWindow(MapSimulatorWindowNames.FriendGroup);
+                    return message;
+                },
+                ShowUtilityFeedbackMessage);
+            friendGroupWindow.SetFont(_fontChat);
+        }
+
+        private void SyncFriendGroupPopupWindowState()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.FriendGroup) is not FriendGroupWindow friendGroupWindow)
+            {
+                return;
+            }
+
+            if (_socialListRuntime.HasOpenFriendGroupPopup)
+            {
+                if (!friendGroupWindow.IsVisible)
+                {
+                    WireFriendGroupWindowData();
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FriendGroup);
+                }
+
+                return;
+            }
+
+            if (friendGroupWindow.IsVisible)
+            {
+                friendGroupWindow.Hide();
+            }
         }
 
 
@@ -3858,21 +3945,10 @@ namespace HaCreator.MapSimulator
                 return $"{context.CharacterName} is not available in the shared field, so the follow request cannot be issued from the existing follow seam.";
             }
 
-            FollowCharacterFailureInfo? senderGateFailure = ResolveCharacterInfoFollowRequestSenderGateFailure(
-                driver,
-                ResolvePacketOwnedRemoteCharacterName);
-            if (senderGateFailure.HasValue)
-            {
-                return ApplyPacketOwnedFollowCharacterFailed(senderGateFailure.Value);
-            }
-
-            FootholdLine localFoothold = _playerManager?.Player?.Physics?.CurrentFoothold;
-            FootholdLine remoteFoothold = ResolveCharacterInfoFollowTargetFoothold(actor);
-            FollowCharacterFailureInfo? gateFailure = ResolveCharacterInfoFollowRequestGateFailure(
+            FollowCharacterFailureInfo? gateFailure = ResolveManualFollowRequestGateFailure(
                 localUser,
-                localFoothold,
                 actor,
-                remoteFoothold,
+                driver,
                 ResolvePacketOwnedRemoteCharacterName);
             if (gateFailure.HasValue)
             {
@@ -3925,6 +4001,35 @@ namespace HaCreator.MapSimulator
             return ResolveCharacterInfoFollowRequestSenderGateFailure(driver, _ => null);
         }
 
+        private FollowCharacterFailureInfo? ResolveManualFollowRequestGateFailure(
+            LocalFollowUserSnapshot localUser,
+            RemoteUserActor actor,
+            LocalFollowUserSnapshot driver,
+            Func<int, string> driverNameResolver)
+        {
+            FollowCharacterFailureInfo? senderGateFailure = ResolveCharacterInfoFollowRequestSenderGateFailure(
+                driver,
+                driverNameResolver);
+            if (senderGateFailure.HasValue)
+            {
+                return senderGateFailure;
+            }
+
+            FootholdLine localFoothold = _playerManager?.Player?.Physics?.CurrentFoothold;
+            FootholdLine remoteFoothold = ResolveCharacterInfoFollowTargetFoothold(actor);
+            return ResolveManualFollowRequestGateFailureCore(
+                hasLocalFoothold: localFoothold != null,
+                hasRemoteFoothold: remoteFoothold != null,
+                horizontalDistance: MathF.Abs(localUser.Position.X - actor.Position.X),
+                verticalDistance: MathF.Abs(localUser.Position.Y - actor.Position.Y),
+                canTraverseBetweenFootholds: localFoothold != null
+                    && remoteFoothold != null
+                    && EscortFollowController.CanTraverseBetween(localFoothold, remoteFoothold),
+                targetPassengerId: actor.FollowPassengerId,
+                targetDriverId: actor.FollowDriverId,
+                driverNameResolver: driverNameResolver);
+        }
+
         private FootholdLine ResolveCharacterInfoFollowTargetFoothold(RemoteUserActor actor)
         {
             if (actor == null || actor.CurrentFootholdId == 0)
@@ -3957,35 +4062,81 @@ namespace HaCreator.MapSimulator
             FootholdLine remoteFoothold,
             Func<int, string> driverNameResolver)
         {
-            if (actor == null || localFoothold == null || remoteFoothold == null)
+            if (actor == null)
             {
                 return FollowCharacterFailureCodec.Resolve(1, 0, driverNameResolver);
             }
 
-            float dx = MathF.Abs(localUser.Position.X - actor.Position.X);
-            float dy = MathF.Abs(localUser.Position.Y - actor.Position.Y);
-            if (dx > EscortFollowController.AttachHorizontalRange
-                || dy > EscortFollowController.AttachVerticalRange)
+            return ResolveManualFollowRequestGateFailureCore(
+                hasLocalFoothold: localFoothold != null,
+                hasRemoteFoothold: remoteFoothold != null,
+                horizontalDistance: MathF.Abs(localUser.Position.X - actor.Position.X),
+                verticalDistance: MathF.Abs(localUser.Position.Y - actor.Position.Y),
+                canTraverseBetweenFootholds: localFoothold != null
+                    && remoteFoothold != null
+                    && EscortFollowController.CanTraverseBetween(localFoothold, remoteFoothold),
+                targetPassengerId: actor.FollowPassengerId,
+                targetDriverId: actor.FollowDriverId,
+                driverNameResolver: driverNameResolver);
+        }
+
+        private static FollowCharacterFailureInfo? ResolveManualFollowRequestGateFailureCore(
+            bool hasLocalFoothold,
+            bool hasRemoteFoothold,
+            float horizontalDistance,
+            float verticalDistance,
+            bool canTraverseBetweenFootholds,
+            int targetPassengerId,
+            int targetDriverId,
+            Func<int, string> driverNameResolver)
+        {
+            if (!hasLocalFoothold || !hasRemoteFoothold)
+            {
+                return FollowCharacterFailureCodec.Resolve(1, 0, driverNameResolver);
+            }
+
+            if (horizontalDistance > EscortFollowController.AttachHorizontalRange
+                || verticalDistance > EscortFollowController.AttachVerticalRange)
             {
                 return FollowCharacterFailureCodec.Resolve(6, 0, driverNameResolver);
             }
 
-            if (!EscortFollowController.CanTraverseBetween(localFoothold, remoteFoothold))
+            if (!canTraverseBetweenFootholds)
             {
                 return FollowCharacterFailureCodec.Resolve(1, 0, driverNameResolver);
             }
 
-            if (actor.FollowPassengerId > 0)
+            if (targetPassengerId > 0)
             {
                 return FollowCharacterFailureCodec.Resolve(3, 0, driverNameResolver);
             }
 
-            if (actor.FollowDriverId > 0)
+            if (targetDriverId > 0)
             {
-                return FollowCharacterFailureCodec.Resolve(2, actor.FollowDriverId, driverNameResolver);
+                return FollowCharacterFailureCodec.Resolve(2, targetDriverId, driverNameResolver);
             }
 
             return null;
+        }
+
+        internal static FollowCharacterFailureInfo? ResolveManualFollowRequestGateFailureForTest(
+            bool hasLocalFoothold,
+            bool hasRemoteFoothold,
+            float horizontalDistance,
+            float verticalDistance,
+            bool canTraverseBetweenFootholds,
+            int targetPassengerId,
+            int targetDriverId)
+        {
+            return ResolveManualFollowRequestGateFailureCore(
+                hasLocalFoothold,
+                hasRemoteFoothold,
+                horizontalDistance,
+                verticalDistance,
+                canTraverseBetweenFootholds,
+                targetPassengerId,
+                targetDriverId,
+                _ => null);
         }
 
         private string HandleCharacterInfoTradingRoomRequest(UserInfoUI.UserInfoActionContext context)
@@ -19044,13 +19195,7 @@ namespace HaCreator.MapSimulator
                 _npcInteractionOverlay?.Close();
                 if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemMaker) is ItemMakerUI itemMakerWindow)
                 {
-                    itemMakerWindow.SetCraftingState(
-                        _playerManager?.Player?.Level ?? 1,
-                        _playerManager?.Player?.Build?.TraitCraft ?? 0,
-                        _playerManager?.Player?.Build?.Job ?? 0,
-                        GetActiveItemMakerProgression(),
-                        HasItemMakerRequiredEquip,
-                        MatchesItemMakerQuestRequirement);
+                    ConfigureItemMakerWindow(itemMakerWindow);
                     itemMakerWindow.ApplyLaunchContext(entry.Subtitle);
                 }
 
@@ -25331,8 +25476,6 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void HandlePortalUpInteract(int currentTime)
         {
-            SyncPassiveTransferFieldReadyState();
-
             if (!CanAttemptPortalInteract(currentTime))
             {
                 ClearPassiveTransferRequest();
@@ -25342,17 +25485,9 @@ namespace HaCreator.MapSimulator
 
             bool interactPressed = _playerManager.Input.IsPressed(InputAction.Interact);
 
-            bool interactHeld = _playerManager.Input.IsHeld(InputAction.Interact);
-
-
-
             if (_passiveTransferRequestPending)
             {
-                if (!interactHeld || unchecked(currentTime - _passiveTransferRequestExpiresAt) >= 0)
-                {
-                    ClearPassiveTransferRequest();
-                }
-                else if (CanProcessPassiveTransferFieldRequest(currentTime))
+                if (CanProcessPassiveTransferFieldRequest())
                 {
                     if (CanReplayPassiveTransferFieldUpKeyPath(currentTime))
                     {
@@ -25391,9 +25526,6 @@ namespace HaCreator.MapSimulator
             }
 
             _passiveTransferRequestPending = true;
-
-            _passiveTransferRequestExpiresAt = unchecked(currentTime + PASSIVE_TRANSFER_REQUEST_DURATION_MS);
-
         }
 
 
@@ -25412,12 +25544,6 @@ namespace HaCreator.MapSimulator
         private void ClearPassiveTransferRequest()
         {
             _passiveTransferRequestPending = false;
-            _passiveTransferRequestExpiresAt = int.MinValue;
-        }
-
-        private void SyncPassiveTransferFieldReadyState()
-        {
-            _playerManager?.Player?.Physics?.SetPassiveTransferFieldReady(ResolvePassiveTransferFieldReadyState());
         }
 
         private bool ResolvePassiveTransferFieldReadyState()
@@ -25455,7 +25581,7 @@ namespace HaCreator.MapSimulator
                    || _pendingCrossMapTeleportTarget != null;
         }
 
-        private bool CanProcessPassiveTransferFieldRequest(int currentTime)
+        private bool CanProcessPassiveTransferFieldRequest()
         {
             PlayerCharacter player = _playerManager?.Player;
             if (player == null || player.IsPlayingClientOwnedOneTimeAction)
@@ -25463,7 +25589,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            return player.Physics?.IsPassiveTransferFieldReady == true;
+            return ResolvePassiveTransferFieldReadyState();
         }
 
         private bool CanReplayPassiveTransferFieldUpKeyPath(int currentTime)
@@ -25782,6 +25908,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (!IsCollisionCustomImpactPortalField(_mapBoard?.MapInfo?.fieldType, _mapBoard?.MapInfo?.id ?? 0))
+            {
+                return false;
+            }
+
             if (!CanApplyCustomImpactPortalFromReactor(portal))
             {
                 return true;
@@ -25842,13 +25973,25 @@ namespace HaCreator.MapSimulator
                 currentTime,
                 out _))
             {
-                player.Physics.SetImpactNext(
+                QueuePendingPortalSessionValueImpact(new PendingPortalSessionValueImpact(
+                    portal.sessionValueKey,
+                    sessionValue,
                     portal.horizontalImpact ?? 0,
-                    -(portal.verticalImpact ?? 0));
+                    -(portal.verticalImpact ?? 0)));
                 return true;
             }
 
             return false;
+        }
+
+        internal static bool IsCollisionCustomImpactPortalField(MapleLib.WzLib.WzStructure.Data.FieldType? fieldType, int mapId)
+        {
+            return mapId == ChaosZakumPortalSessionFallbackFieldId
+                || fieldType is MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_PARTYRAID
+                or MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_PARTYRAID_BOSS
+                or MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_CHAOSZAKUM
+                or MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_WAITINGPARTYQUEST
+                or MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_HUNTINGADBALLOON;
         }
 
         private bool TryHandleTransferPortalCollision(
@@ -27287,6 +27430,24 @@ namespace HaCreator.MapSimulator
                             out _);
                     }
                 };
+                _playerManager.Skills.OnTeslaCoilAttackRequested = request =>
+                {
+                    _summonedOfficialSessionBridge.TrackTeslaCoilAttackRequest(
+                        request.SummonObjectId,
+                        request.RequestedAt,
+                        request.PrimaryTargetMobId,
+                        request.TargetMobIds,
+                        request.BaseDelayMs);
+                    if (_summonedOfficialSessionBridge.HasConnectedSession)
+                    {
+                        _summonedOfficialSessionBridge.TrySendLearnedTeslaCoilAttackRequest(
+                            request.SummonObjectId,
+                            request.RequestedAt,
+                            request.PrimaryTargetMobId,
+                            request.TargetMobIds,
+                            out _);
+                    }
+                };
                 _summonedPool.OnSummonExpiryTimersExpiredBatch = expirations =>
                     RouteLocalPacketOwnedSummonExpiryBatchToClientCancel(
                         expirations,
@@ -27316,6 +27477,24 @@ namespace HaCreator.MapSimulator
                     _summonedOfficialSessionBridge.ResolveSg88ManualAttackRequest(
                         packet.SummonedObjectId,
                         resolvedRequestedAt,
+                        "0x119-target-cover");
+                    return;
+                }
+
+                bool resolvedTesla = _playerManager.TryResolvePacketOwnedTeslaCoilAttackPacket(
+                    packet.SummonedObjectId,
+                    packet.Targets?
+                        .Select(static target => target.MobObjectId)
+                        .Where(static mobId => mobId > 0)
+                        .Distinct()
+                        .ToArray(),
+                    currentTime,
+                    out int resolvedTeslaRequestedAt);
+                if (resolvedTesla && resolvedTeslaRequestedAt != int.MinValue)
+                {
+                    _summonedOfficialSessionBridge.ResolveTeslaCoilAttackRequest(
+                        packet.SummonedObjectId,
+                        resolvedTeslaRequestedAt,
                         "0x119-target-cover");
                 }
             };
@@ -27794,11 +27973,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            return guildBoss.IsLocalPlayerWithinPulleyArea
-                   || guildBoss.HasPendingLocalPulleySequence
-                   || guildBoss.HasPulleyTransportRequestInFlight
-                   || guildBoss.PendingPulleyPacketRequest.HasValue
-                   || guildBoss.PulleyState != 0;
+            return guildBoss.IsLocalBasicActionOwnerActive;
         }
 
 
@@ -27882,7 +28057,8 @@ namespace HaCreator.MapSimulator
                 skillWindow,
                 _playerManager.Player?.Build?.Job ?? 0,
                 GraphicsDevice,
-                _playerManager.Skills.GetLearnedSkills().Select(skill => skill.SkillId));
+                _playerManager.Skills.GetLearnedSkills().Select(skill => skill.SkillId),
+                _playerManager.Player?.Build?.SubJob ?? 0);
 
             skillWindow.SetSkillManager(_playerManager.Skills);
             skillWindow.SetCharacterLevel(_playerManager.Player?.Level ?? 1);
@@ -28085,6 +28261,7 @@ namespace HaCreator.MapSimulator
                 storeBankWindow.SetFooterProvider(BuildPacketOwnedStoreBankFooter);
                 storeBankWindow.SetRuntime(_packetOwnedStoreBankRuntime);
                 storeBankWindow.SetGetAction(HandlePacketOwnedStoreBankGetButtonClick);
+                storeBankWindow.SetCloseAction(HandlePacketOwnedStoreBankCloseButtonClick);
             }
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.BattleRecord) is UtilityPanelWindow battleRecordWindow)
@@ -30044,7 +30221,8 @@ namespace HaCreator.MapSimulator
                 skillWindow,
                 jobId,
                 GraphicsDevice,
-                _playerManager?.Skills?.GetLearnedSkills().Select(skill => skill.SkillId));
+                _playerManager?.Skills?.GetLearnedSkills().Select(skill => skill.SkillId),
+                _playerManager?.Player?.Build?.SubJob ?? 0);
 
             ConfigureSkillUIBindings();
 
@@ -32866,6 +33044,97 @@ namespace HaCreator.MapSimulator
             return $"{_tradingRoomPacketInbox.LastStatus}{Environment.NewLine}{runtimeStatus}";
         }
 
+        private string DescribeTradingRoomOfficialSessionBridgeStatus()
+        {
+            string runtimeStatus = TryGetSocialRoomRuntime(SocialRoomKind.TradingRoom, out SocialRoomRuntime runtime)
+                ? runtime.DescribeStatus()
+                : "Trading-room runtime inactive.";
+            return $"{_tradingRoomOfficialSessionBridge.DescribeStatus()}{Environment.NewLine}{runtimeStatus}";
+        }
+
+        private void EnsureTradingRoomOfficialSessionBridgeState(bool shouldRun)
+        {
+            if (!shouldRun || !_tradingRoomOfficialSessionBridgeEnabled)
+            {
+                if (_tradingRoomOfficialSessionBridge.IsRunning)
+                {
+                    _tradingRoomOfficialSessionBridge.Stop();
+                }
+
+                return;
+            }
+
+            if (_tradingRoomOfficialSessionBridgeConfiguredListenPort <= 0
+                || _tradingRoomOfficialSessionBridgeConfiguredListenPort > ushort.MaxValue)
+            {
+                if (_tradingRoomOfficialSessionBridge.IsRunning)
+                {
+                    _tradingRoomOfficialSessionBridge.Stop();
+                }
+
+                _tradingRoomOfficialSessionBridgeEnabled = false;
+                _tradingRoomOfficialSessionBridgeConfiguredListenPort = TradingRoomOfficialSessionBridgeManager.DefaultListenPort;
+                return;
+            }
+
+            if (_tradingRoomOfficialSessionBridgeUseDiscovery)
+            {
+                if (_tradingRoomOfficialSessionBridgeConfiguredRemotePort <= 0
+                    || _tradingRoomOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue)
+                {
+                    if (_tradingRoomOfficialSessionBridge.IsRunning)
+                    {
+                        _tradingRoomOfficialSessionBridge.Stop();
+                    }
+
+                    return;
+                }
+
+                if (_tradingRoomOfficialSessionBridge.IsRunning
+                    && _tradingRoomOfficialSessionBridge.ListenPort == _tradingRoomOfficialSessionBridgeConfiguredListenPort
+                    && _tradingRoomOfficialSessionBridge.InboundTradingRoomOpcode == _tradingRoomOfficialSessionBridgeConfiguredInboundOpcode)
+                {
+                    return;
+                }
+
+                _tradingRoomOfficialSessionBridge.TryStartFromDiscovery(
+                    _tradingRoomOfficialSessionBridgeConfiguredListenPort,
+                    _tradingRoomOfficialSessionBridgeConfiguredRemotePort,
+                    _tradingRoomOfficialSessionBridgeConfiguredInboundOpcode,
+                    _tradingRoomOfficialSessionBridgeConfiguredProcessSelector,
+                    _tradingRoomOfficialSessionBridgeConfiguredLocalPort,
+                    out _);
+                return;
+            }
+
+            if (_tradingRoomOfficialSessionBridgeConfiguredRemotePort <= 0
+                || _tradingRoomOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue
+                || string.IsNullOrWhiteSpace(_tradingRoomOfficialSessionBridgeConfiguredRemoteHost))
+            {
+                if (_tradingRoomOfficialSessionBridge.IsRunning)
+                {
+                    _tradingRoomOfficialSessionBridge.Stop();
+                }
+
+                return;
+            }
+
+            if (_tradingRoomOfficialSessionBridge.IsRunning
+                && _tradingRoomOfficialSessionBridge.ListenPort == _tradingRoomOfficialSessionBridgeConfiguredListenPort
+                && string.Equals(_tradingRoomOfficialSessionBridge.RemoteHost, _tradingRoomOfficialSessionBridgeConfiguredRemoteHost, StringComparison.OrdinalIgnoreCase)
+                && _tradingRoomOfficialSessionBridge.RemotePort == _tradingRoomOfficialSessionBridgeConfiguredRemotePort
+                && _tradingRoomOfficialSessionBridge.InboundTradingRoomOpcode == _tradingRoomOfficialSessionBridgeConfiguredInboundOpcode)
+            {
+                return;
+            }
+
+            _tradingRoomOfficialSessionBridge.Start(
+                _tradingRoomOfficialSessionBridgeConfiguredListenPort,
+                _tradingRoomOfficialSessionBridgeConfiguredRemoteHost,
+                _tradingRoomOfficialSessionBridgeConfiguredRemotePort,
+                _tradingRoomOfficialSessionBridgeConfiguredInboundOpcode);
+        }
+
         private void DrainTradingRoomPacketInbox(int currentTickCount)
         {
             while (_tradingRoomPacketInbox.TryDequeue(out TradingRoomPacketInboxMessage message))
@@ -32892,6 +33161,53 @@ namespace HaCreator.MapSimulator
                     ShowSocialRoomWindow(SocialRoomKind.TradingRoom);
                 }
             }
+        }
+
+        private void DrainTradingRoomOfficialSessionBridge(int currentTickCount)
+        {
+            while (_tradingRoomOfficialSessionBridge.TryDequeue(out TradingRoomPacketInboxMessage message))
+            {
+                if (message == null)
+                {
+                    continue;
+                }
+
+                if (!TryGetSocialRoomRuntime(SocialRoomKind.TradingRoom, out SocialRoomRuntime runtime))
+                {
+                    _tradingRoomOfficialSessionBridge.RecordDispatchResult(message.Source, success: false, "trading-room runtime inactive");
+                    continue;
+                }
+
+                bool applied = runtime.TryDispatchPacketBytes(message.Payload, currentTickCount, out string resultMessage);
+                _tradingRoomOfficialSessionBridge.RecordDispatchResult(
+                    message.Source,
+                    applied,
+                    applied ? $"{runtime.DescribePacketOwnerStatus()} | {runtime.DescribeStatus()}" : resultMessage);
+                if (applied)
+                {
+                    ShowSocialRoomWindow(SocialRoomKind.TradingRoom);
+                }
+            }
+        }
+
+        private void TryForwardTradingRoomAutoCrcResponse()
+        {
+            if (!_tradingRoomOfficialSessionBridge.IsRunning
+                || !_tradingRoomOfficialSessionBridge.HasConnectedSession
+                || !TryGetSocialRoomRuntime(SocialRoomKind.TradingRoom, out SocialRoomRuntime runtime)
+                || !runtime.HasPendingTradingRoomAutoCrcResponse)
+            {
+                return;
+            }
+
+            if (!runtime.TryBuildTradingRoomCrcResponseRawPacket(out byte[] rawPacket, out _)
+                || !_tradingRoomOfficialSessionBridge.TrySendOutboundRawPacket(rawPacket, out _))
+            {
+                return;
+            }
+
+            runtime.MarkTradingRoomAutoCrcResponseSent();
+            ShowSocialRoomWindow(SocialRoomKind.TradingRoom);
         }
 
         private bool TryDispatchPacketOwnedEmployeePoolOpcode(
@@ -33762,9 +34078,8 @@ namespace HaCreator.MapSimulator
 
         private bool TryDispatchCurrentWrapperPacketIngress(int packetType, byte[] payload, int currentTickCount, out string message)
         {
-            return packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode
-                ? _specialFieldRuntime.TryDispatchCurrentWrapperRelayPayload(payload, currentTickCount, out message)
-                : _specialFieldRuntime.TryDispatchCurrentWrapperPacket(packetType, payload, currentTickCount, out message);
+            SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref packetType, ref payload);
+            return _specialFieldRuntime.TryDispatchCurrentWrapperRelayPayload(payload, currentTickCount, out message);
         }
 
         private void DrainTournamentPacketInbox(int currentTickCount)
@@ -34240,7 +34555,7 @@ namespace HaCreator.MapSimulator
 
         private void HandleClientChatMessageAdded(string message, int chatLogType, int tickCount)
         {
-            if (ShouldTriggerPetSpecialistFeedbackForClientChatLogType(chatLogType))
+            if (ShouldTriggerPetSpecialistFeedbackForClientChatMessage(message, chatLogType))
             {
                 TryTriggerSpecialistPetSocialFeedback(message, tickCount);
             }
@@ -34249,6 +34564,31 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldTriggerPetSpecialistFeedbackForClientChatLogType(int chatLogType)
         {
             return chatLogType is 2 or 3 or 4 or 5 or 6 or 14 or 16 or 19 or 26;
+        }
+
+        internal static bool ShouldTriggerPetSpecialistFeedbackForClientChatMessage(string message, int chatLogType)
+        {
+            if (ShouldTriggerPetSpecialistFeedbackForClientChatLogType(chatLogType))
+            {
+                return true;
+            }
+
+            string normalized = message?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return false;
+            }
+
+            return normalized.StartsWith("[Friend]", StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith("[Party]", StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith("[Guild]", StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith("[Alliance]", StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith("[Association]", StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith("[Expedition]", StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith("[GM Whisper]", StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith("[Megassenger]", StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith(">", StringComparison.Ordinal);
         }
 
 

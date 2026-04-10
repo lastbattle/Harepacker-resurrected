@@ -372,6 +372,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || IsMechanicVehicleOwnedCurrentActionName(actionName, includeTransformStates: true);
         }
 
+        internal static bool IsKnownClientOwnedVehicleCurrentActionName(int mountItemId, string actionName)
+        {
+            return mountItemId switch
+            {
+                1932000 => IsBattleshipVehicleOwnedCurrentActionName(
+                    actionName,
+                    includeSupportActions: true),
+                1932016 => IsMechanicVehicleOwnedCurrentActionName(
+                    actionName,
+                    includeTransformStates: true),
+                _ => false
+            };
+        }
+
         internal static bool IsDistinctMechanicVehicleActionName(string actionName, bool includeTransformStates = false)
         {
             if (!IsMechanicVehicleActionName(actionName, includeTransformStates))

@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator.Pools
         short StartX,
         short StartY,
         short DelayMs,
+        long ExpireRaw,
         bool AllowPetPickup,
         bool ElevateLayer);
 
@@ -75,9 +76,10 @@ namespace HaCreator.MapSimulator.Pools
                     delayMs = reader.ReadShort();
                 }
 
+                long expireRaw = 0;
                 if (!isMoney)
                 {
-                    reader.ReadLong();
+                    expireRaw = reader.ReadLong();
                 }
 
                 bool allowPetPickup = reader.ReadByte() != 0;
@@ -105,6 +107,7 @@ namespace HaCreator.MapSimulator.Pools
                     startX,
                     startY,
                     delayMs,
+                    expireRaw,
                     allowPetPickup,
                     elevateLayer);
                 return true;

@@ -61,12 +61,15 @@ namespace HaCreator.MapSimulator.UI
         private PacketOwnedStoreBankDialogRuntime _runtime;
         private Func<string> _footerProvider;
         private Action _getAction;
+        private Func<bool> _closeAction;
         private SpriteFont _font;
         private KeyboardState _previousKeyboardState;
         private MouseState _previousMouseState;
         private Point _lastMousePosition;
         private int _scrollOffset;
         private int _selectedRowIndex = -1;
+        private int _lastOwnerRowRevision = -1;
+        private StoreBankOwnerSelectionAnchor? _selectionAnchor;
         private bool _draggingScrollThumb;
         private int _scrollThumbDragOffsetY;
 
@@ -101,8 +104,11 @@ namespace HaCreator.MapSimulator.UI
                 AddButton(exitButton);
                 exitButton.ButtonClickReleased += _ =>
                 {
-                    _runtime?.Close();
-                    Hide();
+                    if (_closeAction?.Invoke() != false)
+                    {
+                        _runtime?.Close();
+                        Hide();
+                    }
                 };
             }
 
@@ -130,6 +136,7 @@ namespace HaCreator.MapSimulator.UI
         internal void SetRuntime(PacketOwnedStoreBankDialogRuntime runtime)
         {
             _runtime = runtime;
+            _lastOwnerRowRevision = runtime?.OwnerRowRevision ?? -1;
             ClampState();
             UpdateInteractiveState();
         }
@@ -142,6 +149,11 @@ namespace HaCreator.MapSimulator.UI
         internal void SetGetAction(Action getAction)
         {
             _getAction = getAction;
+        }
+
+        internal void SetCloseAction(Func<bool> closeAction)
+        {
+            _closeAction = closeAction;
         }
 
         internal void AddLayer(IDXObject drawable, Point offset)
@@ -177,6 +189,7 @@ namespace HaCreator.MapSimulator.UI
 
             MouseState mouseState = Mouse.GetState();
             _lastMousePosition = mouseState.Position;
+            SyncOwnerRowRevision();
             UpdateScrollThumbDrag(mouseState);
             HandleKeyboardInput();
 
@@ -488,6 +501,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _selectedRowIndex = rowIndex;
+            _selectionAnchor = BuildSelectionAnchor(rows[rowIndex]);
             EnsureSelectedRowVisible();
             UpdateInteractiveState();
         }
@@ -524,6 +538,15 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<StoreBankOwnerRowSnapshot> rows = GetRows();
             _selectedRowIndex = rows.Count == 0 ? -1 : Math.Clamp(_selectedRowIndex, -1, rows.Count - 1);
             _scrollOffset = Math.Clamp(_scrollOffset, 0, GetMaxScrollOffset());
+            if (_selectedRowIndex >= 0 && _selectedRowIndex < rows.Count)
+            {
+                _selectionAnchor = BuildSelectionAnchor(rows[_selectedRowIndex]);
+            }
+            else if (rows.Count == 0)
+            {
+                _selectionAnchor = null;
+            }
+
             if (_selectedRowIndex >= 0)
             {
                 EnsureSelectedRowVisible();
@@ -681,6 +704,45 @@ namespace HaCreator.MapSimulator.UI
         private int GetMaxScrollOffset()
         {
             return Math.Max(0, GetRows().Count - VisibleRowCount);
+        }
+
+        private void SyncOwnerRowRevision()
+        {
+            if (_runtime == null)
+            {
+                _lastOwnerRowRevision = -1;
+                return;
+            }
+
+            if (_lastOwnerRowRevision == _runtime.OwnerRowRevision)
+            {
+                return;
+            }
+
+            IReadOnlyList<StoreBankOwnerRowSnapshot> rows = GetRows();
+            if (_selectionAnchor.HasValue)
+            {
+                _selectedRowIndex = PacketOwnedStoreBankDialogRuntime.ResolveOwnerRowIndex(rows, _selectionAnchor.Value);
+            }
+            else if (rows.Count == 0)
+            {
+                _selectedRowIndex = -1;
+            }
+
+            _lastOwnerRowRevision = _runtime.OwnerRowRevision;
+            ClampState();
+            UpdateInteractiveState();
+        }
+
+        private static StoreBankOwnerSelectionAnchor BuildSelectionAnchor(StoreBankOwnerRowSnapshot row)
+        {
+            return new StoreBankOwnerSelectionAnchor(
+                row.PacketGroupInventoryType,
+                row.PacketGroupRowIndex,
+                row.ItemId,
+                row.ItemSerialNumber,
+                row.CashSerialNumber,
+                row.Title ?? string.Empty);
         }
 
         private Texture2D ResolvePrevTexture(bool canScroll, bool hover)

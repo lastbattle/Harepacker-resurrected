@@ -331,6 +331,159 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private ChatCommandHandler.CommandResult HandleTradingRoomSessionCommand(string[] args, int actionIndex)
+        {
+            const string sessionUsage = "Usage: /socialroom tradingroom [packet] session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]";
+            string sessionAction = args.Length > actionIndex + 1 ? args[actionIndex + 1] : "status";
+            switch (sessionAction.ToLowerInvariant())
+            {
+                case "status":
+                    return ChatCommandHandler.CommandResult.Info(DescribeTradingRoomOfficialSessionBridgeStatus());
+
+                case "discover":
+                    if (args.Length <= actionIndex + 2
+                        || !int.TryParse(args[actionIndex + 2], out int discoverRemotePort)
+                        || discoverRemotePort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                    }
+
+                    string processSelector = args.Length > actionIndex + 3 ? args[actionIndex + 3] : null;
+                    int? localPortFilter = null;
+                    if (args.Length > actionIndex + 4)
+                    {
+                        if (!int.TryParse(args[actionIndex + 4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                        {
+                            return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                        }
+
+                        localPortFilter = parsedLocalPort;
+                    }
+
+                    return ChatCommandHandler.CommandResult.Info(
+                        _tradingRoomOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
+
+                case "history":
+                    int historyCount = 10;
+                    if (args.Length > actionIndex + 2
+                        && (!int.TryParse(args[actionIndex + 2], out historyCount) || historyCount <= 0))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                    }
+
+                    return ChatCommandHandler.CommandResult.Info(
+                        _tradingRoomOfficialSessionBridge.DescribeRecentOutboundPackets(historyCount));
+
+                case "clearhistory":
+                    return ChatCommandHandler.CommandResult.Ok(
+                        _tradingRoomOfficialSessionBridge.ClearRecentOutboundPackets());
+
+                case "replay":
+                    if (args.Length <= actionIndex + 2
+                        || !int.TryParse(args[actionIndex + 2], out int replayIndex)
+                        || replayIndex <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                    }
+
+                    return _tradingRoomOfficialSessionBridge.TryReplayRecentOutboundPacket(replayIndex, out string replayStatus)
+                        ? ChatCommandHandler.CommandResult.Ok(replayStatus)
+                        : ChatCommandHandler.CommandResult.Error(replayStatus);
+
+                case "sendraw":
+                    if (args.Length <= actionIndex + 2
+                        || !TryDecodeHexBytes(string.Concat(args.Skip(actionIndex + 2)), out byte[] rawPacket))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                    }
+
+                    return _tradingRoomOfficialSessionBridge.TrySendOutboundRawPacket(rawPacket, out string sendStatus)
+                        ? ChatCommandHandler.CommandResult.Ok(sendStatus)
+                        : ChatCommandHandler.CommandResult.Error(sendStatus);
+
+                case "start":
+                    if (args.Length <= actionIndex + 5
+                        || !int.TryParse(args[actionIndex + 2], out int listenPort)
+                        || listenPort <= 0
+                        || !int.TryParse(args[actionIndex + 4], out int remotePort)
+                        || remotePort <= 0
+                        || !int.TryParse(args[actionIndex + 5], out int inboundOpcodeValue)
+                        || inboundOpcodeValue < 0
+                        || inboundOpcodeValue > ushort.MaxValue)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                    }
+
+                    _tradingRoomOfficialSessionBridgeEnabled = true;
+                    _tradingRoomOfficialSessionBridgeUseDiscovery = false;
+                    _tradingRoomOfficialSessionBridgeConfiguredListenPort = listenPort;
+                    _tradingRoomOfficialSessionBridgeConfiguredRemoteHost = args[actionIndex + 3];
+                    _tradingRoomOfficialSessionBridgeConfiguredRemotePort = remotePort;
+                    _tradingRoomOfficialSessionBridgeConfiguredInboundOpcode = (ushort)inboundOpcodeValue;
+                    _tradingRoomOfficialSessionBridgeConfiguredProcessSelector = null;
+                    _tradingRoomOfficialSessionBridgeConfiguredLocalPort = null;
+                    EnsureTradingRoomOfficialSessionBridgeState(shouldRun: true);
+                    return ChatCommandHandler.CommandResult.Ok(DescribeTradingRoomOfficialSessionBridgeStatus());
+
+                case "startauto":
+                    if (args.Length <= actionIndex + 4
+                        || !int.TryParse(args[actionIndex + 2], out int autoListenPort)
+                        || autoListenPort <= 0
+                        || !int.TryParse(args[actionIndex + 3], out int autoRemotePort)
+                        || autoRemotePort <= 0
+                        || !int.TryParse(args[actionIndex + 4], out int autoInboundOpcodeValue)
+                        || autoInboundOpcodeValue < 0
+                        || autoInboundOpcodeValue > ushort.MaxValue)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                    }
+
+                    string autoProcessSelector = args.Length > actionIndex + 5 ? args[actionIndex + 5] : null;
+                    int? autoLocalPortFilter = null;
+                    if (args.Length > actionIndex + 6)
+                    {
+                        if (!int.TryParse(args[actionIndex + 6], out int parsedAutoLocalPort) || parsedAutoLocalPort <= 0)
+                        {
+                            return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                        }
+
+                        autoLocalPortFilter = parsedAutoLocalPort;
+                    }
+
+                    _tradingRoomOfficialSessionBridgeEnabled = true;
+                    _tradingRoomOfficialSessionBridgeUseDiscovery = true;
+                    _tradingRoomOfficialSessionBridgeConfiguredListenPort = autoListenPort;
+                    _tradingRoomOfficialSessionBridgeConfiguredRemoteHost = "127.0.0.1";
+                    _tradingRoomOfficialSessionBridgeConfiguredRemotePort = autoRemotePort;
+                    _tradingRoomOfficialSessionBridgeConfiguredInboundOpcode = (ushort)autoInboundOpcodeValue;
+                    _tradingRoomOfficialSessionBridgeConfiguredProcessSelector = autoProcessSelector;
+                    _tradingRoomOfficialSessionBridgeConfiguredLocalPort = autoLocalPortFilter;
+
+                    return _tradingRoomOfficialSessionBridge.TryStartFromDiscovery(
+                            autoListenPort,
+                            autoRemotePort,
+                            (ushort)autoInboundOpcodeValue,
+                            autoProcessSelector,
+                            autoLocalPortFilter,
+                            out string startStatus)
+                        ? ChatCommandHandler.CommandResult.Ok($"{startStatus}{Environment.NewLine}{DescribeTradingRoomOfficialSessionBridgeStatus()}")
+                        : ChatCommandHandler.CommandResult.Error(startStatus);
+
+                case "stop":
+                    _tradingRoomOfficialSessionBridgeEnabled = false;
+                    _tradingRoomOfficialSessionBridgeUseDiscovery = false;
+                    _tradingRoomOfficialSessionBridgeConfiguredRemotePort = 0;
+                    _tradingRoomOfficialSessionBridgeConfiguredInboundOpcode = 0;
+                    _tradingRoomOfficialSessionBridgeConfiguredProcessSelector = null;
+                    _tradingRoomOfficialSessionBridgeConfiguredLocalPort = null;
+                    _tradingRoomOfficialSessionBridge.Stop();
+                    return ChatCommandHandler.CommandResult.Ok(DescribeTradingRoomOfficialSessionBridgeStatus());
+
+                default:
+                    return ChatCommandHandler.CommandResult.Error(sessionUsage);
+            }
+        }
+
         private ChatCommandHandler.CommandResult HandleTransportSessionCommand(string[] args)
         {
             const string sessionUsage = "Usage: /transport session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|queue <historyIndex>|sendraw <hex>|queueraw <hex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]";
@@ -2940,10 +3093,10 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "sociallist",
                 "Inspect or drive the Social List, guild-manage, alliance-editor, and packet-owned roster-authority seams",
-                "/sociallist [status|open [friend|party|guild|alliance|blacklist]|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet ...|packetraw ...]",
+                "/sociallist [status|open [friend|party|guild|alliance|blacklist]|group open [add|whisper]|group close|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet ...|packetraw ...]",
                 args =>
                 {
-                    const string usage = "/sociallist [status|open [friend|party|guild|alliance|blacklist]|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet [session ...|...]|packetraw ...]";
+                    const string usage = "/sociallist [status|open [friend|party|guild|alliance|blacklist]|group open [add|whisper]|group close|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet [session ...|...]|packetraw ...]";
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
                         return ChatCommandHandler.CommandResult.Info($"{_socialListRuntime.DescribeStatus()}{Environment.NewLine}{DescribeSocialListOfficialSessionBridgeStatus()}");
@@ -2961,6 +3114,48 @@ namespace HaCreator.MapSimulator
                         WireSocialListWindowData();
                         ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialList);
                         return ChatCommandHandler.CommandResult.Ok($"Opened Social List on the {DescribePacketOwnedSocialListTab(targetTab)} tab.");
+                    }
+
+                    if (string.Equals(args[0], "group", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length >= 2 && string.Equals(args[1], "close", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string popupMessage = _socialListRuntime.CancelFriendGroupPopup() ?? "The dedicated friend-group popup is not open.";
+                            uiWindowManager.HideWindow(MapSimulatorWindowNames.FriendGroup);
+                            return ChatCommandHandler.CommandResult.Ok(popupMessage);
+                        }
+
+                        if (args.Length < 2 || !string.Equals(args[1], "open", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /sociallist group <open [add|whisper]|close>");
+                        }
+
+                        FriendGroupPopupMode mode = FriendGroupPopupMode.AddFriend;
+                        if (args.Length >= 3)
+                        {
+                            string modeToken = args[2].Trim().ToLowerInvariant();
+                            if (modeToken == "add")
+                            {
+                                mode = FriendGroupPopupMode.AddFriend;
+                            }
+                            else if (modeToken == "whisper")
+                            {
+                                mode = FriendGroupPopupMode.GroupWhisper;
+                            }
+                            else
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist group open [add|whisper]");
+                            }
+                        }
+
+                        string openPopupMessage = _socialListRuntime.OpenFriendGroupPopup(mode);
+                        if (_socialListRuntime.HasOpenFriendGroupPopup)
+                        {
+                            WireFriendGroupWindowData();
+                            ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FriendGroup);
+                        }
+
+                        return ChatCommandHandler.CommandResult.Ok(openPopupMessage);
                     }
 
                     if (string.Equals(args[0], "search", StringComparison.OrdinalIgnoreCase))
@@ -7570,11 +7765,13 @@ namespace HaCreator.MapSimulator
                                     ShowSocialRoomWindow(kind);
                                     return ChatCommandHandler.CommandResult.Ok("Trading-room window opened.");
                                 case "status":
-                                    return ChatCommandHandler.CommandResult.Info($"{runtime.DescribeStatus()}{Environment.NewLine}{DescribeTradingRoomPacketInboxStatus()}");
+                                    return ChatCommandHandler.CommandResult.Info($"{runtime.DescribeStatus()}{Environment.NewLine}{DescribeTradingRoomPacketInboxStatus()}{Environment.NewLine}{DescribeTradingRoomOfficialSessionBridgeStatus()}");
                                 case "packetowner":
-                                    return ChatCommandHandler.CommandResult.Info($"{runtime.DescribePacketOwnerStatus()}{Environment.NewLine}{DescribeTradingRoomPacketInboxStatus()}");
+                                    return ChatCommandHandler.CommandResult.Info($"{runtime.DescribePacketOwnerStatus()}{Environment.NewLine}{DescribeTradingRoomPacketInboxStatus()}{Environment.NewLine}{DescribeTradingRoomOfficialSessionBridgeStatus()}");
                                 case "inbox":
                                     return HandleTradingRoomInboxCommand(args, actionIndex);
+                                case "session":
+                                    return HandleTradingRoomSessionCommand(args, actionIndex);
                                 case "offeritem":
                                     if (args.Length <= actionIndex + 1 || !int.TryParse(args[actionIndex + 1], out int tradeItemId))
                                     {
@@ -7681,7 +7878,7 @@ namespace HaCreator.MapSimulator
                                         ? ChatCommandHandler.CommandResult.Ok(resetMessage)
                                         : ChatCommandHandler.CommandResult.Error(resetMessage);
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom tradingroom [packet] <open|status|packetowner|inbox [status|start [port]|stop]|offeritem <itemId> [qty]|offermeso <amount>|lock|accept|remoteofferitem <itemId> [qty]|remoteoffermeso <amount>|remotelock|remoteaccept|remoteinventory <status|additem <itemId> [qty]|addmeso <amount>|clear>|complete|reset|packetraw <hex>|packetrecv <opcode> <hex>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom tradingroom [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]|offeritem <itemId> [qty]|offermeso <amount>|lock|accept|remoteofferitem <itemId> [qty]|remoteoffermeso <amount>|remotelock|remoteaccept|remoteinventory <status|additem <itemId> [qty]|addmeso <amount>|clear>|complete|reset|packetraw <hex>|packetrecv <opcode> <hex>>");
                             }
 
                     }
@@ -7726,7 +7923,7 @@ namespace HaCreator.MapSimulator
                             {
                                 return ChatCommandHandler.CommandResult.Error(composeRestrictionMessage);
                             }
-                            return ChatCommandHandler.CommandResult.Ok("Opened the parcel send tab. Use /memo draft ... to edit the current draft.");
+                            return ChatCommandHandler.CommandResult.Ok("Opened the parcel send tab. Recipient, note, and meso edits stay in the parcel owner.");
                         case "quick":
                             _memoMailbox.SetActiveTab(ParcelDialogTab.QuickSend);
                             if (!TryOpenFieldRestrictedWindow(MapSimulatorWindowNames.MemoMailbox, out string quickRestrictionMessage))

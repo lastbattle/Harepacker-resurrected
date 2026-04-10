@@ -33,6 +33,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Queue<SocialEntryState> _blacklistSeeds = new();
         private readonly List<string> _friendGroups = new();
         private readonly Dictionary<string, string> _friendGroupByName = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<SocialListTab, int> _nextGeneratedMemberIdByTab = new();
         private readonly Dictionary<SocialListTab, bool> _packetOwnedRosterByTab = new();
         private readonly Dictionary<SocialListTab, string> _lastPacketSyncSummaryByTab = new();
         private readonly Dictionary<SocialListTab, string> _lastPendingRequestByTab = new();
@@ -561,6 +562,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _entriesByTab[tab] = new List<SocialEntryState>();
                 _selectedIndexByTab[tab] = -1;
                 _firstVisibleIndexByTab[tab] = 0;
+                _nextGeneratedMemberIdByTab[tab] = (((int)tab) + 1) * 1000;
                 _packetOwnedRosterByTab[tab] = false;
                 _lastPacketSyncSummaryByTab[tab] = "No packet roster sync received.";
                 _lastPendingRequestByTab[tab] = null;
@@ -639,6 +641,11 @@ namespace HaCreator.MapSimulator.Interaction
             _selectedIndexByTab[SocialListTab.Guild] = 0;
             _selectedIndexByTab[SocialListTab.Alliance] = 0;
             _selectedIndexByTab[SocialListTab.Blacklist] = 0;
+
+            foreach (SocialListTab tab in Enum.GetValues(typeof(SocialListTab)))
+            {
+                EnsureRosterMemberIds(tab);
+            }
         }
 
         private void UpdateOrInsertLocalEntry(SocialListTab tab, SocialEntryState localEntry)
@@ -654,13 +661,14 @@ namespace HaCreator.MapSimulator.Interaction
             if (existingIndex >= 0)
             {
                 SocialEntryState existingEntry = entries[existingIndex];
-                entries[existingIndex] = IsPacketOwned(tab)
+                SocialEntryState updatedEntry = IsPacketOwned(tab)
                     ? MergePacketOwnedLocalEntry(existingEntry, localEntry)
                     : localEntry;
+                entries[existingIndex] = EnsureEntryHasMemberId(tab, updatedEntry, existingEntry.MemberId);
             }
             else
             {
-                entries.Insert(0, localEntry);
+                entries.Insert(0, EnsureEntryHasMemberId(tab, localEntry));
             }
         }
 
@@ -1800,6 +1808,59 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return null;
+        }
+
+        private void EnsureRosterMemberIds(SocialListTab tab)
+        {
+            if (!_entriesByTab.TryGetValue(tab, out List<SocialEntryState> entries) || entries == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                entries[i] = EnsureEntryHasMemberId(tab, entries[i]);
+            }
+        }
+
+        private SocialEntryState EnsureEntryHasMemberId(SocialListTab tab, SocialEntryState entry, int? preferredMemberId = null)
+        {
+            if (entry == null)
+            {
+                return null;
+            }
+
+            int memberId = preferredMemberId.GetValueOrDefault(entry.MemberId.GetValueOrDefault(0));
+            if (memberId <= 0)
+            {
+                memberId = AllocateGeneratedMemberId(tab);
+            }
+
+            return entry.MemberId == memberId
+                ? entry
+                : new SocialEntryState(
+                    entry.Name,
+                    entry.PrimaryText,
+                    entry.SecondaryText,
+                    entry.LocationSummary,
+                    entry.Channel,
+                    entry.IsOnline,
+                    entry.IsLeader,
+                    entry.IsBlocked)
+                {
+                    MemberId = memberId,
+                    IsLocalPlayer = entry.IsLocalPlayer
+                };
+        }
+
+        private int AllocateGeneratedMemberId(SocialListTab tab)
+        {
+            int nextValue = _nextGeneratedMemberIdByTab.TryGetValue(tab, out int existingValue)
+                ? existingValue
+                : (((int)tab) + 1) * 1000;
+            nextValue = Math.Max(1, nextValue + 1);
+            _nextGeneratedMemberIdByTab[tab] = nextValue;
+            return nextValue;
         }
 
         private sealed class SocialEntryState

@@ -111,6 +111,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string SeedPacketRoster(SocialListTab tab)
         {
+            EnsureRosterMemberIds(tab);
             _packetOwnedRosterByTab[tab] = true;
             _lastPacketSyncSummaryByTab[tab] = $"Packet seed captured {_entriesByTab[tab].Count} roster entr{(_entriesByTab[tab].Count == 1 ? "y" : "ies")}.";
             _lastPendingRequestByTab[tab] = null;
@@ -180,7 +181,13 @@ namespace HaCreator.MapSimulator.Interaction
             };
 
             List<SocialEntryState> entries = _entriesByTab[tab];
-            int existingIndex = entries.FindIndex(current => string.Equals(current.Name, resolvedName, StringComparison.OrdinalIgnoreCase));
+            int existingIndex = memberId > 0
+                ? entries.FindIndex(current => current.MemberId == memberId.Value)
+                : -1;
+            if (existingIndex < 0)
+            {
+                existingIndex = entries.FindIndex(current => string.Equals(current.Name, resolvedName, StringComparison.OrdinalIgnoreCase));
+            }
             if (existingIndex >= 0)
             {
                 entries[existingIndex] = entry;

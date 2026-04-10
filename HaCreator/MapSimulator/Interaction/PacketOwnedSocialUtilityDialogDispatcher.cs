@@ -175,6 +175,16 @@ namespace HaCreator.MapSimulator.Interaction
             return $"{_trunkDialogRuntime.DescribeStatus()} Dispatcher: {_lastTrunkDispatchSummary}";
         }
 
+        internal bool TryBuildTrunkCloseOutboundRequest(out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
+            bool built = _trunkDialogRuntime.TryBuildCloseOutboundRequest(out request, out message);
+            _lastTrunkDispatchSummary = built
+                ? "CTrunkDlg::SetRet mirrored the close/return request."
+                : $"CTrunkDlg::SetRet close request was ignored. {message}";
+            _lastDispatchSummary = _lastTrunkDispatchSummary;
+            return built;
+        }
+
         internal string DescribeMessengerStatus()
         {
             return $"{_messengerRuntime.DescribeStatus()} Dispatcher: {_lastMessengerDispatchSummary}";
@@ -698,6 +708,26 @@ namespace HaCreator.MapSimulator.Interaction
             int usedSlots = runtime?.GetUsedSlotCount() ?? 0;
             long meso = runtime?.GetMesoCount() ?? 0;
             return $"Trunk packet-owner {(IsOpen ? "open" : "idle")}. Used slots={usedSlots}, meso={meso.ToString(CultureInfo.InvariantCulture)}, packets open={_openCount}, refresh={_refreshCount}, notice={_noticeCount}. Last subtype={LastSubtype.ToString(CultureInfo.InvariantCulture)}. {StatusMessage}";
+        }
+
+        internal bool TryBuildCloseOutboundRequest(out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
+            request = default;
+            if (!IsOpen)
+            {
+                StatusMessage = "CTrunkDlg ignored close because the owner is already closed.";
+                message = StatusMessage;
+                return false;
+            }
+
+            IsOpen = false;
+            StatusMessage = "CTrunkDlg::SetRet closed the owner and mirrored packet 67 [08].";
+            request = new PacketOwnedNpcUtilityOutboundRequest(
+                67,
+                new byte[] { 8 },
+                "Mirrored CTrunkDlg::SetRet close/return request (opcode 67, mode 8).");
+            message = StatusMessage;
+            return true;
         }
 
         private bool TryApplySnapshotPacket(byte[] payload, bool openDialog, out string message)

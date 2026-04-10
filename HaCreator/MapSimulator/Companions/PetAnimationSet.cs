@@ -223,6 +223,25 @@ namespace HaCreator.MapSimulator.Companions
                 .Select(char.ToLowerInvariant)
                 .ToArray());
         }
+
+        internal static string NormalizeActionStem(string actionName)
+        {
+            string normalizedActionName = NormalizeActionName(actionName);
+            if (string.IsNullOrWhiteSpace(normalizedActionName))
+            {
+                return string.Empty;
+            }
+
+            int stemLength = normalizedActionName.Length;
+            while (stemLength > 0 && char.IsDigit(normalizedActionName[stemLength - 1]))
+            {
+                stemLength--;
+            }
+
+            return stemLength > 0
+                ? normalizedActionName.Substring(0, stemLength)
+                : normalizedActionName;
+        }
     }
 
     internal sealed class PetAnimationSet : AnimationSetBase
@@ -277,6 +296,11 @@ namespace HaCreator.MapSimulator.Companions
                 return true;
             }
 
+            if (TryGetNormalizedStemFrames(requestedAction, out frames))
+            {
+                return true;
+            }
+
             return TryGetFrames("stand1", out frames) || TryGetFrames("stand0", out frames);
         }
 
@@ -306,6 +330,38 @@ namespace HaCreator.MapSimulator.Companions
                 if (!string.Equals(
                         PetActionAliases.NormalizeActionName(actionName),
                         normalizedRequestedAction,
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                frames = candidateFrames;
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryGetNormalizedStemFrames(string requestedAction, out List<IDXObject> frames)
+        {
+            frames = null;
+
+            string normalizedRequestedStem = PetActionAliases.NormalizeActionStem(requestedAction);
+            if (string.IsNullOrWhiteSpace(normalizedRequestedStem))
+            {
+                return false;
+            }
+
+            foreach ((string actionName, List<IDXObject> candidateFrames) in _animations)
+            {
+                if (candidateFrames?.Count <= 0)
+                {
+                    continue;
+                }
+
+                if (!string.Equals(
+                        PetActionAliases.NormalizeActionStem(actionName),
+                        normalizedRequestedStem,
                         StringComparison.Ordinal))
                 {
                     continue;

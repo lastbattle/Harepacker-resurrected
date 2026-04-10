@@ -432,6 +432,11 @@ namespace HaCreator.MapSimulator.UI
             return _sourceDialog?.GetWishlistSearchServiceStateSummary() ?? string.Empty;
         }
 
+        public IReadOnlyList<string> GetWishlistSearchServiceStateDetailLines()
+        {
+            return _sourceDialog?.GetWishlistSearchServiceStateDetailLines() ?? Array.Empty<string>();
+        }
+
         public void OnSearchResultAddOnClosed(string message)
         {
             if (!string.IsNullOrWhiteSpace(message))

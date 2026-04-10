@@ -251,6 +251,7 @@ namespace HaCreator.MapSimulator
         private const int AranTutorialMapIdMin = 914000000;
         private const int AranTutorialMapIdMax = 914000500;
         private const int WeddingPhotoMapRegionPrefix = 680000;
+        private const int ChaosZakumPortalSessionFallbackFieldId = 180000002;
         private const int ClientOwnedLimitedViewDarkCanvasWidth = 1024;
         private const int ClientOwnedLimitedViewDarkCanvasHeight = 768;
         private const int ClientOwnedLimitedViewDarkLayerOffsetX = -512;
@@ -415,6 +416,36 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private bool TryApplyClientOwnedWrapperSessionValue(string wrapperName, string key, string value, out string message)
+        {
+            message = null;
+            if (string.IsNullOrWhiteSpace(wrapperName) || string.IsNullOrWhiteSpace(key))
+            {
+                return false;
+            }
+
+            if (string.Equals(wrapperName, "chaoszakum", StringComparison.OrdinalIgnoreCase)
+                && IsChaosZakumPortalSessionWrapperMap(_mapBoard?.MapInfo)
+                && IsChaosZakumPortalSessionKey(key))
+            {
+                message = $"chaos-zakum session key accepted ({key.Trim()}={value ?? string.Empty})";
+                return true;
+            }
+
+            return false;
+        }
+
+        internal static bool IsChaosZakumPortalSessionWrapperMap(MapInfo mapInfo)
+        {
+            return mapInfo?.fieldType == FieldType.FIELDTYPE_CHAOSZAKUM
+                || mapInfo?.id == ChaosZakumPortalSessionFallbackFieldId;
+        }
+
+        internal static bool IsChaosZakumPortalSessionKey(string key)
+        {
+            return string.Equals(key?.Trim(), "fire", StringComparison.Ordinal);
         }
 
         private void DrawClientOwnedResultFieldWrappers(int currentTick)

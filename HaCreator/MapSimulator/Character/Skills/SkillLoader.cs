@@ -2014,7 +2014,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.ShadowPartnerActionAnimations[actionKey] = animation;
             }
 
-            SynthesizePiecedShadowPartnerActionAnimations(skill.ShadowPartnerActionAnimations);
+            SynthesizeClientOwnedShadowPartnerActionAnimations(skill.ShadowPartnerActionAnimations);
             skill.ShadowPartnerHorizontalOffsetPx = ResolveShadowPartnerHorizontalOffsetPx(skill.ShadowPartnerActionAnimations);
         }
 
@@ -2146,7 +2146,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && ShadowPartnerReplayTailActionNames.Contains(actionKey);
         }
 
-        internal static void SynthesizePiecedShadowPartnerActionAnimations(
+        internal static void SynthesizeClientOwnedShadowPartnerActionAnimations(
             IDictionary<string, SkillAnimation> actionAnimations)
         {
             if (actionAnimations == null || actionAnimations.Count == 0)
@@ -2171,6 +2171,26 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (piecedAnimation?.Frames.Count > 0)
                 {
                     actionAnimations[actionName] = piecedAnimation;
+                }
+            }
+
+            readOnlyActionAnimations =
+                actionAnimations as IReadOnlyDictionary<string, SkillAnimation>
+                ?? new Dictionary<string, SkillAnimation>(actionAnimations, StringComparer.OrdinalIgnoreCase);
+
+            foreach (string actionName in ShadowPartnerClientActionResolver.EnumerateRemappedShadowPartnerActionNames())
+            {
+                if (string.IsNullOrWhiteSpace(actionName) || actionAnimations.ContainsKey(actionName))
+                {
+                    continue;
+                }
+
+                SkillAnimation remappedAnimation = ShadowPartnerClientActionResolver.TryBuildRemappedShadowPartnerActionAnimation(
+                    readOnlyActionAnimations,
+                    actionName);
+                if (remappedAnimation?.Frames.Count > 0)
+                {
+                    actionAnimations[actionName] = remappedAnimation;
                 }
             }
         }
@@ -4326,6 +4346,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
+            if (node.WzProperties == null)
+            {
+                return false;
+            }
+
             foreach (WzImageProperty child in node.WzProperties)
             {
                 if (child == null)
@@ -4339,6 +4364,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
 
                 if (!int.TryParse(child.Name, out _))
+                {
+                    continue;
+                }
+
+                if (child.WzProperties == null)
                 {
                     continue;
                 }
@@ -4712,6 +4742,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static bool IsExplicitSwallowFamilyRoot(SkillData skill)
         {
             if (skill == null
+                || !skill.IsSwallowSkill
                 || skill.DummySkillParents == null
                 || skill.DummySkillParents.Length == 0)
             {
@@ -5239,6 +5270,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.EVA = PreferPrimaryStat(levelData.EVA, GetInt(node, "indieEva", 0, level));
             levelData.Speed = PreferPrimaryStat(levelData.Speed, GetInt(node, "indieSpeed", 0, level));
             levelData.Jump = PreferPrimaryStat(levelData.Jump, GetInt(node, "indieJump", 0, level));
+            levelData.Speed = PreferPrimaryStat(levelData.Speed, GetInt(node, "psdSpeed", 0, level));
+            levelData.Jump = PreferPrimaryStat(levelData.Jump, GetInt(node, "psdJump", 0, level));
             levelData.EnhancedPAD = GetInt(node, "epad", 0, level);
             levelData.EnhancedMAD = GetInt(node, "emad", 0, level);
             levelData.EnhancedPDD = GetInt(node, "epdd", 0, level);

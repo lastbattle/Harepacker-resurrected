@@ -254,18 +254,21 @@ namespace HaCreator.MapSimulator
             string hostText = $"get_server_string_0 => {RankingServerHost}";
             string launchSource = string.IsNullOrWhiteSpace(_lastRankingLaunchSource) ? "status-bar owner" : _lastRankingLaunchSource;
             bool hasActiveRequest = _lastRankingOpenTick != int.MinValue;
-            bool requestPending = hasActiveRequest && _lastRankingNavigateTick == int.MinValue;
-            bool isLoading = build != null && requestPending;
-            string requestValue = build == null
-                ? "No active character"
-                : requestPending
-                    ? "Loading"
-                    : "Navigated";
+            bool hasPacketOwnedRankingEntries = _packetOwnedRankingEntries.Count > 0;
+            bool requestPending = ResolveRankingOwnerRequestPending(hasActiveRequest, _lastRankingNavigateTick, _packetOwnedRankingEntries.Count);
+            bool isLoading = requestPending;
+            string requestValue = hasPacketOwnedRankingEntries
+                ? "Packet page"
+                : build == null
+                    ? "No active character"
+                    : requestPending
+                        ? "Loading"
+                        : "Navigated";
 
-            List<RankingEntrySnapshot> entries = new();
+            List<RankingEntrySnapshot> localEntries = new();
             if (build == null)
             {
-                entries.Add(new RankingEntrySnapshot
+                localEntries.Add(new RankingEntrySnapshot
                 {
                     Label = "Landing Request",
                     Value = requestValue,
@@ -274,19 +277,19 @@ namespace HaCreator.MapSimulator
             }
             else if (requestPending)
             {
-                entries.Add(new RankingEntrySnapshot
+                localEntries.Add(new RankingEntrySnapshot
                 {
                     Label = "Landing Request",
                     Value = requestValue,
                     Detail = BuildRankingOwnerLifecycleDetail(build, launchSource, webSeedText, usedResolvedTemplate)
                 });
-                entries.Add(new RankingEntrySnapshot
+                localEntries.Add(new RankingEntrySnapshot
                 {
                     Label = "Client Phase",
                     Value = "Loading layer armed",
                     Detail = "Local ladder cards stay hidden until the recovered CWebWnd landing request clears the loading layer."
                 });
-                entries.Add(new RankingEntrySnapshot
+                localEntries.Add(new RankingEntrySnapshot
                 {
                     Label = "Pending Summary",
                     Value = $"World {FormatRank(build.WorldRank)} / Job {FormatRank(build.JobRank)}",
@@ -295,25 +298,25 @@ namespace HaCreator.MapSimulator
             }
             else
             {
-                entries.Add(new RankingEntrySnapshot
+                localEntries.Add(new RankingEntrySnapshot
                 {
                     Label = "World Rank",
                     Value = FormatRank(build.WorldRank),
                     Detail = $"Previous {FormatRank(rankDelta.PreviousWorldRank)} ({FormatSignedDelta(rankDelta.PreviousWorldRank - build.WorldRank)})."
                 });
-                entries.Add(new RankingEntrySnapshot
+                localEntries.Add(new RankingEntrySnapshot
                 {
                     Label = "Job Rank",
                     Value = FormatRank(build.JobRank),
                     Detail = $"Previous {FormatRank(rankDelta.PreviousJobRank)} ({FormatSignedDelta(rankDelta.PreviousJobRank - build.JobRank)})."
                 });
-                entries.Add(new RankingEntrySnapshot
+                localEntries.Add(new RankingEntrySnapshot
                 {
                     Label = "Popularity",
                     Value = build.Fame.ToString(CultureInfo.InvariantCulture),
                     Detail = $"Lv. {build.Level} {build.JobName} in {mapName} (map {currentMapId})."
                 });
-                entries.Add(new RankingEntrySnapshot
+                localEntries.Add(new RankingEntrySnapshot
                 {
                     Label = "Combat Context",
                     Value = $"PAD {build.TotalAttack} / MAD {build.TotalMagicAttack}",
@@ -323,24 +326,54 @@ namespace HaCreator.MapSimulator
                 });
             }
 
-            string subtitle = build == null
-                ? "UIWindow2.img/Ranking stays the owner seam while the recovered CWebWnd request shape remains unresolved."
-                : $"UIWindow2.img/Ranking stays the owner seam while the recovered CWebWnd request queues NavigateUrl for {build.Name}, world {worldRequestId}, then swaps from loading into simulator-local ladder context.";
+            IReadOnlyList<RankingEntrySnapshot> entries = ResolveRankingOwnerEntries(localEntries, _packetOwnedRankingEntries);
+            string subtitle = hasPacketOwnedRankingEntries
+                ? "UIWindow2.img/Ranking stays the owner seam while packet-authored CUIRanking rows now replace the local fallback cards as soon as a recovered ranking page payload lands."
+                : build == null
+                    ? "UIWindow2.img/Ranking stays the owner seam while the recovered CWebWnd request shape remains unresolved."
+                    : $"UIWindow2.img/Ranking stays the owner seam while the recovered CWebWnd request queues NavigateUrl for {build.Name}, world {worldRequestId}, then swaps from loading into simulator-local ladder context.";
+            string statusText = hasPacketOwnedRankingEntries
+                ? $"BtRank now keeps the recovered loading/NavigateUrl owner lifecycle, but packet-authored ranking rows no longer die in the inbox decoder: {_lastPacketOwnedRankingSummary} The remaining gap is narrower and centered on official remote ladder ownership, returned page branching beyond injected row payloads, and final network dispatch fidelity."
+                : "BtRank now mirrors the client owner lifecycle more closely: loading-layer request first, navigated local world/job/popularity/combat cards second. The owner now keeps the recovered StringPool[0xAA2] template, resolved host seed, and explicit worldid/characterid payload split visible, but remote ladders, returned page payloads, and packet-fed ranking pages are still outside this board.";
+            string navigationStateText = BuildRankingOwnerLifecycleDetail(build, launchSource, webSeedText, usedResolvedTemplate);
+            if (hasPacketOwnedRankingEntries && !string.IsNullOrWhiteSpace(_lastPacketOwnedRankingSummary))
+            {
+                navigationStateText = $"{navigationStateText} {_lastPacketOwnedRankingSummary}";
+            }
 
             return new RankingWindowSnapshot
             {
                 Title = "Ranking",
                 Subtitle = subtitle,
-                StatusText = "BtRank now mirrors the client owner lifecycle more closely: loading-layer request first, navigated local world/job/popularity/combat cards second. The owner now keeps the recovered StringPool[0xAA2] template, resolved host seed, and explicit worldid/characterid payload split visible, but remote ladders, returned page payloads, and packet-fed ranking pages are still outside this board.",
+                StatusText = statusText,
                 NavigationCaption = usedResolvedTemplateSeed ? templateSeedText : $"{templateSeedText} (fallback)",
                 NavigationSeedText = $"NavigateUrl => {landingUrl}",
                 NavigationHostText = hostText,
                 NavigationRequestText = requestShapeText,
-                NavigationStateText = BuildRankingOwnerLifecycleDetail(build, launchSource, webSeedText, usedResolvedTemplate),
+                NavigationStateText = navigationStateText,
                 IsLoading = isLoading,
                 LoadingStartTick = _lastRankingOpenTick,
                 Entries = entries
             };
+        }
+
+        internal static bool ResolveRankingOwnerRequestPending(bool hasActiveRequest, int lastRankingNavigateTick, int packetOwnedEntryCount)
+        {
+            return hasActiveRequest
+                && lastRankingNavigateTick == int.MinValue
+                && packetOwnedEntryCount <= 0;
+        }
+
+        internal static IReadOnlyList<RankingEntrySnapshot> ResolveRankingOwnerEntries(
+            IReadOnlyList<RankingEntrySnapshot> localEntries,
+            IReadOnlyList<RankingEntrySnapshot> packetOwnedEntries)
+        {
+            if (packetOwnedEntries is { Count: > 0 })
+            {
+                return packetOwnedEntries;
+            }
+
+            return localEntries ?? Array.Empty<RankingEntrySnapshot>();
         }
 
         private EventWindowSnapshot BuildUtilityEventSnapshot()

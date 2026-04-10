@@ -103,8 +103,9 @@ namespace HaCreator.MapSimulator.Managers
             _lastDispatchText = string.Empty;
         }
 
-        internal void Close(string reason = null)
+        internal bool Close(string reason = null)
         {
+            bool shouldShowFirstEntryCloseNotice = _isFirstEntry;
             _isOpen = false;
             _isFirstEntry = false;
             _loadPending = false;
@@ -113,6 +114,8 @@ namespace HaCreator.MapSimulator.Managers
             {
                 _statusText = reason.Trim();
             }
+
+            return shouldShowFirstEntryCloseNotice;
         }
 
         internal void RecordDispatchStatus(string status)

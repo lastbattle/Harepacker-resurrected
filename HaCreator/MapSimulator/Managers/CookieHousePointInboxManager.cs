@@ -15,11 +15,11 @@ namespace HaCreator.MapSimulator.Managers
         OpcodeFramedRawContextPoint
     }
 
-    public sealed class CookieHousePointInboxMessage
-    {
-        public CookieHousePointInboxMessage(int point, string source, string rawText, CookieHousePointInboxPayloadKind payloadKind)
+        public sealed class CookieHousePointInboxMessage
         {
-            Point = Math.Max(0, point);
+            public CookieHousePointInboxMessage(int point, string source, string rawText, CookieHousePointInboxPayloadKind payloadKind)
+            {
+            Point = point;
             Source = string.IsNullOrWhiteSpace(source) ? "cookiehouse-inbox" : source;
             RawText = rawText ?? string.Empty;
             PayloadKind = payloadKind;
@@ -160,7 +160,20 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            point = Math.Max(0, point);
+            return TryValidateClientPoint(point, out point, out error);
+        }
+
+        internal static bool TryValidateClientPoint(int point, out int normalizedPoint, out string error)
+        {
+            normalizedPoint = 0;
+            error = null;
+            if (point < 0)
+            {
+                error = $"Cookie House point payload decodes to an invalid negative score ({point}).";
+                return false;
+            }
+
+            normalizedPoint = point;
             return true;
         }
 
@@ -254,14 +267,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             int decodedPoint = BitConverter.ToInt32(payload, 0);
-            if (decodedPoint < 0)
-            {
-                error = $"Cookie House point payload decodes to an invalid negative score ({decodedPoint}).";
-                return false;
-            }
-
-            point = decodedPoint;
-            return true;
+            return TryValidateClientPoint(decodedPoint, out point, out error);
         }
 
         private static bool TryParseHexBytes(string hexPayload, out byte[] bytes, out string error)

@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator
 
             dragonBoxWindow.SetFont(_fontChat);
             dragonBoxWindow.SetSnapshotProvider(BuildPacketOwnedDragonBoxSnapshot);
+            dragonBoxWindow.SetItemIconProvider(LoadInventoryItemIcon);
             dragonBoxWindow.SetSummonRequested(() => HandlePacketOwnedDragonBoxSummonRequested());
         }
 

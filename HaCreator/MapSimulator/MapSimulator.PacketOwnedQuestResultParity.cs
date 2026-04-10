@@ -17,6 +17,7 @@ namespace HaCreator.MapSimulator
         private bool _pendingPacketOwnedQuestResultFollowUpReady;
         private string _pendingPacketOwnedQuestResultDeferredNoticeText = string.Empty;
         private PacketQuestResultNoticeSurface _pendingPacketOwnedQuestResultDeferredNoticeSurface;
+        private bool _pendingPacketOwnedQuestResultDeferredNoticeAutoSeparated = true;
         private int _pendingQuestDeliveryResultQuestId;
         private bool _pendingQuestDeliveryResultCompletionPhase;
         private int _pendingQuestDeliveryResultCashItemId;
@@ -177,11 +178,17 @@ namespace HaCreator.MapSimulator
                 deferredNoticeUntilDialogClose = noticeRouting.Stage == PacketQuestResultNoticeDispatchStage.AfterDialog;
                 if (deferredNoticeUntilDialogClose)
                 {
-                    QueuePendingPacketOwnedQuestResultNotice(presentation.NoticeText, noticeRouting.Surface);
+                    QueuePendingPacketOwnedQuestResultNotice(
+                        presentation.NoticeText,
+                        noticeRouting.Surface,
+                        noticeRouting.AutoSeparated);
                 }
                 else
                 {
-                    DispatchPacketOwnedQuestResultNotice(presentation.NoticeText, noticeRouting.Surface);
+                    DispatchPacketOwnedQuestResultNotice(
+                        presentation.NoticeText,
+                        noticeRouting.Surface,
+                        noticeRouting.AutoSeparated);
                 }
 
                 showedNotice = true;
@@ -290,12 +297,15 @@ namespace HaCreator.MapSimulator
             {
                 PacketQuestResultNoticeRouting noticeRouting =
                     PacketQuestResultClientSemantics.ResolveNoticeRouting(resultType: 12, openedModal: false);
-                DispatchPacketOwnedQuestResultNotice(noticeText, noticeRouting.Surface);
+                DispatchPacketOwnedQuestResultNotice(
+                    noticeText,
+                    noticeRouting.Surface,
+                    noticeRouting.AutoSeparated);
             }
 
             message = string.IsNullOrWhiteSpace(noticeText)
                 ? $"Quest-result action summary for {questName} did not resolve any visible notice text."
-                : $"Displayed the packet-owned quest action summary for {questName} through the client-shaped UtilDlgEx notice surface.";
+                : $"Displayed the packet-owned quest action summary for {questName} through the client-shaped UtilDlgEx notice surface (bAutoSeparated = 0).";
             if (TryResolvePendingQuestDeliveryQuestResult(questId, out string deliveryOutcome))
             {
                 message = $"{message} {deliveryOutcome}";
@@ -318,7 +328,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            ShowPacketOwnedRewardResultNotice(noticeText);
+            ShowPacketOwnedRewardResultNotice(
+                noticeText,
+                autoSeparated: PacketQuestResultClientSemantics.ResolveUtilDialogNoticeAutoSeparated(resultType));
             message = $"Displayed the packet-owned fixed quest-result CUtilDlg::Notice for subtype {resultType} (StringPool 0x{stringPoolId:X}, bAutoSeparated = 0).";
             return true;
         }
@@ -418,13 +430,18 @@ namespace HaCreator.MapSimulator
 
         private void QueuePendingPacketOwnedQuestResultNotice(
             string noticeText,
-            PacketQuestResultNoticeSurface surface)
+            PacketQuestResultNoticeSurface surface,
+            bool autoSeparated)
         {
             _pendingPacketOwnedQuestResultDeferredNoticeText = noticeText ?? string.Empty;
             _pendingPacketOwnedQuestResultDeferredNoticeSurface = surface;
+            _pendingPacketOwnedQuestResultDeferredNoticeAutoSeparated = autoSeparated;
         }
 
-        private void DispatchPacketOwnedQuestResultNotice(string noticeText, PacketQuestResultNoticeSurface surface)
+        private void DispatchPacketOwnedQuestResultNotice(
+            string noticeText,
+            PacketQuestResultNoticeSurface surface,
+            bool autoSeparated)
         {
             if (string.IsNullOrWhiteSpace(noticeText))
             {
@@ -433,7 +450,7 @@ namespace HaCreator.MapSimulator
 
             if (surface == PacketQuestResultNoticeSurface.UtilDialogNotice)
             {
-                ShowPacketOwnedRewardResultNotice(noticeText);
+                ShowPacketOwnedRewardResultNotice(noticeText, autoSeparated: autoSeparated);
                 return;
             }
 
@@ -449,9 +466,11 @@ namespace HaCreator.MapSimulator
 
             DispatchPacketOwnedQuestResultNotice(
                 _pendingPacketOwnedQuestResultDeferredNoticeText,
-                _pendingPacketOwnedQuestResultDeferredNoticeSurface);
+                _pendingPacketOwnedQuestResultDeferredNoticeSurface,
+                _pendingPacketOwnedQuestResultDeferredNoticeAutoSeparated);
             _pendingPacketOwnedQuestResultDeferredNoticeText = string.Empty;
             _pendingPacketOwnedQuestResultDeferredNoticeSurface = PacketQuestResultNoticeSurface.Chat;
+            _pendingPacketOwnedQuestResultDeferredNoticeAutoSeparated = true;
         }
 
         private void HandlePacketOwnedQuestResultOverlayClose(NpcInteractionOverlayCloseKind closeKind)
@@ -518,6 +537,7 @@ namespace HaCreator.MapSimulator
             _pendingPacketOwnedQuestResultFollowUpReady = false;
             _pendingPacketOwnedQuestResultDeferredNoticeText = string.Empty;
             _pendingPacketOwnedQuestResultDeferredNoticeSurface = PacketQuestResultNoticeSurface.Chat;
+            _pendingPacketOwnedQuestResultDeferredNoticeAutoSeparated = true;
         }
 
         private bool IsPacketOwnedQuestResultNoticeVisible()

@@ -50,6 +50,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int MaxThreadBodyLength = 600;
         private const int MaxReplyBodyLength = 25;
         private const int EnterTextStringPoolId = 0xEB1;
+        private const int EnterTitleStringPoolId = 0x1A5D;
         private const int DeletePostPromptStringPoolId = 0xEB2;
 
         private sealed class GuildBbsCommentState
@@ -420,9 +421,24 @@ namespace HaCreator.MapSimulator.Interaction
 
             string resolvedTitle = _compose.Title?.Trim() ?? string.Empty;
             string resolvedBody = _compose.Body?.Trim() ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(resolvedTitle) || string.IsNullOrWhiteSpace(resolvedBody))
+            if (string.IsNullOrWhiteSpace(resolvedTitle))
+            {
+                return GetEnterTitleNotice();
+            }
+
+            if (string.IsNullOrWhiteSpace(resolvedBody))
             {
                 return GetEnterTextNotice();
+            }
+
+            if (!ClientCurseProcessParity.TryValidateText(resolvedTitle, out string titleNotice))
+            {
+                return titleNotice;
+            }
+
+            if (!ClientCurseProcessParity.TryValidateText(resolvedBody, out string bodyNotice))
+            {
+                return bodyNotice;
             }
 
             if (_compose.IsNotice)
@@ -538,6 +554,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (string.IsNullOrWhiteSpace(replyBody))
             {
                 return GetEnterTextNotice();
+            }
+
+            if (!ClientCurseProcessParity.TryValidateText(replyBody, out string notice))
+            {
+                return notice;
             }
 
             selectedThread.Comments.Add(new GuildBbsCommentState
@@ -1293,6 +1314,15 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return false;
+        }
+
+        private static string GetEnterTitleNotice()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                EnterTitleStringPoolId,
+                "Please enter the title.",
+                appendFallbackSuffix: false,
+                minimumHexWidth: 0);
         }
 
         private static string GetEnterTextNotice()

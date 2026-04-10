@@ -182,7 +182,8 @@ namespace HaCreator.MapSimulator.Effects
             DamageNumberAnimationTimeline Timeline,
             Point CriticalBannerOffset,
             bool HasCriticalBanner,
-            CanvasLayerRecoveredLayerSettings RecoveredLayerSettings);
+            CanvasLayerRecoveredLayerSettings RecoveredLayerSettings,
+            CanvasLayerRecoveredRegistrationTrace RecoveredRegistrationTrace);
         internal sealed record PreparedDamageNumberLayer(
             int CanvasWidth,
             int CanvasHeight,
@@ -557,6 +558,7 @@ namespace HaCreator.MapSimulator.Effects
             DamageNumberDigitSet smallDigitSet)
         {
             string damageString = isMiss ? "Miss" : FormatDamageValue(damage);
+            bool useCriticalPresentation = UsesCriticalPresentation(colorType, isCritical);
 
             if (isMiss)
             {
@@ -580,7 +582,7 @@ namespace HaCreator.MapSimulator.Effects
                 damageString,
                 largeDigitSet,
                 smallDigitSet,
-                isCritical);
+                useCriticalPresentation);
 
             int baselineY = DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y;
             PreparedDigitDrawInfo[] digits = new PreparedDigitDrawInfo[layoutEntries.Length];
@@ -598,7 +600,7 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             PreparedSpriteDrawInfo? criticalBanner = null;
-            if (UsesCriticalPresentation(colorType, isCritical)
+            if (useCriticalPresentation
                 && (largeDigitSet.CriticalEffectTexture != null || largeDigitSet.CriticalEffectOrigin != Point.Zero))
             {
                 criticalBanner = new PreparedSpriteDrawInfo(
@@ -652,14 +654,24 @@ namespace HaCreator.MapSimulator.Effects
                 centerTop,
                 layer?.CanvasWidth ?? visual?.CanvasWidth ?? 0);
             PreparedSpriteDrawInfo? criticalBanner = visual?.CriticalBannerSprite;
+            DamageNumberAnimationTimeline timeline = layer?.Timeline ?? ResolveAnimationTimeline();
+            Point criticalBannerOffset = criticalBanner is PreparedSpriteDrawInfo banner
+                ? new Point(banner.DrawOffsetX, banner.DrawOffsetY)
+                : Point.Zero;
+            bool hasCriticalBanner = criticalBanner.HasValue;
+            CanvasLayerRecoveredLayerSettings recoveredLayerSettings = ResolveRecoveredLayerSettings();
             return new PreparedDamageNumberLayerRegistration(
                 placement,
-                layer?.Timeline ?? ResolveAnimationTimeline(),
-                criticalBanner is PreparedSpriteDrawInfo banner
-                    ? new Point(banner.DrawOffsetX, banner.DrawOffsetY)
-                    : Point.Zero,
-                criticalBanner.HasValue,
-                ResolveRecoveredLayerSettings());
+                timeline,
+                criticalBannerOffset,
+                hasCriticalBanner,
+                recoveredLayerSettings,
+                BuildRecoveredRegistrationTrace(
+                    placement,
+                    timeline,
+                    criticalBannerOffset,
+                    hasCriticalBanner,
+                    recoveredLayerSettings));
         }
 
         internal static CanvasLayerRecoveredLayerSettings ResolveRecoveredLayerSettings()
@@ -681,6 +693,30 @@ namespace HaCreator.MapSimulator.Effects
             int left = centerX - width / 2;
             int top = centerTop - DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y;
             return new CompositeCanvasPlacement(left, top, width, height);
+        }
+
+        internal static CanvasLayerRecoveredRegistrationTrace BuildRecoveredRegistrationTrace(
+            CompositeCanvasPlacement placement,
+            DamageNumberAnimationTimeline timeline,
+            Point criticalBannerOffset,
+            bool hasCriticalBanner,
+            CanvasLayerRecoveredLayerSettings recoveredLayerSettings)
+        {
+            CanvasLayerInsertDescriptor[] insertDescriptors = OneTimeCanvasLayerAnimation.BuildInsertDescriptors(
+                timeline.HoldDurationMs,
+                timeline.FadeDurationMs,
+                timeline.RiseDistancePx,
+                hasCriticalBanner,
+                criticalBannerOffset,
+                timeline.CriticalDelayMs);
+            return OneTimeCanvasLayerAnimation.BuildRecoveredRegistrationTrace(
+                placement.Left,
+                placement.Top,
+                placement.Width,
+                placement.Height,
+                insertDescriptors,
+                recoveredLayerSettings,
+                registersOneTimeAnimation: true);
         }
 
         private static DamageNumberDigitSet ResolveAnyLoadedDigitSet(string primarySetName, string fallbackSetName)

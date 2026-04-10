@@ -355,6 +355,7 @@ namespace HaCreator.MapSimulator.UI
 
             MemoMailboxSnapshot snapshot = RefreshSnapshot();
             MemoMailboxDraftSnapshot draftSnapshot = RefreshDraftSnapshot();
+            SyncActiveInputField(snapshot.ActiveTab);
             EnsureSelection(snapshot);
             ClampScroll(snapshot);
 
@@ -1053,6 +1054,53 @@ namespace HaCreator.MapSimulator.UI
                 _currentDraftSnapshot ?? RefreshDraftSnapshot());
             _softKeyboardActive = true;
             UpdateImePresentationPlacement();
+        }
+
+        private void SyncActiveInputField(ParcelDialogTab activeTab)
+        {
+            if (_activeInputField == ComposeInputField.None)
+            {
+                return;
+            }
+
+            if (activeTab == ParcelDialogTab.Receive)
+            {
+                DeactivateInput();
+                return;
+            }
+
+            ComposeInputField normalizedField = activeTab == ParcelDialogTab.QuickSend
+                ? NormalizeQuickComposeField(_activeInputField)
+                : NormalizeSendComposeField(_activeInputField);
+            if (normalizedField == _activeInputField)
+            {
+                return;
+            }
+
+            _activeInputField = normalizedField;
+            UpdateImePresentationPlacement();
+        }
+
+        private static ComposeInputField NormalizeSendComposeField(ComposeInputField field)
+        {
+            return field switch
+            {
+                ComposeInputField.QuickRecipient => ComposeInputField.SendRecipient,
+                ComposeInputField.QuickBody => ComposeInputField.SendBody,
+                ComposeInputField.QuickMeso => ComposeInputField.SendMeso,
+                _ => field
+            };
+        }
+
+        private static ComposeInputField NormalizeQuickComposeField(ComposeInputField field)
+        {
+            return field switch
+            {
+                ComposeInputField.SendRecipient => ComposeInputField.QuickRecipient,
+                ComposeInputField.SendBody => ComposeInputField.QuickBody,
+                ComposeInputField.SendMeso => ComposeInputField.QuickMeso,
+                _ => field
+            };
         }
 
         private void EnsureSelection(MemoMailboxSnapshot snapshot)

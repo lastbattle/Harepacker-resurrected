@@ -61,21 +61,20 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static string BuildFilePath(string baseFolder, string userName, DateTime localTime)
         {
-            string safeUserName = SanitizeUserName(string.IsNullOrWhiteSpace(userName) ? "AntiMacro" : userName.Trim());
-            return Path.Combine(
+            string safeUserName = SanitizeUserName(userName);
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "{0}\\{1}_{2:yyyyMMdd_HHmmss}.jpg",
                 baseFolder ?? string.Empty,
-                string.Format(
-                    CultureInfo.InvariantCulture,
-                    "{0}_{1:yyyyMMdd_HHmmss}.jpg",
-                    safeUserName,
-                    localTime));
+                safeUserName,
+                localTime);
         }
 
         internal static string SanitizeUserName(string userName)
         {
-            if (string.IsNullOrWhiteSpace(userName))
+            if (userName == null)
             {
-                return "AntiMacro";
+                return string.Empty;
             }
 
             char[] invalidCharacters = Path.GetInvalidFileNameChars();
@@ -88,7 +87,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            return sanitized.Length == 0 ? "AntiMacro" : new string(sanitized);
+            return new string(sanitized);
         }
 
         internal static string TrimTrailingDirectorySeparator(string path)

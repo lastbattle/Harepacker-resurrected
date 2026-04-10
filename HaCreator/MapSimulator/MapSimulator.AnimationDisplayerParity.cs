@@ -64,6 +64,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<string, List<IDXObject>> _animationDisplayerEffectCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<List<IDXObject>>> _animationDisplayerSkillUseEffectCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<AnimationDisplayerSkillUseAvatarEffectVariant>> _animationDisplayerSkillUseAvatarEffectCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<int, AnimationDisplayerFollowEquipmentDefinition> _animationDisplayerFollowEquipmentCache = new();
         private readonly Dictionary<int, int> _animationDisplayerFollowAnimationIds = new();
         private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
         private int _animationDisplayerLocalQuestDeliveryItemId;
@@ -82,6 +83,19 @@ namespace HaCreator.MapSimulator
             public SkillAnimation UnderFaceAnimation { get; init; }
 
             public bool HasAvatarAnimations => OverlayAnimation != null || UnderFaceAnimation != null;
+        }
+
+        private sealed class AnimationDisplayerFollowEquipmentDefinition
+        {
+            public int ItemId { get; init; }
+            public string EffectUol { get; init; }
+            public IReadOnlyList<Vector2> GenerationPoints { get; init; }
+            public Rectangle EmissionArea { get; init; }
+            public int UpdateIntervalMs { get; init; }
+            public int SpawnDurationMs { get; init; }
+            public int OffsetDistancePx { get; init; }
+            public bool UsesRelativeEmission { get; init; }
+            public float Radius { get; init; }
         }
 
         private readonly record struct AnimationDisplayerSkillUseBranchRequest(
@@ -518,13 +532,35 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            TryGetAnimationDisplayerFrames("follow:generic", AnimationDisplayerGenericUserStateEffectUol, out List<IDXObject> frames);
+            AnimationDisplayerFollowEquipmentDefinition followDefinition = ResolveAnimationDisplayerFollowEquipmentDefinition(ownerCharacterId);
+            List<IDXObject> frames = null;
+            if (!string.IsNullOrWhiteSpace(followDefinition?.EffectUol))
+            {
+                TryGetAnimationDisplayerFrames(
+                    $"follow:equipment:{followDefinition.ItemId}",
+                    followDefinition.EffectUol,
+                    out frames);
+            }
+
+            if (!Animation.AnimationEffects.HasFrames(frames))
+            {
+                TryGetAnimationDisplayerFrames("follow:generic", AnimationDisplayerGenericUserStateEffectUol, out frames);
+            }
+
             IReadOnlyList<List<IDXObject>> followFrameVariants = LoadAnimationDisplayerFollowFrameVariants();
             if (!Animation.AnimationEffects.HasFrames(frames)
                 && !Animation.AnimationEffects.HasFrameVariants(followFrameVariants))
             {
                 return false;
             }
+
+            IReadOnlyList<Vector2> generationPoints = followDefinition?.GenerationPoints;
+            float resolvedRadius = followDefinition?.Radius > 0f
+                ? followDefinition.Radius
+                : AnimationDisplayerFollowRadius;
+            Point spawnOffset = BuildAnimationDisplayerFollowSpawnOffset(
+                relativeEmission,
+                followDefinition?.OffsetDistancePx ?? 0);
 
             ClearAnimationDisplayerFollowRegistration(registrationKey);
             int followId = _animationEffects.AddFollow(
@@ -536,21 +572,24 @@ namespace HaCreator.MapSimulator
                 currentTimeMs: currTickCount,
                 options: new Animation.AnimationEffects.FollowAnimationOptions
                 {
-                    GenerationPoints = BuildAnimationDisplayerFollowGenerationPoints(
+                    GenerationPoints = generationPoints ?? BuildAnimationDisplayerFollowGenerationPoints(
                         AnimationDisplayerFollowRadius,
                         AnimationDisplayerFollowPointCount),
                     ThetaDegrees = AnimationDisplayerFollowThetaDegrees,
-                    Radius = AnimationDisplayerFollowRadius,
+                    Radius = resolvedRadius,
                     RandomizeStartupAngle = true,
-                    UpdateIntervalMs = AnimationDisplayerFollowUpdateIntervalMs,
+                    UpdateIntervalMs = followDefinition?.UpdateIntervalMs > 0
+                        ? followDefinition.UpdateIntervalMs
+                        : AnimationDisplayerFollowUpdateIntervalMs,
                     SpawnFrameVariants = followFrameVariants,
                     SpawnRelativeToTarget = relativeEmission,
-                    SpawnArea = BuildAnimationDisplayerFollowEmissionArea(),
+                    SpawnArea = followDefinition?.EmissionArea ?? BuildAnimationDisplayerFollowEmissionArea(),
                     SpawnUsesEmissionBox = !relativeEmission,
-                    SpawnAppliesEmissionBias = relativeEmission,
+                    SpawnAppliesEmissionBias = relativeEmission && (followDefinition?.UsesRelativeEmission ?? true),
                     SpawnVerticalEmissionBias = AnimationDisplayerFollowEmissionVerticalBias,
-                    SpawnOffsetMin = BuildAnimationDisplayerFollowSpawnOffsetMin(relativeEmission),
-                    SpawnOffsetMax = BuildAnimationDisplayerFollowSpawnOffsetMax(relativeEmission)
+                    SpawnDurationMs = followDefinition?.SpawnDurationMs ?? 0,
+                    SpawnOffsetMin = spawnOffset,
+                    SpawnOffsetMax = spawnOffset
                 });
             if (followId < 0)
             {
@@ -761,19 +800,19 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private void TryRegisterAnimationDisplayerSkillUse(SkillCastInfo castInfo)
+        private bool TryRegisterAnimationDisplayerSkillUse(SkillCastInfo castInfo)
         {
             if (castInfo == null
                 || _animationEffects == null
                 || castInfo.SuppressEffectAnimation)
             {
-                return;
+                return false;
             }
 
             int skillId = castInfo.SkillId;
             if (skillId <= 0)
             {
-                return;
+                return false;
             }
 
             int delayRate = ResolveAnimationDisplayerSkillUseDelayRate(castInfo);
@@ -783,13 +822,14 @@ namespace HaCreator.MapSimulator
                 out Func<bool> getOwnerFacingRight);
             bool handledPrimary = castInfo.EffectAnimation == null;
             bool handledSecondary = castInfo.SecondaryEffectAnimation == null;
+            bool registeredAny = false;
 
-            foreach (string branchName in EnumerateAnimationDisplayerSkillUseBranchNames(castInfo))
+            foreach (AnimationDisplayerSkillUseBranchRequest branchRequest in EnumerateAnimationDisplayerSkillUseBranchRequests(castInfo))
             {
                 if (!TryRegisterAnimationDisplayerSkillUseBranch(
                         castInfo.CasterId,
                         skillId,
-                        new AnimationDisplayerSkillUseBranchRequest(branchName, Point.Zero),
+                        branchRequest,
                         castInfo.CasterX,
                         castInfo.CasterY,
                         castInfo.FacingRight,
@@ -801,14 +841,16 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                registeredAny = true;
+
                 if (!handledPrimary
-                    && string.Equals(castInfo.EffectAnimation?.Name, branchName, StringComparison.OrdinalIgnoreCase))
+                    && string.Equals(castInfo.EffectAnimation?.Name, branchRequest.BranchName, StringComparison.OrdinalIgnoreCase))
                 {
                     handledPrimary = true;
                 }
 
                 if (!handledSecondary
-                    && string.Equals(castInfo.SecondaryEffectAnimation?.Name, branchName, StringComparison.OrdinalIgnoreCase))
+                    && string.Equals(castInfo.SecondaryEffectAnimation?.Name, branchRequest.BranchName, StringComparison.OrdinalIgnoreCase))
                 {
                     handledSecondary = true;
                 }
@@ -818,6 +860,8 @@ namespace HaCreator.MapSimulator
             {
                 castInfo.SuppressEffectAnimation = true;
             }
+
+            return registeredAny;
         }
 
         private void HandleAnimationDisplayerBuffApplied(ActiveBuff buff)
@@ -836,22 +880,9 @@ namespace HaCreator.MapSimulator
             TryRegisterAnimationDisplayerSkillUse(castInfo);
         }
 
-        private void HandleAnimationDisplayerClientSkillEffectRequested(int effectSkillId, int sourceSkillId)
+        private void HandleAnimationDisplayerClientSkillEffectRequested(SkillUseEffectRequest request)
         {
-            if (effectSkillId <= 0)
-            {
-                return;
-            }
-
-            SkillData effectSkill = _playerManager?.Skills?.GetSkillData(effectSkillId)
-                                   ?? _playerManager?.Skills?.GetSkillData(sourceSkillId);
-            SkillCastInfo castInfo = BuildAnimationDisplayerLocalSkillUseRequest(
-                effectSkillId,
-                effectSkill,
-                currTickCount,
-                effectSkill?.Effect,
-                effectSkill?.EffectSecondary);
-            TryRegisterAnimationDisplayerSkillUse(castInfo);
+            TryRegisterAnimationDisplayerLocalSkillUseRequest(request);
         }
 
         private void HandleAnimationDisplayerPreparedSkillStarted(PreparedSkill prepared)
@@ -892,42 +923,34 @@ namespace HaCreator.MapSimulator
             TryRegisterAnimationDisplayerSkillUse(castInfo);
         }
 
-        private bool TryRegisterAnimationDisplayerLocalSkillUseBranchAtWorldOrigin(
-            int skillId,
-            string branchName,
-            Vector2 worldOrigin,
-            int currentTime,
-            bool followOwnerFacing = false)
+        private bool TryRegisterAnimationDisplayerLocalSkillUseRequest(SkillUseEffectRequest request)
         {
-            if (skillId <= 0 || string.IsNullOrWhiteSpace(branchName) || _animationEffects == null)
+            if (request?.EffectSkillId <= 0 || _animationEffects == null)
             {
                 return false;
             }
 
+            int effectSkillId = request.EffectSkillId;
+            int sourceSkillId = request.SourceSkillId;
+            SkillData effectSkill = _playerManager?.Skills?.GetSkillData(effectSkillId)
+                                   ?? _playerManager?.Skills?.GetSkillData(sourceSkillId);
             PlayerCharacter localPlayer = _playerManager?.Player;
             int localCharacterId = localPlayer?.Build?.Id ?? 0;
+            Vector2 casterPosition = request.WorldOrigin ?? new Vector2(localPlayer?.X ?? 0f, localPlayer?.Y ?? 0f);
             bool facingRight = localPlayer?.FacingRight ?? true;
-            int delayRate = _playerManager?.Skills?.ResolveSharedSkillUseDelayRate(skillId) ?? 1000;
-            TryResolveAnimationDisplayerSkillUseOwner(
-                localCharacterId,
-                out _,
-                out Func<bool> getOwnerFacingRight);
-
-            return TryRegisterAnimationDisplayerSkillUseBranch(
-                localCharacterId,
-                skillId,
-                new AnimationDisplayerSkillUseBranchRequest(
-                    branchName,
-                    Point.Zero,
-                    FollowOwnerFacing: followOwnerFacing,
-                    FollowOwnerPosition: false),
-                worldOrigin.X,
-                worldOrigin.Y,
-                facingRight,
-                currentTime,
-                delayRate,
-                getOwnerPosition: null,
-                getOwnerFacingRight: followOwnerFacing ? getOwnerFacingRight : null);
+            SkillCastInfo castInfo = BuildAnimationDisplayerLocalSkillUseRequest(
+                effectSkillId,
+                effectSkill,
+                request.RequestTime > 0 ? request.RequestTime : currTickCount,
+                effectSkill?.Effect,
+                effectSkill?.EffectSecondary,
+                casterPosition,
+                request.BranchNames,
+                request.FollowOwnerPosition,
+                request.FollowOwnerFacing);
+            castInfo.CasterId = localCharacterId;
+            castInfo.FacingRight = facingRight;
+            return TryRegisterAnimationDisplayerSkillUse(castInfo);
         }
 
         private SkillCastInfo BuildAnimationDisplayerLocalSkillUseRequest(
@@ -935,12 +958,15 @@ namespace HaCreator.MapSimulator
             SkillData skillData,
             int currentTime,
             SkillAnimation effectAnimation,
-            SkillAnimation secondaryEffectAnimation)
+            SkillAnimation secondaryEffectAnimation,
+            Vector2? casterPositionOverride = null,
+            IReadOnlyList<string> requestedBranchNames = null,
+            bool followOwnerPosition = true,
+            bool followOwnerFacing = true)
         {
             PlayerCharacter localPlayer = _playerManager?.Player;
             int localCharacterId = localPlayer?.Build?.Id ?? 0;
-            float casterX = localPlayer?.X ?? 0f;
-            float casterY = localPlayer?.Y ?? 0f;
+            Vector2 casterPosition = casterPositionOverride ?? new Vector2(localPlayer?.X ?? 0f, localPlayer?.Y ?? 0f);
             bool facingRight = localPlayer?.FacingRight ?? true;
 
             return new SkillCastInfo
@@ -949,11 +975,14 @@ namespace HaCreator.MapSimulator
                 SkillData = skillData,
                 CastTime = currentTime,
                 CasterId = localCharacterId,
-                CasterX = casterX,
-                CasterY = casterY,
+                CasterX = casterPosition.X,
+                CasterY = casterPosition.Y,
                 FacingRight = facingRight,
                 EffectAnimation = effectAnimation,
-                SecondaryEffectAnimation = secondaryEffectAnimation
+                SecondaryEffectAnimation = secondaryEffectAnimation,
+                RequestedBranchNames = requestedBranchNames,
+                FollowOwnerPosition = followOwnerPosition,
+                FollowOwnerFacing = followOwnerFacing
             };
         }
 
@@ -1578,7 +1607,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            List<IDXObject> frames = LoadPacketOwnedAnimationFrames(property);
+            List<IDXObject> frames = ExtractPacketOwnedFrameSprites(LoadPacketOwnedAnimationFrames(property));
             return Animation.AnimationEffects.HasFrames(frames);
         }
 
@@ -1617,6 +1646,48 @@ namespace HaCreator.MapSimulator
                 }
 
                 yield return child.Name;
+            }
+        }
+
+        private IEnumerable<AnimationDisplayerSkillUseBranchRequest> EnumerateAnimationDisplayerSkillUseBranchRequests(
+            SkillCastInfo castInfo)
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (castInfo?.RequestedBranchNames != null)
+            {
+                for (int i = 0; i < castInfo.RequestedBranchNames.Count; i++)
+                {
+                    string branchName = castInfo.RequestedBranchNames[i];
+                    if (string.IsNullOrWhiteSpace(branchName) || !seen.Add(branchName))
+                    {
+                        continue;
+                    }
+
+                    yield return new AnimationDisplayerSkillUseBranchRequest(
+                        branchName,
+                        Point.Zero,
+                        castInfo.FollowOwnerFacing,
+                        castInfo.FollowOwnerPosition);
+                }
+            }
+
+            if (seen.Count > 0)
+            {
+                yield break;
+            }
+
+            foreach (string branchName in EnumerateAnimationDisplayerSkillUseBranchNames(castInfo))
+            {
+                if (!seen.Add(branchName))
+                {
+                    continue;
+                }
+
+                yield return new AnimationDisplayerSkillUseBranchRequest(
+                    branchName,
+                    Point.Zero,
+                    castInfo?.FollowOwnerFacing ?? true,
+                    castInfo?.FollowOwnerPosition ?? true);
             }
         }
 
@@ -1805,10 +1876,15 @@ namespace HaCreator.MapSimulator
         private List<IDXObject> LoadAnimationDisplayerFrames(string effectUol)
         {
             WzImageProperty property = ResolveAnimationDisplayerProperty(effectUol);
-            return LoadPacketOwnedAnimationFrames(property);
+            return ExtractPacketOwnedFrameSprites(LoadPacketOwnedAnimationFrames(property));
         }
 
         private WzImageProperty ResolveAnimationDisplayerProperty(string effectUol)
+        {
+            return ResolveAnimationDisplayerPropertyStatic(effectUol);
+        }
+
+        private static WzImageProperty ResolveAnimationDisplayerPropertyStatic(string effectUol)
         {
             if (string.IsNullOrWhiteSpace(effectUol))
             {
@@ -1848,7 +1924,7 @@ namespace HaCreator.MapSimulator
                     break;
                 }
 
-                List<IDXObject> frame = LoadPacketOwnedCanvasFrame(frameCanvas, sharedDelay);
+                List<IDXObject> frame = ExtractPacketOwnedFrameSprites(LoadPacketOwnedCanvasFrame(frameCanvas, sharedDelay));
                 if (!Animation.AnimationEffects.HasFrames(frame))
                 {
                     continue;
@@ -1917,6 +1993,208 @@ namespace HaCreator.MapSimulator
             return points;
         }
 
+        private AnimationDisplayerFollowEquipmentDefinition ResolveAnimationDisplayerFollowEquipmentDefinition(int ownerCharacterId)
+        {
+            CharacterBuild build = null;
+            if (_playerManager?.Player?.Build?.Id == ownerCharacterId)
+            {
+                build = _playerManager.Player.Build;
+            }
+            else if (_remoteUserPool?.TryGetActor(ownerCharacterId, out RemoteUserActor actor) == true)
+            {
+                build = actor?.Build;
+            }
+
+            return ResolveAnimationDisplayerFollowEquipmentDefinition(build);
+        }
+
+        private AnimationDisplayerFollowEquipmentDefinition ResolveAnimationDisplayerFollowEquipmentDefinition(CharacterBuild build)
+        {
+            if (build == null)
+            {
+                return null;
+            }
+
+            foreach (int ringItemId in EnumerateAnimationDisplayerFollowEquipmentItemIds(build))
+            {
+                if (ringItemId <= 0)
+                {
+                    continue;
+                }
+
+                if (_animationDisplayerFollowEquipmentCache.TryGetValue(ringItemId, out AnimationDisplayerFollowEquipmentDefinition cachedDefinition))
+                {
+                    if (cachedDefinition != null)
+                    {
+                        return cachedDefinition;
+                    }
+
+                    continue;
+                }
+
+                AnimationDisplayerFollowEquipmentDefinition loadedDefinition = LoadAnimationDisplayerFollowEquipmentDefinition(ringItemId);
+                _animationDisplayerFollowEquipmentCache[ringItemId] = loadedDefinition;
+                if (loadedDefinition != null)
+                {
+                    return loadedDefinition;
+                }
+            }
+
+            return null;
+        }
+
+        private static IEnumerable<int> EnumerateAnimationDisplayerFollowEquipmentItemIds(CharacterBuild build)
+        {
+            if (build == null)
+            {
+                yield break;
+            }
+
+            EquipSlot[] ringSlots =
+            {
+                EquipSlot.Ring1,
+                EquipSlot.Ring2,
+                EquipSlot.Ring3,
+                EquipSlot.Ring4
+            };
+
+            for (int i = 0; i < ringSlots.Length; i++)
+            {
+                EquipSlot ringSlot = ringSlots[i];
+                if (build.Equipment.TryGetValue(ringSlot, out CharacterPart visiblePart) && visiblePart?.ItemId > 0)
+                {
+                    yield return visiblePart.ItemId;
+                }
+
+                if (build.HiddenEquipment.TryGetValue(ringSlot, out CharacterPart hiddenPart) && hiddenPart?.ItemId > 0)
+                {
+                    yield return hiddenPart.ItemId;
+                }
+            }
+        }
+
+        private AnimationDisplayerFollowEquipmentDefinition LoadAnimationDisplayerFollowEquipmentDefinition(int itemId)
+        {
+            WzSubProperty effectProperty = ResolveAnimationDisplayerFollowEquipmentProperty(itemId);
+            if (effectProperty == null || effectProperty["follow"]?.GetInt() != 1)
+            {
+                return null;
+            }
+
+            string effectPath = NormalizeAnimationDisplayerPath(effectProperty["path"]?.GetString());
+            string effectUol = BuildAnimationDisplayerFollowEquipmentEffectUol(effectPath);
+            List<IDXObject> effectFrames = LoadAnimationDisplayerFrames(effectUol);
+            if (!Animation.AnimationEffects.HasFrames(effectFrames))
+            {
+                return null;
+            }
+
+            Rectangle emissionArea = BuildAnimationDisplayerFollowEquipmentEmissionArea(effectProperty);
+            int updateIntervalMs = effectProperty["interval"]?.GetInt() ?? AnimationDisplayerFollowUpdateIntervalMs;
+            int spawnDurationMs = effectProperty["delay"]?.GetInt() ?? 0;
+            int offsetDistancePx = Math.Max(0, effectProperty["dx"]?.GetInt() ?? 0);
+            IReadOnlyList<Vector2> generationPoints = LoadAnimationDisplayerFollowEquipmentGenerationPoints(effectProperty["genPoint"]);
+            float radius = BuildAnimationDisplayerFollowEquipmentRadius(generationPoints, offsetDistancePx);
+
+            return new AnimationDisplayerFollowEquipmentDefinition
+            {
+                ItemId = itemId,
+                EffectUol = effectUol,
+                GenerationPoints = generationPoints,
+                EmissionArea = emissionArea,
+                UpdateIntervalMs = updateIntervalMs,
+                SpawnDurationMs = spawnDurationMs,
+                OffsetDistancePx = offsetDistancePx,
+                UsesRelativeEmission = effectProperty["emission"]?.GetInt() != 0,
+                Radius = radius
+            };
+        }
+
+        private static WzSubProperty ResolveAnimationDisplayerFollowEquipmentProperty(int itemId)
+        {
+            if (itemId <= 0 || itemId / 10000 != 111)
+            {
+                return null;
+            }
+
+            WzImage itemImage = Program.FindImage("Character", $"Ring/{itemId:D8}.img");
+            itemImage?.ParseImage();
+            return itemImage?["info"]?["effect"] as WzSubProperty;
+        }
+
+        private static string BuildAnimationDisplayerFollowEquipmentEffectUol(string effectPath)
+        {
+            if (string.IsNullOrWhiteSpace(effectPath))
+            {
+                return null;
+            }
+
+            WzImageProperty property = ResolveAnimationDisplayerPropertyStatic(effectPath);
+            if (property is WzCanvasProperty)
+            {
+                return effectPath;
+            }
+
+            if (ResolveAnimationDisplayerPropertyStatic($"{effectPath}/0") != null)
+            {
+                return $"{effectPath}/0";
+            }
+
+            return effectPath;
+        }
+
+        private static Rectangle BuildAnimationDisplayerFollowEquipmentEmissionArea(WzImageProperty effectProperty)
+        {
+            int left = effectProperty?["left"]?.GetInt() ?? 0;
+            int top = effectProperty?["top"]?.GetInt() ?? 0;
+            int right = effectProperty?["right"]?.GetInt() ?? AnimationDisplayerFollowEmissionBoxSize;
+            int bottom = effectProperty?["bottom"]?.GetInt() ?? AnimationDisplayerFollowEmissionBoxSize;
+            int width = Math.Max(1, right - left);
+            int height = Math.Max(1, bottom - top);
+            return new Rectangle(left, top, width, height);
+        }
+
+        private static IReadOnlyList<Vector2> LoadAnimationDisplayerFollowEquipmentGenerationPoints(WzImageProperty generationPointProperty)
+        {
+            if (generationPointProperty == null)
+            {
+                return null;
+            }
+
+            generationPointProperty = generationPointProperty.GetLinkedWzImageProperty() ?? generationPointProperty;
+            var points = new List<Vector2>();
+            for (int index = 0; ; index++)
+            {
+                if (generationPointProperty[index.ToString()] is not WzVectorProperty point)
+                {
+                    break;
+                }
+
+                points.Add(new Vector2(point.X?.GetInt() ?? 0, point.Y?.GetInt() ?? 0));
+            }
+
+            return points.Count > 0 ? points : null;
+        }
+
+        private static float BuildAnimationDisplayerFollowEquipmentRadius(IReadOnlyList<Vector2> generationPoints, int offsetDistancePx)
+        {
+            if (generationPoints != null && generationPoints.Count > 0)
+            {
+                float maxLengthSquared = 0f;
+                for (int i = 0; i < generationPoints.Count; i++)
+                {
+                    maxLengthSquared = Math.Max(maxLengthSquared, generationPoints[i].LengthSquared());
+                }
+
+                if (maxLengthSquared > 0f)
+                {
+                    return (float)Math.Sqrt(maxLengthSquared);
+                }
+            }
+
+            return Math.Max(AnimationDisplayerFollowRadius, offsetDistancePx);
+        }
+
         internal static string[] EnumerateAnimationDisplayerFollowEffectUols()
         {
             return AnimationDisplayerFollowEffectUolCandidates;
@@ -1941,6 +2219,19 @@ namespace HaCreator.MapSimulator
         internal static Point BuildAnimationDisplayerFollowSpawnOffsetMax(bool relativeEmission)
         {
             return BuildAnimationDisplayerFollowSpawnOffsetMin(relativeEmission);
+        }
+
+        internal static Point BuildAnimationDisplayerFollowSpawnOffset(bool relativeEmission, int offsetDistancePx)
+        {
+            if (!relativeEmission)
+            {
+                return BuildAnimationDisplayerFollowSpawnOffsetMin(relativeEmission);
+            }
+
+            int resolvedDistance = Math.Max(0, offsetDistancePx);
+            return resolvedDistance > 0
+                ? new Point(resolvedDistance, resolvedDistance)
+                : Point.Zero;
         }
 
         private IReadOnlyList<List<IDXObject>> LoadAnimationDisplayerFollowFrameVariants()

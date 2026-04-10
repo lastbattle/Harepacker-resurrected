@@ -1050,6 +1050,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _lastPromptContextValue;
         private int _lastPromptTokenValue;
         private int _lastPromptChannelId = -1;
+        private string _lastShipmentPromptText = string.Empty;
         private bool _hasAcceptedGetAllRequestInFlight;
         private int _ownerRowRevision;
 
@@ -1074,6 +1075,7 @@ namespace HaCreator.MapSimulator.Interaction
             IsOpen = false;
             ResetTransientRequestState();
             StatusMessage = "CStoreBankDlg owner closed locally.";
+            AppendNote(StatusMessage);
         }
 
         internal string ConsumePendingGetAllRequest()
@@ -1231,7 +1233,7 @@ namespace HaCreator.MapSimulator.Interaction
                         ? $"Pending get-all modal: {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s), fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)} (StringPool 0xDC4)."
                         : $"Pending get-all modal: {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s), no fee (StringPool 0xDC5).")
                     : "No get-all confirmation modal is currently staged.",
-                _lastPromptContextValue != 0 || _lastPromptTokenValue != 0 || _lastPromptChannelId >= 0
+                HasShipmentPrompt
                     ? BuildShipmentPromptSummary()
                     : "No shipment prompt is currently staged."
             };
@@ -1431,6 +1433,25 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryBuildOwnerSelectionAnchor(int ownerRowIndex, out StoreBankOwnerSelectionAnchor anchor)
+        {
+            anchor = default;
+            if (ownerRowIndex < 0 || ownerRowIndex >= _decodedItems.Count)
+            {
+                return false;
+            }
+
+            StoreBankItemEntry item = _decodedItems[ownerRowIndex];
+            anchor = new StoreBankOwnerSelectionAnchor(
+                item.PacketGroupInventoryType,
+                item.PacketGroupRowIndex,
+                item.ItemId,
+                item.ItemSerialNumber,
+                item.CashSerialNumber,
+                item.Title ?? string.Empty);
+            return true;
+        }
+
         internal void NotifyOwnerGetButtonPressed()
         {
             NotifyOwnerGetButtonPressed(-1);
@@ -1482,11 +1503,11 @@ namespace HaCreator.MapSimulator.Interaction
             _lastSubtype = payload[0];
             StatusMessage = _lastSubtype switch
             {
-                30 => "CStoreBankDlg result 30 cleared the list and disabled the Get button (StringPool 0xDC6 branch).",
-                31 => "CStoreBankDlg result 31 reported the StringPool 0xDC7 notice branch.",
-                32 => "CStoreBankDlg result 32 reported the StringPool 0xDC8 notice branch.",
-                33 => "CStoreBankDlg result 33 reported the StringPool 0xDC9 notice branch.",
-                34 => "CStoreBankDlg result 34 reported the StringPool 0xDCA notice branch.",
+                30 => $"CStoreBankDlg result 30 cleared the list and disabled the Get button: {ResolveStoreBankNoticeText(0x0DC6, "Stored items were cleared.")}",
+                31 => $"CStoreBankDlg result 31 reported notice {FormatStoreBankStringPoolId(0x0DC7)}: {ResolveStoreBankNoticeText(0x0DC7, "Store-bank notice 31.")}",
+                32 => $"CStoreBankDlg result 32 reported notice {FormatStoreBankStringPoolId(0x0DC8)}: {ResolveStoreBankNoticeText(0x0DC8, "Store-bank notice 32.")}",
+                33 => $"CStoreBankDlg result 33 reported notice {FormatStoreBankStringPoolId(0x0DC9)}: {ResolveStoreBankNoticeText(0x0DC9, "Store-bank notice 33.")}",
+                34 => $"CStoreBankDlg result 34 reported notice {FormatStoreBankStringPoolId(0x0DCA)}: {ResolveStoreBankNoticeText(0x0DCA, "Store-bank notice 34.")}",
                 _ => $"CStoreBankDlg packet 369 subtype {_lastSubtype.ToString(CultureInfo.InvariantCulture)} is not modeled beyond owner tracking."
             };
 
@@ -1548,15 +1569,16 @@ namespace HaCreator.MapSimulator.Interaction
                     _lastPromptContextValue = BitConverter.ToInt32(payload, 1);
                     _lastPromptTokenValue = BitConverter.ToInt32(payload, 5);
                     _lastPromptChannelId = payload[9];
+                    _lastShipmentPromptText = BuildShipmentPromptText();
                     IsOpen = true;
                     StatusMessage = _lastPromptChannelId >= 0xFE || _lastPromptTokenValue == 999999999
-                        ? $"CStoreBankDlg showed the fallback shipment prompt branch for context {_lastPromptContextValue.ToString(CultureInfo.InvariantCulture)}."
-                        : $"CStoreBankDlg showed the channel-routed shipment prompt for context {_lastPromptContextValue.ToString(CultureInfo.InvariantCulture)}, token {_lastPromptTokenValue.ToString(CultureInfo.InvariantCulture)}, channel {_lastPromptChannelId.ToString(CultureInfo.InvariantCulture)}.";
+                        ? $"CStoreBankDlg showed the fallback shipment prompt branch: {_lastShipmentPromptText}"
+                        : $"CStoreBankDlg showed the channel-routed shipment prompt: {_lastShipmentPromptText}";
                     break;
 
                 case 38:
                     IsOpen = true;
-                    StatusMessage = "CStoreBankDlg showed the StringPool 0xDC3 notice branch.";
+                    StatusMessage = $"CStoreBankDlg showed notice {FormatStoreBankStringPoolId(0x0DC3)}: {ResolveStoreBankNoticeText(0x0DC3, "Store-bank notice 38.")}";
                     break;
 
                 default:
@@ -1598,6 +1620,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastPromptContextValue = 0;
             _lastPromptTokenValue = 0;
             _lastPromptChannelId = -1;
+            _lastShipmentPromptText = string.Empty;
         }
 
         private void ResetTransientRequestState()
@@ -1808,12 +1831,71 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string BuildShipmentPromptSummary()
         {
+            if (!string.IsNullOrWhiteSpace(_lastShipmentPromptText))
+            {
+                return _lastPromptChannelId >= 0xFE || _lastPromptTokenValue == 999999999
+                    ? $"Shipment prompt: {_lastShipmentPromptText} (context {_lastPromptContextValue.ToString(CultureInfo.InvariantCulture)})."
+                    : $"Shipment prompt: {_lastShipmentPromptText} (context {_lastPromptContextValue.ToString(CultureInfo.InvariantCulture)}, token {_lastPromptTokenValue.ToString(CultureInfo.InvariantCulture)}, channel {_lastPromptChannelId.ToString(CultureInfo.InvariantCulture)}).";
+            }
+
             if (_lastPromptChannelId >= 0xFE || _lastPromptTokenValue == 999999999)
             {
                 return $"Shipment prompt: fallback StringPool 0xDC1 branch for context {_lastPromptContextValue.ToString(CultureInfo.InvariantCulture)}.";
             }
 
             return $"Shipment prompt: context {_lastPromptContextValue.ToString(CultureInfo.InvariantCulture)}, token {_lastPromptTokenValue.ToString(CultureInfo.InvariantCulture)}, channel {_lastPromptChannelId.ToString(CultureInfo.InvariantCulture)}.";
+        }
+
+        private bool HasShipmentPrompt =>
+            _lastPromptContextValue != 0
+            || _lastPromptTokenValue != 0
+            || _lastPromptChannelId >= 0
+            || !string.IsNullOrWhiteSpace(_lastShipmentPromptText);
+
+        private string BuildShipmentPromptText()
+        {
+            if (_lastPromptChannelId >= 0xFE || _lastPromptTokenValue == 999999999)
+            {
+                return ResolveStoreBankNoticeText(
+                    0x0DC1,
+                    $"Stored items cannot be delivered automatically. Context {_lastPromptContextValue.ToString(CultureInfo.InvariantCulture)}.");
+            }
+
+            string format = MapleStoryStringPool.GetOrFallback(
+                0x0DC2,
+                "Stored items will be delivered through {0} mailbox slot {1}.");
+            string channelName = ResolveShipmentChannelName(_lastPromptChannelId);
+
+            try
+            {
+                return string.Format(
+                    CultureInfo.InvariantCulture,
+                    format,
+                    channelName,
+                    _lastPromptTokenValue % 100);
+            }
+            catch (FormatException)
+            {
+                return $"Stored items will be delivered through {channelName} mailbox slot {_lastPromptTokenValue % 100}.";
+            }
+        }
+
+        private static string ResolveShipmentChannelName(int channelId)
+        {
+            return channelId > 0
+                ? $"Ch. {channelId.ToString(CultureInfo.InvariantCulture)}"
+                : "the active channel";
+        }
+
+        private static string ResolveStoreBankNoticeText(int stringPoolId, string fallback)
+        {
+            string text = MapleStoryStringPool.GetOrFallback(stringPoolId, fallback)?.Trim();
+            return string.IsNullOrWhiteSpace(text) ? fallback : text;
+        }
+
+        private static string FormatStoreBankStringPoolId(int stringPoolId)
+        {
+            return $"StringPool 0x{stringPoolId.ToString("X", CultureInfo.InvariantCulture)}";
         }
 
         private static string BuildOwnerSelectionSummary(StoreBankItemEntry item)
@@ -2755,6 +2837,9 @@ namespace HaCreator.MapSimulator.Interaction
         private int _packetCount423;
         private int _lastPacketType = -1;
         private int _pageIndex;
+        private int _lastDecodedDotDamage;
+        private int _lastDecodedDotHitCount;
+        private int? _lastDecodedAttrRate;
 
         internal bool IsOpen { get; private set; }
         internal int CurrentPageIndex => _pageIndex;
@@ -2851,7 +2936,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 "Packet-owned owner: CBattleRecordMan::OnPacket (420-423).",
                 $"Page: {ResolvePageName()} | Window: {(IsOpen ? "open" : "closed")}",
-                $"Calc flags: onCalc={OnCalc}, serverOnCalc={ServerOnCalc}, dot={DotTrackingEnabled}, ready421={IsDotDamageReady}",
+                $"Calc flags: onCalc={OnCalc}, serverOnCalc={ServerOnCalc}, dot={DotTrackingEnabled}, decode421={IsDotDamageDecodeReady}, mutate421={IsDotDamageMutationReady}",
                 $"Packets: 420={_packetCount420.ToString(CultureInfo.InvariantCulture)}, 421={_packetCount421.ToString(CultureInfo.InvariantCulture)}, 422={_packetCount422.ToString(CultureInfo.InvariantCulture)}, 423={_packetCount423.ToString(CultureInfo.InvariantCulture)}"
             };
 
@@ -2863,6 +2948,9 @@ namespace HaCreator.MapSimulator.Interaction
                     lines.Add(LastAttrRate.HasValue
                         ? $"Last attr rate: {LastAttrRate.Value.ToString(CultureInfo.InvariantCulture)}"
                         : "Last attr rate: none");
+                    lines.Add(_lastDecodedDotHitCount > 0 || _lastDecodedDotDamage > 0
+                        ? $"Last decoded 421: {_lastDecodedDotDamage.ToString(CultureInfo.InvariantCulture)} x {_lastDecodedDotHitCount.ToString(CultureInfo.InvariantCulture)}"
+                        : "Last decoded 421: none");
                     break;
 
                 case 2:
@@ -2890,9 +2978,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryApplyDotDamageInfo(byte[] payload, out string message)
         {
-            if (!IsDotDamageReady)
+            if (!IsDotDamageDecodeReady)
             {
-                StatusMessage = "CBattleRecordMan ignored DOT damage info because m_bOnCalc, m_bServerOnCalc, and m_bDot were not all armed yet.";
+                StatusMessage = "CBattleRecordMan ignored DOT damage info because m_bOnCalc and m_bServerOnCalc were not both armed yet.";
                 message = StatusMessage;
                 return true;
             }
@@ -2916,6 +3004,17 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 attrRate = BitConverter.ToInt32(payload, 9);
+            }
+
+            _lastDecodedDotDamage = dotDamage;
+            _lastDecodedDotHitCount = hitCount;
+            _lastDecodedAttrRate = attrRate;
+
+            if (!DotTrackingEnabled)
+            {
+                StatusMessage = $"CBattleRecordMan decoded DOT damage info {dotDamage.ToString(CultureInfo.InvariantCulture)} x {hitCount.ToString(CultureInfo.InvariantCulture)}, but ignored the damage mutation because m_bDot was not armed.";
+                message = StatusMessage;
+                return true;
             }
 
             if (hitCount > 0)
@@ -2947,13 +3046,17 @@ namespace HaCreator.MapSimulator.Interaction
             LastDotDamage = 0;
             LastDotHitCount = 0;
             LastAttrRate = null;
+            _lastDecodedDotDamage = 0;
+            _lastDecodedDotHitCount = 0;
+            _lastDecodedAttrRate = null;
             if (clearNotes)
             {
                 _recentNotes.Clear();
             }
         }
 
-        private bool IsDotDamageReady => OnCalc && ServerOnCalc && DotTrackingEnabled;
+        private bool IsDotDamageDecodeReady => OnCalc && ServerOnCalc;
+        private bool IsDotDamageMutationReady => IsDotDamageDecodeReady && DotTrackingEnabled;
 
         private string ResolvePageName()
         {

@@ -84,7 +84,8 @@ namespace HaCreator.MapSimulator.Fields
             Default = 0,
             ManualOverride = 1,
             TransportControlLine = 2,
-            AvatarUniformInference = 3
+            AvatarUniformInference = 3,
+            PacketOwnedAttackResult = 4
         }
         public readonly record struct AvatarAppearanceContract(int TeamId, CharacterGender Gender, int CapItemId, int ClothesItemId)
         {
@@ -363,6 +364,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             _runtimeActive = true;
             _lastPacketType = PacketTypeHit;
+            TryInferLocalTeamFromAcknowledgedHit(targetId, (CoconutState)newState);
             AcknowledgeAttackPacketRequest(targetId);
             int startTime = (currentTimeMs ?? Environment.TickCount) + delay;
             if (targetId < 0)
@@ -830,6 +832,25 @@ namespace HaCreator.MapSimulator.Fields
             _pendingAttackPacketRequests.Add(new AttackPacketRequest(targetId, delayMs, requestedAtTick));
         }
 
+        private void TryInferLocalTeamFromAcknowledgedHit(int targetId, CoconutState newState)
+        {
+            if (_localTeamSelectionSource is LocalTeamSelectionSource.ManualOverride or LocalTeamSelectionSource.TransportControlLine
+                || targetId < 0
+                || !IsTeamClaimState(newState)
+                || !HasPendingAttackRequestForTarget(targetId))
+            {
+                return;
+            }
+
+            int inferredTeam = newState == CoconutState.Team1Claimed ? 1 : 0;
+            if (_localTeam == inferredTeam && _localTeamSelectionSource == LocalTeamSelectionSource.PacketOwnedAttackResult)
+            {
+                return;
+            }
+
+            SetLocalTeam(inferredTeam, LocalTeamSelectionSource.PacketOwnedAttackResult);
+        }
+
         internal bool ResolveLocalBasicActionOwnerActive(int currentTick)
         {
             if (!_gameActive || _pendingAttackPacketRequests.Count == 0)
@@ -843,6 +864,24 @@ namespace HaCreator.MapSimulator.Fields
                 int ownershipWindowMs = Math.Max(DefaultLocalNormalAttackDelayMs, request.DelayMs) + DefaultLocalNormalAttackDelayMs;
                 int elapsedMs = unchecked(currentTick - request.RequestedAtTick);
                 if (elapsedMs >= 0 && elapsedMs <= ownershipWindowMs)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool HasPendingAttackRequestForTarget(int targetId)
+        {
+            if (targetId < 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < _pendingAttackPacketRequests.Count; i++)
+            {
+                if (_pendingAttackPacketRequests[i].TargetId == targetId)
                 {
                     return true;
                 }
@@ -962,6 +1001,11 @@ namespace HaCreator.MapSimulator.Fields
                 CoconutState.Team1Claimed when localTeam == 0 => CoconutState.Team0Claimed,
                 _ => coconut.State
             };
+        }
+
+        private static bool IsTeamClaimState(CoconutState state)
+        {
+            return state is CoconutState.Team0Claimed or CoconutState.Team1Claimed;
         }
         private void ShowRoundResult(int currentTick)
         {

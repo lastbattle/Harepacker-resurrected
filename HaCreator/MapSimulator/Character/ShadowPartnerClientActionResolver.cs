@@ -191,6 +191,23 @@ namespace HaCreator.MapSimulator.Character
             "shotC1"
         };
 
+        private static readonly string[] LoaderSynthesizedRemappedActionNames =
+        {
+            // Mounted skill WZ still recovers these non-authored helper raw action names
+            // through `action/0`, while `special/*` only publishes the base `alert` branch.
+            "alert2",
+            "alert3",
+            "alert4",
+            "alert5",
+            // The client raw-action table also surfaces back-action aliases that collapse onto
+            // the authored ladder/rope helper branches instead of their own WZ rows.
+            "ladder2",
+            "rope2",
+            // `Skill/422.img/skill/4221006/action/0 = smokeshell`, but Shadow Partner still
+            // resolves it through the authored `alert` helper branch.
+            "smokeshell"
+        };
+
         public static IEnumerable<string> EnumerateClientMappedCandidates(
             string playerActionName,
             PlayerState state,
@@ -517,6 +534,14 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        internal static IEnumerable<string> EnumerateRemappedShadowPartnerActionNames()
+        {
+            foreach (string actionName in LoaderSynthesizedRemappedActionNames)
+            {
+                yield return actionName;
+            }
+        }
+
         internal static SkillAnimation TryBuildPiecedShadowPartnerActionAnimation(
             IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
             string actionName)
@@ -600,6 +625,53 @@ namespace HaCreator.MapSimulator.Character
         {
             return !string.IsNullOrWhiteSpace(actionName)
                    && PiecedShadowPartnerActionPlans.ContainsKey(actionName);
+        }
+
+        internal static SkillAnimation TryBuildRemappedShadowPartnerActionAnimation(
+            IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
+            string actionName)
+        {
+            if (actionAnimations == null
+                || actionAnimations.Count == 0
+                || string.IsNullOrWhiteSpace(actionName)
+                || actionAnimations.ContainsKey(actionName))
+            {
+                return null;
+            }
+
+            foreach (string resolvedActionName in EnumerateActionSpecificAliasCandidates(actionName))
+            {
+                if (!actionAnimations.TryGetValue(resolvedActionName, out SkillAnimation authoredAnimation)
+                    || authoredAnimation?.Frames == null
+                    || authoredAnimation.Frames.Count == 0)
+                {
+                    continue;
+                }
+
+                SkillAnimation playbackAnimation = ResolvePlaybackAnimation(
+                    actionAnimations,
+                    resolvedActionName,
+                    actionName,
+                    rawActionName: actionName);
+                if (playbackAnimation?.Frames == null || playbackAnimation.Frames.Count == 0)
+                {
+                    continue;
+                }
+
+                var remappedAnimation = new SkillAnimation
+                {
+                    Name = actionName,
+                    Frames = playbackAnimation.Frames.ToList(),
+                    Loop = playbackAnimation.Loop,
+                    Origin = playbackAnimation.Origin,
+                    ZOrder = playbackAnimation.ZOrder,
+                    PositionCode = playbackAnimation.PositionCode
+                };
+                remappedAnimation.CalculateDuration();
+                return remappedAnimation;
+            }
+
+            return null;
         }
 
         public static Point ResolveClientTargetOffset(
@@ -1116,7 +1188,7 @@ namespace HaCreator.MapSimulator.Character
             var pieces = new ShadowPartnerActionPiece[pieceActionNames.Length];
             for (int i = 0; i < pieceActionNames.Length; i++)
             {
-                pieces[i] = new ShadowPartnerActionPiece(i, pieceActionNames[i], null);
+                pieces[i] = new ShadowPartnerActionPiece(i, pieceActionNames[i], 0);
             }
 
             return pieces;

@@ -18,6 +18,7 @@ namespace HaCreator.MapSimulator
         {
             public CharacterBuild Build { get; init; }
             public MapTransferRuntimeRequest Request { get; init; }
+            public MapTransferRuntimeResponse PredictedResponse { get; init; }
         }
 
         private readonly MapTransferOfficialSessionBridgeManager _mapTransferOfficialSessionBridge = new();
@@ -59,7 +60,8 @@ namespace HaCreator.MapSimulator
             _pendingOfficialMapTransferRequests.Enqueue(new PendingOfficialMapTransferRequest
             {
                 Build = build?.Clone(),
-                Request = request
+                Request = request,
+                PredictedResponse = response
             });
             response = new MapTransferRuntimeResponse
             {
@@ -86,6 +88,9 @@ namespace HaCreator.MapSimulator
                 }
 
                 MapTransferRuntimeRequest request = pendingRequest?.Request;
+                response = MapTransferOfficialSessionResultResolver.Resolve(
+                    pendingRequest?.PredictedResponse,
+                    response);
                 if (response.Applied)
                 {
                     if (request?.Type == MapTransferRuntimeRequestType.Register)

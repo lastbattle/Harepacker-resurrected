@@ -156,7 +156,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             ReviveOwnerVariant variant = Variant;
             bool resolvedPremium = premium && HasPremiumChoice;
-            bool clientPremiumFlag = premium;
+            bool clientPremiumFlag = resolvedPremium;
             string ownerLabel = string.IsNullOrWhiteSpace(_ownerLabel) ? "revive owner" : _ownerLabel;
             string summary = resolvedPremium
                 ? $"CUIRevive premium recovery branch confirmed through {ownerLabel}."

@@ -49,17 +49,24 @@ namespace HaCreator.MapSimulator.Interaction
 
         private sealed class EmployeeImageEntry
         {
-            internal EmployeeImageEntry(int templateId, string imagePath, WzImage imageRoot, WzImageProperty propertyRoot)
+            internal EmployeeImageEntry(
+                int templateId,
+                string imagePath,
+                WzImage imageRoot,
+                WzImageProperty templateRoot,
+                WzImageProperty propertyRoot)
             {
                 TemplateId = Math.Max(0, templateId);
                 ImagePath = imagePath ?? string.Empty;
                 ImageRoot = imageRoot;
+                TemplateRoot = templateRoot;
                 PropertyRoot = propertyRoot;
             }
 
             internal int TemplateId { get; }
             internal string ImagePath { get; }
             internal WzImage ImageRoot { get; }
+            internal WzImageProperty TemplateRoot { get; }
             internal WzImageProperty PropertyRoot { get; }
         }
 
@@ -67,11 +74,14 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<string, EmployeeTemplateProfile> _cashProfileCache = new(StringComparer.Ordinal);
         private readonly Dictionary<int, EmployeeImageEntry> _cashEmployeeImgEntryCache = new();
         private readonly Dictionary<int, EmployeeActionCatalog> _cashActionCatalogCache = new();
+        private readonly Dictionary<int, NameTagAssets> _cashEmployeeNameTagCache = new();
+        private readonly HashSet<int> _cashEmployeeNameTagMissingTemplates = new();
         private readonly Dictionary<(int TemplateId, int ActionIndex), List<IDXObject>> _cashActionCache = new();
         private readonly ConcurrentBag<WzObject> _usedProps = new();
         private readonly Random _random = new();
         private MiniRoomBalloonAssets _miniRoomBalloonAssets;
-        private NameTagAssets _nameTagAssets;
+        private NameTagAssets _defaultNameTagAssets;
+        private NameTagAssets _activeNameTagAssets;
 
         private NpcItem _activeActor;
         private SocialRoomFieldActorSnapshot _activeSnapshot;
@@ -94,6 +104,7 @@ namespace HaCreator.MapSimulator.Interaction
             _currentAutoFlip = null;
             _idleActionRemainingMs = 0;
             _temporaryActionRemainingMs = 0;
+            _activeNameTagAssets = null;
         }
 
         public void Update(
@@ -136,7 +147,7 @@ namespace HaCreator.MapSimulator.Interaction
             int elapsedMs = (int)Math.Max(0d, gameTime.ElapsedGameTime.TotalMilliseconds);
 
             EnsureMiniRoomBalloonAssets(device);
-            EnsureEmployeeNameTagAssets(device);
+            _activeNameTagAssets = ResolveNameTagAssets(snapshot, device);
             AdvanceActionState(_activeActorKey, actor, snapshot, profile, elapsedMs);
             SyncActorPosition(player, actor, snapshot);
 
@@ -656,7 +667,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
-            EmployeeImageEntry entry = new(templateId, imagePath, itemImage, employeeRoot);
+            WzImageProperty templateRoot = itemImage[templateId.ToString("D8")];
+            EmployeeImageEntry entry = new(templateId, imagePath, itemImage, templateRoot, employeeRoot);
             _cashEmployeeImgEntryCache[templateId] = entry;
             return entry;
         }
@@ -970,9 +982,54 @@ namespace HaCreator.MapSimulator.Interaction
             return canvasProperty?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
         }
 
-        private void EnsureEmployeeNameTagAssets(GraphicsDevice device)
+        private NameTagAssets ResolveNameTagAssets(SocialRoomFieldActorSnapshot snapshot, GraphicsDevice device)
         {
-            if (_nameTagAssets?.IsLoaded == true || device == null || device.IsDisposed)
+            if (snapshot?.Template == SocialRoomFieldActorTemplate.CashEmployee && snapshot.TemplateId > 0)
+            {
+                NameTagAssets cashAssets = ResolveCashEmployeeNameTagAssets(snapshot.TemplateId, device);
+                if (cashAssets?.IsLoaded == true)
+                {
+                    return cashAssets;
+                }
+            }
+
+            EnsureDefaultEmployeeNameTagAssets(device);
+            return _defaultNameTagAssets;
+        }
+
+        private NameTagAssets ResolveCashEmployeeNameTagAssets(int templateId, GraphicsDevice device)
+        {
+            if (templateId <= 0 || device == null || device.IsDisposed)
+            {
+                return null;
+            }
+
+            if (_cashEmployeeNameTagCache.TryGetValue(templateId, out NameTagAssets cachedAssets))
+            {
+                return cachedAssets;
+            }
+
+            if (_cashEmployeeNameTagMissingTemplates.Contains(templateId))
+            {
+                return null;
+            }
+
+            EmployeeImageEntry employeeImgEntry = ResolveEmployeeImgEntry(templateId);
+            WzImageProperty nameTagSource = ResolveLinkedProperty(employeeImgEntry?.TemplateRoot?["nameTag"]);
+            NameTagAssets loadedAssets = LoadNameTagAssets(nameTagSource, device);
+            if (loadedAssets?.IsLoaded == true)
+            {
+                _cashEmployeeNameTagCache[templateId] = loadedAssets;
+                return loadedAssets;
+            }
+
+            _cashEmployeeNameTagMissingTemplates.Add(templateId);
+            return null;
+        }
+
+        private void EnsureDefaultEmployeeNameTagAssets(GraphicsDevice device)
+        {
+            if (_defaultNameTagAssets?.IsLoaded == true || device == null || device.IsDisposed)
             {
                 return;
             }
@@ -984,18 +1041,22 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             nameTagImage.ParseImage();
-            WzSubProperty styleSource = nameTagImage["11"] as WzSubProperty;
-            if (styleSource == null)
+            _defaultNameTagAssets = LoadNameTagAssets(nameTagImage["11"] as WzSubProperty, device);
+        }
+
+        private static NameTagAssets LoadNameTagAssets(WzImageProperty source, GraphicsDevice device)
+        {
+            if (source == null || device == null || device.IsDisposed)
             {
-                return;
+                return null;
             }
 
-            int textColorArgb = GetIntValue(styleSource["clr"]) ?? unchecked((int)0xFFFFFF00);
-            _nameTagAssets = new NameTagAssets
+            int textColorArgb = GetIntValue(source["clr"]) ?? unchecked((int)0xFFFFFF00);
+            return new NameTagAssets
             {
-                Left = LoadUiCanvasTexture(styleSource["w"] as WzCanvasProperty, device),
-                Middle = LoadUiCanvasTexture(styleSource["c"] as WzCanvasProperty, device),
-                Right = LoadUiCanvasTexture(styleSource["e"] as WzCanvasProperty, device),
+                Left = LoadUiCanvasTexture(ResolveCanvasProperty(source["w"]), device),
+                Middle = LoadUiCanvasTexture(ResolveCanvasProperty(source["c"]), device),
+                Right = LoadUiCanvasTexture(ResolveCanvasProperty(source["e"]), device),
                 TextColor = new Color(unchecked((uint)textColorArgb))
             };
         }
@@ -1262,7 +1323,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             int actorScreenX = _activeActor.CurrentX - mapShiftX + mapCenterX;
             int actorScreenY = _activeActor.CurrentY - mapShiftY + mapCenterY;
-            NameTagAssets assets = _nameTagAssets;
+            NameTagAssets assets = _activeNameTagAssets;
             Vector2 textSize = font.MeasureString(nameTagText) * NameTagScale;
 
             if (assets?.IsLoaded == true)

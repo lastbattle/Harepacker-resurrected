@@ -1263,11 +1263,7 @@ namespace HaCreator.MapSimulator.UI
             QuestAlarmSnapshot snapshot = RefreshFilteredSnapshot();
             string questTitle = TryGetQuestTitle(snapshot, questId);
             _trackedQuestIds.Remove(questId);
-            bool hiddenFromAutoRegister = false;
-            if (_autoTrackEnabled)
-            {
-                hiddenFromAutoRegister = _hiddenAutoQuestIds.Add(questId);
-            }
+            _hiddenAutoQuestIds.Add(questId);
 
             ResetSelectionAfterMutation();
 
@@ -1278,7 +1274,7 @@ namespace HaCreator.MapSimulator.UI
             SavePersistedState();
             QuestDeleted?.Invoke();
 
-            if (hiddenFromAutoRegister)
+            if (!string.IsNullOrWhiteSpace(questTitle))
             {
                 StatusMessageRequested?.Invoke(QuestAlarmOwnerStringPoolText.FormatDeleteNotice(questTitle));
             }

@@ -2193,6 +2193,10 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.PetConsumeMpItemInitPacketType:
                     return TryApplyPacketOwnedPetConsumeItemInitPayload(payload, mpItem: true, out message);
 
+                case LocalUtilityPacketInboxManager.AdminShopResultClientPacketType:
+                case LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType:
+                    return TryApplyPacketOwnedAdminShopPacket(packetType, payload, out message);
+
                 case 364:
                 case 365:
                 case 369:
@@ -2572,7 +2576,10 @@ namespace HaCreator.MapSimulator
             return $"Mirrored CWvsContext::SendEmotionChange as opcode {request.Opcode} [{payloadHex}], but it remained simulator-owned because neither the live local-utility bridge nor the deferred official-session bridge queue nor the generic outbox transport or deferred outbox queue accepted it. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus} Deferred outbox: {queuedStatus} {_packetOwnedLocalUtilityContext.DescribeEmotionContext(currentTick)}";
         }
 
-        private void ShowPacketOwnedRewardResultNotice(string body)
+        private void ShowPacketOwnedRewardResultNotice(
+            string body,
+            bool autoSeparated = true,
+            bool tightLine = false)
         {
             string noticeSoundDescriptor = PacketOwnedRewardResultRuntime.GetUtilDlgNoticeSoundDescriptor();
             if (!string.IsNullOrWhiteSpace(noticeSoundDescriptor))
@@ -2582,7 +2589,7 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.PacketOwnedRewardResultNotice) is PacketOwnedRewardNoticeWindow noticeWindow)
             {
-                noticeWindow.Configure(string.Empty, body);
+                noticeWindow.Configure(string.Empty, body, autoSeparated, tightLine);
                 ShowWindow(MapSimulatorWindowNames.PacketOwnedRewardResultNotice, noticeWindow, trackDirectionModeOwner: true);
                 return;
             }
@@ -2839,19 +2846,78 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            _packetOwnedItemMakerSessionState = PacketOwnedItemMakerSessionStateRuntime.Apply(
+                _packetOwnedItemMakerSessionState,
+                packetSession);
+
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemMaker) is not ItemMakerUI itemMakerWindow)
             {
-                message = "Maker-session packet arrived, but the Item Maker window is unavailable.";
-                return false;
+                message = DescribeStoredItemMakerSessionState(_packetOwnedItemMakerSessionState);
+                StampPacketOwnedUtilityRequestState();
+                return true;
             }
 
-            if (!itemMakerWindow.TryApplyPacketOwnedSession(packetSession, out message))
+            if (!itemMakerWindow.TryApplyPacketOwnedSessionState(_packetOwnedItemMakerSessionState, out message))
             {
                 return false;
             }
 
             StampPacketOwnedUtilityRequestState();
             return true;
+        }
+
+        private void ConfigureItemMakerWindow(ItemMakerUI itemMakerWindow)
+        {
+            if (itemMakerWindow == null)
+            {
+                return;
+            }
+
+            itemMakerWindow.SetCraftingState(
+                _playerManager?.Player?.Level ?? 1,
+                _playerManager?.Player?.Build?.TraitCraft ?? 0,
+                _playerManager?.Player?.Build?.Job ?? 0,
+                GetActiveItemMakerProgression(),
+                HasItemMakerRequiredEquip,
+                MatchesItemMakerQuestRequirement);
+
+            if (HasStoredItemMakerSessionState(_packetOwnedItemMakerSessionState))
+            {
+                itemMakerWindow.TryApplyPacketOwnedSessionState(_packetOwnedItemMakerSessionState, out _);
+            }
+        }
+
+        private static bool HasStoredItemMakerSessionState(PacketOwnedItemMakerSessionState sessionState)
+        {
+            return sessionState != null
+                && (sessionState.ServerOwnsCraftExecution
+                    || sessionState.HasAuthoritativeDisassemblyTargets
+                    || sessionState.HasAuthoritativeHiddenRecipeList);
+        }
+
+        private static string DescribeStoredItemMakerSessionState(PacketOwnedItemMakerSessionState sessionState)
+        {
+            if (!HasStoredItemMakerSessionState(sessionState))
+            {
+                return "Stored a maker-session clear or local-only update for the next Item Maker launch.";
+            }
+
+            List<string> parts = new();
+            parts.Add(sessionState.ServerOwnsCraftExecution
+                ? "packet-owned craft execution enabled"
+                : "local craft execution retained");
+
+            if (sessionState.HasAuthoritativeDisassemblyTargets)
+            {
+                parts.Add($"authoritative disassembly targets {sessionState.DisassemblyTargets?.Count ?? 0}");
+            }
+
+            if (sessionState.HasAuthoritativeHiddenRecipeList)
+            {
+                parts.Add($"authoritative hidden list {sessionState.HiddenRecipeEntries?.Count ?? 0} row(s)");
+            }
+
+            return $"Stored maker session for the next Item Maker launch: {string.Join("; ", parts)}.";
         }
 
         private static bool TryDecodePacketOwnedSkillLearnItemResult(
@@ -3985,7 +4051,9 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedRadioExpectedStopTick = ResolvePacketOwnedRadioExpectedStopTick(
                     startTick,
                     _lastPacketOwnedRadioAvailableDurationMs);
-                _lastPacketOwnedRadioLastPollTick = int.MinValue;
+                _lastPacketOwnedRadioLastPollTick = ResolvePacketOwnedRadioInitialUpdateTick(
+                    startTick,
+                    _lastPacketOwnedRadioAvailableDurationMs);
                 _appliedPacketOwnedRadioVolume = 0f;
                 _utilityAudioMixLastTick = startTick;
                 _lastPacketOwnedRadioStatusMessage =
@@ -4070,6 +4138,17 @@ namespace HaCreator.MapSimulator
                     : (int)expectedStopTick;
         }
 
+        internal static int ResolvePacketOwnedRadioInitialUpdateTick(int startTick, int remainingDurationMs)
+        {
+            return ResolvePacketOwnedRadioExpectedStopTick(startTick, remainingDurationMs);
+        }
+
+        internal static bool ShouldPollPacketOwnedRadioCompletion(int currentTickCount, int lastUpdateTick)
+        {
+            return lastUpdateTick != int.MinValue
+                && unchecked(currentTickCount - lastUpdateTick) > PacketOwnedRadioUpdatePollIntervalMs;
+        }
+
         private void UpdatePacketOwnedRadioSchedule(int currentTickCount)
         {
             SyncPacketOwnedRadioCreateLayerContextLifecycle();
@@ -4078,22 +4157,18 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            int pollBaseline = _lastPacketOwnedRadioLastPollTick != int.MinValue
-                ? _lastPacketOwnedRadioLastPollTick
-                : (_lastPacketOwnedRadioExpectedStopTick != int.MinValue
-                    ? _lastPacketOwnedRadioExpectedStopTick
-                    : _lastPacketOwnedRadioStartTick);
-            if (pollBaseline != int.MinValue
-                && unchecked(currentTickCount - pollBaseline) <= PacketOwnedRadioUpdatePollIntervalMs)
+            if (!ShouldPollPacketOwnedRadioCompletion(currentTickCount, _lastPacketOwnedRadioLastPollTick))
             {
                 return;
             }
 
-            _lastPacketOwnedRadioLastPollTick = currentTickCount;
             if (_packetOwnedRadioAudio?.State == Microsoft.Xna.Framework.Audio.SoundState.Stopped)
             {
                 StopPacketOwnedRadioSchedule(completed: true, emitChatNotice: true);
+                return;
             }
+
+            _lastPacketOwnedRadioLastPollTick = currentTickCount;
         }
 
         private void UpdatePacketOwnedTutorRuntime(int currentTickCount)
@@ -4769,18 +4844,11 @@ namespace HaCreator.MapSimulator
         private static string ResolvePacketOwnedRadioDisplayName(WzObject source, string fallback)
         {
             string normalizedFallback = string.IsNullOrWhiteSpace(fallback) ? "radio track" : fallback.Trim();
-            for (WzObject current = source; current != null; current = current.Parent)
+            if (source is WzImageProperty propertyContainer
+                && propertyContainer["name"] is WzStringProperty nameProperty
+                && !string.IsNullOrWhiteSpace(nameProperty.Value))
             {
-                if (current is not WzImageProperty propertyContainer)
-                {
-                    continue;
-                }
-
-                if (propertyContainer["name"] is WzStringProperty nameProperty
-                    && !string.IsNullOrWhiteSpace(nameProperty.Value))
-                {
-                    return nameProperty.Value.Trim();
-                }
+                return nameProperty.Value.Trim();
             }
 
             return normalizedFallback;
@@ -4941,11 +5009,16 @@ namespace HaCreator.MapSimulator
                 out SkillData skill,
                 out int level,
                 out string errorMessage);
-            bool appliedSpecialEffect = TryRegisterAnimationDisplayerLocalSkillUseBranchAtWorldOrigin(
-                normalizedSkillId,
-                "special",
-                timeBombPosition,
-                currTickCount);
+            bool appliedSpecialEffect = TryRegisterAnimationDisplayerLocalSkillUseRequest(new SkillUseEffectRequest
+            {
+                EffectSkillId = normalizedSkillId,
+                SourceSkillId = normalizedSkillId,
+                RequestTime = currTickCount,
+                BranchNames = new[] { "special" },
+                WorldOrigin = timeBombPosition,
+                FollowOwnerPosition = false,
+                FollowOwnerFacing = false
+            });
 
             int appliedHitPeriodMs = 0;
             int appliedDamage = damage;
@@ -6142,17 +6215,21 @@ namespace HaCreator.MapSimulator
                 currentTickCount,
                 out TutorMessageSnapshot displayMessage);
             _packetOwnedTutorSummonMessageSequenceIdsByObjectId.TryGetValue(summon.ObjectId, out int lastMessageSequenceId);
-            bool shouldTriggerSayPlayback = hasVisibleMessage
-                && lastMessageSequenceId != displayMessage.MessageSequenceId
-                && (displayMessage.MessageKind == TutorMessageKind.Text
-                    || displayVariant.SkillId != TutorRuntime.AranTutorSkillId);
+            bool hasNewVisibleMessage = hasVisibleMessage
+                && lastMessageSequenceId != displayMessage.MessageSequenceId;
 
-            if (shouldTriggerSayPlayback)
+            if (hasNewVisibleMessage && ShouldTriggerPacketOwnedTutorSayPlayback(displayVariant.SkillId, displayMessage.MessageKind))
             {
                 summon.LastAttackAnimationStartTime = displayMessage.MessageStartedAt == int.MinValue
                     ? currentTickCount
                     : displayMessage.MessageStartedAt;
                 summon.CurrentAnimationBranchName = "say";
+                _packetOwnedTutorSummonMessageSequenceIdsByObjectId[summon.ObjectId] = displayMessage.MessageSequenceId;
+            }
+            else if (hasNewVisibleMessage)
+            {
+                summon.LastAttackAnimationStartTime = int.MinValue;
+                summon.CurrentAnimationBranchName = null;
                 _packetOwnedTutorSummonMessageSequenceIdsByObjectId[summon.ObjectId] = displayMessage.MessageSequenceId;
             }
             else if (!hasVisibleMessage)
@@ -6163,6 +6240,12 @@ namespace HaCreator.MapSimulator
             }
 
             summon.ActorState = SummonActorState.Idle;
+        }
+
+        internal static bool ShouldTriggerPacketOwnedTutorSayPlayback(int skillId, TutorMessageKind messageKind)
+        {
+            return messageKind == TutorMessageKind.Text
+                || skillId != TutorRuntime.AranTutorSkillId;
         }
 
         private void RemovePacketOwnedTutorSummon()
@@ -6306,26 +6389,40 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            Vector2 position;
             int actorHeight = Math.Max(
                 0,
                 displayVariant.ActorHeight > 0
                     ? displayVariant.ActorHeight
                     : ResolvePacketOwnedTutorActorHeight(displayVariant.SkillId));
-            if (frame.Texture.Width > 0 && frame.Texture.Height > 0 && actorHeight > 0)
+            Vector2 position = ResolvePacketOwnedTutorCueLayerPosition(
+                anchor,
+                frame.Texture.Width,
+                frame.Texture.Height,
+                frame.X,
+                frame.Y,
+                actorHeight);
+
+            _spriteBatch.Draw(frame.Texture, position, Color.White);
+        }
+
+        internal static Vector2 ResolvePacketOwnedTutorCueLayerPosition(
+            Point anchor,
+            int frameWidth,
+            int frameHeight,
+            int frameOriginX,
+            int frameOriginY,
+            int actorHeight)
+        {
+            if (frameWidth > 0 && frameHeight > 0 && actorHeight > 0)
             {
                 // Client evidence: CTutor::OnMessage(long,long) positions numeric cues using
                 // x = -(layerWidth / 2) and y = -(layerHeight + summonHeight).
-                position = new Vector2(
-                    anchor.X - (frame.Texture.Width / 2f),
-                    anchor.Y - (frame.Texture.Height + actorHeight));
-            }
-            else
-            {
-                position = new Vector2(anchor.X - frame.X, anchor.Y - frame.Y);
+                return new Vector2(
+                    anchor.X - (frameWidth / 2f),
+                    anchor.Y - (frameHeight + actorHeight));
             }
 
-            _spriteBatch.Draw(frame.Texture, position, Color.White);
+            return new Vector2(anchor.X - frameOriginX, anchor.Y - frameOriginY);
         }
 
         private List<IDXObject> ResolvePacketOwnedTutorCueFrames(int cueIndex)
@@ -6337,9 +6434,10 @@ namespace HaCreator.MapSimulator
             }
 
             WzImage tutorialImage = Program.FindImage("UI", "tutorial.img");
-            List<IDXObject> frames = LoadPacketOwnedAnimationFrames(
-                ResolvePacketOwnedPropertyPath(tutorialImage, normalizedIndex.ToString(CultureInfo.InvariantCulture)),
-                fallbackDelay: TutorRuntime.DefaultIndexedDurationMs);
+            List<IDXObject> frames = ExtractPacketOwnedFrameSprites(
+                LoadPacketOwnedAnimationFrames(
+                    ResolvePacketOwnedPropertyPath(tutorialImage, normalizedIndex.ToString(CultureInfo.InvariantCulture)),
+                    fallbackDelay: TutorRuntime.DefaultIndexedDurationMs));
             _packetOwnedTutorCueFramesByIndex[normalizedIndex] = frames;
             return frames;
         }
@@ -9061,23 +9159,24 @@ namespace HaCreator.MapSimulator
 
             StampPacketOwnedUtilityRequestState();
             int currentTick = Environment.TickCount;
-            if (!_playerManager.TryResolvePacketOwnedSg88ManualAttackRequest(
-                    confirm.SummonObjectId,
-                    confirm.RequestedAt,
-                    currentTick))
+            bool resolvedGameplayRequest = _playerManager.TryResolvePacketOwnedSg88ManualAttackRequest(
+                confirm.SummonObjectId,
+                confirm.RequestedAt,
+                currentTick);
+            bool resolvedBridgeCapture = _summonedOfficialSessionBridge.ResolveSg88ManualAttackRequest(
+                confirm.SummonObjectId,
+                confirm.RequestedAt,
+                "1021-confirm");
+            if (!resolvedGameplayRequest && !resolvedBridgeCapture)
             {
                 message =
                     $"SG-88 manual-attack confirm did not match the active pending summon request for object {confirm.SummonObjectId} at tick {confirm.RequestedAt}.";
                 return false;
             }
 
-            _summonedOfficialSessionBridge.ResolveSg88ManualAttackRequest(
-                confirm.SummonObjectId,
-                confirm.RequestedAt,
-                "1021-confirm");
-
-            message =
-                $"Applied packet-owned SG-88 manual-attack confirm for summon {confirm.SummonObjectId} at tick {confirm.RequestedAt}.";
+            message = resolvedGameplayRequest
+                ? $"Applied packet-owned SG-88 manual-attack confirm for summon {confirm.SummonObjectId} at tick {confirm.RequestedAt}."
+                : $"Applied packet-owned SG-88 manual-attack confirm for summon {confirm.SummonObjectId} at tick {confirm.RequestedAt} and upgraded the archived bridge capture.";
             return true;
         }
 
@@ -9323,106 +9422,13 @@ namespace HaCreator.MapSimulator
 
                 QuestDemandItemQueryState runtimeFallbackQuery = null;
                 _questRuntime.TryBuildQuestDemandItemQuery(questId, out runtimeFallbackQuery);
-
-                List<int> visibleItemIds = new();
-                Dictionary<int, IReadOnlyList<int>> visibleItemMapIds = new();
-                int hiddenItemCount = 0;
-                int currentMapId = _mapBoard?.MapInfo?.id ?? 0;
-                bool hasPacketOwnedMapResults = false;
-                for (int i = 0; i < records.Count; i++)
-                {
-                    int itemId = records[i].PrimaryId;
-                    if (itemId <= 0)
-                    {
-                        hiddenItemCount++;
-                        continue;
-                    }
-
-                    HashSet<int> mapIds = new();
-                    for (int childIndex = 0; childIndex < records[i].ChildIds.Count; childIndex++)
-                    {
-                        int mobId = records[i].ChildIds[childIndex];
-                        if (mobId <= 0)
-                        {
-                            continue;
-                        }
-
-                        if (TryGetPacketQuestGuideMapIds(mobId, out IReadOnlyList<int> packetMapIds) && packetMapIds.Count > 0)
-                        {
-                            for (int mapIndex = 0; mapIndex < packetMapIds.Count; mapIndex++)
-                            {
-                                if (packetMapIds[mapIndex] > 0)
-                                {
-                                    mapIds.Add(packetMapIds[mapIndex]);
-                                    hasPacketOwnedMapResults = true;
-                                }
-                            }
-                        }
-                    }
-
-                    if (!visibleItemIds.Contains(itemId))
-                    {
-                        visibleItemIds.Add(itemId);
-                    }
-
-                    IReadOnlyList<int> runtimeFallbackMapIds = ResolveRuntimeFallbackDemandItemMapIds(runtimeFallbackQuery, itemId);
-                    for (int mapIndex = 0; mapIndex < runtimeFallbackMapIds.Count; mapIndex++)
-                    {
-                        if (runtimeFallbackMapIds[mapIndex] > 0)
-                        {
-                            mapIds.Add(runtimeFallbackMapIds[mapIndex]);
-                        }
-                    }
-
-                    if (mapIds.Count == 0 && currentMapId > 0)
-                    {
-                        mapIds.Add(currentMapId);
-                    }
-
-                    if (mapIds.Count > 0)
-                    {
-                        visibleItemMapIds[itemId] = mapIds.OrderBy(mapId => mapId).ToArray();
-                    }
-                }
-
-                string fallbackNpcName = runtimeFallbackQuery?.FallbackNpcName ?? string.Empty;
-                if (visibleItemIds.Count == 0 && runtimeFallbackQuery?.VisibleItemIds != null)
-                {
-                    for (int i = 0; i < runtimeFallbackQuery.VisibleItemIds.Count; i++)
-                    {
-                        int itemId = runtimeFallbackQuery.VisibleItemIds[i];
-                        if (itemId <= 0 || visibleItemIds.Contains(itemId))
-                        {
-                            continue;
-                        }
-
-                        visibleItemIds.Add(itemId);
-                        IReadOnlyList<int> runtimeFallbackMapIds = ResolveRuntimeFallbackDemandItemMapIds(runtimeFallbackQuery, itemId);
-                        if (runtimeFallbackMapIds.Count > 0)
-                        {
-                            visibleItemMapIds[itemId] = runtimeFallbackMapIds
-                                .Where(mapId => mapId > 0)
-                                .Distinct()
-                                .OrderBy(mapId => mapId)
-                                .ToArray();
-                        }
-                    }
-                }
-
-                if (hiddenItemCount == 0 && runtimeFallbackQuery?.HiddenItemCount > 0)
-                {
-                    hiddenItemCount = runtimeFallbackQuery.HiddenItemCount;
-                }
-
-                message = ApplyQuestDemandItemQueryLaunch(new QuestDemandItemQueryState
-                {
-                    QuestId = questId,
-                    VisibleItemIds = visibleItemIds,
-                    VisibleItemMapIds = visibleItemMapIds,
-                    HiddenItemCount = hiddenItemCount,
-                    FallbackNpcName = fallbackNpcName,
-                    HasPacketOwnedMapResults = hasPacketOwnedMapResults
-                });
+                QuestDemandItemQueryState queryState = BuildPacketOwnedQuestDemandItemQueryState(
+                    questId,
+                    records.Select(record => (record.PrimaryId, (IReadOnlyList<int>)record.ChildIds)).ToArray(),
+                    _mapBoard?.MapInfo?.id ?? 0,
+                    runtimeFallbackQuery,
+                    ResolveQuestMobMapIds);
+                message = ApplyQuestDemandItemQueryLaunch(queryState);
                 return true;
             }
             catch (Exception ex)
@@ -9558,6 +9564,116 @@ namespace HaCreator.MapSimulator
 
             deliveryType = QuestDetailDeliveryTypeCodec.FromClientRawValue(rawType);
             return true;
+        }
+
+        internal static QuestDemandItemQueryState BuildPacketOwnedQuestDemandItemQueryState(
+            int questId,
+            IReadOnlyList<(int PrimaryId, IReadOnlyList<int> ChildIds)> records,
+            int currentMapId,
+            QuestDemandItemQueryState runtimeFallbackQuery,
+            Func<int, IReadOnlyList<int>> resolveMobMapIds)
+        {
+            List<int> visibleItemIds = new();
+            Dictionary<int, IReadOnlyList<int>> visibleItemMapIds = new();
+            int hiddenItemCount = 0;
+            bool hasPacketOwnedMapResults = false;
+
+            if (records != null)
+            {
+                for (int i = 0; i < records.Count; i++)
+                {
+                    int itemId = records[i].PrimaryId;
+                    if (itemId <= 0)
+                    {
+                        hiddenItemCount++;
+                        continue;
+                    }
+
+                    HashSet<int> mapIds = new();
+                    IReadOnlyList<int> childIds = records[i].ChildIds ?? Array.Empty<int>();
+                    for (int childIndex = 0; childIndex < childIds.Count; childIndex++)
+                    {
+                        int mobId = childIds[childIndex];
+                        if (mobId <= 0)
+                        {
+                            continue;
+                        }
+
+                        IReadOnlyList<int> packetResolvedMapIds = resolveMobMapIds?.Invoke(mobId) ?? Array.Empty<int>();
+                        for (int mapIndex = 0; mapIndex < packetResolvedMapIds.Count; mapIndex++)
+                        {
+                            if (packetResolvedMapIds[mapIndex] > 0)
+                            {
+                                mapIds.Add(packetResolvedMapIds[mapIndex]);
+                                hasPacketOwnedMapResults = true;
+                            }
+                        }
+                    }
+
+                    if (!visibleItemIds.Contains(itemId))
+                    {
+                        visibleItemIds.Add(itemId);
+                    }
+
+                    IReadOnlyList<int> runtimeFallbackMapIds = ResolveRuntimeFallbackDemandItemMapIds(runtimeFallbackQuery, itemId);
+                    for (int mapIndex = 0; mapIndex < runtimeFallbackMapIds.Count; mapIndex++)
+                    {
+                        if (runtimeFallbackMapIds[mapIndex] > 0)
+                        {
+                            mapIds.Add(runtimeFallbackMapIds[mapIndex]);
+                        }
+                    }
+
+                    if (mapIds.Count == 0 && currentMapId > 0)
+                    {
+                        mapIds.Add(currentMapId);
+                    }
+
+                    if (mapIds.Count > 0)
+                    {
+                        visibleItemMapIds[itemId] = mapIds.OrderBy(mapId => mapId).ToArray();
+                    }
+                }
+            }
+
+            string fallbackNpcName = runtimeFallbackQuery?.FallbackNpcName ?? string.Empty;
+            if (visibleItemIds.Count == 0 && runtimeFallbackQuery?.VisibleItemIds != null)
+            {
+                for (int i = 0; i < runtimeFallbackQuery.VisibleItemIds.Count; i++)
+                {
+                    int itemId = runtimeFallbackQuery.VisibleItemIds[i];
+                    if (itemId <= 0 || visibleItemIds.Contains(itemId))
+                    {
+                        continue;
+                    }
+
+                    visibleItemIds.Add(itemId);
+                    IReadOnlyList<int> runtimeFallbackMapIds = ResolveRuntimeFallbackDemandItemMapIds(runtimeFallbackQuery, itemId);
+                    if (runtimeFallbackMapIds.Count > 0)
+                    {
+                        visibleItemMapIds[itemId] = runtimeFallbackMapIds
+                            .Where(mapId => mapId > 0)
+                            .Distinct()
+                            .OrderBy(mapId => mapId)
+                            .ToArray();
+                    }
+                }
+            }
+
+            if (hiddenItemCount == 0 && runtimeFallbackQuery?.HiddenItemCount > 0)
+            {
+                hiddenItemCount = runtimeFallbackQuery.HiddenItemCount;
+            }
+
+            return new QuestDemandItemQueryState
+            {
+                QuestId = questId,
+                VisibleItemIds = visibleItemIds,
+                VisibleItemMapIds = visibleItemMapIds,
+                HiddenItemCount = hiddenItemCount,
+                FallbackNpcName = fallbackNpcName,
+                HasPacketOwnedMapResults = hasPacketOwnedMapResults
+            };
         }
 
         private static bool TryParseQuestDeliveryTypeToken(string token, out QuestDetailDeliveryType deliveryType)

@@ -20,7 +20,7 @@ namespace HaCreator.MapSimulator
         private const string RemoteUserCommandUsage =
             "/remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw|inbox> ...";
         private const string RemoteUserPacketTokenUsage =
-            "<-1101|-1102|-1103|-1104|-1105|-1106|-1107|-1108|-1109|-1110|179|180|181|182|183|184|210|211|212|213|214|215|216|219|220|221|222|223|225|226|228|coupleadd|coupleremove|friendadd|friendremove|marriageadd|marriageremove|newyearadd|newyearremove|couplechairadd|couplechairremove|enter|leave|move|state|helper|team|follow|chair|mount|prepare|movingshootprepare|preparedclear|emotion|activeeffect|upgradetomb|officialchair|pickup|melee|effect|avatarmodified|tempset|tempreset|guildname>";
+            "<-1101|-1102|-1103|-1104|-1105|-1106|-1107|-1108|-1109|-1110|179|180|181|182|183|184|210|211|212|213|214|215|216|219|220|221|222|223|225|226|228|229|coupleadd|coupleremove|friendadd|friendremove|marriageadd|marriageremove|newyearadd|newyearremove|couplechairadd|couplechairremove|enter|leave|move|state|helper|team|follow|chair|mount|prepare|movingshootprepare|preparedclear|emotion|activeeffect|upgradetomb|officialchair|pickup|melee|effect|avatarmodified|tempset|tempreset|guildname|guildmark>";
         private readonly RemoteUserPacketInboxManager _remoteUserPacketInbox = new();
         private readonly PacketOwnedRelationshipRecordRuntime _packetOwnedRelationshipRecordRuntime = new();
         private readonly PacketOwnedPortableChairRecordRuntime _packetOwnedPortableChairRecordRuntime = new();
@@ -990,6 +990,27 @@ namespace HaCreator.MapSimulator
                 return guildApplied;
             }
 
+            if (packetType == (int)RemoteUserPacketType.UserGuildMarkChangedOfficial)
+            {
+                if (!RemoteUserPacketCodec.TryParseGuildMarkChanged(payload, out RemoteUserGuildMarkChangedPacket guildMarkPacket, out string guildMarkError))
+                {
+                    result = guildMarkError;
+                    return false;
+                }
+
+                bool guildMarkApplied = _remoteUserPool.TryApplyGuildMark(
+                    guildMarkPacket.CharacterId,
+                    guildMarkPacket.MarkBackgroundId,
+                    guildMarkPacket.MarkBackgroundColor,
+                    guildMarkPacket.MarkId,
+                    guildMarkPacket.MarkColor,
+                    out string guildMarkMessage);
+                result = guildMarkApplied
+                    ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {guildMarkPacket.CharacterId}."
+                    : guildMarkMessage;
+                return guildMarkApplied;
+            }
+
             switch ((RemoteUserPacketType)packetType)
             {
                 case RemoteUserPacketType.UserEnterField:
@@ -1682,6 +1703,8 @@ namespace HaCreator.MapSimulator
                 "avatarmodified" or "avatarmod" or "look" => (int)RemoteUserPacketType.UserAvatarModified,
                 "tempset" or "tempstatset" => (int)RemoteUserPacketType.UserTemporaryStatSet,
                 "tempreset" or "tempstatreset" => (int)RemoteUserPacketType.UserTemporaryStatReset,
+                "guildname" or "guildnamechanged" => (int)RemoteUserPacketType.UserGuildNameChangedOfficial,
+                "guildmark" or "guildmarkchanged" => (int)RemoteUserPacketType.UserGuildMarkChangedOfficial,
                 _ => 0
             };
 
@@ -1721,6 +1744,8 @@ namespace HaCreator.MapSimulator
                 (int)RemoteUserPacketType.UserActiveEffectItemOfficial => "remote user official active-effect-item packet",
                 (int)RemoteUserPacketType.UserMovingShootAttackPrepareOfficial => "remote user official moving-shoot prepare packet",
                 (int)RemoteUserPacketType.UserPortableChairOfficial => "remote user official portable-chair packet",
+                (int)RemoteUserPacketType.UserGuildNameChangedOfficial => "remote user official guild-name packet",
+                (int)RemoteUserPacketType.UserGuildMarkChangedOfficial => "remote user official guild-mark packet",
                 _ => $"remote user packet {packetType}"
             };
         }

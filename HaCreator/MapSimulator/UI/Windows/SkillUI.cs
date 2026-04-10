@@ -494,7 +494,7 @@ namespace HaCreator.MapSimulator.UI
 
                         if (_font != null && !string.IsNullOrWhiteSpace(remainingText))
                         {
-                            Vector2 textSize = _font.MeasureString(remainingText) * COOLDOWN_TEXT_SCALE;
+                            Vector2 textSize = ClientTextDrawing.Measure((GraphicsDevice)null, remainingText, COOLDOWN_TEXT_SCALE, _font);
                             Vector2 textPosition = new Vector2(
                                 iconRect.Right - textSize.X - 2f,
                                 iconRect.Bottom - textSize.Y - 1f);
@@ -1007,7 +1007,7 @@ namespace HaCreator.MapSimulator.UI
                 if (line.Length == 0)
                     continue;
 
-                maxWidth = Math.Max(maxWidth, _font.MeasureString(line).X);
+                maxWidth = Math.Max(maxWidth, ClientTextDrawing.Measure((GraphicsDevice)null, line, 1f, _font).X);
             }
 
             return maxWidth;
@@ -1177,7 +1177,7 @@ namespace HaCreator.MapSimulator.UI
         {
             for (int i = 0; i < lines.Length; i++)
             {
-                DrawTooltipText(sprite, lines[i], new Vector2(x, y + (i * _font.LineSpacing)), color);
+                DrawTooltipText(sprite, lines[i], new Vector2(x, y + (i * ResolveTooltipLineHeight())), color);
             }
         }
 
@@ -1196,9 +1196,9 @@ namespace HaCreator.MapSimulator.UI
                     if (string.IsNullOrEmpty(run.Text))
                         continue;
 
-                    Vector2 position = new Vector2(drawX, y + (i * _font.LineSpacing));
+                    Vector2 position = new Vector2(drawX, y + (i * ResolveTooltipLineHeight()));
                     DrawTooltipText(sprite, run.Text, position, run.Color);
-                    drawX += _font.MeasureString(run.Text).X;
+                    drawX += ClientTextDrawing.Measure((GraphicsDevice)null, run.Text, 1f, _font).X;
                 }
             }
         }
@@ -1208,8 +1208,8 @@ namespace HaCreator.MapSimulator.UI
             if (string.IsNullOrWhiteSpace(text) || _font == null)
                 return;
 
-            sprite.DrawString(_font, text, position + Vector2.One, Color.Black, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-            sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(sprite, text, position + Vector2.One, Color.Black, scale, _font);
+            ClientTextDrawing.Draw(sprite, text, position, color, scale, _font);
         }
 
         private float MeasureLinesHeight(string[] lines)
@@ -1217,7 +1217,7 @@ namespace HaCreator.MapSimulator.UI
             if (_font == null || lines == null || lines.Length == 0)
                 return 0f;
 
-            return lines.Length * _font.LineSpacing;
+            return lines.Length * ResolveTooltipLineHeight();
         }
 
         private float MeasureLinesHeight(TooltipLine[] lines)
@@ -1225,7 +1225,16 @@ namespace HaCreator.MapSimulator.UI
             if (_font == null || lines == null || lines.Length == 0)
                 return 0f;
 
-            return lines.Length * _font.LineSpacing;
+            return lines.Length * ResolveTooltipLineHeight();
+        }
+
+        private float ResolveTooltipLineHeight()
+        {
+            if (_font == null)
+                return 0f;
+
+            float measuredHeight = ClientTextDrawing.Measure((GraphicsDevice)null, "Ag", 1f, _font).Y;
+            return measuredHeight > 0f ? measuredHeight : _font.LineSpacing;
         }
 
         private string[] WrapTooltipText(string text, float maxWidth)
@@ -1251,7 +1260,7 @@ namespace HaCreator.MapSimulator.UI
                 foreach (string word in words)
                 {
                     string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
-                    if (!string.IsNullOrEmpty(currentLine) && _font.MeasureString(candidate).X > maxWidth)
+                    if (!string.IsNullOrEmpty(currentLine) && ClientTextDrawing.Measure((GraphicsDevice)null, candidate, 1f, _font).X > maxWidth)
                     {
                         lines.Add(currentLine);
                         currentLine = word;
@@ -1340,7 +1349,7 @@ namespace HaCreator.MapSimulator.UI
             if (_font == null || string.IsNullOrEmpty(text))
                 return 0f;
 
-            return _font.MeasureString(text).X;
+            return ClientTextDrawing.Measure((GraphicsDevice)null, text, 1f, _font).X;
         }
 
         private List<TooltipToken> TokenizeTooltipText(string text, Color baseColor)
@@ -1447,7 +1456,7 @@ namespace HaCreator.MapSimulator.UI
             if (_font == null || string.IsNullOrWhiteSpace(text))
                 return Vector2.Zero;
 
-            return _font.MeasureString(text) * scale;
+            return ClientTextDrawing.Measure((GraphicsDevice)null, text, scale, _font);
         }
 
         private void DrawSkillBookText(SpriteBatch sprite, string text, Vector2 position, Color color, float scale)
@@ -1455,7 +1464,7 @@ namespace HaCreator.MapSimulator.UI
             if (_font == null || string.IsNullOrWhiteSpace(text))
                 return;
 
-            sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(sprite, text, position, color, scale, _font);
         }
 
         private string FitTextToWidth(string text, int maxWidth, float scale)

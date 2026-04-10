@@ -51,7 +51,8 @@ namespace HaCreator.MapSimulator.Pools
         UserActiveEffectItemOfficial = 220,
         UserUpgradeTombOfficial = 221,
         UserPortableChairOfficial = 222,
-        UserGuildNameChangedOfficial = 228
+        UserGuildNameChangedOfficial = 228,
+        UserGuildMarkChangedOfficial = 229
     }
 
     public readonly record struct RemoteUserEnterFieldPacket(
@@ -270,6 +271,12 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct RemoteUserEmotionPacket(int CharacterId, int EmotionId, int DurationMs, bool ByItemOption);
     public readonly record struct RemoteUserUpgradeTombPacket(int CharacterId, int ItemId, int PositionX, int PositionY);
     public readonly record struct RemoteUserGuildNameChangedPacket(int CharacterId, string GuildName);
+    public readonly record struct RemoteUserGuildMarkChangedPacket(
+        int CharacterId,
+        int MarkBackgroundId,
+        int MarkBackgroundColor,
+        int MarkId,
+        int MarkColor);
     [Flags]
     public enum RemoteUserProfilePacketFlags
     {
@@ -1108,6 +1115,46 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 packet = new RemoteUserGuildNameChangedPacket(characterId, guildName);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseGuildMarkChanged(ReadOnlySpan<byte> payload, out RemoteUserGuildMarkChangedPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                int markBackgroundId = reader.ReadInt16();
+                int markBackgroundColor = reader.ReadByte();
+                int markId = reader.ReadInt16();
+                int markColor = reader.ReadByte();
+                if (reader.RemainingLength != 0)
+                {
+                    error = $"Remote user guild-mark packet has {reader.RemainingLength} unread bytes remaining.";
+                    return false;
+                }
+
+                if (characterId <= 0)
+                {
+                    error = $"Remote user guild-mark packet character ID {characterId} is invalid.";
+                    return false;
+                }
+
+                packet = new RemoteUserGuildMarkChangedPacket(
+                    characterId,
+                    markBackgroundId,
+                    markBackgroundColor,
+                    markId,
+                    markColor);
                 return true;
             }
             catch (InvalidOperationException ex)

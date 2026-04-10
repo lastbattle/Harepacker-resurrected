@@ -3,6 +3,7 @@ using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
+using MapleLib.WzLib;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib.WzProperties;
 using System;
@@ -57,8 +58,11 @@ namespace HaCreator.MapSimulator
             public bool HasPlateCanvas { get; init; }
             public bool HasPlateBigCanvas { get; init; }
             public bool HasShortcutHelpCanvas { get; init; }
+            public bool HasBuyButton { get; init; }
+            public bool HasItemBoxButton { get; init; }
             public int NumberCanvasCount { get; init; }
             public int PlateCount { get; init; }
+            public bool ResolvedFromClientStringPool { get; init; }
         }
 
         private string PreviewCashAvatarWeatherAction()
@@ -782,7 +786,7 @@ namespace HaCreator.MapSimulator
                 stageWindow.NoticeState
             };
             lines.Add(artSnapshot.HasKeyFocusCanvas || artSnapshot.HasPlateBigCanvas || artSnapshot.NumberCanvasCount > 0
-                ? $"WZ-backed OneADay art exposes Base01={artSnapshot.HasKeyFocusCanvas}, ItemBox={artSnapshot.HasPlateCanvas}, ItemBoxBig={artSnapshot.HasPlateBigCanvas}, Counter digits={artSnapshot.NumberCanvasCount}."
+                ? $"WZ-backed OneADay art exposes Base01={artSnapshot.HasKeyFocusCanvas}, ItemBox={artSnapshot.HasPlateCanvas}, ItemBoxBig={artSnapshot.HasPlateBigCanvas}, Counter digits={artSnapshot.NumberCanvasCount}, buttons Buy={artSnapshot.HasBuyButton}/ItemBox={artSnapshot.HasItemBoxButton}{(artSnapshot.ResolvedFromClientStringPool ? " via client StringPool paths" : string.Empty)}."
                 : "The active UI export does not expose OneADay.img/CSOneADay Base01/ItemBox/ItemBoxBig/Counter, so CCSWnd_OneADay keeps those seams explicit in owner state only while PicturePlate remains the visible fallback.");
 
             foreach (string recentPacket in stageWindow.GetRecentPacketSummaries())
@@ -797,6 +801,12 @@ namespace HaCreator.MapSimulator
         {
             var cashShopImage = global::HaCreator.Program.FindImage("ui", "CashShop.img");
             WzSubProperty picturePlateProperty = cashShopImage?["PicturePlate"] as WzSubProperty;
+            WzSubProperty keyFocusProperty = TryResolveCashShopOneADayUiSubProperty(0x4ED, "OneADay.img", "CSOneADay", "Base01");
+            WzSubProperty plateBigProperty = TryResolveCashShopOneADayUiSubProperty(0x4EA, "OneADay.img", "CSOneADay", "ItemBoxBig");
+            WzSubProperty plateProperty = TryResolveCashShopOneADayUiSubProperty(0x4E9, "OneADay.img", "CSOneADay", "ItemBox");
+            WzSubProperty counterProperty = TryResolveCashShopOneADayUiSubProperty(0x16A7, "OneADay.img", "CSOneADay", "Counter");
+            WzSubProperty buyButtonProperty = TryResolveCashShopOneADayUiSubProperty(0x16A8, "OneADay.img", "CSOneADay", "BtBuy");
+            WzSubProperty itemBoxButtonProperty = TryResolveCashShopOneADayUiSubProperty(0x16A9, "OneADay.img", "CSOneADay", "BtItemBox");
             int plateCount = 0;
             if (picturePlateProperty?["NoItem"] != null)
             {
@@ -813,9 +823,6 @@ namespace HaCreator.MapSimulator
                 plateCount++;
             }
 
-            var oneADayImage = global::HaCreator.Program.FindImage("ui", "OneADay.img");
-            WzSubProperty oneADayProperty = oneADayImage?["CSOneADay"] as WzSubProperty;
-            WzSubProperty counterProperty = oneADayProperty?["Counter"] as WzSubProperty;
             int numberCanvasCount = 0;
             for (int i = 0; i < 10; i++)
             {
@@ -827,13 +834,89 @@ namespace HaCreator.MapSimulator
 
             return new CashShopOneADayArtSnapshot
             {
-                HasKeyFocusCanvas = oneADayProperty?["Base01"] != null,
-                HasPlateCanvas = oneADayProperty?["ItemBox"] != null || picturePlateProperty?["NoItem"] != null,
-                HasPlateBigCanvas = oneADayProperty?["ItemBoxBig"] != null,
+                HasKeyFocusCanvas = keyFocusProperty != null,
+                HasPlateCanvas = plateProperty != null || picturePlateProperty?["NoItem"] != null,
+                HasPlateBigCanvas = plateBigProperty != null,
                 HasShortcutHelpCanvas = picturePlateProperty?["ShortcutHelp"] != null,
+                HasBuyButton = buyButtonProperty != null || picturePlateProperty?["BtJoin"] != null,
+                HasItemBoxButton = itemBoxButtonProperty != null || picturePlateProperty?["BtShortcut"] != null,
                 NumberCanvasCount = numberCanvasCount,
-                PlateCount = plateCount
+                PlateCount = plateCount,
+                ResolvedFromClientStringPool =
+                    keyFocusProperty != null
+                    || plateBigProperty != null
+                    || plateProperty != null
+                    || counterProperty != null
+                    || buyButtonProperty != null
+                    || itemBoxButtonProperty != null
             };
+        }
+
+        internal static WzSubProperty TryResolveCashShopOneADayUiSubProperty(int stringPoolId, params string[] fallbackPathSegments)
+        {
+            string path = MapleStoryStringPool.GetOrNull(stringPoolId);
+            if (TryResolveUiSubPropertyFromStringPath(path, out WzSubProperty resolvedFromStringPool))
+            {
+                return resolvedFromStringPool;
+            }
+
+            return TryResolveUiSubPropertyFromSegments(fallbackPathSegments);
+        }
+
+        internal static bool TryResolveUiSubPropertyFromStringPath(string path, out WzSubProperty property)
+        {
+            property = null;
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            string[] segments = path
+                .Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(segment => !string.Equals(segment, "UI", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            if (segments.Length == 0)
+            {
+                return false;
+            }
+
+            property = TryResolveUiSubPropertyFromSegments(segments);
+            return property != null;
+        }
+
+        private static WzSubProperty TryResolveUiSubPropertyFromSegments(params string[] segments)
+        {
+            if (segments == null || segments.Length == 0)
+            {
+                return null;
+            }
+
+            string imageName = segments[0];
+            var image = global::HaCreator.Program.FindImage("ui", imageName);
+            if (image == null)
+            {
+                return null;
+            }
+
+            object current = image;
+            for (int i = 1; i < segments.Length; i++)
+            {
+                string segment = segments[i];
+                if (current is WzImage wzImage)
+                {
+                    current = wzImage[segment];
+                }
+                else if (current is WzSubProperty wzSubProperty)
+                {
+                    current = wzSubProperty[segment];
+                }
+                else
+                {
+                    return null;
+                }
+            }
+
+            return current as WzSubProperty;
         }
 
         private void WireItcChildOwnerWindows()

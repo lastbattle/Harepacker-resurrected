@@ -71,6 +71,16 @@ namespace HaCreator.MapSimulator.Character
                 ["crossPiercing"] = new[] { "windspear" },
                 // Character action codes 305-311 name the modern ice-family branches, while
                 // older Morph/2001.img still only publishes `icemanAttack` / `icemandoubleJump`.
+                ["iceStrike"] = new[]
+                {
+                    "iceAttack1",
+                    "iceAttack2",
+                    "iceSmash",
+                    "iceTempest",
+                    "iceChop",
+                    "icePanic",
+                    "icemanAttack"
+                },
                 ["iceAttack1"] = new[] { "icemanAttack" },
                 ["iceAttack2"] = new[] { "icemanAttack" },
                 ["iceSmash"] = new[] { "icemanAttack" },
@@ -140,6 +150,14 @@ namespace HaCreator.MapSimulator.Character
             "icemandoubleJump"
         };
 
+        private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedJumpMorphFallbackAliases =
+            new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                // Skill/531.img/skill/5311003 still publishes `cannonJump`, while the
+                // current morph surfaces continue to expose only generic `jump`.
+                ["cannonJump"] = new[] { "jump" }
+            };
+
         public static IEnumerable<string> EnumerateClientActionAliases(CharacterPart morphPart, string actionName)
         {
             if (string.IsNullOrWhiteSpace(actionName))
@@ -162,6 +180,14 @@ namespace HaCreator.MapSimulator.Character
                     {
                         yield return alertAlias;
                     }
+                }
+            }
+
+            foreach (string jumpAlias in EnumerateClientPublishedJumpAliases(morphPart, actionName))
+            {
+                if (yielded.Add(jumpAlias))
+                {
+                    yield return jumpAlias;
                 }
             }
 
@@ -220,6 +246,28 @@ namespace HaCreator.MapSimulator.Character
 
             return string.Equals(actionName, "jump", StringComparison.OrdinalIgnoreCase)
                    || actionName.IndexOf("doublejump", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static IEnumerable<string> EnumerateClientPublishedJumpAliases(CharacterPart morphPart, string actionName)
+        {
+            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                yield break;
+            }
+
+            if (!ClientPublishedJumpMorphFallbackAliases.TryGetValue(actionName, out string[] aliases)
+                || aliases == null)
+            {
+                yield break;
+            }
+
+            foreach (string alias in aliases)
+            {
+                if (!string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
+                {
+                    yield return alias;
+                }
+            }
         }
 
         private static IEnumerable<string> EnumerateAlertAliases(CharacterPart morphPart, string actionName)

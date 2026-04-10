@@ -66,6 +66,7 @@ namespace HaCreator.MapSimulator.Animation
         public sealed class AttackInfoMetadata
         {
             public int AttackType { get; set; } = -1;
+            public int HitAnimationSourceFrameIndex { get; set; }
             public bool HitAttach { get; set; }
             public bool FacingAttach { get; set; }
             public Dictionary<int, bool> FrameHitAttachOverrides { get; } = new();
@@ -106,12 +107,29 @@ namespace HaCreator.MapSimulator.Animation
                 return HitAttach;
             }
 
+            public bool ResolveHitAttachForHitAnimationFrame(int frameIndex)
+            {
+                return ResolveHitAttach(ResolveHitAnimationMetadataFrameIndex(frameIndex));
+            }
+
             public bool ResolveFacingAttach(int frameIndex)
             {
                 return frameIndex >= 0
                        && FrameFacingAttachOverrides.TryGetValue(frameIndex, out bool overrideValue)
                     ? overrideValue
                     : FacingAttach;
+            }
+
+            public bool ResolveFacingAttachForHitAnimationFrame(int frameIndex)
+            {
+                return ResolveFacingAttach(ResolveHitAnimationMetadataFrameIndex(frameIndex));
+            }
+
+            public int ResolveHitAnimationMetadataFrameIndex(int frameIndex)
+            {
+                return frameIndex < 0
+                    ? frameIndex
+                    : HitAnimationSourceFrameIndex + frameIndex;
             }
         }
 

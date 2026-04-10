@@ -2067,8 +2067,9 @@ namespace HaCreator.MapSimulator.Loaders
         {
             int textWidth = Math.Min(Math.Max(0, measuredTextWidth), Math.Max(1, maxTextWidth));
             int textHeight = Math.Max(0, measuredTextHeight);
+            int centeredX = currentX + Math.Max(0, (Math.Max(1, maxTextWidth) - textWidth) / 2);
             return new SD.Rectangle(
-                currentX,
+                centeredX,
                 ResolveCollapsedMinimapVerticalContentOffsetForTesting(
                     contentHeight,
                     laneTop,

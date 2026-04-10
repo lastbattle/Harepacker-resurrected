@@ -295,8 +295,16 @@ namespace HaCreator.MapSimulator.UI
         public void InitializeButtons(UIObject prevButton, UIObject nextButton, UIObject closeButton, UIObject searchButton = null)
         {
             _prevButton = prevButton; _nextButton = nextButton; _searchButton = searchButton;
-            RegisterButton(prevButton, PrevButtonId, () => MoveSpread(-1));
-            RegisterButton(nextButton, NextButtonId, () => MoveSpread(1));
+            RegisterButton(prevButton, PrevButtonId, () =>
+            {
+                ExitSearchModeForExternalInteraction();
+                MoveSpread(-1);
+            });
+            RegisterButton(nextButton, NextButtonId, () =>
+            {
+                ExitSearchModeForExternalInteraction();
+                MoveSpread(1);
+            });
             RegisterButton(searchButton, SearchButtonId, HandleSearchButtonClicked);
             InitializeCloseButton(closeButton);
         }
@@ -304,8 +312,27 @@ namespace HaCreator.MapSimulator.UI
         public void InitializeContextMenuButtons(UIObject registerButton, UIObject releaseButton)
         {
             _registerButton = registerButton; _releaseButton = releaseButton;
-            if (_registerButton != null) { AddButton(_registerButton); _registerButton.ButtonVisible = false; _registerButton.ButtonClickReleased += _ => ApplyRegistration(true); }
-            if (_releaseButton != null) { AddButton(_releaseButton); _releaseButton.ButtonVisible = false; _releaseButton.ButtonClickReleased += _ => ApplyRegistration(false); }
+            if (_registerButton != null)
+            {
+                AddButton(_registerButton);
+                _registerButton.ButtonVisible = false;
+                _registerButton.ButtonClickReleased += _ =>
+                {
+                    ExitSearchModeForExternalInteraction();
+                    ApplyRegistration(true);
+                };
+            }
+
+            if (_releaseButton != null)
+            {
+                AddButton(_releaseButton);
+                _releaseButton.ButtonVisible = false;
+                _releaseButton.ButtonClickReleased += _ =>
+                {
+                    ExitSearchModeForExternalInteraction();
+                    ApplyRegistration(false);
+                };
+            }
         }
 
         public override void Show()
@@ -612,6 +639,14 @@ namespace HaCreator.MapSimulator.UI
             ResetImePresentationPlacement();
         }
 
+        private void ExitSearchModeForExternalInteraction()
+        {
+            if (_searchMode)
+            {
+                ExitSearchMode();
+            }
+        }
+
         private void UpdateHoverState()
         {
             Point mouse = Mouse.GetState().Position;
@@ -772,6 +807,7 @@ namespace HaCreator.MapSimulator.UI
             bool rightReleased = mouse.RightButton == ButtonState.Released && _previousMouseState.RightButton == ButtonState.Pressed;
             Point point = mouse.Position;
             Rectangle searchBounds = OffsetBounds(SearchBoxBounds, InfoPageOrigin);
+            bool pointInCandidateWindow = IsPointInImeCandidateWindow(point.X, point.Y);
 
             if (leftPressed && !UsesCollectionLayout && searchBounds.Contains(point))
             {
@@ -793,6 +829,15 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (!UsesCollectionLayout
+                && leftPressed
+                && _searchMode
+                && !searchBounds.Contains(point)
+                && !pointInCandidateWindow)
+            {
+                ExitSearchModeForExternalInteraction();
+            }
+
             if (_searchSelectionDragActive)
             {
                 if (mouse.LeftButton == ButtonState.Pressed)
@@ -808,7 +853,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (leftReleased)
             {
-                if (IsPointInImeCandidateWindow(point.X, point.Y))
+                if (pointInCandidateWindow)
                 {
                     EnterSearchMode();
                     int candidateIndex = ResolveImeCandidateIndexFromPoint(point.X, point.Y);
@@ -823,9 +868,9 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 if (_contextMenuVisible && !GetContextMenuBounds().Contains(point)) _contextMenuVisible = false;
-                for (int i = 0; i <= _leftTabs.Count; i++) if (GetLeftTabBounds(i).Contains(point)) { _selectedLeftTabIndex = i; _currentGradeIndex = Math.Max(0, i - 1); _currentPageIndex = 0; SelectCardOnCurrentPage(); _contextMenuVisible = false; _previousMouseState = mouse; return; }
-                for (int i = 0; i < Math.Min(_rightTabs.Count, _rightTabOrder.Count); i++) if (GetRightTabBounds(i).Contains(point) && !IsOverviewTabSelected) { _detailTab = _rightTabOrder[i]; _previousMouseState = mouse; return; }
-                for (int i = 0; i < GetCurrentPageCards().Count; i++) if (GetCardBounds(i).Contains(point)) { _selectedSlotIndex = i; _contextMenuVisible = false; break; }
+                for (int i = 0; i <= _leftTabs.Count; i++) if (GetLeftTabBounds(i).Contains(point)) { ExitSearchModeForExternalInteraction(); _selectedLeftTabIndex = i; _currentGradeIndex = Math.Max(0, i - 1); _currentPageIndex = 0; SelectCardOnCurrentPage(); _contextMenuVisible = false; _previousMouseState = mouse; return; }
+                for (int i = 0; i < Math.Min(_rightTabs.Count, _rightTabOrder.Count); i++) if (GetRightTabBounds(i).Contains(point) && !IsOverviewTabSelected) { ExitSearchModeForExternalInteraction(); _detailTab = _rightTabOrder[i]; _previousMouseState = mouse; return; }
+                for (int i = 0; i < GetCurrentPageCards().Count; i++) if (GetCardBounds(i).Contains(point)) { ExitSearchModeForExternalInteraction(); _selectedSlotIndex = i; _contextMenuVisible = false; break; }
             }
 
             if (rightReleased)
@@ -835,6 +880,7 @@ namespace HaCreator.MapSimulator.UI
                     MonsterBookCardSnapshot card = GetCurrentPageCards()[i];
                     if (card?.IsDiscovered != true) break;
                     Rectangle bounds = GetCardBounds(i);
+                    ExitSearchModeForExternalInteraction();
                     _selectedSlotIndex = i;
                     _contextMenuVisible = true;
                     _contextMenuMobId = card.MobId;

@@ -150,6 +150,54 @@ namespace HaCreator.MapSimulator.Loaders
             }
         }
 
+        private static UIObject LoadMapleTvReceiverButton(
+            WzSubProperty mapleTvProperty,
+            GraphicsDevice device,
+            Point fallbackPosition)
+        {
+            if (mapleTvProperty?["BtTo"] is not WzSubProperty receiverProperty || device == null)
+            {
+                return null;
+            }
+
+            static BaseDXDrawableItem CreateState(WzCanvasProperty canvas, GraphicsDevice graphicsDevice, Point fallback)
+            {
+                if (canvas == null)
+                {
+                    return null;
+                }
+
+                Texture2D texture = canvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(graphicsDevice);
+                if (texture == null)
+                {
+                    return null;
+                }
+
+                Point offset = ResolveCanvasOffset(canvas, fallback);
+                return new BaseDXDrawableItem(new DXObject(offset.X, offset.Y, texture), false);
+            }
+
+            try
+            {
+                BaseDXDrawableItem disabledState = CreateState(receiverProperty["disabled"]?["0"] as WzCanvasProperty, device, fallbackPosition);
+                BaseDXDrawableItem enabledState = CreateState(receiverProperty["enabled"]?["0"] as WzCanvasProperty, device, fallbackPosition) ?? disabledState;
+                if (disabledState == null && enabledState == null)
+                {
+                    return null;
+                }
+
+                return new UIObject(
+                    disabledState ?? enabledState,
+                    enabledState ?? disabledState,
+                    enabledState ?? disabledState,
+                    enabledState ?? disabledState);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
 
         /// <summary>
         /// Load a tab button from WZ property
@@ -2015,6 +2063,7 @@ namespace HaCreator.MapSimulator.Loaders
                 MapSimulatorWindowNames.InGameConfirmDialog,
                 confirmButton,
                 cancelButton,
+                null,
                 screenWidth,
                 screenHeight);
             manager.RegisterCustomWindow(window);
@@ -3810,6 +3859,12 @@ namespace HaCreator.MapSimulator.Loaders
             if (socialSearchWindow != null)
             {
                 manager.RegisterCustomWindow(socialSearchWindow);
+            }
+
+            UIWindowBase friendGroupWindow = CreateFriendGroupWindow(uiWindow1Image, uiWindow2Image, soundUIImage, device, new Point(position.X + 12, position.Y + 6));
+            if (friendGroupWindow != null)
+            {
+                manager.RegisterCustomWindow(friendGroupWindow);
             }
 
 
@@ -6080,6 +6135,47 @@ namespace HaCreator.MapSimulator.Loaders
             window.InitializeCloseButton(CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width));
             return window;
         }
+
+        private static UIWindowBase CreateFriendGroupWindow(
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzSubProperty userListProperty = uiWindow2Image?["UserList"] as WzSubProperty
+                ?? uiWindow1Image?["UserList"] as WzSubProperty;
+            WzSubProperty groupProperty = userListProperty?["Group"] as WzSubProperty;
+            Texture2D frameTexture = LoadCanvasTexture(groupProperty, "backgrnd", device);
+            if (frameTexture == null)
+            {
+                return null;
+            }
+
+            WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            WzSubProperty popupProperty = groupProperty?["Popup"] as WzSubProperty;
+
+            FriendGroupWindow window = new FriendGroupWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                LoadWindowCanvasLayerWithOffset(groupProperty, "backgrnd2", device, out Point overlayOffset),
+                overlayOffset,
+                LoadWindowCanvasLayerWithOffset(groupProperty, "base", device, out Point baseOffset),
+                baseOffset,
+                LoadWindowCanvasLayerWithOffset(popupProperty, "AddFriend", device, out Point addFriendPopupOffset),
+                addFriendPopupOffset,
+                LoadWindowCanvasLayerWithOffset(popupProperty, "GroupWhisper", device, out Point groupWhisperPopupOffset),
+                groupWhisperPopupOffset,
+                LoadButton(groupProperty, "BtOK", clickSound, overSound, device),
+                LoadButton(groupProperty, "BtCancle", clickSound, overSound, device),
+                device)
+            {
+                Position = position
+            };
+
+            return window;
+        }
+
         private static VerticalScrollbarSkin LoadVerticalScrollbarSkin(WzSubProperty scrollbarProperty, GraphicsDevice device)
         {
             if (scrollbarProperty == null)
@@ -7037,7 +7133,7 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
             UIObject okButton = LoadButton(sourceProperty, "BtOk", btClickSound, btOverSound, device);
             UIObject cancelButton = LoadButton(sourceProperty, "BtCancel", btClickSound, btOverSound, device);
-            UIObject toButton = LoadButton(sourceProperty, "BtTo", btClickSound, btOverSound, device);
+            UIObject toButton = LoadMapleTvReceiverButton(sourceProperty, device, new Point(20, 65));
             if (okButton == null || cancelButton == null || toButton == null)
             {
                 return CreatePlaceholderUtilityWindow(
@@ -8534,8 +8630,24 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
             WzSubProperty utilDlgProperty = uiWindow2Image?["UtilDlgEx"] as WzSubProperty
                 ?? uiWindow1Image?["UtilDlgEx"] as WzSubProperty;
-            UIObject okButton = LoadButton(utilDlgProperty, "BtOK", btClickSound, btOverSound, device);
-            UIObject cancelButton = LoadButton(utilDlgProperty, "BtCancel", btClickSound, btOverSound, device);
+            UIObject okButton = LoadButtonFromUiPath(
+                    AccountMoreInfoOwnerStringPoolText.ResolveOkButtonResourcePath(),
+                    btClickSound,
+                    btOverSound,
+                    device,
+                    basicImage,
+                    uiWindow2Image,
+                    uiWindow1Image)
+                ?? LoadButton(utilDlgProperty, "BtOK", btClickSound, btOverSound, device);
+            UIObject cancelButton = LoadButtonFromUiPath(
+                    AccountMoreInfoOwnerStringPoolText.ResolveCancelButtonResourcePath(),
+                    btClickSound,
+                    btOverSound,
+                    device,
+                    basicImage,
+                    uiWindow2Image,
+                    uiWindow1Image)
+                ?? LoadButton(utilDlgProperty, "BtCancel", btClickSound, btOverSound, device);
             window.InitializeActionButtons(okButton, cancelButton);
 
             return window;
@@ -8941,23 +9053,21 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
             UIObject okButton = LoadButton(utilDialogProperty, "BtOK", btClickSound, btOverSound, device);
-            UIObject closeButton = null;
-            WzSubProperty basicCloseButton = basicImage?["BtClose"] as WzSubProperty;
-            if (basicCloseButton != null)
-            {
-                try
-                {
-                    closeButton = new UIObject(basicCloseButton, btClickSound, btOverSound, false, Point.Zero, device);
-                }
-                catch
-                {
-                    closeButton = null;
-                }
-            }
-
+            UIObject closeButton = LoadButton(utilDialogProperty, "BtClose", btClickSound, btOverSound, device);
             if (closeButton == null)
             {
-                closeButton = LoadButton(utilDialogProperty, "BtClose", btClickSound, btOverSound, device);
+                WzSubProperty basicCloseButton = basicImage?["BtClose"] as WzSubProperty;
+                if (basicCloseButton != null)
+                {
+                    try
+                    {
+                        closeButton = new UIObject(basicCloseButton, btClickSound, btOverSound, false, Point.Zero, device);
+                    }
+                    catch
+                    {
+                        closeButton = null;
+                    }
+                }
             }
 
             window.InitializeButtons(okButton, closeButton);

@@ -197,6 +197,7 @@ namespace HaCreator.MapSimulator.UI
         private WhisperPickerButtonVisuals _whisperPickerCloseButtonVisuals = new WhisperPickerButtonVisuals();
         private readonly List<WhisperPickerButtonHitRegion> _whisperPickerButtonHitRegions = new List<WhisperPickerButtonHitRegion>();
 
+        internal const float ClientChatTextFontPixelSize = 11f;
         private const int ChatMessageDisplayTime = 10000;
         private const int ChatMessageFadeTime = 2000;
         private const int ChatMaxVisibleLines = 8;
@@ -286,6 +287,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 _clientTextRasterizer = new ClientTextRasterizer(
                     graphicsDevice,
+                    basePointSize: ClientChatTextFontPixelSize,
                     preferEmbeddedPrivateFontSources: true);
             }
         }

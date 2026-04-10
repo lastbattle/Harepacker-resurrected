@@ -522,6 +522,9 @@ namespace HaCreator.MapSimulator.Fields
             int right = left + width;
             int bottom = top + height;
 
+            // CField_LimitedView::DrawViewrange first reapplies the cached
+            // 316x316 small-dark canvas, then copies Viewrange/0 over it.
+            spriteBatch.Draw(_pixelTexture, new Rectangle(left, top, width, height), fogColor);
             spriteBatch.Draw(_clientOwnedViewrangeTexture, new Vector2(left, top), fogColor);
 
             if (!drawDarkLayer)
@@ -676,11 +679,18 @@ namespace HaCreator.MapSimulator.Fields
                 return _clientOwnedScreenMaskCenter;
             }
 
-            float offsetX = (_clientOwnedMaskWidth * 0.5f) - _clientOwnedMaskOriginX;
-            float offsetY = (_clientOwnedMaskHeight * 0.5f) - _clientOwnedMaskOriginY;
-            float screenX = _clientOwnedFocusWorldPosition.X - mapShiftX + centerX + offsetX;
-            float screenY = _clientOwnedFocusWorldPosition.Y - mapShiftY + centerY + offsetY;
-            return new Vector2(screenX, screenY);
+            Vector2 topLeft = ResolveClientOwnedMaskTopLeft(
+                _clientOwnedFocusWorldPosition.X,
+                _clientOwnedFocusWorldPosition.Y,
+                mapShiftX,
+                mapShiftY,
+                centerX,
+                centerY,
+                _clientOwnedMaskOriginX,
+                _clientOwnedMaskOriginY);
+            return new Vector2(
+                topLeft.X + (_clientOwnedMaskWidth * 0.5f),
+                topLeft.Y + (_clientOwnedMaskHeight * 0.5f));
         }
 
         internal IReadOnlyList<Vector2> GetClientOwnedUpdateParityScreenMaskCenters(int mapShiftX, int mapShiftY, int centerX, int centerY)
@@ -698,11 +708,36 @@ namespace HaCreator.MapSimulator.Fields
 
         private Vector2 GetClientOwnedUpdateParityScreenPosition(Vector2 worldPosition, int mapShiftX, int mapShiftY, int centerX, int centerY)
         {
-            float offsetX = (_clientOwnedMaskWidth * 0.5f) - _clientOwnedMaskOriginX;
-            float offsetY = (_clientOwnedMaskHeight * 0.5f) - _clientOwnedMaskOriginY;
+            Vector2 topLeft = ResolveClientOwnedMaskTopLeft(
+                worldPosition.X,
+                worldPosition.Y,
+                mapShiftX,
+                mapShiftY,
+                centerX,
+                centerY,
+                _clientOwnedMaskOriginX,
+                _clientOwnedMaskOriginY);
             return new Vector2(
-                worldPosition.X - mapShiftX + centerX + offsetX,
-                worldPosition.Y - mapShiftY + centerY + offsetY);
+                topLeft.X + (_clientOwnedMaskWidth * 0.5f),
+                topLeft.Y + (_clientOwnedMaskHeight * 0.5f));
+        }
+
+        internal static Vector2 ResolveClientOwnedMaskTopLeft(
+            float worldX,
+            float worldY,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            float originX,
+            float originY)
+        {
+            // Mirrors CField_LimitedView::DrawViewrange:
+            // x = userX - centerX - viewrange.cx + 512
+            // y = userY - centerY - viewrange.cy + 468
+            return new Vector2(
+                worldX - mapShiftX + centerX - originX,
+                worldY - mapShiftY + centerY - originY);
         }
 
         private Rectangle GetClientOwnedDarkLayerBounds()

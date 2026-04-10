@@ -308,6 +308,8 @@ namespace HaCreator.MapSimulator.Effects
         private int _resultKillRate;
         private int _resultCoolRate;
         private int _resultMissRate;
+        private MassacreMapMode _mapMode;
+        private int _mapFlowGroup;
         public bool IsActive => _isActive;
         public int CurrentGauge => _currentGauge;
         public int GaugeDepletion => _gaugeDepletion;
@@ -397,11 +399,33 @@ namespace HaCreator.MapSimulator.Effects
             _device = device;
             _assetsLoaded = false;
         }
-        public void Enable(int mapId = 0)
+        public void Enable(MapInfo mapInfo)
         {
+            int mapId = mapInfo?.id ?? 0;
+            MassacreMapMode nextMode = ResolveMapMode(mapInfo);
+            int nextFlowGroup = ResolveFlowGroup(mapId);
+            bool preserveRoundContext = _isActive
+                && _mapFlowGroup == nextFlowGroup
+                && ShouldPreserveRoundContext(_mapMode, nextMode);
+
             _isActive = true;
             _mapId = mapId;
-            ResetRoundState();
+            _mapMode = nextMode;
+            _mapFlowGroup = nextFlowGroup;
+
+            if (!preserveRoundContext)
+            {
+                ResetRoundState();
+            }
+            else
+            {
+                ResetTransientMapPresentationState(nextMode);
+            }
+
+            if (_mapMode == MassacreMapMode.Bonus)
+            {
+                ShowBonusPresentation(Environment.TickCount);
+            }
         }
         public void Configure(MapInfo mapInfo)
         {
@@ -707,6 +731,8 @@ namespace HaCreator.MapSimulator.Effects
         {
             _isActive = false;
             _mapId = 0;
+            _mapMode = MassacreMapMode.None;
+            _mapFlowGroup = 0;
             _maxGauge = 100;
             _gaugeDec = 1;
             _defaultGaugeIncrease = 1;
@@ -1819,6 +1845,67 @@ namespace HaCreator.MapSimulator.Effects
                 _ => 'D'
             };
         }
+
+        private static bool ShouldPreserveRoundContext(MassacreMapMode currentMode, MassacreMapMode nextMode)
+        {
+            if (currentMode == MassacreMapMode.None || nextMode == MassacreMapMode.None)
+            {
+                return false;
+            }
+
+            // The client keeps the shared massacre context alive when a round advances
+            // into the bonus or result wrapper, but a completed result wrapper should not
+            // seed a later fresh round back into the main field.
+            return currentMode != MassacreMapMode.Result;
+        }
+
+        private static int ResolveFlowGroup(int mapId)
+        {
+            return mapId > 0 ? mapId / 1000 : 0;
+        }
+
+        private static MassacreMapMode ResolveMapMode(MapInfo mapInfo)
+        {
+            if (mapInfo == null)
+            {
+                return MassacreMapMode.None;
+            }
+
+            if (mapInfo.fieldType == FieldType.FIELDTYPE_MASSACRE_RESULT
+                || string.Equals(mapInfo.onUserEnter, "Massacre_result", StringComparison.OrdinalIgnoreCase))
+            {
+                return MassacreMapMode.Result;
+            }
+
+            if (string.Equals(mapInfo.onFirstUserEnter, "killing_BonusSetting", StringComparison.OrdinalIgnoreCase))
+            {
+                return MassacreMapMode.Bonus;
+            }
+
+            return MassacreMapMode.Main;
+        }
+
+        private void ResetTransientMapPresentationState(MassacreMapMode nextMode)
+        {
+            _showedClearEffect = false;
+            _clearEffectActive = false;
+            _clearEffectAlpha = 0f;
+            _clearEffectStartTime = int.MinValue;
+            _countEffectPresentationStartTick = int.MinValue;
+            _countEffectPresentationStage = 0;
+            _bonusPresentationStartTick = int.MinValue;
+            _resultPresentationStartTick = int.MinValue;
+            _resultPresentation = MassacreResultPresentation.None;
+
+            if (nextMode == MassacreMapMode.Result)
+            {
+                _timerDurationSec = 0;
+                _timeOverTick = int.MinValue;
+                _lastClockUpdateTick = int.MinValue;
+                _keyAnimationStage = -1;
+                _keyAnimationStageStart = int.MinValue;
+            }
+        }
         private (int killRate, int coolRate, int missRate) CalculateResultRates()
         {
             int total = _hitCount + _coolCount + _missCount;
@@ -1871,6 +1958,13 @@ namespace HaCreator.MapSimulator.Effects
         }
         private readonly record struct MassacreCanvasFrame(Texture2D Texture, Point Origin, int Delay);
         private readonly record struct MassacreCountEffect(int Threshold, int? BuffItemId, bool RequiresSkillUse);
+        private enum MassacreMapMode
+        {
+            None,
+            Main,
+            Bonus,
+            Result
+        }
         private enum MassacreResultPresentation
         {
             None,

@@ -1,3 +1,6 @@
+using HaCreator.MapSimulator.Character.Skills;
+using HaCreator.MapSimulator.AI;
+using HaCreator.MapSimulator.Combat;
 using MapleLib.ClientLib;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib;
@@ -1713,7 +1716,7 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 int level = Math.Max(1, GetIntOrStringValue(entry["level"]));
-                string line = $"Applies Mob Skill #{mobSkillId.ToString(CultureInfo.InvariantCulture)} Lv. {level.ToString(CultureInfo.InvariantCulture)}";
+                string line = $"Applies {ResolveMobSkillTooltipLabel(mobSkillId)} Lv. {level.ToString(CultureInfo.InvariantCulture)}";
                 if (seenLines.Add(line))
                 {
                     effectLines.Add(line);
@@ -2589,6 +2592,79 @@ namespace HaCreator.MapSimulator.UI
                 : mobName;
         }
 
+        private static string ResolveMobSkillTooltipLabel(int skillId)
+        {
+            if (TryResolvePlayerMobSkillStatusLabel(skillId, out string playerStatusLabel))
+            {
+                return playerStatusLabel;
+            }
+
+            if (MobSkillStatusMapper.TryGetDefinition(skillId, out MobSkillStatusDefinition definition))
+            {
+                return ResolveMobBuffSkillLabel(definition);
+            }
+
+            return $"Mob Skill #{skillId.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        private static bool TryResolvePlayerMobSkillStatusLabel(int skillId, out string label)
+        {
+            label = skillId switch
+            {
+                120 => "Seal",
+                121 => "Darkness",
+                122 => "Weakness",
+                123 => "Stun",
+                124 => "Curse",
+                125 => "Poison",
+                126 => "Slow",
+                127 => "Buff Cancel",
+                128 => "Seduce",
+                129 => "Banish",
+                131 => "Freeze",
+                132 => "Reverse Controls",
+                133 => "Zombie",
+                134 => "Pain Mark",
+                135 => "Potion Lock",
+                136 => "Stop Motion",
+                137 => "Fear",
+                172 or 173 => "Polymorph",
+                _ => null
+            };
+
+            return !string.IsNullOrWhiteSpace(label);
+        }
+
+        private static string ResolveMobBuffSkillLabel(MobSkillStatusDefinition definition)
+        {
+            if (definition.Operation == MobSkillOperation.Heal)
+            {
+                return "Monster Heal";
+            }
+
+            if (definition.Operation == MobSkillOperation.ClearNegativeStatuses)
+            {
+                return "Monster Dispel";
+            }
+
+            return definition.Effect switch
+            {
+                MobStatusEffect.PowerUp => "Power Up",
+                MobStatusEffect.MagicUp => "Magic Up",
+                MobStatusEffect.PGuardUp => "Weapon DEF Up",
+                MobStatusEffect.MGuardUp => "Magic DEF Up",
+                MobStatusEffect.Speed => "Speed Up",
+                MobStatusEffect.PImmune => "Weapon Immune",
+                MobStatusEffect.MImmune => "Magic Immune",
+                MobStatusEffect.HardSkin => "Hard Skin",
+                MobStatusEffect.Reflect => "Weapon / Magic Reflect",
+                MobStatusEffect.ACC => "Accuracy Up",
+                MobStatusEffect.EVA => "Avoidability Up",
+                MobStatusEffect.Rich => "Treasure Up",
+                _ => $"Mob Skill #{definition.SkillId.ToString(CultureInfo.InvariantCulture)}"
+            };
+        }
+
         private static string FormatMobSkillTargetLabel(int target)
         {
             return target switch
@@ -2941,6 +3017,20 @@ namespace HaCreator.MapSimulator.UI
                 infoProperty,
                 specProperty,
                 null,
+                isNotForSale: false,
+                isQuestItem: false,
+                isTradeBlocked: false,
+                isOneOfAKind: false,
+                expirationDateUtc: null);
+        }
+
+        public static IReadOnlyList<string> BuildMetadataLinesWithSpecExForTests(WzSubProperty infoProperty, WzSubProperty specProperty, WzSubProperty specExProperty)
+        {
+            return BuildMetadataLines(
+                0,
+                infoProperty,
+                specProperty,
+                specExProperty,
                 isNotForSale: false,
                 isQuestItem: false,
                 isTradeBlocked: false,

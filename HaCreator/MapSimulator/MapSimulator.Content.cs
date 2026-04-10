@@ -543,13 +543,7 @@ namespace HaCreator.MapSimulator
                 itemMakerWindow.RecipesDiscovered += HandleItemMakerRecipesDiscovered;
 
                 itemMakerWindow.HiddenRecipesUnlocked += HandleItemMakerHiddenRecipesUnlocked;
-                itemMakerWindow.SetCraftingState(
-                    _playerManager?.Player?.Level ?? 1,
-                    _playerManager?.Player?.Build?.TraitCraft ?? 0,
-                    _playerManager?.Player?.Build?.Job ?? 0,
-                    GetActiveItemMakerProgression(),
-                    HasItemMakerRequiredEquip,
-                    MatchesItemMakerQuestRequirement);
+                ConfigureItemMakerWindow(itemMakerWindow);
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindowReload)
             {
@@ -1243,7 +1237,6 @@ namespace HaCreator.MapSimulator
                 _pendingMapSpawnTarget = null;
             }
             ClearPassiveTransferRequest();
-            _playerManager?.Player?.Physics?.SetPassiveTransferFieldReady(false);
 
 
             // Deactivate chat input (but preserve message history)

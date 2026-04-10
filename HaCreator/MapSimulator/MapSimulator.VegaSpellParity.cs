@@ -29,6 +29,7 @@ namespace HaCreator.MapSimulator
         private string _vegaResultLoopSoundInstanceKey = string.Empty;
         private int _vegaExclusiveRequestSentTick = int.MinValue;
         private PendingVegaLaunchState _pendingVegaLaunchState;
+        private PendingVegaLoopbackLaunchState _pendingVegaLoopbackLaunchState;
         private PendingVegaCastState _pendingVegaCastState;
         private PendingVegaPromptState _pendingVegaPromptState;
         private Action _inGameConfirmAcceptedAction;
@@ -78,6 +79,13 @@ namespace HaCreator.MapSimulator
         {
             public VegaSpellUI.VegaOwnerRequest Request { get; init; }
             public int RequestedAtTick { get; init; }
+        }
+
+        private sealed class PendingVegaLoopbackLaunchState
+        {
+            public byte[] Payload { get; init; } = Array.Empty<byte>();
+            public string Source { get; init; } = string.Empty;
+            public int ReadyAtTick { get; init; }
         }
 
         private void WireVegaSpellWindowOwnerCallbacks(VegaSpellUI vegaSpellWindow)
@@ -138,10 +146,64 @@ namespace HaCreator.MapSimulator
             StampPacketOwnedUtilityRequestState();
         }
 
+        private void DispatchVegaConsumableUseRequest(int itemId, InventoryType inventoryType, int slotIndex, string source)
+        {
+            if (!ItemUpgradeUI.IsVegaSpellConsumable(itemId))
+            {
+                return;
+            }
+
+            int slotPosition = slotIndex >= 0 ? slotIndex + 1 : 0;
+            byte[] payload = BuildVegaConsumeCashLaunchPayload(slotPosition, itemId, currTickCount);
+            _activeVegaModifierSelection = new ActiveVegaModifierSelectionState
+            {
+                ModifierItemId = itemId,
+                InventoryType = inventoryType,
+                SlotIndex = slotIndex,
+                Source = string.IsNullOrWhiteSpace(source) ? "consume-cash-item request" : source.Trim()
+            };
+            StampPacketOwnedUtilityRequestState();
+
+            string requestSummary = BuildVegaConsumableLaunchDispatchLabel(payload, out bool requiresOfflineLoopback);
+            ShowUtilityFeedbackMessage(requestSummary);
+
+            if (!requiresOfflineLoopback)
+            {
+                _pendingVegaLoopbackLaunchState = null;
+                return;
+            }
+
+            _pendingVegaLoopbackLaunchState = new PendingVegaLoopbackLaunchState
+            {
+                Payload = payload,
+                Source = string.IsNullOrWhiteSpace(source)
+                    ? "consume-cash-item request"
+                    : source.Trim(),
+                ReadyAtTick = currTickCount + VegaOwnerLaunchDelayMs
+            };
+        }
+
         private void UpdateVegaSpellOwnerState()
         {
+            ProcessPendingVegaLoopbackLaunchState();
             ProcessPendingVegaLaunchState();
             ProcessPendingVegaCastState();
+        }
+
+        private void ProcessPendingVegaLoopbackLaunchState()
+        {
+            if (_pendingVegaLoopbackLaunchState == null ||
+                unchecked(currTickCount - _pendingVegaLoopbackLaunchState.ReadyAtTick) < 0)
+            {
+                return;
+            }
+
+            PendingVegaLoopbackLaunchState loopbackLaunchState = _pendingVegaLoopbackLaunchState;
+            _pendingVegaLoopbackLaunchState = null;
+            _localUtilityPacketInbox.EnqueueLocal(
+                LocalUtilityPacketInboxManager.ConsumeCashItemUseRequestPacketType,
+                loopbackLaunchState.Payload,
+                $"{loopbackLaunchState.Source} offline packet-owned loopback");
         }
 
         private void ProcessPendingVegaLaunchState()
@@ -555,6 +617,30 @@ namespace HaCreator.MapSimulator
 
             return string.IsNullOrWhiteSpace(localMessage)
                 ? dispatchSummary
+                : $"{localMessage} {dispatchSummary}";
+        }
+
+        private string BuildVegaConsumableLaunchDispatchLabel(
+            byte[] payload,
+            out bool requiresOfflineLoopback)
+        {
+            bool awaitingPacketOwnedLaunch = HasLiveVegaLaunchIngressRoute();
+            bool queuedExternally = TryQueueVegaOutboundPacket(VegaOwnerRequestOpcode, payload, out string dispatchSummary);
+            requiresOfflineLoopback = !awaitingPacketOwnedLaunch;
+
+            string localMessage = awaitingPacketOwnedLaunch
+                ? "Mirrored CWvsContext::SendConsumeCashItemUseRequest through the Vega owner seam and waiting for packet-owned launch traffic."
+                : "Mirrored CWvsContext::SendConsumeCashItemUseRequest through the Vega owner seam and scheduled offline packet-owned launch loopback because no live Vega transport is attached.";
+
+            if (!queuedExternally && awaitingPacketOwnedLaunch)
+            {
+                requiresOfflineLoopback = true;
+                localMessage =
+                    "Mirrored CWvsContext::SendConsumeCashItemUseRequest through the Vega owner seam and fell back to offline packet-owned launch loopback because no live Vega transport accepted the outbound request.";
+            }
+
+            return string.IsNullOrWhiteSpace(dispatchSummary)
+                ? localMessage
                 : $"{localMessage} {dispatchSummary}";
         }
 
@@ -1119,6 +1205,23 @@ namespace HaCreator.MapSimulator
         {
             success = resultCode == VegaPacketOwnedSuccessTerminalCode;
             return resultCode == VegaPacketOwnedSuccessTerminalCode || resultCode == VegaPacketOwnedFailTerminalCode;
+        }
+
+        private bool HasLiveVegaLaunchIngressRoute()
+        {
+            return HasLiveVegaLaunchIngressRoute(
+                _localUtilityOfficialSessionBridge?.HasConnectedSession == true,
+                _localUtilityPacketOutbox?.HasConnectedClients == true);
+        }
+
+        internal static bool HasLiveVegaLaunchIngressRouteForTests(bool hasConnectedSession, bool hasConnectedOutboxClient)
+        {
+            return HasLiveVegaLaunchIngressRoute(hasConnectedSession, hasConnectedOutboxClient);
+        }
+
+        private static bool HasLiveVegaLaunchIngressRoute(bool hasConnectedSession, bool hasConnectedOutboxClient)
+        {
+            return hasConnectedSession || hasConnectedOutboxClient;
         }
     }
 }

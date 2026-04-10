@@ -44,6 +44,25 @@ namespace HaCreator.MapSimulator
             IEnumerable<string> targetPortalNameCandidates,
             out string message)
         {
+            return TryApplyPacketOwnedTeleportResult(
+                targetX,
+                targetY,
+                sourcePortalName,
+                targetPortalName,
+                targetPortalNameCandidates,
+                allowCoordinatePortalResolution: true,
+                out message);
+        }
+
+        private bool TryApplyPacketOwnedTeleportResult(
+            float targetX,
+            float targetY,
+            string sourcePortalName,
+            string targetPortalName,
+            IEnumerable<string> targetPortalNameCandidates,
+            bool allowCoordinatePortalResolution,
+            out string message)
+        {
             _packetOwnedTeleportRequestActive = false;
             int currentTime = Environment.TickCount;
             _packetOwnedTeleportRequestCompletedAt = currentTime;
@@ -66,7 +85,8 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (TryResolvePacketOwnedTeleportPortalByPosition(targetX, targetY, out int portalIndex, out PortalInstance portalInstance))
+            if (allowCoordinatePortalResolution
+                && TryResolvePacketOwnedTeleportPortalByPosition(targetX, targetY, out int portalIndex, out PortalInstance portalInstance))
             {
                 _lastPacketOwnedTeleportPortalIndex = portalIndex;
                 RegisterPacketOwnedTeleportHandoff(portalInstance);
@@ -163,16 +183,6 @@ namespace HaCreator.MapSimulator
 
             if (target.HasFallbackCoordinates)
             {
-                if (TryResolvePacketOwnedTeleportPortalByPosition(
-                    target.FallbackX.Value,
-                    target.FallbackY.Value,
-                    out int resolvedPortalIndex,
-                    out _))
-                {
-                    _packetOwnedTeleportRequestActive = true;
-                    return TryApplyPacketOwnedTeleportResult(succeeded: true, resolvedPortalIndex, out message);
-                }
-
                 _packetOwnedTeleportRequestActive = true;
                 return TryApplyPacketOwnedTeleportResult(
                     target.FallbackX.Value,
@@ -180,6 +190,7 @@ namespace HaCreator.MapSimulator
                     target.SourcePortalName,
                     target.TargetPortalName,
                     target.TargetPortalNameCandidates,
+                    allowCoordinatePortalResolution: false,
                     out message);
             }
 
@@ -491,17 +502,6 @@ namespace HaCreator.MapSimulator
                 portalPool,
                 target,
                 out portalIndex))
-            {
-                return true;
-            }
-
-            if (target.HasFallbackCoordinates
-                && TryResolvePacketOwnedTeleportPortalByPosition(
-                    portalPool,
-                    target.FallbackX.Value,
-                    target.FallbackY.Value,
-                    out portalIndex,
-                    out _))
             {
                 return true;
             }
@@ -2022,13 +2022,19 @@ namespace HaCreator.MapSimulator
                     ResolvePacketOwnedPropertyPath(
                         Program.FindImage("Effect", PacketOwnedTeleportGeneralEffectImageName),
                         PacketOwnedTeleportGeneralEffectPath)),
-                out List<IDXObject> frames))
+                out List<PacketOwnedUiFrame> frames))
+            {
+                return false;
+            }
+
+            List<IDXObject> drawableFrames = ExtractPacketOwnedFrameSprites(frames);
+            if (!Animation.AnimationEffects.HasFrames(drawableFrames))
             {
                 return false;
             }
 
             _animationEffects?.AddOneTime(
-                frames,
+                drawableFrames,
                 (int)MathF.Round(targetX),
                 (int)MathF.Round(targetY),
                 flip: false,

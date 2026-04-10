@@ -480,9 +480,21 @@ namespace HaCreator.MapSimulator
                             getAllOutboundError));
 
                 case "close":
-                    _packetOwnedStoreBankRuntime.Close();
-                    uiWindowManager?.HideWindow(MapSimulatorWindowNames.StoreBank);
-                    return ChatCommandHandler.CommandResult.Ok(BuildPacketOwnedStoreBankFooter());
+                    bool hasCloseOutbound = _packetOwnedStoreBankRuntime.TryBuildCloseOutboundRequest(
+                        out PacketOwnedNpcUtilityOutboundRequest closeRequest,
+                        out string closeLocalMessage);
+                    if (hasCloseOutbound)
+                    {
+                        uiWindowManager?.HideWindow(MapSimulatorWindowNames.StoreBank);
+                        HidePacketOwnedStoreBankGetAllPrompt();
+                    }
+
+                    return ChatCommandHandler.CommandResult.Ok(
+                        DispatchPacketOwnedStoreBankOutboundRequest(
+                            hasCloseOutbound,
+                            closeRequest,
+                            closeLocalMessage,
+                            hasCloseOutbound ? null : closeLocalMessage));
 
                 default:
                     return ChatCommandHandler.CommandResult.Error("Usage: /npcutility storebank [status|show|getall|close]");
@@ -509,6 +521,26 @@ namespace HaCreator.MapSimulator
                 request,
                 localMessage,
                 hasRequest ? null : _packetOwnedStoreBankRuntime.StatusMessage);
+        }
+
+        private bool HandlePacketOwnedStoreBankCloseButtonClick()
+        {
+            bool hasCloseOutbound = _packetOwnedStoreBankRuntime.TryBuildCloseOutboundRequest(
+                out PacketOwnedNpcUtilityOutboundRequest request,
+                out string localMessage);
+            DispatchPacketOwnedStoreBankOutboundRequest(
+                hasCloseOutbound,
+                request,
+                localMessage,
+                hasCloseOutbound ? null : localMessage);
+
+            if (hasCloseOutbound)
+            {
+                HidePacketOwnedStoreBankGetAllPrompt();
+                return true;
+            }
+
+            return false;
         }
 
         private void OpenPacketOwnedStoreBankGetAllPrompt()

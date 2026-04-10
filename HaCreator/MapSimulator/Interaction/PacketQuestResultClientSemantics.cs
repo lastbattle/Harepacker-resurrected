@@ -22,7 +22,8 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal readonly record struct PacketQuestResultNoticeRouting(
         PacketQuestResultNoticeSurface Surface,
-        PacketQuestResultNoticeDispatchStage Stage);
+        PacketQuestResultNoticeDispatchStage Stage,
+        bool AutoSeparated);
 
     internal static class PacketQuestResultClientSemantics
     {
@@ -47,13 +48,25 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 10 => new PacketQuestResultNoticeRouting(
                     PacketQuestResultNoticeSurface.UtilDialogNotice,
-                    ResolveSubtype10NoticeDispatchStage(openedModal)),
+                    ResolveSubtype10NoticeDispatchStage(openedModal),
+                    AutoSeparated: false),
                 12 => new PacketQuestResultNoticeRouting(
                     PacketQuestResultNoticeSurface.UtilDialogNotice,
-                    PacketQuestResultNoticeDispatchStage.Immediate),
+                    PacketQuestResultNoticeDispatchStage.Immediate,
+                    AutoSeparated: false),
                 _ => new PacketQuestResultNoticeRouting(
                     PacketQuestResultNoticeSurface.Chat,
-                    PacketQuestResultNoticeDispatchStage.Immediate)
+                    PacketQuestResultNoticeDispatchStage.Immediate,
+                    AutoSeparated: true)
+            };
+        }
+
+        internal static bool ResolveUtilDialogNoticeAutoSeparated(int resultType)
+        {
+            return resultType switch
+            {
+                10 or 11 or 12 or 13 or 15 or 16 => false,
+                _ => true
             };
         }
 

@@ -152,7 +152,7 @@ namespace HaCreator.MapSimulator.Effects
             // Massacre maps (special event PQ maps)
             else if (IsMassacreMap(mapId, fieldType))
             {
-                _massacre.Enable(mapId);
+                _massacre.Enable(mapInfo);
                 System.Diagnostics.Debug.WriteLine($"[SpecialEffectFields] Massacre field detected: {mapId}");
             }
         }

@@ -21,18 +21,23 @@ namespace HaCreator.MapSimulator.UI
         private const int FooterOffsetBottom = 24;
         private const int MinimumBodyWrapWidth = 140;
         private const int ButtonGap = 8;
+        private const int IconOffsetX = 17;
+        private const int IconOffsetY = 22;
+        private const int IconTextGap = 10;
 
         private readonly string _windowName;
         private readonly int _screenWidth;
         private readonly int _screenHeight;
         private readonly UIObject _confirmButton;
         private readonly UIObject _cancelButton;
+        private readonly Texture2D _defaultIcon;
         private readonly List<string> _wrappedLines = new();
         private SpriteFont _font;
         private KeyboardState _previousKeyboardState;
         private string _title = "Game Menu";
         private string _body = string.Empty;
         private string _footer = string.Empty;
+        private Texture2D _icon;
         private InGameConfirmDialogPresentation _presentation = InGameConfirmDialogPresentation.Default;
 
         public InGameConfirmDialogWindow(
@@ -40,6 +45,7 @@ namespace HaCreator.MapSimulator.UI
             string windowName,
             UIObject confirmButton,
             UIObject cancelButton,
+            Texture2D defaultIcon,
             int screenWidth,
             int screenHeight)
             : base(frame ?? throw new ArgumentNullException(nameof(frame)))
@@ -49,6 +55,7 @@ namespace HaCreator.MapSimulator.UI
             _screenHeight = screenHeight;
             _confirmButton = RegisterButton(confirmButton, isConfirm: true);
             _cancelButton = RegisterButton(cancelButton, isConfirm: false);
+            _defaultIcon = defaultIcon;
             ConfigureButtons();
             CenterFrame();
         }
@@ -72,6 +79,7 @@ namespace HaCreator.MapSimulator.UI
             _body = body ?? string.Empty;
             _footer = footer ?? string.Empty;
             _presentation = presentation ?? InGameConfirmDialogPresentation.Default;
+            _icon = _presentation.Icon ?? (_presentation.ShowIcon ? _defaultIcon : null);
             CenterFrame();
             ConfigureButtons();
         }
@@ -129,13 +137,22 @@ namespace HaCreator.MapSimulator.UI
 
             float wrapWidth = ResolveBodyWrapWidth();
             float y = Position.Y + BodyStartY;
+            if (_icon != null)
+            {
+                sprite.Draw(
+                    _icon,
+                    new Vector2(Position.X + IconOffsetX, Position.Y + IconOffsetY),
+                    Color.White);
+            }
+
+            int bodyTextOffsetX = ResolveBodyTextOffsetX();
             foreach (string line in WrapText(_body, wrapWidth))
             {
                 SelectorWindowDrawing.DrawShadowedText(
                     sprite,
                     _font,
                     line,
-                    new Vector2(Position.X + TextOffsetX, y),
+                    new Vector2(Position.X + bodyTextOffsetX, y),
                     new Color(232, 232, 232));
                 y += _font.LineSpacing;
             }
@@ -214,7 +231,7 @@ namespace HaCreator.MapSimulator.UI
         private float ResolveBodyWrapWidth()
         {
             int frameWidth = Frame?.Width > 0 ? Frame.Width : 206;
-            return Math.Max(MinimumBodyWrapWidth, frameWidth - (TextOffsetX * 2));
+            return Math.Max(MinimumBodyWrapWidth, frameWidth - ResolveBodyTextOffsetX() - TextOffsetX);
         }
 
         private int ResolveFooterY()
@@ -272,6 +289,16 @@ namespace HaCreator.MapSimulator.UI
                 : ClientTextDrawing.Measure((GraphicsDevice)null, text, 1.0f, _font).X;
         }
 
+        private int ResolveBodyTextOffsetX()
+        {
+            if (_icon == null)
+            {
+                return TextOffsetX;
+            }
+
+            return TextOffsetX + _icon.Width + IconTextGap;
+        }
+
         private bool Pressed(KeyboardState current, Keys key)
         {
             return current.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
@@ -300,7 +327,9 @@ namespace HaCreator.MapSimulator.UI
     public sealed record InGameConfirmDialogPresentation(
         InGameConfirmDialogAnchorMode AnchorMode,
         int AnchorX,
-        int BottomOffset)
+        int BottomOffset,
+        bool ShowIcon = false,
+        Texture2D Icon = null)
     {
         public static InGameConfirmDialogPresentation Default { get; } = new(InGameConfirmDialogAnchorMode.Center, 0, 0);
     }

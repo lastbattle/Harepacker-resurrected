@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Interaction;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -225,7 +226,58 @@ namespace HaCreator.MapSimulator.UI
             string wishlistText = AskItemWishlist
                 ? "wish prompt on"
                 : "wish prompt off";
-            return $"{packetText}, {resultText}, {waitText}, {wishlistText}";
+            string npcText = NpcTemplateId > 0
+                ? $"npc {NpcTemplateId}"
+                : "npc unresolved";
+            string rowText = DecodedItemCount > 0
+                ? $"rows {DecodedItemCount}"
+                : "rows 0";
+            string resultStateText = LastSubtype >= 0
+                ? $"last {DescribeLastResultState()}"
+                : "no result packet";
+            return $"{packetText}, {resultText}, {waitText}, {wishlistText}, {npcText}, {rowText}, {resultStateText}";
+        }
+
+        public IReadOnlyList<string> BuildWishlistSearchStateDetailLines()
+        {
+            if (!HasObservableState)
+            {
+                return Array.Empty<string>();
+            }
+
+            List<string> lines = new(3);
+            string visibilityText = IsOwnerSurfaceVisible
+                ? "owner visible"
+                : IsActive
+                    ? "owner staged"
+                    : "owner hidden";
+            string blockedText = BlockedByOwnerCount > 0
+                ? $", blocked {BlockedByOwnerCount}"
+                : string.Empty;
+            string tailText = TrailingByteCount > 0
+                ? $", tail {TrailingByteCount} byte(s)"
+                : string.Empty;
+            lines.Add($"{visibilityText}, {DescribeDisconnectHazard()}{blockedText}{tailText}");
+
+            if (!string.IsNullOrWhiteSpace(LastNotice))
+            {
+                lines.Add(LastNotice);
+            }
+            else if (LastSubtype >= 0)
+            {
+                lines.Add($"packet 366 {DescribeLastResultState()}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(LastOwnerState))
+            {
+                lines.Add(LastOwnerState);
+            }
+            else
+            {
+                lines.Add(BuildTransportSummary());
+            }
+
+            return lines;
         }
 
         public string BuildStateSummary(IReadOnlyList<AdminShopDialogUI.PacketOwnedAdminShopCommoditySnapshot> rows)
@@ -263,6 +315,29 @@ namespace HaCreator.MapSimulator.UI
                 : string.Empty;
 
             return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}), packets open={OpenCount}/result={ResultCount}, {resultText}, {transportText}, {disconnectText}{waitText}, {visibilityText}, {ownerText}{blockedText}";
+        }
+
+        private string DescribeLastResultState()
+        {
+            if (LastSubtype < 0)
+            {
+                return "result pending";
+            }
+
+            if (!AdminShopDialogClientParityText.HandlesResultSubtype((byte)LastSubtype))
+            {
+                return $"subtype {LastSubtype} ignored";
+            }
+
+            string label = AdminShopDialogClientParityText.BuildResultStateLabel((byte)Math.Max(0, LastResultCode));
+            return $"subtype {LastSubtype}, code {LastResultCode} ({label})";
+        }
+
+        private string DescribeDisconnectHazard()
+        {
+            return WouldDisconnect
+                ? "disconnect hazard recorded"
+                : "no disconnect hazard";
         }
     }
 }

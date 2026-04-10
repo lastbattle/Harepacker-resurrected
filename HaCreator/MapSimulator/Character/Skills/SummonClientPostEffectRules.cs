@@ -43,6 +43,20 @@ internal static class SummonClientPostEffectRules
         return Math.Max(0, skillData?.ResolveExplicitSummonAttackAfterMs(branchName) ?? 0);
     }
 
+    public static SkillAnimation ResolvePassiveEffectAnimation(SkillData skillData)
+    {
+        return ResolveSummonNamedEffectAnimation(skillData, secondary: false)
+               ?? skillData?.Effect
+               ?? skillData?.AffectedEffect;
+    }
+
+    public static SkillAnimation ResolvePassiveSecondaryEffectAnimation(SkillData skillData)
+    {
+        return ResolveSummonNamedEffectAnimation(skillData, secondary: true)
+               ?? skillData?.EffectSecondary
+               ?? skillData?.AffectedSecondaryEffect;
+    }
+
     public static (Vector2 Source, Vector2 Target) ResolveReactiveAttackChainEndpoints(
         Vector2 summonPosition,
         Rectangle targetHitbox,
@@ -131,5 +145,27 @@ internal static class SummonClientPostEffectRules
 
         return skillData.SummonProjectileAnimationsByBranch?.Values.Any(
             static animations => animations?.Count > 0) == true;
+    }
+
+    private static SkillAnimation ResolveSummonNamedEffectAnimation(SkillData skillData, bool secondary)
+    {
+        if (skillData?.SummonNamedAnimations == null || skillData.SummonNamedAnimations.Count == 0)
+        {
+            return null;
+        }
+
+        string[] preferredBranchNames = secondary
+            ? new[] { "effect0", "repeat0" }
+            : new[] { "effect", "repeat" };
+        foreach (string branchName in preferredBranchNames)
+        {
+            if (skillData.SummonNamedAnimations.TryGetValue(branchName, out SkillAnimation animation)
+                && animation?.Frames.Count > 0)
+            {
+                return animation;
+            }
+        }
+
+        return null;
     }
 }

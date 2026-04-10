@@ -1390,6 +1390,28 @@ namespace HaCreator.MapSimulator.Character
                 out resolvedRequestedAt) == true;
         }
 
+        public bool TryResolvePacketOwnedTeslaCoilAttackPacket(
+            int summonObjectId,
+            IReadOnlyList<int> targetMobIds,
+            int currentTime)
+        {
+            return Skills?.TryResolvePendingTeslaAttackPacket(summonObjectId, targetMobIds, currentTime) == true;
+        }
+
+        public bool TryResolvePacketOwnedTeslaCoilAttackPacket(
+            int summonObjectId,
+            IReadOnlyList<int> targetMobIds,
+            int currentTime,
+            out int resolvedRequestedAt)
+        {
+            resolvedRequestedAt = int.MinValue;
+            return Skills?.TryResolvePendingTeslaAttackPacket(
+                summonObjectId,
+                targetMobIds,
+                currentTime,
+                out resolvedRequestedAt) == true;
+        }
+
         private void TryAcknowledgePendingRepeatSkillModeEnd(int currentTime)
         {
             if (Skills == null || _pendingRepeatSkillModeEndRequestTime == int.MinValue)

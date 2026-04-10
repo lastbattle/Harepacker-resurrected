@@ -2302,7 +2302,7 @@ namespace HaCreator.MapSimulator.Pools
             drop.PacketEnterType = packet.EnterType;
             drop.CreateDelayMs = packet.DelayMs;
             drop.OwnerExpireTime = packet.OwnerId > 0 ? currentTime + OWNER_PRIORITY_DURATION : 0;
-            drop.ExpireTime = currentTime + DEFAULT_DROP_LIFETIME;
+            drop.ExpireTime = ResolvePacketExpireTime(currentTime, packet.IsMoney, packet.ExpireRaw);
             drop.HoverAmplitude = packet.IsMoney ? 3f : 2f;
             drop.HoverFrequency = packet.EnterType == 4 ? 0.6f : 1f;
             drop.HoverPhase = drop.PoolId * 0.31f;
@@ -2500,6 +2500,40 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return !drop.IsPacketControlled || drop.SourceId != 0;
+        }
+
+        internal static int ResolvePacketExpireTime(int currentTime, bool isMoney, long expireRaw)
+        {
+            if (isMoney)
+            {
+                return currentTime + DEFAULT_DROP_LIFETIME;
+            }
+
+            if (expireRaw <= 0 || expireRaw == long.MaxValue)
+            {
+                return currentTime + DEFAULT_DROP_LIFETIME;
+            }
+
+            try
+            {
+                DateTime expireUtc = DateTime.FromFileTimeUtc(expireRaw);
+                double remainingMs = (expireUtc - DateTime.UtcNow).TotalMilliseconds;
+                if (remainingMs <= 0)
+                {
+                    return currentTime;
+                }
+
+                if (remainingMs >= int.MaxValue - currentTime)
+                {
+                    return int.MaxValue;
+                }
+
+                return currentTime + (int)Math.Ceiling(remainingMs);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return currentTime + DEFAULT_DROP_LIFETIME;
+            }
         }
 
         private bool IsPlayerOwnershipBlocked(DropItem drop, int actorId, int currentTime)

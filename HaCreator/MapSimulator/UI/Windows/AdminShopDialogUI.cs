@@ -488,6 +488,7 @@ namespace HaCreator.MapSimulator.UI
         internal Func<PacketOwnedNpcUtilityOutboundRequest, string> DispatchPacketOwnedAdminShopOutboundRequest { get; set; }
         public bool HasPendingStorageExpansionRequest => _pendingRequestEntry?.IsStorageExpansion == true;
         private const int PacketOwnedAdminShopResultMode = PacketOwnedAdminShopOutboundMode.Reopen;
+        private const int PacketOwnedAdminShopTradeRequestMode = PacketOwnedAdminShopOutboundMode.TradeRequest;
         private const int PacketOwnedAdminShopCloseMode = PacketOwnedAdminShopOutboundMode.Close;
         private const int PacketOwnedAdminShopWishlistRegisterMode = PacketOwnedAdminShopOutboundMode.RegisterWishlistItem;
 
@@ -1357,6 +1358,11 @@ namespace HaCreator.MapSimulator.UI
         public string GetWishlistSearchServiceStateSummary()
         {
             return _packetOwnedAdminShopSession.BuildWishlistSearchStateSummary();
+        }
+
+        public IReadOnlyList<string> GetWishlistSearchServiceStateDetailLines()
+        {
+            return _packetOwnedAdminShopSession.BuildWishlistSearchStateDetailLines();
         }
 
         public bool TrySubmitWishlistSearch(string query, int categoryIndex, out string message)
@@ -3199,6 +3205,9 @@ namespace HaCreator.MapSimulator.UI
                 && !_pendingStorageExpansionAwaitingPacketResult
                 && entry?.InventoryExpansionType == InventoryType.NONE
                 && entry?.IsStorageExpansion != true;
+            string packetOwnedTradeSummary = _pendingPacketOwnedAdminShopResult
+                ? DispatchPacketOwnedAdminShopTradeRequest(entry, _pendingRequestQuantity)
+                : string.Empty;
             _packetOwnedAdminShopSession.SetWaitingForResult(_pendingPacketOwnedAdminShopResult);
             _requestResolveTick = _pendingPacketOwnedAdminShopResult
                 ? int.MaxValue
@@ -3213,7 +3222,9 @@ namespace HaCreator.MapSimulator.UI
             _footerMessage = _pendingStorageExpansionAwaitingPacketResult
                 ? $"Submitted a {_currentMode} request for {entry.Title}{quantityLabel}{priceLabel}. Waiting for packet-authored storage-expansion result on SN {_pendingStorageExpansionCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}."
                 : _packetOwnedAdminShopSession.IsWaitingForResult
-                    ? $"Submitted a packet-owned admin-shop request for {entry.Title}{quantityLabel}{priceLabel}. Waiting for packet 366 subtype 4."
+                    ? string.IsNullOrWhiteSpace(packetOwnedTradeSummary)
+                        ? $"Submitted a packet-owned admin-shop request for {entry.Title}{quantityLabel}{priceLabel}. Waiting for packet 366 subtype 4."
+                        : $"Submitted a packet-owned admin-shop request for {entry.Title}{quantityLabel}{priceLabel}. {packetOwnedTradeSummary} Waiting for packet 366 subtype 4."
                     : $"Submitted a {_currentMode} request for {entry.Title}{quantityLabel}{priceLabel}. Waiting for simulator response.";
             UpdateActionButtonStates();
         }
@@ -4879,6 +4890,8 @@ namespace HaCreator.MapSimulator.UI
             return mode switch
             {
                 PacketOwnedAdminShopCloseMode => "Mirrored CAdminShopDlg outbound opcode 74 mode 2.",
+                PacketOwnedAdminShopTradeRequestMode when value > 0 => $"Mirrored CAdminShopDlg::SendTradeRequest opcode 74 mode 1 for SN {value}.",
+                PacketOwnedAdminShopTradeRequestMode => "Mirrored CAdminShopDlg::SendTradeRequest opcode 74 mode 1.",
                 PacketOwnedAdminShopWishlistRegisterMode when value > 0 => $"Mirrored CUIAdminShopWishList::SendRegisterPacket opcode 74 mode 3 for item {value}.",
                 PacketOwnedAdminShopWishlistRegisterMode => "Mirrored CUIAdminShopWishList::SendRegisterPacket opcode 74 mode 3.",
                 _ when value > 0 => $"Mirrored CAdminShopDlg outbound opcode 74 mode 0 for NPC {value}.",
@@ -6785,6 +6798,11 @@ namespace HaCreator.MapSimulator.UI
         private string DispatchPacketOwnedAdminShopOutbound(int mode, int npcTemplateId)
         {
             PacketOwnedNpcUtilityOutboundRequest request = BuildPacketOwnedAdminShopOutboundRequest(mode, npcTemplateId);
+            return DispatchPacketOwnedAdminShopOutbound(request);
+        }
+
+        private string DispatchPacketOwnedAdminShopOutbound(PacketOwnedNpcUtilityOutboundRequest request)
+        {
             if (DispatchPacketOwnedAdminShopOutboundRequest == null)
             {
                 string retainedSummary = $"{request.Summary} No packet-owner bridge was available, so the simulator retained the outbound acknowledgement locally.";
@@ -6798,6 +6816,21 @@ namespace HaCreator.MapSimulator.UI
                 : dispatchSummary;
             _packetOwnedAdminShopSession.RecordOutboundRequest(request.Opcode, request.Payload?.ToArray(), resolvedSummary);
             return resolvedSummary;
+        }
+
+        private string DispatchPacketOwnedAdminShopTradeRequest(AdminShopEntry entry, int requestQuantity)
+        {
+            if (entry == null)
+            {
+                return string.Empty;
+            }
+
+            if (!TryBuildPacketOwnedAdminShopTradeRequest(entry, requestQuantity, out PacketOwnedNpcUtilityOutboundRequest request, out string error))
+            {
+                return error ?? string.Empty;
+            }
+
+            return DispatchPacketOwnedAdminShopOutbound(request);
         }
 
         private string DispatchPacketOwnedAdminShopWishlistRegister(AdminShopEntry entry)
@@ -6843,6 +6876,62 @@ namespace HaCreator.MapSimulator.UI
                 74,
                 payload,
                 BuildPacketOwnedAdminShopOutboundSummary(mode, value));
+        }
+
+        internal static bool TryBuildPacketOwnedAdminShopTradeRequest(
+            int commoditySerialNumber,
+            int requestCount,
+            int position,
+            out PacketOwnedNpcUtilityOutboundRequest request,
+            out string error)
+        {
+            request = default;
+            error = string.Empty;
+            if (commoditySerialNumber <= 0)
+            {
+                error = "CAdminShopDlg::SendTradeRequest could not mirror opcode 74 mode 1 because the selected row has no commodity serial number.";
+                return false;
+            }
+
+            int normalizedCount = Math.Clamp(requestCount, 1, ushort.MaxValue);
+            int normalizedPosition = Math.Clamp(position, 0, ushort.MaxValue);
+            byte[] payload =
+            [
+                (byte)PacketOwnedAdminShopTradeRequestMode,
+                .. BitConverter.GetBytes(commoditySerialNumber),
+                .. BitConverter.GetBytes((ushort)normalizedCount),
+                .. BitConverter.GetBytes((ushort)normalizedPosition)
+            ];
+            request = new PacketOwnedNpcUtilityOutboundRequest(
+                74,
+                payload,
+                $"Mirrored CAdminShopDlg::SendTradeRequest opcode 74 mode 1 for SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)} count {normalizedCount.ToString(CultureInfo.InvariantCulture)} pos {normalizedPosition.ToString(CultureInfo.InvariantCulture)}.");
+            return true;
+        }
+
+        private static bool TryBuildPacketOwnedAdminShopTradeRequest(
+            AdminShopEntry entry,
+            int requestCount,
+            out PacketOwnedNpcUtilityOutboundRequest request,
+            out string error)
+        {
+            request = default;
+            error = string.Empty;
+            if (entry == null)
+            {
+                error = "CAdminShopDlg::SendTradeRequest could not mirror opcode 74 mode 1 because no row is selected.";
+                return false;
+            }
+
+            int position = RequiresInventorySource(entry) && entry.InventorySlotIndex >= 0
+                ? entry.InventorySlotIndex + 1
+                : 0;
+            return TryBuildPacketOwnedAdminShopTradeRequest(
+                entry.PacketSerialNumber,
+                requestCount,
+                position,
+                out request,
+                out error);
         }
 
         private static AdminShopCategory ResolveCommodityCategory(InventoryType inventoryType)

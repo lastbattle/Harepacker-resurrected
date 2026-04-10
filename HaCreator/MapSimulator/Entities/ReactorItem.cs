@@ -661,9 +661,10 @@ namespace HaCreator.MapSimulator.Entities
                 return TryResolveRootHitSource(out sourceKind, out sourceProperty);
             }
 
-            if (!_stateLayerProperties.ContainsKey(state) || !HasAuthoredEventIndex(state, properEventIndex))
+            if (!HasAuthoredEventIndex(state, properEventIndex))
             {
-                return TryResolveRootHitSource(out sourceKind, out sourceProperty);
+                return TryResolveRootHitSource(out sourceKind, out sourceProperty)
+                    || TryResolveStateHitSource(state, out sourceKind, out sourceProperty);
             }
 
             if (_stateIndexedHitProperties.TryGetValue((state, properEventIndex), out sourceProperty) && sourceProperty != null)
@@ -672,13 +673,25 @@ namespace HaCreator.MapSimulator.Entities
                 return true;
             }
 
+            if (TryResolveStateHitSource(state, out sourceKind, out sourceProperty))
+            {
+                return true;
+            }
+
+            return TryResolveRootHitSource(out sourceKind, out sourceProperty);
+        }
+
+        private bool TryResolveStateHitSource(int state, out HitAnimationSourceKind sourceKind, out WzImageProperty sourceProperty)
+        {
             if (_stateHitProperties.TryGetValue(state, out sourceProperty) && sourceProperty != null)
             {
                 sourceKind = HitAnimationSourceKind.StateHit;
                 return true;
             }
 
-            return TryResolveRootHitSource(out sourceKind, out sourceProperty);
+            sourceKind = HitAnimationSourceKind.None;
+            sourceProperty = null;
+            return false;
         }
 
         private bool TryResolveRootHitSource(out HitAnimationSourceKind sourceKind, out WzImageProperty sourceProperty)
@@ -1181,6 +1194,7 @@ namespace HaCreator.MapSimulator.Entities
                 .Where(transition => transition.TargetState != resolvedState)
                 .OrderBy(transition => GetEventTypePriority(transition.EventType, request))
                 .ThenBy(transition => GetSelectorPriority(transition, request))
+                .ThenBy(transition => GetSelectorLookaheadPriority(transition, request))
                 .ThenBy(transition => transition.Order)
                 .ToArray();
 
@@ -1255,7 +1269,77 @@ namespace HaCreator.MapSimulator.Entities
             return transition.SelectorValues.Length == 0 ? 1 : 2;
         }
 
+        private int GetSelectorLookaheadPriority(AuthoredStateTransition transition, ReactorTransitionRequest request)
+        {
+            if (request.ActivationValue <= 0
+                || !IsSelectorDrivenActivationType(request.ActivationType)
+                || transition.SelectorValues.Contains(request.ActivationValue)
+                || transition.SelectorValues.Length != 0)
+            {
+                return 0;
+            }
+
+            return HasDescendantSelectorMatch(
+                transition.TargetState,
+                request,
+                new HashSet<int> { ResolveState(transition.TargetState) })
+                ? 0
+                : 1;
+        }
+
+        private bool HasDescendantSelectorMatch(
+            int state,
+            ReactorTransitionRequest request,
+            HashSet<int> visitedStates)
+        {
+            if (request.ActivationValue <= 0
+                || !IsSelectorDrivenActivationType(request.ActivationType))
+            {
+                return false;
+            }
+
+            int resolvedState = ResolveState(state);
+            if (!_stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
+                || transitions.Length == 0)
+            {
+                return false;
+            }
+
+            AuthoredStateTransition[] matchingTransitions = transitions
+                .Where(transition => MatchesAuthoredEventType(transition.EventType, request.ActivationType))
+                .Where(transition => transition.TargetState != resolvedState)
+                .Where(transition => _stateFrames.ContainsKey(transition.TargetState))
+                .ToArray();
+            if (matchingTransitions.Any(transition => transition.SelectorValues.Contains(request.ActivationValue)))
+            {
+                return true;
+            }
+
+            foreach (AuthoredStateTransition transition in matchingTransitions.Where(transition => transition.SelectorValues.Length == 0))
+            {
+                int nextState = ResolveState(transition.TargetState);
+                if (!visitedStates.Add(nextState))
+                {
+                    continue;
+                }
+
+                if (HasDescendantSelectorMatch(nextState, request, visitedStates))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         internal static bool ShouldRejectSelectorDrivenTransitionWithoutSelector(ReactorActivationType activationType)
+        {
+            return activationType == ReactorActivationType.Item
+                || activationType == ReactorActivationType.Skill
+                || activationType == ReactorActivationType.Quest;
+        }
+
+        private static bool IsSelectorDrivenActivationType(ReactorActivationType activationType)
         {
             return activationType == ReactorActivationType.Item
                 || activationType == ReactorActivationType.Skill

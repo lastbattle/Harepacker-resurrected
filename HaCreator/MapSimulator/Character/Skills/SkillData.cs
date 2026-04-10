@@ -2047,6 +2047,20 @@ namespace HaCreator.MapSimulator.Character.Skills
     #region Skill Cast Info
 
     /// <summary>
+    /// Explicit request for the shared skill-use animation owner.
+    /// </summary>
+    public class SkillUseEffectRequest
+    {
+        public int EffectSkillId { get; set; }
+        public int SourceSkillId { get; set; }
+        public int RequestTime { get; set; }
+        public IReadOnlyList<string> BranchNames { get; set; }
+        public Vector2? WorldOrigin { get; set; }
+        public bool FollowOwnerPosition { get; set; } = true;
+        public bool FollowOwnerFacing { get; set; } = true;
+    }
+
+    /// <summary>
     /// Information about a skill being cast
     /// </summary>
     public class SkillCastInfo
@@ -2064,6 +2078,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public float CasterX { get; set; }
         public float CasterY { get; set; }
         public bool FacingRight { get; set; }
+        public IReadOnlyList<string> RequestedBranchNames { get; set; }
+        public bool FollowOwnerPosition { get; set; } = true;
+        public bool FollowOwnerFacing { get; set; } = true;
 
         public float TargetX { get; set; }
         public float TargetY { get; set; }

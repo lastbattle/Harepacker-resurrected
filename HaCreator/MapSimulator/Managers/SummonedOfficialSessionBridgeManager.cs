@@ -27,6 +27,9 @@ namespace HaCreator.MapSimulator.Managers
         private const int MaxRecentSg88ManualAttackRequests = 16;
         private const int Sg88ManualAttackCaptureGraceMs = 120;
         private const int MaxLearnedSg88ManualAttackTemplatesPerTargetCount = 8;
+        private const int MaxRecentTeslaAttackRequests = 16;
+        private const int TeslaAttackCaptureGraceMs = 120;
+        private const int MaxLearnedTeslaAttackTemplatesPerTargetCount = 8;
         private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket, string ObservedSource);
         private sealed class LearnedSg88ManualAttackTemplate
         {
@@ -63,6 +66,9 @@ namespace HaCreator.MapSimulator.Managers
         private readonly List<Sg88ManualAttackCapture> _pendingSg88ManualAttackCaptures = new();
         private readonly Queue<Sg88ManualAttackCapture> _recentSg88ManualAttackCaptures = new();
         private readonly Dictionary<int, List<LearnedSg88ManualAttackTemplate>> _learnedSg88ManualAttackTemplates = new();
+        private readonly List<Sg88ManualAttackCapture> _pendingTeslaAttackCaptures = new();
+        private readonly Queue<Sg88ManualAttackCapture> _recentTeslaAttackCaptures = new();
+        private readonly Dictionary<int, List<LearnedSg88ManualAttackTemplate>> _learnedTeslaAttackTemplates = new();
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
@@ -169,6 +175,7 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 PruneExpiredSg88ManualAttackCaptures(Environment.TickCount);
+                PruneExpiredTeslaAttackCaptures(Environment.TickCount);
                 string lifecycle = IsRunning
                     ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
                     : "inactive";
@@ -181,7 +188,7 @@ namespace HaCreator.MapSimulator.Managers
                 string lastQueued = LastQueuedOpcode >= 0
                     ? $" lastQueued=0x{LastQueuedOpcode:X}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                     : string.Empty;
-                return $"Summoned official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; sg88Pending={_pendingSg88ManualAttackCaptures.Count}; sg88Recent={_recentSg88ManualAttackCaptures.Count}; inbound opcodes=0x116-0x11B; outbound=raw passthrough plus live capture history.{lastOutbound}{lastQueued} {LastStatus}";
+                return $"Summoned official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; sg88Pending={_pendingSg88ManualAttackCaptures.Count}; sg88Recent={_recentSg88ManualAttackCaptures.Count}; teslaPending={_pendingTeslaAttackCaptures.Count}; teslaRecent={_recentTeslaAttackCaptures.Count}; inbound opcodes=0x116-0x11B; outbound=raw passthrough plus live capture history.{lastOutbound}{lastQueued} {LastStatus}";
             }
         }
 
@@ -191,6 +198,7 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 PruneExpiredSg88ManualAttackCaptures(Environment.TickCount);
+                PruneExpiredTeslaAttackCaptures(Environment.TickCount);
                 if (_recentOutboundPackets.Count == 0)
                 {
                     return "Summoned official-session bridge outbound history is empty.";
@@ -241,9 +249,12 @@ namespace HaCreator.MapSimulator.Managers
                 _recentSg88ManualAttackCaptures.Clear();
                 _pendingSg88ManualAttackCaptures.Clear();
                 _learnedSg88ManualAttackTemplates.Clear();
+                _recentTeslaAttackCaptures.Clear();
+                _pendingTeslaAttackCaptures.Clear();
+                _learnedTeslaAttackTemplates.Clear();
             }
 
-            LastStatus = "Summoned official-session bridge outbound, SG-88 request history, and learned template cache cleared.";
+            LastStatus = "Summoned official-session bridge outbound, SG-88/Tesla request history, and learned template cache cleared.";
             return LastStatus;
         }
 
@@ -465,7 +476,9 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 PruneExpiredSg88ManualAttackCaptures(trace.ObservedAt);
+                PruneExpiredTeslaAttackCaptures(trace.ObservedAt);
                 trace = TryBindSg88ManualAttackCapture(trace);
+                trace = TryBindTeslaAttackCapture(trace);
                 while (_recentOutboundPackets.Count >= MaxRecentOutboundPackets)
                 {
                     _recentOutboundPackets.Dequeue();
@@ -587,15 +600,18 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
-        internal void ResolveSg88ManualAttackRequest(int summonObjectId, int requestedAt, string resolutionSource)
+        internal bool ResolveSg88ManualAttackRequest(int summonObjectId, int requestedAt, string resolutionSource)
         {
             if (summonObjectId <= 0 || requestedAt == int.MinValue)
             {
-                return;
+                return false;
             }
 
             lock (_sync)
             {
+                string normalizedResolutionSource = string.IsNullOrWhiteSpace(resolutionSource)
+                    ? "resolved"
+                    : resolutionSource.Trim();
                 for (int i = _pendingSg88ManualAttackCaptures.Count - 1; i >= 0; i--)
                 {
                     Sg88ManualAttackCapture pendingCapture = _pendingSg88ManualAttackCaptures[i];
@@ -604,8 +620,162 @@ namespace HaCreator.MapSimulator.Managers
                         continue;
                     }
 
-                    ArchiveSg88ManualAttackCapture(pendingCapture, string.IsNullOrWhiteSpace(resolutionSource) ? "resolved" : resolutionSource.Trim());
+                    string preferredResolutionSource = PreferSg88TemplateResolutionSource(
+                        normalizedResolutionSource,
+                        pendingCapture.ResolutionSource);
+                    ArchiveSg88ManualAttackCapture(pendingCapture, preferredResolutionSource);
                     _pendingSg88ManualAttackCaptures.RemoveAt(i);
+                    return true;
+                }
+
+                foreach (Sg88ManualAttackCapture archivedCapture in _recentSg88ManualAttackCaptures.Reverse())
+                {
+                    if (archivedCapture.SummonObjectId != summonObjectId || archivedCapture.RequestedAt != requestedAt)
+                    {
+                        continue;
+                    }
+
+                    archivedCapture.ResolutionSource = PreferSg88TemplateResolutionSource(
+                        normalizedResolutionSource,
+                        archivedCapture.ResolutionSource);
+                    UpdateLearnedSg88ManualAttackTemplateResolution(archivedCapture);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal void TrackTeslaCoilAttackRequest(
+            int summonObjectId,
+            int requestedAt,
+            int primaryTargetMobId,
+            IReadOnlyList<int> targetMobIds,
+            int baseDelayMs)
+        {
+            if (summonObjectId <= 0 || requestedAt == int.MinValue)
+            {
+                return;
+            }
+
+            int[] resolvedTargetMobIds = targetMobIds?
+                .Where(static mobId => mobId > 0)
+                .Distinct()
+                .ToArray() ?? Array.Empty<int>();
+            int captureWindowEndAt = CalculateTeslaCaptureWindowEndAt(requestedAt, baseDelayMs);
+            lock (_sync)
+            {
+                PruneExpiredTeslaAttackCaptures(requestedAt);
+                for (int i = _pendingTeslaAttackCaptures.Count - 1; i >= 0; i--)
+                {
+                    Sg88ManualAttackCapture pendingCapture = _pendingTeslaAttackCaptures[i];
+                    if (pendingCapture.SummonObjectId != summonObjectId)
+                    {
+                        continue;
+                    }
+
+                    ArchiveTeslaAttackCapture(pendingCapture, "superseded");
+                    _pendingTeslaAttackCaptures.RemoveAt(i);
+                }
+
+                _pendingTeslaAttackCaptures.Add(new Sg88ManualAttackCapture
+                {
+                    SummonObjectId = summonObjectId,
+                    RequestedAt = requestedAt,
+                    PrimaryTargetMobId = primaryTargetMobId,
+                    TargetMobIds = resolvedTargetMobIds,
+                    BaseDelayMs = Math.Max(0, baseDelayMs),
+                    FollowUpDelayMs = 0,
+                    CaptureWindowEndAt = captureWindowEndAt
+                });
+            }
+        }
+
+        internal bool TrySendLearnedTeslaCoilAttackRequest(
+            int summonObjectId,
+            int requestedAt,
+            int primaryTargetMobId,
+            IReadOnlyList<int> targetMobIds,
+            out string status)
+        {
+            status = null;
+            int[] resolvedTargetMobIds = targetMobIds?
+                .Where(static mobId => mobId > 0)
+                .Distinct()
+                .ToArray() ?? Array.Empty<int>();
+            if (summonObjectId <= 0 || requestedAt == int.MinValue)
+            {
+                status = "Tesla request replay requires a positive summon object id and request tick.";
+                return false;
+            }
+
+            if (primaryTargetMobId <= 0 || resolvedTargetMobIds.Length == 0)
+            {
+                status = "Tesla request replay requires at least one admitted target mob id.";
+                return false;
+            }
+
+            Sg88ManualAttackRequestPacketTemplate template;
+            string templateStatus;
+            lock (_sync)
+            {
+                if (!TryResolveLearnedTeslaAttackRequestTemplate(
+                        resolvedTargetMobIds.Length,
+                        primaryTargetMobId,
+                        resolvedTargetMobIds,
+                        out template,
+                        out templateStatus))
+                {
+                    status = templateStatus;
+                    LastStatus = status;
+                    return false;
+                }
+            }
+
+            if (!TryBuildSg88ManualAttackRequestRawPacket(
+                    template,
+                    summonObjectId,
+                    primaryTargetMobId,
+                    resolvedTargetMobIds,
+                    out byte[] rawPacket,
+                    out string buildError))
+            {
+                status = buildError;
+                LastStatus = status;
+                return false;
+            }
+
+            string replayTraceSource = $"simulator:tesla-template:{requestedAt}";
+            if (!TrySendOutboundRawPacket(rawPacket, replayTraceSource, out string sendStatus))
+            {
+                status = sendStatus;
+                return false;
+            }
+
+            status = $"{sendStatus} Learned Tesla template targetCount={template.TargetCount} opcode=0x{template.Opcode:X}.";
+            LastStatus = status;
+            return true;
+        }
+
+        internal void ResolveTeslaCoilAttackRequest(int summonObjectId, int requestedAt, string resolutionSource)
+        {
+            if (summonObjectId <= 0 || requestedAt == int.MinValue)
+            {
+                return;
+            }
+
+            lock (_sync)
+            {
+                for (int i = _pendingTeslaAttackCaptures.Count - 1; i >= 0; i--)
+                {
+                    Sg88ManualAttackCapture pendingCapture = _pendingTeslaAttackCaptures[i];
+                    if (pendingCapture.SummonObjectId != summonObjectId || pendingCapture.RequestedAt != requestedAt)
+                    {
+                        continue;
+                    }
+
+                    ArchiveTeslaAttackCapture(pendingCapture, string.IsNullOrWhiteSpace(resolutionSource) ? "resolved" : resolutionSource.Trim());
+                    _pendingTeslaAttackCaptures.RemoveAt(i);
                     break;
                 }
             }
@@ -1039,11 +1209,106 @@ namespace HaCreator.MapSimulator.Managers
             _recentSg88ManualAttackCaptures.Enqueue(capture);
         }
 
+        private OutboundPacketTrace TryBindTeslaAttackCapture(OutboundPacketTrace trace)
+        {
+            Sg88ManualAttackCapture selectedCapture = null;
+            Sg88ManualAttackTraceBinding selectedBinding = default;
+            int selectedAgeMs = int.MaxValue;
+            for (int i = _pendingTeslaAttackCaptures.Count - 1; i >= 0; i--)
+            {
+                Sg88ManualAttackCapture capture = _pendingTeslaAttackCaptures[i];
+                Sg88ManualAttackTraceBinding binding = EvaluateSg88ManualAttackTraceBinding(
+                    trace,
+                    capture.SummonObjectId,
+                    capture.PrimaryTargetMobId,
+                    capture.TargetMobIds,
+                    capture.RequestedAt,
+                    capture.CaptureWindowEndAt);
+                if (!binding.IsWithinCaptureWindow)
+                {
+                    continue;
+                }
+
+                int ageMs = Math.Max(0, unchecked(trace.ObservedAt - capture.RequestedAt));
+                if (selectedCapture != null
+                    && (binding.Score < selectedBinding.Score
+                        || (binding.Score == selectedBinding.Score && ageMs >= selectedAgeMs)))
+                {
+                    continue;
+                }
+
+                selectedCapture = capture;
+                selectedBinding = binding;
+                selectedAgeMs = ageMs;
+            }
+
+            if (selectedCapture != null)
+            {
+                selectedCapture.ObservedPackets.Add(trace);
+                TryAssignTeslaAttackRequestPacket(selectedCapture, trace, selectedBinding);
+            }
+
+            return trace;
+        }
+
+        private void PruneExpiredTeslaAttackCaptures(int currentTime)
+        {
+            for (int i = _pendingTeslaAttackCaptures.Count - 1; i >= 0; i--)
+            {
+                Sg88ManualAttackCapture pendingCapture = _pendingTeslaAttackCaptures[i];
+                if (currentTime <= pendingCapture.CaptureWindowEndAt)
+                {
+                    continue;
+                }
+
+                ArchiveTeslaAttackCapture(pendingCapture, "expired");
+                _pendingTeslaAttackCaptures.RemoveAt(i);
+            }
+        }
+
+        private void ArchiveTeslaAttackCapture(Sg88ManualAttackCapture capture, string resolutionSource)
+        {
+            if (capture == null)
+            {
+                return;
+            }
+
+            capture.ResolutionSource = string.IsNullOrWhiteSpace(resolutionSource) ? "resolved" : resolutionSource.Trim();
+            UpdateLearnedTeslaAttackTemplateResolution(capture);
+            while (_recentTeslaAttackCaptures.Count >= MaxRecentTeslaAttackRequests)
+            {
+                _recentTeslaAttackCaptures.Dequeue();
+            }
+
+            _recentTeslaAttackCaptures.Enqueue(capture);
+        }
+
         private void UpdateLearnedSg88ManualAttackTemplateResolution(Sg88ManualAttackCapture capture)
         {
             if (capture?.RequestPacket is not OutboundPacketTrace requestPacket
                 || capture.TargetMobIds.Length <= 0
                 || !_learnedSg88ManualAttackTemplates.TryGetValue(capture.TargetMobIds.Length, out List<LearnedSg88ManualAttackTemplate> templates))
+            {
+                return;
+            }
+
+            foreach (LearnedSg88ManualAttackTemplate template in templates)
+            {
+                if (template.RequestedAt == capture.RequestedAt
+                    && template.ObservedAt == requestPacket.ObservedAt
+                    && template.PrimaryTargetMobId == capture.PrimaryTargetMobId
+                    && template.TargetMobIds.SequenceEqual(capture.TargetMobIds))
+                {
+                    template.ResolutionSource = capture.ResolutionSource;
+                }
+            }
+        }
+
+        private void UpdateLearnedTeslaAttackTemplateResolution(Sg88ManualAttackCapture capture)
+        {
+            if (capture?.RequestPacket is not OutboundPacketTrace requestPacket
+                || capture.TargetMobIds.Length <= 0
+                || !_learnedTeslaAttackTemplates.TryGetValue(capture.TargetMobIds.Length, out List<LearnedSg88ManualAttackTemplate> templates))
             {
                 return;
             }
@@ -1108,6 +1373,23 @@ namespace HaCreator.MapSimulator.Managers
         private static int CalculateCaptureWindowEndAt(int requestedAt, int baseDelayMs, int followUpDelayMs)
         {
             long totalDelay = (long)Math.Max(0, baseDelayMs) + Math.Max(0, followUpDelayMs) + Sg88ManualAttackCaptureGraceMs;
+            long captureWindowEndAt = (long)requestedAt + totalDelay;
+            if (captureWindowEndAt > int.MaxValue)
+            {
+                return int.MaxValue;
+            }
+
+            if (captureWindowEndAt < int.MinValue)
+            {
+                return int.MinValue;
+            }
+
+            return (int)captureWindowEndAt;
+        }
+
+        private static int CalculateTeslaCaptureWindowEndAt(int requestedAt, int baseDelayMs)
+        {
+            long totalDelay = (long)Math.Max(0, baseDelayMs) + TeslaAttackCaptureGraceMs;
             long captureWindowEndAt = (long)requestedAt + totalDelay;
             if (captureWindowEndAt > int.MaxValue)
             {
@@ -1203,6 +1485,46 @@ namespace HaCreator.MapSimulator.Managers
             capture.RequestPacketScore = binding.Score;
             capture.RequestPacketEvidence = binding.Evidence;
             PromoteLearnedSg88ManualAttackTemplate(capture, trace, binding);
+        }
+
+        private void TryAssignTeslaAttackRequestPacket(
+            Sg88ManualAttackCapture capture,
+            OutboundPacketTrace trace,
+            Sg88ManualAttackTraceBinding binding)
+        {
+            if (capture == null || !binding.HasSemanticEvidence)
+            {
+                return;
+            }
+
+            if (capture.RequestPacket is OutboundPacketTrace existingRequestPacket
+                && capture.RequestPacketScore > binding.Score)
+            {
+                return;
+            }
+
+            if (capture.RequestPacket is OutboundPacketTrace tiedRequestPacket
+                && capture.RequestPacketScore == binding.Score
+                && tiedRequestPacket.ObservedAt > trace.ObservedAt)
+            {
+                return;
+            }
+
+            if (!TryCreateSg88ManualAttackRequestTemplate(
+                    trace,
+                    capture.SummonObjectId,
+                    capture.PrimaryTargetMobId,
+                    capture.TargetMobIds,
+                    out _,
+                    out _))
+            {
+                return;
+            }
+
+            capture.RequestPacket = trace;
+            capture.RequestPacketScore = binding.Score;
+            capture.RequestPacketEvidence = binding.Evidence;
+            PromoteLearnedTeslaAttackTemplate(capture, trace, binding);
         }
 
         private static string BuildTraceBindingEvidence(
@@ -1546,6 +1868,144 @@ namespace HaCreator.MapSimulator.Managers
             return false;
         }
 
+        internal bool TryResolveLearnedTeslaAttackRequestTemplate(
+            int targetCount,
+            int primaryTargetMobId,
+            IReadOnlyList<int> targetMobIds,
+            out Sg88ManualAttackRequestPacketTemplate template,
+            out string status)
+        {
+            template = default;
+            status = "No learned Tesla request packet template is available yet.";
+            if (targetCount <= 0)
+            {
+                return false;
+            }
+
+            PruneExpiredTeslaAttackCaptures(Environment.TickCount);
+            int[] resolvedTargetMobIds = NormalizeTargetMobIds(targetMobIds);
+
+            Sg88ManualAttackCapture selectedCapture = null;
+            bool selectedCaptureIsPending = false;
+            int selectedObservedAt = int.MinValue;
+            Sg88ManualAttackTemplateLanePreference selectedLanePreference = default;
+            Sg88ManualAttackRequestPacketTemplate selectedTemplate = default;
+
+            bool TryConsiderCapture(Sg88ManualAttackCapture capture, bool isPendingCapture)
+            {
+                if (capture?.RequestPacket is not OutboundPacketTrace requestPacket
+                    || capture.TargetMobIds.Length != targetCount
+                    || !IsEligibleSg88TemplateEvidenceSource(requestPacket.Source))
+                {
+                    return false;
+                }
+
+                if (!TryCreateSg88ManualAttackRequestTemplate(
+                        requestPacket,
+                        capture.SummonObjectId,
+                        capture.PrimaryTargetMobId,
+                        capture.TargetMobIds,
+                        out Sg88ManualAttackRequestPacketTemplate candidateTemplate,
+                        out _))
+                {
+                    return false;
+                }
+
+                Sg88ManualAttackTemplateLanePreference candidatePreference = EvaluateSg88TemplateLanePreference(
+                    primaryTargetMobId,
+                    resolvedTargetMobIds,
+                    capture.PrimaryTargetMobId,
+                    capture.TargetMobIds);
+                if (selectedCapture != null
+                    && !ShouldPreferSg88CaptureTemplateCandidate(
+                        candidatePreference,
+                        capture.ResolutionSource,
+                        requestPacket.ObservedAt,
+                        selectedLanePreference,
+                        selectedCapture.ResolutionSource,
+                        selectedObservedAt))
+                {
+                    return false;
+                }
+
+                selectedCapture = capture;
+                selectedCaptureIsPending = isPendingCapture;
+                selectedObservedAt = requestPacket.ObservedAt;
+                selectedLanePreference = candidatePreference;
+                selectedTemplate = candidateTemplate;
+                return true;
+            }
+
+            foreach (Sg88ManualAttackCapture capture in _pendingTeslaAttackCaptures)
+            {
+                TryConsiderCapture(capture, isPendingCapture: true);
+            }
+
+            foreach (Sg88ManualAttackCapture capture in _recentTeslaAttackCaptures)
+            {
+                TryConsiderCapture(capture, isPendingCapture: false);
+            }
+
+            if (selectedCapture?.RequestPacket is OutboundPacketTrace)
+            {
+                template = selectedTemplate;
+                string captureState = selectedCaptureIsPending
+                    ? "live official capture"
+                    : $"archived official capture ({selectedCapture.ResolutionSource ?? "resolved"})";
+                status =
+                    $"Using learned Tesla request template from opcode 0x{template.Opcode:X} captured at tick {selectedCapture.RequestedAt} via {captureState} laneScore={selectedLanePreference.LaneScore}.";
+                return true;
+            }
+
+            if (_learnedTeslaAttackTemplates.TryGetValue(targetCount, out List<LearnedSg88ManualAttackTemplate> learnedTemplates)
+                && learnedTemplates.Count > 0)
+            {
+                LearnedSg88ManualAttackTemplate learnedTemplate = null;
+                Sg88ManualAttackTemplateLanePreference lanePreference = default;
+                int learnedObservedAt = int.MinValue;
+                foreach (LearnedSg88ManualAttackTemplate candidate in learnedTemplates)
+                {
+                    Sg88ManualAttackTemplateLanePreference candidatePreference = EvaluateSg88TemplateLanePreference(
+                        primaryTargetMobId,
+                        resolvedTargetMobIds,
+                        candidate.PrimaryTargetMobId,
+                        candidate.TargetMobIds);
+                    if (learnedTemplate != null
+                        && !ShouldPreferSg88LearnedTemplateCandidate(
+                            candidatePreference,
+                            candidate.ResolutionSource,
+                            candidate.ObservedAt,
+                            lanePreference,
+                            learnedTemplate.ResolutionSource,
+                            learnedObservedAt))
+                    {
+                        continue;
+                    }
+
+                    learnedTemplate = candidate;
+                    lanePreference = candidatePreference;
+                    learnedObservedAt = candidate.ObservedAt;
+                }
+
+                if (learnedTemplate == null)
+                {
+                    status = $"No learned Tesla request packet template matched targetCount={targetCount}.";
+                    return false;
+                }
+
+                template = learnedTemplate.Template;
+                string resolution = string.IsNullOrWhiteSpace(learnedTemplate.ResolutionSource)
+                    ? "cached official capture"
+                    : $"cached official capture ({learnedTemplate.ResolutionSource})";
+                status =
+                    $"Using cached learned Tesla request template from opcode 0x{template.Opcode:X} captured at tick {learnedTemplate.RequestedAt} via {resolution} laneScore={lanePreference.LaneScore}.";
+                return true;
+            }
+
+            status = $"No learned Tesla request packet template matched targetCount={targetCount}.";
+            return false;
+        }
+
         private static bool IsEligibleSg88TemplateEvidenceSource(string source)
         {
             return !string.IsNullOrWhiteSpace(source)
@@ -1573,6 +2033,38 @@ namespace HaCreator.MapSimulator.Managers
         {
             int candidateRank = GetSg88TemplateResolutionRank(candidateResolutionSource);
             int existingRank = GetSg88TemplateResolutionRank(existingResolutionSource);
+            if (candidateRank != existingRank)
+            {
+                return candidateRank >= existingRank
+                    ? candidateResolutionSource
+                    : existingResolutionSource;
+            }
+
+            return string.IsNullOrWhiteSpace(candidateResolutionSource)
+                ? existingResolutionSource
+                : candidateResolutionSource;
+        }
+
+        private static int GetTeslaTemplateResolutionRank(string resolutionSource)
+        {
+            if (string.IsNullOrWhiteSpace(resolutionSource))
+            {
+                return 0;
+            }
+
+            return resolutionSource.Trim() switch
+            {
+                "0x119-target-cover" => 3,
+                "expired" => 2,
+                "superseded" => 1,
+                _ => 1
+            };
+        }
+
+        private static string PreferTeslaTemplateResolutionSource(string candidateResolutionSource, string existingResolutionSource)
+        {
+            int candidateRank = GetTeslaTemplateResolutionRank(candidateResolutionSource);
+            int existingRank = GetTeslaTemplateResolutionRank(existingResolutionSource);
             if (candidateRank != existingRank)
             {
                 return candidateRank >= existingRank
@@ -1670,6 +2162,87 @@ namespace HaCreator.MapSimulator.Managers
             });
 
             while (templates.Count > MaxLearnedSg88ManualAttackTemplatesPerTargetCount)
+            {
+                templates.RemoveAt(templates.Count - 1);
+            }
+        }
+
+        private void PromoteLearnedTeslaAttackTemplate(
+            Sg88ManualAttackCapture capture,
+            OutboundPacketTrace trace,
+            Sg88ManualAttackTraceBinding binding)
+        {
+            string error = null;
+            if (capture?.TargetMobIds == null
+                || capture.TargetMobIds.Length == 0
+                || !TryCreateSg88ManualAttackRequestTemplate(
+                    trace,
+                    capture.SummonObjectId,
+                    capture.PrimaryTargetMobId,
+                    capture.TargetMobIds,
+                    out Sg88ManualAttackRequestPacketTemplate template,
+                    out error))
+            {
+                LastStatus = string.IsNullOrWhiteSpace(error)
+                    ? LastStatus
+                    : error;
+                return;
+            }
+
+            if (!_learnedTeslaAttackTemplates.TryGetValue(capture.TargetMobIds.Length, out List<LearnedSg88ManualAttackTemplate> templates))
+            {
+                templates = new List<LearnedSg88ManualAttackTemplate>();
+                _learnedTeslaAttackTemplates[capture.TargetMobIds.Length] = templates;
+            }
+
+            string preferredResolutionSource = capture.ResolutionSource;
+            LearnedSg88ManualAttackTemplate existingTemplate = templates.FirstOrDefault(candidate =>
+                candidate.PrimaryTargetMobId == capture.PrimaryTargetMobId
+                && candidate.TargetMobIds.SequenceEqual(capture.TargetMobIds));
+            if (existingTemplate != null)
+            {
+                preferredResolutionSource = PreferTeslaTemplateResolutionSource(
+                    capture.ResolutionSource,
+                    existingTemplate.ResolutionSource);
+                if (existingTemplate.ObservedAt > trace.ObservedAt)
+                {
+                    existingTemplate.ResolutionSource = preferredResolutionSource;
+                    return;
+                }
+
+                templates.Remove(existingTemplate);
+            }
+
+            templates.Add(new LearnedSg88ManualAttackTemplate
+            {
+                Template = template,
+                RequestedAt = capture.RequestedAt,
+                ObservedAt = trace.ObservedAt,
+                Source = trace.Source,
+                Evidence = binding.Evidence,
+                PrimaryTargetMobId = capture.PrimaryTargetMobId,
+                TargetMobIds = capture.TargetMobIds.ToArray(),
+                ResolutionSource = preferredResolutionSource
+            });
+            templates.Sort((left, right) =>
+            {
+                int observedCompare = right.ObservedAt.CompareTo(left.ObservedAt);
+                if (observedCompare != 0)
+                {
+                    return observedCompare;
+                }
+
+                int resolutionCompare = GetTeslaTemplateResolutionRank(right.ResolutionSource)
+                    .CompareTo(GetTeslaTemplateResolutionRank(left.ResolutionSource));
+                if (resolutionCompare != 0)
+                {
+                    return resolutionCompare;
+                }
+
+                return string.CompareOrdinal(right.Evidence, left.Evidence);
+            });
+
+            while (templates.Count > MaxLearnedTeslaAttackTemplatesPerTargetCount)
             {
                 templates.RemoveAt(templates.Count - 1);
             }

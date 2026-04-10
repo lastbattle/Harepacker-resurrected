@@ -136,13 +136,28 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
+                string title = ReadMapleString(reader);
+                string problemText = ReadMapleString(reader);
+                string hintText = ReadMapleString(reader);
+                int answer = reader.ReadInt32();
+                int questionNumber = reader.ReadInt32();
+                int remainingSeconds = reader.ReadInt32();
+
+                if (HasLiveOwner())
+                {
+                    message =
+                        $"Ignored context-owned initial quiz reopen while the existing owner is still alive: " +
+                        $"client `CWvsContext::OnInitialQuiz` only seeds `CUIInitialQuiz` during singleton creation.";
+                    return true;
+                }
+
                 message = ApplyClientOwnerState(
-                    ReadMapleString(reader),
-                    ReadMapleString(reader),
-                    ReadMapleString(reader),
-                    reader.ReadInt32(),
-                    reader.ReadInt32(),
-                    reader.ReadInt32(),
+                    title,
+                    problemText,
+                    hintText,
+                    answer,
+                    questionNumber,
+                    remainingSeconds,
                     currentTickCount,
                     runtimeCharacterId)
                     .Replace("Synced", "Started", StringComparison.Ordinal);
@@ -172,6 +187,11 @@ namespace HaCreator.MapSimulator.Interaction
             return string.IsNullOrWhiteSpace(value)
                 ? "\"\""
                 : $"\"{value.Trim()}\"";
+        }
+
+        private bool HasLiveOwner()
+        {
+            return _expiresAtTick > 0;
         }
 
         internal void ObserveRuntimeCharacterId(int runtimeCharacterId)

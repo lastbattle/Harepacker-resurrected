@@ -588,6 +588,29 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        public bool TryApplyGuildMark(
+            int characterId,
+            int markBackgroundId,
+            int markBackgroundColor,
+            int markId,
+            int markColor,
+            out string message)
+        {
+            message = null;
+            if (!_actorsById.TryGetValue(characterId, out RemoteUserActor actor) || actor?.Build == null)
+            {
+                message = $"Remote user {characterId} does not exist.";
+                return false;
+            }
+
+            actor.Build.GuildMarkBackgroundId = markBackgroundId > 0 ? markBackgroundId : null;
+            actor.Build.GuildMarkBackgroundColor = markBackgroundColor;
+            actor.Build.GuildMarkId = markId > 0 ? markId : null;
+            actor.Build.GuildMarkColor = markColor;
+            message = $"Remote user {characterId} guild mark applied.";
+            return true;
+        }
+
         public bool HasActiveMarriageRelationshipRecord(int characterId)
         {
             if (characterId <= 0)
@@ -2636,16 +2659,13 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                MinimapUI.HelperMarkerType? markerType = actor.HelperMarkerType;
-                if (!markerType.HasValue)
-                {
-                    markerType = MinimapUI.HelperMarkerType.Match;
-                }
+                MinimapUI.HelperMarkerType markerType = actor.HelperMarkerType
+                    ?? MinimapUI.HelperMarkerType.Another;
 
                 MinimapUI.TrackedUserMarker marker = GetOrCreateHelperMarker(_helperMarkerCount++);
                 marker.WorldX = actor.Position.X;
                 marker.WorldY = actor.Position.Y;
-                marker.MarkerType = markerType.Value;
+                marker.MarkerType = markerType;
                 marker.ShowDirectionOverlay = actor.ShowDirectionOverlay;
                 marker.TooltipText = actor.Name;
             }
@@ -2853,12 +2873,31 @@ namespace HaCreator.MapSimulator.Pools
                     }
 
                     Vector2 textSize = font.MeasureString(line);
+                    Texture2D guildMarkBackground = null;
+                    Texture2D guildMark = null;
+                    bool drawGuildMark = lineIndex == 0
+                        && !string.IsNullOrWhiteSpace(actor.Build?.GuildName)
+                        && TryResolveGuildMarkTextures(spriteBatch.GraphicsDevice, actor, out guildMarkBackground, out guildMark);
+                    float guildMarkWidth = drawGuildMark
+                        ? Math.Max(guildMarkBackground?.Width ?? 0, guildMark?.Width ?? 0)
+                        : 0f;
+                    float totalWidth = textSize.X + (drawGuildMark ? guildMarkWidth + 4f : 0f);
                     Vector2 textPosition = new(
-                        screenX - (textSize.X / 2f),
+                        screenX - (totalWidth / 2f) + (drawGuildMark ? guildMarkWidth + 4f : 0f),
                         labelTopY + (lineIndex * (font.LineSpacing + 2f)));
                     Color textColor = lineIndex == labelLines.Count - 1
                         ? ResolveNameColor(actor)
                         : new Color(176, 226, 255);
+                    if (drawGuildMark)
+                    {
+                        float iconLeft = textPosition.X - guildMarkWidth - 4f;
+                        DrawGuildMarkIcon(
+                            spriteBatch,
+                            guildMarkBackground,
+                            guildMark,
+                            new Vector2(iconLeft, textPosition.Y + ((font.LineSpacing - Math.Max(guildMarkBackground?.Height ?? 0, guildMark?.Height ?? 0)) * 0.5f)));
+                    }
+
                     DrawOutlinedText(spriteBatch, font, line, textPosition, Color.Black, textColor);
                 }
             }
@@ -4297,6 +4336,57 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             spriteBatch.DrawString(font, text, position, textColor);
+        }
+
+        private static void DrawGuildMarkIcon(
+            SpriteBatch spriteBatch,
+            Texture2D backgroundTexture,
+            Texture2D markTexture,
+            Vector2 position)
+        {
+            if (backgroundTexture != null)
+            {
+                spriteBatch.Draw(backgroundTexture, position, Color.White);
+            }
+
+            if (markTexture == null)
+            {
+                return;
+            }
+
+            if (backgroundTexture == null)
+            {
+                spriteBatch.Draw(markTexture, position, Color.White);
+                return;
+            }
+
+            Vector2 markPosition = new(
+                position.X + ((backgroundTexture.Width - markTexture.Width) * 0.5f),
+                position.Y + ((backgroundTexture.Height - markTexture.Height) * 0.5f));
+            spriteBatch.Draw(markTexture, markPosition, Color.White);
+        }
+
+        private static bool TryResolveGuildMarkTextures(
+            GraphicsDevice device,
+            RemoteUserActor actor,
+            out Texture2D backgroundTexture,
+            out Texture2D markTexture)
+        {
+            backgroundTexture = null;
+            markTexture = null;
+            CharacterBuild build = actor?.Build;
+            if (device == null
+                || build?.GuildMarkBackgroundId is not int backgroundId || backgroundId <= 0
+                || build.GuildMarkId is not int markId || markId <= 0)
+            {
+                return false;
+            }
+
+            int backgroundColor = build.GuildMarkBackgroundColor ?? 1;
+            int markColor = build.GuildMarkColor ?? 1;
+            backgroundTexture = GuildMarkTextureCache.GetBackgroundTexture(device, backgroundId, backgroundColor);
+            markTexture = GuildMarkTextureCache.GetMarkTexture(device, markId, markColor);
+            return backgroundTexture != null || markTexture != null;
         }
 
         private static Color ResolveNameColor(RemoteUserActor actor)
@@ -7314,6 +7404,22 @@ namespace HaCreator.MapSimulator.Pools
                     frame = state.LastResolvedFrame;
                     alpha = state.LastResolvedAlpha;
                 }
+                else
+                {
+                    int lastFrameIndex = state.LastFrameIndex;
+                    SkillFrame lastResolvedFrame = state.LastResolvedFrame;
+                    float lastResolvedAlpha = state.LastResolvedAlpha;
+                    MeleeAfterimagePlaybackResolver.ClearSnapshotCache(
+                        ref lastFrameIndex,
+                        ref lastResolvedFrame,
+                        ref lastResolvedAlpha);
+                    state.LastFrameIndex = lastFrameIndex;
+                    state.LastResolvedFrame = lastResolvedFrame;
+                    state.LastResolvedAlpha = lastResolvedAlpha;
+                    frameIndex = state.LastFrameIndex;
+                    frame = state.LastResolvedFrame;
+                    alpha = state.LastResolvedAlpha;
+                }
             }
             else if (state.FadeStartTime >= 0)
             {
@@ -7688,6 +7794,19 @@ namespace HaCreator.MapSimulator.Pools
                 float lastResolvedAlpha = MeleeAfterImage.LastResolvedAlpha;
                 MeleeAfterimagePlaybackResolver.ApplySnapshotToCache(
                     snapshot,
+                    ref lastFrameIndex,
+                    ref lastResolvedFrame,
+                    ref lastResolvedAlpha);
+                MeleeAfterImage.LastFrameIndex = lastFrameIndex;
+                MeleeAfterImage.LastResolvedFrame = lastResolvedFrame;
+                MeleeAfterImage.LastResolvedAlpha = lastResolvedAlpha;
+            }
+            else
+            {
+                int lastFrameIndex = MeleeAfterImage.LastFrameIndex;
+                SkillFrame lastResolvedFrame = MeleeAfterImage.LastResolvedFrame;
+                float lastResolvedAlpha = MeleeAfterImage.LastResolvedAlpha;
+                MeleeAfterimagePlaybackResolver.ClearSnapshotCache(
                     ref lastFrameIndex,
                     ref lastResolvedFrame,
                     ref lastResolvedAlpha);
