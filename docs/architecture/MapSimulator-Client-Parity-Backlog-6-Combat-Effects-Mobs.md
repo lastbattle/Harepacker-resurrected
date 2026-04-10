@@ -154,6 +154,8 @@ It does three things that the old notes did not do well:
 
 - `CMob::GetAttackInfo` at `0x641330`
 
+- `CActionMan::GetMobImgEntry` at `0x419f20`
+
 - `CActionMan::LoadMobAction` at `0x41f530`
 - `CAnimationDisplayer::Effect_Tremble` at `0x439a70`
 - `CAnimationDisplayer::Effect_HP` at `0x444eb0`
@@ -205,7 +207,14 @@ These are the first functions to inspect before changing simulator behavior.
 
 
 
-### 2. Mob action-loader ownership discovered by targeted `CActionMan` scan
+### 2. Mob image-entry ownership discovered by targeted `CActionMan` scan
+
+- `CActionMan::GetMobImgEntry` at `0x419f20`
+
+Notes:
+The follow-up `CActionMan` scan shows the client resolves mob template IMG data through a distinct cached owner before `LoadMobAction` runs. `GetMobImgEntry` formats the mob resource path through the StringPool-backed template, loads the property tree from the resource manager, follows `info/link` by recursively reopening the linked template, and copies missing top-level branches from the linked image onto the cached entry before later action loading consumes it. That means mob parity is split three ways rather than two: runtime behavior in `CMob::*`, image-entry normalization in `GetMobImgEntry`, and then frame-table construction in `LoadMobAction`.
+
+### 3. Mob action-loader ownership discovered by targeted `CActionMan` scan
 
 
 
@@ -217,7 +226,7 @@ Notes:
 
 The combat backlog already tracked `CMob::DoAttack`, `CMob::OnNextAttack`, `CMob::ProcessAttack`, and `CMob::GetAttackInfo`, but the targeted `CActionMan` scan shows the client also keeps a distinct mob action-loader owner that was not named anywhere in this backlog set. `CActionMan::LoadMobAction` caches by `(templateId, action)` before the runtime ever updates or attacks, resolves the action node from the mob IMG entry through the static `s_sMobAction` table, enumerates each frame canvas, reads per-frame `delay`, `head`, `lt`, `rb`, and multi-body metadata, computes the frame rect and head anchor, and appends a reversed playback pass when the action publishes the client reverse flag. That means mob parity is still split the same way as summons, pets, employees, and NPCs in the other backlog docs: `CMob::*` owns behavior and targeting, while `CActionMan::LoadMobAction` owns the frame-table construction, delay fallback, cached reuse, and reverse-playback shape that the runtime consumes.
 
-### 3. Combat feedback animation-owner parity discovered by `CAnimationDisplayer` scan
+### 4. Combat feedback animation-owner parity discovered by `CAnimationDisplayer` scan
 
 - `CAnimationDisplayer::Effect_Tremble` at `0x439a70`
 - `CAnimationDisplayer::Effect_HP` at `0x444eb0`
@@ -304,7 +313,13 @@ The simulator has working mob AI and effects, but not the full client combat pip
 
 
 
-### 2. Mob action-loader ownership discovered by targeted `CActionMan` scan
+### 2. Mob image-entry ownership discovered by targeted `CActionMan` scan
+
+| Status | Area | Gap | Why it matters | Primary seam |
+|--------|------|-----|----------------|--------------|
+| Partial | Mob image-entry / linked-template parity | The simulator already parses mob template data through `LifeLoader`, but the client keeps a distinct `CActionMan::GetMobImgEntry` owner ahead of `LoadMobAction`. IDA shows this seam caches by template id, resolves the formatted mob IMG path through the resource manager, follows `info/link` recursively, and merges missing top-level branches from the linked template onto the current entry before action loading or runtime code ever reads that property tree. The backlog was not naming that ownership split anywhere, which makes linked-template normalization easy to lose under the broader action-loader or runtime rows. | Without this row, mob parity can look fully covered once `CMob::*` and `LoadMobAction` are tracked, even though the client also decides which normalized mob IMG property tree exists one layer earlier. Keeping that owner explicit isolates later `info/link`, shared-branch inheritance, and per-template cache-lifetime work from the runtime and frame-build rows. | mob template/image-entry layer (`CActionMan::GetMobImgEntry`, `LifeLoader.cs`, `MobAnimationSet.cs`, `MobItem.cs`) |
+
+### 3. Mob action-loader ownership discovered by targeted `CActionMan` scan
 
 
 
@@ -318,11 +333,11 @@ The simulator has working mob AI and effects, but not the full client combat pip
 
 
 
-### 3. Combat feedback animation-owner parity discovered by `CAnimationDisplayer` scan
+### 4. Combat feedback animation-owner parity discovered by `CAnimationDisplayer` scan
 
 | Status | Area | Gap | Why it matters | Primary seam |
 |--------|------|-----|----------------|--------------|
-| Partial | Damage-number and tremble animation-owner parity | The simulator already renders combat text and impact feedback, but this scan shows the client keeps the visible owner in `CAnimationDisplayer` rather than only inside the mob runtime or HUD code. `CAnimationDisplayer::Effect_HP` owns number-family selection, digit composition, critical-banner insertion, temporary canvas creation, and one-time layer registration, while `CAnimationDisplayer::Effect_Tremble` owns the shake gate, start/end timing, and reduction curve. This pass moved the seam materially closer again to the recovered owner path. WZ inspection still anchors the assets to `effect/BasicEff.img/NoCri0`, `NoCri1`, and `NoCri1/effect`, including the separate `NoCri1/effect` critical canvas (`62x57`, origin `41,70`) over the `NoCri0` digits and the client `CreateCanvas(lWidth, 57)` height. The simulator still formats values through `MapleStoryStringPool` id `0x1A15`, keeps the red-only critical-owner split, preserves the client large-first/small-tail digit mix plus the separate critical banner over `NoCri0` digits, and still materializes the prepared payload into a real temporary composite canvas texture once at spawn, but the owner seam is now closer to the client registration path instead of a generic overlay draw. `AnimationEffects` no longer treats a damage-number canvas layer as one monolithic draw plus delayed helper overlay; it now builds an explicit client-shaped insert sequence for the shared one-time canvas-layer owner: primary-canvas hold insert, primary-canvas fade insert, and delayed critical-banner insert in preserved order, with the same `400ms` hold, `600ms` fade, `30px` rise, `250ms` critical delay, `lCenterTop - 47` placement, and `-30px` critical-banner Y offset recovered from `CAnimationDisplayer::Effect_HP`. The existing tremble gate, start/end timing, heavy-vs-normal duration split, and reduction behavior remain explicit owner-layer state from `CAnimationDisplayer::Effect_Tremble`. Focused seam coverage is now on disk in `UnitTest_MapSimulator/CombatFeedbackAnimationOwnerParityTests.cs` for the client-shaped damage-number insert ordering, delayed critical-banner lifetime across hold-vs-fade boundaries, one-time layer placement and timeline constants, and the tremble gate plus duration or reduction rules. The remaining gap is now mostly the last native Gr2D object details: the simulator still does not reproduce the client's exact COM `IWzGr2DLayer` flag values, layer option writes, or byte-for-byte blend or composite behavior, and it still models those recovered inserts through the simulator canvas-layer runtime rather than through the client's actual layer object graph and native `InsertCanvas` side effects. | Without an explicit `CAnimationDisplayer` combat-feedback row, combat parity can look further along than it is once mob AI, hit resolution, HP bars, and generic damage text exist. Naming the owner keeps future work anchored to the client seam that actually builds and schedules damage-number and tremble presentation instead of burying the remaining visual differences inside unrelated mob-runtime rows. | combat feedback animation layer (`CAnimationDisplayer::Effect_HP`, `CAnimationDisplayer::Effect_Tremble`, simulator seams: `CombatEffects.cs`, `DamageNumberRenderer.cs`, `ScreenEffects.cs`, `MobAttackSystem.cs`, `MapSimulator.cs`) |
+| Partial | Damage-number and tremble animation-owner parity | The simulator already renders combat text and impact feedback, but this scan shows the client keeps the visible owner in `CAnimationDisplayer` rather than only inside the mob runtime or HUD code. `CAnimationDisplayer::Effect_HP` owns number-family selection, digit composition, critical-banner insertion, temporary canvas creation, and one-time layer registration, while `CAnimationDisplayer::Effect_Tremble` owns the shake gate, start/end timing, and reduction curve. This pass moved the seam materially closer again to the recovered owner path. WZ inspection still anchors the assets to `effect/BasicEff.img/NoCri0`, `NoCri1`, and `NoCri1/effect`, including the separate `NoCri1/effect` critical canvas (`62x57`, origin `41,70`) over the `NoCri0` digits and the client `CreateCanvas(lWidth, 57)` height. The simulator still formats values through `MapleStoryStringPool` id `0x1A15`, keeps the red-only critical-owner split, preserves the client large-first/small-tail digit mix plus the separate critical banner over `NoCri0` digits, and still materializes the prepared payload into a real temporary composite canvas texture once at spawn, but the owner seam is now closer to the client registration path instead of a generic overlay draw. `AnimationEffects` no longer treats a damage-number canvas layer as one monolithic draw plus delayed helper overlay; it now builds an explicit client-shaped insert sequence for the shared one-time canvas-layer owner: primary-canvas hold insert, primary-canvas fade insert, and delayed critical-banner insert in preserved order, with the same `400ms` hold, `600ms` fade, `30px` rise, `250ms` critical delay, `lCenterTop - 47` placement, and `-30px` critical-banner Y offset recovered from `CAnimationDisplayer::Effect_HP`. This pass also preserves the recovered native registration literals as explicit simulator metadata at the same seam, including the `CreateLayer` canvas value `0`, the follow-up layer option literal `0xC0050004`, the layer-priority write `-1`, and the final layer option write `0`, so the client-owned Gr2D registration shape is no longer discarded even though the simulator still renders it through its managed canvas-layer runtime. The existing tremble gate, start/end timing, heavy-vs-normal duration split, and reduction behavior remain explicit owner-layer state from `CAnimationDisplayer::Effect_Tremble`. Focused seam coverage is now on disk in `UnitTest_MapSimulator/CombatFeedbackAnimationOwnerParityTests.cs` for the red-only critical-owner split, large-first/small-tail digit layout, client-shaped damage-number insert ordering, delayed critical-banner lifetime across hold-vs-fade boundaries, one-time layer placement, recovered layer-registration literals, timeline constants, and the tremble gate plus duration or reduction rules. The remaining gap is now mostly the last native Gr2D execution behavior: the simulator still does not instantiate the client's real COM `IWzGr2DLayer` object graph, replay the native layer option writes or `InsertCanvas` side effects against that graph, or reproduce byte-for-byte blend and composite output even though the recovered registration values are now preserved at the simulator seam. | Without an explicit `CAnimationDisplayer` combat-feedback row, combat parity can look further along than it is once mob AI, hit resolution, HP bars, and generic damage text exist. Naming the owner keeps future work anchored to the client seam that actually builds and schedules damage-number and tremble presentation instead of burying the remaining visual differences inside unrelated mob-runtime rows. | combat feedback animation layer (`CAnimationDisplayer::Effect_HP`, `CAnimationDisplayer::Effect_Tremble`, simulator seams: `CombatEffects.cs`, `DamageNumberRenderer.cs`, `ScreenEffects.cs`, `MobAttackSystem.cs`, `MapSimulator.cs`) |
 
 ## Priority Order
 
