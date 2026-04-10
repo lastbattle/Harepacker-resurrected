@@ -84,6 +84,13 @@ It does three things that the old notes did not do well:
 - `CUserPool::OnFriendRecordAdd` at `0x94d700`
 - `CUserPool::OnMarriageRecordAdd` at `0x94d800`
 - `CUserPool::OnNewYearCardRecordAdd` at `0x94de60`
+- `CUINewYearCardDlg::CUINewYearCardDlg` at `0xa1c740`
+- `CUINewYearCardDlg::OnCreate` at `0xa1c110`
+- `CUINewYearCardDlg::Draw` at `0xa1c390`
+- `CUINewYearCardSenderDlg::CUINewYearCardSenderDlg` at `0xa1d0b0`
+- `CUINewYearCardSenderDlg::OnCreate` at `0xa1e050`
+- `CUINewYearCardSenderDlg::_SendNewYearCard` at `0xa1d2a0`
+- `CNewYearCardReceiverSearchResult::Draw` at `0xa1db90`
 - `CUIWeddingInvitation::OnCreate` at `0x791dc0`
 - `CUIWeddingInvitation::Draw` at `0x791f00`
 - `CGuildRankDlg::OnCreate` at `0x56a710`
@@ -260,6 +267,19 @@ The follow-up scan tightened several seams that were only partially implied by t
 Notes:
 The follow-up function scan exposed another social-message owner that was not named anywhere in the backlog set. `CAvatarMegaphone` is not just a status-bar chat line or a generic item effect: `OnCreate` reads the item info `path` and `emotion`, builds a dedicated `CAvatar` preview from the packet-supplied `AvatarLook`, loads the item-authored avatar-skin layer, selects one of two name-tag canvases based on measured sender-name width, and places that name tag at client-owned offsets. `HelloAvatarMegaphone` then drives the slide-in motion, name-tag alpha, chat-log insertion, curse filtering, whisper/channel metadata, and optional screen tremble for selected item ids. That makes avatar megaphone parity a separate field-social presentation owner alongside MapleTV, message boxes, and status-bar chat, not a duplicate of ordinary megaphone text feedback.
 
+### 11. New Year Card dialog owners discovered by broad IDA function scan
+
+- `CUINewYearCardDlg::CUINewYearCardDlg` at `0xa1c740`
+- `CUINewYearCardDlg::OnCreate` at `0xa1c110`
+- `CUINewYearCardDlg::Draw` at `0xa1c390`
+- `CUINewYearCardSenderDlg::CUINewYearCardSenderDlg` at `0xa1d0b0`
+- `CUINewYearCardSenderDlg::OnCreate` at `0xa1e050`
+- `CUINewYearCardSenderDlg::_SendNewYearCard` at `0xa1d2a0`
+- `CNewYearCardReceiverSearchResult::Draw` at `0xa1db90`
+
+Notes:
+The relationship-record rows already cover New Year card overlay state in `CUserPool`, but a broad function scan shows that the client also owns a separate send/read dialog family for the same social item. WZ re-check confirms the dialog art paths used by these constructors: `UI/UIWindow.img/NewYearsCard/backgrnd` for the sender window and `UI/UIWindow.img/NewYearsCard/backgrnd3` for the read window. IDA shows the read dialog prefixes `From:` and `To:`, wraps memo text through a 150-pixel `CTextLineBreaker`, and creates a `227x263` read window at `(286,168)`, while the sender dialog stores inventory position and item id, creates the `518x188` sender window at `(221,206)`, owns target and multiline memo editors, a receiver-search child result owner, and a name-list scrollbar before `_SendNewYearCard` emits the outbound request. That is a UI/request owner beside, not inside, the existing relationship overlay and record-lifecycle seams.
+
 ## Current State Summary
 
 This area is not completely blank in the simulator, but it is only represented by fragments today.
@@ -378,6 +398,14 @@ The follow-up broad function scan surfaced a dedicated avatar megaphone owner th
 | Status | Area | Gap | Why it matters | Primary seam |
 |--------|------|-----|----------------|--------------|
 | Missing | Avatar megaphone presentation parity | The simulator backlog did not previously name `CAvatarMegaphone` even though the client keeps a full owner for avatar-bearing megaphone messages. IDA shows the constructor and `OnCreate` build the surface from an item id, sender name, four message fragments, whisper/channel flags, and a packet-supplied `AvatarLook`; `OnCreate` reads the megaphone item `path` and `emotion`, allocates a `CAvatar` preview at client-owned offsets, loads the item-authored avatar-skin layer through `CAnimationDisplayer::LoadLayer`, chooses `StringPool` canvas `4016` or `4017` based on measured sender-name width, and places the name tag at `x=48` or `x=3`, `y=84`. `HelloAvatarMegaphone` then slides the window from offscreen to `screenWidth - 225`, applies the repeated shake offsets and fade-in timing, writes the filtered `%sender : message` text to `CUIStatusBar::ChatLogAdd` with type `18`, preserves whisper/channel metadata, and triggers `CAnimationDisplayer::Effect_Tremble` for selected megaphone item ids. | Avatar megaphones are visible social feedback with their own avatar preview, name-tag canvas, item-authored skin, motion, filtered chat-log side effect, and tremble branch. Leaving them under generic chat or item-effect rows would hide a distinct client owner and make social feedback parity look more complete than it is once ordinary chat, message boxes, or MapleTV are present. | avatar megaphone social presentation layer (`CAvatarMegaphone::CAvatarMegaphone`, `CAvatarMegaphone::OnCreate`, `CAvatarMegaphone::HelloAvatarMegaphone`, `CAvatarMegaphone::Draw`, `CAvatarMegaphone::ByeAvatarMegaphone`, `CAvatar::Init`, `CAnimationDisplayer::LoadLayer`, `CUIStatusBar::ChatLogAdd`, `CAnimationDisplayer::Effect_Tremble`) |
+
+### 11. New Year Card dialog owners discovered by broad IDA function scan
+
+The relationship-record and overlay rows already track the in-field New Year card effect, but the broad function scan surfaced a separate sender/read dialog family that still was not represented in this backlog.
+
+| Status | Area | Gap | Why it matters | Primary seam |
+|--------|------|-----|----------------|--------------|
+| Missing | New Year Card sender/read dialog parity | WZ re-check confirms the dialog art that the client constructors use: `UI/UIWindow.img/NewYearsCard/backgrnd` exists as the sender background canvas and `UI/UIWindow.img/NewYearsCard/backgrnd3` exists as the read-dialog background canvas. IDA shows `CUINewYearCardDlg::CUINewYearCardDlg` creates the read window at `(286,168)` with size `227x263`, prefixes sender and receiver strings with `From:` and `To:`, stores the memo, uses the basic black font, and wraps memo text through a `CTextLineBreaker` at width `150` before draw/on-create finish the read surface. The sender owner is separate: `CUINewYearCardSenderDlg::CUINewYearCardSenderDlg` stores the inventory position and item id, sets `UI/UIWindow.img/NewYearsCard/backgrnd`, and creates the sender window at `(221,206)` with size `518x188`; `OnCreate` allocates the receiver search-result child owner, Search/OK/Cancel buttons, target edit at `(46,66,243x15)`, multiline memo edit at `(13,105,333x45)`, and the name-list scrollbar at `(498,7,93)`, while `_SendNewYearCard` owns the outbound card request. The simulator backlog currently has New Year record lifecycle and overlay effects, but not these dialog/request owners. | New Year card parity can look covered once the relationship record and midpoint overlay exist, but the client also has a social item UI for composing, searching recipients, sending, and reading cards. Keeping this row separate prevents sender/read dialog work from being hidden under generic memo, generic relationship overlays, or the packet-owned record lifecycle. | New Year card dialog layer (`CUINewYearCardDlg::CUINewYearCardDlg`, `CUINewYearCardDlg::OnCreate`, `CUINewYearCardDlg::Draw`, `CUINewYearCardSenderDlg::CUINewYearCardSenderDlg`, `CUINewYearCardSenderDlg::OnCreate`, `CUINewYearCardSenderDlg::_SendNewYearCard`, `CNewYearCardReceiverSearchResult::Draw`, `UI/UIWindow.img/NewYearsCard/{backgrnd,backgrnd3}`) |
 
 ## Priority Order
 
